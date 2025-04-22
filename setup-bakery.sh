@@ -27,7 +27,7 @@ sudo chown -R $APP_USER:$APP_USER $BAKERY_ROOT
 
 # 3️⃣ Install system packages
 sudo apt update
-sudo apt install -y curl gnupg2 \
+sudo apt install -y curl gnupg2 unzip \
      postgresql \
      ufw certbot
 
