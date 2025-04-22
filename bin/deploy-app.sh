@@ -12,7 +12,7 @@ EMAIL=$(grep '^EMAIL=' /etc/bakery/config | cut -d= -f2)
 echo "🚀 Deploying $SUB (release $REL)…"
 
 # 1) Ensure the release directory exists (code must already be there)
-sudo mkdir -p $RELEASE_DIR
+sudo mkdir -p $CURRENT
 
 if [ ! -d $CURRENT ]; then
   echo "❌ No files found in $CURRENT!"
@@ -21,19 +21,17 @@ if [ ! -d $CURRENT ]; then
 fi
 
 # 2) Grant ownership
-sudo chown -R bakery:bakery $RELEASE_DIR
+sudo chown -R bakery:bakery $CURRENT
 
 # 3) Install deps & build as bakery user
 sudo -u bakery bash -lc "
-  cd $RELEASE_DIR
+  cd $CURRENT
   bun install
   bun --bun run build
 "
 
-# 4) Point “current” at the new release
-#sudo ln -sfn $RELEASE_DIR $CURRENT
 
-# 5) Obtain/renew TLS cert if needed
+# 4) Obtain/renew TLS cert if needed
 if [ ! -d /etc/letsencrypt/live/$SUB ]; then
   sudo certbot certonly \
     --standalone -d $SUB \
@@ -41,7 +39,7 @@ if [ ! -d /etc/letsencrypt/live/$SUB ]; then
     --email $EMAIL
 fi
 
-# 6) Write (or overwrite) systemd service
+# 5) Write (or overwrite) systemd service
 cat <<EOF | sudo tee /etc/systemd/system/$SERVICE.service > /dev/null
 [Unit]
 Description=Bakery app $SUB
@@ -60,7 +58,7 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-# 7) Reload & restart
+# 6) Reload & restart
 sudo systemctl daemon-reload
 sudo systemctl enable --now $SERVICE
 
