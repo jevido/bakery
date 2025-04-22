@@ -64,7 +64,7 @@ sudo chown -R $APP_USER:$APP_USER $BAKERY_ROOT/bin
 sudo ln -sf $BAKERY_ROOT/bin/bakery /usr/local/bin/bakery
 
 sudo chown -R $APP_USER:$APP_USER $BAKERY_ROOT/bin
-sudo chmod +x $BAKERY_ROOT/bin/*.sh
+sudo chmod +x $BAKERY_ROOT/bin/*
 
 echo "✅  Done! You can now:"
 
