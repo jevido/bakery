@@ -12,6 +12,8 @@ APP_USER=bakery
 BAKERY_ROOT=/srv/bakery
 
 echo "🍞  [setup-bakery] Starting setup for $DOMAIN …"
+echo "DOMAIN=$DOMAIN" | sudo tee /etc/bakery/config > /dev/null
+echo "EMAIL=$EMAIL" | sudo tee -a /etc/bakery/config > /dev/null
 
 # 1️⃣ Create bakery user
 if ! id -u $APP_USER >/dev/null 2>&1; then
@@ -60,6 +62,7 @@ sudo install -m755 bin/bakery /usr/local/bin/bakery
 sudo install -m755 bin/deploy-app.sh bin/remove-app.sh bin/upgrade-bakery.sh \
      $BAKERY_ROOT/bin/
 sudo chown -R $APP_USER:$APP_USER $BAKERY_ROOT/bin
+chmod +x "$BAKERY_ROOT/bin/deploy-app.sh"
 
 echo "✅  Done! You can now:"
 
