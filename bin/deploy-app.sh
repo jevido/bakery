@@ -9,7 +9,7 @@ CURRENT=$APP_DIR/current
 SERVICE=bakery-${SUB//./-}
 EMAIL=$(grep '^EMAIL=' /etc/bakery/config | cut -d= -f2)
 
-echo "🚀 Deploying $SUB (release $REL)…"
+echo "🚀 Deploying $SUB…"
 
 # 1) Ensure the release directory exists (code must already be there)
 sudo mkdir -p $CURRENT
