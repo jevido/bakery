@@ -35,8 +35,8 @@ sudo apt install -y curl gnupg2 unzip \
      ufw certbot
 
 # 4️⃣ Bun
-if ! command -v bun >/dev/null; then
-  curl -fsSL https://bun.sh/install | bash
+if ! sudo -u $APP_USER bash -lc "command -v bun" >/dev/null; then
+  sudo -u $APP_USER bash -lc "curl -fsSL https://bun.sh/install | bash"
   echo "export PATH=\"\$HOME/.bun/bin:\$PATH\"" \
     | sudo tee -a /home/$APP_USER/.bashrc
   echo "✔ Installed Bun"
