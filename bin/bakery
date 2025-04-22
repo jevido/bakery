@@ -7,13 +7,13 @@ CMD=$1; shift
 case "$CMD" in
   deploy)
     # bakery deploy <subdomain> [release]
-    ./deploy-app.sh "$@" ;;
+    /srv/bakery/bin/deploy-app.sh "$@" ;;
   remove)
     # bakery remove <subdomain>
-    ./remove-app.sh "$@" ;;
+    /srv/bakery/bin/remove-app.sh "$@" ;;
   upgrade)
     # bakery upgrade
-    ./upgrade-bakery.sh ;;
+    /srv/bakery/bin/upgrade-bakery.sh ;;
   *)
     echo "Usage: bakery <deploy|remove|upgrade>"
     exit 1 ;;
