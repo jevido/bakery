@@ -58,14 +58,14 @@ sudo mkdir -p /etc/letsencrypt/{live,archive}
 sudo chown -R root:root /etc/letsencrypt
 
 # 8️⃣ Deploy helper scripts
-echo "✔ Copying bakery CLI & scripts…"
-sudo install -m755 bin/bakery /usr/local/bin/bakery
-sudo install -m755 bin/deploy-app.sh bin/remove-app.sh bin/upgrade-bakery.sh \
-     $BAKERY_ROOT/bin/
+echo "✔ Ensuring bakery CLI & script permissions…"
+sudo chmod +x $BAKERY_ROOT/bin/*.sh
+sudo chown -R $APP_USER:$APP_USER $BAKERY_ROOT/bin
+sudo ln -sf $BAKERY_ROOT/bin/bakery /usr/local/bin/bakery
+
 sudo chown -R $APP_USER:$APP_USER $BAKERY_ROOT/bin
 sudo chmod +x $BAKERY_ROOT/bin/*.sh
 
-ls -l "$BAKERY_ROOT/bin"
 echo "✅  Done! You can now:"
 
 cat <<EOF
