@@ -10,7 +10,6 @@ EMAIL=${EMAIL:?“Please set EMAIL=your@email”}
 
 APP_USER=bakery
 BAKERY_ROOT=/srv/bakery
-PG_VERSION=17
 
 echo "🍞  [setup-bakery] Starting setup for $DOMAIN …"
 
@@ -29,7 +28,7 @@ sudo chown -R $APP_USER:$APP_USER $BAKERY_ROOT
 # 3️⃣ Install system packages
 sudo apt update
 sudo apt install -y curl gnupg2 \
-     postgresql-$PG_VERSION \
+     postgresql \
      ufw certbot
 
 # 4️⃣ Bun
