@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# /srv/bakery/bin/bakery
+set -e
+
+CMD=$1; shift
+
+case "$CMD" in
+  deploy)
+    # bakery deploy <subdomain> [release]
+    ./deploy-app.sh "$@" ;;
+  remove)
+    # bakery remove <subdomain>
+    ./remove-app.sh "$@" ;;
+  upgrade)
+    # bakery upgrade
+    ./upgrade-bakery.sh ;;
+  *)
+    echo "Usage: bakery <deploy|remove|upgrade>"
+    exit 1 ;;
+esac

@@ -1,0 +1,31 @@
+name: Deploy to Bakery
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Push code to server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: bakery
+          key: ${{ secrets.HETZNER_SSH_KEY }}
+          source: "./"
+          target: "/srv/bakery/apps/${{ inputs.subdomain }}/releases/${{ github.sha }}"
+          strip_components: 1 # adjust if needed
+
+      - name: Trigger deploy
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: bakery
+          key: ${{ secrets.HETZNER_SSH_KEY }}
+          script: |
+            /srv/bakery/bin/deploy-app.sh ${{ inputs.subdomain }} ${{ github.sha }}
