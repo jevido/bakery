@@ -63,8 +63,7 @@ sudo install -m755 bin/bakery /usr/local/bin/bakery
 sudo install -m755 bin/deploy-app.sh bin/remove-app.sh bin/upgrade-bakery.sh \
      $BAKERY_ROOT/bin/
 sudo chown -R $APP_USER:$APP_USER $BAKERY_ROOT/bin
-chmod +x "$BAKERY_ROOT/bin/deploy-app.sh"
-
+sudo chmod +x $BAKERY_ROOT/bin/*.sh
 echo "✅  Done! You can now:"
 
 cat <<EOF
