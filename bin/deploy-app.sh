@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# deploy-app.sh <subdomain> [release]
+# Usage: deploy-app.sh <subdomain> [release]
 SUB=$1
 REL=${2:-$(date +%s)}
 ROOT=/srv/bakery
@@ -11,32 +11,40 @@ CURRENT=$APP_DIR/current
 SERVICE=bakery-${SUB//./-}
 EMAIL=$(grep '^EMAIL=' /etc/bakery/config | cut -d= -f2)
 
-# 1) Create dirs & move code
+echo "🚀 Deploying $SUB (release $REL)…"
+
+# 1) Ensure the release directory exists (code must already be there)
 sudo mkdir -p $RELEASE_DIR
-sudo mv /tmp/deploy_payload/* $RELEASE_DIR
+
+if [ -z "$(ls -A $RELEASE_DIR)" ]; then
+  echo "❌ No files found in $RELEASE_DIR!"
+  echo "   Make sure your GitHub Action rsyncs into this path."
+  exit 1
+fi
+
+# 2) Grant ownership
 sudo chown -R bakery:bakery $RELEASE_DIR
 
-# 2) Build & deps as bakery user
+# 3) Install deps & build as bakery user
 sudo -u bakery bash -lc "
   cd $RELEASE_DIR
   bun install
   bun run build
 "
 
-# 3) Symlink
+# 4) Point “current” at the new release
 sudo ln -sfn $RELEASE_DIR $CURRENT
 
-# 4) Certbot (standalone)
+# 5) Obtain/renew TLS cert if needed
 if [ ! -d /etc/letsencrypt/live/$SUB ]; then
   sudo certbot certonly \
     --standalone -d $SUB \
-    --non-interactive \
-    --agree-tos \
+    --non-interactive --agree-tos \
     --email $EMAIL
 fi
 
-# 5) systemd unit
-cat <<EOF | sudo tee /etc/systemd/system/$SERVICE.service
+# 6) Write (or overwrite) systemd service
+cat <<EOF | sudo tee /etc/systemd/system/$SERVICE.service > /dev/null
 [Unit]
 Description=Bakery app $SUB
 After=network.target
@@ -54,7 +62,8 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+# 7) Reload & restart
 sudo systemctl daemon-reload
 sudo systemctl enable --now $SERVICE
 
-echo "🚀 Deployed $SUB → running under service $SERVICE"
+echo "✅ Deployed $SUB → service: $SERVICE"
