@@ -12,7 +12,7 @@ APP_USER=bakery
 BAKERY_ROOT=/srv/bakery
 
 echo "🍞  [setup-bakery] Starting setup for $DOMAIN …"
-touch /etc/bakery/config
+sudo mkdir -p /etc/bakery
 echo "DOMAIN=$DOMAIN" | sudo tee /etc/bakery/config > /dev/null
 echo "EMAIL=$EMAIL" | sudo tee -a /etc/bakery/config > /dev/null
 
