@@ -33,7 +33,7 @@ sudo apt update
 sudo apt install -y curl gnupg2 unzip \
      postgresql \
      ufw certbot \
-     nginx
+     nginx python3-certbot-nginx
 
 # 4️⃣ Bun
 if ! sudo -u $APP_USER bash -lc "command -v bun" >/dev/null; then
