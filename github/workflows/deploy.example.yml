@@ -7,25 +7,27 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      SSH_PRIVATE_KEY: ${{ secrets.BAKERY_SSH_KEY }}
+      SSH_USER: root
+      SSH_HOST: jevido.wtf
+      APP_DOMAIN: somedomain.jevido.wtf
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
-      - name: Push code to server
-        uses: appleboy/scp-action@v0.1.4
-        with:
-          host: ${{ secrets.HETZNER_HOST }}
-          username: bakery
-          key: ${{ secrets.HETZNER_SSH_KEY }}
-          source: "./"
-          target: "/srv/bakery/apps/${{ inputs.subdomain }}/releases/${{ github.sha }}"
-          strip_components: 1 # adjust if needed
+      - name: Setup SSH
+        run: |
+          echo "$SSH_PRIVATE_KEY" > key.pem
+          chmod 600 key.pem
+          mkdir -p ~/.ssh
+          ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
 
-      - name: Trigger deploy
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.HETZNER_HOST }}
-          username: bakery
-          key: ${{ secrets.HETZNER_SSH_KEY }}
-          script: |
-            /srv/bakery/bin/deploy-app.sh ${{ inputs.subdomain }} ${{ github.sha }}
+      - name: Upload build to server
+        run: |
+          rsync -az --mkpath --delete -e "ssh -i key.pem" ./ $SSH_USER@$SSH_HOST:/srv/bakery/apps/$APP_DOMAIN/current
+
+      - name: Deploy on server
+        run: |
+          ssh -i key.pem $SSH_USER@$SSH_HOST "bakery deploy $APP_DOMAIN"

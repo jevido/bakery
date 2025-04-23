@@ -52,8 +52,6 @@ sudo -u bakery bash -lc "
   bun install
   bun --bun run build
 "
-sudo ln -sf "$NGINX_CONF" "$NGINX_LINK"
-sudo nginx -t && sudo systemctl reload nginx
 
 # 5) Request TLS cert (standalone mode, stop nginx first)
 if [ ! -d "/etc/letsencrypt/live/$SUB" ]; then
@@ -95,6 +93,7 @@ server {
 }
 EOF
 
+sudo ln -sf "$NGINX_CONF" "$NGINX_LINK"
 sudo nginx -t && sudo systemctl reload nginx
 # 7) Create systemd service
 sudo tee /etc/systemd/system/$SERVICE.service > /dev/null <<EOF
