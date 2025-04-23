@@ -33,7 +33,7 @@ This README explains how to bootstrap your Hetzner server with the **Bakery** CI
    This will:
 
    - Create a `bakery` system user
-   - Install **Bun**, **PostgreSQL 15**, **UFW**, **Certbot**
+   - Install **Bun**, **PostgreSQL (latest)**, **UFW**, **Certbot**
    - Open ports for SSH & HTTPS in UFW
    - Create the directory structure under `/srv/bakery`
    - Install the `bakery` CLI and helper scripts
@@ -92,46 +92,13 @@ bakery upgrade
 
 In each app’s GitHub repo, create `.github/workflows/deploy.yml`:
 
-```yaml
-name: Deploy to Bakery
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Copy code to server
-        uses: appleboy/scp-action@v0.1.4
-        with:
-          host: ${{ secrets.HETZNER_HOST }}
-          username: bakery
-          key: ${{ secrets.HETZNER_SSH_KEY }}
-          source: "./"
-          target: "/srv/bakery/apps/${{ inputs.subdomain }}/releases/${{ github.sha }}"
-          strip_components: 1
-
-      - name: Trigger Bakery deploy
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.HETZNER_HOST }}
-          username: bakery
-          key: ${{ secrets.HETZNER_SSH_KEY }}
-          script: /srv/bakery/bin/deploy-app.sh ${{ inputs.subdomain }} ${{ github.sha }}
-```
-
 > **Note:** Set `inputs.subdomain` to your full app hostname (e.g. `app.jevido.wtf`).
 
 ### Setting GitHub Secrets
 
 In your app repo’s Settings ▶️ Secrets:
 
-- **HETZNER_HOST**: your server’s IP or hostname
-- **HETZNER_SSH_KEY**: the private SSH key for `bakery` user
+- **BAKERY_SSH_KEY**: the private SSH key for `bakery` user
 
 ---
 
