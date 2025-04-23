@@ -94,7 +94,8 @@ server {
 EOF
 
 sudo ln -sf "$NGINX_CONF" "$NGINX_LINK"
-sudo nginx -t && sudo systemctl reload nginx
+sudo nginx -t && sudo systemctl restart nginx
+
 # 7) Create systemd service
 sudo tee /etc/systemd/system/$SERVICE.service > /dev/null <<EOF
 [Unit]
