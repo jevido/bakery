@@ -32,30 +32,21 @@ sudo -u bakery bash -lc "
   bun install
   bun --bun run build
 "
-
-# 4) Configure Nginx for HTTP (needed for certbot challenge)
-sudo tee "$NGINX_CONF" > /dev/null <<EOF
-server {
-    listen 80;
-    server_name $SUB;
-
-    location /.well-known/acme-challenge/ {
-        root /var/www/html;
-        allow all;
-    }
-
-    location / {
-        return 404;
-    }
-}
-EOF
-
 sudo ln -sf "$NGINX_CONF" "$NGINX_LINK"
 sudo nginx -t && sudo systemctl reload nginx
 
-# 5) Request TLS cert
+# 5) Request TLS cert (standalone mode, stop nginx first)
 if [ ! -d "/etc/letsencrypt/live/$SUB" ]; then
-  sudo certbot certonly --nginx -d "$SUB" --non-interactive --agree-tos --email "$EMAIL"
+  echo "🌐 Requesting TLS cert for $SUB…"
+  sudo systemctl stop nginx
+
+  sudo certbot certonly --standalone -d "$SUB" \
+    --non-interactive --agree-tos --email "$EMAIL" || {
+      echo "❌ Certbot failed. Aborting."
+      exit 1
+  }
+
+  sudo systemctl start nginx
 fi
 
 # 6) Update Nginx with reverse proxy config
@@ -85,23 +76,6 @@ server {
 EOF
 
 sudo nginx -t && sudo systemctl reload nginx
-
-# 7) Write (or overwrite) systemd service
-cat <<EOF | sudo tee "/etc/systemd/system/$SERVICE.service" > /dev/null
-[Unit]
-Description=Bakery app $SUB
-After=network.target
-
-[Service]
-User=bakery
-WorkingDirectory=$CURRENT
-ExecStart=/home/bakery/.bun/bin/bun .output/server/index.js --port $PORT
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
 
 # 8) Reload & restart
 sudo systemctl daemon-reload
