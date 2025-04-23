@@ -32,7 +32,8 @@ sudo chown -R $APP_USER:$APP_USER $BAKERY_ROOT
 sudo apt update
 sudo apt install -y curl gnupg2 unzip \
      postgresql \
-     ufw certbot
+     ufw certbot \
+     nginx
 
 # 4️⃣ Bun
 if ! sudo -u $APP_USER bash -lc "command -v bun" >/dev/null; then
@@ -46,10 +47,10 @@ if ! sudo grep -Fxq "$BUN_PATH_LINE" /home/$APP_USER/.profile; then
   echo "$BUN_PATH_LINE" | sudo tee -a /home/$APP_USER/.profile > /dev/null
 fi
 
-
 # 5️⃣ Firewall
 sudo ufw allow OpenSSH
 sudo ufw allow https
+sudo ufw allow 'Nginx Full'
 sudo ufw --force enable
 
 # 6️⃣ PostgreSQL
