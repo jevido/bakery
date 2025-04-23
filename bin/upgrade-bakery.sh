@@ -4,5 +4,5 @@ set -e
 cd /srv/bakery/
 sudo git reset --hard origin/main
 source /etc/bakery/config
-sudo bash setup-bakery.sh
+sudo DOMAIN="$DOMAIN" EMAIL="$EMAIL" bash setup-bakery.sh
 echo "🔄 Bakery platform upgraded!"
