@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Usage:
-#   DOMAIN=jevido.wtf EMAIL=you@domain.com ./setup-bakery.sh
+#   DOMAIN=jevido.wtf EMAIL=you@domain.com bash ./setup-bakery.sh
 
 # === — CONFIG — ====
 DOMAIN=${DOMAIN:?“Please set DOMAIN=your.domain”}
@@ -42,8 +42,8 @@ fi
 
 # Ensure PATH is added once
 BUN_PATH_LINE='export PATH="$HOME/.bun/bin:$PATH"'
-if ! sudo grep -Fxq "$BUN_PATH_LINE" /home/$APP_USER/.bashrc; then
-  echo "$BUN_PATH_LINE" | sudo tee -a /home/$APP_USER/.bashrc > /dev/null
+if ! sudo grep -Fxq "$BUN_PATH_LINE" /home/$APP_USER/.profile; then
+  echo "$BUN_PATH_LINE" | sudo tee -a /home/$APP_USER/.profile > /dev/null
 fi
 
 
