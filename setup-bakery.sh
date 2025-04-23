@@ -37,12 +37,15 @@ sudo apt install -y curl gnupg2 unzip \
 # 4️⃣ Bun
 if ! sudo -u $APP_USER bash -lc "command -v bun" >/dev/null; then
   sudo -u $APP_USER bash -lc "curl -fsSL https://bun.sh/install | bash"
-  echo "export PATH=\"\$HOME/.bun/bin:\$PATH\"" \
-    | sudo tee -a /home/$APP_USER/.bashrc
   echo "✔ Installed Bun"
-else
-  echo "ℹ  Bun already installed"
 fi
+
+# Ensure PATH is added once
+BUN_PATH_LINE='export PATH="$HOME/.bun/bin:$PATH"'
+if ! sudo grep -Fxq "$BUN_PATH_LINE" /home/$APP_USER/.bashrc; then
+  echo "$BUN_PATH_LINE" | sudo tee -a /home/$APP_USER/.bashrc > /dev/null
+fi
+
 
 # 5️⃣ Firewall
 sudo ufw allow OpenSSH

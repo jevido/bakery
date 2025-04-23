@@ -31,7 +31,6 @@ sudo -u bakery bash -lc "
   bun --bun run build
 "
 
-
 # 4) Obtain/renew TLS cert if needed
 if [ ! -d /etc/letsencrypt/live/$SUB ]; then
   sudo certbot certonly \
