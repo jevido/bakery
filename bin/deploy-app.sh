@@ -116,6 +116,8 @@ EOF
 
 # 8) Reload & restart
 sudo systemctl daemon-reload
-sudo systemctl enable --now "$SERVICE"
+sudo systemctl enable "$SERVICE"
+sudo systemctl restart "$SERVICE"
+
 
 echo "✅ Deployed $SUB → service: $SERVICE at https://$SUB"
