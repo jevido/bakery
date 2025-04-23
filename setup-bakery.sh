@@ -70,6 +70,8 @@ location /.well-known/acme-challenge/ {
     allow all;
 }
 EOF
+sudo ln -sf /etc/nginx/sites-available/00-default-certbot /etc/nginx/sites-enabled/00-default-certbot
+sudo nginx -t && sudo systemctl reload nginx
 
 # 9) Deploy helper scripts
 echo "✔ Ensuring bakery CLI & script permissions…"

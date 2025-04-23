@@ -9,9 +9,29 @@ CURRENT=$APP_DIR/current
 SERVICE=bakery-${SUB//./-}
 EMAIL=$(grep '^EMAIL=' /etc/bakery/config | cut -d= -f2)
 PORT_FILE=$APP_DIR/port
-PORT=3000
 NGINX_CONF="/etc/nginx/sites-available/$SUB"
 NGINX_LINK="/etc/nginx/sites-enabled/$SUB"
+
+# Determine port
+if [ -f "$PORT_FILE" ]; then
+  PORT=$(cat "$PORT_FILE")
+else
+  BASE_PORT=3000
+  MAX_PORT=4000
+  USED_PORTS=$(ss -tuln | awk '{print $5}' | grep -oE '[0-9]+$' | sort -n | uniq)
+  for ((p=$BASE_PORT; p<=$MAX_PORT; p++)); do
+    if ! echo "$USED_PORTS" | grep -q "^$p$"; then
+      PORT=$p
+      echo "$PORT" | sudo tee "$PORT_FILE" > /dev/null
+      break
+    fi
+  done
+
+  if [ -z "$PORT" ]; then
+    echo "❌ Could not find a free port between $BASE_PORT and $MAX_PORT."
+    exit 1
+  fi
+fi
 
 echo "🚀 Deploying $SUB on port $PORT…"
 
@@ -76,6 +96,23 @@ server {
 EOF
 
 sudo nginx -t && sudo systemctl reload nginx
+# 7) Create systemd service
+sudo tee /etc/systemd/system/$SERVICE.service > /dev/null <<EOF
+[Unit]
+Description=Bun app for $SUB
+After=network.target
+
+[Service]
+Type=simple
+User=bakery
+WorkingDirectory=$CURRENT
+ExecStart=/home/bakery/.bun/bin/bun start
+Environment=PORT=$PORT
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 # 8) Reload & restart
 sudo systemctl daemon-reload
