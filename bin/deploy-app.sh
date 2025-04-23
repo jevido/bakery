@@ -10,6 +10,7 @@ SERVICE=bakery-${SUB//./-}
 EMAIL=$(grep '^EMAIL=' /etc/bakery/config | cut -d= -f2)
 
 echo "🚀 Deploying $SUB…"
+echo "I am: $(whoami)"
 
 # 1) Ensure the release directory exists (code must already be there)
 sudo mkdir -p $CURRENT
