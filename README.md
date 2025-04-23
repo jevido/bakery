@@ -38,6 +38,11 @@ This README explains how to bootstrap your Hetzner server with the **Bakery** CI
    - Create the directory structure under `/srv/bakery`
    - Install the `bakery` CLI and helper scripts
 
+3. **Add the start script** to your package.json
+   ```json
+		"start": "bun --bun run build/index.js"
+   ```
+
 ---
 
 ## 📂 Directory Structure
