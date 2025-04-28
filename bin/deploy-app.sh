@@ -48,8 +48,6 @@ fi
 sudo chown -R bakery:bakery "$CURRENT"
 
 # 3) Do database shit like migrations and creating initial database
-echo "🔎 Checking if .env exists at $APP_DIR/.env"
-ls -la "$APP_DIR"
 if [ ! -f "$APP_DIR/.env" ]; then
   echo "ℹ️ .env not found. Creating database and .env for $SUB."
 
@@ -71,7 +69,7 @@ DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost:5432/$DB_NAME
 EOT
 
   echo "✅ .env created at $APP_DIR/.env"
-  cp "$APP_DIR/.env" "$CURRENT/.env"
+  sudo -u bakery cp "$APP_DIR/.env" "$CURRENT/.env"
 else
   echo "ℹ️ .env already exists, skipping database setup."
 fi
