@@ -54,7 +54,7 @@ sudo -u bakery bash -lc "
 "
 
 # 4) Do database shit like migrations and creating initial database
-if [ ! -f "$APP_DIR/.env" ]; then
+if [ ! -f "$CURRENT/.env" ]; then
   echo "ℹ️ .env not found. Creating database and .env for $SUB."
 
   DB_PASSWORD=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
