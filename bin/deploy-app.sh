@@ -54,6 +54,8 @@ sudo -u bakery bash -lc "
 "
 
 # 4) Do database shit like migrations and creating initial database
+echo "🔎 Checking if .env exists at $CURRENT/.env"
+ls -la "$CURRENT"
 if [ ! -f "$CURRENT/.env" ]; then
   echo "ℹ️ .env not found. Creating database and .env for $SUB."
 
