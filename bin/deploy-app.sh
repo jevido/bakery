@@ -79,11 +79,11 @@ else
   echo "ℹ️ .env already exists, skipping database setup."
 fi
 
-sudo -u bakery -c "bun --bun run build"
+sudo -u bakery bash -lc  "bun --bun run build"
 
-if sudo -u bakery -c "bun run" | grep -q 'db:migrate'; then
+if sudo -u bakery bash -lc  "bun run" | grep -q 'db:migrate'; then
   echo "🔎 db:migrate script found, running migrations..."
-  sudo -u bakery -c "bun run db:migrate"
+  sudo -u bakery bash -lc  "bun run db:migrate"
 else
   echo "ℹ️ No db:migrate script found, skipping migrations."
 fi
