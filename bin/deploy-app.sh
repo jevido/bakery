@@ -51,7 +51,6 @@ sudo chown -R bakery:bakery "$CURRENT"
 sudo -u bakery bash -lc "
   cd $CURRENT
   bun install
-  bun --bun run build
 "
 
 # 4) Do database shit like migrations and creating initial database
@@ -82,13 +81,15 @@ EOT
 
   echo "✅ .env created at /srv/bakery/$CURRENT/.env"
 else
-  echo "❌ .env already exists
-  
+  echo "❌ .env already exists";
 fi
 
-if bun run | grep -q 'db:migrate'; then
+sudo -u bakery -c "bun --bun run build"
+
+
+if sudo -u bakery -c "bun run" | grep -q 'db:migrate'; then
   echo "🔎 db:migrate script found, running migrations..."
-  bun run db:migrate
+  sudo -u bakery -c "bun run db:migrate"
 else
   echo "ℹ️ No db:migrate script found, skipping migrations."
 fi
