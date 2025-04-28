@@ -53,6 +53,14 @@ sudo -u bakery bash -lc "
   bun --bun run build
 "
 
+# Check if db:migrate script exists
+if bun run | grep -q 'db:migrate'; then
+  echo "🔎 db:migrate script found, running migrations..."
+  bun run db:migrate
+else
+  echo "ℹ️ No db:migrate script found, skipping migrations."
+fi
+
 # 5) Request TLS cert (standalone mode, stop nginx first)
 if [ ! -d "/etc/letsencrypt/live/$SUB" ]; then
   echo "🌐 Requesting TLS cert for $SUB…"
