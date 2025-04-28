@@ -54,38 +54,32 @@ sudo -u bakery bash -lc "
 "
 
 # 4) Do database shit like migrations and creating initial database
-# Check if .env exists
-if [ ! -f /srv/bakery/$CURRENT/.env ]; then
+if [ ! -f "$APP_DIR/.env" ]; then
   echo "ℹ️ .env not found. Creating database and .env for $SUB."
 
-  # Generate random password
   DB_PASSWORD=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
-
-  # Database and user names
   DB_NAME="bakery_${APP_SLUG}"
   DB_USER="bakery_${APP_SLUG}"
 
-  # Create database and user in Postgres
   sudo -u postgres psql <<EOF
-  CREATE DATABASE "$DB_NAME";
-  CREATE USER "$DB_USER" WITH ENCRYPTED PASSWORD '$DB_PASSWORD';
-  GRANT ALL PRIVILEGES ON DATABASE "$DB_NAME" TO "$DB_USER";
+CREATE DATABASE "$DB_NAME";
+CREATE USER "$DB_USER" WITH ENCRYPTED PASSWORD '$DB_PASSWORD';
+GRANT ALL PRIVILEGES ON DATABASE "$DB_NAME" TO "$DB_USER";
 EOF
 
   echo "✅ Database and user created: $DB_NAME / $DB_USER"
 
-  # Create the .env file
-  cat <<EOT >/srv/bakery/$SUB/.env
+  # ✅ Write postgres url to .env
+  cat <<EOT >"$CURRENT/.env"
 DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost:5432/$DB_NAME
 EOT
 
-  echo "✅ .env created at /srv/bakery/$CURRENT/.env"
+  echo "✅ .env created at $CURRENT/.env"
 else
-  echo "❌ .env already exists";
+  echo "ℹ️ .env already exists, skipping database setup."
 fi
 
 sudo -u bakery -c "bun --bun run build"
-
 
 if sudo -u bakery -c "bun run" | grep -q 'db:migrate'; then
   echo "🔎 db:migrate script found, running migrations..."
