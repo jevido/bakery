@@ -47,13 +47,7 @@ fi
 # 2) Grant ownership
 sudo chown -R bakery:bakery "$CURRENT"
 
-# 3) Install deps & build as bakery user
-sudo -u bakery bash -lc "
-  cd $CURRENT
-  bun install
-"
-
-# 4) Do database shit like migrations and creating initial database
+# 3) Do database shit like migrations and creating initial database
 echo "🔎 Checking if .env exists at $APP_DIR/.env"
 ls -la "$APP_DIR"
 if [ ! -f "$APP_DIR/.env" ]; then
@@ -77,16 +71,21 @@ DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost:5432/$DB_NAME
 EOT
 
   echo "✅ .env created at $APP_DIR/.env"
-  cp $APP_DIR/.env $CURRENT/.env
+  sudo -u bakery bash -lc "cp $APP_DIR/.env $CURRENT/.env"
 else
   echo "ℹ️ .env already exists, skipping database setup."
 fi
 
-sudo -u bakery bash -lc  "bun --bun run build"
+# 4) Install deps & build as bakery user
+sudo -u bakery bash -lc "
+  cd $CURRENT
+  bun install
+  bun --bun run build
+"
 
-if sudo -u bakery bash -lc  "bun run" | grep -q 'db:migrate'; then
+if sudo -u bakery bash -lc "bun run" | grep -q 'db:migrate'; then
   echo "🔎 db:migrate script found, running migrations..."
-  sudo -u bakery bash -lc  "bun run db:migrate"
+  sudo -u bakery bash -lc "bun run db:migrate"
 else
   echo "ℹ️ No db:migrate script found, skipping migrations."
 fi
