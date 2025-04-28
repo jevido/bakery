@@ -71,7 +71,7 @@ DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost:5432/$DB_NAME
 EOT
 
   echo "✅ .env created at $APP_DIR/.env"
-  sudo -u bakery bash -lc "cp $APP_DIR/.env $CURRENT/.env"
+  cp "$APP_DIR/.env" "$CURRENT/.env"
 else
   echo "ℹ️ .env already exists, skipping database setup."
 fi
