@@ -54,9 +54,9 @@ sudo -u bakery bash -lc "
 "
 
 # 4) Do database shit like migrations and creating initial database
-echo "🔎 Checking if .env exists at $CURRENT/.env"
-ls -la "$CURRENT"
-if [ ! -f "$CURRENT/.env" ]; then
+echo "🔎 Checking if .env exists at $APP_DIR/.env"
+ls -la "$APP_DIR"
+if [ ! -f "$APP_DIR/.env" ]; then
   echo "ℹ️ .env not found. Creating database and .env for $SUB."
 
   DB_PASSWORD=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
@@ -72,11 +72,12 @@ EOF
   echo "✅ Database and user created: $DB_NAME / $DB_USER"
 
   # ✅ Write postgres url to .env
-  cat <<EOT >"$CURRENT/.env"
+  cat <<EOT >"$APP_DIR/.env"
 DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost:5432/$DB_NAME
 EOT
 
-  echo "✅ .env created at $CURRENT/.env"
+  echo "✅ .env created at $APP_DIR/.env"
+  cp $APP_DIR/.env $CURRENT/.env
 else
   echo "ℹ️ .env already exists, skipping database setup."
 fi
