@@ -56,7 +56,7 @@ sudo -u bakery bash -lc "
 
 # 4) Do database shit like migrations and creating initial database
 # Check if .env exists
-if [ ! -f /srv/bakery/apps/$SUB/.env ]; then
+if [ ! -f /srv/bakery/$CURRENT/.env ]; then
   echo "ℹ️ .env not found. Creating database and .env for $SUB."
 
   # Generate random password
@@ -76,15 +76,15 @@ EOF
   echo "✅ Database and user created: $DB_NAME / $DB_USER"
 
   # Create the .env file
-  cat <<EOT >/srv/bakery/apps/$SUB/.env
+  cat <<EOT >/srv/bakery/$SUB/.env
 DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost:5432/$DB_NAME
 EOT
 
-  echo "✅ .env created at /srv/bakery/apps/$SUB/.env"
+  echo "✅ .env created at /srv/bakery/$CURRENT/.env"
+else
+  echo "❌ .env already exists
+  
 fi
-
-# Always symlink the .env into the app folder
-ln -sf /srv/bakery/apps/$SUB/.env /srv/bakery/apps/$SUB/current/.env
 
 if bun run | grep -q 'db:migrate'; then
   echo "🔎 db:migrate script found, running migrations..."
