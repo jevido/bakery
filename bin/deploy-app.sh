@@ -20,10 +20,10 @@ else
   BASE_PORT=3000
   MAX_PORT=4000
   USED_PORTS=$(ss -tuln | awk '{print $5}' | grep -oE '[0-9]+$' | sort -n | uniq)
-  for ((p=$BASE_PORT; p<=$MAX_PORT; p++)); do
+  for ((p = $BASE_PORT; p <= $MAX_PORT; p++)); do
     if ! echo "$USED_PORTS" | grep -q "^$p$"; then
       PORT=$p
-      echo "$PORT" | sudo tee "$PORT_FILE" > /dev/null
+      echo "$PORT" | sudo tee "$PORT_FILE" >/dev/null
       break
     fi
   done
@@ -76,7 +76,7 @@ EOF
   echo "✅ Database and user created: $DB_NAME / $DB_USER"
 
   # Create the .env file
-  cat <<EOT > /srv/bakery/apps/$APP_DOMAIN/.env
+  cat <<EOT >/srv/bakery/apps/$APP_DOMAIN/.env
 DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost:5432/$DB_NAME
 EOT
 
@@ -93,7 +93,6 @@ else
   echo "ℹ️ No db:migrate script found, skipping migrations."
 fi
 
-
 # 5) Request TLS cert (standalone mode, stop nginx first)
 if [ ! -d "/etc/letsencrypt/live/$SUB" ]; then
   echo "🌐 Requesting TLS cert for $SUB…"
@@ -101,15 +100,15 @@ if [ ! -d "/etc/letsencrypt/live/$SUB" ]; then
 
   sudo certbot certonly --standalone -d "$SUB" \
     --non-interactive --agree-tos --email "$EMAIL" || {
-      echo "❌ Certbot failed. Aborting."
-      exit 1
+    echo "❌ Certbot failed. Aborting."
+    exit 1
   }
 
   sudo systemctl start nginx
 fi
 
 # 6) Update Nginx with reverse proxy config
-sudo tee "$NGINX_CONF" > /dev/null <<EOF
+sudo tee "$NGINX_CONF" >/dev/null <<EOF
 server {
     listen 443 ssl;
     server_name $SUB;
@@ -138,7 +137,7 @@ sudo ln -sf "$NGINX_CONF" "$NGINX_LINK"
 sudo nginx -t && sudo systemctl restart nginx
 
 # 7) Create systemd service
-sudo tee /etc/systemd/system/$SERVICE.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/$SERVICE.service >/dev/null <<EOF
 [Unit]
 Description=Bun app for $SUB
 After=network.target
@@ -159,6 +158,5 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE"
 sudo systemctl restart "$SERVICE"
-
 
 echo "✅ Deployed $SUB → service: $SERVICE at https://$SUB"
