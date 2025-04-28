@@ -11,6 +11,7 @@ EMAIL=$(grep '^EMAIL=' /etc/bakery/config | cut -d= -f2)
 PORT_FILE=$APP_DIR/port
 NGINX_CONF="/etc/nginx/sites-available/$SUB"
 NGINX_LINK="/etc/nginx/sites-enabled/$SUB"
+APP_SLUG=$(echo "$SUB" | tr . _ | tr -cd '[:alnum:]_') # Safe for postgres
 
 # Determine port
 if [ -f "$PORT_FILE" ]; then
@@ -53,13 +54,45 @@ sudo -u bakery bash -lc "
   bun --bun run build
 "
 
-# Check if db:migrate script exists
+# 4) Do database shit like migrations and creating initial database
+# Check if .env exists
+if [ ! -f /srv/bakery/apps/$APP_DOMAIN/.env ]; then
+  echo "ℹ️ .env not found. Creating database and .env for $APP_DOMAIN."
+
+  # Generate random password
+  DB_PASSWORD=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
+
+  # Database and user names
+  DB_NAME="bakery_${APP_SLUG}"
+  DB_USER="bakery_${APP_SLUG}"
+
+  # Create database and user in Postgres
+  sudo -u postgres psql <<EOF
+  CREATE DATABASE "$DB_NAME";
+  CREATE USER "$DB_USER" WITH ENCRYPTED PASSWORD '$DB_PASSWORD';
+  GRANT ALL PRIVILEGES ON DATABASE "$DB_NAME" TO "$DB_USER";
+EOF
+
+  echo "✅ Database and user created: $DB_NAME / $DB_USER"
+
+  # Create the .env file
+  cat <<EOT > /srv/bakery/apps/$APP_DOMAIN/.env
+DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost:5432/$DB_NAME
+EOT
+
+  echo "✅ .env created at /srv/bakery/apps/$APP_DOMAIN/.env"
+fi
+
+# Always symlink the .env into the app folder
+ln -sf /srv/bakery/apps/$APP_DOMAIN/.env /srv/bakery/apps/$APP_DOMAIN/current/.env
+
 if bun run | grep -q 'db:migrate'; then
   echo "🔎 db:migrate script found, running migrations..."
   bun run db:migrate
 else
   echo "ℹ️ No db:migrate script found, skipping migrations."
 fi
+
 
 # 5) Request TLS cert (standalone mode, stop nginx first)
 if [ ! -d "/etc/letsencrypt/live/$SUB" ]; then
