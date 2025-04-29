@@ -85,7 +85,7 @@ sudo -u bakery bash -lc "
 
 if sudo -u bakery bash -lc "cd $CURRENT && bun run" | grep -a 'db:migrate'; then
   echo "🔎 db:migrate script found, running migrations..."
-  sudo -u bakery bash -lc "bun run db:migrate"
+  sudo -u bakery bash -lc "cd $CURRENT && bun run db:migrate"
 else
   echo "ℹ️ No db:migrate script found, skipping migrations."
 fi
