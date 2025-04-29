@@ -69,10 +69,12 @@ DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost:5432/$DB_NAME
 EOT
 
   echo "✅ .env created at $APP_DIR/.env"
-  sudo -u bakery cp "$APP_DIR/.env" "$CURRENT/.env"
 else
   echo "ℹ️ .env already exists, skipping database setup."
 fi
+
+# Always copy .env back to current release
+sudo -u bakery cp "$APP_DIR/.env" "$CURRENT/.env"
 
 # 4) Install deps & build as bakery user
 sudo -u bakery bash -lc "
