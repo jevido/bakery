@@ -56,16 +56,25 @@ if [ ! -f "$APP_DIR/.env" ]; then
   DB_USER="bakery_${APP_SLUG}"
 
   sudo -u postgres psql <<EOF
+-- Set password encryption before creating the user
+SET password_encryption = 'scram-sha-256';
+
+-- Create the database if it doesn't exist (optional: in a procedural wrapper)
 CREATE DATABASE "$DB_NAME";
-CREATE USER "$DB_USER" WITH ENCRYPTED PASSWORD '$DB_PASSWORD';
+
+-- Create the user with SCRAM password
+CREATE ROLE "$DB_USER" WITH LOGIN PASSWORD '$DB_PASSWORD';
+
+-- Grant access to the user
 GRANT ALL PRIVILEGES ON DATABASE "$DB_NAME" TO "$DB_USER";
+
 EOF
 
   echo "✅ Database and user created: $DB_NAME / $DB_USER"
 
   # ✅ Write postgres url to .env
   cat <<EOT >"$APP_DIR/.env"
-DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost:5432/$DB_NAME
+DATABASE_URL="postgresql://$DB_USER:$DB_PASSWORD@localhost:5432/$DB_NAME"
 EOT
 
   echo "✅ .env created at $APP_DIR/.env"
