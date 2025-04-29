@@ -83,7 +83,7 @@ sudo -u bakery bash -lc "
   bun --bun run build
 "
 
-if sudo -u bakery bash -lc "bun run" | grep -q 'db:migrate'; then
+if sudo -u bakery bash -lc "cd $CURRENT && bun run" | grep -a 'db:migrate'; then
   echo "🔎 db:migrate script found, running migrations..."
   sudo -u bakery bash -lc "bun run db:migrate"
 else
@@ -105,7 +105,7 @@ if [ ! -d "/etc/letsencrypt/live/$SUB" ]; then
 fi
 
 # 6) Update Nginx with reverse proxy config
-sudo tee "$NGINX_CONF" >/dev/null <<EOF
+sudo tee "$NGINX_CONF" > /dev/null <<EOF
 server {
     listen 443 ssl;
     server_name $SUB;
