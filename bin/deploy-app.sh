@@ -68,6 +68,8 @@ CREATE ROLE "$DB_USER" WITH LOGIN PASSWORD '$DB_PASSWORD';
 -- Grant access to the user
 GRANT ALL PRIVILEGES ON DATABASE "$DB_NAME" TO "$DB_USER";
 
+-- Allow user to create objects (such as tables & views)
+GRANT USAGE, CREATE ON SCHEMA public TO bakery_clashpoint_jevido_wtf;
 EOF
 
   echo "✅ Database and user created: $DB_NAME / $DB_USER"
