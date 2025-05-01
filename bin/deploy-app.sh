@@ -90,7 +90,7 @@ sudo -u bakery cp "$APP_DIR/.env" "$CURRENT/.env"
 sudo -u bakery bash -lc "
   cd $CURRENT
   bun install
-  ORIGIN=$SUB bun --bun run build
+  ORIGIN=https://$SUB bun --bun run build
 "
 
 if sudo -u bakery bash -lc "cd $CURRENT && bun run" | grep -a 'db:push'; then
