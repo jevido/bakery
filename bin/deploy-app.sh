@@ -59,8 +59,11 @@ sudo -u postgres psql <<EOF
 -- Recreate DB and user
 CREATE DATABASE "$DB_NAME";
 
--- Create user with proper password
-CREATE ROLE "$DB_USER" WITH LOGIN PASSWORD '$DB_PASSWORD';
+-- Create user
+CREATE ROLE "$DB_USER" WITH LOGIN;
+
+-- Set SCRAM-compatible password
+ALTER ROLE "$DB_USER" WITH PASSWORD '$DB_PASSWORD';
 
 -- Grant access
 GRANT ALL PRIVILEGES ON DATABASE "$DB_NAME" TO "$DB_USER";
@@ -69,8 +72,6 @@ GRANT ALL PRIVILEGES ON DATABASE "$DB_NAME" TO "$DB_USER";
 \c "$DB_NAME"
 GRANT USAGE, CREATE ON SCHEMA public TO "$DB_USER";
 EOF
-
-  echo "✅ Database and user created: $DB_NAME / $DB_USER"
 
   # ✅ Write postgres url to .env
   cat <<EOT >"$APP_DIR/.env"
