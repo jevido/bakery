@@ -53,9 +53,19 @@ sudo ufw allow https
 sudo ufw allow 'Nginx Full'
 sudo ufw --force enable
 
-# 6️) PostgreSQL
+# 6a) PostgreSQL
 sudo systemctl enable --now postgresql
 echo "✔ PostgreSQL up"
+
+# 6b) Allow password authentication locally
+PG_HBA_FILE=$(sudo find /etc/postgresql -name pg_hba.conf)
+
+# Only update if not already scram-sha-256
+if ! sudo grep -q "local.*all.*scram-sha-256" "$PG_HBA_FILE"; then
+  echo "✔ Updating $PG_HBA_FILE to use scram-sha-256 for local connections"
+  sudo sed -i 's/^local\s\+all\s\+all\s\+peer$/local   all             all                                     scram-sha-256/' "$PG_HBA_FILE"
+  sudo systemctl restart postgresql
+fi
 
 # 7️) Certs folder
 sudo mkdir -p /etc/letsencrypt/{live,archive}

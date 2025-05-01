@@ -51,26 +51,25 @@ sudo chown -R bakery:bakery "$CURRENT"
 if [ ! -f "$APP_DIR/.env" ]; then
   echo "ℹ️ .env not found. Creating database and .env for $SUB."
 
-  DB_PASSWORD=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
-  DB_NAME="bakery_${APP_SLUG}"
-  DB_USER="bakery_${APP_SLUG}"
+ DB_PASSWORD=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
+DB_NAME="bakery_clashpoint_jevido_wtf"
+DB_USER="bakery_clashpoint_jevido_wtf"
 
-  sudo -u postgres psql <<EOF
--- Set password encryption before creating the user
-SET password_encryption = 'scram-sha-256';
-
--- Create the database if it doesn't exist (optional: in a procedural wrapper)
+sudo -u postgres psql <<EOF
+-- Recreate DB and user
 CREATE DATABASE "$DB_NAME";
 
--- Create the user with SCRAM password
+-- Create user with proper password
 CREATE ROLE "$DB_USER" WITH LOGIN PASSWORD '$DB_PASSWORD';
 
--- Grant access to the user
+-- Grant access
 GRANT ALL PRIVILEGES ON DATABASE "$DB_NAME" TO "$DB_USER";
 
--- Allow user to create objects (such as tables & views)
+-- Schema access
 \c "$DB_NAME"
 GRANT USAGE, CREATE ON SCHEMA public TO "$DB_USER";
+EOF
+
 EOF
 
   echo "✅ Database and user created: $DB_NAME / $DB_USER"
