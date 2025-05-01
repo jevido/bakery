@@ -70,8 +70,6 @@ GRANT ALL PRIVILEGES ON DATABASE "$DB_NAME" TO "$DB_USER";
 GRANT USAGE, CREATE ON SCHEMA public TO "$DB_USER";
 EOF
 
-EOF
-
   echo "✅ Database and user created: $DB_NAME / $DB_USER"
 
   # ✅ Write postgres url to .env
