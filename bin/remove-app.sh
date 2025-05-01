@@ -14,7 +14,9 @@ sudo rm -f /etc/systemd/system/$SERVICE.service
 
 # Remove app files and SSL certs
 sudo rm -rf $ROOT/apps/$SUB
-sudo rm -rf /etc/letsencrypt/live/$SUB /etc/letsencrypt/archive/$SUB
+sudo rm -rf /etc/letsencrypt/live/$SUB 
+SUDO rm -rf /etc/letsencrypt/archive/$SUB
+sudo rm -rf /etc/nginx/sites-enabled/$SUB
 
 # Drop Postgres database and user
 sudo -u postgres psql <<EOF
@@ -34,6 +36,6 @@ DROP ROLE IF EXISTS "$DB_USER";
 EOF
 
 # Not sure what creates this, but remove it just in case
-rm -f /etc/nginx/sites-enabled/00-default-certbot
+rm /etc/nginx/sites-enabled/00-default-certbot
 
 echo "🗑️  Removed app $SUB, its cert, database, and user"
