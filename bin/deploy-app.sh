@@ -52,8 +52,8 @@ if [ ! -f "$APP_DIR/.env" ]; then
   echo "ℹ️ .env not found. Creating database and .env for $SUB."
 
  DB_PASSWORD=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
-DB_NAME="bakery_clashpoint_jevido_wtf"
-DB_USER="bakery_clashpoint_jevido_wtf"
+  DB_NAME="bakery_${APP_SLUG}"
+  DB_USER="bakery_${APP_SLUG}"
 
 sudo -u postgres psql <<EOF
 -- Recreate DB and user
