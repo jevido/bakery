@@ -34,6 +34,6 @@ DROP ROLE IF EXISTS "$DB_USER";
 EOF
 
 # Not sure what creates this, but remove it just in case
-rm /etc/nginx/sites-enabled/00-default-certbot
+rm -f /etc/nginx/sites-enabled/00-default-certbot
 
 echo "🗑️  Removed app $SUB, its cert, database, and user"

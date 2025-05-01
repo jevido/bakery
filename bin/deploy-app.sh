@@ -96,7 +96,7 @@ sudo -u bakery bash -lc "
 if sudo -u bakery bash -lc "cd $CURRENT && bun run" | grep -a 'db:push'; then
   echo "🔎 db:push script found, running migrations..."
   sudo -u bakery bash -lc "cd $CURRENT && bun drizzle-kit generate"
-  sudo -u bakery bash -lc "cd $CURRENT && bun run db:push"
+  sudo -u bakery bash -lc "cd $CURRENT && bun run db:push --yes"
 else
   echo "ℹ️ No db:push script found, skipping migrations."
 fi
