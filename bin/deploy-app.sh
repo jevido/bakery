@@ -89,17 +89,20 @@ sudo -u bakery cp "$APP_DIR/.env" "$CURRENT/.env"
 # 4) Install deps & build as bakery user
 sudo -u bakery bash -lc "
   cd $CURRENT
-  bun install
-  bun --bun run build
+  bun --bun install
 "
 
 if sudo -u bakery bash -lc "cd $CURRENT && bun run" | grep -a 'db:push'; then
   echo "🔎 db:push script found, running migrations..."
   sudo -u bakery bash -lc "cd $CURRENT && bun drizzle-kit generate"
-  sudo -u bakery bash -lc "cd $CURRENT && bun run db:push"
+  sudo -u bakery bash -lc "cd $CURRENT && echo y | bun run db:push"
 else
   echo "ℹ️ No db:push script found, skipping migrations."
 fi
+sudo -u bakery bash -lc "
+  cd $CURRENT
+  bun --bun run build
+"
 
 # 5) Request TLS cert (standalone mode, stop nginx first)
 if [ ! -d "/etc/letsencrypt/live/$SUB" ]; then
@@ -125,7 +128,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/$SUB/privkey.pem;
 
     location / {
-        proxy_pass http://localhost:$PORT;
+        proxy_pass http://127.0.0.1:$PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
