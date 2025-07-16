@@ -1,0 +1,2 @@
+// schedule: */5 * * * *
+console.log("The bakery has this in a cron every 5 minutes", new Date())
