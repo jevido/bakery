@@ -174,4 +174,6 @@ sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE"
 sudo systemctl restart "$SERVICE"
 
+sudo ./update-crontab.sh
+
 echo "✅ Deployed $SUB → service: $SERVICE at https://$SUB"
