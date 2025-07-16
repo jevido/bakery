@@ -2,6 +2,8 @@
 CRON_TMP="/tmp/bakery-cron.$$.tmp"
 > "$CRON_TMP"
 
+echo "🔄 Updating crontab…"
+
 for app in /srv/bakery/apps/*; do
     if [ -d "$app/current/cron" ]; then
         for job in "$app"/current/cron/*.js; do
