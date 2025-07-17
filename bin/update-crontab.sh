@@ -9,7 +9,7 @@ for app in /srv/bakery/apps/*; do
         for job in "$app"/current/cron/*.js; do
             schedule=$(grep -m1 '^// schedule:' "$job" | sed 's|// schedule: ||')
             if [ -n "$schedule" ]; then
-                echo "cd $app && $schedule bun run $job >> /var/log/cron-$(basename "$app").log 2>&1" >> "$CRON_TMP"
+                echo "$schedule cd $app && bun run $job >> /var/log/cron-$(basename "$app").log 2>&1" >> "$CRON_TMP"
             fi
         done
     fi
