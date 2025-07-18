@@ -13,6 +13,7 @@ BAKERY_ROOT=/srv/bakery
 
 echo "🍞  [setup-bakery] Starting setup for $DOMAIN …"
 sudo mkdir -p /etc/bakery
+sudo mkdir -p $BAKERY_ROOT/logs
 echo "DOMAIN=$DOMAIN" | sudo tee /etc/bakery/config > /dev/null
 echo "EMAIL=$EMAIL" | sudo tee -a /etc/bakery/config > /dev/null
 
