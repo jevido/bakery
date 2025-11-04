@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import { nanoid } from 'nanoid';
 import { getConfig } from './config.js';
-import { query, single } from './db.js';
+import { sql } from './db.js';
 import { log } from './logger.js';
 
 const SESSION_COOKIE = 'bakery_session';
@@ -43,13 +43,10 @@ function serializeCookie(token) {
 export async function createSession(userId, ipAddress = null, userAgent = null) {
   const token = nanoid(48);
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7);
-  await query(
-    `
-      INSERT INTO sessions (id, user_id, token, expires_at, last_ip, user_agent)
-      VALUES ($1, $2, $3, $4, $5, $6)
-    `,
-    [nanoid(), userId, token, expiresAt, ipAddress, userAgent]
-  );
+  await sql`
+    INSERT INTO sessions (id, user_id, token, expires_at, last_ip, user_agent)
+    VALUES (${nanoid()}, ${userId}, ${token}, ${expiresAt}, ${ipAddress}, ${userAgent})
+  `;
 
   return {
     token,
@@ -59,21 +56,20 @@ export async function createSession(userId, ipAddress = null, userAgent = null) 
 }
 
 export async function getSession(token) {
-  const session = await single(
-    `
-      SELECT s.*, u.email, u.id as user_id, u.is_admin
-      FROM sessions s
-      JOIN users u ON u.id = s.user_id
-      WHERE s.token = $1 AND s.expires_at > NOW()
-    `,
-    [token]
-  );
+  const rows = await sql`
+    SELECT s.*, u.email, u.id as user_id, u.is_admin
+    FROM sessions s
+    JOIN users u ON u.id = s.user_id
+    WHERE s.token = ${token} AND s.expires_at > NOW()
+  `;
+
+  const session = rows[0];
 
   return session;
 }
 
 export async function destroySession(token) {
-  await query('DELETE FROM sessions WHERE token = $1', [token]);
+  await sql`DELETE FROM sessions WHERE token = ${token}`;
 }
 
 export async function authenticateRequest(request) {

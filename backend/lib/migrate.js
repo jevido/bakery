@@ -1,28 +1,31 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { query } from './db.js';
+import { sql, executeSimple } from './db.js';
 import { log } from './logger.js';
 
 async function ensureTable() {
-  await query(`
+  await sql`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       id SERIAL PRIMARY KEY,
       filename TEXT UNIQUE NOT NULL,
       executed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )
-  `);
+  `;
 }
 
 async function appliedMigrations() {
-  const rows = await query('SELECT filename FROM schema_migrations');
+  const rows = await sql`SELECT filename FROM schema_migrations`;
   return new Set(rows.map((row) => row.filename));
 }
 
 async function applyMigration(file) {
-  const sql = await readFile(file, 'utf8');
+  const sqlText = await readFile(file, 'utf8');
   await log('info', 'Applying migration', { file });
-  await query(sql);
-  await query('INSERT INTO schema_migrations (filename) VALUES ($1)', [file.split('/').pop()]);
+  await executeSimple(sqlText);
+  await sql`
+    INSERT INTO schema_migrations (filename)
+    VALUES (${file.split('/').pop()})
+  `;
 }
 
 export async function migrate() {

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun backend/server.js",
+    "dev": "bash scripts/dev.sh",
     "backend": "bun backend/server.js",
     "app": "cd app && bun run dev",
     "build": "cd app && bun run build",

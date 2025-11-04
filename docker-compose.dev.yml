@@ -1,0 +1,12 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bakery
+      POSTGRES_PASSWORD: bakery
+      POSTGRES_DB: bakery
+    ports:
+      - '5432:5432'
+    volumes:
+      - ./tmp/postgres:/var/lib/postgresql/data

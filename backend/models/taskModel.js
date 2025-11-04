@@ -1,34 +1,30 @@
 import { nanoid } from 'nanoid';
-import { query, single } from '../lib/db.js';
+import { sql } from '../lib/db.js';
 
 export async function createTask(type, payload = {}) {
   const id = nanoid();
-  await query(
-    `
-      INSERT INTO tasks (id, type, payload, status)
-      VALUES ($1, $2, $3::jsonb, 'pending')
-    `,
-    [id, type, JSON.stringify(payload)]
-  );
+  await sql`
+    INSERT INTO tasks (id, type, payload, status)
+    VALUES (${id}, ${type}, ${JSON.stringify(payload)}::jsonb, 'pending')
+  `;
   return findTaskById(id);
 }
 
 export async function reservePendingTask() {
-  const row = await single(
-    `
-      UPDATE tasks
-      SET status = 'running', started_at = NOW()
-      WHERE id = (
-        SELECT id
-        FROM tasks
-        WHERE status = 'pending'
-        ORDER BY created_at
-        FOR UPDATE SKIP LOCKED
-        LIMIT 1
-      )
-      RETURNING *
-    `
-  );
+  const rows = await sql`
+    UPDATE tasks
+    SET status = 'running', started_at = NOW()
+    WHERE id = (
+      SELECT id
+      FROM tasks
+      WHERE status = 'pending'
+      ORDER BY created_at
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    )
+    RETURNING *
+  `;
+  const row = rows[0];
   if (!row) return null;
   return {
     ...row,
@@ -37,20 +33,18 @@ export async function reservePendingTask() {
 }
 
 export async function finishTask(id, status, error = null) {
-  await query(
-    `
-      UPDATE tasks
-      SET status = $2,
-          error = $3,
-          finished_at = NOW()
-      WHERE id = $1
-    `,
-    [id, status, error]
-  );
+  await sql`
+    UPDATE tasks
+    SET status = ${status},
+        error = ${error},
+        finished_at = NOW()
+    WHERE id = ${id}
+  `;
 }
 
 export async function findTaskById(id) {
-  const row = await single('SELECT * FROM tasks WHERE id = $1', [id]);
+  const rows = await sql`SELECT * FROM tasks WHERE id = ${id}`;
+  const row = rows[0];
   if (!row) return null;
   return {
     ...row,
@@ -59,14 +53,11 @@ export async function findTaskById(id) {
 }
 
 export async function listRecentTasks(limit = 50) {
-  const rows = await query(
-    `
-      SELECT * FROM tasks
-      ORDER BY created_at DESC
-      LIMIT $1
-    `,
-    [limit]
-  );
+  const rows = await sql`
+    SELECT * FROM tasks
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+  `;
   return rows.map((row) => ({
     ...row,
     payload: typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload

@@ -1,43 +1,38 @@
 import { nanoid } from 'nanoid';
-import { query, single } from '../lib/db.js';
+import { sql } from '../lib/db.js';
 
 export async function listDeploymentsForUser(userId) {
-  return query(
-    `
-      SELECT d.*,
-             COALESCE(json_agg(DISTINCT dd.*)
-               FILTER (WHERE dd.id IS NOT NULL), '[]') AS domains,
-             COALESCE(
-               json_agg(DISTINCT dv.* ORDER BY dv.created_at DESC)
-               FILTER (WHERE dv.id IS NOT NULL), '[]'
-             ) AS versions
-      FROM deployments d
-      LEFT JOIN deployment_domains dd ON dd.deployment_id = d.id
-      LEFT JOIN deployment_versions dv ON dv.deployment_id = d.id
-      WHERE d.owner_id = $1
-      GROUP BY d.id
-      ORDER BY d.updated_at DESC
-    `,
-    [userId]
-  );
+  return sql`
+    SELECT d.*,
+           COALESCE(json_agg(DISTINCT dd.*)
+             FILTER (WHERE dd.id IS NOT NULL), '[]') AS domains,
+           COALESCE(
+             json_agg(DISTINCT dv.* ORDER BY dv.created_at DESC)
+             FILTER (WHERE dv.id IS NOT NULL), '[]'
+           ) AS versions
+    FROM deployments d
+    LEFT JOIN deployment_domains dd ON dd.deployment_id = d.id
+    LEFT JOIN deployment_versions dv ON dv.deployment_id = d.id
+    WHERE d.owner_id = ${userId}
+    GROUP BY d.id
+    ORDER BY d.updated_at DESC
+  `;
 }
 
 export async function findDeploymentById(id) {
-  return single(
-    `
-      SELECT d.*,
-             COALESCE(
-               json_agg(DISTINCT dd.*)
-               FILTER (WHERE dd.id IS NOT NULL),
-               '[]'
-             ) AS domains
-      FROM deployments d
-      LEFT JOIN deployment_domains dd ON dd.deployment_id = d.id
-      WHERE d.id = $1
-      GROUP BY d.id
-    `,
-    [id]
-  );
+  const rows = await sql`
+    SELECT d.*,
+           COALESCE(
+             json_agg(DISTINCT dd.*)
+             FILTER (WHERE dd.id IS NOT NULL),
+             '[]'
+           ) AS domains
+    FROM deployments d
+    LEFT JOIN deployment_domains dd ON dd.deployment_id = d.id
+    WHERE d.id = ${id}
+    GROUP BY d.id
+  `;
+  return rows[0] ?? null;
 }
 
 export async function createDeployment(payload) {
@@ -50,36 +45,23 @@ export async function createDeployment(payload) {
     blueGreenEnabled,
     dockerized = false
   } = payload;
-  await query(
-    `
-      INSERT INTO deployments (
-        id, owner_id, name, repository, branch,
-        blue_green_enabled, dockerized, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
-    `,
-    [id, ownerId, name, repository, branch, blueGreenEnabled, dockerized]
-  );
+  await sql`
+    INSERT INTO deployments (
+      id, owner_id, name, repository, branch,
+      blue_green_enabled, dockerized, status
+    ) VALUES (${id}, ${ownerId}, ${name}, ${repository}, ${branch}, ${blueGreenEnabled}, ${dockerized}, 'pending')
+  `;
   return findDeploymentById(id);
 }
 
 export async function updateDeployment(id, updates) {
-  const fields = [];
-  const values = [];
-  let index = 1;
-  Object.entries(updates).forEach(([key, value]) => {
-    fields.push(`${key} = $${index++}`);
-    values.push(value);
-  });
-  values.push(id);
-  await query(
-    `
-      UPDATE deployments
-      SET ${fields.join(', ')}, updated_at = NOW()
-      WHERE id = $${index}
-    `,
-    values
-  );
-  return findDeploymentById(id);
+  const rows = await sql`
+    UPDATE deployments
+    SET ${sql(updates)}, updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return rows[0] ?? null;
 }
 
 export async function recordDeploymentVersion(payload) {
@@ -93,75 +75,58 @@ export async function recordDeploymentVersion(payload) {
     dockerized,
     artifactPath
   } = payload;
-  await query(
-    `
-      UPDATE deployment_versions
-      SET status = 'inactive'
-      WHERE deployment_id = $1 AND slot = $2
-    `,
-    [deploymentId, slot]
-  );
-  await query(
-    `
-      INSERT INTO deployment_versions (
-        id, deployment_id, slot, commit_sha, status, port,
-        dockerized, artifact_path
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    `,
-    [id, deploymentId, slot, commitSha, status, port, dockerized, artifactPath]
-  );
+  await sql`
+    UPDATE deployment_versions
+    SET status = 'inactive'
+    WHERE deployment_id = ${deploymentId} AND slot = ${slot}
+  `;
+  await sql`
+    INSERT INTO deployment_versions (
+      id, deployment_id, slot, commit_sha, status, port,
+      dockerized, artifact_path
+    ) VALUES (${id}, ${deploymentId}, ${slot}, ${commitSha}, ${status}, ${port}, ${dockerized}, ${artifactPath})
+  `;
   return id;
 }
 
 export async function getActiveVersion(deploymentId) {
-  return single(
-    `
-      SELECT *
-      FROM deployment_versions
-      WHERE deployment_id = $1 AND status = 'active'
-      ORDER BY created_at DESC
-      LIMIT 1
-    `,
-    [deploymentId]
-  );
+  const rows = await sql`
+    SELECT *
+    FROM deployment_versions
+    WHERE deployment_id = ${deploymentId} AND status = 'active'
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+  return rows[0] ?? null;
 }
 
 export async function listVersions(deploymentId) {
-  return query(
-    `
-      SELECT *
-      FROM deployment_versions
-      WHERE deployment_id = $1
-      ORDER BY created_at DESC
-      LIMIT 20
-    `,
-    [deploymentId]
-  );
+  return sql`
+    SELECT *
+    FROM deployment_versions
+    WHERE deployment_id = ${deploymentId}
+    ORDER BY created_at DESC
+    LIMIT 20
+  `;
 }
 
 export async function recordDeploymentLog(deploymentId, level, message, meta = {}) {
-  await query(
-    `
-      INSERT INTO deployment_logs (id, deployment_id, level, message, metadata)
-      VALUES ($1, $2, $3, $4, $5::jsonb)
-    `,
-    [nanoid(), deploymentId, level, message, JSON.stringify(meta)]
-  );
+  await sql`
+    INSERT INTO deployment_logs (id, deployment_id, level, message, metadata)
+    VALUES (${nanoid()}, ${deploymentId}, ${level}, ${message}, ${JSON.stringify(meta)}::jsonb)
+  `;
 }
 
 export async function listDeploymentLogs(deploymentId, limit = 200) {
-  return query(
-    `
-      SELECT *
-      FROM deployment_logs
-      WHERE deployment_id = $1
-      ORDER BY created_at DESC
-      LIMIT $2
-    `,
-    [deploymentId, limit]
-  );
+  return sql`
+    SELECT *
+    FROM deployment_logs
+    WHERE deployment_id = ${deploymentId}
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+  `;
 }
 
 export async function deleteDeployment(id) {
-  await query('DELETE FROM deployments WHERE id = $1', [id]);
+  await sql`DELETE FROM deployments WHERE id = ${id}`;
 }

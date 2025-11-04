@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { spawn } from 'bun';
 import { nanoid } from 'nanoid';
 import { getConfig } from './config.js';
-import { query } from './db.js';
+import { sql } from './db.js';
 import { exportEnvVars } from '../models/envModel.js';
 import {
   recordDeploymentVersion,
@@ -252,14 +252,11 @@ export async function cleanupOldBuilds(deployment) {
 
 export async function activateVersion(deployment, version) {
   const domains = await listDomains(deployment.id);
-  await query(
-    `
-      UPDATE deployment_versions
-      SET status = CASE WHEN id = $2 THEN 'active' ELSE 'inactive' END
-      WHERE deployment_id = $1
-    `,
-    [deployment.id, version.id]
-  );
+  await sql`
+    UPDATE deployment_versions
+    SET status = CASE WHEN id = ${version.id} THEN 'active' ELSE 'inactive' END
+    WHERE deployment_id = ${deployment.id}
+  `;
   await writeDeploymentConfig({
     deployment,
     domains,

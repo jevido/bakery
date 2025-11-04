@@ -5,7 +5,11 @@ const envLoaded = loadEnv();
 
 const env = process.env;
 
-const rootDir = env.BAKERY_ROOT || '/var/lib/bakery';
+const defaultRoot = env.NODE_ENV === 'production'
+  ? '/var/lib/bakery'
+  : join(process.cwd(), '.data');
+
+const rootDir = env.BAKERY_ROOT || defaultRoot;
 
 export function getConfig() {
   return {

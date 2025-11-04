@@ -1,9 +1,10 @@
 import { spawn } from 'bun';
 import { statfs } from 'node:fs/promises';
 import { getConfig } from '../lib/config.js';
-import { ensureConnection } from '../lib/db.js';
+import { ensureConnection, sql } from '../lib/db.js';
 import { listRecentTasks } from '../models/taskModel.js';
 import { log } from '../lib/logger.js';
+import { getGithubAccount } from '../models/userModel.js';
 
 async function runCommand(command, args, options = {}) {
   const process = spawn([command, ...args], {
@@ -36,15 +37,66 @@ export const SystemController = {
     const config = getConfig();
     let disk = { total: 0, free: 0, used: 0 };
     let systemDisk = { total: 0, free: 0, used: 0 };
+    let deploymentStats = { total: 0, active: 0, pending: 0 };
+    let databaseStats = { total: 0 };
+    let domainStats = { total: 0, verified: 0 };
+    let githubLinked = false;
     try {
       disk = await getDiskUsage(config.buildsDir);
       systemDisk = await getDiskUsage('/');
     } catch {}
+    try {
+      const [deploymentsRow] =
+        (await sql`
+          SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE status = 'active')::int AS active,
+            COUNT(*) FILTER (WHERE status IN ('pending', 'building', 'deploying'))::int AS pending
+          FROM deployments
+          WHERE owner_id = ${ctx.user.id}
+        `) || [];
+      if (deploymentsRow) {
+        deploymentStats = deploymentsRow;
+      }
+
+      const [databasesRow] =
+        (await sql`
+          SELECT COUNT(*)::int AS total
+          FROM deployment_databases db
+          JOIN deployments d ON d.id = db.deployment_id
+          WHERE d.owner_id = ${ctx.user.id}
+        `) || [];
+      if (databasesRow) {
+        databaseStats = databasesRow;
+      }
+
+      const [domainsRow] =
+        (await sql`
+          SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE verified)::int AS verified
+          FROM deployment_domains dd
+          JOIN deployments d ON d.id = dd.deployment_id
+          WHERE d.owner_id = ${ctx.user.id}
+        `) || [];
+      if (domainsRow) {
+        domainStats = domainsRow;
+      }
+
+      const account = await getGithubAccount(ctx.user.id);
+      githubLinked = Boolean(account);
+    } catch (error) {
+      await log('warn', 'Failed to compute analytics aggregates', { error: error.message });
+    }
     const tasks = await listRecentTasks(20);
     return ctx.json({
       disk,
       systemDisk,
-      tasks
+      tasks,
+      deploymentStats,
+      databaseStats,
+      domainStats,
+      githubLinked
     });
   },
 

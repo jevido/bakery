@@ -71,28 +71,31 @@ bakery/
 
    ```bash
    bun install
-   cd app && bun install && cd ..
+   (cd app && bun install)
    cp .env.example .env
-   # update .env DATABASE_URL etc. for your local Postgres
-   bun backend/lib/migrate.js
    ```
 
-2. Run services in separate terminals:
+2. Launch the database and backend API:
 
    ```bash
-   bun backend/server.js       # Backend API + SvelteKit handler
-   cd app && bun run dev       # Optional if you want hot reloading during UI work
+   bun run dev
    ```
 
-   The backend serves the built SvelteKit app; during UI development, use the Vite dev server pointed at the API (`PUBLIC_API_URL=http://localhost:4100`).
+   The script starts Docker Compose for Postgres (matching `.env.example` credentials), runs migrations, and keeps the Bun backend running in the foreground. Leave this terminal open. When you're done developing, stop Postgres with `docker compose -f docker-compose.dev.yml down`.
 
-3. Seed an admin account (first-time only):
+3. Start the SvelteKit dev server in another terminal:
+
+   ```bash
+   cd app && bun run dev
+   ```
+
+4. Seed an admin account (first-time only, with the backend running):
 
    ```bash
    bun backend/scripts/create-admin.js admin@example.com password123
    ```
 
-4. Open `http://localhost:5173/auth/login` in your browser to access the UI.
+5. Open `http://localhost:5173/login` in your browser to access the UI.
 
 ## Environment Variables
 
@@ -123,7 +126,7 @@ bakery/
 - Built with SvelteKit (no TypeScript) using the Node adapter.
 - Layout provides a persistent sidebar with deployment status indicators and a top bar for breadcrumbs/account controls.
 - Pages include:
-  - `/auth/login` – Sign-in form hitting the backend sessions API.
+  - `/login` – Sign-in form hitting the backend sessions API.
   - `/` – Dashboard metrics (disk usage, task activity).
   - `/deployments` – Deployment summary list with status badges.
   - `/deployments/new` – Wizard for new deployments (GitHub repo selection, domains, env vars, blue-green, Postgres toggle).

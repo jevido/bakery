@@ -1,50 +1,50 @@
-import { Database } from 'bun:postgres';
+import { sql as globalSql, SQL } from 'bun';
 import { getConfig } from './config.js';
 
-let database;
+let client;
 
-export function getDatabase() {
-  if (!database) {
-    const config = getConfig();
-    database = new Database(config.databaseUrl, {
-      ssl: config.environment === 'production' ? 'require' : undefined,
-      max: 10
+function createClient() {
+  const config = getConfig();
+  if (config.databaseUrl) {
+    return new SQL({
+      url: config.databaseUrl,
+      max: 10,
+      ssl: config.environment === 'production' ? 'require' : undefined
     });
   }
-  return database;
+  return globalSql;
 }
 
-export async function query(text, params = []) {
-  const db = getDatabase();
-  const result = await db.query(text, params);
-  return result.rows || [];
-}
-
-export async function single(text, params = []) {
-  const rows = await query(text, params);
-  return rows[0] || null;
-}
-
-export async function transaction(callback) {
-  const db = getDatabase();
-  const client = await db.connect();
-  try {
-    await client.query('BEGIN');
-    const result = await callback({
-      query: (text, params = []) => client.query(text, params),
-      single: (text, params = []) =>
-        client.query(text, params).then((res) => res.rows?.[0] || null)
-    });
-    await client.query('COMMIT');
-    return result;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
+function db() {
+  if (!client) {
+    client = createClient();
   }
+  return client;
 }
+
+export function sql(strings, ...values) {
+  return db()(strings, ...values);
+}
+
+sql.begin = (...args) => db().begin(...args);
+sql.transaction = (...args) => db().transaction(...args);
+sql.end = (...args) => db().end?.(...args);
+sql.close = (...args) => db().close?.(...args);
+sql.reserve = (...args) => db().reserve(...args);
+sql.file = (...args) => db().file(...args);
+sql.unsafe = (...args) => db().unsafe(...args);
 
 export async function ensureConnection() {
-  await query('SELECT 1');
+  await sql`SELECT 1`;
+}
+
+export async function executeSimple(query) {
+  if (typeof query === 'string') {
+    return db().unsafe(query).simple();
+  }
+  return db()(query).simple();
+}
+
+export function resetDatabaseClient() {
+  client = undefined;
 }

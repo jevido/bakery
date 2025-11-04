@@ -7,7 +7,7 @@ import { deploy, activateVersion, cleanupDeploymentResources } from './deployer.
 import { collectAnalytics } from './analytics.js';
 import { log } from './logger.js';
 import { decrypt } from './crypto.js';
-import { query } from './db.js';
+import { sql } from './db.js';
 
 let workerRunning = false;
 
@@ -42,14 +42,11 @@ const handlers = {
   },
   async restart(task) {
     const { deploymentId } = task.payload;
-    await query(
-      `
-        UPDATE deployments
-        SET status = 'restarting', updated_at = NOW()
-        WHERE id = $1
-      `,
-      [deploymentId]
-    );
+    await sql`
+      UPDATE deployments
+      SET status = 'restarting', updated_at = NOW()
+      WHERE id = ${deploymentId}
+    `;
     await handlers.deploy({ payload: { deploymentId } });
   },
   async cleanup(task) {
@@ -94,7 +91,7 @@ export function startTaskWorker() {
 export function scheduleAnalyticsCollector() {
   cron.schedule('*/5 * * * *', async () => {
     try {
-      const deployments = await query('SELECT * FROM deployments WHERE status = $1', ['running']);
+      const deployments = await sql`SELECT * FROM deployments WHERE status = 'running'`;
       for (const deployment of deployments) {
         await collectAnalytics(deployment);
       }
@@ -106,7 +103,7 @@ export function scheduleAnalyticsCollector() {
 
 export function scheduleCrashDetector() {
   cron.schedule('*/2 * * * *', async () => {
-    const deployments = await query('SELECT * FROM deployments');
+    const deployments = await sql`SELECT * FROM deployments`;
     for (const deployment of deployments) {
       if (deployment.status === 'failed') continue;
       const logs = await listDeploymentLogs(deployment.id, 5);
@@ -117,13 +114,10 @@ export function scheduleCrashDetector() {
         await log('warn', 'Detected crash, scheduling restart', {
           deploymentId: deployment.id
         });
-        await query(
-          `
-            INSERT INTO tasks (id, type, payload, status)
-            VALUES ($1, 'restart', $2::jsonb, 'pending')
-          `,
-          [randomUUID(), JSON.stringify({ deploymentId: deployment.id })]
-        );
+        await sql`
+          INSERT INTO tasks (id, type, payload, status)
+          VALUES (${randomUUID()}, 'restart', ${JSON.stringify({ deploymentId: deployment.id })}::jsonb, 'pending')
+        `;
       }
     }
   });

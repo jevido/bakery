@@ -32,6 +32,7 @@ Thumbs.db
 # Project data directories
 .data/
 var/
+tmp/
 
 # Local agent configs
 AGENTS.md

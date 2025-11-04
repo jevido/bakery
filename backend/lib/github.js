@@ -13,7 +13,7 @@ export function getOAuthUrl() {
   const url = new URL(OAUTH_URL);
   url.searchParams.set('client_id', config.githubClientId);
   url.searchParams.set('scope', 'repo admin:repo_hook read:user');
-  url.searchParams.set('redirect_uri', `${config.baseUrl}/auth/github/callback`);
+  url.searchParams.set('redirect_uri', `${config.baseUrl}/github/callback`);
   url.searchParams.set('state', state);
   return { url: url.toString(), state };
 }
