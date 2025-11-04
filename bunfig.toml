@@ -1,0 +1,4 @@
+logLevel = "info"
+
+[install]
+saveTextLockfile = true

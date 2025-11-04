@@ -1,0 +1,14 @@
+[Unit]
+Description=Bakery deployment {{SERVICE_NAME}}
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory={{WORKING_DIRECTORY}}
+ExecStart={{EXEC_START}}
+Restart=always
+RestartSec=5
+{{ENVIRONMENT}}
+
+[Install]
+WantedBy=multi-user.target

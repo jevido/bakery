@@ -1,0 +1,110 @@
+import bcrypt from 'bcrypt';
+import { nanoid } from 'nanoid';
+import { getConfig } from './config.js';
+import { query, single } from './db.js';
+import { log } from './logger.js';
+
+const SESSION_COOKIE = 'bakery_session';
+
+export async function hashPassword(password) {
+  return bcrypt.hash(password, 12);
+}
+
+export async function verifyPassword(password, hash) {
+  return bcrypt.compare(password, hash);
+}
+
+export function parseCookies(header = '') {
+  return header.split(';').reduce((acc, part) => {
+    const [key, value] = part.trim().split('=');
+    if (key) {
+      acc[key] = decodeURIComponent(value || '');
+    }
+    return acc;
+  }, {});
+}
+
+function serializeCookie(token) {
+  const config = getConfig();
+  const secure = config.environment === 'production';
+  const attributes = [
+    `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Strict',
+    `Max-Age=${60 * 60 * 24 * 7}`
+  ];
+  if (secure) {
+    attributes.push('Secure');
+  }
+  return attributes.join('; ');
+}
+
+export async function createSession(userId, ipAddress = null, userAgent = null) {
+  const token = nanoid(48);
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7);
+  await query(
+    `
+      INSERT INTO sessions (id, user_id, token, expires_at, last_ip, user_agent)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `,
+    [nanoid(), userId, token, expiresAt, ipAddress, userAgent]
+  );
+
+  return {
+    token,
+    cookie: serializeCookie(token),
+    expiresAt
+  };
+}
+
+export async function getSession(token) {
+  const session = await single(
+    `
+      SELECT s.*, u.email, u.id as user_id, u.is_admin
+      FROM sessions s
+      JOIN users u ON u.id = s.user_id
+      WHERE s.token = $1 AND s.expires_at > NOW()
+    `,
+    [token]
+  );
+
+  return session;
+}
+
+export async function destroySession(token) {
+  await query('DELETE FROM sessions WHERE token = $1', [token]);
+}
+
+export async function authenticateRequest(request) {
+  const cookieHeader = request.headers.get('cookie') || '';
+  const cookies = parseCookies(cookieHeader);
+  const token = cookies[SESSION_COOKIE];
+  if (!token) {
+    return null;
+  }
+  try {
+    const session = await getSession(token);
+    if (!session) {
+      return null;
+    }
+    return {
+      id: session.user_id,
+      email: session.email,
+      is_admin: session.is_admin,
+      sessionToken: token
+    };
+  } catch (error) {
+    await log('error', 'Failed to authenticate request', { error: error.message });
+    return null;
+  }
+}
+
+export function requireAuth(handler) {
+  return async (ctx) => {
+    if (!ctx.user) {
+      return ctx.json({ error: 'Unauthorized' }, 401);
+    }
+    return handler(ctx);
+  };
+}

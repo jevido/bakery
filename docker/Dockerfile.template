@@ -1,0 +1,14 @@
+FROM oven/bun:latest
+
+WORKDIR /app
+COPY package.json bun.lockb*? ./
+RUN bun install
+
+COPY . .
+
+ENV PORT=3000
+EXPOSE 3000
+
+RUN bun run build || echo "No build script defined"
+
+CMD ["bun", "run", "start"]

@@ -1,0 +1,36 @@
+{
+  "name": "bakery",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun backend/server.js",
+    "backend": "bun backend/server.js",
+    "frontend": "cd frontend && bun run dev",
+    "build": "cd frontend && bun run build",
+    "preview": "cd frontend && bun run preview",
+    "migrate": "bun backend/lib/migrate.js"
+  },
+  "dependencies": {
+    "@octokit/rest": "^20.0.2",
+    "bcrypt": "^5.1.0",
+    "cookie": "^0.6.0",
+    "date-fns": "^3.6.0",
+    "dotenv": "^16.4.5",
+    "fs-extra": "^11.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "node-cron": "^3.0.3",
+    "nanoid": "^4.0.2",
+    "yaml": "^2.5.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-svelte": "^2.35.1",
+    "prettier": "^3.3.3"
+  },
+  "engine": {
+    "bun": ">=1.1.0"
+  }
+}
