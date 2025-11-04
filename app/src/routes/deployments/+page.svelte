@@ -1,6 +1,5 @@
 <script>
-	import { Button } from 'bits-ui';
-	import { goto } from '$app/navigation';
+	import { Button } from '$lib/components/ui/button';
 	import { BadgeCheck, Clock, Globe, AlertTriangle, PackagePlus } from '@lucide/svelte';
 
 	let { data } = $props();
@@ -34,30 +33,33 @@
 				View deployment status, manage blue-green slots, and trigger rebuilds.
 			</p>
 		</div>
-		<Button.Root class="gap-2" onclick={() => goto('/deployments/new')}>
+		<Button class="gap-2" href="/deployments/new">
 			<PackagePlus class="h-4 w-4" />
 			New deployment
-		</Button.Root>
+		</Button>
 	</header>
 
 	{#if deployments.length === 0}
-		<div class="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed p-12 text-center">
+		<div
+			class="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed p-12 text-center"
+		>
 			<div class="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
 				<PackagePlus class="h-6 w-6 text-secondary-foreground" />
 			</div>
 			<div class="space-y-1">
 				<h2 class="text-lg font-semibold">No deployments yet</h2>
 				<p class="text-sm text-muted-foreground">
-					Run through the deployment wizard to connect your repository, configure env vars, and launch your first app.
+					Run through the deployment wizard to connect your repository, configure env vars, and
+					launch your first app.
 				</p>
 			</div>
-			<Button.Root onclick={() => goto('/deployments/new')}>Start deployment wizard</Button.Root>
+			<Button href="/deployments/new">Start deployment wizard</Button>
 		</div>
 	{:else}
 		<div class="overflow-hidden rounded-2xl border">
 			<table class="min-w-full divide-y divide-border bg-card">
 				<thead class="bg-muted/50">
-					<tr class="text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+					<tr class="text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
 						<th class="px-6 py-3">Deployment</th>
 						<th class="px-6 py-3">Repository</th>
 						<th class="px-6 py-3">Status</th>
@@ -114,9 +116,13 @@
 								{formatDate(deployment.updated_at)}
 							</td>
 							<td class="px-6 py-4 text-right">
-								<Button.Root variant="link" class="h-auto p-0 text-sm" onclick={() => goto(`/deployments/${deployment.id}`)}>
+								<Button
+									variant="link"
+									class="h-auto p-0 text-sm"
+									href={`/deployments/${deployment.id}`}
+								>
 									View details
-								</Button.Root>
+								</Button>
 							</td>
 						</tr>
 					{/each}

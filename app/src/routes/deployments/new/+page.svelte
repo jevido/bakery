@@ -1,5 +1,6 @@
 <script>
-	import { Button } from 'bits-ui';
+	import { Button } from "$lib/components/ui/button"
+	
 	import { goto } from '$app/navigation';
 	import { apiFetch, createDeployment, fetchGithubBranches } from '$lib/api.js';
 	import { Plus, X, Loader2 } from '@lucide/svelte';
@@ -163,9 +164,9 @@
 			<div class="space-y-1.5">
 				<div class="flex items-center justify-between">
 					<label for="repository" class="text-sm font-medium">GitHub repository</label>
-					<Button.Root variant="link" class="h-auto p-0 text-xs" onclick={refreshRepositories}>
+					<Button variant="link" class="h-auto p-0 text-xs" onclick={refreshRepositories}>
 						Refresh list
-					</Button.Root>
+					</Button>
 				</div>
 				<select
 					id="repository"
@@ -214,10 +215,10 @@
 			<div class="space-y-3">
 				<div class="flex items-center justify-between">
 					<p class="text-sm font-medium">Domains</p>
-					<Button.Root variant="link" class="h-auto gap-1 p-0 text-sm" onclick={addDomain}>
+					<Button variant="link" class="h-auto gap-1 p-0 text-sm" onclick={addDomain}>
 						<Plus class="h-3.5 w-3.5" />
 						Add domain
-					</Button.Root>
+					</Button>
 				</div>
 				<div class="flex gap-3">
 					<input
@@ -254,10 +255,10 @@
 			<div class="space-y-3">
 				<div class="flex items-center justify-between">
 					<p class="text-sm font-medium">Environment variables</p>
-					<Button.Root variant="link" class="h-auto gap-1 p-0 text-sm" onclick={addEnvRow}>
+					<Button variant="link" class="h-auto gap-1 p-0 text-sm" onclick={addEnvRow}>
 						<Plus class="h-3.5 w-3.5" />
 						Add variable
-					</Button.Root>
+					</Button>
 				</div>
 				<div class="space-y-2">
 					{#each envVars as env, index (index)}
@@ -274,14 +275,13 @@
 								value={env.value}
 								oninput={(event) => updateEnvVar(index, 'value', event.currentTarget.value)}
 							/>
-							<Button.Root
+							<Button
 								variant="outline"
 								class="sm:w-auto"
-								type="button"
 								onclick={() => removeEnvRow(index)}
 							>
 								Remove
-							</Button.Root>
+							</Button>
 						</div>
 					{/each}
 				</div>
@@ -331,22 +331,22 @@
 				</ul>
 			</div>
 
-			<Button.Root class="w-full justify-center gap-2" type="submit" disabled={submitting}>
+			<Button class="w-full justify-center gap-2" type="submit" disabled={submitting}>
 				{#if submitting}
 					<Loader2 class="h-4 w-4 animate-spin" />
 					Creating deployment…
 				{:else}
 					Start deployment
 				{/if}
-			</Button.Root>
-			<Button.Root
+			</Button>
+			<Button
 				variant="outline"
 				class="w-full justify-center"
 				type="button"
 				onclick={() => goto('/deployments')}
 			>
 				Cancel
-			</Button.Root>
+			</Button>
 		</aside>
 	</form>
 </section>

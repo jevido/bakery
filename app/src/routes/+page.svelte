@@ -1,5 +1,8 @@
 <script>
-	import { Button, Separator } from 'bits-ui';
+	import { Button } from "$lib/components/ui/button"
+	import { Separator } from "$lib/components/ui/separator"
+	
+	
 	import { goto } from '$app/navigation';
 	import {
 		ArrowRight,
@@ -157,18 +160,18 @@
 			</p>
 		</div>
 		<div class="flex gap-3">
-			<Button.Root variant="outline" class="gap-2 px-4" onclick={startGithubLink}>
+			<Button variant="outline" class="gap-2 px-4" onclick={startGithubLink}>
 				<LinkIcon class="h-4 w-4" />
 				Link GitHub
-			</Button.Root>
-			<Button.Root class="gap-2 px-4" onclick={() => goto('/deployments/new')}>
+			</Button>
+			<Button class="gap-2 px-4" onclick={() => goto('/deployments/new')}>
 				New deployment
 				<ArrowRight class="h-4 w-4" />
-			</Button.Root>
+			</Button>
 		</div>
 	</div>
 
-	<Separator.Root />
+	<Separator />
 
 	<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
 		{#each stats as stat (stat.label)}
@@ -210,9 +213,9 @@
 								</div>
 							</div>
 							{#if !item.done}
-								<Button.Root variant="link" class="h-auto p-0 text-sm" onclick={item.action}>
+								<Button variant="link" class="h-auto p-0 text-sm" onclick={item.action}>
 									{item.actionLabel}
-								</Button.Root>
+								</Button>
 							{/if}
 						</div>
 					</li>
@@ -273,9 +276,9 @@
 								</span>
 							</div>
 							{#if card.action && !card.ok}
-								<Button.Root variant="link" class="mt-2 h-auto p-0 text-sm" onclick={card.action}>
+								<Button variant="link" class="mt-2 h-auto p-0 text-sm" onclick={card.action}>
 									Resolve
-								</Button.Root>
+								</Button>
 							{/if}
 						</li>
 					{/each}

@@ -1,11 +1,12 @@
 <script>
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
-	import { Button } from 'bits-ui';
-import { goto } from '$app/navigation';
-import { page } from '$app/stores';
-import { logout as apiLogout } from '$lib/api.js';
-import { cn } from '$lib/utils.js';
+	import { Button } from '$lib/components/ui/button';
+
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import { logout as apiLogout } from '$lib/api.js';
+	import { cn } from '$lib/utils.js';
 	import {
 		Menu,
 		LayoutDashboard,
@@ -16,14 +17,12 @@ import { cn } from '$lib/utils.js';
 		Moon,
 		PackagePlus
 	} from '@lucide/svelte';
-
-	const pageStore = page;
+	import { mode, ModeWatcher, toggleMode } from 'mode-watcher';
 
 	let { children, data } = $props();
 	let user = $derived(data?.user);
-	let currentPath = $derived($pageStore.url.pathname);
+	let currentPath = $derived(page.url.pathname);
 	let isSidebarOpen = $state(false);
-	let isDark = $state(false);
 
 	const navItems = [
 		{ label: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -36,35 +35,23 @@ import { cn } from '$lib/utils.js';
 		isSidebarOpen = !isSidebarOpen;
 	}
 
-	function toggleTheme() {
-		isDark = !isDark;
-		if (typeof document === 'undefined') return;
-		document.documentElement.classList.toggle('dark', isDark);
-	}
-
 	async function handleLogout() {
-		try {
-			await apiLogout();
-		} catch {
-			// ignore failure, best-effort logout
-		}
-		isDark = false;
-		if (typeof document !== 'undefined') {
-			document.documentElement.classList.remove('dark');
-		}
-	await goto('/login');
-}
+		await goto('/logout');
+	}
 </script>
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+	<title>Bakery App Deployment</title>
 </svelte:head>
 
+<ModeWatcher />
+
 {#if user}
-	<div class={`min-h-screen bg-background text-foreground ${isDark ? 'dark' : ''}`}>
+	<div class="min-h-screen bg-background text-foreground">
 		<div class="flex min-h-screen">
 			<button
-				class="absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-lg border bg-background shadow md:hidden"
+				class="absolute top-4 left-4 flex h-10 w-10 items-center justify-center rounded-lg border bg-background shadow md:hidden"
 				type="button"
 				onclick={toggleSidebar}
 				aria-label="Toggle navigation"
@@ -79,18 +66,18 @@ import { cn } from '$lib/utils.js';
 			>
 				<div class="flex items-center justify-between">
 					<div>
-						<p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+						<p class="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
 							Bakery
 						</p>
 						<p class="text-lg font-bold">Control plane</p>
 					</div>
-					<Button.Root variant="ghost" size="icon" onclick={toggleTheme} aria-label="Toggle theme">
-						{#if isDark}
-							<SunMedium class="h-4 w-4" />
-						{:else}
+					<Button variant="ghost" size="icon" onclick={toggleMode} aria-label="Toggle theme">
+						{#if mode.current === 'dark'}
 							<Moon class="h-4 w-4" />
+						{:else}
+							<SunMedium class="h-4 w-4" />
 						{/if}
-					</Button.Root>
+					</Button>
 				</div>
 
 				<nav class="mt-10 space-y-2">
@@ -100,8 +87,10 @@ import { cn } from '$lib/utils.js';
 							currentPath === item.href ||
 							(currentPath.startsWith(item.href) && item.href !== '/') ||
 							(item.href === '/' && currentPath === '/')}
-						<a
+
+						<Button
 							href={item.href}
+							variant="link"
 							class={cn(
 								'flex items-center gap-3 rounded-lg px-4 py-2 text-sm font-medium transition',
 								active
@@ -115,24 +104,26 @@ import { cn } from '$lib/utils.js';
 						>
 							<Icon class="h-4 w-4" />
 							<span>{item.label}</span>
-						</a>
+						</Button>
 					{/each}
 				</nav>
 
 				<div class="mt-10 rounded-lg border bg-background/70 p-4">
-					<p class="text-xs uppercase tracking-wide text-muted-foreground">Getting started</p>
+					<p class="text-xs tracking-wide text-muted-foreground uppercase">Getting started</p>
 					<p class="mt-2 text-sm text-muted-foreground">
-						Link GitHub to unlock repository-driven deployments, configure Nginx, and request SSL
-						in a few clicks.
+						Link GitHub to unlock repository-driven deployments, configure Nginx, and request SSL in
+						a few clicks.
 					</p>
-					<Button.Root class="mt-4 w-full" onclick={() => goto('/deployments/new')}>
+					<Button class="mt-4 w-full" onclick={() => goto('/deployments/new')}>
 						New deployment
-					</Button.Root>
+					</Button>
 				</div>
 			</aside>
 
 			<div class="flex flex-1 flex-col">
-				<header class="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-4 border-b bg-background/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+				<header
+					class="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-4 border-b bg-background/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+				>
 					<div>
 						<h1 class="text-xl font-semibold">Bakery</h1>
 						<p class="text-sm text-muted-foreground">Self-hosted deployments without the CLI.</p>
@@ -144,21 +135,23 @@ import { cn } from '$lib/utils.js';
 								{user.is_admin ? 'Administrator' : 'User'}
 							</p>
 						</div>
-						<Button.Root variant="outline" class="hidden md:flex" onclick={() => goto('/system')}>
-							View activity
-						</Button.Root>
-						<Button.Root class="gap-2" onclick={() => goto('/deployments/new')}>
+						<Button variant="outline" class="hidden md:flex" href="/system">View activity</Button>
+						<Button class="gap-2" href="/deployments/new">
 							New deployment
 							<PackagePlus class="h-4 w-4" />
-						</Button.Root>
-						<Button.Root variant="ghost" onclick={handleLogout}>
-							Logout
-						</Button.Root>
+						</Button>
+						<Button variant="ghost" onclick={handleLogout}>Logout</Button>
 					</div>
 				</header>
 
 				<main class="flex-1 overflow-y-auto bg-background">
-					{@render children()}
+					<svelte:boundary onerror={(e) => console.error(e)}>
+						{@render children()}
+						{#snippet failed(error, reset)}
+							<p>Oops! {error.message}</p>
+							<button onclick={reset}>Reset</button>
+						{/snippet}
+					</svelte:boundary>
 				</main>
 			</div>
 		</div>

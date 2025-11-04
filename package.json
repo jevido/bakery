@@ -4,19 +4,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bash scripts/dev.sh",
-    "backend": "bun backend/server.js",
-    "app": "cd app && bun run dev",
+    "dev:db": "bash scripts/dev-db.sh",
+    "dev:web": "bun run --cwd app dev",
+    "dev": "bun run dev:web",
     "build": "cd app && bun run build",
     "preview": "cd app && bun run preview",
-    "migrate": "bun backend/lib/migrate.js"    
+    "migrate": "bun scripts/migrate.js"
   },
   "dependencies": {
     "@octokit/rest": "^20.0.2",
     "bcrypt": "^5.1.0",
     "cookie": "^0.6.0",
     "date-fns": "^3.6.0",
-    "dotenv": "^16.4.5",
     "fs-extra": "^11.2.0",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3",

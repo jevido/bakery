@@ -2,7 +2,7 @@
 
 ## Phase 0 · Foundations
 
-Lock repo structure: app/ for SvelteKit GUI, backend/ for Bun services, infrastructure/ for install assets.
+Lock repo structure: app/ for SvelteKit GUI, for Bun services, infrastructure/ for install assets.
 Define environment scaffolding: config loading, secrets handling, runtime env detection.
 Stand up Bun service shell with PostgreSQL connection pool, migration framework, and base auth tables.
 Bootstrap SvelteKit app with global layout, routing skeleton, shared UI kit import, and auth guard.
@@ -55,6 +55,5 @@ Immediate Next Actions
 Draft technical spec docs (DB schema ERD, service boundaries, API contracts).
 Set up Bun + SvelteKit project boilerplates and configure shared lint/format/test tooling.
 Prepare migration framework (e.g., drizzle-kit equivalent for bun.sql or custom runner).
-Define secrets management approach (dotenv for dev, env vars/secure storage for prod).
+Define secrets management approach (env vars/secure storage for prod).
 Create initial backlog tickets per phase to track granular tasks.
-Let me know when you’re ready to dive into Phase 0 setup or if you want any part of the plan adjusted.

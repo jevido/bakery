@@ -16,8 +16,10 @@ Bakery is a self-hosted deployment control plane inspired by Coolify. It combine
 
 ```
 bakery/
-├── app/                # SvelteKit UI (JS only, adapter-bun build)
-├── backend/            # Bun backend (controllers, routes, models, lib)
+├── app/                # SvelteKit app (UI + backend routes, Bun adapter)
+├── backend/
+│   ├── migrations/     # SQL migrations executed by the SvelteKit server
+│   └── scripts/        # Utility scripts (e.g. create-admin.js)
 ├── infrastructure/
 │   ├── docker/         # Docker deployment templates for user apps
 │   ├── nginx/          # Nginx configuration templates generated per deployment
@@ -69,33 +71,40 @@ bakery/
 
 1. Install dependencies:
 
+ ```bash
+  bun install
+  (cd app && bun install)
+  cp .env.example .env
+  cp app/.env.example app/.env
+  ```
+
+2. Launch the development database (foreground):
+
+ ```bash
+  bun run dev:db
+  ```
+
+  This streams Docker Compose logs until you hit <kbd>Ctrl</kbd>+<kbd>C</kbd>. Leave this terminal running while you work. The database uses the same credentials as `.env` (`postgres:postgres`), so if you previously ran the old container you may need to remove `tmp/postgres` to re-initialise it with the new user.
+
+3. In a second terminal, apply database migrations as needed:
+
    ```bash
-   bun install
-   (cd app && bun install)
-   cp .env.example .env
+   bun run migrate
    ```
 
-2. Launch the database and backend API:
+4. Finally, start the SvelteKit UI + API:
 
    ```bash
-   bun run dev
+   bun run dev:web
    ```
 
-   The script starts Docker Compose for Postgres (matching `.env.example` credentials), runs migrations, and keeps the Bun backend running in the foreground. Leave this terminal open. When you're done developing, stop Postgres with `docker compose -f docker-compose.dev.yml down`.
-
-3. Start the SvelteKit dev server in another terminal:
-
-   ```bash
-   cd app && bun run dev
-   ```
-
-4. Seed an admin account (first-time only, with the backend running):
+5. Seed an admin account (first-time only, with the stack running):
 
    ```bash
    bun backend/scripts/create-admin.js admin@example.com password123
    ```
 
-5. Open `http://localhost:5173/login` in your browser to access the UI.
+6. Open `http://localhost:5173/login` in your browser to access the UI.
 
 ## Environment Variables
 
@@ -106,7 +115,6 @@ bakery/
 | `ENCRYPTION_KEY` | 32-byte key encrypting GitHub tokens and env vars |
 | `BAKERY_HOST` / `BAKERY_PORT` | Backend bind interface & port |
 | `BAKERY_BASE_URL` | Public URL of the UI (used for OAuth callbacks) |
-| `BAKERY_API_URL` | Base URL used by the frontend when generating API calls |
 | `BAKERY_PUBLIC_IP` | Public IP for DNS guidance and verification |
 | `BAKERY_DATA_DIR` / `BAKERY_LOGS_DIR` / `BAKERY_BUILDS_DIR` | File system locations for build artifacts, data snapshots, and log storage |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub OAuth credentials |

@@ -82,6 +82,10 @@ export async function fetchDeployments() {
 	return apiFetch('/api/deployments');
 }
 
+export async function fetchDatabases() {
+	return apiFetch('/api/databases');
+}
+
 export async function fetchSystemAnalytics() {
 	return apiFetch('/api/system/analytics');
 }

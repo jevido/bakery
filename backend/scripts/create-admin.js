@@ -1,5 +1,5 @@
-import { hashPassword } from '../lib/auth.js';
-import { findUserByEmail, createUser } from '../models/userModel.js';
+import { hashPassword } from '../../app/src/lib/server/auth.js';
+import { findUserByEmail, createUser } from '../../app/src/lib/server/models/userModel.js';
 
 const email = process.argv[2];
 const password = process.argv[3];

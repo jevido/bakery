@@ -1,17 +1,18 @@
 <script>
-	import { Button } from 'bits-ui';
-import {
-	redeployDeployment,
-	restartDeployment,
-	rollbackDeployment,
-	updateDeploymentEnv,
-	deleteDeploymentEnv,
-	addDeploymentDomain,
-	removeDeploymentDomain,
-	verifyDeploymentDomain,
-	apiFetch
-} from '$lib/api.js';
-import { goto } from '$app/navigation';
+	import { Button } from '$lib/components/ui/button';
+
+	import {
+		redeployDeployment,
+		restartDeployment,
+		rollbackDeployment,
+		updateDeploymentEnv,
+		deleteDeploymentEnv,
+		addDeploymentDomain,
+		removeDeploymentDomain,
+		verifyDeploymentDomain,
+		apiFetch
+	} from '$lib/api.js';
+	import { goto } from '$app/navigation';
 	import {
 		BadgeCheck,
 		AlertTriangle,
@@ -29,7 +30,7 @@ import { goto } from '$app/navigation';
 
 	let { data } = $props();
 
-let deployment = $state(data.deployment ?? {});
+	let deployment = $state(data.deployment ?? {});
 	let domains = $state(data.domains ?? []);
 	let environment = $state(data.environment ?? []);
 	let versions = $state(data.versions ?? []);
@@ -46,42 +47,42 @@ let deployment = $state(data.deployment ?? {});
 	let envValue = $state('');
 	let editingEnv = $state({});
 
-function formatDate(value) {
-	if (!value) return '—';
+	function formatDate(value) {
+		if (!value) return '—';
 		const date = new Date(value);
 		if (Number.isNaN(date.getTime())) return '—';
 		return date.toLocaleString();
 	}
 
-async function refreshDeployment() {
-	try {
-		const payload = await apiFetch(`/api/deployments/${deployment.id}`);
-		deployment = payload.deployment ?? deployment;
-		domains = payload.domains ?? domains;
-		environment = payload.environment ?? environment;
-		versions = payload.versions ?? versions;
-		databases = payload.databases ?? databases;
-		logs = payload.logs ?? logs;
-		tasks = payload.tasks ?? tasks;
-	} catch {
-		// ignore refresh failures
+	async function refreshDeployment() {
+		try {
+			const payload = await apiFetch(`/api/deployments/${deployment.id}`);
+			deployment = payload.deployment ?? deployment;
+			domains = payload.domains ?? domains;
+			environment = payload.environment ?? environment;
+			versions = payload.versions ?? versions;
+			databases = payload.databases ?? databases;
+			logs = payload.logs ?? logs;
+			tasks = payload.tasks ?? tasks;
+		} catch {
+			// ignore refresh failures
+		}
 	}
-}
 
-async function runAction(action, successMessage) {
-	working = true;
-	message = '';
-	error = '';
-	try {
-		await action();
-		message = successMessage;
-		await refreshDeployment();
-	} catch (err) {
-		error = err?.message || 'Action failed';
-	} finally {
-		working = false;
+	async function runAction(action, successMessage) {
+		working = true;
+		message = '';
+		error = '';
+		try {
+			await action();
+			message = successMessage;
+			await refreshDeployment();
+		} catch (err) {
+			error = err?.message || 'Action failed';
+		} finally {
+			working = false;
+		}
 	}
-}
 
 	async function handleRedeploy() {
 		await runAction(() => redeployDeployment(deployment.id), 'Redeploy task queued.');
@@ -100,34 +101,25 @@ async function runAction(action, successMessage) {
 			error = 'Environment key is required.';
 			return;
 		}
-		await runAction(
-			async () => {
-				await updateDeploymentEnv(deployment.id, envKey.trim(), envValue);
-			},
-			'Environment variable saved.'
-		);
+		await runAction(async () => {
+			await updateDeploymentEnv(deployment.id, envKey.trim(), envValue);
+		}, 'Environment variable saved.');
 		envKey = '';
 		envValue = '';
 	}
 
 	async function updateExistingEnv(key) {
 		const value = editingEnv[key] ?? '';
-		await runAction(
-			async () => {
-				await updateDeploymentEnv(deployment.id, key, value);
-			},
-			'Environment variable updated.'
-		);
+		await runAction(async () => {
+			await updateDeploymentEnv(deployment.id, key, value);
+		}, 'Environment variable updated.');
 		editingEnv = { ...editingEnv, [key]: '' };
 	}
 
 	async function removeEnv(key) {
-		await runAction(
-			async () => {
-				await deleteDeploymentEnv(deployment.id, key);
-			},
-			'Environment variable removed.'
-		);
+		await runAction(async () => {
+			await deleteDeploymentEnv(deployment.id, key);
+		}, 'Environment variable removed.');
 	}
 
 	async function addDomainAction() {
@@ -136,31 +128,22 @@ async function runAction(action, successMessage) {
 			error = 'Domain hostname is required.';
 			return;
 		}
-		await runAction(
-			async () => {
-				await addDeploymentDomain(deployment.id, hostname);
-			},
-			'Domain added.'
-		);
+		await runAction(async () => {
+			await addDeploymentDomain(deployment.id, hostname);
+		}, 'Domain added.');
 		newDomain = '';
 	}
 
 	async function removeDomainAction(domainId) {
-		await runAction(
-			async () => {
-				await removeDeploymentDomain(deployment.id, domainId);
-			},
-			'Domain removed.'
-		);
+		await runAction(async () => {
+			await removeDeploymentDomain(deployment.id, domainId);
+		}, 'Domain removed.');
 	}
 
 	async function verifyDomainAction(domainId) {
-		await runAction(
-			async () => {
-				await verifyDeploymentDomain(domainId);
-			},
-			'Domain verification triggered.'
-		);
+		await runAction(async () => {
+			await verifyDeploymentDomain(domainId);
+		}, 'Domain verification triggered.');
 	}
 </script>
 
@@ -182,35 +165,37 @@ async function runAction(action, successMessage) {
 			</p>
 		</div>
 		<div class="flex flex-wrap gap-3">
-			<Button.Root variant="outline" onclick={() => goto('/deployments')}>
-				Back to deployments
-			</Button.Root>
-			<Button.Root variant="outline" class="gap-2" onclick={handleRestart} disabled={working}>
+			<Button variant="outline" onclick={() => goto('/deployments')}>Back to deployments</Button>
+			<Button variant="outline" class="gap-2" onclick={handleRestart} disabled={working}>
 				{#if working}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{/if}
 				<RotateCcw class="h-4 w-4" />
 				Restart
-			</Button.Root>
-			<Button.Root class="gap-2" onclick={handleRedeploy} disabled={working}>
+			</Button>
+			<Button class="gap-2" onclick={handleRedeploy} disabled={working}>
 				{#if working}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{/if}
 				<RefreshCw class="h-4 w-4" />
 				Redeploy
-			</Button.Root>
+			</Button>
 		</div>
 	</header>
 
 	{#if message}
-		<div class="flex items-start gap-2 rounded-xl border border-emerald-400/40 bg-emerald-500/10 p-3 text-sm text-emerald-500">
+		<div
+			class="flex items-start gap-2 rounded-xl border border-emerald-400/40 bg-emerald-500/10 p-3 text-sm text-emerald-500"
+		>
 			<ShieldCheck class="mt-0.5 h-4 w-4" />
 			<p>{message}</p>
 		</div>
 	{/if}
 
 	{#if error}
-		<div class="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+		<div
+			class="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+		>
 			<AlertTriangle class="mt-0.5 h-4 w-4" />
 			<p>{error}</p>
 		</div>
@@ -222,14 +207,15 @@ async function runAction(action, successMessage) {
 				<header>
 					<h2 class="text-lg font-semibold">Domains</h2>
 					<p class="text-sm text-muted-foreground">
-						Add Namecheap-compatible DNS records and trigger verification to provision SSL automatically.
+						Add Namecheap-compatible DNS records and trigger verification to provision SSL
+						automatically.
 					</p>
 				</header>
 				<div class="flex flex-col gap-3 sm:flex-row">
 					<input
-						class="h-11 flex-1 rounded-lg border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-						placeholder="deploy.example.com"
 						bind:value={newDomain}
+						class="h-11 flex-1 rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+						placeholder="deploy.example.com"
 						onkeydown={(event) => {
 							if (event.key === 'Enter') {
 								event.preventDefault();
@@ -237,15 +223,18 @@ async function runAction(action, successMessage) {
 							}
 						}}
 					/>
-					<Button.Root class="sm:w-auto" onclick={addDomainAction} disabled={working}>
+					<Button class="sm:w-auto" onclick={addDomainAction} disabled={working}>
 						<Plus class="h-4 w-4" />
 						Add domain
-					</Button.Root>
+					</Button>
 				</div>
 
 				{#if domains.length === 0}
-					<p class="rounded-lg border border-dashed border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-						No domains added yet. Create an A record pointing to your server IP, then add the hostname above.
+					<p
+						class="rounded-lg border border-dashed border-border/60 bg-background/60 p-4 text-sm text-muted-foreground"
+					>
+						No domains added yet. Create an A record pointing to your server IP, then add the
+						hostname above.
 					</p>
 				{:else}
 					<ul class="space-y-3">
@@ -259,7 +248,7 @@ async function runAction(action, successMessage) {
 										</p>
 									</div>
 									<div class="flex items-center gap-2">
-										<Button.Root
+										<Button
 											variant="outline"
 											class="h-8 gap-2"
 											onclick={() => verifyDomainAction(domain.id)}
@@ -267,8 +256,8 @@ async function runAction(action, successMessage) {
 										>
 											<Globe class="h-3.5 w-3.5" />
 											Verify DNS
-										</Button.Root>
-										<Button.Root
+										</Button>
+										<Button
 											variant="ghost"
 											class="h-8 gap-2 text-destructive"
 											onclick={() => removeDomainAction(domain.id)}
@@ -276,7 +265,7 @@ async function runAction(action, successMessage) {
 										>
 											<X class="h-3.5 w-3.5" />
 											Remove
-										</Button.Root>
+										</Button>
 									</div>
 								</div>
 							</li>
@@ -294,18 +283,16 @@ async function runAction(action, successMessage) {
 				</header>
 				<div class="grid gap-3 sm:grid-cols-[1fr,1fr,auto]">
 					<input
-						class="h-11 rounded-lg border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-						placeholder="KEY"
 						bind:value={envKey}
+						class="h-11 rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+						placeholder="KEY"
 					/>
 					<input
-						class="h-11 rounded-lg border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-						placeholder="Secret value"
 						bind:value={envValue}
+						class="h-11 rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+						placeholder="Secret value"
 					/>
-					<Button.Root type="button" onclick={addEnvVar} disabled={working}>
-						Add
-					</Button.Root>
+					<Button type="button" onclick={addEnvVar} disabled={working}>Add</Button>
 				</div>
 				{#if environment.length === 0}
 					<p class="text-sm text-muted-foreground">No environment variables yet.</p>
@@ -321,7 +308,7 @@ async function runAction(action, successMessage) {
 										</p>
 									</div>
 									<div class="flex items-center gap-2">
-										<Button.Root
+										<Button
 											variant="ghost"
 											class="h-8 gap-1"
 											onclick={() => {
@@ -330,8 +317,8 @@ async function runAction(action, successMessage) {
 										>
 											<Clipboard class="h-3.5 w-3.5" />
 											Edit
-										</Button.Root>
-										<Button.Root
+										</Button>
+										<Button
 											variant="ghost"
 											class="h-8 gap-1 text-destructive"
 											onclick={() => removeEnv(item.key)}
@@ -339,13 +326,13 @@ async function runAction(action, successMessage) {
 										>
 											<X class="h-3.5 w-3.5" />
 											Remove
-										</Button.Root>
+										</Button>
 									</div>
 								</div>
 								{#if editingEnv[item.key] !== undefined}
 									<div class="mt-3 grid gap-3 sm:grid-cols-[1fr,auto]">
 										<input
-											class="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+											class="h-10 rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
 											placeholder="New value"
 											value={editingEnv[item.key]}
 											oninput={(event) => {
@@ -356,14 +343,14 @@ async function runAction(action, successMessage) {
 											}}
 										/>
 										<div class="flex gap-2">
-											<Button.Root
+											<Button
 												class="h-10"
 												onclick={() => updateExistingEnv(item.key)}
 												disabled={working}
 											>
 												Save
-											</Button.Root>
-											<Button.Root
+											</Button>
+											<Button
 												variant="outline"
 												class="h-10"
 												onclick={() => {
@@ -371,7 +358,7 @@ async function runAction(action, successMessage) {
 												}}
 											>
 												Cancel
-											</Button.Root>
+											</Button>
 										</div>
 									</div>
 								{/if}
@@ -400,13 +387,19 @@ async function runAction(action, successMessage) {
 											{version.slot.toUpperCase()} slot · {version.status}
 										</p>
 										<p class="text-xs text-muted-foreground">
-											Commit {version.commit_sha?.slice(0, 7) || '–'} · Port {version.port || '—'} · Created {formatDate(version.created_at)}
+											Commit {version.commit_sha?.slice(0, 7) || '–'} · Port {version.port || '—'} ·
+											Created {formatDate(version.created_at)}
 										</p>
 									</div>
 									{#if version.status !== 'active'}
-										<Button.Root variant="outline" size="sm" onclick={() => handleRollback(version.id)} disabled={working}>
+										<Button
+											variant="outline"
+											size="sm"
+											onclick={() => handleRollback(version.id)}
+											disabled={working}
+										>
 											Rollback here
-										</Button.Root>
+										</Button>
 									{/if}
 								</div>
 							</li>
@@ -424,7 +417,8 @@ async function runAction(action, successMessage) {
 				</header>
 				{#if databases.length === 0}
 					<p class="text-sm text-muted-foreground">
-						No databases attached. Enable the provisioning option during a redeploy to create one automatically.
+						No databases attached. Enable the provisioning option during a redeploy to create one
+						automatically.
 					</p>
 				{:else}
 					<ul class="space-y-3 text-sm">
@@ -432,7 +426,9 @@ async function runAction(action, successMessage) {
 							<li class="rounded-lg border bg-background/60 p-3">
 								<p class="font-medium">{db.name}</p>
 								<p class="text-xs text-muted-foreground">
-									Status {db.status} · Size {(db.size_bytes && db.size_bytes > 0) ? `${(db.size_bytes / (1024 * 1024)).toFixed(1)} MB` : '—'}
+									Status {db.status} · Size {db.size_bytes && db.size_bytes > 0
+										? `${(db.size_bytes / (1024 * 1024)).toFixed(1)} MB`
+										: '—'}
 								</p>
 							</li>
 						{/each}
@@ -453,7 +449,7 @@ async function runAction(action, successMessage) {
 					<ul class="space-y-2 text-xs text-muted-foreground">
 						{#each logs.slice(0, 10) as log (log.id)}
 							<li class="rounded-lg border bg-background/60 p-3">
-								<p class="font-semibold uppercase tracking-wide">{log.level}</p>
+								<p class="font-semibold tracking-wide uppercase">{log.level}</p>
 								<p class="text-foreground">{log.message}</p>
 								<p class="mt-1 text-[11px]">{formatDate(log.created_at)}</p>
 							</li>
