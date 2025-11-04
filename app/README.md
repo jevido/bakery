@@ -1,38 +1,18 @@
-# sv
+# Bakery App
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+This directory contains the SvelteKit interface that powers Bakery’s web console. It is JavaScript-only (no TypeScript) and targets the Bun runtime through `svelte-adapter-bun`.
 
-## Creating a project
+## Useful Commands
 
-If you're seeing this, you've probably already done this step. Congrats!
+- `bun run dev` – Launches the Vite dev server on <http://localhost:5173>. Use `PUBLIC_API_URL=http://localhost:4100` to point at the local backend.
+- `bun run build` – Produces the production bundle under `build/`, consumed by `backend/server.js`.
+- `bun run preview` – Serves the built app locally to mimic the Bun adapter output.
+- `bun run lint` – Runs Prettier against the codebase.
 
-```sh
-# create a new project in the current directory
-npx sv create
+## Project Notes
 
-# create a new project in my-app
-npx sv create my-app
-```
+- Tailwind CSS v4 is configured through `src/app.css`. Utility classes are available globally.
+- UI elements lean on pre-built `bits-ui` primitives (buttons, separators, navigation) instead of bespoke components.
+- Global layout and theming are defined in `src/routes/+layout.svelte`; feature pages live under `src/routes/`.
 
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+When running both the backend and this app for local development, start the backend first (`bun backend/server.js`) so the UI can access the API without CORS issues.

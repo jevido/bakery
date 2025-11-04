@@ -10,18 +10,19 @@ Bakery is a self-hosted deployment control plane inspired by Coolify. It combine
 - **Runtime Flexibility** – Detects Dockerfile projects or falls back to Bun processes with generated systemd units and Nginx virtual hosts.
 - **PostgreSQL Automation** – One-click provisioning, credential injection into deployment environment variables, and size tracking.
 - **Infrastructure Glue** – Manages Nginx reverse proxy, Certbot SSL certificates, systemd units, Docker containers, and crash recovery tasks.
-- **Self-Updating** – GUI-triggered updater executes `scripts/update.sh` to pull changes, run migrations, rebuild the frontend, and restart services.
+- **Self-Updating** – GUI-triggered updater executes `infrastructure/scripts/update.sh` to pull changes, run migrations, rebuild the app, and restart services.
 
 ## Project Structure
 
 ```
 bakery/
+├── app/                # SvelteKit UI (JS only, adapter-bun build)
 ├── backend/            # Bun backend (controllers, routes, models, lib)
-├── frontend/           # SvelteKit UI (JS only, adapter-node build)
-├── docker/             # Docker deployment templates for user apps
-├── nginx/              # Nginx configuration templates generated per deployment
-├── scripts/            # install.sh (bootstrap), update.sh (self-update)
-├── systemd/            # bakery.service + deployment unit template
+├── infrastructure/
+│   ├── docker/         # Docker deployment templates for user apps
+│   ├── nginx/          # Nginx configuration templates generated per deployment
+│   ├── scripts/        # install.sh (bootstrap), update.sh (self-update)
+│   └── systemd/        # bakery.service + deployment unit template
 ├── backend/migrations/ # Postgres schema migrations
 └── README.md
 ```
@@ -39,13 +40,13 @@ bakery/
 1. **Copy the installer** to your target host and run it as root:
 
    ```bash
-   sudo ./scripts/install.sh --repo https://github.com/your-org/bakery.git --certbot-email you@example.com
+   sudo ./infrastructure/scripts/install.sh --repo https://github.com/your-org/bakery.git --certbot-email you@example.com
    ```
 
    The installer will:
 
    - Install Bun, Git, PostgreSQL, Nginx, Certbot, Docker, and build prerequisites.
-   - Clone Bakery (or use the current checkout), install dependencies, and build the SvelteKit frontend.
+   - Clone Bakery (or use the current checkout), install dependencies, and build the SvelteKit app.
    - Create `/var/lib/bakery` data/logs/build directories and seed Postgres with the Bakery metadata database.
    - Generate a `.env` file with random session/encryption secrets and the server's public IP.
    - Run database migrations and seed an initial admin account.
@@ -62,7 +63,7 @@ bakery/
    - Choose branch, domains, environment variables, and optional blue/green + Postgres provisioning.
    - Bakery builds and boots the app, wiring Nginx, SSL, and systemd or Docker as appropriate.
 
-6. **Self-Update** from *Settings → Update Bakery* (calls `scripts/update.sh`, git pulls, rebuilds UI, applies migrations, restarts service).
+6. **Self-Update** from *Settings → Update Bakery* (calls `infrastructure/scripts/update.sh`, git pulls, rebuilds the UI, applies migrations, restarts service).
 
 ## Development Workflow
 
@@ -70,7 +71,7 @@ bakery/
 
    ```bash
    bun install
-   cd frontend && bun install && cd ..
+   cd app && bun install && cd ..
    cp .env.example .env
    # update .env DATABASE_URL etc. for your local Postgres
    bun backend/lib/migrate.js
@@ -80,7 +81,7 @@ bakery/
 
    ```bash
    bun backend/server.js       # Backend API + SvelteKit handler
-   cd frontend && bun run dev  # Optional if you want hot reloading during UI work
+   cd app && bun run dev       # Optional if you want hot reloading during UI work
    ```
 
    The backend serves the built SvelteKit app; during UI development, use the Vite dev server pointed at the API (`PUBLIC_API_URL=http://localhost:4100`).
@@ -153,7 +154,7 @@ bakery/
 
 ## Update Workflow
 
-- Backend endpoint `POST /api/system/update` executes `scripts/update.sh`, which pulls the latest code, reinstalls dependencies, rebuilds the frontend, applies migrations, and restarts the `bakery` systemd service.
+- Backend endpoint `POST /api/system/update` executes `infrastructure/scripts/update.sh`, which pulls the latest code, reinstalls dependencies, rebuilds the app, applies migrations, and restarts the `bakery` systemd service.
 - Update progress is reflected in the activity feed sourced from the `tasks` table.
 
 ## Logging & Analytics
@@ -164,14 +165,14 @@ bakery/
 
 ## Docker Templates for User Apps
 
-- `docker/Dockerfile.template` and `docker/compose.template.yml` provide opinionated defaults for teams that want to standardise containerised builds (Bun base image, exposed port, restart policy).
+- `infrastructure/docker/Dockerfile.template` and `infrastructure/docker/compose.template.yml` provide opinionated defaults for teams that want to standardise containerised builds (Bun base image, exposed port, restart policy).
 
 ## Contributing
 
 1. Fork and clone the repository.
-2. Use `bun run lint` inside `frontend` to keep Svelte formatting consistent.
+2. Use `bun run lint` inside `app` to keep Svelte formatting consistent.
 3. Add or adjust migrations through SQL files in `backend/migrations/` and run `bun backend/lib/migrate.js` to apply them locally.
-4. Submit PRs with clear descriptions of backend/frontend updates plus any new infrastructure templates.
+4. Submit PRs with clear descriptions of backend/app updates plus any new infrastructure templates.
 
 ## License
 

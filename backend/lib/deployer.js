@@ -92,7 +92,13 @@ async function createSystemdUnit({
   env
 }) {
   const config = getConfig();
-  const templatePath = join(process.cwd(), 'systemd', 'deployments', 'service.template');
+  const templatePath = join(
+    process.cwd(),
+    'infrastructure',
+    'systemd',
+    'deployments',
+    'service.template'
+  );
   const template = await Bun.file(templatePath).text();
   const serviceName = serviceNameForDeployment(deployment.id, slot);
   const ExecStart = deployment.dockerized

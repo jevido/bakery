@@ -9,7 +9,7 @@ let kitHandler = null;
 async function loadKitHandler() {
   if (kitHandler) return kitHandler;
   try {
-    const module = await import('../frontend/build/index.js');
+    const module = await import('../app/build/index.js');
     kitHandler = module.handler;
     return kitHandler;
   } catch (error) {

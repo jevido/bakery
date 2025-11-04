@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+app/node_modules/
+backend/node_modules/
+
+# Build artifacts
+app/.svelte-kit/
+app/build/
+backend/build/
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.development
+!.env.example
+
+# Logs
+*.log
+.pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Bun
+bun.lockb
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Project data directories
+.data/
+var/
+
+# Local agent configs
+AGENTS.md

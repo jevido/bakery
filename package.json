@@ -6,10 +6,10 @@
   "scripts": {
     "dev": "bun backend/server.js",
     "backend": "bun backend/server.js",
-    "frontend": "cd frontend && bun run dev",
-    "build": "cd frontend && bun run build",
-    "preview": "cd frontend && bun run preview",
-    "migrate": "bun backend/lib/migrate.js"
+    "app": "cd app && bun run dev",
+    "build": "cd app && bun run build",
+    "preview": "cd app && bun run preview",
+    "migrate": "bun backend/lib/migrate.js"    
   },
   "dependencies": {
     "@octokit/rest": "^20.0.2",
@@ -28,7 +28,9 @@
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-svelte": "^2.35.1",
-    "prettier": "^3.3.3"
+    "prettier": "^3.6.2",
+    "prettier-plugin-svelte": "^3.4.0",
+    "prettier-plugin-tailwindcss": "^0.6.14"
   },
   "engine": {
     "bun": ">=1.1.0"

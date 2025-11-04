@@ -50,7 +50,7 @@ export const SystemController = {
 
   async update(ctx) {
     try {
-      const output = await runCommand('bash', ['scripts/update.sh'], {
+      const output = await runCommand('bash', ['infrastructure/scripts/update.sh'], {
         cwd: process.cwd()
       });
       await log('info', 'Update executed by user', { userId: ctx.user.id });

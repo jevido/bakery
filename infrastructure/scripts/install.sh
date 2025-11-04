@@ -9,6 +9,8 @@ fi
 REPO_URL=""
 INSTALL_DIR="/opt/bakery"
 CERTBOT_EMAIL=""
+ADMIN_EMAIL="jheremenis@gmail.com"
+ADMIN_PASS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -56,7 +58,7 @@ if [[ -n "$REPO_URL" ]]; then
   git clone "$REPO_URL" "$INSTALL_DIR"
 else
   SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-  INSTALL_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
+  INSTALL_DIR=$(cd "$SCRIPT_DIR/../.." && pwd)
   echo "[3/8] Using existing repository in $INSTALL_DIR"
 fi
 
@@ -64,7 +66,7 @@ cd "$INSTALL_DIR"
 
 echo "[4/8] Installing JavaScript dependencies"
 bun install
-cd frontend && bun install && bun run build && cd ..
+cd app && bun install && bun run build && cd ..
 
 mkdir -p /var/lib/bakery/data /var/lib/bakery/logs /var/lib/bakery/builds
 mkdir -p /var/log/bakery
@@ -76,6 +78,7 @@ DATABASE_PASSWORD=$(openssl rand -hex 12)
 SESSION_SECRET=$(openssl rand -hex 32)
 ENCRYPTION_KEY=$(openssl rand -hex 32 | cut -c1-32)
 PUBLIC_IP=$(curl -s https://api.ipify.org || echo "127.0.0.1")
+ADMIN_PASS=${ADMIN_PASS:-$(openssl rand -base64 12)}
 
 sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='bakery'" | grep -q 1 || sudo -u postgres psql -c "CREATE ROLE bakery LOGIN PASSWORD '$DATABASE_PASSWORD';"
 sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='bakery'" | grep -q 1 || sudo -u postgres createdb -O bakery bakery
@@ -99,12 +102,10 @@ EOF
 echo "[5/8] Running database migrations"
 bun backend/lib/migrate.js
 
-ADMIN_EMAIL="admin@${PUBLIC_IP}.nip.io"
-ADMIN_PASS=$(openssl rand -base64 12)
 bun backend/scripts/create-admin.js "$ADMIN_EMAIL" "$ADMIN_PASS"
 
 echo "[6/8] Installing systemd service"
-sed "s|{{WORKING_DIR}}|$INSTALL_DIR|g" systemd/bakery.service > /etc/systemd/system/bakery.service
+sed "s|{{WORKING_DIR}}|$INSTALL_DIR|g" infrastructure/systemd/bakery.service > /etc/systemd/system/bakery.service
 systemctl daemon-reload
 systemctl enable bakery.service
 
@@ -113,7 +114,7 @@ systemctl restart bakery.service
 
 echo "[8/8] Preparing nginx base configuration"
 mkdir -p /etc/nginx/conf.d
-cp nginx/templates/app.conf /etc/nginx/conf.d/bakery.template
+cp infrastructure/nginx/templates/app.conf /etc/nginx/conf.d/bakery.template
 systemctl reload nginx || true
 
 cat <<INFO

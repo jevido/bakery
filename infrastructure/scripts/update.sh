@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-APP_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
+APP_DIR=$(cd "$SCRIPT_DIR/../.." && pwd)
 
 echo "Updating Bakery in $APP_DIR"
 
@@ -15,7 +15,7 @@ export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
 bun install
-cd frontend && bun install && bun run build && cd ..
+cd app && bun install && bun run build && cd ..
 
 bun backend/lib/migrate.js
 
