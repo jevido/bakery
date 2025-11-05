@@ -1,6 +1,6 @@
 <script>
-	import { Button } from "$lib/components/ui/button"
-	
+	import { Button } from '$lib/components/ui/button';
+
 	import { goto } from '$app/navigation';
 	import { apiFetch, createDeployment, fetchGithubBranches } from '$lib/api.js';
 	import { Plus, X, Loader2 } from '@lucide/svelte';
@@ -137,12 +137,15 @@
 		<div>
 			<h1 class="text-3xl font-semibold tracking-tight">New deployment</h1>
 			<p class="text-sm text-muted-foreground">
-				Connect a repository, configure runtime options, and roll out with optional blue-green slots.
+				Connect a repository, configure runtime options, and roll out with optional blue-green
+				slots.
 			</p>
 		</div>
 		{#if error}
-			<div class="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-				<X class="mt-0.5 h-4 w-4 flex-shrink-0" />
+			<div
+				class="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+			>
+				<X class="mt-0.5 h-4 w-4" />
 				<p>{error}</p>
 			</div>
 		{/if}
@@ -154,7 +157,7 @@
 				<label for="name" class="text-sm font-medium">Deployment name</label>
 				<input
 					id="name"
-					class="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+					class="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
 					placeholder="monorepo-api"
 					bind:value={name}
 					required
@@ -170,7 +173,7 @@
 				</div>
 				<select
 					id="repository"
-					class="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+					class="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
 					bind:value={repository}
 					required
 					onchange={(event) => hydrateBranches(event.currentTarget.value)}
@@ -178,7 +181,8 @@
 					<option value="" disabled selected>Select a repository</option>
 					{#each repositories as repo (repo.id)}
 						<option value={repo.full_name}>
-							{repo.full_name} {repo.private ? '(private)' : ''}
+							{repo.full_name}
+							{repo.private ? '(private)' : ''}
 						</option>
 					{/each}
 				</select>
@@ -194,7 +198,7 @@
 				<div class="relative">
 					<select
 						id="branch"
-						class="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+						class="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
 						bind:value={branch}
 						required
 						disabled={!repository || fetchingBranches}
@@ -207,7 +211,9 @@
 						{/each}
 					</select>
 					{#if fetchingBranches}
-						<Loader2 class="absolute right-3 top-1/2 h-4 w-4 animate-spin -translate-y-1/2 text-muted-foreground" />
+						<Loader2
+							class="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground"
+						/>
 					{/if}
 				</div>
 			</div>
@@ -222,7 +228,7 @@
 				</div>
 				<div class="flex gap-3">
 					<input
-						class="h-11 flex-1 rounded-lg border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+						class="h-11 flex-1 rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
 						placeholder="app.example.com"
 						bind:value={newDomain}
 						onkeydown={(event) => {
@@ -236,7 +242,9 @@
 				{#if domains.length > 0}
 					<ul class="space-y-2">
 						{#each domains as domain, index (domain + index)}
-							<li class="flex items-center justify-between rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm">
+							<li
+								class="flex items-center justify-between rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm"
+							>
 								<span>{domain}</span>
 								<button
 									type="button"
@@ -264,22 +272,18 @@
 					{#each envVars as env, index (index)}
 						<div class="grid gap-3 sm:grid-cols-[1fr,1fr,auto]">
 							<input
-								class="h-11 rounded-lg border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+								class="h-11 rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
 								placeholder="KEY"
 								value={env.key}
 								oninput={(event) => updateEnvVar(index, 'key', event.currentTarget.value)}
 							/>
 							<input
-								class="h-11 rounded-lg border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+								class="h-11 rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
 								placeholder="value"
 								value={env.value}
 								oninput={(event) => updateEnvVar(index, 'value', event.currentTarget.value)}
 							/>
-							<Button
-								variant="outline"
-								class="sm:w-auto"
-								onclick={() => removeEnvRow(index)}
-							>
+							<Button variant="outline" class="sm:w-auto" onclick={() => removeEnvRow(index)}>
 								Remove
 							</Button>
 						</div>
@@ -299,7 +303,8 @@
 					<span>
 						Blue-green deployments
 						<p class="text-xs font-normal text-muted-foreground">
-							Deploy new versions to an idle slot, verify them, then switch traffic with zero downtime.
+							Deploy new versions to an idle slot, verify them, then switch traffic with zero
+							downtime.
 						</p>
 					</span>
 				</label>
@@ -322,11 +327,15 @@
 				</label>
 			</div>
 
-			<div class="rounded-xl border border-primary/30 bg-primary/5 p-4 text-xs text-muted-foreground">
+			<div
+				class="rounded-xl border border-primary/30 bg-primary/5 p-4 text-xs text-muted-foreground"
+			>
 				<p class="font-medium text-foreground">What happens next?</p>
-				<ul class="mt-2 space-y-1 list-disc pl-4">
+				<ul class="mt-2 list-disc space-y-1 pl-4">
 					<li>Bakery clones your repo and detects Docker or Bun runtimes automatically.</li>
-					<li>Build output is stored under <code>/var/lib/bakery/builds</code> and wired into Nginx.</li>
+					<li>
+						Build output is stored under <code>/var/lib/bakery/builds</code> and wired into Nginx.
+					</li>
 					<li>Certificates are issued with Certbot when you verify domains.</li>
 				</ul>
 			</div>

@@ -4,32 +4,39 @@
 	import { Button } from '$lib/components/ui/button';
 
 	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import { logout as apiLogout } from '$lib/api.js';
+	import { page } from '$app/stores';
 	import { cn } from '$lib/utils.js';
 	import {
 		Menu,
 		LayoutDashboard,
 		Box,
 		Database,
+		Users,
 		Cog,
 		SunMedium,
 		Moon,
 		PackagePlus
 	} from '@lucide/svelte';
 	import { mode, ModeWatcher, toggleMode } from 'mode-watcher';
+	import Separator from '$lib/components/ui/separator/separator.svelte';
 
 	let { children, data } = $props();
+	const pageStore = page;
+
 	let user = $derived(data?.user);
-	let currentPath = $derived(page.url.pathname);
+	let currentPath = $derived($pageStore.url.pathname);
 	let isSidebarOpen = $state(false);
 
-	const navItems = [
+	const allNavItems = [
 		{ label: 'Dashboard', href: '/', icon: LayoutDashboard },
 		{ label: 'Deployments', href: '/deployments', icon: Box },
 		{ label: 'Databases', href: '/databases', icon: Database },
 		{ label: 'System', href: '/system', icon: Cog }
 	];
+
+	const bakeryNavItems = [{ label: 'Users', href: '/users', icon: Users, requiresAdmin: true }];
+
+	let navItems = $derived(allNavItems.filter((item) => !item.requiresAdmin || user?.is_admin));
 
 	function toggleSidebar() {
 		isSidebarOpen = !isSidebarOpen;
@@ -82,29 +89,13 @@
 
 				<nav class="mt-10 space-y-2">
 					{#each navItems as item (item.href)}
-						{@const Icon = item.icon}
-						{@const active =
-							currentPath === item.href ||
-							(currentPath.startsWith(item.href) && item.href !== '/') ||
-							(item.href === '/' && currentPath === '/')}
+						{@render menuItem(item)}
+					{/each}
 
-						<Button
-							href={item.href}
-							variant="link"
-							class={cn(
-								'flex items-center gap-3 rounded-lg px-4 py-2 text-sm font-medium transition',
-								active
-									? 'bg-secondary text-foreground shadow-sm'
-									: 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-							)}
-							aria-current={active ? 'page' : undefined}
-							onclick={() => {
-								isSidebarOpen = false;
-							}}
-						>
-							<Icon class="h-4 w-4" />
-							<span>{item.label}</span>
-						</Button>
+					<Separator class="my-4" />
+
+					{#each bakeryNavItems as item (item.href)}
+						{@render menuItem(item)}
 					{/each}
 				</nav>
 
@@ -161,3 +152,29 @@
 		{@render children()}
 	</div>
 {/if}
+
+{#snippet menuItem(item)}
+	{@const Icon = item.icon}
+	{@const active =
+		currentPath === item.href ||
+		(currentPath.startsWith(item.href) && item.href !== '/') ||
+		(item.href === '/' && currentPath === '/')}
+
+	<Button
+		href={item.href}
+		variant="link"
+		class={cn(
+			'flex items-center justify-start gap-3 rounded-lg px-4 py-2 text-sm font-medium transition',
+			active
+				? 'bg-secondary text-foreground shadow-sm'
+				: 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+		)}
+		aria-current={active ? 'page' : undefined}
+		onclick={() => {
+			isSidebarOpen = false;
+		}}
+	>
+		<Icon class="h-4 w-4" />
+		<span>{item.label}</span>
+	</Button>
+{/snippet}

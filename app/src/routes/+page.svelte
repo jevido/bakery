@@ -1,8 +1,8 @@
 <script>
-	import { Button } from "$lib/components/ui/button"
-	import { Separator } from "$lib/components/ui/separator"
-	
-	
+	import { Button } from '$lib/components/ui/button';
+	import { Separator } from '$lib/components/ui/separator';
+	import * as Card from '$lib/components/ui/card';
+
 	import { goto } from '$app/navigation';
 	import {
 		ArrowRight,
@@ -46,9 +46,7 @@
 			label: 'Managed databases',
 			value: String(databaseStats.total ?? 0),
 			caption:
-				(databaseStats.total ?? 0) > 0
-					? 'Provisioned via Bakery'
-					: 'Create from a deployment'
+				(databaseStats.total ?? 0) > 0 ? 'Provisioned via Bakery' : 'Create from a deployment'
 		},
 		{
 			icon: Globe,
@@ -176,14 +174,23 @@
 	<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
 		{#each stats as stat (stat.label)}
 			{@const Icon = stat.icon}
-			<div class="rounded-xl border bg-card p-4 shadow-sm">
-				<div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-secondary">
-					<Icon class="h-5 w-5 text-secondary-foreground" />
-				</div>
-				<p class="text-sm text-muted-foreground">{stat.label}</p>
-				<p class="mt-2 text-2xl font-semibold">{stat.value}</p>
-				<p class="mt-1 text-xs text-muted-foreground">{stat.caption}</p>
-			</div>
+			<Card.Root>
+				<Card.Header class="pb-0">
+					<header class="flex items-center gap-3">
+						<div class="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary">
+							<Icon class="h-5 w-5 text-secondary-foreground" />
+						</div>
+						<div>
+							<p class="text-sm font-semibold">{stat.label}</p>
+							<p class="text-xs text-muted-foreground">on this server</p>
+						</div>
+					</header>
+				</Card.Header>
+				<Card.Content class="flex mt-0 right-0 items-center justify-between">
+					<p class="mt-2 text-2xl font-semibold">{stat.value}</p>
+					<p class="mt-1 text-xs text-muted-foreground">{stat.caption}</p>
+				</Card.Content>
+			</Card.Root>
 		{/each}
 	</div>
 
@@ -229,10 +236,13 @@
 						Build storage
 					</div>
 					<p class="mt-2 text-2xl font-semibold">
-						{disk ? formatBytes(disk.used) : '—'} <span class="text-sm text-muted-foreground">used</span>
+						{disk ? formatBytes(disk.used) : '—'}
+						<span class="text-sm text-muted-foreground">used</span>
 					</p>
 					<p class="text-xs text-muted-foreground">
-						Capacity {disk ? formatBytes(disk.total) : '—'} · Free {disk ? formatBytes(disk.free) : '—'}
+						Capacity {disk ? formatBytes(disk.total) : '—'} · Free {disk
+							? formatBytes(disk.free)
+							: '—'}
 					</p>
 				</div>
 				<div class="rounded-lg border bg-background/50 p-4">
@@ -245,7 +255,9 @@
 						<span class="text-sm text-muted-foreground">used</span>
 					</p>
 					<p class="text-xs text-muted-foreground">
-						Capacity {systemDisk ? formatBytes(systemDisk.total) : '—'} · Free {systemDisk ? formatBytes(systemDisk.free) : '—'}
+						Capacity {systemDisk ? formatBytes(systemDisk.total) : '—'} · Free {systemDisk
+							? formatBytes(systemDisk.free)
+							: '—'}
 					</p>
 				</div>
 			</div>
@@ -291,7 +303,9 @@
 					Builds, restarts, and analytics runs executed by the task worker.
 				</p>
 				{#if tasks.length === 0}
-					<p class="mt-4 text-sm text-muted-foreground">No tasks yet. Kick off a deployment to get started.</p>
+					<p class="mt-4 text-sm text-muted-foreground">
+						No tasks yet. Kick off a deployment to get started.
+					</p>
 				{:else}
 					<ul class="mt-4 space-y-3">
 						{#each tasks.slice(0, 5) as task (task.id)}

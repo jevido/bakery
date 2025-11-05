@@ -6,6 +6,7 @@ import { upsertEnvVar } from '$lib/server/models/envModel.js';
 import { createTask } from '$lib/server/models/taskModel.js';
 import { provisionDatabase } from '$lib/server/postgresAdmin.js';
 import { createDatabaseRecord } from '$lib/server/models/databaseModel.js';
+import { getGithubAccount } from '$lib/server/models/userModel.js';
 
 const createDeploymentSchema = z.object({
   name: z.string().min(3),
@@ -33,6 +34,10 @@ export const GET = async ({ locals }) => {
 export const POST = async ({ request, locals }) => {
   if (!locals.user) {
     throw error(401, 'Unauthorized');
+  }
+  const account = await getGithubAccount(locals.user.id);
+  if (!account) {
+    throw error(400, 'Link a GitHub account before creating deployments');
   }
   const body = await request.json().catch(() => ({}));
   const parsed = createDeploymentSchema.safeParse(body);

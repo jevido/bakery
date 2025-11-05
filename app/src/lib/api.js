@@ -44,7 +44,8 @@ export async function apiFetch(path, options = {}) {
 		} catch {
 			errorPayload = { error: response.statusText };
 		}
-		const error = new Error(errorPayload.error || 'Request failed');
+		const message = errorPayload.error || errorPayload.message || response.statusText || 'Request failed';
+		const error = new Error(message);
 		error.status = response.status;
 		error.details = errorPayload.details;
 		throw error;
@@ -88,6 +89,30 @@ export async function fetchDatabases() {
 
 export async function fetchSystemAnalytics() {
 	return apiFetch('/api/system/analytics');
+}
+
+export async function fetchUsers() {
+	return apiFetch('/api/users');
+}
+
+export async function createUserAccount(body) {
+	return apiFetch('/api/users', {
+		method: 'POST',
+		body
+	});
+}
+
+export async function updateUserAccount(id, body) {
+	return apiFetch(`/api/users/${id}`, {
+		method: 'PATCH',
+		body
+	});
+}
+
+export async function deleteUserAccount(id) {
+	return apiFetch(`/api/users/${id}`, {
+		method: 'DELETE'
+	});
 }
 
 export async function createDeployment(payload) {
