@@ -68,3 +68,15 @@ export async function getRecentAnalytics(deploymentId, days = 14) {
     ORDER BY captured_at DESC
   `;
 }
+
+export async function getDiskUsageTrend(hours = 24) {
+  return sql`
+    SELECT
+      date_trunc('hour', captured_at) AS bucket,
+      SUM(used_bytes)::bigint AS used_bytes
+    FROM disk_snapshots
+    WHERE captured_at > NOW() - (${hours} || ' hours')::interval
+    GROUP BY bucket
+    ORDER BY bucket ASC
+  `;
+}

@@ -23,24 +23,10 @@
 			loading = false;
 		}
 	}
-
-	async function proceedToGithub() {
-		const response = await fetch('/api/auth/github/url', {
-			credentials: 'include'
-		});
-		if (response.ok) {
-			const { url } = await response.json();
-			if (url) {
-				window.location.href = url;
-				return;
-			}
-		}
-		error = 'Sign in with your Bakery credentials before linking GitHub.';
-	}
 </script>
 
 <svelte:head>
-	<title>Login ~ Bakery</title>
+	<title>Login ~ The Bakery</title>
 </svelte:head>
 
 <section class="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6 py-12">
@@ -87,7 +73,7 @@
 			</div>
 		{/if}
 
-		<Button class="w-full justify-center gap-2" disabled={loading}>
+		<Button type="submit" class="w-full justify-center gap-2" disabled={loading}>
 			{#if loading}
 				<span class="h-4 w-4 animate-spin rounded-full border-2 border-primary border-r-transparent"
 				></span>
@@ -97,18 +83,4 @@
 			{/if}
 		</Button>
 	</form>
-
-	<div class="mt-6 space-y-3 text-center text-sm text-muted-foreground">
-		<div class="relative h-px w-full bg-border">
-			<span
-				class="absolute inset-x-0 -top-3 mx-auto w-fit bg-background px-3 text-xs tracking-wide text-muted-foreground uppercase"
-			>
-				or
-			</span>
-		</div>
-		<Button variant="outline" class="w-full justify-center gap-2" onclick={proceedToGithub}>
-			<Github class="h-4 w-4" />
-			Continue with GitHub
-		</Button>
-	</div>
 </section>

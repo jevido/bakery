@@ -11,11 +11,11 @@ All user apps run on their own instance; Bakery provides orchestration, monitori
 **Goal:** establish repo structure, runtime scaffolding, and base infrastructure.
 
 - Lock repo structure:
-  - `app/` → SvelteKit GUI  
-  - `backend/` → Bun backend services  
-  - `infrastructure/` → install scripts, systemd, NGINX templates  
+  - `app/` → SvelteKit GUI
+  - `backend/` → Bun backend services
+  - `infrastructure/` → install scripts, systemd, NGINX templates
 - Implement environment configuration:
-  - Config loader for `.env` and production secrets  
+  - Config loader for `.env` and production secrets
   - Runtime detection (Bun, Docker)
 - Stand up Bun service shell:
   - PostgreSQL connection pool via `bun.sql`
@@ -202,3 +202,9 @@ The Bakery project is **complete** when:
 - All processes auto-restart on crash.
 - Postgres is the **only** database used.
 - No manual config files (`apps.json`) — everything via GUI.
+
+---
+
+## Todo: 
+
+- I integrated github, but have not removed the "link" github buttons for users that have their account linked

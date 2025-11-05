@@ -147,6 +147,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>{deployment.name} ~ The Bakery</title>
+</svelte:head>
+
 <section class="space-y-6 p-6 md:p-10">
 	<header class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 		<div class="space-y-2">

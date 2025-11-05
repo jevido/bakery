@@ -12,6 +12,7 @@
 		Globe,
 		CheckCircle,
 		Circle,
+		AlertTriangle,
 		Link as LinkIcon,
 		HardDrive,
 		Activity
@@ -21,6 +22,7 @@
 
 	let analytics = $derived(data.analytics ?? {});
 	let deployments = $derived(data.deployments ?? []);
+	let predictiveAlerts = $derived(analytics.predictiveAlerts ?? []);
 	let deploymentStats = $derived(analytics.deploymentStats ?? { total: 0, active: 0, pending: 0 });
 	let databaseStats = $derived(analytics.databaseStats ?? { total: 0 });
 	let domainStats = $derived(analytics.domainStats ?? { total: 0, verified: 0 });
@@ -32,30 +34,22 @@
 		{
 			icon: Server,
 			label: 'Active deployments',
-			value: String(deploymentStats.active ?? 0),
-			caption: `${deploymentStats.total ?? 0} total`
+			value: String(deploymentStats.active ?? 0)
 		},
 		{
 			icon: GitBranch,
 			label: 'Pending builds',
-			value: String(deploymentStats.pending ?? 0),
-			caption: (deploymentStats.pending ?? 0) > 0 ? 'Builds queued or running' : 'All caught up'
+			value: String(deploymentStats.pending ?? 0)
 		},
 		{
 			icon: Database,
 			label: 'Managed databases',
-			value: String(databaseStats.total ?? 0),
-			caption:
-				(databaseStats.total ?? 0) > 0 ? 'Provisioned via Bakery' : 'Create from a deployment'
+			value: String(databaseStats.total ?? 0)
 		},
 		{
 			icon: Globe,
 			label: 'Domains secured',
-			value: String(domainStats.verified ?? 0),
-			caption:
-				(domainStats.total ?? 0) > 0
-					? `${domainStats.total} total domains`
-					: 'Add a domain to issue SSL'
+			value: String(domainStats.verified ?? 0)
 		}
 	]);
 
@@ -133,6 +127,26 @@
 		return date.toLocaleString();
 	}
 
+	function alertStyles(severity) {
+		return severity === 'critical'
+			? 'border-destructive/60 bg-destructive/10 text-destructive'
+			: 'border-amber-300/60 bg-amber-500/10 text-amber-700 dark:text-amber-200';
+	}
+
+	function formatHours(hours) {
+		if (!Number.isFinite(hours) || hours <= 0) return 'soon';
+		if (hours < 24) {
+			const rounded = Math.max(1, Math.round(hours));
+			return `${rounded} hour${rounded === 1 ? '' : 's'}`;
+		}
+		const days = Math.floor(hours / 24);
+		const remaining = Math.round(hours % 24);
+		if (remaining === 0) {
+			return `${days} day${days === 1 ? '' : 's'}`;
+		}
+		return `${days} day${days === 1 ? '' : 's'} ${remaining} hour${remaining === 1 ? '' : 's'}`;
+	}
+
 	async function startGithubLink() {
 		try {
 			const response = await fetch('/api/auth/github/url', { credentials: 'include' });
@@ -147,6 +161,10 @@
 		}
 	}
 </script>
+
+<svelte:head>
+	<title>The Bakery</title>
+</svelte:head>
 
 <section class="space-y-8 p-6 md:p-10">
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -171,25 +189,55 @@
 
 	<Separator />
 
+	{#if predictiveAlerts.length}
+		<section class="space-y-3">
+			{#each predictiveAlerts as alert, index (index)}
+				<article class={`rounded-xl border p-4 shadow-sm ${alertStyles(alert.severity)}`}>
+					<div class="flex items-start gap-3">
+						<AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
+						<div class="space-y-1">
+							<p class="text-sm font-semibold tracking-wide uppercase">
+								{alert.severity} storage forecast
+							</p>
+							<p class="text-sm leading-relaxed opacity-90">{alert.message}</p>
+							{#if alert.hoursToExhaustion != null}
+								<p class="text-xs opacity-75">
+									Projected exhaustion: {formatHours(alert.hoursToExhaustion)}
+									{#if Number.isFinite(alert.usageRatio)}
+										· Current utilisation:
+										{Math.min(100, Math.round(alert.usageRatio * 1000) / 10)}%
+									{/if}
+								</p>
+							{:else if Number.isFinite(alert.usageRatio)}
+								<p class="text-xs opacity-75">
+									Current utilisation: {Math.min(100, Math.round(alert.usageRatio * 1000) / 10)}%
+								</p>
+							{/if}
+						</div>
+					</div>
+				</article>
+			{/each}
+		</section>
+	{/if}
+
 	<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
 		{#each stats as stat (stat.label)}
 			{@const Icon = stat.icon}
 			<Card.Root>
 				<Card.Header class="pb-0">
-					<header class="flex items-center gap-3">
-						<div class="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary">
-							<Icon class="h-5 w-5 text-secondary-foreground" />
+					<header class="flex justify-between">
+						<div class="flex gap-3">
+							<div class="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary">
+								<Icon class="h-5 w-5 text-secondary-foreground" />
+							</div>
+							<div class="flex-col">
+								<p class="text-sm font-semibold">{stat.label}</p>
+								<p class="text-xs text-muted-foreground">on this server</p>
+							</div>
 						</div>
-						<div>
-							<p class="text-sm font-semibold">{stat.label}</p>
-							<p class="text-xs text-muted-foreground">on this server</p>
-						</div>
+						<span class="mt-2 text-2xl font-semibold">{stat.value}</span>
 					</header>
 				</Card.Header>
-				<Card.Content class="flex mt-0 right-0 items-center justify-between">
-					<p class="mt-2 text-2xl font-semibold">{stat.value}</p>
-					<p class="mt-1 text-xs text-muted-foreground">{stat.caption}</p>
-				</Card.Content>
 			</Card.Root>
 		{/each}
 	</div>

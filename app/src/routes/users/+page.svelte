@@ -1,4 +1,5 @@
 <script>
+	import * as Dialog from '$lib/components/ui/dialog';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -13,6 +14,10 @@
 	let submitting = $state(false);
 	let userMessage = $state('');
 	let busyUserId = $state(null);
+
+	let confirmDialog = $state({ open: false, user: null });
+	let resetDialog = $state({ open: false, user: null, password: '' });
+	let resetError = $state('');
 
 	function resetForm() {
 		form = { email: '', password: '', confirm: '', isAdmin: false };
@@ -70,29 +75,38 @@
 		}
 	}
 
-	async function resetPassword(user) {
-		const password = window.prompt(`Enter a new password for ${user.email} (min 8 chars)`);
-		if (!password) return;
-		if (password.length < 8) {
-			window.alert('Password must be at least 8 characters.');
+	function openResetDialog(user) {
+		resetDialog = { open: true, user, password: '' };
+		resetError = '';
+	}
+
+	async function confirmResetPassword() {
+		if (!resetDialog.password || resetDialog.password.length < 8) {
+			resetError = 'Password must be at least 8 characters.';
 			return;
 		}
-		busyUserId = user.id;
+		busyUserId = resetDialog.user.id;
+		resetError = '';
 		userMessage = '';
 		try {
-			await updateUserAccount(user.id, { password });
-			userMessage = 'Password updated.';
+			await updateUserAccount(resetDialog.user.id, { password: resetDialog.password });
+			userMessage = `Password for ${resetDialog.user.email} updated.`;
 		} catch (err) {
-			userMessage = err?.message ?? 'Failed to reset password.';
+			resetError = err?.message ?? 'Failed to reset password.';
 		} finally {
 			busyUserId = null;
+			resetDialog = { open: false, user: null, password: '' };
 		}
 	}
 
-	async function removeUser(user) {
-		if (!window.confirm(`Delete ${user.email}? This cannot be undone.`)) {
-			return;
-		}
+	function openConfirmDialog(user) {
+		confirmDialog = { open: true, user };
+	}
+
+	async function confirmDelete() {
+		if (!confirmDialog.user) return;
+		const user = confirmDialog.user;
+		confirmDialog = { open: false, user: null };
 		busyUserId = user.id;
 		userMessage = '';
 		try {
@@ -106,6 +120,10 @@
 		}
 	}
 </script>
+
+<svelte:head>
+	<title>Users ~ The Bakery</title>
+</svelte:head>
 
 <section class="space-y-8 p-6 md:p-10">
 	<header class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -124,49 +142,36 @@
 			</div>
 			<div>
 				<h2 class="text-lg font-semibold">Create a new user</h2>
-				<p class="text-sm text-muted-foreground">Set an email, password, and optional admin role.</p>
+				<p class="text-sm text-muted-foreground">
+					Set an email, password, and optional admin role.
+				</p>
 			</div>
 		</header>
 		<div class="grid gap-4 md:grid-cols-2">
 			<div class="space-y-2">
 				<Label for="new-email">Email</Label>
-				<Input
-					id="new-email"
-					type="email"
-					required
-					autocomplete="off"
-					value={form.email}
-					on:input={(event) => {
-						form = { ...form, email: event.currentTarget.value };
-					}}
-				/>
+				<Input id="new-email" type="email" required autocomplete="off" bind:value={form.email} />
 			</div>
 			<div class="space-y-2">
 				<Label for="new-password">Password</Label>
 				<Input
+					bind:value={form.password}
 					id="new-password"
 					type="password"
 					required
 					autocomplete="new-password"
 					minlength={8}
-					value={form.password}
-					on:input={(event) => {
-						form = { ...form, password: event.currentTarget.value };
-					}}
 				/>
 			</div>
 			<div class="space-y-2">
 				<Label for="confirm-password">Confirm password</Label>
 				<Input
+					bind:value={form.confirm}
 					id="confirm-password"
 					type="password"
 					required
 					autocomplete="new-password"
 					minlength={8}
-					value={form.confirm}
-					on:input={(event) => {
-						form = { ...form, confirm: event.currentTarget.value };
-					}}
 				/>
 			</div>
 			<div class="flex items-center justify-between rounded-lg border bg-background/70 px-4 py-3">
@@ -176,14 +181,16 @@
 				</div>
 				<Switch
 					checked={form.isAdmin}
-					on:change={(event) => {
+					onchange={(event) => {
 						form = { ...form, isAdmin: event.currentTarget.checked };
 					}}
 				/>
 			</div>
 		</div>
 		{#if formError}
-			<p class="mt-4 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/40 dark:bg-rose-900/30 dark:text-rose-200">
+			<p
+				class="mt-4 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/40 dark:bg-rose-900/30 dark:text-rose-200"
+			>
 				{formError}
 			</p>
 		{/if}
@@ -199,7 +206,9 @@
 	</form>
 
 	{#if userMessage}
-		<p class="rounded border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200">
+		<p
+			class="rounded border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200"
+		>
 			{userMessage}
 		</p>
 	{/if}
@@ -207,7 +216,7 @@
 	<section class="overflow-hidden rounded-xl border bg-card shadow-sm">
 		<table class="min-w-full divide-y divide-border">
 			<thead class="bg-muted/50">
-				<tr class="text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+				<tr class="text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
 					<th class="px-6 py-3">User</th>
 					<th class="px-6 py-3">Role</th>
 					<th class="px-6 py-3">Deployments</th>
@@ -226,17 +235,23 @@
 						</td>
 						<td class="px-6 py-4">
 							{#if user.is_admin}
-								<span class="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200">
+								<span
+									class="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200"
+								>
 									<ShieldCheck class="h-3.5 w-3.5" /> Admin
 								</span>
 							{:else}
-								<span class="inline-flex items-center gap-2 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+								<span
+									class="inline-flex items-center gap-2 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground"
+								>
 									<ShieldOff class="h-3.5 w-3.5" /> User
 								</span>
 							{/if}
 						</td>
 						<td class="px-6 py-4 text-muted-foreground">{user.deployments}</td>
-						<td class="px-6 py-4 text-xs text-muted-foreground">{new Date(user.created_at).toLocaleString()}</td>
+						<td class="px-6 py-4 text-xs text-muted-foreground"
+							>{new Date(user.created_at).toLocaleString()}</td
+						>
 						<td class="px-6 py-4">
 							<div class="flex flex-wrap justify-end gap-2">
 								<Button
@@ -251,7 +266,7 @@
 									variant="outline"
 									size="sm"
 									disabled={busyUserId === user.id}
-									onclick={() => resetPassword(user)}
+									onclick={() => openResetDialog(user)}
 								>
 									<Lock class="mr-2 h-4 w-4" /> Reset password
 								</Button>
@@ -259,7 +274,7 @@
 									variant="destructive"
 									size="sm"
 									disabled={user.is_initial || busyUserId === user.id}
-									onclick={() => removeUser(user)}
+									onclick={() => openConfirmDialog(user)}
 								>
 									<Trash2 class="mr-2 h-4 w-4" /> Delete
 								</Button>
@@ -270,4 +285,51 @@
 			</tbody>
 		</table>
 	</section>
+
+	<!-- Reset Password Dialog -->
+	<Dialog.Root open={resetDialog.open} onOpenChange={(v) => (resetDialog.open = v)}>
+		<Dialog.Content>
+			<Dialog.Header>
+				<Dialog.Title>Reset password</Dialog.Title>
+				<Dialog.Description>
+					Set a new password for <strong>{resetDialog.user?.email}</strong>.
+				</Dialog.Description>
+			</Dialog.Header>
+			<div class="space-y-3">
+				<Label for="new-password">New password</Label>
+				<Input
+					id="new-password"
+					type="password"
+					minlength={8}
+					required
+					autocomplete="new-password"
+					bind:value={resetDialog.password}
+				/>
+				{#if resetError}
+					<p class="text-sm text-rose-600">{resetError}</p>
+				{/if}
+			</div>
+			<Dialog.Footer class="mt-4 flex justify-end gap-2">
+				<Button variant="outline" onclick={() => (resetDialog.open = false)}>Cancel</Button>
+				<Button onclick={confirmResetPassword}>Update</Button>
+			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
+
+	<!-- Delete Confirmation Dialog -->
+	<Dialog.Root open={confirmDialog.open} onOpenChange={(v) => (confirmDialog.open = v)}>
+		<Dialog.Content>
+			<Dialog.Header>
+				<Dialog.Title>Delete user</Dialog.Title>
+				<Dialog.Description>
+					Are you sure you want to delete
+					<strong>{confirmDialog.user?.email}</strong>? This action cannot be undone.
+				</Dialog.Description>
+			</Dialog.Header>
+			<Dialog.Footer class="flex justify-end gap-2">
+				<Button variant="outline" onclick={() => (confirmDialog.open = false)}>Cancel</Button>
+				<Button variant="destructive" onclick={confirmDelete}>Delete</Button>
+			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
 </section>

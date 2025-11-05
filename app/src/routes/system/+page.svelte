@@ -1,7 +1,7 @@
 <script>
 	import { Button } from "$lib/components/ui/button"
 	import { onMount } from 'svelte';
-	import { Activity, HardDrive, RefreshCw, Server, CheckCircle2, AlertTriangle, Loader2 } from '@lucide/svelte';
+import { Activity, HardDrive, RefreshCw, Server, CheckCircle2, AlertTriangle, Loader2 } from '@lucide/svelte';
 
 	let { data } = $props();
 	let analytics = $derived(data.analytics ?? {});
@@ -12,6 +12,7 @@
 	let disk = $derived(analytics.disk ?? null);
 	let systemDisk = $derived(analytics.systemDisk ?? null);
 	let tasks = $derived(analytics.tasks ?? []);
+	let predictiveAlerts = $derived(analytics.predictiveAlerts ?? []);
 
 	function formatBytes(bytes) {
 		const value = Number(bytes ?? 0);
@@ -31,6 +32,20 @@
 		const date = new Date(value);
 		if (Number.isNaN(date.getTime())) return '—';
 		return date.toLocaleString();
+	}
+
+	function formatHours(hours) {
+		if (!Number.isFinite(hours) || hours <= 0) return 'soon';
+		if (hours < 24) {
+			const rounded = Math.max(1, Math.round(hours));
+			return `${rounded} hour${rounded === 1 ? '' : 's'}`;
+		}
+		const days = Math.floor(hours / 24);
+		const remaining = Math.round(hours % 24);
+		if (remaining === 0) {
+			return `${days} day${days === 1 ? '' : 's'}`;
+		}
+		return `${days} day${days === 1 ? '' : 's'} ${remaining} hour${remaining === 1 ? '' : 's'}`;
 	}
 
 	async function refreshHealth() {
@@ -56,6 +71,10 @@
 	});
 </script>
 
+<svelte:head>
+	<title>System ~ The Bakery</title>
+</svelte:head>
+
 <section class="space-y-8 p-6 md:p-10">
 	<header class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 		<div>
@@ -79,6 +98,34 @@
 		<div class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/30 dark:bg-rose-900/30 dark:text-rose-200">
 			{refreshError}
 		</div>
+	{/if}
+
+	{#if predictiveAlerts.length}
+		<section class="space-y-3">
+			{#each predictiveAlerts as alert, index (index)}
+				<div class={`rounded-xl border p-4 shadow-sm ${alert.severity === 'critical' ? 'border-destructive/60 bg-destructive/10 text-destructive' : 'border-amber-300/60 bg-amber-500/10 text-amber-700 dark:text-amber-200'}`}>
+					<div class="flex items-start gap-3">
+						<AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
+						<div class="space-y-1">
+							<p class="text-sm font-semibold uppercase tracking-wide">{alert.severity} storage forecast</p>
+							<p class="text-sm leading-relaxed opacity-90">{alert.message}</p>
+							{#if alert.hoursToExhaustion != null}
+								<p class="text-xs opacity-75">
+									Projected exhaustion: {formatHours(alert.hoursToExhaustion)}
+									{#if Number.isFinite(alert.usageRatio)} · Current utilisation:
+										{Math.min(100, Math.round(alert.usageRatio * 1000) / 10)}%
+									{/if}
+								</p>
+							{:else if Number.isFinite(alert.usageRatio)}
+								<p class="text-xs opacity-75">
+									Current utilisation: {Math.min(100, Math.round(alert.usageRatio * 1000) / 10)}%
+								</p>
+							{/if}
+						</div>
+					</div>
+				</div>
+			{/each}
+		</section>
 	{/if}
 
 	<section class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

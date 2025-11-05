@@ -24,6 +24,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>Logout ~ The Bakery</title>
+</svelte:head>
+
 <section class="flex min-h-[60vh] flex-col items-center justify-center gap-8 p-6 text-center">
 	<div class="max-w-md space-y-4">
 		<h1 class="text-3xl font-semibold tracking-tight">Confirm logout</h1>

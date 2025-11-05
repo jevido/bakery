@@ -19,7 +19,7 @@
 
 	let envVars = $state([{ key: '', value: '' }]);
 
-	let enableBlueGreen = $state(false);
+	let enableBlueGreen = $state(true);
 	let createDatabaseFlag = $state(false);
 	let submitting = $state(false);
 	let error = $state('');
@@ -131,6 +131,10 @@
 		}
 	}
 </script>
+
+<svelte:head>
+	<title>New deployment ~ The Bakery</title>
+</svelte:head>
 
 <section class="space-y-6 p-6 md:p-10">
 	<header class="flex flex-col gap-4">

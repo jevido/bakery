@@ -113,11 +113,11 @@
 
 			<div class="flex flex-1 flex-col">
 				<header
-					class="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-4 border-b bg-background/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+					class="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-4 border-b bg-background/95 px-6 py-4 backdrop-blur supports-backdrop-filter:bg-background/60"
 				>
 					<div>
 						<h1 class="text-xl font-semibold">Bakery</h1>
-						<p class="text-sm text-muted-foreground">Self-hosted deployments without the CLI.</p>
+						<p class="text-sm text-muted-foreground">Bake your projects to perfection.</p>
 					</div>
 					<div class="flex items-center gap-3">
 						<div class="hidden text-right text-sm md:block">
@@ -152,6 +152,7 @@
 		{@render children()}
 	</div>
 {/if}
+
 
 {#snippet menuItem(item)}
 	{@const Icon = item.icon}

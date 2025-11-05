@@ -1,5 +1,6 @@
-import { readFile, stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { spawn } from 'bun';
 import { getConfig } from './config.js';
 import { recordTrafficSnapshot, recordDiskSnapshot, recordDatabaseSnapshot } from './models/analyticsModel.js';
 import { listDatabasesForDeployment } from './models/databaseModel.js';
@@ -10,6 +11,30 @@ function parseNginxLine(line) {
   const time = parts[3]?.replace('[', '');
   const bytes = Number(parts[9]) || 0;
   return { time: new Date(time.replace(':', ' ')), bytes };
+}
+
+async function getDirectorySize(path) {
+  const process = spawn(['du', '-sb', path], {
+    stdout: 'pipe',
+    stderr: 'pipe'
+  });
+
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(process.stdout).text(),
+    new Response(process.stderr).text(),
+    process.exited
+  ]);
+
+  if (exitCode !== 0) {
+    throw new Error(stderr || 'Failed to read directory size');
+  }
+
+  const [size] = stdout.trim().split(/\s+/);
+  const value = Number(size);
+  if (!Number.isFinite(value)) {
+    throw new Error('Invalid directory size output');
+  }
+  return value;
 }
 
 export async function collectAnalytics(deployment) {
@@ -40,14 +65,14 @@ export async function collectAnalytics(deployment) {
 
   try {
     const deploymentPath = join(config.buildsDir, deployment.id);
-    const stats = await stat(deploymentPath);
+    const usedBytes = await getDirectorySize(deploymentPath);
     await recordDiskSnapshot({
       deploymentId: deployment.id,
-      usedBytes: stats.size,
+      usedBytes,
       timestamp: new Date()
     });
   } catch {
-    // ignore
+    // ignore missing directories or du failures
   }
 
   const databases = await listDatabasesForDeployment(deployment.id);
