@@ -65,7 +65,7 @@ const handlers = {
 };
 
 async function processTask() {
-	const task = await reservePendingTask();
+	const task = await reservePendingTask(null, 'control-plane');
 	if (!task) {
 		return;
 	}
@@ -95,7 +95,11 @@ export function startTaskWorker() {
 export function scheduleAnalyticsCollector() {
 	cron.schedule('*/5 * * * *', async () => {
 		try {
-			const deployments = await sql`SELECT * FROM deployments WHERE status = 'running'`;
+			const deployments = await sql`
+        SELECT *
+        FROM deployments
+        WHERE status = 'running' AND node_id IS NULL
+      `;
 			for (const deployment of deployments) {
 				await collectAnalytics(deployment);
 			}
@@ -119,8 +123,8 @@ export function scheduleCrashDetector() {
 					deploymentId: deployment.id
 				});
 				await sql`
-          INSERT INTO tasks (id, type, payload, status)
-          VALUES (${randomUUID()}, 'restart', ${JSON.stringify({ deploymentId: deployment.id })}::jsonb, 'pending')
+          INSERT INTO tasks (id, type, payload, status, node_id)
+          VALUES (${randomUUID()}, 'restart', ${JSON.stringify({ deploymentId: deployment.id })}::jsonb, 'pending', ${deployment.node_id})
         `;
 			}
 		}

@@ -134,6 +134,30 @@ export async function fetchGithubBranches(repository) {
 	);
 }
 
+export async function fetchNodes() {
+	return apiFetch('/api/nodes');
+}
+
+export async function createNodeRecord(body) {
+	return apiFetch('/api/nodes', {
+		method: 'POST',
+		body
+	});
+}
+
+export async function pairNode(id, code) {
+	return apiFetch(`/api/nodes/${id}/pair`, {
+		method: 'POST',
+		body: { code }
+	});
+}
+
+export async function deleteNode(id) {
+	return apiFetch(`/api/nodes?id=${encodeURIComponent(id)}`, {
+		method: 'DELETE'
+	});
+}
+
 export async function redeployDeployment(id) {
 	return apiFetch(`/api/deployments/${id}/deploy`, {
 		method: 'POST'

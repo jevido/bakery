@@ -1,0 +1,19 @@
+[Unit]
+Description=Bakery agent service
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=bakery-agent
+WorkingDirectory={{WORKING_DIR}}
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:/home/bakery-agent/.bun/bin
+EnvironmentFile={{ENV_FILE}}
+ExecStart=/usr/bin/env bun agent/index.js
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/bakery-agent/agent.log
+StandardError=append:/var/log/bakery-agent/agent.log
+
+[Install]
+WantedBy=multi-user.target

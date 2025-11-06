@@ -1,18 +1,32 @@
 export async function load({ fetch }) {
-	const response = await fetch('/api/github/repos', { credentials: 'include' });
+	const [reposRes, nodesRes] = await Promise.all([
+		fetch('/api/github/repos', { credentials: 'include' }),
+		fetch('/api/nodes', { credentials: 'include' })
+	]);
 
 	let repositories = [];
+	let nodes = [];
 
-	if (response.ok) {
+	if (reposRes.ok) {
 		try {
-			const payload = await response.json();
+			const payload = await reposRes.json();
 			repositories = payload.repositories || [];
 		} catch {
 			repositories = [];
 		}
 	}
 
+	if (nodesRes.ok) {
+		try {
+			const payload = await nodesRes.json();
+			nodes = payload.nodes || [];
+		} catch {
+			nodes = [];
+		}
+	}
+
 	return {
-		repositories
+		repositories,
+		nodes
 	};
 }

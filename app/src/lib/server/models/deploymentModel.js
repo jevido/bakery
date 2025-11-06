@@ -5,6 +5,8 @@ export async function listDeploymentsForUser(userId) {
 	return sql`
     SELECT
       d.*,
+      n.name AS node_name,
+      n.status AS node_status,
       COALESCE(
         (
           SELECT json_agg(dd ORDER BY dd.created_at DESC)
@@ -22,6 +24,7 @@ export async function listDeploymentsForUser(userId) {
         '[]'::json
       ) AS versions
     FROM deployments d
+    LEFT JOIN nodes n ON n.id = d.node_id
     WHERE d.owner_id = ${userId}
     ORDER BY d.updated_at DESC
   `;
@@ -31,6 +34,8 @@ export async function findDeploymentById(id) {
 	const rows = await sql`
     SELECT
       d.*,
+      n.name AS node_name,
+      n.status AS node_status,
       COALESCE(
         (
           SELECT json_agg(dd ORDER BY dd.created_at DESC)
@@ -40,6 +45,7 @@ export async function findDeploymentById(id) {
         '[]'::json
       ) AS domains
     FROM deployments d
+    LEFT JOIN nodes n ON n.id = d.node_id
     WHERE d.id = ${id}
   `;
 	return rows[0] ?? null;
@@ -47,12 +53,20 @@ export async function findDeploymentById(id) {
 
 export async function createDeployment(payload) {
 	const id = nanoid();
-	const { ownerId, name, repository, branch, blueGreenEnabled, dockerized = false } = payload;
+	const {
+		ownerId,
+		name,
+		repository,
+		branch,
+		blueGreenEnabled,
+		dockerized = false,
+		nodeId = null
+	} = payload;
 	await sql`
     INSERT INTO deployments (
       id, owner_id, name, repository, branch,
-      blue_green_enabled, dockerized, status
-    ) VALUES (${id}, ${ownerId}, ${name}, ${repository}, ${branch}, ${blueGreenEnabled}, ${dockerized}, 'pending')
+      blue_green_enabled, dockerized, status, node_id
+    ) VALUES (${id}, ${ownerId}, ${name}, ${repository}, ${branch}, ${blueGreenEnabled}, ${dockerized}, 'pending', ${nodeId})
   `;
 	return findDeploymentById(id);
 }

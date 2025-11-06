@@ -1,5 +1,6 @@
 <script>
 	import { Button } from '$lib/components/ui/button';
+	import { Textarea } from '$lib/components/ui/textarea';
 
 	import { goto } from '$app/navigation';
 	import { apiFetch, createDeployment, fetchGithubBranches } from '$lib/api.js';
@@ -7,6 +8,7 @@
 
 	let { data } = $props();
 	let repositories = $derived(data.repositories ?? []);
+	let nodes = $derived(data.nodes ?? []);
 
 	let name = $state('');
 	let repository = $state('');
@@ -14,10 +16,12 @@
 	let branchOptions = $state([]);
 	let fetchingBranches = $state(false);
 
+	let nodeId = $state('');
+
 	let domains = $state([]);
 	let newDomain = $state('');
 
-	let envVars = $state([{ key: '', value: '' }]);
+	let envText = $state('');
 
 	let enableBlueGreen = $state(true);
 	let createDatabaseFlag = $state(false);
@@ -28,6 +32,13 @@
 		if (!repository) {
 			branch = '';
 			branchOptions = [];
+		}
+	});
+
+	$effect(() => {
+		if (!nodeId && nodes.length > 0) {
+			const activeNode = nodes.find((item) => item.status === 'active');
+			nodeId = activeNode ? activeNode.id : '';
 		}
 	});
 
@@ -59,28 +70,6 @@
 		domains = domains.filter((_, idx) => idx !== index);
 	}
 
-	function updateEnvVar(index, field, value) {
-		envVars = envVars.map((item, idx) =>
-			idx === index
-				? {
-						...item,
-						[field]: value
-					}
-				: item
-		);
-	}
-
-	function addEnvRow() {
-		envVars = [...envVars, { key: '', value: '' }];
-	}
-
-	function removeEnvRow(index) {
-		envVars = envVars.filter((_, idx) => idx !== index);
-		if (envVars.length === 0) {
-			envVars = [{ key: '', value: '' }];
-		}
-	}
-
 	async function handleSubmit(event) {
 		event.preventDefault();
 		error = '';
@@ -90,13 +79,22 @@
 			return;
 		}
 
-		const environment = envVars.reduce((acc, item) => {
-			const trimmedKey = item.key.trim();
-			if (trimmedKey) {
-				acc[trimmedKey] = item.value;
-			}
-			return acc;
-		}, {});
+		const environment = envText
+			.split('\n')
+			.map((line) => line.trim())
+			.filter(Boolean)
+			.reduce((acc, line) => {
+				const eq = line.indexOf('=');
+				if (eq === -1) {
+					return acc;
+				}
+				const key = line.slice(0, eq).trim();
+				if (!key) {
+					return acc;
+				}
+				acc[key] = line.slice(eq + 1);
+				return acc;
+			}, {});
 
 		submitting = true;
 		try {
@@ -107,7 +105,8 @@
 				domains,
 				environment,
 				enableBlueGreen,
-				createDatabase: createDatabaseFlag
+				createDatabase: createDatabaseFlag,
+				nodeId: nodeId || null
 			});
 			const deploymentId = payload.deployment?.id;
 			if (deploymentId) {
@@ -222,6 +221,32 @@
 				</div>
 			</div>
 
+			<div class="space-y-1.5">
+				<label for="node" class="text-sm font-medium">Server node</label>
+				<select
+					id="node"
+					class="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+					bind:value={nodeId}
+				>
+					<option value="">Control plane (this server)</option>
+					{#each nodes as node (node.id)}
+						<option value={node.id} disabled={node.status !== 'active'}>
+							{node.name}
+							{node.status !== 'active' ? ` (${node.status.replace(/_/g, ' ')})` : ''}
+						</option>
+					{/each}
+				</select>
+				<p class="text-xs text-muted-foreground">
+					Deployments will run on the selected node. Choose the control plane to keep builds on this
+					server.
+				</p>
+				{#if nodes.length === 0}
+					<p class="text-xs text-muted-foreground">
+						No external nodes detected. Visit the Servers section to register additional hosts.
+					</p>
+				{/if}
+			</div>
+
 			<div class="space-y-3">
 				<div class="flex items-center justify-between">
 					<p class="text-sm font-medium">Domains</p>
@@ -264,35 +289,17 @@
 				{/if}
 			</div>
 
-			<div class="space-y-3">
-				<div class="flex items-center justify-between">
-					<p class="text-sm font-medium">Environment variables</p>
-					<Button variant="link" class="h-auto gap-1 p-0 text-sm" onclick={addEnvRow}>
-						<Plus class="h-3.5 w-3.5" />
-						Add variable
-					</Button>
-				</div>
-				<div class="space-y-2">
-					{#each envVars as env, index (index)}
-						<div class="grid gap-3 sm:grid-cols-[1fr,1fr,auto]">
-							<input
-								class="h-11 rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-								placeholder="KEY"
-								value={env.key}
-								oninput={(event) => updateEnvVar(index, 'key', event.currentTarget.value)}
-							/>
-							<input
-								class="h-11 rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-								placeholder="value"
-								value={env.value}
-								oninput={(event) => updateEnvVar(index, 'value', event.currentTarget.value)}
-							/>
-							<Button variant="outline" class="sm:w-auto" onclick={() => removeEnvRow(index)}>
-								Remove
-							</Button>
-						</div>
-					{/each}
-				</div>
+			<div class="space-y-2">
+				<p class="text-sm font-medium">Environment variables</p>
+				<Textarea
+					class="h-40 w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+					placeholder={`KEY=value\nANOTHER=value`}
+					bind:value={envText}
+				/>
+				<p class="text-xs text-muted-foreground">
+					Enter one <code class="rounded bg-muted px-1.5 py-0.5 text-[11px]">KEY=value</code>
+					pair per line. Lines without an equals sign are ignored.
+				</p>
 			</div>
 		</section>
 
@@ -340,7 +347,7 @@
 					<li>Bakery clones your repo and detects Docker or Bun runtimes automatically.</li>
 					<li>
 						Build output is stored under <code>/var/lib/bakery/builds</code>
-						 and wired into Nginx.
+						and wired into Nginx.
 					</li>
 					<li>Certificates are issued with Certbot when you verify domains.</li>
 				</ul>

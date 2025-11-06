@@ -7,6 +7,7 @@ import { createTask } from '$lib/server/models/taskModel.js';
 import { provisionDatabase } from '$lib/server/postgresAdmin.js';
 import { createDatabaseRecord } from '$lib/server/models/databaseModel.js';
 import { getGithubAccount } from '$lib/server/models/userModel.js';
+import { findNodeById } from '$lib/server/models/nodeModel.js';
 
 const createDeploymentSchema = z.object({
 	name: z.string().min(3),
@@ -15,7 +16,8 @@ const createDeploymentSchema = z.object({
 	domains: z.array(z.string()).default([]),
 	environment: z.record(z.string()).default({}),
 	enableBlueGreen: z.boolean().default(false),
-	createDatabase: z.boolean().default(false)
+	createDatabase: z.boolean().default(false),
+	nodeId: z.string().optional().nullable()
 });
 
 export const GET = async ({ locals }) => {
@@ -23,11 +25,24 @@ export const GET = async ({ locals }) => {
 		throw error(401, 'Unauthorized');
 	}
 	const deployments = await listDeploymentsForUser(locals.user.id);
-	const normalized = deployments.map((item) => ({
-		...item,
-		domains: typeof item.domains === 'string' ? JSON.parse(item.domains) : item.domains,
-		versions: typeof item.versions === 'string' ? JSON.parse(item.versions) : item.versions
-	}));
+	const normalized = deployments.map((item) => {
+		const domains = typeof item.domains === 'string' ? JSON.parse(item.domains) : item.domains;
+		const versions = typeof item.versions === 'string' ? JSON.parse(item.versions) : item.versions;
+		const { node_name, node_status, ...rest } = item;
+		return {
+			...rest,
+			domains,
+			versions,
+			node:
+				rest.node_id && node_name
+					? {
+							id: rest.node_id,
+							name: node_name,
+							status: node_status
+						}
+					: null
+		};
+	});
 	return json({ deployments: normalized });
 };
 
@@ -46,13 +61,40 @@ export const POST = async ({ request, locals }) => {
 	}
 	const data = parsed.data;
 
+	let nodeId = data.nodeId ?? null;
+	if (nodeId) {
+		const node = await findNodeById(nodeId);
+		if (!node || node.owner_id !== locals.user.id) {
+			throw error(400, 'Invalid server node');
+		}
+		if (node.status !== 'active') {
+			throw error(400, 'Node is not active');
+		}
+	}
+
 	const deployment = await createDeployment({
 		ownerId: locals.user.id,
 		name: data.name,
 		repository: data.repository,
 		branch: data.branch,
-		blueGreenEnabled: data.enableBlueGreen
+		blueGreenEnabled: data.enableBlueGreen,
+		nodeId
 	});
+
+	const { node_name, node_status, ...deploymentRest } = deployment ?? {};
+	const normalizedDeployment = deployment
+		? {
+				...deploymentRest,
+				node:
+					deployment.node_id && node_name
+						? {
+								id: deployment.node_id,
+								name: node_name,
+								status: node_status
+							}
+						: null
+			}
+		: null;
 
 	for (const [key, value] of Object.entries(data.environment)) {
 		await upsertEnvVar(deployment.id, key, value);
@@ -73,7 +115,7 @@ export const POST = async ({ request, locals }) => {
 		await upsertEnvVar(deployment.id, 'DATABASE_URL', db.connectionUrl);
 	}
 
-	await createTask('deploy', { deploymentId: deployment.id });
+	await createTask('deploy', { deploymentId: deployment.id }, { nodeId: deployment.node_id });
 
-	return json({ deployment });
+	return json({ deployment: normalizedDeployment });
 };

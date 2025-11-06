@@ -1,23 +1,28 @@
 import { nanoid } from 'nanoid';
 import { sql } from 'bun';
 
-export async function createTask(type, payload = {}) {
+export async function createTask(type, payload = {}, options = {}) {
 	const id = nanoid();
+	const { nodeId = null } = options;
 	await sql`
-    INSERT INTO tasks (id, type, payload, status)
-    VALUES (${id}, ${type}, ${JSON.stringify(payload)}::jsonb, 'pending')
+    INSERT INTO tasks (id, type, payload, status, node_id)
+    VALUES (${id}, ${type}, ${JSON.stringify(payload)}::jsonb, 'pending', ${nodeId})
   `;
 	return findTaskById(id);
 }
 
-export async function reservePendingTask() {
+export async function reservePendingTask(nodeId = null, reservedBy = null) {
 	const rows = await sql`
     UPDATE tasks
-    SET status = 'running', started_at = NOW()
+    SET status = 'running', started_at = NOW(), reserved_by = ${reservedBy}
     WHERE id = (
       SELECT id
       FROM tasks
       WHERE status = 'pending'
+      AND (
+        (${nodeId}::text IS NULL AND node_id IS NULL)
+        OR node_id = ${nodeId}
+      )
       ORDER BY created_at
       FOR UPDATE SKIP LOCKED
       LIMIT 1
@@ -37,7 +42,8 @@ export async function finishTask(id, status, error = null) {
     UPDATE tasks
     SET status = ${status},
         error = ${error},
-        finished_at = NOW()
+        finished_at = NOW(),
+        reserved_by = NULL
     WHERE id = ${id}
   `;
 }

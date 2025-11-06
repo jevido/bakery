@@ -10,6 +10,7 @@
 		Menu,
 		LayoutDashboard,
 		Box,
+		Server,
 		Database,
 		Users,
 		Cog,
@@ -23,43 +24,44 @@
 	let { children, data } = $props();
 	const pageStore = page;
 
-let user = $derived(data?.user);
-let currentPath = $derived($pageStore.url.pathname);
-let isSidebarOpen = $state(false);
+	let user = $derived(data?.user);
+	let currentPath = $derived($pageStore.url.pathname);
+	let isSidebarOpen = $state(false);
 
-const allNavItems = [
-	{ label: 'Dashboard', href: '/', icon: LayoutDashboard },
-	{ label: 'Deployments', href: '/deployments', icon: Box },
-	{ label: 'Databases', href: '/databases', icon: Database },
-	{ label: 'System', href: '/system', icon: Cog }
-];
+	const allNavItems = [
+		{ label: 'Dashboard', href: '/', icon: LayoutDashboard },
+		{ label: 'Deployments', href: '/deployments', icon: Box },
+		{ label: 'Servers', href: '/nodes', icon: Server },
+		{ label: 'Databases', href: '/databases', icon: Database },
+		{ label: 'System', href: '/system', icon: Cog }
+	];
 
-const bakeryNavItems = [{ label: 'Users', href: '/users', icon: Users, requiresAdmin: true }];
+	const bakeryNavItems = [{ label: 'Users', href: '/users', icon: Users, requiresAdmin: true }];
 
-let navItems = $derived(allNavItems.filter((item) => !item.requiresAdmin || user?.is_admin));
-let githubLinked = $derived(Boolean(user?.github_connected));
+	let navItems = $derived(allNavItems.filter((item) => !item.requiresAdmin || user?.is_admin));
+	let githubLinked = $derived(Boolean(user?.github_connected));
 
-function toggleSidebar() {
-	isSidebarOpen = !isSidebarOpen;
-}
-
-async function handleLogout() {
-	await goto('/logout');
-}
-
-async function startGithubLink() {
-	try {
-		const response = await fetch('/api/auth/github/url', { credentials: 'include' });
-		if (response.ok) {
-			const payload = await response.json();
-			if (payload.url) {
-				window.location.href = payload.url;
-			}
-		}
-	} catch {
-		// ignore
+	function toggleSidebar() {
+		isSidebarOpen = !isSidebarOpen;
 	}
-}
+
+	async function handleLogout() {
+		await goto('/logout');
+	}
+
+	async function startGithubLink() {
+		try {
+			const response = await fetch('/api/auth/github/url', { credentials: 'include' });
+			if (response.ok) {
+				const payload = await response.json();
+				if (payload.url) {
+					window.location.href = payload.url;
+				}
+			}
+		} catch {
+			// ignore
+		}
+	}
 </script>
 
 <svelte:head>
@@ -114,25 +116,25 @@ async function startGithubLink() {
 					{/each}
 				</nav>
 
-			<div class="mt-10 rounded-lg border bg-background/70 p-4">
-				<p class="text-xs tracking-wide text-muted-foreground uppercase">Getting started</p>
-				{#if githubLinked}
-					<p class="mt-2 text-sm text-muted-foreground">
-						GitHub is connected. Launch a deployment to bake your first app.
-					</p>
-					<Button class="mt-4 w-full" onclick={() => goto('/deployments/new')}>
-						New deployment
-					</Button>
-				{:else}
-					<p class="mt-2 text-sm text-muted-foreground">
-						Link GitHub to unlock repository-driven deployments, configure Nginx, and request SSL in a
-						few clicks.
-					</p>
-					<Button class="mt-4 w-full" variant="outline" onclick={startGithubLink}>
-						Link GitHub
-					</Button>
-				{/if}
-			</div>
+				<div class="mt-10 rounded-lg border bg-background/70 p-4">
+					<p class="text-xs tracking-wide text-muted-foreground uppercase">Getting started</p>
+					{#if githubLinked}
+						<p class="mt-2 text-sm text-muted-foreground">
+							GitHub is connected. Launch a deployment to bake your first app.
+						</p>
+						<Button class="mt-4 w-full" onclick={() => goto('/deployments/new')}>
+							New deployment
+						</Button>
+					{:else}
+						<p class="mt-2 text-sm text-muted-foreground">
+							Link GitHub to unlock repository-driven deployments, configure Nginx, and request SSL
+							in a few clicks.
+						</p>
+						<Button class="mt-4 w-full" variant="outline" onclick={startGithubLink}>
+							Link GitHub
+						</Button>
+					{/if}
+				</div>
 			</aside>
 
 			<div class="flex flex-1 flex-col">

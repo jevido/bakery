@@ -28,10 +28,19 @@ export const GET = async ({ params, locals }) => {
 		listDeploymentLogs(deployment.id, 200),
 		listRecentTasks(20)
 	]);
+	const { node_name, node_status, ...deploymentRest } = deployment;
 	const normalizedDeployment = {
-		...deployment,
+		...deploymentRest,
 		domains:
-			typeof deployment.domains === 'string' ? JSON.parse(deployment.domains) : deployment.domains
+			typeof deployment.domains === 'string' ? JSON.parse(deployment.domains) : deployment.domains,
+		node:
+			deploymentRest.node_id && node_name
+				? {
+						id: deploymentRest.node_id,
+						name: node_name,
+						status: node_status
+					}
+				: null
 	};
 	return json({
 		deployment: normalizedDeployment,

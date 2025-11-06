@@ -67,6 +67,17 @@ bakery/
 
 6. **Self-Update** from *Settings → Update Bakery* (calls `infrastructure/scripts/update.sh`, git pulls, rebuilds the UI, applies migrations, restarts service).
 
+## Adding External Nodes
+
+Bakery can delegate builds, Docker runtime, and Nginx management to additional hosts while you operate everything from the primary GUI.
+
+1. Open **Servers** in the sidebar and click *Add a server*. Choose a friendly name so you can recognise the node later.
+2. Copy the generated installer command and run it as root on the remote machine. The script installs Bun, Docker, Nginx, and the Bakery agent service.
+3. When the installer finishes it prints a one-time pairing code. Paste the code back into the Servers page to activate the node.
+4. New deployments expose a **Server node** selector. Pick the remote node to run clones, builds, Nginx, and Certbot there, or choose the control plane to keep workloads local.
+
+Agents maintain a secure polling connection to the control plane over HTTPS. Allow outbound access from each node to the Bakery instance and inbound SSH for the installer command.
+
 ## Development Workflow
 
 1. Install dependencies:

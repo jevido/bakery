@@ -166,6 +166,12 @@
 			</div>
 			<p class="text-sm text-muted-foreground">
 				{deployment.repository} · {deployment.branch} · Active slot {deployment.active_slot}
+				{#if deployment.node}
+					· Server {deployment.node.name}
+					{#if deployment.node.status !== 'active'}
+						({deployment.node.status})
+					{/if}
+				{/if}
 			</p>
 		</div>
 		<div class="flex flex-wrap gap-3">

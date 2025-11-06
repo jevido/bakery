@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import { findDeploymentById, recordDeploymentLog } from '$lib/server/models/deploymentModel.js';
 import { createTask } from '$lib/server/models/taskModel.js';
 import { getGithubAccount } from '$lib/server/models/userModel.js';
+import { findNodeById } from '$lib/server/models/nodeModel.js';
 
 export const POST = async ({ params, locals }) => {
 	if (!locals.user) {
@@ -18,7 +19,17 @@ export const POST = async ({ params, locals }) => {
 	if (!ownerAccount) {
 		throw error(400, 'Link a GitHub account before deploying this app');
 	}
-	await createTask('deploy', { deploymentId: deployment.id });
+
+	if (deployment.node_id) {
+		const node = await findNodeById(deployment.node_id);
+		if (!node || (node.owner_id !== locals.user.id && !locals.user.is_admin)) {
+			throw error(400, 'Deployment node is unavailable');
+		}
+		if (node.status !== 'active') {
+			throw error(400, 'Node is not active');
+		}
+	}
+	await createTask('deploy', { deploymentId: deployment.id }, { nodeId: deployment.node_id });
 	await recordDeploymentLog(deployment.id, 'info', 'Deployment manually triggered', {
 		userId: locals.user.id
 	});
