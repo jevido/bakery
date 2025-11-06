@@ -42,7 +42,7 @@ bakery/
 1. **SSH into your Ubuntu server** (root or sudo privileges required). Run the one-line installer **on the server itself**:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/jevido/bakery/refs/heads/main/scripts/install-control-plane.sh | sudo bash -s -- \
+   curl -fsSL https://raw.githubusercontent.com/jevido/bakery/refs/heads/main/scripts/bootstrap-control-plane.sh | sudo bash -s -- \
      --base-url https://bakery.jevido.nl \
      --certbot-email ops@example.com \
      --github-client-id YOUR_GITHUB_APP_CLIENT_ID \
@@ -56,11 +56,11 @@ bakery/
 
 3. **Add the suggested DNS records** in Namecheap (or your DNS provider) so both the control plane and any `*.app` subdomains resolve to your server.
 
-4. **Link GitHub** from *Deployments → New → Link GitHub*. Once linked, repositories become selectable in the deployment wizard.
+4. **Link GitHub** from _Deployments → New → Link GitHub_. Once linked, repositories become selectable in the deployment wizard.
 
 5. **Deploy your applications**: choose the repo/branch, domains, environment variables, optional database provisioning, and the target server node (the control plane itself or an external node you add later).
 
-6. **Stay current**: Bakery auto-runs `infrastructure/scripts/update.sh` nightly. You can still trigger manual updates from *Settings → Update Bakery* when needed.
+6. **Stay current**: Bakery auto-runs `infrastructure/scripts/update.sh` nightly. You can still trigger manual updates from _Settings → Update Bakery_ when needed.
 
 ### Single-node “Platform” install (Hetzner, etc.)
 
@@ -81,7 +81,7 @@ The script installs git/curl if needed, clones the public Bakery repository, run
 
 Bakery can delegate builds, Docker runtime, and Nginx management to additional hosts while you operate everything from the primary GUI.
 
-1. Open **Servers** in the sidebar and click *Add a server*. Choose a friendly name so you can recognise the node later.
+1. Open **Servers** in the sidebar and click _Add a server_. Choose a friendly name so you can recognise the node later.
 2. Copy the generated installer command and run it as root on the remote machine. The script installs Bun, Docker, Nginx, and the Bakery agent service.
 3. When the installer finishes it prints a one-time pairing code. Paste the code back into the Servers page to activate the node.
 4. New deployments expose a **Server node** selector. Pick the remote node to run clones, builds, Nginx, and Certbot there, or choose the control plane to keep workloads local.
@@ -92,20 +92,20 @@ Agents maintain a secure polling connection to the control plane over HTTPS. All
 
 1. Install dependencies:
 
- ```bash
-  bun install
-  (cd app && bun install)
-  cp .env.example .env
-  cp app/.env.example app/.env
-  ```
+```bash
+ bun install
+ (cd app && bun install)
+ cp .env.example .env
+ cp app/.env.example app/.env
+```
 
 2. Launch the development database (foreground):
 
- ```bash
-  bun run dev:db
-  ```
+```bash
+ bun run dev:db
+```
 
-  This streams Docker Compose logs until you hit <kbd>Ctrl</kbd>+<kbd>C</kbd>. Leave this terminal running while you work. The database uses the same credentials as `.env` (`postgres:postgres`), so if you previously ran the old container you may need to remove `tmp/postgres` to re-initialise it with the new user.
+This streams Docker Compose logs until you hit <kbd>Ctrl</kbd>+<kbd>C</kbd>. Leave this terminal running while you work. The database uses the same credentials as `.env` (`postgres:postgres`), so if you previously ran the old container you may need to remove `tmp/postgres` to re-initialise it with the new user.
 
 3. In a second terminal, apply database migrations as needed:
 
@@ -129,17 +129,17 @@ Agents maintain a secure polling connection to the control plane over HTTPS. All
 
 ## Environment Variables
 
-| Variable | Purpose |
-| --- | --- |
-| `DATABASE_URL` | Postgres connection string for Bakery's metadata database |
-| `SESSION_SECRET` | Secret for HTTP session cookies |
-| `ENCRYPTION_KEY` | 32-byte key encrypting GitHub tokens and env vars |
-| `BAKERY_HOST` / `BAKERY_PORT` | Backend bind interface & port |
-| `BAKERY_BASE_URL` | Public URL of the UI (used for OAuth callbacks) |
-| `BAKERY_PUBLIC_IP` | Public IP for DNS guidance and verification |
+| Variable                                                    | Purpose                                                                    |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `DATABASE_URL`                                              | Postgres connection string for Bakery's metadata database                  |
+| `SESSION_SECRET`                                            | Secret for HTTP session cookies                                            |
+| `ENCRYPTION_KEY`                                            | 32-byte key encrypting GitHub tokens and env vars                          |
+| `BAKERY_HOST` / `BAKERY_PORT`                               | Backend bind interface & port                                              |
+| `BAKERY_BASE_URL`                                           | Public URL of the UI (used for OAuth callbacks)                            |
+| `BAKERY_PUBLIC_IP`                                          | Public IP for DNS guidance and verification                                |
 | `BAKERY_DATA_DIR` / `BAKERY_LOGS_DIR` / `BAKERY_BUILDS_DIR` | File system locations for build artifacts, data snapshots, and log storage |
-| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub OAuth credentials |
-| `CERTBOT_EMAIL` | Email passed to Certbot when issuing certificates |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`                 | GitHub OAuth credentials                                                   |
+| `CERTBOT_EMAIL`                                             | Email passed to Certbot when issuing certificates                          |
 
 ## Key Backend Components
 
