@@ -119,7 +119,7 @@ if [[ -n "$SSH_IDENTITY" ]]; then
   SSH_CMD+=(-i "$SSH_IDENTITY")
 fi
 
-read -r -d '' REMOTE_SCRIPT <<SCRIPT
+REMOTE_SCRIPT=$(cat <<SCRIPT
 set -euo pipefail
 REPO_URL="${REPO_URL}"
 INSTALL_DIR="${INSTALL_DIR}"
@@ -166,8 +166,9 @@ if [[ -n "$GITHUB_CLIENT_SECRET" ]]; then
   ARGS+=("--github-client-secret" "$GITHUB_CLIENT_SECRET")
 fi
 
-infrastructure/scripts/install.sh "${ARGS[@]}"
+infrastructure/scripts/install.sh "\${ARGS[@]}"
 SCRIPT
+)
 
 if $DRY_RUN; then
   echo "# Commands that would be executed:" >&2
