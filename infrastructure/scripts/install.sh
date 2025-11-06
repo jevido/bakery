@@ -115,7 +115,17 @@ else
   BAKERY_BASE_URL="https://${PUBLIC_IP}"
 fi
 
-sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='bakery'" | grep -q 1 || sudo -u postgres psql -c "CREATE ROLE bakery LOGIN PASSWORD '$DATABASE_PASSWORD';"
+sudo -u postgres psql <<SQL
+DO \$\$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bakery') THEN
+    EXECUTE format('ALTER ROLE bakery WITH PASSWORD %L', '${DATABASE_PASSWORD}');
+  ELSE
+    EXECUTE format('CREATE ROLE bakery LOGIN PASSWORD %L', '${DATABASE_PASSWORD}');
+  END IF;
+END
+\$\$;
+SQL
 sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='bakery'" | grep -q 1 || sudo -u postgres createdb -O bakery bakery
 
 cat > .env <<EOF
