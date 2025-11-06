@@ -15,8 +15,8 @@ fi
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
-bun install
-cd app && bun install && bun run build && cd ..
+bun --bun install
+cd app && bun --bun install && bun run build && cd ..
 
 bun run migrate
 sed "s|{{WORKING_DIR}}|$APP_DIR|g" infrastructure/systemd/bakery.service > /etc/systemd/system/bakery.service

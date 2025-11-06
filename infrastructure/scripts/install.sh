@@ -94,8 +94,8 @@ git clone "$REPO_URL" "$INSTALL_NAME"
 cd "$INSTALL_DIR"
 
 echo "[4/9] Installing JavaScript dependencies"
-bun install
-cd app && bun install && bun run build && cd ..
+bun --bun install
+cd app && bun --bun install && bun run build && cd ..
 
 mkdir -p /var/lib/bakery/data /var/lib/bakery/logs /var/lib/bakery/builds
 mkdir -p /var/log/bakery
