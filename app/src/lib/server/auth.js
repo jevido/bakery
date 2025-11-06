@@ -1,4 +1,3 @@
-import bcrypt from 'bcrypt';
 import { nanoid } from 'nanoid';
 import { getConfig } from './config.js';
 import { sql } from 'bun';
@@ -7,11 +6,14 @@ import { log } from './logger.js';
 const SESSION_COOKIE = 'bakery_session';
 
 export async function hashPassword(password) {
-	return bcrypt.hash(password, 12);
+	return Bun.password.hash(password, {
+		algorithm: 'bcrypt',
+		cost: 12
+	});
 }
 
 export async function verifyPassword(password, hash) {
-	return bcrypt.compare(password, hash);
+	return Bun.password.verify(password, hash);
 }
 
 export function parseCookies(header = '') {

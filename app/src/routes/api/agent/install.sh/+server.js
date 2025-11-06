@@ -88,7 +88,7 @@ git clone "$REPO" "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
 echo "[4/7] Installing dependencies"
-bun install
+bun --bun install
 
 mkdir -p "$ROOT_DIR/data" "$ROOT_DIR/logs" "$ROOT_DIR/builds"
 chown -R "$SYSTEM_USER:$SYSTEM_USER" "$ROOT_DIR"
