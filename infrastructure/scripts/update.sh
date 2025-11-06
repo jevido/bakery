@@ -12,8 +12,9 @@ if [ -d .git ]; then
   git pull --rebase
 fi
 
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
+BUN_INSTALL_ROOT="/usr/local/lib/bun"
+export BUN_INSTALL="${BUN_INSTALL:-$BUN_INSTALL_ROOT}"
+export PATH="/usr/local/bin:$BUN_INSTALL/bin:$PATH"
 
 bun --bun install
 cd app && bun --bun install && bun run build && cd ..

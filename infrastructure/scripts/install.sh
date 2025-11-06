@@ -63,15 +63,16 @@ echo "[1/9] Installing system dependencies"
 apt-get update -y
 apt-get install -y git curl unzip nginx postgresql postgresql-contrib certbot python3-certbot-nginx docker.io jq build-essential
 
+BUN_INSTALL_ROOT="/usr/local/lib/bun"
 if ! command -v bun >/dev/null 2>&1; then
   echo "[2/9] Installing Bun runtime"
+  export BUN_INSTALL="$BUN_INSTALL_ROOT"
   curl -fsSL https://bun.sh/install | bash
-  export BUN_INSTALL="$HOME/.bun"
-  ln -sf "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
+  install -m 755 "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
 else
-  export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
+  export BUN_INSTALL="${BUN_INSTALL:-$BUN_INSTALL_ROOT}"
 fi
-export PATH="$BUN_INSTALL/bin:$PATH"
+export PATH="/usr/local/bin:$BUN_INSTALL/bin:$PATH"
 
 SYSTEM_USER="bakery"
 if ! id "$SYSTEM_USER" >/dev/null 2>&1; then
