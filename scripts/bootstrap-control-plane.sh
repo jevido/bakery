@@ -27,6 +27,49 @@ Example:
 USAGE
 }
 
+is_local_host() {
+  local target="$1"
+  if [[ -z "$target" ]]; then
+    return 1
+  fi
+
+  case "$target" in
+    localhost|127.0.0.1|::1)
+      return 0
+      ;;
+  esac
+
+  local host_short
+  host_short=$(hostname 2>/dev/null || true)
+  if [[ -n "$host_short" && "$target" == "$host_short" ]]; then
+    return 0
+  fi
+
+  local host_fqdn
+  host_fqdn=$(hostname -f 2>/dev/null || true)
+  if [[ -n "$host_fqdn" && "$target" == "$host_fqdn" ]]; then
+    return 0
+  fi
+
+  if command -v getent >/dev/null 2>&1 && command -v ip >/dev/null 2>&1; then
+    local -a host_ips
+    mapfile -t host_ips < <(getent hosts "$target" 2>/dev/null | awk '{print $1}')
+    if [[ ${#host_ips[@]} -gt 0 ]]; then
+      local -a local_ips
+      mapfile -t local_ips < <(ip -o addr show 2>/dev/null | awk '{split($4, a, "/"); print a[1]}')
+      for hip in "${host_ips[@]}"; do
+        for lip in "${local_ips[@]}"; do
+          if [[ "$hip" == "$lip" ]]; then
+            return 0
+          fi
+        done
+      done
+    fi
+  fi
+
+  return 1
+}
+
 HOST=""
 REPO_URL=""
 SSH_USER="root"
@@ -113,6 +156,11 @@ if [[ -z "$HOST" || -z "$REPO_URL" ]]; then
   exit 1
 fi
 
+LOCAL_EXEC=false
+if is_local_host "$HOST"; then
+  LOCAL_EXEC=true
+fi
+
 SSH_TARGET="${SSH_USER}@${HOST}"
 SSH_CMD=(ssh -p "$SSH_PORT")
 if [[ -n "$SSH_IDENTITY" ]]; then
@@ -171,16 +219,28 @@ SCRIPT
 )
 
 if $DRY_RUN; then
-  echo "# Commands that would be executed:" >&2
-  printf '%q ' "${SSH_CMD[@]}" "$SSH_TARGET" "bash -s" >&2
-  echo >&2
-  echo "$REMOTE_SCRIPT" >&2
+  if $LOCAL_EXEC; then
+    echo "# Commands that would be executed locally:" >&2
+    echo "$REMOTE_SCRIPT" >&2
+  else
+    echo "# Commands that would be executed:" >&2
+    printf '%q ' "${SSH_CMD[@]}" "$SSH_TARGET" "bash -s" >&2
+    echo >&2
+    echo "$REMOTE_SCRIPT" >&2
+  fi
   exit 0
 fi
 
-"${SSH_CMD[@]}" "$SSH_TARGET" "bash -s" <<REMOTE
+if $LOCAL_EXEC; then
+  echo "Target host ${HOST} resolves to this machine; running install locally."
+  bash -s <<REMOTE
 $REMOTE_SCRIPT
 REMOTE
+else
+  "${SSH_CMD[@]}" "$SSH_TARGET" "bash -s" <<REMOTE
+$REMOTE_SCRIPT
+REMOTE
+fi
 
 echo "Bakery control plane provisioned on ${HOST}."
 if [[ -z "$BASE_URL" ]]; then
