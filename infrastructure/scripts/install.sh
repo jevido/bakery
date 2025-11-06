@@ -139,6 +139,8 @@ SESSION_SECRET=${SESSION_SECRET}
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 BAKERY_HOST=0.0.0.0
 BAKERY_PORT=4100
+HOST=0.0.0.0
+PORT=4100
 BAKERY_BASE_URL=${BAKERY_BASE_URL}
 BAKERY_PUBLIC_IP=${PUBLIC_IP}
 BAKERY_PUBLIC_IPV6=${PUBLIC_IPV6}
@@ -177,8 +179,10 @@ systemctl start bakery-update.timer
 
 DNS_GUIDANCE=""
 if [[ -n "$BAKERY_BASE_URL" ]]; then
-  BASE_HOST=$(echo "$BAKERY_BASE_URL" | sed -E 's~^[a-zA-Z]+://([^/]+).*~\\1~')
-  if [[ -n "$BASE_HOST" && ! "$BASE_HOST" =~ ^[0-9.]+$ ]]; then
+  BASE_HOST="${BAKERY_BASE_URL#*://}"
+  BASE_HOST="${BASE_HOST%%/*}"
+  BASE_HOST="${BASE_HOST%%:*}"
+  if [[ -n "$BASE_HOST" && "$BASE_HOST" =~ [a-zA-Z] ]]; then
     ROOT_HOST=${BASE_HOST#*.}
     DNS_GUIDANCE+=$'\nDNS configuration tips:\n'
     DNS_GUIDANCE+=$"  A record    : ${BASE_HOST} -> ${PUBLIC_IP}\n"
