@@ -167,6 +167,8 @@ if [[ -n "$SSH_IDENTITY" ]]; then
   SSH_CMD+=(-i "$SSH_IDENTITY")
 fi
 
+INSTALL_PARENT=$(dirname "$INSTALL_DIR")
+
 REMOTE_SCRIPT=$(cat <<SCRIPT
 set -euo pipefail
 REPO_URL="${REPO_URL}"
@@ -178,8 +180,9 @@ ADMIN_PASS="${ADMIN_PASS}"
 GITHUB_CLIENT_ID="${GITHUB_CLIENT_ID}"
 GITHUB_CLIENT_SECRET="${GITHUB_CLIENT_SECRET}"
 
-mkdir -p "$(dirname "$INSTALL_DIR")"
-cd /
+INSTALL_PARENT="${INSTALL_PARENT}"
+mkdir -p "$INSTALL_PARENT"
+cd "$INSTALL_PARENT"
 
 if ! command -v git >/dev/null 2>&1; then
   apt-get update -y >/dev/null
