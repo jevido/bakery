@@ -21,6 +21,7 @@ Optional:
   --github-client-id ID     GitHub OAuth app client ID
   --github-client-secret SECRET GitHub OAuth app client secret
   --dry-run                 Show the commands without executing them
+  --debug                   Verbose logging / trace mode
 
 Example:
   $(basename "$0")     --host bakery.jevido.nl     --repo https://github.com/your-org/bakery.git     --certbot-email you@example.com     --base-url https://bakery.jevido.nl
@@ -83,6 +84,8 @@ GITHUB_CLIENT_ID=""
 GITHUB_CLIENT_SECRET=""
 SSH_IDENTITY=""
 DRY_RUN=false
+BOOTSTRAP_DEBUG_VALUE="${BOOTSTRAP_DEBUG:-}"
+DEBUG_MODE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -138,6 +141,10 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=true
       shift
       ;;
+    --debug)
+      DEBUG_MODE=true
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -156,6 +163,10 @@ if [[ -z "$HOST" || -z "$REPO_URL" ]]; then
   exit 1
 fi
 
+if $DEBUG_MODE; then
+  BOOTSTRAP_DEBUG_VALUE=1
+fi
+
 LOCAL_EXEC=false
 if is_local_host "$HOST"; then
   LOCAL_EXEC=true
@@ -172,6 +183,7 @@ INSTALL_NAME=$(basename "$INSTALL_DIR")
 
 REMOTE_SCRIPT=$(cat <<SCRIPT
 set -euo pipefail
+BOOTSTRAP_DEBUG="${BOOTSTRAP_DEBUG_VALUE}"
 REPO_URL="${REPO_URL}"
 INSTALL_DIR="${INSTALL_DIR}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL}"
@@ -180,6 +192,11 @@ ADMIN_EMAIL="${ADMIN_EMAIL}"
 ADMIN_PASS="${ADMIN_PASS}"
 GITHUB_CLIENT_ID="${GITHUB_CLIENT_ID}"
 GITHUB_CLIENT_SECRET="${GITHUB_CLIENT_SECRET}"
+
+if [[ -n "\${BOOTSTRAP_DEBUG}" ]]; then
+  set -x
+  echo "[debug] bootstrap remote script starting in \$(pwd)"
+fi
 
 INSTALL_PARENT="${INSTALL_PARENT}"
 INSTALL_NAME="${INSTALL_NAME}"
@@ -191,8 +208,16 @@ if ! command -v git >/dev/null 2>&1; then
   apt-get install -y git >/dev/null
 fi
 
+if [[ -n "\${BOOTSTRAP_DEBUG}" ]]; then
+  echo "[debug] after cd: \$(pwd)"
+  ls -lad .
+fi
+
 if [[ ! -d "$INSTALL_DIR/.git" ]]; then
   rm -rf "$INSTALL_NAME"
+  if [[ -n "\${BOOTSTRAP_DEBUG}" ]]; then
+    echo "[debug] cloning into $INSTALL_NAME from \$(pwd)"
+  fi
   git clone "$REPO_URL" "$INSTALL_NAME"
 else
   cd "$INSTALL_DIR"
@@ -202,6 +227,9 @@ else
 fi
 
 cd "$INSTALL_DIR"
+if [[ -n "\${BOOTSTRAP_DEBUG}" ]]; then
+  echo "[debug] entered install dir: \$(pwd)"
+fi
 ARGS=("--dir" "$INSTALL_DIR" "--repo" "$REPO_URL")
 if [[ -n "$CERTBOT_EMAIL" ]]; then
   ARGS+=("--certbot-email" "$CERTBOT_EMAIL")
