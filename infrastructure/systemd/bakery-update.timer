@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Bakery self-update nightly
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+Unit=bakery-update.service
+
+[Install]
+WantedBy=timers.target

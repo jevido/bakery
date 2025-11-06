@@ -1,0 +1,13 @@
+[Unit]
+Description=Bakery self-update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory={{WORKING_DIR}}
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env bash infrastructure/scripts/update.sh
+
+[Install]
+WantedBy=multi-user.target

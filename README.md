@@ -39,33 +39,43 @@ bakery/
 
 ## Quick Start (Production)
 
-1. **Copy the installer** to your target host and run it as root:
+1. **SSH into your Ubuntu server** (root or sudo privileges required). Run the one-line installer **on the server itself**:
 
    ```bash
-   sudo ./infrastructure/scripts/install.sh --repo https://github.com/your-org/bakery.git --certbot-email you@example.com
+   curl -fsSL https://raw.githubusercontent.com/jevido/bakery/refs/heads/main/scripts/install-control-plane.sh | sudo bash -s -- \
+     --base-url https://bakery.jevido.nl \
+     --certbot-email ops@example.com \
+     --github-client-id YOUR_GITHUB_APP_CLIENT_ID \
+     --github-client-secret YOUR_GITHUB_APP_CLIENT_SECRET \
+     --github-webhook-secret YOUR_GITHUB_APP_WEBHOOK_SECRET
    ```
 
-   The installer will:
+   The script installs the required system packages, clones Bakery, runs the installer, and enables a nightly self-update timer. It also prints the DNS A records you should create (e.g. `bakery.jevido.nl` and a wildcard for app subdomains) so you can copy them straight into Namecheap.
 
-   - Install Bun, Git, PostgreSQL, Nginx, Certbot, Docker, and build prerequisites.
-   - Clone Bakery (or use the current checkout), install dependencies, and build the SvelteKit app.
-   - Create `/var/lib/bakery` data/logs/build directories and seed Postgres with the Bakery metadata database.
-   - Generate a `.env` file with random session/encryption secrets and the server's public IP.
-   - Run database migrations and seed an initial admin account.
-   - Render and enable the systemd service (`bakery.service`) pointing to the selected install directory.
-   - Seed an Nginx base template ready for Certbot-managed certificates.
+2. **Record the admin credentials** printed at the end of the installer. Log in at your chosen `--base-url` and change the password.
 
-2. **Record the printed admin credentials** – the installer outputs the generated email and password. Use them to log in and immediately change the password inside the UI.
+3. **Add the suggested DNS records** in Namecheap (or your DNS provider) so both the control plane and any `*.app` subdomains resolve to your server.
 
-3. **Configure DNS** for your instance domain, then use the Domain Management section per deployment to trigger SSL issuance through Certbot.
+4. **Link GitHub** from *Deployments → New → Link GitHub*. Once linked, repositories become selectable in the deployment wizard.
 
-4. **Link GitHub** from *Deployments → New → Link GitHub*. Once linked, your repositories become selectable for deployments.
+5. **Deploy your applications**: choose the repo/branch, domains, environment variables, optional database provisioning, and the target server node (the control plane itself or an external node you add later).
 
-5. **Deploy Applications**
-   - Choose branch, domains, environment variables, and optional blue/green + Postgres provisioning.
-   - Bakery builds and boots the app, wiring Nginx, SSL, and systemd or Docker as appropriate.
+6. **Stay current**: Bakery auto-runs `infrastructure/scripts/update.sh` nightly. You can still trigger manual updates from *Settings → Update Bakery* when needed.
 
-6. **Self-Update** from *Settings → Update Bakery* (calls `infrastructure/scripts/update.sh`, git pulls, rebuilds the UI, applies migrations, restarts service).
+### Single-node “Platform” install (Hetzner, etc.)
+
+Once your Hetzner (or other) Ubuntu server is provisioned, SSH into it and run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/the-bakery-app/bakery/main/scripts/install-control-plane.sh | sudo bash -s -- \
+  --base-url https://bakery.jevido.nl \
+  --certbot-email ops@example.com \
+  --github-client-id YOUR_GITHUB_APP_CLIENT_ID \
+  --github-client-secret YOUR_GITHUB_APP_CLIENT_SECRET \
+  --github-webhook-secret YOUR_GITHUB_APP_WEBHOOK_SECRET
+```
+
+The script installs git/curl if needed, clones the public Bakery repository, runs the installer, wires the `.env` with your public URL and GitHub credentials, and enables the nightly auto-update timer. During installation it prints the DNS A records to configure (control plane host plus optional wildcard) so you can copy/paste them into Namecheap right away.
 
 ## Adding External Nodes
 
