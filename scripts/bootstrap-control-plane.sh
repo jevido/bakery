@@ -20,7 +20,6 @@ Optional:
   --ssh-identity PATH       SSH identity file passed to ssh
   --github-client-id ID     GitHub OAuth app client ID
   --github-client-secret SECRET GitHub OAuth app client secret
-  --github-webhook-secret SECRET GitHub app webhook secret
   --dry-run                 Show the commands without executing them
 
 Example:
@@ -39,7 +38,6 @@ ADMIN_EMAIL=""
 ADMIN_PASS=""
 GITHUB_CLIENT_ID=""
 GITHUB_CLIENT_SECRET=""
-GITHUB_WEBHOOK_SECRET=""
 SSH_IDENTITY=""
 DRY_RUN=false
 
@@ -89,10 +87,6 @@ while [[ $# -gt 0 ]]; do
       GITHUB_CLIENT_SECRET="$2"
       shift 2
       ;;
-    --github-webhook-secret)
-      GITHUB_WEBHOOK_SECRET="$2"
-      shift 2
-      ;;
     --ssh-identity)
       SSH_IDENTITY="$2"
       shift 2
@@ -135,7 +129,6 @@ ADMIN_EMAIL="${ADMIN_EMAIL}"
 ADMIN_PASS="${ADMIN_PASS}"
 GITHUB_CLIENT_ID="${GITHUB_CLIENT_ID}"
 GITHUB_CLIENT_SECRET="${GITHUB_CLIENT_SECRET}"
-GITHUB_WEBHOOK_SECRET="${GITHUB_WEBHOOK_SECRET}"
 
 if ! command -v git >/dev/null 2>&1; then
   apt-get update -y >/dev/null
@@ -171,9 +164,6 @@ if [[ -n "$GITHUB_CLIENT_ID" ]]; then
 fi
 if [[ -n "$GITHUB_CLIENT_SECRET" ]]; then
   ARGS+=("--github-client-secret" "$GITHUB_CLIENT_SECRET")
-fi
-if [[ -n "$GITHUB_WEBHOOK_SECRET" ]]; then
-  ARGS+=("--github-webhook-secret" "$GITHUB_WEBHOOK_SECRET")
 fi
 
 infrastructure/scripts/install.sh "${ARGS[@]}"

@@ -14,7 +14,6 @@ ADMIN_EMAIL="jheremenis@gmail.com"
 ADMIN_PASS=""
 GITHUB_CLIENT_ID=""
 GITHUB_CLIENT_SECRET=""
-GITHUB_WEBHOOK_SECRET=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -48,10 +47,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --github-client-secret)
       GITHUB_CLIENT_SECRET="$2"
-      shift 2
-      ;;
-    --github-webhook-secret)
-      GITHUB_WEBHOOK_SECRET="$2"
       shift 2
       ;;
     *)
@@ -133,7 +128,6 @@ BAKERY_LOGS_DIR=/var/lib/bakery/logs
 BAKERY_BUILDS_DIR=/var/lib/bakery/builds
 GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
 GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
-GITHUB_APP_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
 EOF
 
 echo "[5/9] Running database migrations"

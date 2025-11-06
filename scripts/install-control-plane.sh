@@ -9,7 +9,6 @@ ADMIN_EMAIL=""
 ADMIN_PASS=""
 GITHUB_CLIENT_ID=""
 GITHUB_CLIENT_SECRET=""
-GITHUB_WEBHOOK_SECRET=""
 
 print_usage() {
   cat <<'USAGE'
@@ -24,8 +23,7 @@ Options:
   --admin-pass PASSWORD         Initial admin password (random if omitted)
   --github-client-id ID         GitHub OAuth app client ID
   --github-client-secret SECRET GitHub OAuth app client secret
-  --github-webhook-secret SECRET GitHub app webhook secret
-  --help                        Show this help message
+    --help                        Show this help message
 USAGE
 }
 
@@ -61,10 +59,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --github-client-secret)
       GITHUB_CLIENT_SECRET="$2"
-      shift 2
-      ;;
-    --github-webhook-secret)
-      GITHUB_WEBHOOK_SECRET="$2"
       shift 2
       ;;
     -h|--help)
@@ -118,8 +112,4 @@ fi
 if [[ -n "$GITHUB_CLIENT_SECRET" ]]; then
   ARGS+=(--github-client-secret "$GITHUB_CLIENT_SECRET")
 fi
-if [[ -n "$GITHUB_WEBHOOK_SECRET" ]]; then
-  ARGS+=(--github-webhook-secret "$GITHUB_WEBHOOK_SECRET")
-fi
-
 infrastructure/scripts/install.sh "${ARGS[@]}"

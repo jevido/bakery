@@ -42,12 +42,11 @@ bakery/
 1. **SSH into your Ubuntu server** (root or sudo privileges required). Run the one-line installer **on the server itself**:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/jevido/bakery/refs/heads/main/scripts/bootstrap-control-plane.sh | sudo bash -s -- \
-     --base-url https://bakery.jevido.nl \
-     --certbot-email ops@example.com \
-     --github-client-id YOUR_GITHUB_APP_CLIENT_ID \
-     --github-client-secret YOUR_GITHUB_APP_CLIENT_SECRET \
-     --github-webhook-secret YOUR_GITHUB_APP_WEBHOOK_SECRET
+  curl -fsSL https://raw.githubusercontent.com/jevido/bakery/refs/heads/main/scripts/bootstrap-control-plane.sh | sudo bash -s -- \
+    --base-url https://bakery.jevido.nl \
+    --certbot-email ops@example.com \
+    --github-client-id YOUR_GITHUB_APP_CLIENT_ID \
+    --github-client-secret YOUR_GITHUB_APP_CLIENT_SECRET
    ```
 
    The script installs the required system packages, clones Bakery, runs the installer, and enables a nightly self-update timer. It also prints the DNS A records you should create (e.g. `bakery.jevido.nl` and a wildcard for app subdomains) so you can copy them straight into Namecheap.
@@ -71,8 +70,7 @@ curl -fsSL https://raw.githubusercontent.com/the-bakery-app/bakery/main/scripts/
   --base-url https://bakery.jevido.nl \
   --certbot-email ops@example.com \
   --github-client-id YOUR_GITHUB_APP_CLIENT_ID \
-  --github-client-secret YOUR_GITHUB_APP_CLIENT_SECRET \
-  --github-webhook-secret YOUR_GITHUB_APP_WEBHOOK_SECRET
+  --github-client-secret YOUR_GITHUB_APP_CLIENT_SECRET
 ```
 
 The script installs git/curl if needed, clones the public Bakery repository, runs the installer, wires the `.env` with your public URL and GitHub credentials, and enables the nightly auto-update timer. During installation it prints the DNS A records to configure (control plane host plus optional wildcard) so you can copy/paste them into Namecheap right away.
