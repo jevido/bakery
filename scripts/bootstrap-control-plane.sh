@@ -213,6 +213,10 @@ if [[ -n "\${BOOTSTRAP_DEBUG}" ]]; then
   ls -lad .
 fi
 
+if command -v git >/dev/null 2>&1; then
+  git config --global --add safe.directory "$INSTALL_DIR" >/dev/null 2>&1 || true
+fi
+
 if [[ ! -d "$INSTALL_DIR/.git" ]]; then
   rm -rf "$INSTALL_NAME"
   if [[ -n "\${BOOTSTRAP_DEBUG}" ]]; then
