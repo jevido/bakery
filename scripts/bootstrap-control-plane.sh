@@ -218,9 +218,7 @@ if [[ ! -d "$INSTALL_DIR/.git" ]]; then
   if [[ -n "\${BOOTSTRAP_DEBUG}" ]]; then
     echo "[debug] cloning into $INSTALL_NAME from \$(pwd)"
   fi
-  echo pwd
   git clone "$REPO_URL" "$INSTALL_NAME"
-  cd "$INSTALL_NAME"
 else
   cd "$INSTALL_DIR"
   git remote set-url origin "$REPO_URL"

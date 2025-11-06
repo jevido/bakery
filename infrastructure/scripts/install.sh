@@ -56,6 +56,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+INSTALL_PARENT=$(dirname "$INSTALL_DIR")
+INSTALL_NAME=$(basename "$INSTALL_DIR")
+
 echo "[1/9] Installing system dependencies"
 apt-get update -y
 apt-get install -y git curl unzip nginx postgresql postgresql-contrib certbot python3-certbot-nginx docker.io jq build-essential
@@ -75,16 +78,18 @@ if ! id "$SYSTEM_USER" >/dev/null 2>&1; then
   useradd --system --create-home --shell /usr/sbin/nologin "$SYSTEM_USER"
 fi
 
+mkdir -p "$INSTALL_PARENT"
+cd "$INSTALL_PARENT"
+
 if [[ -n "$REPO_URL" ]]; then
   echo "[3/9] Cloning Bakery repository"
-  rm -rf "$INSTALL_DIR"
-  git clone "$REPO_URL" "$INSTALL_DIR"
 else
   REPO_URL="https://github.com/the-bakery-app/bakery.git"
   echo "[3/9] Cloning default Bakery repository $REPO_URL"
-  rm -rf "$INSTALL_DIR"
-  git clone "$REPO_URL" "$INSTALL_DIR"
 fi
+
+rm -rf "$INSTALL_NAME"
+git clone "$REPO_URL" "$INSTALL_NAME"
 
 cd "$INSTALL_DIR"
 
