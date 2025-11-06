@@ -107,6 +107,10 @@ DATABASE_PASSWORD=$(openssl rand -hex 12)
 SESSION_SECRET=$(openssl rand -hex 32)
 ENCRYPTION_KEY=$(openssl rand -hex 32 | cut -c1-32)
 PUBLIC_IP=$(curl -s https://api.ipify.org || echo "127.0.0.1")
+PUBLIC_IPV6=$(curl -s https://api64.ipify.org || true)
+if [[ -n "$PUBLIC_IPV6" && "$PUBLIC_IPV6" == "$PUBLIC_IP" ]]; then
+  PUBLIC_IPV6=""
+fi
 ADMIN_PASS=${ADMIN_PASS:-$(openssl rand -base64 12)}
 
 if [[ -n "$BASE_URL" ]]; then
@@ -137,6 +141,7 @@ BAKERY_HOST=0.0.0.0
 BAKERY_PORT=4100
 BAKERY_BASE_URL=${BAKERY_BASE_URL}
 BAKERY_PUBLIC_IP=${PUBLIC_IP}
+BAKERY_PUBLIC_IPV6=${PUBLIC_IPV6}
 CERTBOT_EMAIL=${CERTBOT_EMAIL}
 BAKERY_DATA_DIR=/var/lib/bakery/data
 BAKERY_LOGS_DIR=/var/lib/bakery/logs
@@ -175,10 +180,17 @@ if [[ -n "$BAKERY_BASE_URL" ]]; then
   BASE_HOST=$(echo "$BAKERY_BASE_URL" | sed -E 's~^[a-zA-Z]+://([^/]+).*~\\1~')
   if [[ -n "$BASE_HOST" && ! "$BASE_HOST" =~ ^[0-9.]+$ ]]; then
     ROOT_HOST=${BASE_HOST#*.}
-    DNS_GUIDANCE+=$'\nDNS configuration tips (Namecheap):\n'
-    DNS_GUIDANCE+=$"  ${BASE_HOST} -> ${PUBLIC_IP}\n"
+    DNS_GUIDANCE+=$'\nDNS configuration tips:\n'
+    DNS_GUIDANCE+=$"  A record    : ${BASE_HOST} -> ${PUBLIC_IP}\n"
+    if [[ -n "$PUBLIC_IPV6" ]]; then
+      DNS_GUIDANCE+=$"  AAAA record : ${BASE_HOST} -> ${PUBLIC_IPV6}\n"
+    fi
     if [[ "$ROOT_HOST" != "$BASE_HOST" && -n "$ROOT_HOST" ]]; then
-      DNS_GUIDANCE+=$"  *.${ROOT_HOST} -> ${PUBLIC_IP}   (for app subdomains, e.g. biertje.${ROOT_HOST})\n"
+      DNS_GUIDANCE+=$"  A record    : *.${ROOT_HOST} -> ${PUBLIC_IP}\n"
+      if [[ -n "$PUBLIC_IPV6" ]]; then
+        DNS_GUIDANCE+=$"  AAAA record : *.${ROOT_HOST} -> ${PUBLIC_IPV6}\n"
+      fi
+      DNS_GUIDANCE+=$"  (wildcard enables app subdomains such as app.${ROOT_HOST})\n"
     fi
   fi
 fi

@@ -134,7 +134,7 @@ This streams Docker Compose logs until you hit <kbd>Ctrl</kbd>+<kbd>C</kbd>. Lea
 | `ENCRYPTION_KEY`                                            | 32-byte key encrypting GitHub tokens and env vars                          |
 | `BAKERY_HOST` / `BAKERY_PORT`                               | Backend bind interface & port                                              |
 | `BAKERY_BASE_URL`                                           | Public URL of the UI (used for OAuth callbacks)                            |
-| `BAKERY_PUBLIC_IP`                                          | Public IP for DNS guidance and verification                                |
+| `BAKERY_PUBLIC_IP` / `BAKERY_PUBLIC_IPV6`                   | Public IPv4/IPv6 addresses for DNS guidance and verification               |
 | `BAKERY_DATA_DIR` / `BAKERY_LOGS_DIR` / `BAKERY_BUILDS_DIR` | File system locations for build artifacts, data snapshots, and log storage |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`                 | GitHub OAuth credentials                                                   |
 | `CERTBOT_EMAIL`                                             | Email passed to Certbot when issuing certificates                          |

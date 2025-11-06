@@ -19,6 +19,7 @@ bun install
 cd app && bun install && bun run build && cd ..
 
 bun run migrate
+sed "s|{{WORKING_DIR}}|$APP_DIR|g" infrastructure/systemd/bakery.service > /etc/systemd/system/bakery.service
 
 systemctl daemon-reload >/dev/null 2>&1 || true
 systemctl restart bakery.service

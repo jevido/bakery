@@ -7,9 +7,10 @@ Requires=postgresql.service
 Type=simple
 User=bakery
 WorkingDirectory={{WORKING_DIR}}
+EnvironmentFile={{WORKING_DIR}}/.env
 Environment=PATH=/usr/local/bin:/usr/bin:/bin:/home/bakery/.bun/bin
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/env bun backend/server.js
+ExecStart=/usr/bin/env bun run app/build/index.js
 Restart=always
 RestartSec=5
 StandardOutput=append:/var/log/bakery/bakery-service.log
