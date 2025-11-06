@@ -68,10 +68,20 @@ if ! command -v bun >/dev/null 2>&1; then
   echo "[2/9] Installing Bun runtime"
   export BUN_INSTALL="$BUN_INSTALL_ROOT"
   curl -fsSL https://bun.sh/install | bash
-  install -m 755 "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
 else
   export BUN_INSTALL="${BUN_INSTALL:-$BUN_INSTALL_ROOT}"
 fi
+
+# ensure bun binary is accessible to non-root users (avoid /root owned symlink)
+if [[ -x "/usr/local/bin/bun" ]]; then
+  BUN_TARGET=$(readlink -f /usr/local/bin/bun 2>/dev/null || true)
+  if [[ -n "$BUN_TARGET" && "$BUN_TARGET" == /root/* ]]; then
+    install -m 755 "$BUN_TARGET" /usr/local/bin/bun
+  fi
+elif [[ -x "$BUN_INSTALL/bin/bun" ]]; then
+  install -m 755 "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
+fi
+
 export PATH="/usr/local/bin:$BUN_INSTALL/bin:$PATH"
 
 SYSTEM_USER="bakery"

@@ -16,6 +16,15 @@ BUN_INSTALL_ROOT="/usr/local/lib/bun"
 export BUN_INSTALL="${BUN_INSTALL:-$BUN_INSTALL_ROOT}"
 export PATH="/usr/local/bin:$BUN_INSTALL/bin:$PATH"
 
+if [[ -x "/usr/local/bin/bun" ]]; then
+  BUN_TARGET=$(readlink -f /usr/local/bin/bun 2>/dev/null || true)
+  if [[ -n "$BUN_TARGET" && "$BUN_TARGET" == /root/* ]]; then
+    install -m 755 "$BUN_TARGET" /usr/local/bin/bun
+  fi
+elif [[ -x "$BUN_INSTALL/bin/bun" ]]; then
+  install -m 755 "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
+fi
+
 bun --bun install
 cd app && bun --bun install && bun run build && cd ..
 
