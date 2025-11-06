@@ -178,6 +178,9 @@ ADMIN_PASS="${ADMIN_PASS}"
 GITHUB_CLIENT_ID="${GITHUB_CLIENT_ID}"
 GITHUB_CLIENT_SECRET="${GITHUB_CLIENT_SECRET}"
 
+mkdir -p "$(dirname "$INSTALL_DIR")"
+cd /
+
 if ! command -v git >/dev/null 2>&1; then
   apt-get update -y >/dev/null
   apt-get install -y git >/dev/null
