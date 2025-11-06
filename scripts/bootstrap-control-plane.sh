@@ -168,6 +168,7 @@ if [[ -n "$SSH_IDENTITY" ]]; then
 fi
 
 INSTALL_PARENT=$(dirname "$INSTALL_DIR")
+INSTALL_NAME=$(basename "$INSTALL_DIR")
 
 REMOTE_SCRIPT=$(cat <<SCRIPT
 set -euo pipefail
@@ -181,6 +182,7 @@ GITHUB_CLIENT_ID="${GITHUB_CLIENT_ID}"
 GITHUB_CLIENT_SECRET="${GITHUB_CLIENT_SECRET}"
 
 INSTALL_PARENT="${INSTALL_PARENT}"
+INSTALL_NAME="${INSTALL_NAME}"
 mkdir -p "$INSTALL_PARENT"
 cd "$INSTALL_PARENT"
 
@@ -190,8 +192,8 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 
 if [[ ! -d "$INSTALL_DIR/.git" ]]; then
-  rm -rf "$INSTALL_DIR"
-  git clone "$REPO_URL" "$INSTALL_DIR"
+  rm -rf "$INSTALL_NAME"
+  git clone "$REPO_URL" "$INSTALL_NAME"
 else
   cd "$INSTALL_DIR"
   git remote set-url origin "$REPO_URL"
