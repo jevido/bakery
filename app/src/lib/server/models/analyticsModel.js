@@ -1,36 +1,23 @@
 import { sql } from 'bun';
 
-export async function recordTrafficSnapshot({
-  deploymentId,
-  visits,
-  bandwidth,
-  timestamp
-}) {
-  await sql`
+export async function recordTrafficSnapshot({ deploymentId, visits, bandwidth, timestamp }) {
+	await sql`
     INSERT INTO analytics_snapshots (
       deployment_id, visits, bandwidth, captured_at
     ) VALUES (${deploymentId}, ${visits}, ${bandwidth}, ${timestamp})
   `;
 }
 
-export async function recordDiskSnapshot({
-  deploymentId,
-  usedBytes,
-  timestamp
-}) {
-  await sql`
+export async function recordDiskSnapshot({ deploymentId, usedBytes, timestamp }) {
+	await sql`
     INSERT INTO disk_snapshots (
       deployment_id, used_bytes, captured_at
     ) VALUES (${deploymentId}, ${usedBytes}, ${timestamp})
   `;
 }
 
-export async function recordDatabaseSnapshot({
-  deploymentId,
-  databaseSize,
-  timestamp
-}) {
-  await sql`
+export async function recordDatabaseSnapshot({ deploymentId, databaseSize, timestamp }) {
+	await sql`
     INSERT INTO database_snapshots (
       deployment_id, size_bytes, captured_at
     ) VALUES (${deploymentId}, ${databaseSize}, ${timestamp})
@@ -38,7 +25,7 @@ export async function recordDatabaseSnapshot({
 }
 
 export async function getRecentAnalytics(deploymentId, days = 14) {
-  return sql`
+	return sql`
     SELECT
       'traffic' AS type,
       visits AS value_a,
@@ -70,7 +57,7 @@ export async function getRecentAnalytics(deploymentId, days = 14) {
 }
 
 export async function getDiskUsageTrend(hours = 24) {
-  return sql`
+	return sql`
     SELECT
       date_trunc('hour', captured_at) AS bucket,
       SUM(used_bytes)::bigint AS used_bytes

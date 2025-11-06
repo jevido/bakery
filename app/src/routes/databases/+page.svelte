@@ -118,9 +118,9 @@
 							<td class="px-6 py-4 text-xs text-muted-foreground">
 								{formatBytes(database.size_bytes)}
 							</td>
-							<td class="px-6 py-4 text-xs text-muted-foreground"
-								>{formatDate(database.updated_at)}</td
-							>
+							<td class="px-6 py-4 text-xs text-muted-foreground">
+								{formatDate(database.updated_at)}
+							</td>
 							<td class="px-6 py-4 text-right">
 								<Button variant="outline" class="gap-2" onclick={() => copyConnection(database)}>
 									{#if copiedId === database.id}

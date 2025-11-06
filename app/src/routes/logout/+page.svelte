@@ -1,6 +1,6 @@
 <script>
-	import { Button } from "$lib/components/ui/button"
-	
+	import { Button } from '$lib/components/ui/button';
+
 	import { goto } from '$app/navigation';
 	import { logout as apiLogout } from '$lib/api.js';
 
@@ -32,12 +32,15 @@
 	<div class="max-w-md space-y-4">
 		<h1 class="text-3xl font-semibold tracking-tight">Confirm logout</h1>
 		<p class="text-sm text-muted-foreground">
-			You are about to sign out of Bakery. Any unsaved changes in open tabs will be lost. Are you sure you want to continue?
+			You are about to sign out of Bakery. Any unsaved changes in open tabs will be lost. Are you
+			sure you want to continue?
 		</p>
 	</div>
 
 	{#if error}
-		<p class="rounded-md border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-900/30 dark:text-rose-200">
+		<p
+			class="rounded-md border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-900/30 dark:text-rose-200"
+		>
 			{error}
 		</p>
 	{/if}

@@ -2,7 +2,7 @@ import { nanoid } from 'nanoid';
 import { sql } from 'bun';
 
 export async function listDeploymentsForUser(userId) {
-  return sql`
+	return sql`
     SELECT
       d.*,
       COALESCE(
@@ -28,7 +28,7 @@ export async function listDeploymentsForUser(userId) {
 }
 
 export async function findDeploymentById(id) {
-  const rows = await sql`
+	const rows = await sql`
     SELECT
       d.*,
       COALESCE(
@@ -42,76 +42,61 @@ export async function findDeploymentById(id) {
     FROM deployments d
     WHERE d.id = ${id}
   `;
-  return rows[0] ?? null;
+	return rows[0] ?? null;
 }
 
 export async function createDeployment(payload) {
-  const id = nanoid();
-  const {
-    ownerId,
-    name,
-    repository,
-    branch,
-    blueGreenEnabled,
-    dockerized = false
-  } = payload;
-  await sql`
+	const id = nanoid();
+	const { ownerId, name, repository, branch, blueGreenEnabled, dockerized = false } = payload;
+	await sql`
     INSERT INTO deployments (
       id, owner_id, name, repository, branch,
       blue_green_enabled, dockerized, status
     ) VALUES (${id}, ${ownerId}, ${name}, ${repository}, ${branch}, ${blueGreenEnabled}, ${dockerized}, 'pending')
   `;
-  return findDeploymentById(id);
+	return findDeploymentById(id);
 }
 
 export async function updateDeployment(id, updates) {
-  const rows = await sql`
+	const rows = await sql`
     UPDATE deployments
     SET ${sql(updates)}, updated_at = NOW()
     WHERE id = ${id}
     RETURNING *
   `;
-  return rows[0] ?? null;
+	return rows[0] ?? null;
 }
 
 export async function recordDeploymentVersion(payload) {
-  const id = nanoid();
-  const {
-    deploymentId,
-    slot,
-    commitSha,
-    status,
-    port,
-    dockerized,
-    artifactPath
-  } = payload;
-  await sql`
+	const id = nanoid();
+	const { deploymentId, slot, commitSha, status, port, dockerized, artifactPath } = payload;
+	await sql`
     UPDATE deployment_versions
     SET status = 'inactive'
     WHERE deployment_id = ${deploymentId} AND slot = ${slot}
   `;
-  await sql`
+	await sql`
     INSERT INTO deployment_versions (
       id, deployment_id, slot, commit_sha, status, port,
       dockerized, artifact_path
     ) VALUES (${id}, ${deploymentId}, ${slot}, ${commitSha}, ${status}, ${port}, ${dockerized}, ${artifactPath})
   `;
-  return id;
+	return id;
 }
 
 export async function getActiveVersion(deploymentId) {
-  const rows = await sql`
+	const rows = await sql`
     SELECT *
     FROM deployment_versions
     WHERE deployment_id = ${deploymentId} AND status = 'active'
     ORDER BY created_at DESC
     LIMIT 1
   `;
-  return rows[0] ?? null;
+	return rows[0] ?? null;
 }
 
 export async function listVersions(deploymentId) {
-  return sql`
+	return sql`
     SELECT *
     FROM deployment_versions
     WHERE deployment_id = ${deploymentId}
@@ -121,14 +106,14 @@ export async function listVersions(deploymentId) {
 }
 
 export async function recordDeploymentLog(deploymentId, level, message, meta = {}) {
-  await sql`
+	await sql`
     INSERT INTO deployment_logs (id, deployment_id, level, message, metadata)
     VALUES (${nanoid()}, ${deploymentId}, ${level}, ${message}, ${JSON.stringify(meta)}::jsonb)
   `;
 }
 
 export async function listDeploymentLogs(deploymentId, limit = 200) {
-  return sql`
+	return sql`
     SELECT *
     FROM deployment_logs
     WHERE deployment_id = ${deploymentId}
@@ -138,5 +123,5 @@ export async function listDeploymentLogs(deploymentId, limit = 200) {
 }
 
 export async function deleteDeployment(id) {
-  await sql`DELETE FROM deployments WHERE id = ${id}`;
+	await sql`DELETE FROM deployments WHERE id = ${id}`;
 }

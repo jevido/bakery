@@ -249,9 +249,9 @@
 							{/if}
 						</td>
 						<td class="px-6 py-4 text-muted-foreground">{user.deployments}</td>
-						<td class="px-6 py-4 text-xs text-muted-foreground"
-							>{new Date(user.created_at).toLocaleString()}</td
-						>
+						<td class="px-6 py-4 text-xs text-muted-foreground">
+							{new Date(user.created_at).toLocaleString()}
+						</td>
 						<td class="px-6 py-4">
 							<div class="flex flex-wrap justify-end gap-2">
 								<Button
@@ -292,7 +292,8 @@
 			<Dialog.Header>
 				<Dialog.Title>Reset password</Dialog.Title>
 				<Dialog.Description>
-					Set a new password for <strong>{resetDialog.user?.email}</strong>.
+					Set a new password for <strong>{resetDialog.user?.email}</strong>
+					.
 				</Dialog.Description>
 			</Dialog.Header>
 			<div class="space-y-3">
@@ -323,7 +324,8 @@
 				<Dialog.Title>Delete user</Dialog.Title>
 				<Dialog.Description>
 					Are you sure you want to delete
-					<strong>{confirmDialog.user?.email}</strong>? This action cannot be undone.
+					<strong>{confirmDialog.user?.email}</strong>
+					? This action cannot be undone.
 				</Dialog.Description>
 			</Dialog.Header>
 			<Dialog.Footer class="flex justify-end gap-2">

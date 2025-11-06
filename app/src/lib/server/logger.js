@@ -5,31 +5,31 @@ import { getConfig } from './config.js';
 const logLevels = ['debug', 'info', 'warn', 'error'];
 
 async function ensureDir(path) {
-  await mkdir(path, { recursive: true });
+	await mkdir(path, { recursive: true });
 }
 
 export async function log(level, message, meta = {}) {
-  if (!logLevels.includes(level)) {
-    throw new Error(`Invalid log level ${level}`);
-  }
+	if (!logLevels.includes(level)) {
+		throw new Error(`Invalid log level ${level}`);
+	}
 
-  const config = getConfig();
-  await ensureDir(config.logsDir);
-  const timestamp = new Date().toISOString();
-  const payload = JSON.stringify(meta);
-  const line = `[${timestamp}] [${level.toUpperCase()}] ${message} ${payload}\n`;
-  await appendFile(join(config.logsDir, 'bakery.log'), line);
+	const config = getConfig();
+	await ensureDir(config.logsDir);
+	const timestamp = new Date().toISOString();
+	const payload = JSON.stringify(meta);
+	const line = `[${timestamp}] [${level.toUpperCase()}] ${message} ${payload}\n`;
+	await appendFile(join(config.logsDir, 'bakery.log'), line);
 
-  if (level === 'error' || config.environment !== 'production') {
-    console[level === 'error' ? 'error' : 'log'](line.trim());
-  }
+	if (level === 'error' || config.environment !== 'production') {
+		console[level === 'error' ? 'error' : 'log'](line.trim());
+	}
 }
 
 export function createLogger(namespace) {
-  return {
-    debug: (message, meta) => log('debug', `[${namespace}] ${message}`, meta),
-    info: (message, meta) => log('info', `[${namespace}] ${message}`, meta),
-    warn: (message, meta) => log('warn', `[${namespace}] ${message}`, meta),
-    error: (message, meta) => log('error', `[${namespace}] ${message}`, meta)
-  };
+	return {
+		debug: (message, meta) => log('debug', `[${namespace}] ${message}`, meta),
+		info: (message, meta) => log('info', `[${namespace}] ${message}`, meta),
+		warn: (message, meta) => log('warn', `[${namespace}] ${message}`, meta),
+		error: (message, meta) => log('error', `[${namespace}] ${message}`, meta)
+	};
 }

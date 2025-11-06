@@ -1,7 +1,15 @@
 <script>
-	import { Button } from "$lib/components/ui/button"
+	import { Button } from '$lib/components/ui/button';
 	import { onMount } from 'svelte';
-import { Activity, HardDrive, RefreshCw, Server, CheckCircle2, AlertTriangle, Loader2 } from '@lucide/svelte';
+	import {
+		Activity,
+		HardDrive,
+		RefreshCw,
+		Server,
+		CheckCircle2,
+		AlertTriangle,
+		Loader2
+	} from '@lucide/svelte';
 
 	let { data } = $props();
 	let analytics = $derived(data.analytics ?? {});
@@ -95,7 +103,9 @@ import { Activity, HardDrive, RefreshCw, Server, CheckCircle2, AlertTriangle, Lo
 	</header>
 
 	{#if refreshError}
-		<div class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/30 dark:bg-rose-900/30 dark:text-rose-200">
+		<div
+			class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/30 dark:bg-rose-900/30 dark:text-rose-200"
+		>
 			{refreshError}
 		</div>
 	{/if}
@@ -103,16 +113,21 @@ import { Activity, HardDrive, RefreshCw, Server, CheckCircle2, AlertTriangle, Lo
 	{#if predictiveAlerts.length}
 		<section class="space-y-3">
 			{#each predictiveAlerts as alert, index (index)}
-				<div class={`rounded-xl border p-4 shadow-sm ${alert.severity === 'critical' ? 'border-destructive/60 bg-destructive/10 text-destructive' : 'border-amber-300/60 bg-amber-500/10 text-amber-700 dark:text-amber-200'}`}>
+				<div
+					class={`rounded-xl border p-4 shadow-sm ${alert.severity === 'critical' ? 'border-destructive/60 bg-destructive/10 text-destructive' : 'border-amber-300/60 bg-amber-500/10 text-amber-700 dark:text-amber-200'}`}
+				>
 					<div class="flex items-start gap-3">
 						<AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
 						<div class="space-y-1">
-							<p class="text-sm font-semibold uppercase tracking-wide">{alert.severity} storage forecast</p>
+							<p class="text-sm font-semibold tracking-wide uppercase">
+								{alert.severity} storage forecast
+							</p>
 							<p class="text-sm leading-relaxed opacity-90">{alert.message}</p>
 							{#if alert.hoursToExhaustion != null}
 								<p class="text-xs opacity-75">
 									Projected exhaustion: {formatHours(alert.hoursToExhaustion)}
-									{#if Number.isFinite(alert.usageRatio)} · Current utilisation:
+									{#if Number.isFinite(alert.usageRatio)}
+										· Current utilisation:
 										{Math.min(100, Math.round(alert.usageRatio * 1000) / 10)}%
 									{/if}
 								</p>

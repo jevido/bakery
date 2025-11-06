@@ -9,13 +9,13 @@ let taskModulePromise;
 getConfig();
 
 export const handle = async ({ event, resolve }) => {
-  if (!workersStarted) {
-    const tasksModule = await (taskModulePromise ??= import('$lib/server/tasks.js'));
-    tasksModule.startTaskWorker();
-    tasksModule.scheduleAnalyticsCollector();
-    tasksModule.scheduleCrashDetector();
-    workersStarted = true;
-  }
-  event.locals.user = await authenticateRequest(event.request);
-  return resolve(event);
+	if (!workersStarted) {
+		const tasksModule = await (taskModulePromise ??= import('$lib/server/tasks.js'));
+		tasksModule.startTaskWorker();
+		tasksModule.scheduleAnalyticsCollector();
+		tasksModule.scheduleCrashDetector();
+		workersStarted = true;
+	}
+	event.locals.user = await authenticateRequest(event.request);
+	return resolve(event);
 };

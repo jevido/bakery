@@ -75,7 +75,8 @@
 
 		<Button type="submit" class="w-full justify-center gap-2" disabled={loading}>
 			{#if loading}
-				<span class="h-4 w-4 animate-spin rounded-full border-2 border-primary border-r-transparent"
+				<span
+					class="h-4 w-4 animate-spin rounded-full border-2 border-primary border-r-transparent"
 				></span>
 				Signing in…
 			{:else}

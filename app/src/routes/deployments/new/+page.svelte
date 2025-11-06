@@ -325,7 +325,8 @@
 						Provision PostgreSQL database
 						<p class="text-xs font-normal text-muted-foreground">
 							Bakery will create a dedicated Postgres database and inject the connection string as
-							<code class="rounded bg-muted px-1.5 py-0.5 text-[11px]">DATABASE_URL</code>.
+							<code class="rounded bg-muted px-1.5 py-0.5 text-[11px]">DATABASE_URL</code>
+							.
 						</p>
 					</span>
 				</label>
@@ -338,7 +339,8 @@
 				<ul class="mt-2 list-disc space-y-1 pl-4">
 					<li>Bakery clones your repo and detects Docker or Bun runtimes automatically.</li>
 					<li>
-						Build output is stored under <code>/var/lib/bakery/builds</code> and wired into Nginx.
+						Build output is stored under <code>/var/lib/bakery/builds</code>
+						 and wired into Nginx.
 					</li>
 					<li>Certificates are issued with Certbot when you verify domains.</li>
 				</ul>

@@ -1,4 +1,6 @@
-const API_BASE = import.meta.env.PUBLIC_API_URL ? import.meta.env.PUBLIC_API_URL.replace(/\/$/, '') : '';
+const API_BASE = import.meta.env.PUBLIC_API_URL
+	? import.meta.env.PUBLIC_API_URL.replace(/\/$/, '')
+	: '';
 
 function resolveUrl(path) {
 	if (path.startsWith('http')) return path;
@@ -27,9 +29,7 @@ export async function apiFetch(path, options = {}) {
 		headers['content-type'] = 'application/json';
 	}
 
-	opts.headers = Object.fromEntries(
-		Object.entries(headers).filter(([, value]) => value != null)
-	);
+	opts.headers = Object.fromEntries(Object.entries(headers).filter(([, value]) => value != null));
 
 	if (isJsonBody) {
 		opts.body = JSON.stringify(opts.body);
@@ -44,7 +44,8 @@ export async function apiFetch(path, options = {}) {
 		} catch {
 			errorPayload = { error: response.statusText };
 		}
-		const message = errorPayload.error || errorPayload.message || response.statusText || 'Request failed';
+		const message =
+			errorPayload.error || errorPayload.message || response.statusText || 'Request failed';
 		const error = new Error(message);
 		error.status = response.status;
 		error.details = errorPayload.details;
@@ -128,7 +129,9 @@ export async function fetchGithubRepos() {
 
 export async function fetchGithubBranches(repository) {
 	const [owner, repo] = repository.split('/');
-	return apiFetch(`/api/github/branches?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`);
+	return apiFetch(
+		`/api/github/branches?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`
+	);
 }
 
 export async function redeployDeployment(id) {

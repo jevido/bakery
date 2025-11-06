@@ -153,7 +153,6 @@
 	</div>
 {/if}
 
-
 {#snippet menuItem(item)}
 	{@const Icon = item.icon}
 	{@const active =
