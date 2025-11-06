@@ -6,6 +6,75 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+render_control_plane_nginx() {
+  local host="$1"
+  local port="$2"
+  local template_path="$INSTALL_DIR/infrastructure/nginx/templates/app.conf"
+  local target_path="/etc/nginx/conf.d/bakery.conf"
+  local logs_dir="/var/log/bakery"
+
+  mkdir -p "$logs_dir"
+
+  local upstream_name="bakery_control_plane"
+  local https_domains
+  local http_redirects=""
+  local primary_domain
+
+  if [[ -n "$host" ]]; then
+    https_domains=$'server_name '"$host"$';'
+    http_redirects=$'server {\n  listen 80;\n  server_name '"$host"$';\n  return 301 https://'"$host"$'\\$request_uri;\n}\n'
+    primary_domain="$host"
+  else
+    https_domains=$'server_name _;'
+    primary_domain="_"
+  fi
+
+  local access_log="$logs_dir/control-plane-access.log"
+  local error_log="$logs_dir/control-plane-error.log"
+
+  TEMPLATE_PATH="$template_path" \
+  TARGET_PATH="$target_path" \
+  UPSTREAM_NAME="$upstream_name" \
+  PORT="$port" \
+  HTTPS_DOMAINS="$https_domains" \
+  HTTP_REDIRECT_BLOCKS="$http_redirects" \
+  ACCESS_LOG="$access_log" \
+  ERROR_LOG="$error_log" \
+  PRIMARY_DOMAIN="$primary_domain" \
+  python3 - <<'PY'
+import os
+import re
+
+template_path = os.environ["TEMPLATE_PATH"]
+target_path = os.environ["TARGET_PATH"]
+
+with open(template_path, "r", encoding="utf-8") as fh:
+    template = fh.read()
+
+variables = {
+    "UPSTREAM_NAME": os.environ["UPSTREAM_NAME"],
+    "PORT": os.environ["PORT"],
+    "HTTPS_DOMAINS": os.environ["HTTPS_DOMAINS"],
+    "HTTP_REDIRECT_BLOCKS": os.environ["HTTP_REDIRECT_BLOCKS"],
+    "ACCESS_LOG": os.environ["ACCESS_LOG"],
+    "ERROR_LOG": os.environ["ERROR_LOG"],
+    "PRIMARY_DOMAIN": os.environ["PRIMARY_DOMAIN"],
+}
+
+def replace(match):
+    key = match.group(1).strip()
+    try:
+        return variables[key]
+    except KeyError:
+        raise SystemExit(f"Missing template variable {key}")
+
+rendered = re.sub(r"\{\{(.*?)\}\}", replace, template)
+
+with open(target_path, "w", encoding="utf-8") as fh:
+    fh.write(rendered)
+PY
+}
+
 REPO_URL=""
 INSTALL_DIR="/opt/bakery"
 CERTBOT_EMAIL=""
@@ -14,6 +83,8 @@ ADMIN_EMAIL="jheremenis@gmail.com"
 ADMIN_PASS=""
 GITHUB_CLIENT_ID=""
 GITHUB_CLIENT_SECRET=""
+BAKERY_LISTEN_HOST="0.0.0.0"
+BAKERY_LISTEN_PORT="4100"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -132,6 +203,13 @@ else
   BAKERY_BASE_URL="https://${PUBLIC_IP}"
 fi
 
+BASE_HOST=""
+if [[ -n "$BAKERY_BASE_URL" ]]; then
+  BASE_HOST="${BAKERY_BASE_URL#*://}"
+  BASE_HOST="${BASE_HOST%%/*}"
+  BASE_HOST="${BASE_HOST%%:*}"
+fi
+
 sudo -u postgres psql <<SQL
 DO \$\$
 BEGIN
@@ -150,10 +228,10 @@ NODE_ENV=production
 DATABASE_URL=postgres://bakery:${DATABASE_PASSWORD}@localhost:5432/bakery
 SESSION_SECRET=${SESSION_SECRET}
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
-BAKERY_HOST=0.0.0.0
-BAKERY_PORT=4100
-HOST=0.0.0.0
-PORT=4100
+BAKERY_HOST=${BAKERY_LISTEN_HOST}
+BAKERY_PORT=${BAKERY_LISTEN_PORT}
+HOST=${BAKERY_LISTEN_HOST}
+PORT=${BAKERY_LISTEN_PORT}
 BAKERY_BASE_URL=${BAKERY_BASE_URL}
 BAKERY_PUBLIC_IP=${PUBLIC_IP}
 BAKERY_PUBLIC_IPV6=${PUBLIC_IPV6}
@@ -181,7 +259,12 @@ systemctl restart bakery.service
 echo "[8/9] Preparing nginx base configuration"
 mkdir -p /etc/nginx/conf.d
 cp infrastructure/nginx/templates/app.conf /etc/nginx/conf.d/bakery.template
-systemctl reload nginx || true
+render_control_plane_nginx "$BASE_HOST" "$BAKERY_LISTEN_PORT"
+if nginx -t >/dev/null 2>&1; then
+  systemctl reload nginx
+else
+  echo "Warning: nginx configuration test failed. Review /etc/nginx/conf.d/bakery.conf and obtain certificates before reloading nginx." >&2
+fi
 
 echo "[9/9] Enabling automatic updates"
 sed "s|{{WORKING_DIR}}|$INSTALL_DIR|g" infrastructure/systemd/bakery-update.service > /etc/systemd/system/bakery-update.service
@@ -191,11 +274,7 @@ systemctl enable bakery-update.timer
 systemctl start bakery-update.timer
 
 DNS_GUIDANCE=""
-if [[ -n "$BAKERY_BASE_URL" ]]; then
-  BASE_HOST="${BAKERY_BASE_URL#*://}"
-  BASE_HOST="${BASE_HOST%%/*}"
-  BASE_HOST="${BASE_HOST%%:*}"
-  if [[ -n "$BASE_HOST" && "$BASE_HOST" =~ [a-zA-Z] ]]; then
+if [[ -n "$BASE_HOST" && "$BASE_HOST" =~ [a-zA-Z] ]]; then
     ROOT_HOST=${BASE_HOST#*.}
     DNS_GUIDANCE+=$'\nDNS configuration tips:\n'
     DNS_GUIDANCE+=$"  A record    : ${BASE_HOST} -> ${PUBLIC_IP}\n"
@@ -209,7 +288,6 @@ if [[ -n "$BAKERY_BASE_URL" ]]; then
       fi
       DNS_GUIDANCE+=$"  (wildcard enables app subdomains such as app.${ROOT_HOST})\n"
     fi
-  fi
 fi
 
 cat <<INFO
