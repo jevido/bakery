@@ -17,7 +17,7 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 bun install
 cd app && bun install && bun run build && cd ..
 
-bun backend/lib/migrate.js
+bun run migrate
 
 systemctl daemon-reload >/dev/null 2>&1 || true
 systemctl restart bakery.service

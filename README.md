@@ -146,7 +146,7 @@ This streams Docker Compose logs until you hit <kbd>Ctrl</kbd>+<kbd>C</kbd>. Lea
 - `backend/controllers/` – Auth, deployments, domains, databases, and system endpoints consumed by the UI.
 - `backend/models/` – Database access helpers wrapping SQL queries per aggregate.
 - `backend/lib/tasks.js` – Background worker polling the `tasks` table to execute deployments, rollbacks, analytics snapshots, and crash restarts.
-- `backend/migrations/` – SQL migrations applied through `backend/lib/migrate.js`.
+- `backend/migrations/` – SQL migrations applied through `scripts/migrate.js` (run via `bun run migrate`).
 
 ## Frontend Highlights
 
@@ -201,7 +201,7 @@ This streams Docker Compose logs until you hit <kbd>Ctrl</kbd>+<kbd>C</kbd>. Lea
 
 1. Fork and clone the repository.
 2. Use `bun run lint` inside `app` to keep Svelte formatting consistent.
-3. Add or adjust migrations through SQL files in `backend/migrations/` and run `bun backend/lib/migrate.js` to apply them locally.
+3. Add or adjust migrations through SQL files in `backend/migrations/` and run `bun run migrate` to apply them locally.
 4. Submit PRs with clear descriptions of backend/app updates plus any new infrastructure templates.
 
 ## License

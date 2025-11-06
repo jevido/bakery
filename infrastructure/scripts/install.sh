@@ -136,7 +136,7 @@ GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
 EOF
 
 echo "[5/9] Running database migrations"
-bun backend/lib/migrate.js
+bun run migrate
 
 bun backend/scripts/create-admin.js "$ADMIN_EMAIL" "$ADMIN_PASS"
 
