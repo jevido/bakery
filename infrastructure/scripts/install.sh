@@ -98,6 +98,8 @@ echo "[4/9] Installing JavaScript dependencies"
 bun --bun install
 cd app && bun --bun install && bun run build && cd ..
 
+chmod 755 app/build/index.js
+
 mkdir -p /var/lib/bakery/data /var/lib/bakery/logs /var/lib/bakery/builds
 mkdir -p /var/log/bakery
 chown -R bakery:bakery /var/lib/bakery

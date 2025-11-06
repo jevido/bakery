@@ -19,6 +19,8 @@ export PATH="/usr/local/bin:$BUN_INSTALL/bin:$PATH"
 bun --bun install
 cd app && bun --bun install && bun run build && cd ..
 
+chmod 755 app/build/index.js
+
 bun run migrate
 sed "s|{{WORKING_DIR}}|$APP_DIR|g" infrastructure/systemd/bakery.service > /etc/systemd/system/bakery.service
 
