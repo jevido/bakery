@@ -176,10 +176,12 @@
 			</p>
 		</div>
 		<div class="flex gap-3">
-			<Button variant="outline" class="gap-2 px-4" onclick={startGithubLink}>
-				<LinkIcon class="h-4 w-4" />
-				Link GitHub
-			</Button>
+			{#if !analytics.githubLinked}
+				<Button variant="outline" class="gap-2 px-4" onclick={startGithubLink}>
+					<LinkIcon class="h-4 w-4" />
+					Link GitHub
+				</Button>
+			{/if}
 			<Button class="gap-2 px-4" onclick={() => goto('/deployments/new')}>
 				New deployment
 				<ArrowRight class="h-4 w-4" />

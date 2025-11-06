@@ -204,7 +204,3 @@ The Bakery project is **complete** when:
 - No manual config files (`apps.json`) — everything via GUI.
 
 ---
-
-## Todo: 
-
-- I integrated github, but have not removed the "link" github buttons for users that have their account linked
