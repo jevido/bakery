@@ -16,6 +16,31 @@ is_ip_address() {
   return 1
 }
 
+ensure_certbot_ssl_defaults() {
+  python3 - <<'PY'
+import os
+import shutil
+
+try:
+    from certbot_nginx._internal import tls_configs
+except Exception:
+    raise SystemExit(0)
+
+base = os.path.dirname(tls_configs.__file__)
+targets = {
+    'options-ssl-nginx.conf': os.path.join('/etc/letsencrypt', 'options-ssl-nginx.conf'),
+    'ssl-dhparams.pem': os.path.join('/etc/letsencrypt', 'ssl-dhparams.pem')
+}
+
+os.makedirs('/etc/letsencrypt', exist_ok=True)
+
+for name, destination in targets.items():
+    source = os.path.join(base, name)
+    if os.path.exists(source) and not os.path.exists(destination):
+        shutil.copyfile(source, destination)
+PY
+}
+
 ensure_control_plane_certificate() {
   local host="$1"
   local email="$2"
@@ -60,6 +85,7 @@ render_control_plane_nginx() {
   local primary_domain
   local listen_directive
   local ssl_directives=""
+  local http2_directive=$'# http/1.1 only'
   local wants_https=true
 
   if [[ -z "$host" ]]; then
@@ -69,10 +95,12 @@ render_control_plane_nginx() {
   fi
 
   if [[ "$wants_https" == true ]]; then
+    ensure_certbot_ssl_defaults
     https_domains=$'server_name '"$host"$';'
     http_redirects=$'server {\n  listen 80;\n  server_name '"$host"$';\n  return 301 https://'"$host"$'\\$request_uri;\n}\n'
     primary_domain="$host"
-    listen_directive=$'listen 443 ssl http2;'
+    listen_directive=$'listen 443 ssl;'
+    http2_directive=$'http2 on;'
     ssl_directives=$'    ssl_certificate /etc/letsencrypt/live/'"$host"$'/fullchain.pem;\n'
     ssl_directives+=$'    ssl_certificate_key /etc/letsencrypt/live/'"$host"$'/privkey.pem;\n'
     ssl_directives+=$'    include /etc/letsencrypt/options-ssl-nginx.conf;\n'
@@ -81,6 +109,7 @@ render_control_plane_nginx() {
     https_domains=$'server_name '"${host:-_}"$';'
     primary_domain="${host:-_}"
     listen_directive=$'listen 80;'
+    http2_directive=$'# http/1.1 only'
     http_redirects=""
   fi
 
@@ -94,6 +123,7 @@ render_control_plane_nginx() {
   HTTPS_DOMAINS="$https_domains" \
   HTTP_REDIRECT_BLOCKS="$http_redirects" \
   LISTEN_DIRECTIVE="$listen_directive" \
+  HTTP2_DIRECTIVE="$http2_directive" \
   SSL_DIRECTIVES="$ssl_directives" \
   ACCESS_LOG="$access_log" \
   ERROR_LOG="$error_log" \
@@ -114,6 +144,7 @@ variables = {
     "HTTPS_DOMAINS": os.environ["HTTPS_DOMAINS"],
     "HTTP_REDIRECT_BLOCKS": os.environ["HTTP_REDIRECT_BLOCKS"],
     "LISTEN_DIRECTIVE": os.environ["LISTEN_DIRECTIVE"],
+    "HTTP2_DIRECTIVE": os.environ["HTTP2_DIRECTIVE"],
     "SSL_DIRECTIVES": os.environ["SSL_DIRECTIVES"],
     "ACCESS_LOG": os.environ["ACCESS_LOG"],
     "ERROR_LOG": os.environ["ERROR_LOG"],

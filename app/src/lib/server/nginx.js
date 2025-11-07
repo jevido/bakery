@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { spawn } from 'bun';
 import { getConfig } from './config.js';
@@ -16,6 +16,55 @@ async function renderTemplate(templateName, variables) {
 		}
 		return variables[trimmed];
 	});
+}
+
+async function fileExists(path) {
+	try {
+		await access(path);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function ensureCertbotDefaults() {
+	const required = [
+		'/etc/letsencrypt/options-ssl-nginx.conf',
+		'/etc/letsencrypt/ssl-dhparams.pem'
+	];
+	const missing = [];
+	for (const path of required) {
+		if (!(await fileExists(path))) {
+			missing.push(path);
+		}
+	}
+	if (!missing.length) return;
+
+	const script = `import os, shutil
+try:
+    from certbot_nginx._internal import tls_configs
+except Exception:
+    raise SystemExit(0)
+base = os.path.dirname(tls_configs.__file__)
+targets = {
+    'options-ssl-nginx.conf': os.path.join('/etc/letsencrypt', 'options-ssl-nginx.conf'),
+    'ssl-dhparams.pem': os.path.join('/etc/letsencrypt', 'ssl-dhparams.pem')
+}
+os.makedirs('/etc/letsencrypt', exist_ok=True)
+for name, destination in targets.items():
+    source = os.path.join(base, name)
+    if os.path.exists(source) and not os.path.exists(destination):
+        shutil.copyfile(source, destination)
+`;
+	const process = spawn(['python3', '-c', script], {
+		stdin: 'ignore',
+		stdout: 'pipe',
+		stderr: 'pipe'
+	});
+	const stderr = await new Response(process.stderr).text();
+	if (process.exitCode !== 0) {
+		await log('warn', 'Failed to copy certbot TLS defaults', { stderr });
+	}
 }
 
 export async function writeDeploymentConfig({ deployment, domains, port, slot, tlsEnabled }) {
@@ -39,15 +88,26 @@ server {
 		: '';
 
 	const upstreamName = `bakery_${deployment.id}_${slot}`;
-	const listenDirective = enableTls ? 'listen 443 ssl http2;' : 'listen 80;';
-	const sslDirectives = enableTls
-		? [
+	let listenDirective = 'listen 80;';
+	let http2Directive = '# http/1.1 only';
+	let sslDirectives = '    # TLS disabled until a certificate is available\n';
+
+	if (enableTls) {
+		await ensureCertbotDefaults();
+		listenDirective = 'listen 443 ssl;';
+		http2Directive = 'http2 on;';
+		sslDirectives = [
 			`    ssl_certificate /etc/letsencrypt/live/${primaryDomain}/fullchain.pem;`,
-			`    ssl_certificate_key /etc/letsencrypt/live/${primaryDomain}/privkey.pem;`,
-			'    include /etc/letsencrypt/options-ssl-nginx.conf;',
-			'    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;'
-		  ].join('\n')
-		: '    # TLS disabled until a certificate is available\n';
+			`    ssl_certificate_key /etc/letsencrypt/live/${primaryDomain}/privkey.pem;`
+		];
+		if (await fileExists('/etc/letsencrypt/options-ssl-nginx.conf')) {
+			sslDirectives.push('    include /etc/letsencrypt/options-ssl-nginx.conf;');
+		}
+		if (await fileExists('/etc/letsencrypt/ssl-dhparams.pem')) {
+			sslDirectives.push('    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;');
+		}
+		sslDirectives = sslDirectives.join('\n');
+	}
 
 	const nginxBody = await renderTemplate('app.conf', {
 		UPSTREAM_NAME: upstreamName,
@@ -55,6 +115,7 @@ server {
 		HTTPS_DOMAINS: httpsDomains,
 		HTTP_REDIRECT_BLOCKS: httpRedirects,
 		LISTEN_DIRECTIVE: listenDirective,
+		HTTP2_DIRECTIVE: http2Directive,
 		SSL_DIRECTIVES: sslDirectives,
 		ACCESS_LOG: join(config.logsDir, `${deployment.id}-${slot}-access.log`),
 		ERROR_LOG: join(config.logsDir, `${deployment.id}-${slot}-error.log`),
