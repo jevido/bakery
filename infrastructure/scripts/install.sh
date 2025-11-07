@@ -139,6 +139,8 @@ render_control_plane_nginx() {
   local wants_https=true
   local cert_ready=false
 
+  local redirect_block=""
+
   if [[ -z "$host" ]]; then
     wants_https=false
   elif is_ip_address "$host"; then
@@ -146,6 +148,7 @@ render_control_plane_nginx() {
   fi
 
   if [[ "$wants_https" == true ]]; then
+    redirect_block=$'server {\n  listen 80;\n  server_name '"$host"$';\n  return 301 https://'"$host"$'\$request_uri;\n}\n'
     if ensure_control_plane_certificate "$host" "$certbot_email"; then
       ensure_tls_defaults || true
       cert_ready=true
@@ -154,7 +157,7 @@ render_control_plane_nginx() {
 
   if [[ "$wants_https" == true && "$cert_ready" == true ]]; then
     https_domains=$'server_name '"$host"$';'
-    http_redirects=$'server {\n  listen 80;\n  server_name '"$host"$';\n  return 301 https://'"$host"$'\\$request_uri;\n}\n'
+    http_redirects="$redirect_block"
     primary_domain="$host"
     listen_directive=$'listen 443 ssl;'
     http2_directive=$'http2 on;'
@@ -379,11 +382,17 @@ echo "[8/9] Preparing nginx base configuration"
 mkdir -p /etc/nginx/conf.d
 cp infrastructure/nginx/templates/app.conf /etc/nginx/conf.d/bakery.template
 render_control_plane_nginx "$BASE_HOST" "$BAKERY_LISTEN_PORT" "$CERTBOT_EMAIL"
-if nginx -t >/dev/null 2>&1; then
-  systemctl reload nginx
-else
-  echo "Warning: nginx configuration test failed. Review /etc/nginx/conf.d/bakery.conf and obtain certificates before reloading nginx." >&2
-fi
+  if nginx -t >/dev/null 2>&1; then
+    if systemctl is-active --quiet nginx; then
+      if ! systemctl reload nginx >/dev/null 2>&1; then
+        systemctl restart nginx >/dev/null 2>&1 || systemctl start nginx >/dev/null 2>&1 || true
+      fi
+    else
+      systemctl start nginx >/dev/null 2>&1 || true
+    fi
+  else
+    echo "Warning: nginx configuration test failed. Review /etc/nginx/conf.d/bakery.conf and obtain certificates before reloading nginx." >&2
+  fi
 
 echo "[9/9] Enabling automatic updates"
 sed "s|{{WORKING_DIR}}|$INSTALL_DIR|g" infrastructure/systemd/bakery-update.service > /etc/systemd/system/bakery-update.service
