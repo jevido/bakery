@@ -1,8 +1,14 @@
 import { spawn } from 'bun';
 import { getConfig } from './config.js';
 import { log } from './logger.js';
+import { getLocalServiceStatus } from './localRuntime.js';
 
 async function runSystemctl(args) {
+	const config = getConfig();
+	if (config.localMode) {
+		await log('info', 'Local mode: skipping systemctl invocation', { args });
+		return 'skipped';
+	}
 	const process = spawn(['systemctl', ...args], {
 		stdin: 'ignore',
 		stdout: 'pipe',
@@ -38,6 +44,10 @@ export async function enableService(service) {
 }
 
 export async function serviceStatus(service) {
+	const config = getConfig();
+	if (config.localMode) {
+		return getLocalServiceStatus(service.replace(/\.service$/, ''));
+	}
 	try {
 		const output = await runSystemctl(['is-active', service]);
 		return output === 'active' ? 'active' : 'inactive';

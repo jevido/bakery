@@ -11,6 +11,7 @@ import {
 	enableService,
 	serviceNameForDeployment
 } from '../app/src/lib/server/systemd.js';
+import { startLocalService, stopLocalService } from '../app/src/lib/server/localRuntime.js';
 import {
 	detectDockerfile,
 	buildImage,
@@ -110,8 +111,10 @@ async function createSystemdUnit({ deployment, slot, port, workingDir, env }) {
 
 	const targetPath = join(config.systemdServicesDir, `${serviceName}.service`);
 	await writeFile(targetPath, rendered, 'utf8');
-	await reloadDaemon();
-	await enableService(`${serviceName}.service`);
+	if (!config.localMode) {
+		await reloadDaemon();
+		await enableService(`${serviceName}.service`);
+	}
 	return targetPath;
 }
 
@@ -132,6 +135,20 @@ async function deployDockerApp({ deployment, slot, port, repoDir, env }) {
 }
 
 async function deployBunApp({ deployment, slot, port, repoDir, env }) {
+	const config = getConfig();
+	const serviceName = serviceNameForDeployment(deployment.id, slot);
+
+	if (config.localMode) {
+		await startLocalService(serviceName, {
+			cwd: repoDir,
+			env: {
+				...env,
+				PORT: String(port)
+			}
+		});
+		return;
+	}
+
 	await createSystemdUnit({
 		deployment,
 		slot,
@@ -143,9 +160,9 @@ async function deployBunApp({ deployment, slot, port, repoDir, env }) {
 		}
 	});
 	try {
-		await stopService(`${serviceNameForDeployment(deployment.id, slot)}.service`);
+		await stopService(`${serviceName}.service`);
 	} catch {}
-	await startService(`${serviceNameForDeployment(deployment.id, slot)}.service`);
+	await startService(`${serviceName}.service`);
 }
 
 async function cleanupOldBuilds(deployment) {
@@ -290,16 +307,22 @@ export async function cleanupDeploymentTask({ deploymentId }) {
 	const slots = deployment.blue_green_enabled ? ['blue', 'green'] : ['blue'];
 	for (const slot of slots) {
 		const serviceName = serviceNameForDeployment(deployment.id, slot);
-		try {
-			await stopService(`${serviceName}.service`);
-		} catch {}
+		if (config.localMode) {
+			await stopLocalService(serviceName);
+		} else {
+			try {
+				await stopService(`${serviceName}.service`);
+			} catch {}
+		}
 		try {
 			await stopAndRemoveContainer(serviceName);
 		} catch {}
 		const servicePath = join(config.systemdServicesDir, `${serviceName}.service`);
 		await unlink(servicePath).catch(() => {});
 	}
-	await reloadDaemon().catch(() => {});
+	if (!config.localMode) {
+		await reloadDaemon().catch(() => {});
+	}
 	const buildDir = join(config.buildsDir, deployment.id);
 	await rm(buildDir, { recursive: true, force: true }).catch(() => {});
 	const nginxConfig = join(config.nginxSitesDir, `${deployment.id}.conf`);

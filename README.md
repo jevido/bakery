@@ -125,6 +125,16 @@ This streams Docker Compose logs until you hit <kbd>Ctrl</kbd>+<kbd>C</kbd>. Lea
 
 6. Open `http://localhost:5173/login` in your browser to access the UI.
 
+7. Start the lightweight deployment agent in another terminal (no sudo needed):
+
+   ```bash
+   BAKERY_LOCAL_MODE=1 bun agent/index.js
+   ```
+
+   This runs the agent loop against your dev server, spawns Bun apps directly, and writes per-deployment config/log files into `.data/`.
+
+8. From the UI create deployments as usual. Each slot listens on an automatically assigned port (base `5200` by default); no Nginx/systemd interaction happens when `BAKERY_LOCAL_MODE=1`, so you can hit the app via `http://127.0.0.1:<port>`.
+
 ## Environment Variables
 
 | Variable                                                    | Purpose                                                                    |
@@ -138,6 +148,17 @@ This streams Docker Compose logs until you hit <kbd>Ctrl</kbd>+<kbd>C</kbd>. Lea
 | `BAKERY_DATA_DIR` / `BAKERY_LOGS_DIR` / `BAKERY_BUILDS_DIR` | File system locations for build artifacts, data snapshots, and log storage |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`                 | GitHub OAuth credentials                                                   |
 | `CERTBOT_EMAIL`                                             | Email passed to Certbot when issuing certificates                          |
+| `BAKERY_LOCAL_MODE`                                         | When truthy, skips systemd/nginx actions and runs deployments directly (defaults to on in dev) |
+
+## Local Deployment Runtime
+
+Setting `BAKERY_LOCAL_MODE=1` (the default while `NODE_ENV !== 'production'`) activates a self-contained runtime so you can exercise deployments without touching systemd, nginx, or Certbot on your workstation.
+
+- Deployments are launched by the agent via `bun run start` and tracked in-memory — no sudo required.
+- Generated unit files, nginx templates, and logs are written to `.data/systemd`, `.data/nginx/sites-enabled`, and `.data/logs` for inspection.
+- Nginx reloads and Certbot requests are skipped automatically; domains can still be created and you can inspect the rendered config, but you should hit the app directly on its assigned port (default range `5200+`).
+- Docker-based repositories still use your local Docker CLI if available; otherwise the task will fail just like in production.
+- Toggle the behaviour explicitly by setting `BAKERY_LOCAL_MODE=0` (to test real systemd/nginx) or `1`.
 
 ## Key Backend Components
 

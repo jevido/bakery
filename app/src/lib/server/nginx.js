@@ -122,6 +122,11 @@ export async function configureDeploymentIngress({
 }
 
 export async function reloadNginx() {
+	const config = getConfig();
+	if (config.localMode) {
+		await log('info', 'Local mode: skipping nginx reload');
+		return;
+	}
 	await log('info', 'Reloading nginx');
 	const process = spawn(['systemctl', 'reload', 'nginx'], {
 		stdin: 'ignore',
