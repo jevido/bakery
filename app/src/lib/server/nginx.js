@@ -27,46 +27,6 @@ async function fileExists(path) {
 	}
 }
 
-async function ensureCertbotDefaults() {
-	const required = [
-		'/etc/letsencrypt/options-ssl-nginx.conf',
-		'/etc/letsencrypt/ssl-dhparams.pem'
-	];
-	const missing = [];
-	for (const path of required) {
-		if (!(await fileExists(path))) {
-			missing.push(path);
-		}
-	}
-	if (!missing.length) return;
-
-	const script = `import os, shutil
-try:
-    from certbot_nginx._internal import tls_configs
-except Exception:
-    raise SystemExit(0)
-base = os.path.dirname(tls_configs.__file__)
-targets = {
-    'options-ssl-nginx.conf': os.path.join('/etc/letsencrypt', 'options-ssl-nginx.conf'),
-    'ssl-dhparams.pem': os.path.join('/etc/letsencrypt', 'ssl-dhparams.pem')
-}
-os.makedirs('/etc/letsencrypt', exist_ok=True)
-for name, destination in targets.items():
-    source = os.path.join(base, name)
-    if os.path.exists(source) and not os.path.exists(destination):
-        shutil.copyfile(source, destination)
-`;
-	const process = spawn(['python3', '-c', script], {
-		stdin: 'ignore',
-		stdout: 'pipe',
-		stderr: 'pipe'
-	});
-	const stderr = await new Response(process.stderr).text();
-	if (process.exitCode !== 0) {
-		await log('warn', 'Failed to copy certbot TLS defaults', { stderr });
-	}
-}
-
 export async function writeDeploymentConfig({ deployment, domains, port, slot, tlsEnabled }) {
 	const config = getConfig();
 	const domainList = domains.map((d) => d.hostname).join(' ');
@@ -93,7 +53,6 @@ server {
 	let sslDirectives = '    # TLS disabled until a certificate is available\n';
 
 	if (enableTls) {
-		await ensureCertbotDefaults();
 		listenDirective = 'listen 443 ssl;';
 		http2Directive = 'http2 on;';
 		sslDirectives = [

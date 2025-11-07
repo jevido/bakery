@@ -4,6 +4,18 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 APP_DIR=$(cd "$SCRIPT_DIR/../.." && pwd)
 
+render_template() {
+  local template="$1"
+  local target="$2"
+  shift 2
+  local -a env_pairs=("$@")
+  env "${env_pairs[@]}" perl -0pe '
+    s/\{\{([^}]+)\}\}/
+      exists $ENV{$1} ? $ENV{$1} : die "Missing template variable $1\n"
+    /gex
+  ' "$template" >"$target"
+}
+
 is_ip_address() {
   local value="$1"
   [[ -z "$value" ]] && return 1
@@ -16,38 +28,13 @@ is_ip_address() {
   return 1
 }
 
-ensure_certbot_ssl_defaults() {
-  python3 - <<'PY'
-import os
-import shutil
-
-try:
-    from certbot_nginx._internal import tls_configs
-except Exception:
-    raise SystemExit(0)
-
-base = os.path.dirname(tls_configs.__file__)
-targets = {
-    'options-ssl-nginx.conf': os.path.join('/etc/letsencrypt', 'options-ssl-nginx.conf'),
-    'ssl-dhparams.pem': os.path.join('/etc/letsencrypt', 'ssl-dhparams.pem')
-}
-
-os.makedirs('/etc/letsencrypt', exist_ok=True)
-
-for name, destination in targets.items():
-    source = os.path.join(base, name)
-    if os.path.exists(source) and not os.path.exists(destination):
-        shutil.copyfile(source, destination)
-PY
-}
-
 ensure_control_plane_certificate() {
   local host="$1"
   local email="$2"
   local cert_dir="/etc/letsencrypt/live/$host"
 
   if [[ -z "$host" ]]; then
-    return 0
+    return 1
   fi
 
   if [[ -f "$cert_dir/fullchain.pem" && -f "$cert_dir/privkey.pem" ]]; then
@@ -60,13 +47,23 @@ ensure_control_plane_certificate() {
     exit 1
   fi
 
-  echo "[nginx] Requesting Let's Encrypt certificate for $host"
-  certbot certonly \
-    --nginx \
+  echo "[nginx] Requesting Let's Encrypt certificate for $host (standalone)"
+  systemctl stop nginx >/dev/null 2>&1 || true
+  if certbot certonly \
+    --standalone \
+    --preferred-challenges http \
     --agree-tos \
     --non-interactive \
     -m "$email" \
-    -d "$host"
+    -d "$host"; then
+    echo "[nginx] Certificate issued for $host"
+    systemctl start nginx >/dev/null 2>&1 || true
+    return 0
+  else
+    echo "Warning: Certbot failed for $host; continuing without HTTPS." >&2
+    systemctl start nginx >/dev/null 2>&1 || true
+    return 1
+  fi
 }
 
 render_control_plane_nginx() {
@@ -87,6 +84,7 @@ render_control_plane_nginx() {
   local ssl_directives=""
   local http2_directive=$'# http/1.1 only'
   local wants_https=true
+  local cert_ready=false
 
   if [[ -z "$host" ]]; then
     wants_https=false
@@ -95,7 +93,12 @@ render_control_plane_nginx() {
   fi
 
   if [[ "$wants_https" == true ]]; then
-    ensure_certbot_ssl_defaults
+    if ensure_control_plane_certificate "$host" "$certbot_email"; then
+      cert_ready=true
+    fi
+  fi
+
+  if [[ "$wants_https" == true && "$cert_ready" == true ]]; then
     https_domains=$'server_name '"$host"$';'
     http_redirects=$'server {\n  listen 80;\n  server_name '"$host"$';\n  return 301 https://'"$host"$'\\$request_uri;\n}\n'
     primary_domain="$host"
@@ -103,8 +106,12 @@ render_control_plane_nginx() {
     http2_directive=$'http2 on;'
     ssl_directives=$'    ssl_certificate /etc/letsencrypt/live/'"$host"$'/fullchain.pem;\n'
     ssl_directives+=$'    ssl_certificate_key /etc/letsencrypt/live/'"$host"$'/privkey.pem;\n'
-    ssl_directives+=$'    include /etc/letsencrypt/options-ssl-nginx.conf;\n'
-    ssl_directives+=$'    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;\n'
+    if [[ -f /etc/letsencrypt/options-ssl-nginx.conf ]]; then
+      ssl_directives+=$'    include /etc/letsencrypt/options-ssl-nginx.conf;\n'
+    fi
+    if [[ -f /etc/letsencrypt/ssl-dhparams.pem ]]; then
+      ssl_directives+=$'    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;\n'
+    fi
   else
     https_domains=$'server_name '"${host:-_}"$';'
     primary_domain="${host:-_}"
@@ -116,53 +123,17 @@ render_control_plane_nginx() {
   local access_log="$logs_dir/control-plane-access.log"
   local error_log="$logs_dir/control-plane-error.log"
 
-  TEMPLATE_PATH="$template_path" \
-  TARGET_PATH="$target_path" \
-  UPSTREAM_NAME="$upstream_name" \
-  PORT="$port" \
-  HTTPS_DOMAINS="$https_domains" \
-  HTTP_REDIRECT_BLOCKS="$http_redirects" \
-  LISTEN_DIRECTIVE="$listen_directive" \
-  HTTP2_DIRECTIVE="$http2_directive" \
-  SSL_DIRECTIVES="$ssl_directives" \
-  ACCESS_LOG="$access_log" \
-  ERROR_LOG="$error_log" \
-  PRIMARY_DOMAIN="$primary_domain" \
-  python3 - <<'PY'
-import os
-import re
-
-template_path = os.environ["TEMPLATE_PATH"]
-target_path = os.environ["TARGET_PATH"]
-
-with open(template_path, "r", encoding="utf-8") as fh:
-    template = fh.read()
-
-variables = {
-    "UPSTREAM_NAME": os.environ["UPSTREAM_NAME"],
-    "PORT": os.environ["PORT"],
-    "HTTPS_DOMAINS": os.environ["HTTPS_DOMAINS"],
-    "HTTP_REDIRECT_BLOCKS": os.environ["HTTP_REDIRECT_BLOCKS"],
-    "LISTEN_DIRECTIVE": os.environ["LISTEN_DIRECTIVE"],
-    "HTTP2_DIRECTIVE": os.environ["HTTP2_DIRECTIVE"],
-    "SSL_DIRECTIVES": os.environ["SSL_DIRECTIVES"],
-    "ACCESS_LOG": os.environ["ACCESS_LOG"],
-    "ERROR_LOG": os.environ["ERROR_LOG"],
-    "PRIMARY_DOMAIN": os.environ["PRIMARY_DOMAIN"],
-}
-
-def replace(match):
-    key = match.group(1).strip()
-    try:
-        return variables[key]
-    except KeyError:
-        raise SystemExit(f"Missing template variable {key}")
-
-rendered = re.sub(r"\{\{(.*?)\}\}", replace, template)
-
-with open(target_path, "w", encoding="utf-8") as fh:
-    fh.write(rendered)
-PY
+  render_template "$template_path" "$target_path" \
+    UPSTREAM_NAME="$upstream_name" \
+    PORT="$port" \
+    HTTPS_DOMAINS="$https_domains" \
+    HTTP_REDIRECT_BLOCKS="$http_redirects" \
+    LISTEN_DIRECTIVE="$listen_directive" \
+    HTTP2_DIRECTIVE="$http2_directive" \
+    SSL_DIRECTIVES="$ssl_directives" \
+    ACCESS_LOG="$access_log" \
+    ERROR_LOG="$error_log" \
+    PRIMARY_DOMAIN="$primary_domain"
 
   if [[ "$wants_https" == true ]]; then
     ensure_control_plane_certificate "$host" "$certbot_email"
