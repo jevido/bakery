@@ -30,8 +30,9 @@ export const POST = async ({ params, locals }) => {
 		}
 	}
 	await createTask('deploy', { deploymentId: deployment.id }, { nodeId: deployment.node_id });
-	await recordDeploymentLog(deployment.id, 'info', 'Deployment manually triggered', {
-		userId: locals.user.id
-	});
+await recordDeploymentLog(deployment.id, 'info', 'Deployment manually triggered', {
+	stream: 'system',
+	userId: locals.user.id
+});
 	return json({ ok: true });
 };

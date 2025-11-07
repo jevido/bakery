@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { spawn } from 'bun';
+import { sql } from 'bun';
 import { getConfig } from './config.js';
 import { log } from './logger.js';
 
@@ -14,27 +14,20 @@ function parseDatabaseUrl(url) {
 	};
 }
 
-async function runPsql(sql) {
-	const config = getConfig();
-	const parsed = parseDatabaseUrl(config.databaseUrl);
-	const process = spawn(
-		['psql', '-h', parsed.host, '-p', parsed.port, '-U', parsed.user, '-d', 'postgres', '-c', sql],
-		{
-			env: {
-				...process.env,
-				PGPASSWORD: parsed.password
-			},
-			stdout: 'pipe',
-			stderr: 'pipe'
-		}
-	);
-	const stdout = await new Response(process.stdout).text();
-	const stderr = await new Response(process.stderr).text();
-	if (process.exitCode !== 0) {
-		await log('error', 'psql command failed', { sql, stderr });
-		throw new Error(stderr);
+function formatStatement(strings) {
+	return strings.reduce((acc, part, index) => acc + part + (index < strings.length - 1 ? `$${index + 1}` : ''), '');
+}
+
+async function runPsql(strings, ...values) {
+	try {
+		return await sql(strings, ...values);
+	} catch (error) {
+		await log('error', 'psql command failed', {
+			sql: formatStatement(strings),
+			error: error instanceof Error ? error.message : String(error)
+		});
+		throw error;
 	}
-	return stdout.trim();
 }
 
 function randomString(length = 24) {
@@ -47,8 +40,8 @@ export async function provisionDatabase(deploymentId) {
 	const dbUser = `bakery_u_${randomString(8)}`;
 	const dbPassword = randomString(32);
 
-	await runPsql(`CREATE ROLE "${dbUser}" WITH LOGIN PASSWORD '${dbPassword}';`);
-	await runPsql(`CREATE DATABASE "${dbName}" OWNER "${dbUser}";`);
+	await runPsql`CREATE ROLE "${dbUser}" WITH LOGIN PASSWORD ${dbPassword};`;
+	await runPsql`CREATE DATABASE "${dbName}" OWNER "${dbUser}";`;
 
 	const config = getConfig();
 	const parsed = parseDatabaseUrl(config.databaseUrl);
@@ -63,5 +56,5 @@ export async function provisionDatabase(deploymentId) {
 }
 
 export async function dropDatabase(dbName) {
-	await runPsql(`DROP DATABASE IF EXISTS "${dbName}";`);
+	await runPsql`DROP DATABASE IF EXISTS "${dbName}";`;
 }

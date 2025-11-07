@@ -1,8 +1,10 @@
 import { mkdir, rm, writeFile, access, readdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
+import { TextDecoder } from 'node:util';
 import { spawn } from 'bun';
 import { nanoid } from 'nanoid';
 import { getConfig } from './config.js';
+import { getBunExecutable } from './bunPaths.js';
 import { sql } from 'bun';
 import { exportEnvVars } from './models/envModel.js';
 import {
@@ -24,6 +26,47 @@ import { createLogger } from './logger.js';
 import { startLocalService, stopLocalService } from './localRuntime.js';
 
 const logger = createLogger('deployer');
+const bunExecutable = getBunExecutable();
+const chunkDecoder = new TextDecoder();
+
+async function streamProcessOutput(stream, { deploymentId, streamLabel }) {
+	if (!stream) return '';
+	if (!deploymentId) {
+		return new Response(stream).text();
+	}
+	const reader = stream.getReader();
+	let buffer = '';
+	let output = '';
+	while (true) {
+		const { value, done } = await reader.read();
+		if (done) break;
+		const chunk = chunkDecoder.decode(value);
+		output += chunk;
+		buffer += chunk;
+		const lines = buffer.split(/\r?\n/);
+		buffer = lines.pop() ?? '';
+		for (const line of lines) {
+			const normalized = line.replace(/\r/g, '');
+			if (!normalized.trim()) continue;
+			await recordDeploymentLog(
+				deploymentId,
+				streamLabel === 'stderr' ? 'error' : 'info',
+				normalized,
+				{ stream: streamLabel }
+			);
+		}
+	}
+	const remaining = buffer.replace(/\r/g, '').trim();
+	if (remaining) {
+		await recordDeploymentLog(
+			deploymentId,
+			streamLabel === 'stderr' ? 'error' : 'info',
+			remaining,
+			{ stream: streamLabel }
+		);
+	}
+	return output;
+}
 
 function computeSlot(deployment) {
 	const active = deployment.active_slot || 'blue';
@@ -42,38 +85,89 @@ function computePort(id, slot) {
 }
 
 async function runCommand(command, args, options = {}) {
-	await logger.info('Running command', { command, args });
-	const process = spawn([command, ...args], {
-		cwd: options.cwd,
-		stdout: 'pipe',
-		stderr: 'pipe'
+	const { cwd, deploymentId } = options;
+	await logger.info('Running command', {
+		command,
+		args,
+		cwd,
+		...(deploymentId ? { deploymentId } : {})
 	});
-	const stdout = await new Response(process.stdout).text();
-	const stderr = await new Response(process.stderr).text();
-
-	if (process.exitCode !== 0) {
-		await logger.error('Command failed', { command, args, stderr });
-		throw new Error(stderr);
+	if (deploymentId) {
+		await recordDeploymentLog(deploymentId, 'info', `$ ${command} ${args.join(' ')}`, {
+			stream: 'system',
+			command,
+			args,
+			cwd
+		});
 	}
+	const child = spawn([command, ...args], {
+		cwd,
+		stdout: 'pipe',
+		stderr: 'pipe',
+		env: {
+			...process.env,
+			GIT_TERMINAL_PROMPT: '0'
+		}
+	});
+	const [stdout, stderr] = await Promise.all([
+		streamProcessOutput(child.stdout, { deploymentId, streamLabel: 'stdout' }),
+		streamProcessOutput(child.stderr, { deploymentId, streamLabel: 'stderr' })
+	]);
+	await child.exited;
+
+	if (child.exitCode !== 0) {
+		await logger.error('Command failed', {
+			command,
+			args,
+			stderr,
+			cwd,
+			...(deploymentId ? { deploymentId } : {})
+		});
+		if (deploymentId) {
+			await recordDeploymentLog(deploymentId, 'error', `Command failed: ${command}`, {
+				stream: 'system',
+				command,
+				args,
+				cwd,
+				stdout,
+				stderr
+			});
+		}
+		throw new Error(stderr || `Command ${command} failed`);
+	}
+
+	if (deploymentId && stdout.trim()) {
+		await recordDeploymentLog(deploymentId, 'info', `${command} completed`, {
+			stream: 'system',
+			command,
+			args,
+			cwd,
+			stdout
+		});
+	}
+
 	return stdout;
 }
 
-async function cloneRepository({ repository, branch, accessToken, targetDir }) {
+async function cloneRepository({ repository, branch, accessToken, targetDir, deploymentId }) {
 	const [owner, repo] = repository.split('/');
 	const tokenUrl = accessToken
 		? `https://${accessToken}@github.com/${owner}/${repo}.git`
 		: `https://github.com/${owner}/${repo}.git`;
-	await runCommand('git', ['clone', '--depth', '1', '--branch', branch, tokenUrl, targetDir]);
+	await runCommand('git', ['clone', '--depth', '1', '--branch', branch, tokenUrl, targetDir], {
+		cwd: undefined,
+		deploymentId
+	});
 }
 
-async function installDependencies(dir) {
-	await runCommand('bun', ['install'], { cwd: dir });
+async function installDependencies(dir, deploymentId) {
+	await runCommand(bunExecutable, ['install'], { cwd: dir, deploymentId });
 }
 
-async function buildProject(dir) {
+async function buildProject(dir, deploymentId) {
 	try {
 		await access(join(dir, 'bunfig.toml'));
-		await runCommand('bun', ['run', 'build'], { cwd: dir });
+		await runCommand(bunExecutable, ['run', 'build'], { cwd: dir, deploymentId });
 		return join(dir, 'build');
 	} catch {
 		await logger.info('No build script detected, skipping build');
@@ -92,9 +186,12 @@ async function createSystemdUnit({ deployment, slot, port, workingDir, env }) {
 	);
 	const template = await Bun.file(templatePath).text();
 	const serviceName = serviceNameForDeployment(deployment.id, slot);
+	const quotedBun = bunExecutable.includes(' ')
+		? `"${bunExecutable}"`
+		: bunExecutable;
 	const ExecStart = deployment.dockerized
 		? `/usr/bin/docker start -a ${serviceName}`
-		: `/usr/bin/env PORT=${port} bun run start`;
+		: `/usr/bin/env PORT=${port} ${quotedBun} run start`;
 
 	const envLines = Object.entries(env)
 		.map(([key, value]) => `Environment="${key}=${value.replace(/"/g, '\\"')}"`)
@@ -171,28 +268,29 @@ export async function deploy(deployment, options) {
 	const slotDir = join(deploymentDir, `${slot}-${buildId}`);
 	await mkdir(slotDir, { recursive: true });
 	const repoDir = join(slotDir, 'source');
-	await mkdir(repoDir, { recursive: true });
 
 	const envVars = await exportEnvVars(deployment.id);
 	envVars.PORT = String(port);
 
 	const accessToken = options.accessToken || null;
-	await recordDeploymentLog(deployment.id, 'info', 'Cloning repository', {});
+	await recordDeploymentLog(deployment.id, 'info', 'Cloning repository', { stream: 'system' });
 	await cloneRepository({
 		repository: deployment.repository,
 		branch: deployment.branch,
 		accessToken,
-		targetDir: repoDir
+		targetDir: repoDir,
+		deploymentId: deployment.id
 	});
 
 	const dockerized = await detectDockerfile(repoDir);
 	await recordDeploymentLog(deployment.id, 'info', 'Detected project type', {
+		stream: 'system',
 		dockerized
 	});
 
 	if (!dockerized) {
-		await installDependencies(repoDir);
-		await buildProject(repoDir);
+	await installDependencies(repoDir, deployment.id);
+	await buildProject(repoDir, deployment.id);
 	}
 
 	if (dockerized) {
@@ -214,22 +312,24 @@ export async function deploy(deployment, options) {
 				obtainCertificate: canRequestCert
 			});
 			if (ingress.certificateRequested) {
-				await recordDeploymentLog(deployment.id, 'info', 'Issued TLS certificate', {
-					domains: domainNames
-				});
+		await recordDeploymentLog(deployment.id, 'info', 'Issued TLS certificate', {
+			stream: 'system',
+			domains: domainNames
+		});
 			}
 			if (!ingress.tlsEnabled && !canRequestCert) {
-				await recordDeploymentLog(
-					deployment.id,
-					'warn',
-					'TLS disabled — CERTBOT_EMAIL is not configured',
-					{ domains: domainNames }
-				);
+			await recordDeploymentLog(
+				deployment.id,
+				'warn',
+				'TLS disabled — CERTBOT_EMAIL is not configured',
+				{ stream: 'system', domains: domainNames }
+			);
 			}
 		} catch (error) {
-			await recordDeploymentLog(deployment.id, 'error', 'Failed to configure TLS', {
-				error: error.message
-			});
+		await recordDeploymentLog(deployment.id, 'error', 'Failed to configure TLS', {
+			stream: 'system',
+			error: error.message
+		});
 			throw error;
 		}
 	}
@@ -251,6 +351,7 @@ export async function deploy(deployment, options) {
 	});
 
 	await recordDeploymentLog(deployment.id, 'info', 'Deployment completed', {
+		stream: 'system',
 		slot,
 		port,
 		versionId
@@ -295,6 +396,7 @@ export async function activateVersion(deployment, version) {
 		status: 'running'
 	});
 	await recordDeploymentLog(deployment.id, 'info', 'Activated deployment version', {
+		stream: 'system',
 		versionId: version.id,
 		slot: version.slot
 	});

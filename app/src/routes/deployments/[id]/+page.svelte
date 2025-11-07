@@ -35,8 +35,29 @@
 	let environment = $state(data.environment ?? []);
 	let versions = $state(data.versions ?? []);
 	let databases = $state(data.databases ?? []);
-	let logs = $state(data.logs ?? []);
-	let tasks = $state(data.tasks ?? []);
+let logs = $state(data.logs ?? []);
+let tasks = $state(data.tasks ?? []);
+let autoRefreshing = $state(false);
+let logPanel;
+const terminalLogs = $derived.by(() => {
+	const streaming = logs.filter((log) => {
+		const metadata = normalizeLogMetadata(log.metadata);
+		return metadata && metadata.stream;
+	});
+	const source = streaming.length ? streaming : logs;
+	return [...source].reverse();
+});
+const visibleVersions = $derived(() => {
+	return Array.isArray(versions) ? versions.slice(0, 5) : [];
+});
+	const BUSY_DEPLOYMENT_STATUSES = new Set([
+		'pending',
+		'provisioning',
+		'deploying',
+		'initializing'
+	]);
+	const ACTIVE_TASK_STATUSES = new Set(['pending', 'running']);
+	const REFRESH_INTERVAL_MS = 1500;
 
 	let working = $state(false);
 	let message = $state('');
@@ -69,10 +90,71 @@
 		}
 	}
 
+	function clearLogs() {
+		logs = [];
+	}
+
+	$effect(() => {
+		const shouldPoll =
+			(deployment.status && BUSY_DEPLOYMENT_STATUSES.has(deployment.status)) ||
+			tasks.some((task) => task.status && ACTIVE_TASK_STATUSES.has(task.status));
+		autoRefreshing = shouldPoll;
+		if (!shouldPoll) return;
+
+		const interval = setInterval(() => {
+			refreshDeployment();
+		}, REFRESH_INTERVAL_MS);
+
+		return () => {
+			clearInterval(interval);
+		};
+	});
+
+	$effect(() => {
+		logs.length;
+		if (!logPanel) return;
+		requestAnimationFrame(() => {
+			if (!logPanel) return;
+			logPanel.scrollTop = logPanel.scrollHeight;
+		});
+	});
+
+	function normalizeLogMetadata(metadata) {
+		if (!metadata) return null;
+		if (typeof metadata === 'object') return metadata;
+		try {
+			return JSON.parse(metadata);
+		} catch {
+			return null;
+		}
+	}
+
+	function formatMetadataValue(value) {
+		if (value == null) return '';
+		if (typeof value === 'object') {
+			try {
+				return JSON.stringify(value, null, 2);
+			} catch {
+				return String(value);
+			}
+		}
+		return String(value);
+	}
+
+	function getLogLevelClass(level) {
+		const normalized = String(level || '').toLowerCase();
+		if (['error', 'err', 'fatal'].includes(normalized)) return 'text-red-400';
+		if (['warn', 'warning'].includes(normalized)) return 'text-amber-300';
+		if (['success', 'ok'].includes(normalized)) return 'text-emerald-300';
+		if (['debug', 'trace'].includes(normalized)) return 'text-sky-300';
+		return 'text-slate-300';
+	}
+
 	async function runAction(action, successMessage) {
 		working = true;
 		message = '';
 		error = '';
+		autoRefreshing = true;
 		try {
 			await action();
 			message = successMessage;
@@ -202,6 +284,20 @@
 		</div>
 	{/if}
 
+	{#if autoRefreshing}
+		<div
+			class="flex items-start gap-3 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-600"
+		>
+			<Loader2 class="mt-0.5 h-4 w-4 animate-spin" />
+			<div>
+				<p class="font-medium text-foreground/90">Deployment activity in progress</p>
+				<p class="text-xs text-muted-foreground">
+					Refreshing logs every few seconds so you can see when tasks finish or fail.
+				</p>
+			</div>
+		</div>
+	{/if}
+
 	{#if error}
 		<div
 			class="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
@@ -211,14 +307,90 @@
 		</div>
 	{/if}
 
+	<section class="space-y-3 rounded-2xl border bg-slate-950/90 p-4 text-slate-100 shadow-inner">
+		<header class="flex flex-wrap items-center justify-between gap-3">
+			<div>
+				<h2 class="text-lg font-semibold text-white">Live task log</h2>
+				<p class="text-xs text-slate-400">
+					Events update automatically while work is running — newest lines appear at the bottom.
+				</p>
+			</div>
+			<div class="flex gap-2">
+				<Button
+					variant="outline"
+					class="border-slate-700 bg-transparent text-xs text-slate-200"
+					onclick={refreshDeployment}
+				>
+					Refresh now
+				</Button>
+				<Button
+					variant="ghost"
+					class="border-slate-800 bg-transparent text-xs text-slate-300 hover:text-white"
+					onclick={clearLogs}
+				>
+					Clear log
+				</Button>
+			</div>
+		</header>
+		<div
+			class="h-64 overflow-y-auto rounded-xl border border-slate-800 bg-black/70 p-3 font-mono text-[11px] leading-relaxed"
+			bind:this={logPanel}
+		>
+			{#if terminalLogs.length === 0}
+				<p class="text-slate-500">No deployment logs yet.</p>
+			{:else}
+				<ul class="space-y-2">
+					{#each terminalLogs as log (log.id ?? `${log.created_at}-${log.level}-${log.message}`)}
+						{@const metadata = normalizeLogMetadata(log.metadata)}
+						<li class="rounded-xl border border-slate-800/80 bg-black/30 p-2">
+							<div class="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wide text-slate-500">
+								<span>{formatDate(log.created_at)}</span>
+								{#if metadata?.stream}
+									<span class="rounded border border-slate-800 px-1.5 py-0.5 text-[9px] font-semibold text-slate-200">
+										{metadata.stream}
+									</span>
+								{/if}
+								<span class={`ml-auto font-semibold ${getLogLevelClass(log.level)}`}>
+									{(log.level || 'info').toUpperCase()}
+								</span>
+							</div>
+							<p class="mt-1 whitespace-pre-wrap text-[11px] text-slate-100">
+								{log.message}
+							</p>
+							{#if metadata}
+								{@const metadataEntries = Object.entries(metadata).filter(([key]) => key !== 'stream')}
+								{#if metadataEntries.length}
+									<div class="mt-2 space-y-1 rounded-lg bg-black/40 p-2 text-[10px] text-slate-300">
+										{#each metadataEntries as [key, value]}
+											{@const rendered = formatMetadataValue(value)}
+											{#if rendered}
+												<div>
+													<p class="font-semibold uppercase tracking-wide text-slate-500">{key}</p>
+													{#if rendered.includes('\n')}
+														<pre class="mt-1 whitespace-pre-wrap text-slate-300">{rendered}</pre>
+													{:else}
+														<p class="text-slate-200">{rendered}</p>
+													{/if}
+												</div>
+											{/if}
+										{/each}
+									</div>
+								{/if}
+							{/if}
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
+	</section>
+
 	<div class="grid gap-6 xl:grid-cols-[2fr,1fr]">
 		<div class="space-y-6">
 			<section class="space-y-4 rounded-2xl border bg-card p-6 shadow-sm">
 				<header>
 					<h2 class="text-lg font-semibold">Domains</h2>
 					<p class="text-sm text-muted-foreground">
-						Add Namecheap-compatible DNS records and trigger verification to provision SSL
-						automatically.
+						Add DNS records and trigger verification to provision SSL automatically.
 					</p>
 				</header>
 				<div class="flex flex-col gap-3 sm:flex-row">
@@ -297,11 +469,12 @@
 						class="h-11 rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
 						placeholder="KEY"
 					/>
-					<input
+					<textarea
 						bind:value={envValue}
-						class="h-11 rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+						class="min-h-[44px] rounded-lg border border-input bg-background px-3 py-2 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
 						placeholder="Secret value"
-					/>
+						rows="2"
+					></textarea>
 					<Button type="button" onclick={addEnvVar} disabled={working}>Add</Button>
 				</div>
 				{#if environment.length === 0}
@@ -341,9 +514,10 @@
 								</div>
 								{#if editingEnv[item.key] !== undefined}
 									<div class="mt-3 grid gap-3 sm:grid-cols-[1fr,auto]">
-										<input
-											class="h-10 rounded-lg border border-input bg-background px-3 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+										<textarea
+											class="min-h-[44px] rounded-lg border border-input bg-background px-3 py-2 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
 											placeholder="New value"
+											rows="3"
 											value={editingEnv[item.key]}
 											oninput={(event) => {
 												editingEnv = {
@@ -351,7 +525,7 @@
 													[item.key]: event.currentTarget.value
 												};
 											}}
-										/>
+										></textarea>
 										<div class="flex gap-2">
 											<Button
 												class="h-10"
@@ -389,7 +563,7 @@
 					<p class="text-sm text-muted-foreground">No historical versions captured yet.</p>
 				{:else}
 					<ul class="space-y-3">
-						{#each versions as version (version.id)}
+						{#each visibleVersions as version (version.id)}
 							<li class="rounded-lg border bg-background/60 p-4">
 								<div class="flex flex-wrap items-center justify-between gap-3">
 									<div>
@@ -446,50 +620,6 @@
 				{/if}
 			</section>
 
-			<section class="space-y-3 rounded-2xl border bg-card p-6 shadow-sm">
-				<header>
-					<h2 class="text-lg font-semibold">Recent logs</h2>
-					<p class="text-sm text-muted-foreground">
-						Latest deployment events recorded by the task worker.
-					</p>
-				</header>
-				{#if logs.length === 0}
-					<p class="text-sm text-muted-foreground">No logs yet.</p>
-				{:else}
-					<ul class="space-y-2 text-xs text-muted-foreground">
-						{#each logs.slice(0, 10) as log (log.id)}
-							<li class="rounded-lg border bg-background/60 p-3">
-								<p class="font-semibold tracking-wide uppercase">{log.level}</p>
-								<p class="text-foreground">{log.message}</p>
-								<p class="mt-1 text-[11px]">{formatDate(log.created_at)}</p>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</section>
-
-			<section class="space-y-3 rounded-2xl border bg-card p-6 shadow-sm">
-				<header>
-					<h2 class="text-lg font-semibold">Task history</h2>
-					<p class="text-sm text-muted-foreground">
-						Relevant tasks for this deployment within the past day.
-					</p>
-				</header>
-				{#if tasks.length === 0}
-					<p class="text-sm text-muted-foreground">No recent tasks.</p>
-				{:else}
-					<ul class="space-y-3 text-xs text-muted-foreground">
-						{#each tasks as task (task.id)}
-							<li class="rounded-lg border bg-background/60 p-3">
-								<p class="text-sm font-medium capitalize">{task.type}</p>
-								<p class="mt-1 text-[11px]">
-									Status {task.status} · {formatDate(task.updated_at)}
-								</p>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</section>
 		</aside>
 	</div>
 </section>

@@ -1,5 +1,6 @@
 import { spawn } from 'bun';
 import { getConfig } from './config.js';
+import { getBunExecutable } from './bunPaths.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('local-runtime');
@@ -45,7 +46,7 @@ function pipeStream(stream, level, serviceName) {
 
 export async function startLocalService(
 	serviceName,
-	{ cwd, env, command = 'bun', args = ['run', 'start'] }
+	{ cwd, env, command = getBunExecutable(), args = ['run', 'start'] }
 ) {
 	if (!isLocalModeEnabled()) {
 		throw new Error('startLocalService called outside local mode');

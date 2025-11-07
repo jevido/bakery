@@ -23,6 +23,20 @@ export async function log(level, message, meta = {}) {
 	if (level === 'error' || config.environment !== 'production') {
 		console[level === 'error' ? 'error' : 'log'](line.trim());
 	}
+
+	const deploymentId = meta?.deploymentId;
+	if (deploymentId) {
+		try {
+			const { recordDeploymentLog } = await import('./models/deploymentModel.js');
+			const metadata = {
+				...meta,
+				stream: meta.stream || 'system'
+			};
+			await recordDeploymentLog(deploymentId, level, message, metadata);
+		} catch (error) {
+			console.error('Failed to mirror log to deployment history', error);
+		}
+	}
 }
 
 export function createLogger(namespace) {
