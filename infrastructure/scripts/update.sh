@@ -8,6 +8,10 @@ render_template() {
   local template="$1"
   local target="$2"
   shift 2
+  local -a assignments=("$@")
+  for assignment in "${assignments[@]}"; do
+    eval "$assignment"
+  done
   : >"$target"
   while IFS= read -r line || [[ -n "$line" ]]; do
     while [[ "$line" =~ \{\{([A-Za-z0-9_]+)\}\} ]]; do
