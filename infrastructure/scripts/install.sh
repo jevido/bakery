@@ -10,12 +10,19 @@ render_template() {
   local template="$1"
   local target="$2"
   shift 2
-  local -a env_pairs=("$@")
-  env "${env_pairs[@]}" perl -0pe '
-    s/\{\{([^}]+)\}\}/
-      exists $ENV{$1} ? $ENV{$1} : die "Missing template variable $1\n"
-    /gex
-  ' "$template" >"$target"
+  : >"$target"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    while [[ "$line" =~ \{\{([A-Za-z0-9_]+)\}\} ]]; do
+      local placeholder="${BASH_REMATCH[1]}"
+      local value="${!placeholder-}"
+      if [[ -z "${value}" ]]; then
+        echo "Missing template variable $placeholder" >&2
+        exit 1
+      fi
+      line="${line//\{\{$placeholder\}\}/$value}"
+    done
+    printf '%s\n' "$line" >>"$target"
+  done <"$template"
 }
 
 is_ip_address() {
@@ -28,6 +35,47 @@ is_ip_address() {
     return 0
   fi
   return 1
+}
+
+locate_certbot_tls_file() {
+  local filename="$1"
+  local candidate
+  shopt -s nullglob
+  for pattern in \
+    /usr/lib/python*/dist-packages \
+    /usr/lib/python*/site-packages \
+    /usr/local/lib/python*/dist-packages \
+    /usr/local/lib/python*/site-packages; do
+    for candidate in $pattern/certbot_nginx/_internal/tls_configs/"$filename"; do
+      if [[ -f "$candidate" ]]; then
+        echo "$candidate"
+        shopt -u nullglob
+        return 0
+      fi
+    done
+  done
+  shopt -u nullglob
+  return 1
+}
+
+ensure_tls_defaults() {
+  local option_target="/etc/letsencrypt/options-ssl-nginx.conf"
+  local dh_target="/etc/letsencrypt/ssl-dhparams.pem"
+  mkdir -p /etc/letsencrypt
+
+  if [[ ! -f "$option_target" ]]; then
+    if src=$(locate_certbot_tls_file options-ssl-nginx.conf); then
+      cp "$src" "$option_target"
+    fi
+  fi
+
+  if [[ ! -f "$dh_target" ]]; then
+    if src=$(locate_certbot_tls_file ssl-dhparams.pem); then
+      cp "$src" "$dh_target"
+    fi
+  fi
+
+  [[ -f "$option_target" && -f "$dh_target" ]]
 }
 
 ensure_control_plane_certificate() {
@@ -96,6 +144,7 @@ render_control_plane_nginx() {
 
   if [[ "$wants_https" == true ]]; then
     if ensure_control_plane_certificate "$host" "$certbot_email"; then
+      ensure_tls_defaults || true
       cert_ready=true
     fi
   fi
