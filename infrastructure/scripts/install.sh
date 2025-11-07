@@ -6,9 +6,50 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+is_ip_address() {
+  local value="$1"
+  [[ -z "$value" ]] && return 1
+  if [[ "$value" =~ ^[0-9.]+$ ]]; then
+    return 0
+  fi
+  if [[ "$value" == *:* ]]; then
+    return 0
+  fi
+  return 1
+}
+
+ensure_control_plane_certificate() {
+  local host="$1"
+  local email="$2"
+  local cert_dir="/etc/letsencrypt/live/$host"
+
+  if [[ -z "$host" ]]; then
+    return 0
+  fi
+
+  if [[ -f "$cert_dir/fullchain.pem" && -f "$cert_dir/privkey.pem" ]]; then
+    echo "[nginx] Existing certificate detected for $host"
+    return 0
+  fi
+
+  if [[ -z "$email" ]]; then
+    echo "Error: Cannot request a Let's Encrypt certificate for $host without --certbot-email" >&2
+    exit 1
+  fi
+
+  echo "[nginx] Requesting Let's Encrypt certificate for $host"
+  certbot certonly \
+    --nginx \
+    --agree-tos \
+    --non-interactive \
+    -m "$email" \
+    -d "$host"
+}
+
 render_control_plane_nginx() {
   local host="$1"
   local port="$2"
+  local certbot_email="$3"
   local template_path="$INSTALL_DIR/infrastructure/nginx/templates/app.conf"
   local target_path="/etc/nginx/conf.d/bakery.conf"
   local logs_dir="/var/log/bakery"
@@ -19,14 +60,30 @@ render_control_plane_nginx() {
   local https_domains
   local http_redirects=""
   local primary_domain
+  local listen_directive
+  local ssl_directives=""
+  local wants_https=true
 
-  if [[ -n "$host" ]]; then
+  if [[ -z "$host" ]]; then
+    wants_https=false
+  elif is_ip_address "$host"; then
+    wants_https=false
+  fi
+
+  if [[ "$wants_https" == true ]]; then
     https_domains=$'server_name '"$host"$';'
     http_redirects=$'server {\n  listen 80;\n  server_name '"$host"$';\n  return 301 https://'"$host"$'\\$request_uri;\n}\n'
     primary_domain="$host"
+    listen_directive=$'listen 443 ssl http2;'
+    ssl_directives=$'    ssl_certificate /etc/letsencrypt/live/'"$host"$'/fullchain.pem;\n'
+    ssl_directives+=$'    ssl_certificate_key /etc/letsencrypt/live/'"$host"$'/privkey.pem;\n'
+    ssl_directives+=$'    include /etc/letsencrypt/options-ssl-nginx.conf;\n'
+    ssl_directives+=$'    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;\n'
   else
-    https_domains=$'server_name _;'
-    primary_domain="_"
+    https_domains=$'server_name '"${host:-_}"$';'
+    primary_domain="${host:-_}"
+    listen_directive=$'listen 80;'
+    http_redirects=""
   fi
 
   local access_log="$logs_dir/control-plane-access.log"
@@ -38,6 +95,8 @@ render_control_plane_nginx() {
   PORT="$port" \
   HTTPS_DOMAINS="$https_domains" \
   HTTP_REDIRECT_BLOCKS="$http_redirects" \
+  LISTEN_DIRECTIVE="$listen_directive" \
+  SSL_DIRECTIVES="$ssl_directives" \
   ACCESS_LOG="$access_log" \
   ERROR_LOG="$error_log" \
   PRIMARY_DOMAIN="$primary_domain" \
@@ -56,6 +115,8 @@ variables = {
     "PORT": os.environ["PORT"],
     "HTTPS_DOMAINS": os.environ["HTTPS_DOMAINS"],
     "HTTP_REDIRECT_BLOCKS": os.environ["HTTP_REDIRECT_BLOCKS"],
+    "LISTEN_DIRECTIVE": os.environ["LISTEN_DIRECTIVE"],
+    "SSL_DIRECTIVES": os.environ["SSL_DIRECTIVES"],
     "ACCESS_LOG": os.environ["ACCESS_LOG"],
     "ERROR_LOG": os.environ["ERROR_LOG"],
     "PRIMARY_DOMAIN": os.environ["PRIMARY_DOMAIN"],
@@ -73,6 +134,10 @@ rendered = re.sub(r"\{\{(.*?)\}\}", replace, template)
 with open(target_path, "w", encoding="utf-8") as fh:
     fh.write(rendered)
 PY
+
+  if [[ "$wants_https" == true ]]; then
+    ensure_control_plane_certificate "$host" "$certbot_email"
+  fi
 }
 
 REPO_URL=""
@@ -259,7 +324,7 @@ systemctl restart bakery.service
 echo "[8/9] Preparing nginx base configuration"
 mkdir -p /etc/nginx/conf.d
 cp infrastructure/nginx/templates/app.conf /etc/nginx/conf.d/bakery.template
-render_control_plane_nginx "$BASE_HOST" "$BAKERY_LISTEN_PORT"
+render_control_plane_nginx "$BASE_HOST" "$BAKERY_LISTEN_PORT" "$CERTBOT_EMAIL"
 if nginx -t >/dev/null 2>&1; then
   systemctl reload nginx
 else

@@ -11,8 +11,7 @@ import {
 	recordDeploymentLog
 } from './models/deploymentModel.js';
 import { listDomains } from './models/domainModel.js';
-import { writeDeploymentConfig, reloadNginx } from './nginx.js';
-import { requestCertificate } from './certbot.js';
+import { configureDeploymentIngress, reloadNginx } from './nginx.js';
 import {
 	stopService,
 	startService,
@@ -187,14 +186,35 @@ export async function deploy(deployment, options) {
 
 	const domains = await listDomains(deployment.id);
 	if (domains.length) {
-		await writeDeploymentConfig({
-			deployment,
-			domains,
-			port,
-			slot
-		});
-		await requestCertificate(domains.map((d) => d.hostname));
-		await reloadNginx();
+		const domainNames = domains.map((d) => d.hostname);
+		const canRequestCert = Boolean(config.certbotEmail);
+		try {
+			const ingress = await configureDeploymentIngress({
+				deployment,
+				domains,
+				port,
+				slot,
+				obtainCertificate: canRequestCert
+			});
+			if (ingress.certificateRequested) {
+				await recordDeploymentLog(deployment.id, 'info', 'Issued TLS certificate', {
+					domains: domainNames
+				});
+			}
+			if (!ingress.tlsEnabled && !canRequestCert) {
+				await recordDeploymentLog(
+					deployment.id,
+					'warn',
+					'TLS disabled — CERTBOT_EMAIL is not configured',
+					{ domains: domainNames }
+				);
+			}
+		} catch (error) {
+			await recordDeploymentLog(deployment.id, 'error', 'Failed to configure TLS', {
+				error: error.message
+			});
+			throw error;
+		}
 	}
 
 	const versionId = await recordDeploymentVersion({
@@ -246,13 +266,13 @@ export async function activateVersion(deployment, version) {
     SET status = CASE WHEN id = ${version.id} THEN 'active' ELSE 'inactive' END
     WHERE deployment_id = ${deployment.id}
   `;
-	await writeDeploymentConfig({
+	await configureDeploymentIngress({
 		deployment,
 		domains,
 		port: version.port,
-		slot: version.slot
+		slot: version.slot,
+		obtainCertificate: false
 	});
-	await reloadNginx();
 	await updateDeployment(deployment.id, {
 		active_slot: version.slot,
 		status: 'running'

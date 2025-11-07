@@ -1,10 +1,10 @@
 import { json, error } from '@sveltejs/kit';
 import { findDomainById, updateDomain, listDomains } from '$lib/server/models/domainModel.js';
-import { requestCertificate } from '$lib/server/certbot.js';
-import { findDeploymentById } from '$lib/server/models/deploymentModel.js';
-import { writeDeploymentConfig, reloadNginx } from '$lib/server/nginx.js';
+import { findDeploymentById, getActiveVersion } from '$lib/server/models/deploymentModel.js';
+import { configureDeploymentIngress } from '$lib/server/nginx.js';
 import { createTask } from '$lib/server/models/taskModel.js';
 import { findNodeById } from '$lib/server/models/nodeModel.js';
+import { getConfig } from '$lib/server/config.js';
 
 export const POST = async ({ params, locals }) => {
 	if (!locals.user) {
@@ -32,15 +32,19 @@ export const POST = async ({ params, locals }) => {
 		return json({ ok: true, queued: true });
 	}
 
-	await requestCertificate([domain.hostname]);
-	await updateDomain(domain.id, { verified: true, ssl_status: 'requested' });
+	const version = await getActiveVersion(deployment.id);
+	if (!version) {
+		throw error(400, 'Deploy the application before verifying domains');
+	}
 	const domains = await listDomains(deployment.id);
-	await writeDeploymentConfig({
+	const config = getConfig();
+	await configureDeploymentIngress({
 		deployment,
 		domains,
-		port: deployment.port || 0,
-		slot: deployment.active_slot || 'blue'
+		port: version.port,
+		slot: version.slot,
+		obtainCertificate: Boolean(config.certbotEmail)
 	});
-	await reloadNginx();
+	await updateDomain(domain.id, { verified: true, ssl_status: 'requested' });
 	return json({ ok: true });
 };
