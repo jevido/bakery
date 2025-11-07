@@ -9,20 +9,19 @@ fi
 render_template() {
   local template="$1"
   local target="$2"
-  shift 2
-  local -a assignments=("$@")
-  for assignment in "${assignments[@]}"; do
-    eval "$assignment"
-  done
   : >"$target"
   while IFS= read -r line || [[ -n "$line" ]]; do
     while [[ "$line" =~ \{\{([A-Za-z0-9_]+)\}\} ]]; do
       local placeholder="${BASH_REMATCH[1]}"
-      local value="${!placeholder-}"
-      if [[ -z "${value}" ]]; then
+      if [[ -z "${placeholder}" ]]; then
+        echo "Missing template placeholder" >&2
+        exit 1
+      fi
+      if [[ -z "${!placeholder+x}" ]]; then
         echo "Missing template variable $placeholder" >&2
         exit 1
       fi
+      local value="${!placeholder}"
       line="${line//\{\{$placeholder\}\}/$value}"
     done
     printf '%s\n' "$line" >>"$target"
@@ -178,17 +177,17 @@ render_control_plane_nginx() {
   local access_log="$logs_dir/control-plane-access.log"
   local error_log="$logs_dir/control-plane-error.log"
 
-  render_template "$template_path" "$target_path" \
-    UPSTREAM_NAME="$upstream_name" \
-    PORT="$port" \
-    HTTPS_DOMAINS="$https_domains" \
-    HTTP_REDIRECT_BLOCKS="$http_redirects" \
-    LISTEN_DIRECTIVE="$listen_directive" \
-    HTTP2_DIRECTIVE="$http2_directive" \
-    SSL_DIRECTIVES="$ssl_directives" \
-    ACCESS_LOG="$access_log" \
-    ERROR_LOG="$error_log" \
-    PRIMARY_DOMAIN="$primary_domain"
+  UPSTREAM_NAME="$upstream_name" \
+  PORT="$port" \
+  HTTPS_DOMAINS="$https_domains" \
+  HTTP_REDIRECT_BLOCKS="$http_redirects" \
+  LISTEN_DIRECTIVE="$listen_directive" \
+  HTTP2_DIRECTIVE="$http2_directive" \
+  SSL_DIRECTIVES="$ssl_directives" \
+  ACCESS_LOG="$access_log" \
+  ERROR_LOG="$error_log" \
+  PRIMARY_DOMAIN="$primary_domain" \
+    render_template "$template_path" "$target_path"
 
   if [[ "$wants_https" == true ]]; then
     ensure_control_plane_certificate "$host" "$certbot_email"
