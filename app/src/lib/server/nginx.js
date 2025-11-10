@@ -132,17 +132,25 @@ export async function configureDeploymentIngress({
 }
 
 async function runCommand(command, args) {
-	const child = spawn([command, ...args], {
-		stdin: 'ignore',
-		stdout: 'pipe',
-		stderr: 'pipe'
-	});
+	let child;
+	try {
+		child = spawn([command, ...args], {
+			stdin: 'ignore',
+			stdout: 'pipe',
+			stderr: 'pipe'
+		});
+	} catch (error) {
+		if (error?.code === 'ENOENT') {
+			return { exitCode: 127, stdout: '', stderr: error.message, enoent: true };
+		}
+		throw error;
+	}
 	const [stdout, stderr] = await Promise.all([
 		child.stdout ? new Response(child.stdout).text() : '',
 		child.stderr ? new Response(child.stderr).text() : ''
 	]);
 	const exitCode = await child.exited;
-	return { exitCode, stdout, stderr };
+	return { exitCode, stdout, stderr, enoent: false };
 }
 
 export async function reloadNginx() {
@@ -152,13 +160,31 @@ export async function reloadNginx() {
 		return;
 	}
 
-	const ngExecutable = config.nginxExecutable || 'nginx';
+	const candidates = [
+		config.nginxExecutable,
+		'/usr/sbin/nginx',
+		'/usr/local/sbin/nginx',
+		'/usr/bin/nginx',
+		'nginx'
+	].filter(Boolean);
 	await log('info', 'Validating nginx configuration');
-	const test = await runCommand(ngExecutable, ['-t']);
-	if (test.exitCode !== 0) {
-		const details = `${test.stdout}${test.stderr}`.trim();
-		await log('error', 'nginx -t failed', { output: details, executable: ngExecutable });
-		throw new Error(`nginx config test failed: ${details}`);
+	let nginxExecutable = null;
+	for (const candidate of candidates) {
+		const result = await runCommand(candidate, ['-t']);
+		if (result.enoent) {
+			await log('warn', 'nginx executable missing', { candidate });
+			continue;
+		}
+		if (result.exitCode !== 0) {
+			const details = `${result.stdout}${result.stderr}`.trim();
+			await log('error', 'nginx -t failed', { output: details, executable: candidate });
+			throw new Error(`nginx config test failed: ${details}`);
+		}
+		nginxExecutable = candidate;
+		break;
+	}
+	if (!nginxExecutable) {
+		throw new Error(`nginx executable not found. Tried ${candidates.join(', ')}`);
 	}
 
 	await log('info', 'Reloading nginx');

@@ -55,6 +55,7 @@ export function getConfig() {
 		nginxSitesDir: env.BAKERY_NGINX_SITES_DIR || nginxSitesDefault,
 		nginxTemplateDir:
 			env.BAKERY_NGINX_TEMPLATE_DIR || join(process.cwd(), 'infrastructure', 'nginx', 'templates'),
+		nginxExecutable: env.BAKERY_NGINX_EXECUTABLE || env.NGINX_EXECUTABLE || 'nginx',
 		certbotEmail: env.CERTBOT_EMAIL || '',
 		publicIp: env.BAKERY_PUBLIC_IP || '',
 		allowedOrigins: (env.BAKERY_ALLOWED_ORIGINS || '')
