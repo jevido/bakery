@@ -10,7 +10,7 @@ Bakery is a self-hosted deployment control plane inspired by Coolify. It combine
 - **Runtime Flexibility** – Detects Dockerfile projects or falls back to Bun processes with generated systemd units and Nginx virtual hosts.
 - **PostgreSQL Automation** – One-click provisioning, credential injection into deployment environment variables, and size tracking.
 - **Infrastructure Glue** – Manages Nginx reverse proxy, Certbot SSL certificates, systemd units, Docker containers, and crash recovery tasks.
-- **Self-Updating** – GUI-triggered updater executes `infrastructure/scripts/update.sh` to pull changes, run migrations, rebuild the app, and restart services.
+- **Self-Updating** – GUI-triggered updater executes `infrastructure/scripts/update.js` to pull changes, run migrations, rebuild the app, and restart services.
 
 ## Project Structure
 
@@ -23,8 +23,12 @@ bakery/
 ├── infrastructure/
 │   ├── docker/         # Docker deployment templates for user apps
 │   ├── nginx/          # Nginx configuration templates generated per deployment
-│   ├── scripts/        # install.sh (bootstrap), update.sh (self-update)
+│   ├── scripts/        # install.sh (control-plane), update.js (self-update)
 │   └── systemd/        # bakery.service + deployment unit template
+├── scripts/
+│   ├── install-bakery.sh      # Interactive control-plane installer
+│   ├── update-bakery.sh       # Manual updater wrapper
+│   └── install-node-agent.sh  # External node installer
 ├── backend/migrations/ # Postgres schema migrations
 └── README.md
 ```
@@ -39,17 +43,13 @@ bakery/
 
 ## Quick Start (Production)
 
-1. **SSH into your Ubuntu server** (root or sudo privileges required). Run the one-line installer **on the server itself**:
+1. **SSH into your Ubuntu server** (root or sudo privileges required). Run the one-line installer **on the server itself** and answer the prompts:
 
    ```bash
-  curl -fsSL https://raw.githubusercontent.com/jevido/bakery/refs/heads/main/scripts/bootstrap-control-plane.sh | sudo bash -s -- \
-    --base-url https://bakery.jevido.nl \
-    --certbot-email ops@example.com \
-    --github-client-id YOUR_GITHUB_APP_CLIENT_ID \
-    --github-client-secret YOUR_GITHUB_APP_CLIENT_SECRET
+   curl -fsSL https://raw.githubusercontent.com/jevido/bakery/main/scripts/install-bakery.sh | sudo bash
    ```
 
-   The script installs the required system packages, clones Bakery, runs the installer, and enables a nightly self-update timer. It also prints the DNS A records you should create (e.g. `bakery.jevido.nl` and a wildcard for app subdomains) so you can copy them straight into Namecheap.
+   The script walks you through the required values (base URL, Certbot email, GitHub OAuth app, admin credentials), installs dependencies, clones Bakery, runs the infrastructure installer, and enables the nightly self-update timer. It also reminds you which DNS A records to create (e.g. `bakery.example.com` plus a wildcard for app subdomains).
 
 2. **Record the admin credentials** printed at the end of the installer. Log in at your chosen `--base-url` and change the password.
 
@@ -59,28 +59,34 @@ bakery/
 
 5. **Deploy your applications**: choose the repo/branch, domains, environment variables, optional database provisioning, and the target server node (the control plane itself or an external node you add later).
 
-6. **Stay current**: Bakery auto-runs `infrastructure/scripts/update.sh` nightly. You can still trigger manual updates from _Settings → Update Bakery_ when needed.
+6. **Stay current**: Bakery auto-runs `infrastructure/scripts/update.js` nightly. You can still trigger manual updates from _Settings → Update Bakery_ or run the wrapper script manually:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/jevido/bakery/main/scripts/update-bakery.sh | sudo bash
+   ```
 
 ### Single-node “Platform” install (Hetzner, etc.)
 
-Once your Hetzner (or other) Ubuntu server is provisioned, SSH into it and run:
+Once your Hetzner (or other) Ubuntu server is provisioned, SSH into it and run the same installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/the-bakery-app/bakery/main/scripts/install-control-plane.sh | sudo bash -s -- \
-  --base-url https://bakery.jevido.nl \
-  --certbot-email ops@example.com \
-  --github-client-id YOUR_GITHUB_APP_CLIENT_ID \
-  --github-client-secret YOUR_GITHUB_APP_CLIENT_SECRET
+curl -fsSL https://raw.githubusercontent.com/jevido/bakery/main/scripts/install-bakery.sh | sudo bash
 ```
 
-The script installs git/curl if needed, clones the public Bakery repository, runs the installer, wires the `.env` with your public URL and GitHub credentials, and enables the nightly auto-update timer. During installation it prints the DNS A records to configure (control plane host plus optional wildcard) so you can copy/paste them into Namecheap right away.
+Provide your base URL, Certbot email, GitHub OAuth details, and desired admin credentials when prompted. The script handles dependency installation, cloning Bakery, wiring `.env`, and enabling the nightly self-update timer.
 
 ## Adding External Nodes
 
 Bakery can delegate builds, Docker runtime, and Nginx management to additional hosts while you operate everything from the primary GUI.
 
 1. Open **Servers** in the sidebar and click _Add a server_. Choose a friendly name so you can recognise the node later.
-2. Copy the generated installer command and run it as root on the remote machine. The script installs Bun, Docker, Nginx, and the Bakery agent service.
+2. Run the node agent installer as root on the remote machine and paste the pairing token when prompted:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/jevido/bakery/main/scripts/install-node-agent.sh | sudo bash
+   ```
+
+   The script installs Bun, Docker, Nginx, the Bakery agent service, and prints the pairing code at the end.
 3. When the installer finishes it prints a one-time pairing code. Paste the code back into the Servers page to activate the node.
 4. New deployments expose a **Server node** selector. Pick the remote node to run clones, builds, Nginx, and Certbot there, or choose the control plane to keep workloads local.
 
@@ -100,8 +106,10 @@ Agents maintain a secure polling connection to the control plane over HTTPS. All
 2. Launch the development database (foreground):
 
 ```bash
- bun run dev:db
+ bun run db
 ```
+
+(`bun run dev:db` remains available as an alias.)
 
 This streams Docker Compose logs until you hit <kbd>Ctrl</kbd>+<kbd>C</kbd>. Leave this terminal running while you work. The database uses the same credentials as `.env` (`postgres:postgres`), so if you previously ran the old container you may need to remove `tmp/postgres` to re-initialise it with the new user.
 
@@ -205,7 +213,7 @@ Setting `BAKERY_LOCAL_MODE=1` (the default while `NODE_ENV !== 'production'`) ac
 
 ## Update Workflow
 
-- Backend endpoint `POST /api/system/update` executes `infrastructure/scripts/update.sh`, which pulls the latest code, reinstalls dependencies, rebuilds the app, applies migrations, and restarts the `bakery` systemd service.
+- Backend endpoint `POST /api/system/update` executes `infrastructure/scripts/update.js`, which pulls the latest code, reinstalls dependencies, rebuilds the app, applies migrations, and restarts the `bakery` systemd service.
 - Update progress is reflected in the activity feed sourced from the `tasks` table.
 
 ## Logging & Analytics

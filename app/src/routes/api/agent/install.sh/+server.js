@@ -1,5 +1,5 @@
 const defaultRepo =
-	process.env.BAKERY_INSTALL_REPO || 'https://github.com/the-bakery-app/bakery.git';
+	process.env.BAKERY_INSTALL_REPO || 'https://github.com/jevido/bakery.git';
 
 export const GET = async () => {
 	const script = `#!/usr/bin/env bash

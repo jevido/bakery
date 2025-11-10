@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory={{WORKING_DIR}}
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
-ExecStart=/usr/bin/env bash infrastructure/scripts/update.sh
+ExecStart=/usr/bin/env bun infrastructure/scripts/update.js
 
 [Install]
 WantedBy=multi-user.target

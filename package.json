@@ -4,9 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev:db": "bash scripts/dev-db.sh",
-    "dev:web": "bun run --cwd app dev",
-    "dev": "bun run dev:web",
+    "db": "docker compose -f docker-compose.dev.yml up",
+    "app": "bun run --cwd app dev",
     "build": "cd app && bun run build",
     "preview": "cd app && bun run preview",
     "migrate": "bun scripts/migrate.js"
