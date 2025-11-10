@@ -14,11 +14,19 @@ export async function log(level, message, meta = {}) {
 	}
 
 	const config = getConfig();
-	await ensureDir(config.logsDir);
 	const timestamp = new Date().toISOString();
 	const payload = JSON.stringify(meta);
 	const line = `[${timestamp}] [${level.toUpperCase()}] ${message} ${payload}\n`;
-	await appendFile(join(config.logsDir, 'bakery.log'), line);
+	const logFile = join(config.logsDir, 'bakery.log');
+	try {
+		await ensureDir(config.logsDir);
+		await appendFile(logFile, line);
+	} catch (error) {
+		console.error('Failed to write Bakery log file', {
+			path: logFile,
+			error: error?.message || String(error)
+		});
+	}
 
 	if (level === 'error' || config.environment !== 'production') {
 		console[level === 'error' ? 'error' : 'log'](line.trim());
