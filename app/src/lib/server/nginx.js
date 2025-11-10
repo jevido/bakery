@@ -137,14 +137,32 @@ export async function reloadNginx() {
 		await log('info', 'Local mode: skipping nginx reload');
 		return;
 	}
-	await log('info', 'Reloading nginx');
-	const process = spawn(['systemctl', 'reload', 'nginx'], {
+	await log('info', 'Validating nginx configuration');
+	const test = spawn(['nginx', '-t'], {
 		stdin: 'ignore',
 		stdout: 'pipe',
 		stderr: 'pipe'
 	});
-	const stderr = await new Response(process.stderr).text();
-	if (process.exitCode !== 0) {
-		throw new Error(`Failed to reload nginx: ${stderr}`);
+	const [testStdout, testStderr] = await Promise.all([
+		test.stdout ? new Response(test.stdout).text() : '',
+		test.stderr ? new Response(test.stderr).text() : ''
+	]);
+	const testCode = await test.exited;
+	if (testCode !== 0) {
+		const details = `${testStdout}${testStderr}`.trim();
+		await log('error', 'nginx -t failed', { output: details });
+		throw new Error(`nginx config test failed: ${details}`);
+	}
+	await log('info', 'Reloading nginx');
+	const reload = spawn(['systemctl', 'reload', 'nginx'], {
+		stdin: 'ignore',
+		stdout: 'pipe',
+		stderr: 'pipe'
+	});
+	const reloadStderr = await (reload.stderr ? new Response(reload.stderr).text() : '');
+	const reloadCode = await reload.exited;
+	if (reloadCode !== 0) {
+		const details = reloadStderr.trim();
+		throw new Error(`Failed to reload nginx: ${details}`);
 	}
 }
