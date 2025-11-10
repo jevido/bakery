@@ -131,38 +131,40 @@ export async function configureDeploymentIngress({
 	return { tlsEnabled: true, certificateRequested: true };
 }
 
+async function runCommand(command, args) {
+	const child = spawn([command, ...args], {
+		stdin: 'ignore',
+		stdout: 'pipe',
+		stderr: 'pipe'
+	});
+	const [stdout, stderr] = await Promise.all([
+		child.stdout ? new Response(child.stdout).text() : '',
+		child.stderr ? new Response(child.stderr).text() : ''
+	]);
+	const exitCode = await child.exited;
+	return { exitCode, stdout, stderr };
+}
+
 export async function reloadNginx() {
 	const config = getConfig();
 	if (config.localMode) {
 		await log('info', 'Local mode: skipping nginx reload');
 		return;
 	}
+
+	const ngExecutable = config.nginxExecutable || 'nginx';
 	await log('info', 'Validating nginx configuration');
-	const test = spawn(['nginx', '-t'], {
-		stdin: 'ignore',
-		stdout: 'pipe',
-		stderr: 'pipe'
-	});
-	const [testStdout, testStderr] = await Promise.all([
-		test.stdout ? new Response(test.stdout).text() : '',
-		test.stderr ? new Response(test.stderr).text() : ''
-	]);
-	const testCode = await test.exited;
-	if (testCode !== 0) {
-		const details = `${testStdout}${testStderr}`.trim();
-		await log('error', 'nginx -t failed', { output: details });
+	const test = await runCommand(ngExecutable, ['-t']);
+	if (test.exitCode !== 0) {
+		const details = `${test.stdout}${test.stderr}`.trim();
+		await log('error', 'nginx -t failed', { output: details, executable: ngExecutable });
 		throw new Error(`nginx config test failed: ${details}`);
 	}
+
 	await log('info', 'Reloading nginx');
-	const reload = spawn(['systemctl', 'reload', 'nginx'], {
-		stdin: 'ignore',
-		stdout: 'pipe',
-		stderr: 'pipe'
-	});
-	const reloadStderr = await (reload.stderr ? new Response(reload.stderr).text() : '');
-	const reloadCode = await reload.exited;
-	if (reloadCode !== 0) {
-		const details = reloadStderr.trim();
+	const reload = await runCommand('systemctl', ['reload', 'nginx']);
+	if (reload.exitCode !== 0) {
+		const details = reload.stderr.trim();
 		throw new Error(`Failed to reload nginx: ${details}`);
 	}
 }
