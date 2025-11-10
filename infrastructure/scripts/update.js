@@ -322,8 +322,8 @@ async function main() {
   configureBunEnv();
   await ensureBunBinary();
 
-  await runCommand('bun', ['--bun', 'install']);
-  await runCommand('bun', ['--bun', 'install'], { cwd: path.join(APP_DIR, 'app') });
+	await runCommand('bun', ['--bun', 'install', '--no-save']);
+	await runCommand('bun', ['--bun', 'install', '--no-save'], { cwd: path.join(APP_DIR, 'app') });
   await runCommand('bun', ['run', 'build'], { cwd: path.join(APP_DIR, 'app') });
   await chmodSafe(path.join(APP_DIR, 'app', 'build', 'index.js'), 0o755);
 

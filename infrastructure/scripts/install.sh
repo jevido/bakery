@@ -303,9 +303,9 @@ sync_repository() {
 
 install_dependencies() {
   section "Installing application dependencies"
-  bun --bun install
+  bun --bun install --no-save
   pushd app >/dev/null
-  bun --bun install
+  bun --bun install --no-save
   bun run build
   popd >/dev/null
   chmod 755 app/build/index.js

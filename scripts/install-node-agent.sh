@@ -130,7 +130,7 @@ git clone "$REPO_URL" "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
 section "Installing dependencies"
-bun --bun install
+bun --bun install --no-save
 
 section "Registering node with control plane"
 PUBLIC_IP=$(curl -fsSL https://api.ipify.org || echo "unknown")
