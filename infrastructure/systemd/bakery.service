@@ -5,7 +5,6 @@ Requires=postgresql.service
 
 [Service]
 Type=simple
-User=bakery
 WorkingDirectory={{WORKING_DIR}}
 EnvironmentFile={{WORKING_DIR}}/.env
 Environment=PATH=/usr/local/bin:/usr/bin:/bin:/home/bakery/.bun/bin
