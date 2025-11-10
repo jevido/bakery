@@ -46,7 +46,7 @@ bakery/
 1. **SSH into your Ubuntu server** (root or sudo privileges required). Run the one-line installer **on the server itself** and answer the prompts:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/jevido/bakery/main/scripts/install-bakery.sh | sudo bash
+   sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/jevido/bakery/main/scripts/install-bakery.sh)'
    ```
 
    The script walks you through the required values (base URL, Certbot email, GitHub OAuth app, admin credentials), installs dependencies, clones Bakery, runs the infrastructure installer, and enables the nightly self-update timer. It also reminds you which DNS A records to create (e.g. `bakery.example.com` plus a wildcard for app subdomains).
@@ -70,7 +70,7 @@ bakery/
 Once your Hetzner (or other) Ubuntu server is provisioned, SSH into it and run the same installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jevido/bakery/main/scripts/install-bakery.sh | sudo bash
+sudo bash -c 'bash <(curl -fsSL https://raw.githubusercontent.com/jevido/bakery/main/scripts/install-bakery.sh)'
 ```
 
 Provide your base URL, Certbot email, GitHub OAuth details, and desired admin credentials when prompted. The script handles dependency installation, cloning Bakery, wiring `.env`, and enabling the nightly self-update timer.
