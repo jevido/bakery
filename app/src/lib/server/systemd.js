@@ -3,24 +3,35 @@ import { getConfig } from './config.js';
 import { log } from './logger.js';
 import { getLocalServiceStatus } from './localRuntime.js';
 
+function stripAnsi(value = '') {
+	return value.replace(
+		/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PR-TZcf-ntqry=><~]/g,
+		''
+	);
+}
+
 async function runSystemctl(args) {
 	const config = getConfig();
 	if (config.localMode) {
 		await log('info', 'Local mode: skipping systemctl invocation', { args });
 		return 'skipped';
 	}
-	const process = spawn(['systemctl', ...args], {
+	const child = spawn(['systemctl', ...args], {
 		stdin: 'ignore',
 		stdout: 'pipe',
 		stderr: 'pipe'
 	});
-	const output = await new Response(process.stdout).text();
-	const errorOutput = await new Response(process.stderr).text();
-	if (process.exitCode !== 0) {
-		await log('error', 'systemctl failed', { args, error: errorOutput.trim() });
-		throw new Error(`systemctl failed: ${errorOutput}`);
+	const [stdout, stderr] = await Promise.all([
+		child.stdout ? new Response(child.stdout).text() : '',
+		child.stderr ? new Response(child.stderr).text() : ''
+	]);
+	const exitCode = await child.exited;
+	if (exitCode !== 0) {
+		const cleanErr = stripAnsi(stderr).trim();
+		await log('error', 'systemctl failed', { args, error: cleanErr });
+		throw new Error(`systemctl failed: ${cleanErr || 'unknown error'}`);
 	}
-	return output.trim();
+	return stdout.trim();
 }
 
 export async function restartService(service) {
