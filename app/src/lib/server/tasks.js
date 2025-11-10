@@ -8,7 +8,13 @@ import {
 	recordDeploymentLog
 } from './models/deploymentModel.js';
 import { getGithubAccount } from './models/userModel.js';
-import { deploy, activateVersion, cleanupDeploymentResources } from './deployer.js';
+import {
+	deploy,
+	activateVersion,
+	cleanupDeploymentResources,
+	startDeploymentRuntime,
+	stopDeploymentRuntime
+} from './deployer.js';
 import { collectAnalytics } from './analytics.js';
 import { log } from './logger.js';
 import { decrypt } from './crypto.js';
@@ -72,6 +78,22 @@ const handlers = {
 		}
 		await cleanupDeploymentResources(deployment);
 		await deleteDeployment(deploymentId);
+	},
+	async stop(task) {
+		const { deploymentId } = task.payload;
+		const deployment = await findDeploymentById(deploymentId);
+		if (!deployment) {
+			throw new Error('Deployment not found');
+		}
+		await stopDeploymentRuntime(deployment);
+	},
+	async start(task) {
+		const { deploymentId } = task.payload;
+		const deployment = await findDeploymentById(deploymentId);
+		if (!deployment) {
+			throw new Error('Deployment not found');
+		}
+		await startDeploymentRuntime(deployment);
 	}
 };
 

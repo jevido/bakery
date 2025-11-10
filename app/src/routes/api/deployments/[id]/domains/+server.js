@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { findDeploymentById } from '$lib/server/models/deploymentModel.js';
 import { addDomain, deleteDomain } from '$lib/server/models/domainModel.js';
+import { getLocalResolutionHint, isLocalHostname } from '$lib/server/domainUtils.js';
 
 export const POST = async ({ params, locals, request }) => {
 	if (!locals.user) {
@@ -15,8 +16,15 @@ export const POST = async ({ params, locals, request }) => {
 	if (!hostname) {
 		throw error(422, 'Hostname required');
 	}
+	if (isLocalHostname(hostname)) {
+		throw error(
+			400,
+			'Local-only hostnames (like *.local or private IPs) are disabled for now. Public DNS support is available today and local overrides will return in a future update.'
+		);
+	}
 	const domain = await addDomain({ deploymentId: deployment.id, hostname });
-	return json({ domain }, 201);
+	const hint = getLocalResolutionHint(domain.hostname);
+	return json({ domain: { ...domain, resolution_hint: hint } }, 201);
 };
 
 export const DELETE = async ({ locals, request }) => {

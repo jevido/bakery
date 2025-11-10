@@ -176,6 +176,18 @@ export async function restartDeployment(id) {
 	});
 }
 
+export async function stopDeployment(id) {
+	return apiFetch(`/api/deployments/${id}/stop`, {
+		method: 'POST'
+	});
+}
+
+export async function startDeployment(id) {
+	return apiFetch(`/api/deployments/${id}/start`, {
+		method: 'POST'
+	});
+}
+
 export async function rollbackDeployment(id, versionId) {
 	return apiFetch(`/api/deployments/${id}/rollback`, {
 		method: 'POST',
@@ -213,6 +225,12 @@ export async function removeDeploymentDomain(id, domainId) {
 
 export async function verifyDeploymentDomain(domainId) {
 	return apiFetch(`/api/domains/${domainId}/verify`, {
+		method: 'POST'
+	});
+}
+
+export async function provisionDeploymentDatabase(deploymentId) {
+	return apiFetch(`/api/deployments/${deploymentId}/databases`, {
 		method: 'POST'
 	});
 }

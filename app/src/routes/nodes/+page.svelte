@@ -289,7 +289,7 @@
 									{:else}
 										<AlertDialog
 											open={deleteDialogId === node.id}
-											on:openChange={(event) => {
+											onOpenChange={(event) => {
 												deleteDialogId = event.detail ? node.id : null;
 											}}
 										>

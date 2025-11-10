@@ -20,8 +20,11 @@
 		PackagePlus,
 		RefreshCw,
 		Trash2,
-		Server
+		Server,
+		ExternalLink,
+		PauseCircle
 	} from '@lucide/svelte';
+	import { isLocalHostname } from '$lib/shared/domainRules.js';
 
 	let { data } = $props();
 	let deployments = $state(data.deployments ?? []);
@@ -29,6 +32,8 @@
 	let deleteDialogId = $state(null);
 	let globalMessage = $state('');
 	let globalError = $state('');
+	const HEALTHY_STATUSES = new Set(['active', 'running']);
+	const BUSY_STATUSES = new Set(['pending', 'deploying', 'provisioning', 'initializing']);
 
 	function formatDate(value) {
 		if (!value) return '—';
@@ -47,6 +52,72 @@
 			}
 		}
 		return domains;
+	}
+
+	function normalizeVersions(versions) {
+		if (!versions) return [];
+		if (typeof versions === 'string') {
+			try {
+				return JSON.parse(versions);
+			} catch {
+				return [];
+			}
+		}
+		return Array.isArray(versions) ? versions : [];
+	}
+
+	function getActivePort(versions) {
+		if (!Array.isArray(versions) || versions.length === 0) return null;
+		const active = versions.find((version) => version?.status === 'active');
+		return active?.port || versions[0]?.port || null;
+	}
+
+	function buildDomainUrl(domain) {
+		if (!domain?.hostname || isLocalHostname(domain.hostname)) {
+			return null;
+		}
+		const secureStatuses = new Set(['active', 'ready']);
+		const protocol = secureStatuses.has(domain.ssl_status) || domain.verified ? 'https' : 'http';
+		return `${protocol}://${domain.hostname}`;
+	}
+
+	function getDeploymentVisitUrl(deployment, domains) {
+		const publicDomain = domains.find((domain) => !isLocalHostname(domain.hostname));
+		if (publicDomain) {
+			return buildDomainUrl(publicDomain);
+		}
+		const versions = normalizeVersions(deployment.versions);
+		const port = getActivePort(versions);
+		return port ? `http://localhost:${port}` : null;
+	}
+
+	function isHealthyStatus(status) {
+		if (!status) return false;
+		return HEALTHY_STATUSES.has(String(status).toLowerCase());
+	}
+
+	function isBusyStatus(status) {
+		if (!status) return false;
+		return BUSY_STATUSES.has(String(status).toLowerCase());
+	}
+
+	function runtimeStatusLabel(runtimeStatus) {
+		if (!runtimeStatus) return null;
+		const { state } = runtimeStatus;
+		switch (state) {
+			case 'running':
+				return 'Process responsive';
+			case 'stopped':
+				return 'Process stopped';
+			case 'inactive':
+				return 'Not deployed yet';
+			case 'unknown':
+				return runtimeStatus.reason === 'remote_node'
+					? 'Remote runtime'
+					: 'Process unknown';
+			default:
+				return 'Process unknown';
+		}
 	}
 
 	function nodeStatusLabel(status) {
@@ -158,6 +229,7 @@
 				<tbody class="divide-y divide-border text-sm">
 					{#each deployments as deployment (deployment.id)}
 						{@const domains = normalizeDomains(deployment.domains)}
+						{@const visitUrl = getDeploymentVisitUrl(deployment, domains)}
 						<tr class="hover:bg-muted/30">
 							<td class="px-6 py-4">
 								<div class="font-medium text-foreground">{deployment.name}</div>
@@ -169,15 +241,22 @@
 							</td>
 							<td class="px-6 py-4">
 								<div class="flex items-center gap-2">
-									{#if deployment.status === 'active'}
+									{#if isHealthyStatus(deployment.status)}
 										<BadgeCheck class="h-4 w-4 text-emerald-500" />
 									{:else if deployment.status === 'failed'}
 										<AlertTriangle class="h-4 w-4 text-rose-500" />
-									{:else}
+									{:else if isBusyStatus(deployment.status)}
 										<Clock class="h-4 w-4 text-amber-500" />
+									{:else}
+										<PauseCircle class="h-4 w-4 text-muted-foreground" />
 									{/if}
 									<span class="capitalize">{deployment.status}</span>
 								</div>
+								{#if deployment.runtimeStatus}
+									<p class="mt-1 text-xs text-muted-foreground">
+										{runtimeStatusLabel(deployment.runtimeStatus)}
+									</p>
+								{/if}
 								{#if deployment.active_slot}
 									<p class="text-xs text-muted-foreground">Slot {deployment.active_slot}</p>
 								{/if}
@@ -209,9 +288,21 @@
 								{:else}
 									<ul class="space-y-1 text-xs text-muted-foreground">
 										{#each domains.slice(0, 3) as domain (domain.id)}
+											{@const domainUrl = buildDomainUrl(domain)}
 											<li class="flex items-center gap-2">
 												<Globe class="h-3.5 w-3.5 text-muted-foreground" />
-												<span>{domain.hostname}</span>
+												{#if domainUrl}
+													<a
+														href={domainUrl}
+														target="_blank"
+														rel="noreferrer"
+														class="text-foreground underline-offset-2 hover:underline"
+													>
+														{domain.hostname}
+													</a>
+												{:else}
+													<span>{domain.hostname}</span>
+												{/if}
 											</li>
 										{/each}
 										{#if domains.length > 3}
@@ -225,6 +316,18 @@
 							</td>
 							<td class="px-6 py-4 text-right">
 								<div class="flex items-center justify-end gap-3">
+									{#if visitUrl}
+										<Button
+											variant="link"
+											class="h-auto p-0 text-sm"
+											href={visitUrl}
+											target="_blank"
+											rel="noreferrer"
+										>
+											<ExternalLink class="mr-1 h-3.5 w-3.5" />
+											Open app
+										</Button>
+									{/if}
 									<Button
 										variant="link"
 										class="h-auto p-0 text-sm"
@@ -234,7 +337,7 @@
 									</Button>
 									<AlertDialog
 										open={deleteDialogId === deployment.id}
-										on:openChange={(event) => {
+										onOpenChange={(event) => {
 											deleteDialogId = event.detail ? deployment.id : null;
 										}}
 									>

@@ -46,12 +46,18 @@ function pipeStream(stream, level, serviceName) {
 
 export async function startLocalService(
 	serviceName,
-	{ cwd, env, command = getBunExecutable(), args = ['run', 'start'] }
+	{ cwd, env, command = getBunExecutable(), args = ['run', 'start'], onExit }
 ) {
 	if (!isLocalModeEnabled()) {
 		throw new Error('startLocalService called outside local mode');
 	}
 	await stopLocalService(serviceName);
+
+	const entry = {
+		process: null,
+		stopRequested: false,
+		onExit
+	};
 
 	const subprocess = spawn([command, ...args], {
 		cwd,
@@ -63,15 +69,28 @@ export async function startLocalService(
 			...env
 		}
 	});
-	processes.set(serviceName, subprocess);
+	entry.process = subprocess;
+	processes.set(serviceName, entry);
 	pipeStream(subprocess.stdout, 'info', serviceName);
 	pipeStream(subprocess.stderr, 'warn', serviceName);
 	subprocess.exited
-		.then((code) => {
-			if (processes.get(serviceName) === subprocess) {
+		.then(async (code) => {
+			const current = processes.get(serviceName);
+			if (current?.process === subprocess) {
 				processes.delete(serviceName);
 			}
+			const expected = entry.stopRequested;
 			logger.info('Local service exited', { service: serviceName, code });
+			if (typeof entry.onExit === 'function') {
+				try {
+					await entry.onExit({ code, serviceName, expected });
+				} catch (error) {
+					logger.warn('Local service exit handler failed', {
+						service: serviceName,
+						error: error.message
+					});
+				}
+			}
 		})
 		.catch((error) => {
 			logger.warn('Local service exit wait failed', {
@@ -83,10 +102,11 @@ export async function startLocalService(
 }
 
 export async function stopLocalService(serviceName) {
-	const existing = processes.get(serviceName);
-	if (!existing) return;
+	const entry = processes.get(serviceName);
+	if (!entry) return;
 	try {
-		existing.kill();
+		entry.stopRequested = true;
+		entry.process.kill();
 	} catch (error) {
 		logger.warn('Failed to stop local service', { service: serviceName, error: error.message });
 	}

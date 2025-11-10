@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile, access, readdir, unlink } from 'node:fs/promises';
+import { mkdir, rm, writeFile, access, readdir, unlink, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { spawn } from 'bun';
 import { nanoid } from 'nanoid';
@@ -73,18 +73,60 @@ async function installDependencies(dir) {
 	await runCommand('bun', ['install'], { cwd: dir });
 }
 
-async function buildProject(dir) {
+async function fileExists(path) {
 	try {
-		await access(join(dir, 'bunfig.toml'));
-		await runCommand('bun', ['run', 'build'], { cwd: dir });
-		return join(dir, 'build');
+		await access(path);
+		return true;
 	} catch {
-		await logger.info('No build script detected, skipping build');
-		return dir;
+		return false;
 	}
 }
 
-async function createSystemdUnit({ deployment, slot, port, workingDir, env }) {
+async function loadPackageScripts(dir) {
+	try {
+		const packageJson = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8'));
+		const scripts = packageJson?.scripts || {};
+		return {
+			hasBuildScript: Boolean(scripts.build),
+			hasStartScript: Boolean(scripts.start)
+		};
+	} catch {
+		return { hasBuildScript: false, hasStartScript: false };
+	}
+}
+
+async function buildProject(dir) {
+	const { hasBuildScript, hasStartScript } = await loadPackageScripts(dir);
+
+	if (hasBuildScript) {
+		await runCommand('bun', ['run', 'build'], { cwd: dir });
+	} else {
+		await logger.info('No build script detected, skipping build');
+	}
+
+	const buildEntry = join(dir, 'build', 'index.js');
+	const hasBuildOutput = await fileExists(buildEntry);
+
+	return {
+		hasBuildScript,
+		hasStartScript,
+		hasBuildOutput
+	};
+}
+
+function resolveRuntimeArgs({ hasBuildOutput, hasStartScript }) {
+	if (hasBuildOutput) {
+		return ['run', 'build/index.js'];
+	}
+	if (hasStartScript) {
+		return ['run', 'start'];
+	}
+	throw new Error(
+		'No production entry point found. Add a build script that outputs build/index.js (recommended) or define a start script.'
+	);
+}
+
+async function createSystemdUnit({ deployment, slot, port, workingDir, env, runtimeArgs }) {
 	const config = getConfig();
 	const templatePath = join(
 		process.cwd(),
@@ -95,9 +137,12 @@ async function createSystemdUnit({ deployment, slot, port, workingDir, env }) {
 	);
 	const template = await Bun.file(templatePath).text();
 	const serviceName = serviceNameForDeployment(deployment.id, slot);
+	const argString = (runtimeArgs || ['run', 'start'])
+		.map((arg) => (/\s/.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg))
+		.join(' ');
 	const ExecStart = deployment.dockerized
 		? `/usr/bin/docker start -a ${serviceName}`
-		: `/usr/bin/env PORT=${port} bun run start`;
+		: `/usr/bin/env PORT=${port} bun ${argString}`;
 
 	const envLines = Object.entries(env)
 		.map(([key, value]) => `Environment="${key}=${String(value).replace(/"/g, '\\"')}"`)
@@ -134,7 +179,7 @@ async function deployDockerApp({ deployment, slot, port, repoDir, env }) {
 	});
 }
 
-async function deployBunApp({ deployment, slot, port, repoDir, env }) {
+async function deployBunApp({ deployment, slot, port, repoDir, env, runtimeArgs }) {
 	const config = getConfig();
 	const serviceName = serviceNameForDeployment(deployment.id, slot);
 
@@ -144,6 +189,29 @@ async function deployBunApp({ deployment, slot, port, repoDir, env }) {
 			env: {
 				...env,
 				PORT: String(port)
+			},
+			args: runtimeArgs,
+			command: 'bun',
+			onExit: async ({ code, expected }) => {
+				if (expected) return;
+				if (code === 0) {
+					await logDeployment(deployment.id, 'info', 'Node runtime stopped', {
+						stream: 'system',
+						service: serviceName
+					});
+					await updateDeploymentStatus(deployment.id, { status: 'inactive' });
+					return;
+				}
+				await logDeployment(
+					deployment.id,
+					'error',
+					`Node runtime crashed (exit code ${code ?? 'unknown'})`,
+					{
+						stream: 'system',
+						service: serviceName
+					}
+				);
+				await updateDeploymentStatus(deployment.id, { status: 'failed' });
 			}
 		});
 		return;
@@ -157,7 +225,8 @@ async function deployBunApp({ deployment, slot, port, repoDir, env }) {
 		env: {
 			...env,
 			PORT: String(port)
-		}
+		},
+		runtimeArgs
 	});
 	try {
 		await stopService(`${serviceName}.service`);
@@ -211,15 +280,22 @@ export async function deployTask({ deploymentId, commitSha }) {
 	await logDeployment(deployment.id, 'info', 'Detected project type', { dockerized });
 	deployment.dockerized = dockerized;
 
+	let runtimeArgs;
 	if (!dockerized) {
 		await installDependencies(repoDir);
-		await buildProject(repoDir);
+		const buildMetadata = await buildProject(repoDir);
+		try {
+			runtimeArgs = resolveRuntimeArgs(buildMetadata);
+		} catch (error) {
+			await logDeployment(deployment.id, 'error', error.message, { stream: 'system' });
+			throw error;
+		}
 	}
 
 	if (dockerized) {
 		await deployDockerApp({ deployment, slot, port, repoDir, env: envVars });
 	} else {
-		await deployBunApp({ deployment, slot, port, repoDir, env: envVars });
+		await deployBunApp({ deployment, slot, port, repoDir, env: envVars, runtimeArgs });
 	}
 
 	if (domains.length) {
@@ -330,4 +406,60 @@ export async function cleanupDeploymentTask({ deploymentId }) {
 	await reloadNginx().catch(() => {});
 	await logDeployment(deployment.id, 'info', 'Cleaned up deployment resources', {});
 	await updateDeploymentStatus(deployment.id, { status: 'deleted' }).catch(() => {});
+}
+
+export async function stopDeploymentRuntimeTask({ deploymentId }) {
+	const context = await getDeploymentContext(deploymentId);
+	const { deployment } = context;
+	if (!deployment?.active_slot) {
+		throw new Error('Deployment has no active slot to stop');
+	}
+	const slot = deployment.active_slot;
+	const serviceName = serviceNameForDeployment(deployment.id, slot);
+	const config = getConfig();
+	try {
+		if (config.localMode) {
+			await stopLocalService(serviceName);
+		} else {
+			await stopService(`${serviceName}.service`);
+		}
+	} catch (error) {
+		await logDeployment(deployment.id, 'error', 'Failed to stop deployment runtime', {
+			error: error.message,
+			service: serviceName,
+			slot
+		});
+		throw error;
+	}
+	await updateDeploymentStatus(deployment.id, { status: 'inactive' });
+	await logDeployment(deployment.id, 'info', 'Deployment stopped', { slot, service: serviceName });
+}
+
+export async function startDeploymentRuntimeTask({ deploymentId }) {
+	const context = await getDeploymentContext(deploymentId);
+	const { deployment } = context;
+	if (!deployment?.active_slot) {
+		throw new Error('Deployment has no active slot to start');
+	}
+	const slot = deployment.active_slot;
+	const serviceName = serviceNameForDeployment(deployment.id, slot);
+	const config = getConfig();
+	if (config.localMode) {
+		throw new Error('Start command is unavailable in local mode. Redeploy instead.');
+	}
+	try {
+		await startService(`${serviceName}.service`);
+	} catch (error) {
+		await logDeployment(deployment.id, 'error', 'Failed to start deployment runtime', {
+			error: error.message,
+			service: serviceName,
+			slot
+		});
+		throw error;
+	}
+	await updateDeploymentStatus(deployment.id, { status: 'running' });
+	await logDeployment(deployment.id, 'info', 'Deployment resumed', {
+		slot,
+		service: serviceName
+	});
 }

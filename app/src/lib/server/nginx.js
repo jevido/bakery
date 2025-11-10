@@ -4,6 +4,7 @@ import { spawn } from 'bun';
 import { getConfig } from './config.js';
 import { log } from './logger.js';
 import { certificateExists, requestCertificate } from './certbot.js';
+import { shouldSkipTls } from './domainUtils.js';
 
 async function renderTemplate(templateName, variables) {
 	const config = getConfig();
@@ -29,10 +30,12 @@ async function fileExists(path) {
 
 export async function writeDeploymentConfig({ deployment, domains, port, slot, tlsEnabled }) {
 	const config = getConfig();
+	const skipTls = shouldSkipTls(domains, config);
 	const domainList = domains.map((d) => d.hostname).join(' ');
 	const primaryDomain = domains[0] ? domains[0].hostname : `${deployment.id}.local`;
 	const httpsDomains = domains.map((d) => `server_name ${d.hostname};`).join('\n  ');
-	const enableTls = typeof tlsEnabled === 'boolean' ? tlsEnabled : await certificateExists(primaryDomain);
+	const enableTls =
+		!skipTls && (typeof tlsEnabled === 'boolean' ? tlsEnabled : await certificateExists(primaryDomain));
 	const httpRedirects = enableTls
 		? domains
 				.map(
@@ -94,6 +97,8 @@ export async function configureDeploymentIngress({
 	slot,
 	obtainCertificate = true
 }) {
+	const config = getConfig();
+	const skipTls = shouldSkipTls(domains, config);
 	if (!domains.length) {
 		return { tlsEnabled: false, certificateRequested: false };
 	}
@@ -104,6 +109,11 @@ export async function configureDeploymentIngress({
 		await writeDeploymentConfig({ deployment, domains, port, slot, tlsEnabled: tls });
 		await reloadNginx();
 	};
+
+	if (skipTls) {
+		await ensureConfig(false);
+		return { tlsEnabled: false, certificateRequested: false, skippedTls: true };
+	}
 
 	const hasCertificate = await certificateExists(primaryDomain);
 	if (hasCertificate) {

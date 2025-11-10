@@ -5,6 +5,7 @@ import { configureDeploymentIngress } from '$lib/server/nginx.js';
 import { createTask } from '$lib/server/models/taskModel.js';
 import { findNodeById } from '$lib/server/models/nodeModel.js';
 import { getConfig } from '$lib/server/config.js';
+import { shouldSkipTls } from '$lib/server/domainUtils.js';
 
 export const POST = async ({ params, locals }) => {
 	if (!locals.user) {
@@ -38,13 +39,14 @@ export const POST = async ({ params, locals }) => {
 	}
 	const domains = await listDomains(deployment.id);
 	const config = getConfig();
-	await configureDeploymentIngress({
+	const ingress = await configureDeploymentIngress({
 		deployment,
 		domains,
 		port: version.port,
 		slot: version.slot,
 		obtainCertificate: Boolean(config.certbotEmail)
 	});
-	await updateDomain(domain.id, { verified: true, ssl_status: 'requested' });
-	return json({ ok: true });
+	const skipTls = ingress?.skippedTls ?? shouldSkipTls(domains, config);
+	await updateDomain(domain.id, { verified: true, ssl_status: skipTls ? 'skipped' : 'requested' });
+	return json({ ok: true, tlsSkipped: skipTls });
 };

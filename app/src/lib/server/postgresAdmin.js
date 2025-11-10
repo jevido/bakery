@@ -30,8 +30,31 @@ async function runPsql(strings, ...values) {
 	}
 }
 
+async function runUnsafe(statement) {
+	try {
+		return await sql.unsafe(statement);
+	} catch (error) {
+		await log('error', 'psql command failed', {
+			sql: statement,
+			error: error instanceof Error ? error.message : String(error)
+		});
+		throw error;
+	}
+}
+
 function randomString(length = 24) {
 	return randomBytes(length).toString('hex').slice(0, length);
+}
+
+function quoteIdentifier(value) {
+	if (!/^[a-zA-Z0-9_]+$/.test(value)) {
+		throw new Error('Invalid identifier');
+	}
+	return `"${value.replace(/"/g, '""')}"`;
+}
+
+function escapeLiteral(value) {
+	return `'${value.replace(/'/g, "''")}'`;
 }
 
 export async function provisionDatabase(deploymentId) {
@@ -40,8 +63,11 @@ export async function provisionDatabase(deploymentId) {
 	const dbUser = `bakery_u_${randomString(8)}`;
 	const dbPassword = randomString(32);
 
-	await runPsql`CREATE ROLE "${dbUser}" WITH LOGIN PASSWORD ${dbPassword};`;
-	await runPsql`CREATE DATABASE "${dbName}" OWNER "${dbUser}";`;
+	const createRoleStatement = `CREATE ROLE ${quoteIdentifier(dbUser)} WITH LOGIN PASSWORD ${escapeLiteral(dbPassword)};`;
+	await runUnsafe(createRoleStatement);
+
+	const createDbStatement = `CREATE DATABASE ${quoteIdentifier(dbName)} OWNER ${quoteIdentifier(dbUser)};`;
+	await runUnsafe(createDbStatement);
 
 	const config = getConfig();
 	const parsed = parseDatabaseUrl(config.databaseUrl);
@@ -56,5 +82,6 @@ export async function provisionDatabase(deploymentId) {
 }
 
 export async function dropDatabase(dbName) {
-	await runPsql`DROP DATABASE IF EXISTS "${dbName}";`;
+	const dropStatement = `DROP DATABASE IF EXISTS ${quoteIdentifier(dbName)};`;
+	await runUnsafe(dropStatement);
 }

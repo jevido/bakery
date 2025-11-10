@@ -10,7 +10,9 @@ import {
 import {
 	deployTask,
 	activateVersionTask,
-	cleanupDeploymentTask
+	cleanupDeploymentTask,
+	stopDeploymentRuntimeTask,
+	startDeploymentRuntimeTask
 } from './workflows.js';
 
 const logger = createLogger('agent');
@@ -37,6 +39,12 @@ const handlers = {
 	},
 	async cleanup(task) {
 		await cleanupDeploymentTask({ deploymentId: task.payload.deploymentId });
+	},
+	async stop(task) {
+		await stopDeploymentRuntimeTask({ deploymentId: task.payload.deploymentId });
+	},
+	async start(task) {
+		await startDeploymentRuntimeTask({ deploymentId: task.payload.deploymentId });
 	}
 };
 

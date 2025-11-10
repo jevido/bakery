@@ -67,3 +67,48 @@ export async function getDiskUsageTrend(hours = 24) {
     ORDER BY bucket ASC
   `;
 }
+
+export async function getResourceSummary(deploymentId) {
+	const [disk] = await sql`
+    SELECT used_bytes, captured_at
+    FROM disk_snapshots
+    WHERE deployment_id = ${deploymentId}
+    ORDER BY captured_at DESC
+    LIMIT 1
+  `;
+	const [database] = await sql`
+    SELECT size_bytes, captured_at
+    FROM database_snapshots
+    WHERE deployment_id = ${deploymentId}
+    ORDER BY captured_at DESC
+    LIMIT 1
+  `;
+	const [traffic] = await sql`
+    SELECT visits, bandwidth, captured_at
+    FROM analytics_snapshots
+    WHERE deployment_id = ${deploymentId}
+    ORDER BY captured_at DESC
+    LIMIT 1
+  `;
+	return {
+		disk: disk
+			? {
+					used_bytes: Number(disk.used_bytes) || 0,
+					captured_at: disk.captured_at
+				}
+			: null,
+		database: database
+			? {
+					size_bytes: Number(database.size_bytes) || 0,
+					captured_at: database.captured_at
+				}
+			: null,
+		traffic: traffic
+			? {
+					visits: Number(traffic.visits) || 0,
+					bandwidth: Number(traffic.bandwidth) || 0,
+					captured_at: traffic.captured_at
+				}
+			: null
+	};
+}

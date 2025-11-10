@@ -9,6 +9,9 @@ import { listDomains } from '$lib/server/models/domainModel.js';
 import { listEnvVars } from '$lib/server/models/envModel.js';
 import { listDatabasesForDeployment } from '$lib/server/models/databaseModel.js';
 import { listRecentTasks } from '$lib/server/models/taskModel.js';
+import { getResourceSummary } from '$lib/server/models/analyticsModel.js';
+import { getLocalResolutionHint } from '$lib/server/domainUtils.js';
+import { getRuntimeStatus } from '$lib/server/runtimeStatus.js';
 
 export const GET = async ({ params, locals }) => {
 	if (!locals.user) {
@@ -21,13 +24,15 @@ export const GET = async ({ params, locals }) => {
 	if (deployment.owner_id && deployment.owner_id !== locals.user.id) {
 		throw error(403, 'Forbidden');
 	}
-	const [domains, envVars, versions, databases, logs, tasks] = await Promise.all([
+	const [domains, envVars, versions, databases, logs, tasks, resourceSummary, runtimeStatus] = await Promise.all([
 		listDomains(deployment.id),
 		listEnvVars(deployment.id, true),
 		listVersions(deployment.id),
 		listDatabasesForDeployment(deployment.id),
 		listDeploymentLogs(deployment.id, 200),
-		listRecentTasks(20)
+		listRecentTasks(20),
+		getResourceSummary(deployment.id),
+		getRuntimeStatus(deployment)
 	]);
 	const { node_name, node_status, ...deploymentRest } = deployment;
 	const normalizedDeployment = {
@@ -43,14 +48,21 @@ export const GET = async ({ params, locals }) => {
 					}
 				: null
 	};
+	const normalizedDomains = domains.map((domain) => ({
+		...domain,
+		resolution_hint: getLocalResolutionHint(domain.hostname)
+	}));
+
 	return json({
 		deployment: normalizedDeployment,
-		domains,
+		domains: normalizedDomains,
 		environment: envVars,
 		versions,
 		databases,
 		logs,
-		tasks: tasks.filter((task) => task.payload && task.payload.deploymentId === deployment.id)
+		tasks: tasks.filter((task) => task.payload && task.payload.deploymentId === deployment.id),
+		resourceSummary,
+		runtimeStatus
 	});
 };
 

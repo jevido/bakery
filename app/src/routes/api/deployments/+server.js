@@ -8,6 +8,7 @@ import { provisionDatabase } from '$lib/server/postgresAdmin.js';
 import { createDatabaseRecord } from '$lib/server/models/databaseModel.js';
 import { getGithubAccount } from '$lib/server/models/userModel.js';
 import { findNodeById } from '$lib/server/models/nodeModel.js';
+import { getRuntimeStatus } from '$lib/server/runtimeStatus.js';
 
 const createDeploymentSchema = z.object({
 	name: z.string().min(3),
@@ -25,14 +26,19 @@ export const GET = async ({ locals }) => {
 		throw error(401, 'Unauthorized');
 	}
 	const deployments = await listDeploymentsForUser(locals.user.id);
-	const normalized = deployments.map((item) => {
+	const normalized = await Promise.all(deployments.map(async (item) => {
 		const domains = typeof item.domains === 'string' ? JSON.parse(item.domains) : item.domains;
 		const versions = typeof item.versions === 'string' ? JSON.parse(item.versions) : item.versions;
 		const { node_name, node_status, ...rest } = item;
+		const runtimeStatus = await getRuntimeStatus(rest).catch(() => ({
+			state: 'unknown',
+			reason: 'unavailable'
+		}));
 		return {
 			...rest,
 			domains,
 			versions,
+			runtimeStatus,
 			node:
 				rest.node_id && node_name
 					? {
@@ -42,7 +48,7 @@ export const GET = async ({ locals }) => {
 						}
 					: null
 		};
-	});
+	}));
 	return json({ deployments: normalized });
 };
 
