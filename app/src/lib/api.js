@@ -123,6 +123,12 @@ export async function createDeployment(payload) {
 	});
 }
 
+export async function deleteDeployment(id) {
+	return apiFetch(`/api/deployments/${id}`, {
+		method: 'DELETE'
+	});
+}
+
 export async function fetchGithubRepos() {
 	return apiFetch('/api/github/repos');
 }

@@ -2,7 +2,8 @@ import { json, error } from '@sveltejs/kit';
 import {
 	findDeploymentById,
 	listVersions,
-	listDeploymentLogs
+	listDeploymentLogs,
+	deleteDeployment
 } from '$lib/server/models/deploymentModel.js';
 import { listDomains } from '$lib/server/models/domainModel.js';
 import { listEnvVars } from '$lib/server/models/envModel.js';
@@ -51,4 +52,23 @@ export const GET = async ({ params, locals }) => {
 		logs,
 		tasks: tasks.filter((task) => task.payload && task.payload.deploymentId === deployment.id)
 	});
+};
+
+export const DELETE = async ({ params, locals }) => {
+	if (!locals.user) {
+		throw error(401, 'Unauthorized');
+	}
+
+	const deployment = await findDeploymentById(params.id);
+	if (!deployment) {
+		throw error(404, 'Not found');
+	}
+
+	if (deployment.owner_id && deployment.owner_id !== locals.user.id) {
+		throw error(403, 'Forbidden');
+	}
+
+	await deleteDeployment(deployment.id);
+
+	return json({ success: true });
 };
