@@ -2,10 +2,23 @@ import { nanoid } from 'nanoid';
 import { sql } from 'bun';
 
 export async function addDomain({ deploymentId, hostname }) {
+	const normalized = hostname?.trim().toLowerCase();
+	if (!normalized) {
+		throw new Error('Hostname required');
+	}
+	const existing = await sql`
+	  SELECT *
+	  FROM deployment_domains
+	  WHERE deployment_id = ${deploymentId} AND hostname = ${normalized}
+	  LIMIT 1
+	`;
+	if (existing[0]) {
+		return existing[0];
+	}
 	const id = nanoid();
 	await sql`
     INSERT INTO deployment_domains (id, deployment_id, hostname)
-    VALUES (${id}, ${deploymentId}, ${hostname})
+    VALUES (${id}, ${deploymentId}, ${normalized})
   `;
 	return findDomainById(id);
 }

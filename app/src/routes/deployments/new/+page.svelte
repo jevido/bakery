@@ -3,7 +3,12 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 
 	import { goto } from '$app/navigation';
-	import { apiFetch, createDeployment, fetchGithubBranches } from '$lib/api.js';
+import {
+	apiFetch,
+	createDeployment,
+	fetchGithubBranches,
+	addDeploymentDomain
+} from '$lib/api.js';
 	import { Plus, X, Loader2 } from '@lucide/svelte';
 
 	let { data } = $props();
@@ -97,22 +102,31 @@
 			}, {});
 
 		submitting = true;
-		try {
-			const payload = await createDeployment({
-				name,
-				repository,
-				branch,
-				domains,
-				environment,
-				enableBlueGreen,
-				createDatabase: createDatabaseFlag,
-				nodeId: nodeId || null
-			});
-			const deploymentId = payload.deployment?.id;
-			if (deploymentId) {
-				await goto(`/deployments/${deploymentId}`);
-			} else {
-				await goto('/deployments');
+	try {
+		const payload = await createDeployment({
+			name,
+			repository,
+			branch,
+			domains,
+			environment,
+			enableBlueGreen,
+			createDatabase: createDatabaseFlag,
+			nodeId: nodeId || null
+		});
+		const deploymentId = payload.deployment?.id;
+		if (deploymentId) {
+			if (domains.length > 0) {
+				for (const hostname of domains) {
+					try {
+						await addDeploymentDomain(deploymentId, hostname);
+					} catch (domainError) {
+						console.error('Failed to add domain during creation', domainError);
+					}
+				}
+			}
+			await goto(`/deployments/${deploymentId}`);
+		} else {
+			await goto('/deployments');
 			}
 		} catch (err) {
 			error = err?.message || 'Deployment failed to start.';
