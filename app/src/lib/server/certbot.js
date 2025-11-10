@@ -25,7 +25,9 @@ export async function requestCertificate(domains) {
 		throw new Error('CERTBOT_EMAIL is not configured. Cannot request certificates.');
 	}
 
-	const args = [
+const PATH_FALLBACK = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
+
+const args = [
 		'certonly',
 		'--nginx',
 		'--keep-until-expiring',
@@ -42,12 +44,17 @@ export async function requestCertificate(domains) {
 		args.push('-d', domain);
 	});
 
-	await log('info', 'Requesting TLS certificate', { domains });
-	const process = spawn(['certbot', ...args], {
-		stdin: 'ignore',
-		stdout: 'pipe',
-		stderr: 'pipe'
-	});
+await log('info', 'Requesting TLS certificate', { domains });
+const envPath = process.env.PATH ? `${process.env.PATH}:${PATH_FALLBACK}` : PATH_FALLBACK;
+const process = spawn(['certbot', ...args], {
+	stdin: 'ignore',
+	stdout: 'pipe',
+	stderr: 'pipe',
+	env: {
+		...process.env,
+		PATH: envPath
+	}
+});
 	const stdout = await new Response(process.stdout).text();
 	const stderr = await new Response(process.stderr).text();
 

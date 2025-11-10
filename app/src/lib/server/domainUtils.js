@@ -1,5 +1,8 @@
+import { Resolver } from 'node:dns/promises';
 import { getConfig } from './config.js';
 import { isLocalHostname } from '$lib/shared/domainRules.js';
+
+const resolver = new Resolver();
 
 export { isLocalHostname };
 
@@ -39,4 +42,20 @@ export function getLocalResolutionHint(hostname, config = getConfig()) {
 		instructions: `Add \"${target} ${hostname}\" to your /etc/hosts (macOS/Linux) or C:\\\\Windows\\\\System32\\\\drivers\\\\etc\\\\hosts (Windows) so this domain resolves to the Bakery control plane.`,
 		localOnly: true
 	};
+}
+
+export async function domainMatchesPublicIp(hostname, config = getConfig()) {
+	if (!hostname) {
+		return false;
+	}
+	const expected = config.publicIp || getLocalResolutionTarget(config);
+	if (!expected) {
+		return false;
+	}
+	try {
+		const records = await resolver.resolve4(hostname);
+		return records.includes(expected);
+	} catch {
+		return false;
+	}
 }

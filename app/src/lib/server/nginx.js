@@ -133,11 +133,17 @@ export async function configureDeploymentIngress({
 
 async function runCommand(command, args) {
 	let child;
+	const PATH_FALLBACK = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
+	const envPath = process.env.PATH ? `${process.env.PATH}:${PATH_FALLBACK}` : PATH_FALLBACK;
 	try {
 		child = spawn([command, ...args], {
 			stdin: 'ignore',
 			stdout: 'pipe',
-			stderr: 'pipe'
+			stderr: 'pipe',
+			env: {
+				...process.env,
+				PATH: envPath
+			}
 		});
 	} catch (error) {
 		if (error?.code === 'ENOENT') {

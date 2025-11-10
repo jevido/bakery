@@ -5,7 +5,7 @@ import { configureDeploymentIngress } from '$lib/server/nginx.js';
 import { createTask } from '$lib/server/models/taskModel.js';
 import { findNodeById } from '$lib/server/models/nodeModel.js';
 import { getConfig } from '$lib/server/config.js';
-import { shouldSkipTls } from '$lib/server/domainUtils.js';
+import { shouldSkipTls, domainMatchesPublicIp } from '$lib/server/domainUtils.js';
 
 export const POST = async ({ params, locals }) => {
 	if (!locals.user) {
@@ -39,6 +39,9 @@ export const POST = async ({ params, locals }) => {
 	}
 	const domains = await listDomains(deployment.id);
 	const config = getConfig();
+	if (!(await domainMatchesPublicIp(domain.hostname, config))) {
+		throw error(422, 'Domain does not resolve to this Bakery instance yet. Update DNS and try again.');
+	}
 	const ingress = await configureDeploymentIngress({
 		deployment,
 		domains,
