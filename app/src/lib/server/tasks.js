@@ -22,6 +22,24 @@ import { sql } from 'bun';
 
 let workerRunning = false;
 
+async function resetStuckTasks() {
+	const rows = await sql`
+	  WITH updated AS (
+	    UPDATE tasks
+	    SET status = 'pending',
+	        reserved_by = NULL,
+	        started_at = NULL
+	    WHERE status = 'running'
+	    RETURNING 1
+	  )
+	  SELECT COUNT(*)::int AS count FROM updated
+	`;
+	const count = rows?.[0]?.count ?? 0;
+	if (count > 0) {
+		await log('warn', 'Reset stuck tasks', { count });
+	}
+}
+
 const handlers = {
 	async deploy(task) {
 	const { deploymentId, commitSha } = task.payload;
@@ -139,6 +157,9 @@ async function processTask() {
 export function startTaskWorker() {
 	if (workerRunning) return;
 	workerRunning = true;
+	resetStuckTasks().catch((error) =>
+		log('error', 'Failed to reset stuck tasks', { error: error.message })
+	);
 	setInterval(() => {
 		processTask().catch((error) =>
 			log('error', 'Task processing loop failed', { error: error.message })
