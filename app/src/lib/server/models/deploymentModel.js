@@ -30,6 +30,15 @@ export async function listDeploymentsForUser(userId) {
   `;
 }
 
+export async function listDeploymentsByRepository(repository, branch) {
+	return sql`
+	  SELECT *
+	  FROM deployments
+	  WHERE repository = ${repository}
+	    AND branch = ${branch}
+	`;
+}
+
 export async function findDeploymentById(id) {
 	const rows = await sql`
     SELECT

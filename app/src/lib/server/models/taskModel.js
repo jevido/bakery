@@ -69,3 +69,15 @@ export async function listRecentTasks(limit = 50) {
 		payload: typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload
 	}));
 }
+
+export async function hasActiveDeployTask(deploymentId) {
+	const rows = await sql`
+	  SELECT 1
+	  FROM tasks
+	  WHERE type = 'deploy'
+	    AND status IN ('pending', 'running')
+	    AND payload ->> 'deploymentId' = ${deploymentId}
+	  LIMIT 1
+	`;
+	return rows.length > 0;
+}

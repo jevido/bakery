@@ -49,6 +49,8 @@ export function getConfig() {
 		githubClientId: env.GITHUB_CLIENT_ID || '',
 		githubClientSecret: env.GITHUB_CLIENT_SECRET || '',
 		githubAppWebhookSecret: env.GITHUB_APP_WEBHOOK_SECRET || '',
+		selfUpdateRepository: env.BAKERY_SELF_REPO || 'jevido/bakery',
+		selfUpdateBranch: env.BAKERY_SELF_BRANCH || 'main',
 		systemdServicesDir: env.BAKERY_SYSTEMD_DIR || systemdDirDefault,
 		nginxSitesDir: env.BAKERY_NGINX_SITES_DIR || nginxSitesDefault,
 		nginxTemplateDir:
