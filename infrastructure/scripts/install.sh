@@ -321,6 +321,11 @@ prepare_system_user() {
 sync_repository() {
   section "Fetching Bakery source"
   cd "$INSTALL_PARENT"
+  local env_backup=""
+  if [[ ! -d "$INSTALL_DIR/.git" && -f "$INSTALL_DIR/.env" ]]; then
+    env_backup=$(mktemp)
+    cp "$INSTALL_DIR/.env" "$env_backup"
+  fi
   if [[ -d "$INSTALL_DIR/.git" ]]; then
     info "Existing checkout detected; syncing"
     cd "$INSTALL_DIR"
@@ -330,6 +335,10 @@ sync_repository() {
     rm -rf "$INSTALL_NAME"
     git clone "$REPO_URL" "$INSTALL_NAME"
     cd "$INSTALL_DIR"
+    if [[ -n "$env_backup" ]]; then
+      cp "$env_backup" "$INSTALL_DIR/.env"
+      rm -f "$env_backup"
+    fi
   fi
 }
 
