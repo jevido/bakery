@@ -409,14 +409,14 @@ print_summary() {
   if [[ -n "$BASE_HOST" && "$BASE_HOST" =~ [a-zA-Z] ]]; then
     local root_host=${BASE_HOST#*.}
     dns+=$'DNS configuration tips:\n'
-    dns+=$"  A record    : ${BASE_HOST} -> ${PUBLIC_IP}\n"
+    printf -v dns '%s  A record    : %s -> %s\n' "$dns" "$BASE_HOST" "$PUBLIC_IP"
     if [[ -n "$PUBLIC_IPV6" ]]; then
-      dns+=$"  AAAA record : ${BASE_HOST} -> ${PUBLIC_IPV6}\n"
+      printf -v dns '%s  AAAA record : %s -> %s\n' "$dns" "$BASE_HOST" "$PUBLIC_IPV6"
     fi
     if [[ "$root_host" != "$BASE_HOST" && -n "$root_host" ]]; then
-      dns+=$"  A record    : *.${root_host} -> ${PUBLIC_IP}\n"
+      printf -v dns '%s  A record    : *.%s -> %s\n' "$dns" "$root_host" "$PUBLIC_IP"
       if [[ -n "$PUBLIC_IPV6" ]]; then
-        dns+=$"  AAAA record : *.${root_host} -> ${PUBLIC_IPV6}\n"
+        printf -v dns '%s  AAAA record : *.%s -> %s\n' "$dns" "$root_host" "$PUBLIC_IPV6"
       fi
     fi
   fi
