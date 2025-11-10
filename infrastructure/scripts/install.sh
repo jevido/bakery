@@ -23,47 +23,6 @@ warn() {
   echo -e "${YELLOW}[WARN]${RESET} $1"
 }
 
-read_env_value() {
-  local file="$1"
-  local key="$2"
-  local value
-  [[ -f "$file" ]] || return 1
-  local status=0
-  value=$(awk -v target="$key" '
-    BEGIN { FS = "=" }
-    /^[[:space:]]*#/ { next }
-    /^[[:space:]]*$/ { next }
-    {
-      line = $0
-      sub(/^[[:space:]]+/, "", line)
-      if (index(line, "export ") == 1) {
-        line = substr(line, 8)
-        sub(/^[[:space:]]+/, "", line)
-      }
-      split(line, parts, "=")
-      if (length(parts) < 2) next
-      k = parts[1]
-      sub(/[[:space:]]+$/, "", k)
-      if (k != target) next
-      v = substr(line, length(k) + 2)
-      sub(/^[[:space:]]+/, "", v)
-      sub(/[[:space:]]+$/, "", v)
-      if ((substr(v,1,1) == "\"" && substr(v,length(v),1) == "\"") ||
-          (substr(v,1,1) == "'" && substr(v,length(v),1) == "'")) {
-        v = substr(v, 2, length(v) - 2)
-      }
-      print v
-      exit 0
-    }
-    END { exit 1 }
-  ' "$file") || status=$?
-  if [[ $status -ne 0 ]]; then
-    return 1
-  fi
-  printf '%s\n' "$value"
-  return 0
-}
-
 render_template() {
   local template="$1"
   local target="$2"
@@ -356,50 +315,18 @@ install_dependencies() {
 configure_environment() {
   section "Configuring application environment"
   local env_file="$INSTALL_DIR/.env"
-  local existing_database_url=""
-  local existing_session_secret=""
-  local existing_encryption_key=""
-  local existing_base_url=""
-  local existing_public_ip=""
-  local existing_public_ipv6=""
-
-  if [[ -f "$env_file" ]]; then
-    existing_database_url=$(read_env_value "$env_file" "DATABASE_URL" || true)
-    existing_session_secret=$(read_env_value "$env_file" "SESSION_SECRET" || true)
-    existing_encryption_key=$(read_env_value "$env_file" "ENCRYPTION_KEY" || true)
-    existing_base_url=$(read_env_value "$env_file" "BAKERY_BASE_URL" || true)
-    existing_public_ip=$(read_env_value "$env_file" "BAKERY_PUBLIC_IP" || true)
-    existing_public_ipv6=$(read_env_value "$env_file" "BAKERY_PUBLIC_IPV6" || true)
-  fi
-
-  if [[ -n "$existing_session_secret" ]]; then
-    SESSION_SECRET="$existing_session_secret"
-  else
-    SESSION_SECRET=$(openssl rand -hex 32)
-  fi
-
-  if [[ -n "$existing_encryption_key" ]]; then
-    ENCRYPTION_KEY="$existing_encryption_key"
-  else
-    ENCRYPTION_KEY=$(openssl rand -hex 32 | cut -c1-32)
-  fi
+  DATABASE_PASSWORD=$(openssl rand -hex 12)
+  SESSION_SECRET=$(openssl rand -hex 32)
+  ENCRYPTION_KEY=$(openssl rand -hex 32 | cut -c1-32)
 
   PUBLIC_IP=$(curl -s https://api.ipify.org || echo "127.0.0.1")
   PUBLIC_IPV6=$(curl -s https://api64.ipify.org || true)
   if [[ -n "$PUBLIC_IPV6" && "$PUBLIC_IPV6" == "$PUBLIC_IP" ]]; then
     PUBLIC_IPV6=""
   fi
-  if [[ -n "$existing_public_ip" ]]; then
-    PUBLIC_IP="$existing_public_ip"
-  fi
-  if [[ -n "$existing_public_ipv6" ]]; then
-    PUBLIC_IPV6="$existing_public_ipv6"
-  fi
 
   if [[ -n "$BASE_URL" ]]; then
     BAKERY_BASE_URL="$BASE_URL"
-  elif [[ -n "$existing_base_url" ]]; then
-    BAKERY_BASE_URL="$existing_base_url"
   else
     BAKERY_BASE_URL="https://${PUBLIC_IP}"
   fi
@@ -410,29 +337,23 @@ configure_environment() {
     BASE_HOST="${BASE_HOST%%:*}"
   fi
 
-  local generated_db_password=""
-  if [[ -n "$existing_database_url" ]]; then
-    DATABASE_URL="$existing_database_url"
-    info "Preserving existing DATABASE_URL from $env_file"
-  else
-    generated_db_password=$(openssl rand -hex 12)
-    DATABASE_URL="postgres://bakery:${generated_db_password}@localhost:5432/bakery"
-  fi
+  DATABASE_URL="postgres://bakery:${DATABASE_PASSWORD}@localhost:5432/bakery"
 
-  if [[ -n "$generated_db_password" ]]; then
-    sudo -u postgres psql <<SQL
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bakery') THEN
-    EXECUTE format('ALTER ROLE bakery WITH PASSWORD %L', '${generated_db_password}');
-  ELSE
-    EXECUTE format('CREATE ROLE bakery LOGIN PASSWORD %L', '${generated_db_password}');
-  END IF;
-END
-$$;
+  sudo -u postgres psql -v ON_ERROR_STOP=1 <<SQL
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = 'bakery'
+  AND pid <> pg_backend_pid();
 SQL
-    sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='bakery'" | grep -q 1 || sudo -u postgres createdb -O bakery bakery
-  fi
+
+  sudo -u postgres dropdb --if-exists bakery >/dev/null 2>&1 || true
+  sudo -u postgres dropuser --if-exists bakery >/dev/null 2>&1 || true
+
+  sudo -u postgres psql -v ON_ERROR_STOP=1 <<SQL
+CREATE ROLE bakery LOGIN PASSWORD '${DATABASE_PASSWORD}';
+SQL
+
+  sudo -u postgres createdb -O bakery bakery
 
   DATABASE_URL="$DATABASE_URL" \
   BAKERY_BASE_URL="$BAKERY_BASE_URL" \
