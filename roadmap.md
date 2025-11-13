@@ -174,6 +174,16 @@ All user apps run on their own instance; Bakery provides orchestration, monitori
 - Optional 2FA for accounts
 - Extended analytics visualization
 
+## Phase 7 · Push-based control plane
+
+**Goal:** let the control plane initiate SSH runs on nodes so agents no longer have to poll.
+
+- Store SSH metadata (host, port, user, fingerprint) when adding a node and validate reachability before enabling commands.
+- Replace the polling loop with an SSH command runner that logs into `bakery-agent@node` and executes deploy/update/self-update scripts.
+- Offer a bootstrap helper (similar to `install-node-agent.sh`) that configures the `bakery-agent` user, installs the control plane’s key, and registers the node over SSH.
+- Route GitHub App webhook pushes through the SSH runner so the control plane pushes `infrastructure/scripts/update.js` to the node on every push to the configured branch.
+- Add explicit “Update now” / “Deploy now” buttons plus streaming logs so admins can trigger and monitor SSH-driven executions from the GUI.
+
 ---
 
 ## Dependencies & Sequencing

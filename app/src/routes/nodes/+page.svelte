@@ -2,7 +2,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { createNodeRecord, fetchNodes, pairNode, deleteNode } from '$lib/api.js';
+	import { createNodeRecord, fetchNodes, deleteNode, verifyNode } from '$lib/api.js';
 	import { Copy, Check, RefreshCw, Trash2 } from '@lucide/svelte';
 	import {
 		AlertDialog,
@@ -20,34 +20,43 @@
 
 	let nodes = $state(data.nodes ?? []);
 	let controlPlane = $state(data.controlPlane ?? null);
-	let installContext = $state({
-		blocked: data.install?.blocked,
-		warning: data.install?.warning ?? null,
-		apiBase: data.install?.apiBase ?? null
-	});
-	let installBlocked = $derived(installContext.blocked);
-	let installWarning = $derived(installContext.warning);
-	let installApiBase = $derived(installContext.apiBase);
 	let newNodeName = $state('');
 	let creating = $state(false);
 	let refreshing = $state(false);
-	let globalMessage = $state('');
-	let globalError = $state('');
-	let installInfo = $state(null);
-	let copyState = $state({});
-	let pairInputs = $state({});
-	let pairingState = $state({});
+let globalMessage = $state('');
+let globalError = $state('');
+let copyState = $state({});
+let latestInstaller = $state(null);
 	let deleting = $state({});
 	let deleteDialogId = $state(null);
+	let verifyInputs = $state({});
+	let verifying = $state({});
+
+	function initializeVerifyInput(node) {
+		if (!node) return;
+		const existing = verifyInputs[node.id];
+		if (existing) return;
+		verifyInputs = {
+			...verifyInputs,
+			[node.id]: {
+				host: node.ssh_host ?? '',
+				port: node.ssh_port ?? 22
+			}
+		};
+	}
+
+	$effect(() => {
+		for (const node of nodes ?? []) {
+			initializeVerifyInput(node);
+		}
+	});
 
 	function nodeStatusLabel(status) {
 		switch (status) {
 			case 'active':
 				return 'Active';
-			case 'awaiting_pairing':
-				return 'Awaiting pairing';
 			case 'pending':
-				return 'Pending installation';
+				return 'Awaiting verification';
 			default:
 				return status;
 		}
@@ -57,10 +66,8 @@
 		switch (status) {
 			case 'active':
 				return 'bg-emerald-100 text-emerald-700';
-			case 'awaiting_pairing':
-				return 'bg-amber-100 text-amber-700';
 			case 'pending':
-				return 'bg-slate-100 text-slate-600';
+				return 'bg-amber-100 text-amber-700';
 			default:
 				return 'bg-slate-100 text-slate-600';
 		}
@@ -71,19 +78,10 @@
 		try {
 			const payload = await fetchNodes();
 			nodes = payload.nodes || [];
+			nodes.forEach(initializeVerifyInput);
 			controlPlane = payload.controlPlane ?? controlPlane;
-			const currentContext = installContext;
-			installContext = {
-				blocked: Boolean(payload.installBlocked ?? currentContext.blocked),
-				warning: payload.installWarning ?? currentContext.warning,
-				apiBase: payload.apiBase ?? currentContext.apiBase
-			};
 			if (!nodes.some((node) => node.id === deleteDialogId)) {
 				deleteDialogId = null;
-			}
-			if (installContext.blocked) {
-				installInfo = null;
-				newNodeName = '';
 			}
 		} catch (error) {
 			globalError = error?.message || 'Failed to refresh nodes';
@@ -96,37 +94,21 @@
 		event.preventDefault();
 		globalError = '';
 		globalMessage = '';
-		installInfo = null;
 		if (!newNodeName.trim()) {
 			globalError = 'Provide a name for the server node.';
 			return;
 		}
 		creating = true;
 		try {
-			const payload = await createNodeRecord({ name: newNodeName.trim() });
-			nodes = [payload.node, ...nodes.filter((node) => node.id !== payload.node.id)];
-			installInfo = {
-				nodeId: payload.node.id,
-				command: payload.installCommand,
-				warning: payload.installCommandWarning,
-				apiBase: payload.apiBase
-			};
-			installContext = {
-				blocked: installContext.blocked,
-				warning: payload.installCommandWarning ?? installContext.warning,
-				apiBase: payload.apiBase ?? installContext.apiBase
-			};
-			pairInputs = { ...pairInputs, [payload.node.id]: '' };
-			if (payload.installCommand) {
-				globalMessage =
-					'Node created. Run the command below on the target server to install the agent.';
-				globalError = '';
-			} else {
-				globalMessage = '';
-				globalError =
-					payload.installCommandWarning ?? 'Set BAKERY_BASE_URL to a public address and try again.';
-			}
-			newNodeName = '';
+		const payload = await createNodeRecord({ name: newNodeName.trim() });
+		nodes = [payload.node, ...nodes.filter((node) => node.id !== payload.node.id)];
+		initializeVerifyInput(payload.node);
+		latestInstaller =
+			payload.node?.install_command != null
+				? { nodeId: payload.node.id, command: payload.node.install_command }
+				: null;
+		globalMessage = 'Node created. Run the install command on the server, then verify SSH access.';
+		newNodeName = '';
 		} catch (error) {
 			globalError = error?.message || 'Failed to create node';
 		} finally {
@@ -146,23 +128,36 @@
 		}
 	}
 
-	async function submitPair(nodeId) {
+	function updateVerifyInput(nodeId, field, value) {
+		verifyInputs = {
+			...verifyInputs,
+			[nodeId]: {
+				...(verifyInputs[nodeId] ?? { host: '', port: 22 }),
+				[field]: value
+			}
+		};
+	}
+
+	async function handleVerify(nodeId) {
 		globalError = '';
 		globalMessage = '';
-		const code = pairInputs[nodeId]?.trim();
-		if (!code) {
-			globalError = 'Enter the pairing code from the server output.';
+		const input = verifyInputs[nodeId] ?? { host: '', port: 22 };
+		if (!input.host.trim()) {
+			globalError = 'Provide the server host or IP address before verifying.';
 			return;
 		}
-		pairingState = { ...pairingState, [nodeId]: true };
+		verifying = { ...verifying, [nodeId]: true };
 		try {
-			const payload = await pairNode(nodeId, code);
+			const payload = await verifyNode(nodeId, {
+				host: input.host.trim(),
+				port: Number(input.port) || 22
+			});
 			nodes = nodes.map((node) => (node.id === nodeId ? payload.node : node));
-			globalMessage = 'Node paired successfully.';
+			globalMessage = 'Node verified and activated.';
 		} catch (error) {
-			globalError = error?.message || 'Failed to pair node';
+			globalError = error?.message || 'Failed to verify node.';
 		} finally {
-			pairingState = { ...pairingState, [nodeId]: false };
+			verifying = { ...verifying, [nodeId]: false };
 		}
 	}
 
@@ -249,13 +244,8 @@
 
 			{#if nodes.length === 0}
 				<p class="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-					{#if installBlocked}
-						No external servers yet. Update your Bakery base URL so remote machines can reach this
-						instance, then return to add a node.
-					{:else}
-						No external servers yet. Create one using the form on the right to generate an install
-						command.
-					{/if}
+					No external servers yet. Create one using the form on the right to generate the installer
+					command.
 				</p>
 			{:else}
 				<div class="space-y-4">
@@ -293,21 +283,19 @@
 												deleteDialogId = event.detail ? node.id : null;
 											}}
 										>
-											<AlertDialogTrigger>
-												{#snippet child({ props })}
-													<Button
-														{...props}
-														variant="ghost"
-														size="icon"
-														aria-label={`Delete ${node.name}`}
-														onclick={(event) => {
-															props.onClick?.(event);
-															deleteDialogId = node.id;
-														}}
-													>
-														<Trash2 class="h-4 w-4 text-destructive" />
-													</Button>
-												{/snippet}
+											<AlertDialogTrigger let:props>
+												<Button
+													{...props}
+													variant="ghost"
+													size="icon"
+													aria-label={`Delete ${node.name}`}
+													onclick={(event) => {
+														props.onClick?.(event);
+														deleteDialogId = node.id;
+													}}
+												>
+													<Trash2 class="h-4 w-4 text-destructive" />
+												</Button>
 											</AlertDialogTrigger>
 											<AlertDialogContent>
 												<AlertDialogHeader>
@@ -339,31 +327,70 @@
 
 							<div class="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
 								<p>Last seen: {node.last_seen ? new Date(node.last_seen).toLocaleString() : '–'}</p>
-								<p>Public IP: {node.metadata?.publicIp ?? '—'}</p>
+								<p>SSH host: {node.ssh_host ?? '—'}</p>
 							</div>
 
-							{#if node.status === 'awaiting_pairing'}
-								<div class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-									<Input
-										bind:value={pairInputs[node.id]}
-										placeholder="Enter pairing code"
-										class="sm:max-w-xs"
+							{#if node.install_command}
+								<div class="mt-4 space-y-2">
+									<p class="text-sm font-medium">Run this command on the server:</p>
+									<Textarea
+										readonly
+										class="h-28 w-full resize-none text-xs"
+										value={node.install_command}
 									/>
 									<Button
-										class="gap-2"
-										onclick={() => submitPair(node.id)}
-										disabled={pairingState[node.id]}
+										variant="outline"
+										class="w-full gap-2"
+										onclick={() => handleCopy(node.install_command, node.id)}
 									>
-										{#if pairingState[node.id]}
-											<RefreshCw class="h-4 w-4 animate-spin" />
+										{#if copyState[node.id]}
+											<Check class="h-4 w-4" />
+											Copied
+										{:else}
+											<Copy class="h-4 w-4" />
+											Copy command
 										{/if}
-										Submit code
 									</Button>
 								</div>
-							{:else if installInfo?.nodeId === node.id}
-								<p class="mt-3 text-xs text-muted-foreground">
-									Pairing complete. This node is ready for deployments.
-								</p>
+							{/if}
+
+							{#if node.status !== 'active'}
+								{@const verifyInput = verifyInputs[node.id] ?? { host: '', port: 22 }}
+								<div class="mt-4 space-y-3">
+									<p class="text-sm font-medium">Verify SSH access</p>
+									<div class="grid gap-3 sm:grid-cols-2">
+										<label class="flex flex-col gap-1 text-xs font-medium">
+											<span>Host / IP</span>
+											<Input
+												value={verifyInput.host}
+												oninput={(event) => updateVerifyInput(node.id, 'host', event.target.value)}
+												placeholder="95.217.x.x"
+											/>
+										</label>
+										<label class="flex flex-col gap-1 text-xs font-medium">
+											<span>Port</span>
+											<Input
+												type="number"
+												min="1"
+												max="65535"
+												value={verifyInput.port}
+												oninput={(event) => updateVerifyInput(node.id, 'port', event.target.value)}
+											/>
+										</label>
+									</div>
+									<Button
+										class="w-full gap-2"
+										onclick={() => handleVerify(node.id)}
+										disabled={verifying[node.id]}
+									>
+										{#if verifying[node.id]}
+											<RefreshCw class="h-4 w-4 animate-spin" />
+											Verifying…
+										{:else}
+											Verify & activate
+										{/if}
+									</Button>
+								</div>
 							{/if}
 						</div>
 					{/each}
@@ -372,82 +399,51 @@
 		</section>
 
 		<section class="space-y-4 rounded-2xl border bg-card p-6 shadow-sm">
-			<h2 class="text-lg font-semibold">Add a server</h2>
-			{#if installBlocked}
-				<div
-					class="flex items-start gap-2 rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-600"
-				>
-					<RefreshCw class="mt-0.5 h-4 w-4" />
-					<p>
-						{installWarning ??
-							'External servers require BAKERY_BASE_URL to point at a publicly reachable domain or IP.'}
-						{#if installApiBase}
-							<br />
-							Current base URL:
-							<code class="font-mono">{installApiBase}</code>
+			<h2 class="text-lg font-semibold">Link a server</h2>
+			<p class="text-sm text-muted-foreground">
+				Enter a friendly name and click <em>Link node</em> to copy the prefilled installer command.
+				Run it on your VPS as root, wait for it to finish, then return here to verify SSH access.
+			</p>
+
+			<form class="space-y-3" onsubmit={handleCreate}>
+				<label class="flex flex-col gap-1 text-sm font-medium">
+					<span>Node name</span>
+					<Input placeholder="hetzner-fsn1-primary" bind:value={newNodeName} />
+				</label>
+				<Button class="w-full" type="submit" disabled={creating}>
+					{#if creating}
+						<RefreshCw class="mr-2 h-4 w-4 animate-spin" />
+					{/if}
+					Link node
+				</Button>
+			</form>
+
+			{#if latestInstaller?.command}
+				<div class="space-y-2 rounded-lg border bg-background p-4">
+					<p class="text-sm font-medium">Latest installer command</p>
+					<Textarea
+						readonly
+						class="h-32 w-full resize-none text-xs"
+						value={latestInstaller.command}
+					/>
+					<Button
+						variant="outline"
+						class="w-full gap-2"
+						onclick={() => handleCopy(latestInstaller.command, latestInstaller.nodeId)}
+					>
+						{#if copyState[latestInstaller.nodeId]}
+							<Check class="h-4 w-4" />
+							Copied
+						{:else}
+							<Copy class="h-4 w-4" />
+							Copy command
 						{/if}
+					</Button>
+					<p class="text-xs text-muted-foreground">
+						Run this on the target VPS right away. Each newly linked node will produce an updated
+						command here and inside the node list.
 					</p>
 				</div>
-			{:else}
-				<p class="text-sm text-muted-foreground">
-					Give the server a friendly name. After creating it you'll receive a one-line install
-					command to run on the remote machine. The installer prints a pairing code that you paste
-					here to authorize the link.
-				</p>
-
-				<form class="space-y-3" onsubmit={handleCreate}>
-					<label class="flex flex-col gap-1 text-sm font-medium">
-						<span>Node name</span>
-						<Input placeholder="hetzner-fsn1-primary" bind:value={newNodeName} />
-					</label>
-					<Button class="w-full" type="submit" disabled={creating}>
-						{#if creating}
-							<RefreshCw class="mr-2 h-4 w-4 animate-spin" />
-						{/if}
-						Create node
-					</Button>
-				</form>
-
-				{#if installInfo}
-					<div class="space-y-2 rounded-lg border bg-background p-4">
-						{#if installInfo.command}
-							<p class="text-sm font-medium">Run this command on the target server:</p>
-							<Textarea
-								readonly
-								class="h-32 w-full resize-none text-xs"
-								value={installInfo.command}
-							/>
-							<Button
-								variant="outline"
-								class="w-full gap-2"
-								onclick={() => handleCopy(installInfo.command, installInfo.nodeId)}
-							>
-								{#if copyState[installInfo.nodeId]}
-									<Check class="h-4 w-4" />
-									Copied
-								{:else}
-									<Copy class="h-4 w-4" />
-									Copy command
-								{/if}
-							</Button>
-							<p class="text-xs text-muted-foreground">
-								After the installer finishes, copy the pairing code it prints and submit it above to
-								activate the node.
-							</p>
-						{:else}
-							<p class="text-sm font-medium">Control plane URL is not reachable by remote nodes.</p>
-							<p class="text-xs text-muted-foreground">
-								{installInfo.warning ??
-									'Set BAKERY_BASE_URL to a public IP or domain so servers can reach this Bakery instance.'}
-							</p>
-							{#if installInfo.apiBase}
-								<p class="text-xs text-muted-foreground">
-									Current base URL: <code class="font-mono">{installInfo.apiBase}</code>
-								</p>
-							{/if}
-						{/if}
-					</div>
-				{/if}
 			{/if}
 		</section>
 	</div>

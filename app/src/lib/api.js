@@ -151,16 +151,16 @@ export async function createNodeRecord(body) {
 	});
 }
 
-export async function pairNode(id, code) {
-	return apiFetch(`/api/nodes/${id}/pair`, {
-		method: 'POST',
-		body: { code }
-	});
-}
-
 export async function deleteNode(id) {
 	return apiFetch(`/api/nodes?id=${encodeURIComponent(id)}`, {
 		method: 'DELETE'
+	});
+}
+
+export async function verifyNode(id, payload) {
+	return apiFetch(`/api/nodes/${id}/verify`, {
+		method: 'POST',
+		body: payload
 	});
 }
 

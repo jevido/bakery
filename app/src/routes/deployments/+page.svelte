@@ -122,10 +122,8 @@
 		switch (status) {
 			case 'active':
 				return 'Active';
-			case 'awaiting_pairing':
-				return 'Awaiting pairing';
 			case 'pending':
-				return 'Pending install';
+				return 'Awaiting verification';
 			default:
 				return status || 'Unknown';
 		}
@@ -135,7 +133,6 @@
 		switch (status) {
 			case 'active':
 				return 'bg-emerald-100 text-emerald-700';
-			case 'awaiting_pairing':
 			case 'pending':
 				return 'bg-amber-100 text-amber-700';
 			default:

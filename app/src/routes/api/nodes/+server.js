@@ -1,60 +1,36 @@
 import { json, error } from '@sveltejs/kit';
+import { Buffer } from 'node:buffer';
 import { z } from 'zod';
 import { listNodes, createNode, deleteNode } from '$lib/server/models/nodeModel.js';
-import { getConfig } from '$lib/server/config.js';
 
 const createNodeSchema = z.object({
 	name: z.string().min(3)
 });
 
+const INSTALLER_URL =
+	'https://raw.githubusercontent.com/jevido/bakery/main/scripts/install-node-agent.sh';
+const DEFAULT_SSH_USER = 'bakery-agent';
+
+function buildInstallCommand(node) {
+	if (!node?.ssh_public_key) return null;
+	const keyBase64 = Buffer.from(node.ssh_public_key, 'utf8').toString('base64');
+	const sshUser = node.ssh_user || DEFAULT_SSH_USER;
+	return `curl -fsSL ${INSTALLER_URL} | sudo SSH_USER=${sshUser} SSH_KEY_BASE64=${keyBase64} bash`;
+}
+
 function sanitizeNode(node) {
 	if (!node) return node;
 	const {
-		api_token: apiToken,
-		install_token: installToken,
-		pairing_code: pairingCode,
+		api_token: _apiToken,
+		install_token: _installToken,
+		pairing_code: _pairingCode,
+		ssh_private_key: _sshPrivateKey,
 		...rest
 	} = node;
 	return {
 		...rest,
-		has_install_token: Boolean(installToken),
-		pairing_pending: Boolean(pairingCode)
+		install_command: node.status === 'active' ? null : buildInstallCommand(node)
 	};
-}
-
-function getInstallContext(installToken = null) {
-	const config = getConfig();
-	const apiBase = config.baseUrl;
-	let command = null;
-	let warning = null;
-	let blocked = false;
-	let parsedUrl;
-	try {
-		parsedUrl = new URL(apiBase);
-	} catch (error) {
-		warning = `Bakery base URL \`${apiBase}\` is not valid. Set BAKERY_BASE_URL to a reachable HTTPS endpoint.`;
-		blocked = true;
-		return { command, warning, apiBase, blocked };
-	}
-
-	const hostname = parsedUrl.hostname.toLowerCase();
-	const isLoopback =
-		hostname === 'localhost' ||
-		hostname === '127.0.0.1' ||
-		hostname === '::1' ||
-		hostname.endsWith('.local');
-
-	if (isLoopback) {
-		warning = `The Bakery base URL is set to \`${apiBase}\`. Remote servers cannot reach localhost addresses. Update BAKERY_BASE_URL to a public IP or domain before installing the agent.`;
-		blocked = true;
-		return { command, warning, apiBase: parsedUrl.toString(), blocked };
-	}
-
-	const scriptUrl = new URL('/api/agent/install.sh', parsedUrl).toString();
-	if (installToken) {
-		command = `curl -fsSL ${scriptUrl} | sudo bash -s -- --token ${installToken} --api ${parsedUrl.toString()}`;
-	}
-	return { command, warning, apiBase: parsedUrl.toString(), blocked };
 }
 
 export const GET = async ({ locals }) => {
@@ -62,7 +38,6 @@ export const GET = async ({ locals }) => {
 		throw error(401, 'Unauthorized');
 	}
 	const nodes = await listNodes(locals.user.id);
-	const install = getInstallContext();
 	return json({
 		controlPlane: {
 			id: 'control-plane',
@@ -70,9 +45,9 @@ export const GET = async ({ locals }) => {
 			status: 'active'
 		},
 		nodes: nodes.map(sanitizeNode),
-		installBlocked: install.blocked,
-		installWarning: install.warning,
-		apiBase: install.apiBase
+		installBlocked: false,
+		installWarning: null,
+		apiBase: null
 	});
 };
 
@@ -85,17 +60,12 @@ export const POST = async ({ request, locals }) => {
 	if (!parsed.success) {
 		throw error(422, 'Validation failed');
 	}
-	const { node, installToken } = await createNode({
+	const node = await createNode({
 		ownerId: locals.user.id,
 		name: parsed.data.name
 	});
-	const install = getInstallContext(installToken);
 	return json({
-		node: sanitizeNode(node),
-		installToken,
-		installCommand: install.command,
-		installCommandWarning: install.warning,
-		apiBase: install.apiBase
+		node: sanitizeNode(node)
 	});
 };
 

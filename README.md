@@ -102,17 +102,33 @@ Provide your base URL, Certbot email, GitHub OAuth details, and desired admin cr
 Bakery can delegate builds, Docker runtime, and Nginx management to additional hosts while you operate everything from the primary GUI.
 
 1. Open **Servers** in the sidebar and click _Add a server_. Choose a friendly name so you can recognise the node later.
-2. Run the node agent installer as root on the remote machine and paste the pairing token when prompted:
+2. Click **Link node** to copy the prefilled installer command, SSH into the remote machine, and run it as root. The script installs Docker/nginx, creates the `bakery-agent` user, provisions the directories, and drops the control plane’s SSH key in `~bakery-agent/.ssh/authorized_keys`:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/jevido/bakery/main/scripts/install-node-agent.sh | sudo bash
+   curl -fsSL https://raw.githubusercontent.com/jevido/bakery/main/scripts/install-node-agent.sh | \
+     sudo SSH_USER=bakery-agent SSH_KEY_BASE64="<long-string>" bash
    ```
 
-   The script installs Bun, Docker, Nginx, the Bakery agent service, and prints the pairing code at the end.
-3. When the installer finishes it prints a one-time pairing code. Paste the code back into the Servers page to activate the node.
+   When the installer finishes, return to the Servers page, enter the node’s reachable host/IP, and click **Verify & activate**. Bakery establishes an SSH session with the generated key and marks the node active.
+3. Once verified, the node appears as **Active**; deployments can now target it directly from the control plane.
 4. New deployments expose a **Server node** selector. Pick the remote node to run clones, builds, Nginx, and Certbot there, or choose the control plane to keep workloads local.
 
-Agents maintain a secure polling connection to the control plane over HTTPS. Allow outbound access from each node to the Bakery instance and inbound SSH for the installer command.
+### Push-based agent roadmap
+
+Bakery’s node agent currently polls the control plane for work, which requires the agent to be online whenever the control plane needs to trigger an update. You asked for the inverse: the control plane should open an SSH channel to the nodes and push commands (deploy/update) on demand. These are the phases we’ll execute:
+
+1. **Phase 1 — SSH command channel**
+   - Collect SSH metadata for each node (host, port, user, key fingerprint) and validate it when creating/updating the node.
+   - Teach the control plane to open `ssh bakery-agent@node` connections and run scripts that boot the agent, deploy builds, or perform self-updates.
+   - Provide a lightweight bootstrap (install-node-agent) script that sets up the `bakery-agent` user, copies the control plane’s public key, and acknowledges the node registration.
+2. **Phase 2 — Control-plane driven CI/CD**
+   - Route the GitHub App webhook through the new SSH runner so every push to the configured repo/branch executes `infrastructure/scripts/update.js` on the node.
+   - Report webhook delivery status in System → Self-update and tie it to the SSH execution logs for easier debugging.
+3. **Phase 3 — Manual control**
+   - Add “Update now” / “Deploy now” buttons next to each node (and on the System self-update page) that trigger the SSH runner manually.
+   - Stream the result logs back to Bakery and raise alerts when SSH execution fails, so you can see the full lifecycle without dropping into the server directly.
+
+Completing these phases means your laptop-hosted control plane can push updates to the Hetzner node regardless of whether the agent is polling, and GitHub pushes still trigger the same workflow.
 
 ## Development Workflow
 
