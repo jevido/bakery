@@ -65,6 +65,28 @@ bakery/
    curl -fsSL https://raw.githubusercontent.com/jevido/bakery/main/scripts/update-bakery.sh | sudo bash
    ```
 
+### GitHub App webhook for self-updates
+
+The control plane already exposes a webhook listener at `/api/webhooks/github` that can receive signed `push` events from GitHub. When the repository and branch match the values configured in `BAKERY_SELF_REPO` and `BAKERY_SELF_BRANCH`, the webhook calls `startSelfUpdate`, which runs `infrastructure/scripts/update.js` (the same updater you run manually).
+
+To enable this:
+
+1. Set the following environment variables in `/opt/bakery/.env` (or wherever your service reads its environment):
+   - `BAKERY_SELF_REPO=<owner>/<repo>` (defaults to `jevido/bakery`).
+   - `BAKERY_SELF_BRANCH=<branch>` (defaults to `main`).
+   - `GITHUB_APP_WEBHOOK_SECRET=<secret>` – a random string (`openssl rand -hex 32` is a good choice). This secret must match the value you configure on the GitHub App/webhook and is used to verify the `x-hub-signature-256` header.
+2. Restart the `bakery.service` so the new variables take effect (`sudo systemctl restart bakery`).
+3. Create a GitHub App or webhook for the same repository:
+   - Set the **Payload URL** to `https://<your-base-url>/api/webhooks/github` (same as `BAKERY_BASE_URL` + `/api/webhooks/github`).
+   - Choose **Content type: application/json**.
+   - Paste the same secret you stored in `GITHUB_APP_WEBHOOK_SECRET`.
+   - Subscribe to **Push** events (optionally other events if you need them later).
+   - Install the app/webhook on the repository so GitHub can deliver events.
+
+GitHub will now notify Bakery of every push. When the push targets the configured branch, the webhook will log the request, verify the signature, and begin the updater unless another run is in progress. You can watch `/var/log/bakery/bakery-service.log` for the `self-update` entries to confirm it worked.
+
+Administrators can also visit the **System → Self-update** page to see whether an updater job is currently running, when the last run finished, and whether the GitHub App webhook is configured properly.
+
 ### Single-node “Platform” install (Hetzner, etc.)
 
 Once your Hetzner (or other) Ubuntu server is provisioned, SSH into it and run the same installer:

@@ -166,3 +166,40 @@ export function startSelfUpdate(meta = {}) {
 		meta
 	};
 }
+
+function toIsoString(value) {
+	if (!value) return null;
+	if (value instanceof Date) {
+		return value.toISOString();
+	}
+	return String(value);
+}
+
+export function serializeSelfUpdateStatus(status) {
+	if (!status) {
+		return {
+			status: 'idle',
+			lastResult: null
+		};
+	}
+
+	if (status.status === 'running') {
+		return {
+			status: 'running',
+			startedAt: toIsoString(status.startedAt),
+			meta: status.meta ?? null
+		};
+	}
+
+	const lastResult = status.lastResult
+		? {
+				...status.lastResult,
+				finishedAt: toIsoString(status.lastResult.finishedAt)
+		  }
+		: null;
+
+	return {
+		status: 'idle',
+		lastResult
+	};
+}

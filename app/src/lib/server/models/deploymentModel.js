@@ -129,10 +129,18 @@ export async function listVersions(deploymentId) {
 }
 
 export async function recordDeploymentLog(deploymentId, level, message, meta = {}) {
-	await sql`
-    INSERT INTO deployment_logs (id, deployment_id, level, message, metadata)
-    VALUES (${nanoid()}, ${deploymentId}, ${level}, ${message}, ${JSON.stringify(meta)}::jsonb)
-  `;
+	try {
+		await sql`
+      INSERT INTO deployment_logs (id, deployment_id, level, message, metadata)
+      VALUES (${nanoid()}, ${deploymentId}, ${level}, ${message}, ${JSON.stringify(meta)}::jsonb)
+    `;
+	} catch (error) {
+		// Ignore foreign key errors when the deployment no longer exists.
+		if (error?.code === '23503') {
+			return;
+		}
+		throw error;
+	}
 }
 
 export async function listDeploymentLogs(deploymentId, limit = 200) {

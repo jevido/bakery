@@ -6,18 +6,19 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { cn } from '$lib/utils.js';
-	import {
-		Menu,
-		LayoutDashboard,
-		Box,
-		Server,
-		Database,
-		Users,
-		Cog,
-		SunMedium,
-		Moon,
-		PackagePlus
-	} from '@lucide/svelte';
+import {
+	Menu,
+	LayoutDashboard,
+	Box,
+	Server,
+	Database,
+	Users,
+	Cog,
+	SunMedium,
+	Moon,
+	PackagePlus,
+	RefreshCw
+} from '@lucide/svelte';
 	import { mode, ModeWatcher, toggleMode } from 'mode-watcher';
 	import Separator from '$lib/components/ui/separator/separator.svelte';
 
@@ -36,9 +37,13 @@
 		{ label: 'System', href: '/system', icon: Cog }
 	];
 
-	const bakeryNavItems = [{ label: 'Users', href: '/users', icon: Users, requiresAdmin: true }];
+	const bakeryNavItems = [
+		{ label: 'Users', href: '/users', icon: Users, requiresAdmin: true },
+		{ label: 'Self-update', href: '/system/updates', icon: RefreshCw, requiresAdmin: true }
+	];
 
 	let navItems = $derived(allNavItems.filter((item) => !item.requiresAdmin || user?.is_admin));
+	let adminNavItems = $derived(bakeryNavItems.filter((item) => !item.requiresAdmin || user?.is_admin));
 	let githubLinked = $derived(Boolean(user?.github_connected));
 
 	function toggleSidebar() {
@@ -111,7 +116,7 @@
 
 					<Separator class="my-4" />
 
-					{#each bakeryNavItems as item (item.href)}
+					{#each adminNavItems as item (item.href)}
 						{@render menuItem(item)}
 					{/each}
 				</nav>
