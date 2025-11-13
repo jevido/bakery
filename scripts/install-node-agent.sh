@@ -36,7 +36,9 @@ apt-get install -y curl git docker.io build-essential nginx certbot python3-cert
 
 section "Creating system user and directories"
 if ! id "$SSH_USER" >/dev/null 2>&1; then
-  useradd --system --create-home --shell /usr/sbin/nologin "$SSH_USER"
+  useradd --system --create-home --shell /bin/bash "$SSH_USER"
+else
+  usermod --shell /bin/bash "$SSH_USER" || true
 fi
 mkdir -p "$DATA_ROOT"/{data,logs,builds} "$LOG_ROOT"
 chown -R "$SSH_USER:$SSH_USER" "$DATA_ROOT" "$LOG_ROOT"
