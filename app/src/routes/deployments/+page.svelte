@@ -83,12 +83,10 @@
 
 	function getDeploymentVisitUrl(deployment, domains) {
 		const publicDomain = domains.find((domain) => !isLocalHostname(domain.hostname));
-		if (publicDomain) {
-			return buildDomainUrl(publicDomain);
+		if (!publicDomain) {
+			return null;
 		}
-		const versions = normalizeVersions(deployment.versions);
-		const port = getActivePort(versions);
-		return port ? `http://localhost:${port}` : null;
+		return buildDomainUrl(publicDomain);
 	}
 
 	function isHealthyStatus(status) {

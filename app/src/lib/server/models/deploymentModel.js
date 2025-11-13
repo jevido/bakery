@@ -96,7 +96,7 @@ export async function recordDeploymentVersion(payload) {
 	await sql`
     UPDATE deployment_versions
     SET status = 'inactive'
-    WHERE deployment_id = ${deploymentId} AND slot = ${slot}
+    WHERE deployment_id = ${deploymentId}
   `;
 	await sql`
     INSERT INTO deployment_versions (

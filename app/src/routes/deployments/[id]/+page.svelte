@@ -117,22 +117,14 @@ let logPanel;
 		const sorted = [...domains].sort((a, b) => Number(b.verified) - Number(a.verified));
 		return sorted.find((domain) => domain?.hostname && !isLocalHostname(domain.hostname)) ?? null;
 	});
-	const activeVersion = $derived.by(() => {
-		if (!Array.isArray(versions) || versions.length === 0) return null;
-		return versions.find((version) => version?.status === 'active') ?? versions[0] ?? null;
-	});
-	const localVisitUrl = $derived.by(() => {
-		const port = activeVersion?.port;
-		return port ? `http://localhost:${port}` : null;
-	});
 	const deploymentUrl = $derived.by(() => {
 		const domain = publicVisitDomain;
-		if (domain) {
-			const secureStatuses = new Set(['active', 'ready']);
-			const protocol = secureStatuses.has(domain.ssl_status) || domain.verified ? 'https' : 'http';
-			return `${protocol}://${domain.hostname}`;
+		if (!domain) {
+			return null;
 		}
-		return localVisitUrl;
+		const secureStatuses = new Set(['active', 'ready']);
+		const protocol = secureStatuses.has(domain.ssl_status) || domain.verified ? 'https' : 'http';
+		return `${protocol}://${domain.hostname}`;
 	});
 	const runtimeMismatch = $derived.by(() => {
 		if (!runtimeStatus) return false;

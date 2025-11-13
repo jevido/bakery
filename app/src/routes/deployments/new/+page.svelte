@@ -3,12 +3,8 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 
 	import { goto } from '$app/navigation';
-import {
-	apiFetch,
-	createDeployment,
-	fetchGithubBranches,
-	addDeploymentDomain
-} from '$lib/api.js';
+	import { apiFetch, createDeployment, fetchGithubBranches } from '$lib/api.js';
+	import { isLocalHostname } from '$lib/shared/domainRules.js';
 	import { Plus, X, Loader2 } from '@lucide/svelte';
 
 	let { data } = $props();
@@ -32,6 +28,8 @@ import {
 	let createDatabaseFlag = $state(false);
 	let submitting = $state(false);
 	let error = $state('');
+	const LOCAL_DOMAIN_MESSAGE =
+		'Local-only hostnames (like *.local, *.localhost, or private IPs) are disabled for now. We will reintroduce local overrides in a future release.';
 
 	$effect(() => {
 		if (!repository) {
@@ -67,12 +65,37 @@ import {
 	function addDomain() {
 		const trimmed = newDomain.trim();
 		if (!trimmed) return;
+		if (isLocalHostname(trimmed)) {
+			error = LOCAL_DOMAIN_MESSAGE;
+			return;
+		}
+		const normalized = trimmed.toLowerCase();
+		const alreadyAdded = domains.some((hostname) => hostname.toLowerCase() === normalized);
+		if (alreadyAdded) {
+			newDomain = '';
+			return;
+		}
+		error = '';
 		domains = [...domains, trimmed];
 		newDomain = '';
 	}
 
 	function removeDomain(index) {
 		domains = domains.filter((_, idx) => idx !== index);
+	}
+	
+	function sanitizeDomains(list) {
+		const seen = new Set();
+		const sanitized = [];
+		for (const hostname of list) {
+			const trimmed = hostname?.trim();
+			if (!trimmed) continue;
+			const normalized = trimmed.toLowerCase();
+			if (seen.has(normalized)) continue;
+			seen.add(normalized);
+			sanitized.push(trimmed);
+		}
+		return sanitized;
 	}
 
 	async function handleSubmit(event) {
@@ -101,32 +124,26 @@ import {
 				return acc;
 			}, {});
 
+		const sanitizedDomains = sanitizeDomains(domains);
+		domains = sanitizedDomains;
+
 		submitting = true;
-	try {
-		const payload = await createDeployment({
-			name,
-			repository,
-			branch,
-			domains,
-			environment,
-			enableBlueGreen,
-			createDatabase: createDatabaseFlag,
-			nodeId: nodeId || null
-		});
-		const deploymentId = payload.deployment?.id;
-		if (deploymentId) {
-			if (domains.length > 0) {
-				for (const hostname of domains) {
-					try {
-						await addDeploymentDomain(deploymentId, hostname);
-					} catch (domainError) {
-						console.error('Failed to add domain during creation', domainError);
-					}
-				}
-			}
-			await goto(`/deployments/${deploymentId}`);
-		} else {
-			await goto('/deployments');
+		try {
+			const payload = await createDeployment({
+				name,
+				repository,
+				branch,
+				domains: sanitizedDomains,
+				environment,
+				enableBlueGreen,
+				createDatabase: createDatabaseFlag,
+				nodeId: nodeId || null
+			});
+			const deploymentId = payload.deployment?.id;
+			if (deploymentId) {
+				await goto(`/deployments/${deploymentId}`);
+			} else {
+				await goto('/deployments');
 			}
 		} catch (err) {
 			error = err?.message || 'Deployment failed to start.';
