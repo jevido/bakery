@@ -110,7 +110,7 @@ Bakery can delegate builds, Docker runtime, and Nginx management to additional h
    ```
 
    When the installer finishes, return to the Servers page, enter the node’s reachable host/IP, and click **Verify & activate**. Bakery establishes an SSH session with the generated key and marks the node active.
-3. Once verified, the node appears as **Active**; deployments can now target it directly from the control plane.
+3. When the script finishes, return to the Servers page, enter the node's SSH host/port, and click **Verify & activate**. Bakery opens an SSH session using the generated key; if the command succeeds, the node is marked **Active** and is ready for deployments.
 4. New deployments expose a **Server node** selector. Pick the remote node to run clones, builds, Nginx, and Certbot there, or choose the control plane to keep workloads local.
 
 ### Push-based agent roadmap

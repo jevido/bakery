@@ -2,8 +2,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { createNodeRecord, fetchNodes, deleteNode, verifyNode } from '$lib/api.js';
-	import { Copy, Check, RefreshCw, Trash2 } from '@lucide/svelte';
+	import { createNodeRecord, fetchNodes, deleteNode, verifyNode, renameNode } from '$lib/api.js';
+	import { Copy, Check, RefreshCw, Trash2, Pencil } from '@lucide/svelte';
 	import {
 		AlertDialog,
 		AlertDialogAction,
@@ -23,14 +23,16 @@
 	let newNodeName = $state('');
 	let creating = $state(false);
 	let refreshing = $state(false);
-let globalMessage = $state('');
-let globalError = $state('');
-let copyState = $state({});
-let latestInstaller = $state(null);
+	let globalMessage = $state('');
+	let globalError = $state('');
+	let copyState = $state({});
+	let latestInstaller = $state(null);
 	let deleting = $state({});
 	let deleteDialogId = $state(null);
 	let verifyInputs = $state({});
 	let verifying = $state({});
+	let renaming = $state({});
+	let renameInputs = $state({});
 
 	function initializeVerifyInput(node) {
 		if (!node) return;
@@ -48,6 +50,9 @@ let latestInstaller = $state(null);
 	$effect(() => {
 		for (const node of nodes ?? []) {
 			initializeVerifyInput(node);
+			if (!renameInputs[node.id]) {
+				renameInputs = { ...renameInputs, [node.id]: node.name };
+			}
 		}
 	});
 
@@ -100,15 +105,16 @@ let latestInstaller = $state(null);
 		}
 		creating = true;
 		try {
-		const payload = await createNodeRecord({ name: newNodeName.trim() });
-		nodes = [payload.node, ...nodes.filter((node) => node.id !== payload.node.id)];
-		initializeVerifyInput(payload.node);
-		latestInstaller =
-			payload.node?.install_command != null
-				? { nodeId: payload.node.id, command: payload.node.install_command }
-				: null;
-		globalMessage = 'Node created. Run the install command on the server, then verify SSH access.';
-		newNodeName = '';
+			const payload = await createNodeRecord({ name: newNodeName.trim() });
+			nodes = [payload.node, ...nodes.filter((node) => node.id !== payload.node.id)];
+			initializeVerifyInput(payload.node);
+			latestInstaller =
+				payload.node?.install_command != null
+					? { nodeId: payload.node.id, command: payload.node.install_command }
+					: null;
+			globalMessage =
+				'Node created. Run the install command on the server, then verify SSH access.';
+			newNodeName = '';
 		} catch (error) {
 			globalError = error?.message || 'Failed to create node';
 		} finally {
@@ -178,6 +184,26 @@ let latestInstaller = $state(null);
 			deleting = { ...deleting, [nodeId]: false };
 		}
 	}
+
+	async function handleRename(nodeId) {
+		globalError = '';
+		globalMessage = '';
+		const nextName = renameInputs[nodeId]?.trim();
+		if (!nextName) {
+			globalError = 'Provide a new name.';
+			return;
+		}
+		renaming = { ...renaming, [nodeId]: true };
+		try {
+			const payload = await renameNode(nodeId, nextName);
+			nodes = nodes.map((node) => (node.id === nodeId ? payload.node : node));
+			globalMessage = 'Node renamed.';
+		} catch (error) {
+			globalError = error?.message || 'Failed to rename node.';
+		} finally {
+			renaming = { ...renaming, [nodeId]: false };
+		}
+	}
 </script>
 
 <svelte:head>
@@ -188,8 +214,9 @@ let latestInstaller = $state(null);
 	<header class="flex flex-col gap-2">
 		<h1 class="text-3xl font-semibold tracking-tight">Server nodes</h1>
 		<p class="text-sm text-muted-foreground">
-			Connect additional servers to offload builds, Nginx, Docker, and blue/green deployments while
-			managing everything from this control plane.
+			Connect additional servers to run the deployments on with the powerful combination of: Nginx &
+			Docker. Automatically use blue/green deployments while managing everything from this control
+			plane.
 		</p>
 	</header>
 
@@ -252,8 +279,52 @@ let latestInstaller = $state(null);
 					{#each nodes as node (node.id)}
 						<div class="rounded-xl border bg-background p-4 shadow-sm">
 							<div class="flex flex-wrap items-center justify-between gap-3">
-								<div>
-									<p class="font-medium">{node.name}</p>
+								<div class="flex flex-col gap-2">
+									<div class="flex items-center gap-2">
+										<p class="font-medium">{node.name}</p>
+										<Button
+											variant="ghost"
+											size="icon"
+											class="h-8 w-8"
+											onclick={() =>
+												(renameInputs = {
+													...renameInputs,
+													[node.id]: renameInputs[node.id] ?? node.name ?? ''
+												})}
+											aria-label={`Rename ${node.name}`}
+										>
+											<Pencil class="h-4 w-4" />
+										</Button>
+									</div>
+									<div class="flex flex-wrap items-end gap-2">
+										<label class="flex flex-col gap-1 text-xs font-medium">
+											<span>Rename</span>
+											<Input
+												class="w-48"
+												value={renameInputs[node.id] ?? node.name}
+												oninput={(event) =>
+													(renameInputs = {
+														...renameInputs,
+														[node.id]: event.currentTarget.value
+													})}
+												placeholder="New name"
+											/>
+										</label>
+										<Button
+											variant="outline"
+											size="sm"
+											class="gap-2"
+											onclick={() => handleRename(node.id)}
+											disabled={renaming[node.id]}
+										>
+											{#if renaming[node.id]}
+												<RefreshCw class="h-3.5 w-3.5 animate-spin" />
+												Renaming…
+											{:else}
+												Save name
+											{/if}
+										</Button>
+									</div>
 									<p class="text-xs text-muted-foreground">Node ID: {node.id}</p>
 								</div>
 								<div class="flex items-center gap-2">
@@ -283,19 +354,21 @@ let latestInstaller = $state(null);
 												deleteDialogId = event.detail ? node.id : null;
 											}}
 										>
-											<AlertDialogTrigger let:props>
-												<Button
-													{...props}
-													variant="ghost"
-													size="icon"
-													aria-label={`Delete ${node.name}`}
-													onclick={(event) => {
-														props.onClick?.(event);
-														deleteDialogId = node.id;
-													}}
-												>
-													<Trash2 class="h-4 w-4 text-destructive" />
-												</Button>
+											<AlertDialogTrigger>
+												{#snippet child({ props })}
+													<Button
+														{...props}
+														variant="ghost"
+														size="icon"
+														aria-label={`Delete ${node.name}`}
+														onclick={(event) => {
+															props.onClick?.(event);
+															deleteDialogId = node.id;
+														}}
+													>
+														<Trash2 class="h-4 w-4 text-destructive" />
+													</Button>
+												{/snippet}
 											</AlertDialogTrigger>
 											<AlertDialogContent>
 												<AlertDialogHeader>
@@ -357,7 +430,9 @@ let latestInstaller = $state(null);
 							{#if node.status !== 'active'}
 								{@const verifyInput = verifyInputs[node.id] ?? { host: '', port: 22 }}
 								<div class="mt-4 space-y-3">
-									<p class="text-sm font-medium">Verify SSH access</p>
+									<p class="text-sm font-medium">
+										Verify SSH access (after running the installer on the server)
+									</p>
 									<div class="grid gap-3 sm:grid-cols-2">
 										<label class="flex flex-col gap-1 text-xs font-medium">
 											<span>Host / IP</span>
@@ -401,8 +476,9 @@ let latestInstaller = $state(null);
 		<section class="space-y-4 rounded-2xl border bg-card p-6 shadow-sm">
 			<h2 class="text-lg font-semibold">Link a server</h2>
 			<p class="text-sm text-muted-foreground">
-				Enter a friendly name and click <em>Link node</em> to copy the prefilled installer command.
-				Run it on your VPS as root, wait for it to finish, then return here to verify SSH access.
+				Enter a friendly name and click <em>Link node</em>
+				to copy the prefilled installer command. Run it on your VPS as root, wait for it to finish, then
+				return here to verify SSH access.
 			</p>
 
 			<form class="space-y-3" onsubmit={handleCreate}>

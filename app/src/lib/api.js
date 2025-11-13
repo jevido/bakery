@@ -164,6 +164,13 @@ export async function verifyNode(id, payload) {
 	});
 }
 
+export async function renameNode(id, name) {
+	return apiFetch(`/api/nodes/${id}`, {
+		method: 'PATCH',
+		body: { name }
+	});
+}
+
 export async function redeployDeployment(id) {
 	return apiFetch(`/api/deployments/${id}/deploy`, {
 		method: 'POST'
