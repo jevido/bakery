@@ -4,10 +4,10 @@ import { listDeploymentsForUser, createDeployment } from '$lib/server/models/dep
 import { addDomain } from '$lib/server/models/domainModel.js';
 import { upsertEnvVar } from '$lib/server/models/envModel.js';
 import { createTask } from '$lib/server/models/taskModel.js';
-import { provisionDatabase } from '$lib/server/postgresAdmin.js';
+import { provisionDatabase, provisionDatabaseOnNode } from '$lib/server/postgresAdmin.js';
 import { createDatabaseRecord } from '$lib/server/models/databaseModel.js';
 import { getGithubAccount } from '$lib/server/models/userModel.js';
-import { findNodeById } from '$lib/server/models/nodeModel.js';
+import { getNodeWithCredentials } from '$lib/server/models/nodeModel.js';
 import { getRuntimeStatus } from '$lib/server/runtimeStatus.js';
 
 const createDeploymentSchema = z.object({
@@ -18,7 +18,9 @@ const createDeploymentSchema = z.object({
 	environment: z.record(z.string()).default({}),
 	enableBlueGreen: z.boolean().default(false),
 	createDatabase: z.boolean().default(false),
-	nodeId: z.string().optional().nullable()
+	nodeId: z.string().optional().nullable(),
+	dockerfilePath: z.string().trim().min(1).max(512).optional().default('Dockerfile'),
+	buildContext: z.string().trim().min(1).max(512).optional().default('.')
 });
 
 export const GET = async ({ locals }) => {
@@ -68,14 +70,18 @@ export const POST = async ({ request, locals }) => {
 	const data = parsed.data;
 
 	let nodeId = data.nodeId ?? null;
+	let targetNode = null;
 	if (nodeId) {
-		const node = await findNodeById(nodeId);
+		const node = await getNodeWithCredentials(nodeId);
 		if (!node || node.owner_id !== locals.user.id) {
 			throw error(400, 'Invalid server node');
 		}
 		if (node.status !== 'active') {
 			throw error(400, 'Node is not active');
 		}
+		targetNode = node;
+	} else if (data.createDatabase) {
+		throw error(400, 'Choose a server node to provision a database.');
 	}
 
 	const deployment = await createDeployment({
@@ -84,7 +90,9 @@ export const POST = async ({ request, locals }) => {
 		repository: data.repository,
 		branch: data.branch,
 		blueGreenEnabled: data.enableBlueGreen,
-		nodeId
+		nodeId,
+		dockerfilePath: data.dockerfilePath,
+		buildContext: data.buildContext
 	});
 
 	const { node_name, node_status, ...deploymentRest } = deployment ?? {};
@@ -111,7 +119,9 @@ export const POST = async ({ request, locals }) => {
 	}
 
 	if (data.createDatabase) {
-		const db = await provisionDatabase(deployment.id);
+		const db = targetNode
+			? await provisionDatabaseOnNode(targetNode, deployment.id)
+			: await provisionDatabase(deployment.id);
 		await createDatabaseRecord({
 			deploymentId: deployment.id,
 			name: db.name,

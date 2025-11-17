@@ -69,13 +69,16 @@ export async function createDeployment(payload) {
 		branch,
 		blueGreenEnabled,
 		dockerized = false,
-		nodeId = null
+		nodeId = null,
+		dockerfilePath = 'Dockerfile',
+		buildContext = '.'
 	} = payload;
 	await sql`
     INSERT INTO deployments (
       id, owner_id, name, repository, branch,
-      blue_green_enabled, dockerized, status, node_id
-    ) VALUES (${id}, ${ownerId}, ${name}, ${repository}, ${branch}, ${blueGreenEnabled}, ${dockerized}, 'pending', ${nodeId})
+      blue_green_enabled, dockerized, status, node_id,
+      dockerfile_path, build_context
+    ) VALUES (${id}, ${ownerId}, ${name}, ${repository}, ${branch}, ${blueGreenEnabled}, ${dockerized}, 'pending', ${nodeId}, ${dockerfilePath}, ${buildContext})
   `;
 	return findDeploymentById(id);
 }
@@ -154,5 +157,9 @@ export async function listDeploymentLogs(deploymentId, limit = 200) {
 }
 
 export async function deleteDeployment(id) {
+	await sql`
+    DELETE FROM tasks
+    WHERE payload ->> 'deploymentId' = ${id}
+  `;
 	await sql`DELETE FROM deployments WHERE id = ${id}`;
 }

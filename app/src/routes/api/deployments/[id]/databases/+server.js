@@ -1,8 +1,18 @@
 import { json, error } from '@sveltejs/kit';
 import { findDeploymentById } from '$lib/server/models/deploymentModel.js';
-import { listDatabasesForDeployment, deleteDatabase } from '$lib/server/models/databaseModel.js';
-import { provisionDatabase, dropDatabase } from '$lib/server/postgresAdmin.js';
-import { createDatabaseRecord } from '$lib/server/models/databaseModel.js';
+import {
+	listDatabasesForDeployment,
+	deleteDatabase,
+	findDatabaseById
+} from '$lib/server/models/databaseModel.js';
+import {
+	provisionDatabase,
+	provisionDatabaseOnNode,
+	dropDatabase,
+	dropDatabaseOnNode,
+	parseDatabaseUrl
+} from '$lib/server/postgresAdmin.js';
+import { getNodeWithCredentials } from '$lib/server/models/nodeModel.js';
 import { upsertEnvVar } from '$lib/server/models/envModel.js';
 
 export const GET = async ({ params, locals }) => {
@@ -24,7 +34,10 @@ export const POST = async ({ params, locals }) => {
 	if (!deployment) {
 		throw error(404, 'Deployment not found');
 	}
-	const db = await provisionDatabase(deployment.id);
+	const node = deployment.node_id ? await getNodeWithCredentials(deployment.node_id) : null;
+	const db = node
+		? await provisionDatabaseOnNode(node, deployment.id)
+		: await provisionDatabase(deployment.id);
 	await createDatabaseRecord({
 		deploymentId: deployment.id,
 		name: db.name,
@@ -48,7 +61,14 @@ export const DELETE = async ({ params, locals, request }) => {
 	if (!databaseId || !name) {
 		throw error(422, 'databaseId and name required');
 	}
-	await dropDatabase(name);
+	const record = await findDatabaseById(databaseId);
+	const node = deployment.node_id ? await getNodeWithCredentials(deployment.node_id) : null;
+	if (node && record) {
+		const parsed = record.connection_url ? parseDatabaseUrl(record.connection_url) : null;
+		await dropDatabaseOnNode(node, name, parsed?.user);
+	} else {
+		await dropDatabase(name);
+	}
 	await deleteDatabase(databaseId);
 	return json({ ok: true });
 };

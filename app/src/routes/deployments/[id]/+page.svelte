@@ -552,8 +552,8 @@ let logPanel;
 		<div class="flex items-start gap-3 rounded-xl border border-slate-400/40 bg-slate-500/10 p-3 text-sm text-slate-600">
 			<Clock class="mt-0.5 h-4 w-4" />
 			<div>
-				<p class="font-semibold text-slate-700">Runtime status pending</p>
-				<p class="text-xs text-slate-600/90">
+				<p class="font-semibold text-muted-foreground">Runtime status pending</p>
+				<p class="text-xs text-muted-foreground/90">
 					Remote nodes report their status separately. Refresh or inspect the server directly if this
 					persists.
 				</p>

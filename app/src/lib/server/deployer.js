@@ -260,8 +260,12 @@ async function createSystemdUnit({ deployment, slot, port, workingDir, env, runt
 async function deployDockerApp({ deployment, slot, port, repoDir, env }) {
 	const imageTag = `bakery/${deployment.id}:${slot}`;
 	const serviceName = serviceNameForDeployment(deployment.id, slot);
+	const dockerfilePath = deployment.dockerfile_path || 'Dockerfile';
+	const buildContext = deployment.build_context || '.';
+	const resolvedDockerfile = join(repoDir, dockerfilePath);
+	const resolvedContext = join(repoDir, buildContext);
 	await stopAndRemoveContainer(serviceName);
-	await buildImage({ context: repoDir, tag: imageTag });
+	await buildImage({ context: resolvedContext, tag: imageTag, dockerfile: resolvedDockerfile });
 	await runContainer({
 		image: imageTag,
 		name: serviceName,
@@ -351,11 +355,27 @@ export async function deploy(deployment, options) {
 		deploymentId: deployment.id
 	});
 
-	const dockerized = await detectDockerfile(repoDir);
+	const dockerfilePath = deployment.dockerfile_path || 'Dockerfile';
+	const buildContext = deployment.build_context || '.';
+	const dockerfileExists = await detectDockerfile(repoDir, dockerfilePath);
+	if (!dockerfileExists && dockerfilePath && dockerfilePath !== 'Dockerfile') {
+		const message = `Dockerfile not found at ${dockerfilePath}`;
+		await recordDeploymentLog(deployment.id, 'error', message, {
+			stream: 'system',
+			path: dockerfilePath
+		});
+		throw new Error(message);
+	}
+	const dockerized = dockerfileExists;
 	await recordDeploymentLog(deployment.id, 'info', 'Detected project type', {
 		stream: 'system',
-		dockerized
+		dockerized,
+		dockerfilePath,
+		buildContext
 	});
+	deployment.dockerized = dockerized;
+	deployment.dockerfile_path = dockerfilePath;
+	deployment.build_context = buildContext;
 
 	let runtimeArgs;
 	if (!dockerized) {

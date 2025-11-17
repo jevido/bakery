@@ -32,7 +32,7 @@ info() {
 
 section "Installing prerequisites"
 apt-get update -y
-apt-get install -y curl git docker.io build-essential nginx certbot python3-certbot-nginx
+apt-get install -y curl git docker.io build-essential nginx certbot python3-certbot-nginx postgresql postgresql-contrib
 
 section "Creating system user and directories"
 if ! id "$SSH_USER" >/dev/null 2>&1; then
@@ -40,6 +40,7 @@ if ! id "$SSH_USER" >/dev/null 2>&1; then
 else
   usermod --shell /bin/bash "$SSH_USER" || true
 fi
+usermod -aG docker "$SSH_USER" || true
 mkdir -p "$DATA_ROOT"/{data,logs,builds} "$LOG_ROOT"
 chown -R "$SSH_USER:$SSH_USER" "$DATA_ROOT" "$LOG_ROOT"
 
@@ -58,6 +59,14 @@ chmod 600 "$AUTHORIZED_KEYS"
 
 section "Finalizing"
 systemctl enable --now docker >/dev/null 2>&1 || true
+systemctl enable --now postgresql >/dev/null 2>&1 || true
+
+SUDOERS_FILE="/etc/sudoers.d/${SSH_USER}"
+cat >"$SUDOERS_FILE" <<EOF
+${SSH_USER} ALL=(root) NOPASSWD:/usr/bin/systemctl
+${SSH_USER} ALL=(postgres) NOPASSWD:/usr/bin/psql,/usr/bin/createuser,/usr/bin/createdb,/usr/bin/dropdb,/usr/bin/dropuser
+EOF
+chmod 440 "$SUDOERS_FILE"
 
 cat <<'INFO'
 

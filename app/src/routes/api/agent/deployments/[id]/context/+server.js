@@ -25,7 +25,9 @@ export const GET = async ({ params, request }) => {
 			branch: deployment.branch,
 			blue_green_enabled: deployment.blue_green_enabled,
 			active_slot: deployment.active_slot,
-			dockerized: deployment.dockerized
+			dockerized: deployment.dockerized,
+			dockerfile_path: deployment.dockerfile_path,
+			build_context: deployment.build_context
 		},
 		environment: envVars,
 		domains,

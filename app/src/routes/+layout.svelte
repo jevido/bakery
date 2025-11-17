@@ -4,29 +4,29 @@
 	import { Button } from '$lib/components/ui/button';
 
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { cn } from '$lib/utils.js';
-import {
-	Menu,
-	LayoutDashboard,
-	Box,
-	Server,
-	Database,
-	Users,
-	Cog,
-	SunMedium,
-	Moon,
-	PackagePlus,
-	RefreshCw
-} from '@lucide/svelte';
+	import {
+		Menu,
+		LayoutDashboard,
+		Box,
+		Server,
+		Database,
+		Users,
+		Cog,
+		SunMedium,
+		Moon,
+		PackagePlus,
+		RefreshCw
+	} from '@lucide/svelte';
 	import { mode, ModeWatcher, toggleMode } from 'mode-watcher';
 	import Separator from '$lib/components/ui/separator/separator.svelte';
+	import { Toaster } from '$lib/components/ui/sonner/index.js';
 
 	let { children, data } = $props();
-	const pageStore = page;
 
 	let user = $derived(data?.user);
-	let currentPath = $derived($pageStore.url.pathname);
+	let currentPath = $derived(page.url.pathname);
 	let isSidebarOpen = $state(false);
 
 	const allNavItems = [
@@ -43,7 +43,9 @@ import {
 	];
 
 	let navItems = $derived(allNavItems.filter((item) => !item.requiresAdmin || user?.is_admin));
-	let adminNavItems = $derived(bakeryNavItems.filter((item) => !item.requiresAdmin || user?.is_admin));
+	let adminNavItems = $derived(
+		bakeryNavItems.filter((item) => !item.requiresAdmin || user?.is_admin)
+	);
 	let githubLinked = $derived(Boolean(user?.github_connected));
 
 	function toggleSidebar() {
@@ -75,6 +77,7 @@ import {
 </svelte:head>
 
 <ModeWatcher />
+<Toaster />
 
 {#if user}
 	<div class="min-h-screen bg-background text-foreground">

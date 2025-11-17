@@ -145,6 +145,16 @@ export async function touchNode(id, metadata = {}) {
 
 export async function deleteNode(id, ownerId) {
 	await sql`
+    UPDATE tasks
+    SET node_id = NULL
+    WHERE node_id = ${id}
+  `;
+	await sql`
+    UPDATE deployments
+    SET node_id = NULL
+    WHERE node_id = ${id} AND owner_id = ${ownerId}
+  `;
+	await sql`
     DELETE FROM nodes
     WHERE id = ${id} AND owner_id = ${ownerId}
   `;

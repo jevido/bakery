@@ -11,11 +11,15 @@ const INSTALLER_URL =
 	'https://raw.githubusercontent.com/jevido/bakery/main/scripts/install-node-agent.sh';
 const DEFAULT_SSH_USER = 'bakery-agent';
 
-function buildInstallCommand(node) {
+function buildUpdateCommand(node) {
 	if (!node?.ssh_public_key) return null;
 	const keyBase64 = Buffer.from(node.ssh_public_key, 'utf8').toString('base64');
 	const sshUser = node.ssh_user || DEFAULT_SSH_USER;
 	return `curl -fsSL ${INSTALLER_URL} | sudo SSH_USER=${sshUser} SSH_KEY_BASE64=${keyBase64} bash`;
+}
+
+function buildInstallCommand(node) {
+	return buildUpdateCommand(node);
 }
 
 function sanitizeNode(node) {
@@ -29,7 +33,8 @@ function sanitizeNode(node) {
 	} = node;
 	return {
 		...rest,
-		install_command: node.status === 'active' ? null : buildInstallCommand(node)
+		install_command: node.status === 'active' ? null : buildInstallCommand(node),
+		update_command: buildUpdateCommand(node)
 	};
 }
 

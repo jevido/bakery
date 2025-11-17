@@ -3,9 +3,10 @@ import { join } from 'node:path';
 import { spawn } from 'bun';
 import { log } from './logger.js';
 
-export async function detectDockerfile(repoPath) {
+export async function detectDockerfile(repoPath, dockerfilePath = 'Dockerfile') {
+	const target = join(repoPath, dockerfilePath);
 	try {
-		await access(join(repoPath, 'Dockerfile'));
+		await access(target);
 		return true;
 	} catch {
 		return false;
@@ -27,8 +28,13 @@ async function runDockerCommand(args) {
 	return stdout.trim();
 }
 
-export async function buildImage({ context, tag }) {
-	return runDockerCommand(['build', '-t', tag, context]);
+export async function buildImage({ context, tag, dockerfile }) {
+	const args = ['build', '-t', tag];
+	if (dockerfile) {
+		args.push('-f', dockerfile);
+	}
+	args.push(context);
+	return runDockerCommand(args);
 }
 
 export async function runContainer({ image, name, env = {}, portMapping, volumes = [] }) {
