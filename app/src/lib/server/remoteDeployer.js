@@ -20,6 +20,9 @@ import {
 	dockerImageTag
 } from './deployment/utils.js';
 
+const SYSTEMCTL_PATH = '/usr/bin/systemctl';
+const CERTBOT_PATH = '/usr/bin/certbot';
+
 async function getDeploymentNode(deployment) {
 	if (!deployment.node_id) {
 		throw new Error('Deployment is not assigned to a node');
@@ -163,13 +166,13 @@ async function deployBunAppOnNode({ runner, deployment, slot, port, repoDir, env
 		.replace('{{ENVIRONMENT}}', envLines);
 	const servicePath = path.join(config.nodeSystemdDir, `${serviceName}.service`);
 	await runner.writeFile(servicePath, rendered, { sudo: true });
-	await runner.exec('sudo systemctl daemon-reload');
-	await runner.exec(`sudo systemctl enable ${shellEscape(`${serviceName}.service`)}`);
-	await runner.exec(`sudo systemctl stop ${shellEscape(`${serviceName}.service`)}`, {
+	await runner.exec(`sudo -n ${SYSTEMCTL_PATH} daemon-reload`);
+	await runner.exec(`sudo -n ${SYSTEMCTL_PATH} enable ${shellEscape(`${serviceName}.service`)}`);
+	await runner.exec(`sudo -n ${SYSTEMCTL_PATH} stop ${shellEscape(`${serviceName}.service`)}`, {
 		acceptExitCodes: [0, 5],
 		log: false
 	});
-	await runner.exec(`sudo systemctl start ${shellEscape(`${serviceName}.service`)}`);
+	await runner.exec(`sudo -n ${SYSTEMCTL_PATH} start ${shellEscape(`${serviceName}.service`)}`);
 	return { serviceName, servicePath };
 }
 
@@ -225,17 +228,18 @@ server {
 		extraSslDirectives.forEach((line) => directives.push(`    ${line}`));
 		sslDirectives = directives.join('\n');
 	}
-	return template
-		.replace('{{UPSTREAM_NAME}}', `bakery_${deployment.id}_${slot}`)
-		.replace('{{PORT}}', port)
-		.replace('{{HTTPS_DOMAINS}}', httpsDomains)
-		.replace('{{HTTP_REDIRECT_BLOCKS}}', httpRedirects)
-		.replace('{{LISTEN_DIRECTIVE}}', listenDirective)
-		.replace('{{HTTP2_DIRECTIVE}}', http2Directive)
-		.replace('{{SSL_DIRECTIVES}}', sslDirectives)
-		.replace('{{ACCESS_LOG}}', path.join(logsDir, `${deployment.id}-${slot}-access.log`))
-		.replace('{{ERROR_LOG}}', path.join(logsDir, `${deployment.id}-${slot}-error.log`))
-		.replace('{{PRIMARY_DOMAIN}}', domainList || primaryDomain);
+	return interpolateTemplate(template, {
+		UPSTREAM_NAME: `bakery_${deployment.id}_${slot}`,
+		PORT: port,
+		HTTPS_DOMAINS: httpsDomains,
+		HTTP_REDIRECT_BLOCKS: httpRedirects,
+		LISTEN_DIRECTIVE: listenDirective,
+		HTTP2_DIRECTIVE: http2Directive,
+		SSL_DIRECTIVES: sslDirectives,
+		ACCESS_LOG: path.join(logsDir, `${deployment.id}-${slot}-access.log`),
+		ERROR_LOG: path.join(logsDir, `${deployment.id}-${slot}-error.log`),
+		PRIMARY_DOMAIN: domainList || primaryDomain
+	});
 }
 
 async function writeNodeNginxConfig({
@@ -273,7 +277,7 @@ async function writeNodeNginxConfig({
 	});
 	const targetPath = path.join(config.nodeNginxSitesDir, `${deployment.id}.conf`);
 	await runner.writeFile(targetPath, body, { sudo: true });
-	await runner.exec('sudo -n systemctl reload nginx');
+	await runner.exec(`sudo -n ${SYSTEMCTL_PATH} reload nginx`);
 }
 
 async function remoteCertificateExists(runner, domain) {
@@ -302,12 +306,12 @@ async function requestRemoteCertificate(runner, domains) {
 		domains[0],
 		...domains.flatMap((domain) => ['-d', domain])
 	].map((arg) => shellEscape(arg));
-	const command = ['sudo', 'certbot', ...args].join(' ');
-	await runner.exec('sudo -n systemctl stop nginx', { acceptExitCodes: [0, 5] });
+	const command = ['sudo', '-n', CERTBOT_PATH, ...args].join(' ');
+	await runner.exec(`sudo -n ${SYSTEMCTL_PATH} stop nginx`, { acceptExitCodes: [0, 5] });
 	try {
 		await runner.exec(command, { strict: false });
 	} finally {
-		await runner.exec('sudo -n systemctl start nginx', { acceptExitCodes: [0, 5] });
+		await runner.exec(`sudo -n ${SYSTEMCTL_PATH} start nginx`, { acceptExitCodes: [0, 5] });
 	}
 	return true;
 }
@@ -557,7 +561,7 @@ export async function cleanupRemoteDeployment(deployment) {
 		for (const slot of slots) {
 			const serviceName = serviceNameForDeployment(deployment.id, slot);
 			await runner
-				.exec(`sudo systemctl stop ${shellEscape(`${serviceName}.service`)}`, {
+				.exec(`sudo -n ${SYSTEMCTL_PATH} stop ${shellEscape(`${serviceName}.service`)}`, {
 					acceptExitCodes: [0, 5],
 					log: false
 				})
@@ -575,7 +579,7 @@ export async function cleanupRemoteDeployment(deployment) {
 				})
 				.catch(() => {});
 		}
-		await runner.exec('sudo systemctl daemon-reload', { acceptExitCodes: [0, 1], log: false });
+			await runner.exec(`sudo -n ${SYSTEMCTL_PATH} daemon-reload`, { acceptExitCodes: [0, 1], log: false });
 		await runner
 			.exec(`rm -rf ${shellEscape(path.join(config.nodeBuildsDir, deployment.id))}`, {
 				acceptExitCodes: [0, 1],
@@ -588,7 +592,10 @@ export async function cleanupRemoteDeployment(deployment) {
 				log: false
 			})
 			.catch(() => {});
-		await runner.exec('sudo systemctl reload nginx', { acceptExitCodes: [0, 1], log: false }).catch(() => {});
+		await runner.exec(`sudo -n ${SYSTEMCTL_PATH} reload nginx`, {
+			acceptExitCodes: [0, 1],
+			log: false
+		}).catch(() => {});
 		await recordDeploymentLog(deployment.id, 'info', 'Cleaned up deployment resources', {
 			stream: 'system',
 			nodeId: node.id
@@ -605,7 +612,7 @@ export async function stopRemoteDeployment(deployment) {
 		if (deployment.dockerized) {
 			await runner.exec(`docker stop ${shellEscape(serviceName)}`);
 		} else {
-			await runner.exec(`sudo systemctl stop ${shellEscape(`${serviceName}.service`)}`);
+		await runner.exec(`sudo -n ${SYSTEMCTL_PATH} stop ${shellEscape(`${serviceName}.service`)}`);   
 		}
 		await updateDeployment(deployment.id, { status: 'inactive' });
 		await recordDeploymentLog(deployment.id, 'info', 'Deployment stopped', {
@@ -624,7 +631,7 @@ export async function startRemoteDeployment(deployment) {
 		if (deployment.dockerized) {
 			await runner.exec(`docker start ${shellEscape(serviceName)}`);
 		} else {
-			await runner.exec(`sudo systemctl start ${shellEscape(`${serviceName}.service`)}`);
+			await runner.exec(`sudo -n ${SYSTEMCTL_PATH} start ${shellEscape(`${serviceName}.service`)}`);
 		}
 		await updateDeployment(deployment.id, { status: 'running' });
 		await recordDeploymentLog(deployment.id, 'info', 'Deployment resumed', {
@@ -633,4 +640,11 @@ export async function startRemoteDeployment(deployment) {
 			service: serviceName
 		});
 	});
+}
+function interpolateTemplate(template, values) {
+	let result = template;
+	for (const [key, value] of Object.entries(values)) {
+		result = result.replaceAll(`{{${key}}}`, String(value));
+	}
+	return result;
 }

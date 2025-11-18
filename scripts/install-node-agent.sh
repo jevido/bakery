@@ -101,7 +101,8 @@ systemctl enable --now postgresql >/dev/null 2>&1 || true
 
 SUDOERS_FILE="/etc/sudoers.d/${SSH_USER}"
 cat >"$SUDOERS_FILE" <<EOF
-${SSH_USER} ALL=(root) NOPASSWD:/usr/bin/systemctl
+Defaults:${SSH_USER} !requiretty
+${SSH_USER} ALL=(root) NOPASSWD:/usr/bin/systemctl,/usr/bin/certbot
 ${SSH_USER} ALL=(postgres) NOPASSWD:/usr/bin/psql,/usr/bin/createuser,/usr/bin/createdb,/usr/bin/dropdb,/usr/bin/dropuser
 EOF
 chmod 440 "$SUDOERS_FILE"
