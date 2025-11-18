@@ -112,6 +112,17 @@ async function streamOutput(stream, label, hook) {
 	return output;
 }
 
+function isShellNoise(line) {
+	if (!line) return true;
+	const trimmed = line.trim();
+	if (!trimmed) return true;
+	// Lines like BASH=/usr/bin/bash or PIPESTATUS=([0]="1")
+	if (/^[A-Z0-9_]+(\[[^\]]+\])?\s*=/.test(trimmed)) {
+		return true;
+	}
+	return false;
+}
+
 async function runStreamingSsh({ sshArgs, command, hooks, timeoutMs, acceptExitCodes = [0], strict }) {
 	const prefixed = strict === false ? command : `set -euo pipefail; ${command}`;
 	const child = Bun.spawn(['ssh', ...sshArgs, 'bash', '-lc', prefixed], {
@@ -192,6 +203,7 @@ export async function createSshRunner(config, hooks = {}) {
 			command: finalCommand,
 			hooks: {
 				onLine: async (label, line) => {
+					if (isShellNoise(line)) return;
 					if (label === 'stdout') {
 						await hooks.onStdout?.(line);
 					} else {

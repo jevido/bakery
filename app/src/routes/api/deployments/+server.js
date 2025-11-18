@@ -119,16 +119,21 @@ export const POST = async ({ request, locals }) => {
 	}
 
 	if (data.createDatabase) {
-		const db = targetNode
-			? await provisionDatabaseOnNode(targetNode, deployment.id)
-			: await provisionDatabase(deployment.id);
-		await createDatabaseRecord({
-			deploymentId: deployment.id,
-			name: db.name,
-			status: 'ready',
-			connectionUrl: db.connectionUrl
-		});
-		await upsertEnvVar(deployment.id, 'DATABASE_URL', db.connectionUrl);
+		try {
+			const db = targetNode
+				? await provisionDatabaseOnNode(targetNode, deployment.id)
+				: await provisionDatabase(deployment.id);
+			await createDatabaseRecord({
+				deploymentId: deployment.id,
+				name: db.name,
+				status: 'ready',
+				connectionUrl: db.connectionUrl
+			});
+			await upsertEnvVar(deployment.id, 'DATABASE_URL', db.connectionUrl);
+		} catch (err) {
+			const details = err?.stderr || err?.stdout || err?.message || 'Unknown error';
+			throw error(500, `Database provisioning failed: ${details}`);
+		}
 	}
 
 	await createTask('deploy', { deploymentId: deployment.id }, { nodeId: deployment.node_id });

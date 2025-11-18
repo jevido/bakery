@@ -34,3 +34,14 @@ export function ensureControllableSlot(deployment) {
 	}
 	return deployment.active_slot;
 }
+
+export function dockerImageTag(deploymentId, slot) {
+	let repo = String(deploymentId || '')
+		.toLowerCase()
+		.replace(/[^a-z0-9_.-]/g, '-')
+		.replace(/^[^a-z0-9]+/, '');
+	if (!repo) {
+		repo = 'app';
+	}
+	return `bakery/${repo}:${slot}`;
+}

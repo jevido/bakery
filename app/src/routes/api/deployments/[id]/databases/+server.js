@@ -3,7 +3,8 @@ import { findDeploymentById } from '$lib/server/models/deploymentModel.js';
 import {
 	listDatabasesForDeployment,
 	deleteDatabase,
-	findDatabaseById
+	findDatabaseById,
+	createDatabaseRecord
 } from '$lib/server/models/databaseModel.js';
 import {
 	provisionDatabase,

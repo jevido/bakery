@@ -24,7 +24,12 @@ import {
 import { detectDockerfile, buildImage, runContainer, stopAndRemoveContainer } from './docker.js';
 import { createLogger } from './logger.js';
 import { startLocalService, stopLocalService } from './localRuntime.js';
-import { computeSlot, resolveRuntimeArgs, ensureControllableSlot } from './deployment/utils.js';
+import {
+	computeSlot,
+	resolveRuntimeArgs,
+	ensureControllableSlot,
+	dockerImageTag
+} from './deployment/utils.js';
 import {
 	deployToNode,
 	activateRemoteVersion,
@@ -238,7 +243,7 @@ async function createSystemdUnit({ deployment, slot, port, workingDir, env, runt
 }
 
 async function deployDockerApp({ deployment, slot, port, repoDir, env }) {
-	const imageTag = `bakery/${deployment.id}:${slot}`;
+	const imageTag = dockerImageTag(deployment.id, slot);
 	const serviceName = serviceNameForDeployment(deployment.id, slot);
 	const dockerfilePath = deployment.dockerfile_path || 'Dockerfile';
 	const buildContext = deployment.build_context || '.';

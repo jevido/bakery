@@ -790,7 +790,7 @@ function normalizeLogMetadata(metadata) {
 					>
 						<header class="flex flex-wrap items-center justify-between gap-3">
 							<div>
-								<h2 class="text-lg font-semibold text-white">Live task log</h2>
+								<h2 class="text-lg font-semibold text-white">Live log</h2>
 								<p class="text-xs text-slate-400">
 									Events update automatically while work is running — newest lines appear at the
 									bottom.
@@ -825,7 +825,7 @@ function normalizeLogMetadata(metadata) {
 						<div
 							class="h-64 overflow-y-auto rounded-xl border border-slate-800 bg-black/70 p-3 font-mono text-[11px] leading-relaxed"
 							bind:this={logPanel}
-							on:scroll={handleLogScroll}
+							onscroll={handleLogScroll}
 						>
 							{#if terminalLogs.length === 0}
 								<p class="text-slate-500">No deployment logs yet.</p>

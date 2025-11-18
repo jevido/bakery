@@ -136,33 +136,11 @@ GRANT ALL PRIVILEGES ON DATABASE "${escapeSqlIdentifier(dbName)}" TO "${escapeSq
 set -euo pipefail
 
 if ! command -v psql >/dev/null; then
-  if command -v apt-get >/dev/null; then
-    sudo apt-get update -y
-    sudo apt-get install -y postgresql postgresql-contrib
-  else
-    echo "PostgreSQL is not installed and apt-get is unavailable on this host." >&2
-    exit 1
-  fi
+  echo "PostgreSQL utilities are missing on this node. Re-run the Bakery install script to install them." >&2
+  exit 1
 fi
 
 sudo systemctl enable --now postgresql
-
-PG_CONF=$(sudo -u postgres psql -tAc "SHOW config_file;")
-PG_HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;")
-
-if [ -n "$PG_CONF" ] && ! sudo grep -q "listen_addresses = '*'" "$PG_CONF"; then
-  sudo sed -i "s/^#\?listen_addresses\s*=.*/listen_addresses = '*'/" "$PG_CONF" || echo "listen_addresses = '*'" | sudo tee -a "$PG_CONF" >/dev/null
-fi
-
-if [ -n "$PG_HBA" ] && ! sudo grep -q "host all all 127.0.0.1/32 md5" "$PG_HBA"; then
-  echo "host all all 127.0.0.1/32 md5" | sudo tee -a "$PG_HBA" >/dev/null
-fi
-
-if [ -n "$PG_HBA" ] && ! sudo grep -q "host all all 172.16.0.0/12 md5" "$PG_HBA"; then
-  echo "host all all 172.16.0.0/12 md5" | sudo tee -a "$PG_HBA" >/dev/null
-fi
-
-sudo systemctl restart postgresql
 
 sudo -u postgres psql <<'SQL'
 ${sqlBlock}

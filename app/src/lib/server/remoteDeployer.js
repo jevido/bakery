@@ -13,7 +13,12 @@ import { listDomains } from './models/domainModel.js';
 import { getNodeWithCredentials } from './models/nodeModel.js';
 import { shouldSkipTls } from './domainUtils.js';
 import { serviceNameForDeployment } from './systemd.js';
-import { computeSlot, resolveRuntimeArgs, ensureControllableSlot } from './deployment/utils.js';
+import {
+	computeSlot,
+	resolveRuntimeArgs,
+	ensureControllableSlot,
+	dockerImageTag
+} from './deployment/utils.js';
 import { renderTemplate } from './nginx.js';
 
 async function getDeploymentNode(deployment) {
@@ -92,21 +97,26 @@ function sanitizeOutput(value) {
 	if (!value) return null;
 	const trimmed = value.trim();
 	if (!trimmed) return null;
-	const limit = 4000;
-	if (trimmed.length > limit) {
-		return `${trimmed.slice(-limit)} (truncated)`;
+	const filtered = trimmed
+		.split('\n')
+		.filter((line) => !/^[A-Z0-9_]+\s*=\s*.*$/.test(line.trim()))
+		.join('\n')
+		.trim();
+	if (!filtered) {
+		return null;
 	}
-	return trimmed;
+	const limit = 2000;
+	return filtered.length > limit ? `${filtered.slice(-limit)} (truncated)` : filtered;
 }
 
 async function deployDockerAppOnNode({ runner, deployment, slot, port, repoDir, env }) {
 	const serviceName = serviceNameForDeployment(deployment.id, slot);
-	const imageTag = `bakery/${deployment.id}:${slot}`;
+	const imageTag = dockerImageTag(deployment.id, slot);
 	const dockerfilePath = path.join(repoDir, deployment.dockerfile_path || 'Dockerfile');
 	const buildContext = path.join(repoDir, deployment.build_context || '.');
-	await runner.exec(`docker rm -f ${shellEscape(serviceName)}`, {
-		acceptExitCodes: [0, 1],
-		log: false
+	await runner.exec(`docker rm -f ${shellEscape(serviceName)} >/dev/null 2>&1 || true`, {
+		log: false,
+		strict: false
 	});
 	await runner.exec(
 		`docker build -t ${shellEscape(imageTag)} -f ${shellEscape(dockerfilePath)} ${shellEscape(buildContext)}`
@@ -544,7 +554,10 @@ export async function cleanupRemoteDeployment(deployment) {
 				})
 				.catch(() => {});
 			await runner
-				.exec(`docker rm -f ${shellEscape(serviceName)}`, { acceptExitCodes: [0, 1], log: false })
+				.exec(`docker rm -f ${shellEscape(serviceName)} >/dev/null 2>&1 || true`, {
+					log: false,
+					strict: false
+				})
 				.catch(() => {});
 		}
 		await runner.exec('sudo systemctl daemon-reload', { acceptExitCodes: [0, 1], log: false });
