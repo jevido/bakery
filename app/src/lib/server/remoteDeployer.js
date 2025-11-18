@@ -88,6 +88,17 @@ done
 	await runner.exec(cleanupScript, { log: false });
 }
 
+function sanitizeOutput(value) {
+	if (!value) return null;
+	const trimmed = value.trim();
+	if (!trimmed) return null;
+	const limit = 4000;
+	if (trimmed.length > limit) {
+		return `${trimmed.slice(-limit)} (truncated)`;
+	}
+	return trimmed;
+}
+
 async function deployDockerAppOnNode({ runner, deployment, slot, port, repoDir, env }) {
 	const serviceName = serviceNameForDeployment(deployment.id, slot);
 	const imageTag = `bakery/${deployment.id}:${slot}`;
@@ -344,136 +355,148 @@ export async function deployToNode(deployment, { commitSha, accessToken } = {}) 
 		nodeId: node.id
 	});
 	return withRunner(node, deployment.id, async (runner) => {
-		const config = getConfig();
-		const { slot, port } = computeSlot(deployment);
-		const buildId = nanoid();
-		const deploymentDir = path.join(config.nodeBuildsDir, deployment.id);
-		const slotDir = path.join(deploymentDir, `${slot}-${buildId}`);
-		const repoDir = path.join(slotDir, 'source');
-		await runner.exec(`mkdir -p ${shellEscape(repoDir)}`);
-		await updateDeployment(deployment.id, { status: 'deploying' });
-		await recordDeploymentLog(deployment.id, 'info', 'Cloning repository', { stream: 'system' });
-		const cloneUrl = buildRepositoryUrl(deployment.repository, deployment.branch, accessToken);
-		await runner.exec(
-			`git clone --depth 1 --branch ${shellEscape(deployment.branch)} ${shellEscape(cloneUrl)} ${shellEscape(
-				repoDir
-			)}`
-		);
+		try {
+			const config = getConfig();
+			const { slot, port } = computeSlot(deployment);
+			const buildId = nanoid();
+			const deploymentDir = path.join(config.nodeBuildsDir, deployment.id);
+			const slotDir = path.join(deploymentDir, `${slot}-${buildId}`);
+			const repoDir = path.join(slotDir, 'source');
+			await runner.exec(`mkdir -p ${shellEscape(repoDir)}`);
+			await updateDeployment(deployment.id, { status: 'deploying' });
+			await recordDeploymentLog(deployment.id, 'info', 'Cloning repository', { stream: 'system' });
+			const cloneUrl = buildRepositoryUrl(deployment.repository, deployment.branch, accessToken);
+			await runner.exec(
+				`git clone --depth 1 --branch ${shellEscape(deployment.branch)} ${shellEscape(cloneUrl)} ${shellEscape(
+					repoDir
+				)}`
+			);
 
-		const dockerfilePath = deployment.dockerfile_path || 'Dockerfile';
-		const buildContext = deployment.build_context || '.';
-		const dockerfileExists = await runner.fileExists(path.join(repoDir, dockerfilePath));
-		if (!dockerfileExists && dockerfilePath !== 'Dockerfile') {
-			const message = `Dockerfile not found at ${dockerfilePath}`;
-			await recordDeploymentLog(deployment.id, 'error', message, { stream: 'system' });
-			throw new Error(message);
-		}
-		const dockerized = dockerfileExists;
-		await recordDeploymentLog(deployment.id, 'info', 'Detected project type', {
-			stream: 'system',
-			dockerized,
-			dockerfilePath,
-			buildContext
-		});
-		deployment.dockerized = dockerized;
-		deployment.dockerfile_path = dockerfilePath;
-		deployment.build_context = buildContext;
-
-		const envVars = await exportEnvVars(deployment.id);
-		envVars.PORT = String(port);
-
-		let runtimeArgs;
-		if (!dockerized) {
-			await runner.exec('bun install', { cwd: repoDir });
-			let packageJson = {};
-			try {
-				const packageContents = await runner.readFile(path.join(repoDir, 'package.json'));
-				packageJson = JSON.parse(packageContents);
-			} catch {
-				packageJson = {};
+			const dockerfilePath = deployment.dockerfile_path || 'Dockerfile';
+			const buildContext = deployment.build_context || '.';
+			const dockerfileExists = await runner.fileExists(path.join(repoDir, dockerfilePath));
+			if (!dockerfileExists && dockerfilePath !== 'Dockerfile') {
+				const message = `Dockerfile not found at ${dockerfilePath}`;
+				await recordDeploymentLog(deployment.id, 'error', message, { stream: 'system' });
+				throw new Error(message);
 			}
-			const scripts = packageJson.scripts || {};
-			const hasBuildScript = Boolean(scripts.build);
-			const hasStartScript = Boolean(scripts.start);
-			if (hasBuildScript) {
-				await runner.exec('bun run build', { cwd: repoDir });
-			} else {
-				await recordDeploymentLog(
-					deployment.id,
-					'info',
-					'No build script detected, skipping bun run build',
-					{ stream: 'system' }
-				);
-			}
-			const hasBuildOutput = await runner.fileExists(path.join(repoDir, 'build', 'index.js'));
-			try {
-				runtimeArgs = resolveRuntimeArgs({ hasBuildOutput, hasStartScript });
-			} catch (error) {
-				await recordDeploymentLog(deployment.id, 'error', error.message, { stream: 'system' });
-				throw error;
-			}
-		}
-
-		if (dockerized) {
-			await deployDockerAppOnNode({ runner, deployment, slot, port, repoDir, env: envVars });
-		} else {
-			await deployBunAppOnNode({
-				runner,
-				deployment,
-				slot,
-				port,
-				repoDir,
-				env: envVars,
-				runtimeArgs
+			const dockerized = dockerfileExists;
+			await recordDeploymentLog(deployment.id, 'info', 'Detected project type', {
+				stream: 'system',
+				dockerized,
+				dockerfilePath,
+				buildContext
 			});
-		}
+			deployment.dockerized = dockerized;
+			deployment.dockerfile_path = dockerfilePath;
+			deployment.build_context = buildContext;
 
-		const domains = await listDomains(deployment.id);
-		if (domains.length) {
-			try {
-				await configureNodeIngress({
+			const envVars = await exportEnvVars(deployment.id);
+			envVars.PORT = String(port);
+
+			let runtimeArgs;
+			if (!dockerized) {
+				await runner.exec('bun install', { cwd: repoDir });
+				let packageJson = {};
+				try {
+					const packageContents = await runner.readFile(path.join(repoDir, 'package.json'));
+					packageJson = JSON.parse(packageContents);
+				} catch {
+					packageJson = {};
+				}
+				const scripts = packageJson.scripts || {};
+				const hasBuildScript = Boolean(scripts.build);
+				const hasStartScript = Boolean(scripts.start);
+				if (hasBuildScript) {
+					await runner.exec('bun run build', { cwd: repoDir });
+				} else {
+					await recordDeploymentLog(
+						deployment.id,
+						'info',
+						'No build script detected, skipping bun run build',
+						{ stream: 'system' }
+					);
+				}
+				const hasBuildOutput = await runner.fileExists(path.join(repoDir, 'build', 'index.js'));
+				try {
+					runtimeArgs = resolveRuntimeArgs({ hasBuildOutput, hasStartScript });
+				} catch (error) {
+					await recordDeploymentLog(deployment.id, 'error', error.message, { stream: 'system' });
+					throw error;
+				}
+			}
+
+			if (dockerized) {
+				await deployDockerAppOnNode({ runner, deployment, slot, port, repoDir, env: envVars });
+			} else {
+				await deployBunAppOnNode({
 					runner,
 					deployment,
-					domains,
-					port,
 					slot,
-					obtainCertificate: true
+					port,
+					repoDir,
+					env: envVars,
+					runtimeArgs
 				});
-			} catch (error) {
-				await recordDeploymentLog(deployment.id, 'error', 'Failed to configure ingress', {
-					stream: 'system',
-					error: error.message
-				});
-				throw error;
 			}
+
+			const domains = await listDomains(deployment.id);
+			if (domains.length) {
+				try {
+					await configureNodeIngress({
+						runner,
+						deployment,
+						domains,
+						port,
+						slot,
+						obtainCertificate: true
+					});
+				} catch (error) {
+					await recordDeploymentLog(deployment.id, 'error', 'Failed to configure ingress', {
+						stream: 'system',
+						error: error.message
+					});
+					throw error;
+				}
+			}
+
+			const versionId = await recordDeploymentVersion({
+				deploymentId: deployment.id,
+				slot,
+				commitSha,
+				status: 'active',
+				port,
+				dockerized,
+				artifactPath: repoDir
+			});
+
+			await updateDeployment(deployment.id, {
+				status: 'running',
+				active_slot: slot,
+				dockerized
+			});
+
+			await recordDeploymentLog(deployment.id, 'info', 'Deployment completed', {
+				stream: 'system',
+				slot,
+				port,
+				versionId
+			});
+
+			await cleanupRemoteBuilds(runner, deployment);
+
+			return { slot, port, versionId };
+		} catch (error) {
+			await recordDeploymentLog(deployment.id, 'error', 'Deployment command failed', {
+				stream: 'system',
+				error: error?.message,
+				command: error?.command,
+				exitCode: error?.exitCode,
+				stdout: sanitizeOutput(error?.stdout),
+				stderr: sanitizeOutput(error?.stderr)
+			});
+			throw error;
 		}
-
-		const versionId = await recordDeploymentVersion({
-			deploymentId: deployment.id,
-			slot,
-			commitSha,
-			status: 'active',
-			port,
-			dockerized,
-			artifactPath: repoDir
-		});
-
-		await updateDeployment(deployment.id, {
-			status: 'running',
-			active_slot: slot,
-			dockerized
-		});
-
-		await recordDeploymentLog(deployment.id, 'info', 'Deployment completed', {
-			stream: 'system',
-			slot,
-			port,
-			versionId
-		});
-
-		await cleanupRemoteBuilds(runner, deployment);
-
-		return { slot, port, versionId };
 	});
 }
 

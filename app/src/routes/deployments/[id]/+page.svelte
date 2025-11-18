@@ -71,6 +71,7 @@ let deleteDialogOpen = $state(false);
 let copyFeedback = $state('');
 let copyTimeout;
 let logPanel;
+let logPinned = true;
 	const MIGRATION_COMMAND = 'bun run db:migrate';
 	const LOCAL_DOMAIN_MESSAGE =
 		'Local-only hostnames (like *.local, *.localhost, or private IPs) are disabled for now. We will reintroduce local overrides in a future release.';
@@ -143,18 +144,30 @@ let logPanel;
 		return BUSY_DEPLOYMENT_STATUSES.has(String(status).toLowerCase());
 	}
 
-	function formatDate(value) {
-		if (!value) return '—';
-		const date = new Date(value);
-		if (Number.isNaN(date.getTime())) return '—';
-		return date.toLocaleString();
-	}
+function formatDate(value) {
+	if (!value) return '—';
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return '—';
+	return date.toLocaleString();
+}
 
-	function formatBytes(value) {
-		if (value == null || Number.isNaN(Number(value))) return '—';
-		let size = Number(value);
-		if (!Number.isFinite(size) || size < 0) return '—';
-		const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+function formatLogTimestamp(value) {
+	if (!value) return '--:--:--';
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return '--:--:--';
+	return date.toLocaleTimeString([], {
+		hour12: false,
+		hour: '2-digit',
+		minute: '2-digit',
+		second: '2-digit'
+	});
+}
+
+function formatBytes(value) {
+	if (value == null || Number.isNaN(Number(value))) return '—';
+	let size = Number(value);
+	if (!Number.isFinite(size) || size < 0) return '—';
+	const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
 		let idx = 0;
 		while (size >= 1024 && idx < units.length - 1) {
 			size /= 1024;
@@ -175,20 +188,46 @@ let logPanel;
 		}
 	}
 
-	function getLogLevelClass(level) {
-		const normalized = String(level || '').toLowerCase();
-		if (['error', 'err', 'fatal'].includes(normalized)) return 'text-red-400';
-		if (['warn', 'warning'].includes(normalized)) return 'text-amber-300';
-		if (['success', 'ok'].includes(normalized)) return 'text-emerald-300';
-		if (['debug', 'trace'].includes(normalized)) return 'text-sky-300';
-		return 'text-slate-300';
-	}
+function getLogLevelClass(level) {
+	const normalized = String(level || '').toLowerCase();
+	if (['error', 'err', 'fatal'].includes(normalized)) return 'text-red-400';
+	if (['warn', 'warning'].includes(normalized)) return 'text-amber-300';
+	if (['success', 'ok'].includes(normalized)) return 'text-emerald-300';
+	if (['debug', 'trace'].includes(normalized)) return 'text-sky-300';
+	return 'text-slate-300';
+}
 
-	function normalizeLogMetadata(metadata) {
-		if (!metadata) return null;
-		if (typeof metadata === 'object') return metadata;
-		try {
-			return JSON.parse(metadata);
+function formatMetadataInline(value) {
+	if (value == null) return '';
+	if (typeof value === 'string') {
+		return value.length > 120 ? `${value.slice(0, 117)}...` : value;
+	}
+	try {
+		const rendered = JSON.stringify(value);
+		return rendered.length > 160 ? `${rendered.slice(0, 157)}...` : rendered;
+	} catch {
+		return String(value);
+	}
+}
+
+function formatMetadataExtras(metadata) {
+	const normalized = normalizeLogMetadata(metadata);
+	if (!normalized) return { stream: null, entries: [] };
+	const { stream, ...rest } = normalized;
+	const entries = Object.entries(rest)
+		.map(([key, value]) => {
+			const rendered = formatMetadataInline(value);
+			return rendered ? `${key}=${rendered}` : '';
+		})
+		.filter(Boolean);
+	return { stream, entries };
+}
+
+function normalizeLogMetadata(metadata) {
+	if (!metadata) return null;
+	if (typeof metadata === 'object') return metadata;
+	try {
+		return JSON.parse(metadata);
 		} catch {
 			return null;
 		}
@@ -213,6 +252,7 @@ let logPanel;
 
 	function clearLogs() {
 		logs = [];
+		logPinned = true;
 	}
 
 	$effect(() => {
@@ -231,12 +271,25 @@ let logPanel;
 
 	$effect(() => {
 		logs.length;
-		if (!logPanel) return;
+		if (!logPanel || !logPinned) return;
 		requestAnimationFrame(() => {
-			if (!logPanel) return;
+			if (!logPanel || !logPinned) return;
 			logPanel.scrollTop = logPanel.scrollHeight;
 		});
 	});
+
+	function handleLogScroll() {
+		if (!logPanel) return;
+		const nearBottom =
+			logPanel.scrollTop + logPanel.clientHeight >= logPanel.scrollHeight - 24;
+		logPinned = nearBottom;
+	}
+
+	function jumpToLatest() {
+		if (!logPanel) return;
+		logPanel.scrollTop = logPanel.scrollHeight;
+		logPinned = true;
+	}
 
 	function describeRuntimeStatus(status) {
 		if (!status) return 'Unknown';
@@ -758,67 +811,45 @@ let logPanel;
 								>
 									Clear log
 								</Button>
+								{#if !logPinned && terminalLogs.length}
+									<Button
+										variant="ghost"
+										class="border-slate-800 bg-transparent text-xs text-slate-300 hover:text-white"
+										onclick={jumpToLatest}
+									>
+										Jump to latest
+									</Button>
+								{/if}
 							</div>
 						</header>
 						<div
 							class="h-64 overflow-y-auto rounded-xl border border-slate-800 bg-black/70 p-3 font-mono text-[11px] leading-relaxed"
 							bind:this={logPanel}
+							on:scroll={handleLogScroll}
 						>
 							{#if terminalLogs.length === 0}
 								<p class="text-slate-500">No deployment logs yet.</p>
 							{:else}
-								<ul class="space-y-2">
+								<div class="space-y-1">
 									{#each terminalLogs as log (log.id ?? `${log.created_at}-${log.level}-${log.message}`)}
-										{@const metadata = normalizeLogMetadata(log.metadata)}
-										<li class="rounded-xl border border-slate-800/80 bg-black/30 p-2">
-											<div
-												class="flex flex-wrap items-center gap-2 text-[10px] tracking-wide text-slate-500 uppercase"
-											>
-												<span>{formatDate(log.created_at)}</span>
-												{#if metadata?.stream}
-													<span
-														class="rounded border border-slate-800 px-1.5 py-0.5 text-[9px] font-semibold text-slate-200"
-													>
-														{metadata.stream}
-													</span>
-												{/if}
-												<span class={`ml-auto font-semibold ${getLogLevelClass(log.level)}`}>
-													{(log.level || 'info').toUpperCase()}
-												</span>
-											</div>
-											<p class="mt-1 text-[11px] whitespace-pre-wrap text-slate-100">
-												{log.message}
-											</p>
-											{#if metadata}
-												{@const metadataEntries = Object.entries(metadata).filter(
-													([key]) => key !== 'stream'
-												)}
-												{#if metadataEntries.length}
-													<div
-														class="mt-2 space-y-1 rounded-lg bg-black/40 p-2 text-[10px] text-slate-300"
-													>
-														{#each metadataEntries as [key, value]}
-															{@const rendered = formatMetadataValue(value)}
-															{#if rendered}
-																<div>
-																	<p class="font-semibold tracking-wide text-slate-500 uppercase">
-																		{key}
-																	</p>
-																	{#if rendered.includes('\n')}
-																		<pre
-																			class="mt-1 whitespace-pre-wrap text-slate-300">{rendered}</pre>
-																	{:else}
-																		<p class="text-slate-200">{rendered}</p>
-																	{/if}
-																</div>
-															{/if}
-														{/each}
-													</div>
-												{/if}
+										{@const { stream, entries } = formatMetadataExtras(log.metadata)}
+										<div class="whitespace-pre-wrap text-[11px] leading-relaxed text-slate-100">
+											<span class="text-slate-500">
+												[{formatLogTimestamp(log.created_at)}]
+											</span>
+											{#if stream}
+												<span class="text-slate-400">[{stream}]</span>
 											{/if}
-										</li>
+											<span class={`font-semibold ${getLogLevelClass(log.level)}`}>
+												[{(log.level || 'info').toUpperCase()}]
+											</span>
+											<span class="text-slate-100">{log.message}</span>
+											{#if entries.length}
+												<span class="text-slate-400"> -- {entries.join(' ')}</span>
+											{/if}
+										</div>
 									{/each}
-								</ul>
+								</div>
 							{/if}
 						</div>
 					</section>
