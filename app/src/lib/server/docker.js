@@ -18,7 +18,11 @@ async function runDockerCommand(args) {
 	await log('info', 'Executing docker command', { args });
 	const child = spawn('docker', args, {
 		stdout: 'pipe',
-		stderr: 'pipe'
+		stderr: 'pipe',
+		env: {
+			...process.env,
+			DOCKER_BUILDKIT: '1'
+		}
 	});
 	let stdout = '';
 	let stderr = '';

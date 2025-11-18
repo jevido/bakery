@@ -44,6 +44,44 @@ usermod -aG docker "$SSH_USER" || true
 mkdir -p "$DATA_ROOT"/{data,logs,builds} "$LOG_ROOT"
 chown -R "$SSH_USER:$SSH_USER" "$DATA_ROOT" "$LOG_ROOT"
 
+TEMPLATE_DIR="$DATA_ROOT/templates/nginx"
+mkdir -p "$TEMPLATE_DIR"
+cat >"$TEMPLATE_DIR/app.conf" <<'NGINX_TEMPLATE'
+upstream {{UPSTREAM_NAME}} {
+    server 127.0.0.1:{{PORT}};
+    keepalive 32;
+}
+
+{{HTTP_REDIRECT_BLOCKS}}
+
+server {
+    {{LISTEN_DIRECTIVE}}
+    {{HTTP2_DIRECTIVE}}
+    {{HTTPS_DOMAINS}}
+
+{{SSL_DIRECTIVES}}
+
+    access_log {{ACCESS_LOG}};
+    error_log {{ERROR_LOG}};
+
+    location / {
+        proxy_pass http://{{UPSTREAM_NAME}};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $http_connection;
+        proxy_set_header Origin $http_origin;
+        proxy_cache_bypass $http_upgrade;
+        proxy_buffering on;
+    }
+}
+NGINX_TEMPLATE
+chown -R "$SSH_USER:$SSH_USER" "$DATA_ROOT/templates"
+
 section "Authorizing Bakery control plane"
 SSH_DIR=$(eval echo "~$SSH_USER/.ssh")
 mkdir -p "$SSH_DIR"

@@ -71,7 +71,7 @@ let deleteDialogOpen = $state(false);
 let copyFeedback = $state('');
 let copyTimeout;
 let logPanel;
-let logPinned = true;
+let logPinned = $state(true);
 	const MIGRATION_COMMAND = 'bun run db:migrate';
 	const LOCAL_DOMAIN_MESSAGE =
 		'Local-only hostnames (like *.local, *.localhost, or private IPs) are disabled for now. We will reintroduce local overrides in a future release.';

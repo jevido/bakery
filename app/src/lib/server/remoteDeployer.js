@@ -19,7 +19,6 @@ import {
 	ensureControllableSlot,
 	dockerImageTag
 } from './deployment/utils.js';
-import { renderTemplate } from './nginx.js';
 
 async function getDeploymentNode(deployment) {
 	if (!deployment.node_id) {
@@ -114,12 +113,16 @@ async function deployDockerAppOnNode({ runner, deployment, slot, port, repoDir, 
 	const imageTag = dockerImageTag(deployment.id, slot);
 	const dockerfilePath = path.join(repoDir, deployment.dockerfile_path || 'Dockerfile');
 	const buildContext = path.join(repoDir, deployment.build_context || '.');
-	await runner.exec(`docker rm -f ${shellEscape(serviceName)} >/dev/null 2>&1 || true`, {
-		log: false,
-		strict: false
-	});
+	const cleanupCommand = `
+if docker ps -a --format '{{.Names}}' | grep -qw ${shellEscape(serviceName)}; then
+  docker rm -f ${shellEscape(serviceName)};
+fi
+`.trim();
+	await runner.exec(cleanupCommand, { log: false });
 	await runner.exec(
-		`docker build -t ${shellEscape(imageTag)} -f ${shellEscape(dockerfilePath)} ${shellEscape(buildContext)}`
+		`DOCKER_CLI_HINTS=0 docker build -t ${shellEscape(imageTag)} -f ${shellEscape(
+			dockerfilePath
+		)} ${shellEscape(buildContext)}`
 	);
 	const envArgs = Object.entries(env)
 		.map(([key, value]) => `-e ${shellEscape(`${key}=${value}`)}`)
@@ -170,7 +173,17 @@ async function deployBunAppOnNode({ runner, deployment, slot, port, repoDir, env
 	return { serviceName, servicePath };
 }
 
+async function loadRemoteTemplate(runner) {
+	const remotePath = '/var/lib/bakery-node/templates/nginx/app.conf';
+	try {
+		return await runner.readFile(remotePath, { log: false });
+	} catch {
+		return null;
+	}
+}
+
 async function renderNodeNginxBody({
+	runner,
 	deployment,
 	domains,
 	port,
@@ -180,6 +193,9 @@ async function renderNodeNginxBody({
 }) {
 	const config = getConfig();
 	const logsDir = config.nodeLogsDir || config.logsDir;
+	const remoteTemplate = await loadRemoteTemplate(runner);
+	const template =
+		remoteTemplate ?? (await Bun.file(join(config.nginxTemplateDir, 'app.conf')).text());
 	const domainList = domains.map((d) => d.hostname).join(' ');
 	const primaryDomain = domains[0] ? domains[0].hostname : `${deployment.id}.local`;
 	const httpsDomains = domains.map((d) => `server_name ${d.hostname};`).join('\n  ');
@@ -209,19 +225,17 @@ server {
 		extraSslDirectives.forEach((line) => directives.push(`    ${line}`));
 		sslDirectives = directives.join('\n');
 	}
-	const body = await renderTemplate('app.conf', {
-		UPSTREAM_NAME: `bakery_${deployment.id}_${slot}`,
-		PORT: port,
-		HTTPS_DOMAINS: httpsDomains,
-		HTTP_REDIRECT_BLOCKS: httpRedirects,
-		LISTEN_DIRECTIVE: listenDirective,
-		HTTP2_DIRECTIVE: http2Directive,
-		SSL_DIRECTIVES: sslDirectives,
-		ACCESS_LOG: path.join(logsDir, `${deployment.id}-${slot}-access.log`),
-		ERROR_LOG: path.join(logsDir, `${deployment.id}-${slot}-error.log`),
-		PRIMARY_DOMAIN: domainList || primaryDomain
-	});
-	return body;
+	return template
+		.replace('{{UPSTREAM_NAME}}', `bakery_${deployment.id}_${slot}`)
+		.replace('{{PORT}}', port)
+		.replace('{{HTTPS_DOMAINS}}', httpsDomains)
+		.replace('{{HTTP_REDIRECT_BLOCKS}}', httpRedirects)
+		.replace('{{LISTEN_DIRECTIVE}}', listenDirective)
+		.replace('{{HTTP2_DIRECTIVE}}', http2Directive)
+		.replace('{{SSL_DIRECTIVES}}', sslDirectives)
+		.replace('{{ACCESS_LOG}}', path.join(logsDir, `${deployment.id}-${slot}-access.log`))
+		.replace('{{ERROR_LOG}}', path.join(logsDir, `${deployment.id}-${slot}-error.log`))
+		.replace('{{PRIMARY_DOMAIN}}', domainList || primaryDomain);
 }
 
 async function writeNodeNginxConfig({
@@ -249,6 +263,7 @@ async function writeNodeNginxConfig({
 		}
 	}
 	const body = await renderNodeNginxBody({
+		runner,
 		deployment,
 		domains,
 		port,
@@ -258,7 +273,7 @@ async function writeNodeNginxConfig({
 	});
 	const targetPath = path.join(config.nodeNginxSitesDir, `${deployment.id}.conf`);
 	await runner.writeFile(targetPath, body, { sudo: true });
-	await runner.exec('sudo systemctl reload nginx');
+	await runner.exec('sudo -n systemctl reload nginx');
 }
 
 async function remoteCertificateExists(runner, domain) {
@@ -288,11 +303,11 @@ async function requestRemoteCertificate(runner, domains) {
 		...domains.flatMap((domain) => ['-d', domain])
 	].map((arg) => shellEscape(arg));
 	const command = ['sudo', 'certbot', ...args].join(' ');
-	await runner.exec('sudo systemctl stop nginx', { acceptExitCodes: [0, 5] });
+	await runner.exec('sudo -n systemctl stop nginx', { acceptExitCodes: [0, 5] });
 	try {
 		await runner.exec(command, { strict: false });
 	} finally {
-		await runner.exec('sudo systemctl start nginx', { acceptExitCodes: [0, 5] });
+		await runner.exec('sudo -n systemctl start nginx', { acceptExitCodes: [0, 5] });
 	}
 	return true;
 }

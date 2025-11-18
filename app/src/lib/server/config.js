@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 
 let env = process.env;
 
@@ -24,6 +25,13 @@ function parseBoolean(value, fallback) {
 	return fallback;
 }
 
+const candidateRoots = env.BAKERY_PROJECT_ROOT
+	? [env.BAKERY_PROJECT_ROOT]
+	: [process.cwd(), join(process.cwd(), '..')];
+const projectRoot =
+	candidateRoots.find((root) =>
+		existsSync(join(root, 'infrastructure', 'nginx', 'templates', 'app.conf'))
+	) || process.cwd();
 const rootDir = env.BAKERY_ROOT || defaultRoot;
 const nodeRootDir = env.BAKERY_NODE_ROOT || '/var/lib/bakery-node';
 const nodeLogsDir = env.BAKERY_NODE_LOGS_DIR || '/var/log/bakery-node';
@@ -56,7 +64,7 @@ export function getConfig() {
 		systemdServicesDir: env.BAKERY_SYSTEMD_DIR || systemdDirDefault,
 		nginxSitesDir: env.BAKERY_NGINX_SITES_DIR || nginxSitesDefault,
 		nginxTemplateDir:
-			env.BAKERY_NGINX_TEMPLATE_DIR || join(process.cwd(), 'infrastructure', 'nginx', 'templates'),
+			env.BAKERY_NGINX_TEMPLATE_DIR || join(projectRoot, 'infrastructure', 'nginx', 'templates'),
 		nginxExecutable: env.BAKERY_NGINX_EXECUTABLE || env.NGINX_EXECUTABLE || 'nginx',
 		certbotEmail: env.CERTBOT_EMAIL || '',
 		publicIp: env.BAKERY_PUBLIC_IP || '',
