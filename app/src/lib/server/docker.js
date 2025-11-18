@@ -2,6 +2,7 @@ import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { spawn } from 'bun';
 import { log } from './logger.js';
+import { spawn } from 'bun';
 
 export async function detectDockerfile(repoPath, dockerfilePath = 'Dockerfile') {
 	const target = join(repoPath, dockerfilePath);
@@ -15,13 +16,26 @@ export async function detectDockerfile(repoPath, dockerfilePath = 'Dockerfile') 
 
 async function runDockerCommand(args) {
 	await log('info', 'Executing docker command', { args });
-	const process = spawn(['docker', ...args], {
+	const child = spawn('docker', args, {
 		stdout: 'pipe',
 		stderr: 'pipe'
 	});
-	const stdout = await new Response(process.stdout).text();
-	const stderr = await new Response(process.stderr).text();
-	if (process.exitCode !== 0) {
+	let stdout = '';
+	let stderr = '';
+	child.stdout.on('data', (chunk) => {
+		const text = chunk.toString();
+		stdout += text;
+		log('info', 'docker stdout', { chunk: text }).catch(() => {});
+	});
+	child.stderr.on('data', (chunk) => {
+		const text = chunk.toString();
+		stderr += text;
+		log('info', 'docker stderr', { chunk: text }).catch(() => {});
+	});
+	const exitCode = await new Promise((resolve) => {
+		child.on('close', resolve);
+	});
+	if (exitCode !== 0) {
 		await log('error', 'Docker command failed', { args, stderr });
 		throw new Error(stderr);
 	}

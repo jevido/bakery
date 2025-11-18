@@ -6,7 +6,7 @@ import { log } from './logger.js';
 import { certificateExists, requestCertificate } from './certbot.js';
 import { shouldSkipTls } from './domainUtils.js';
 
-async function renderTemplate(templateName, variables) {
+export async function renderTemplate(templateName, variables) {
 	const config = getConfig();
 	const templatePath = join(config.nginxTemplateDir, templateName);
 	const content = await readFile(templatePath, 'utf8');

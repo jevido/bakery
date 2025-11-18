@@ -114,12 +114,12 @@
 	let latestInstallerKey = $derived(
 		latestInstaller ? buildCopyKey(latestInstaller.nodeId, 'install') : null
 	);
-	let computedNodes = $derived(
-		nodes.map((node) => ({
-			node,
-			verifyInput: resolveVerifyInput(node),
-			installKey: buildCopyKey(node.id, 'install'),
-			updateKey: buildCopyKey(node.id, 'update'),
+let computedNodes = $derived(
+	nodes.map((node) => ({
+		node,
+		verifyInput: resolveVerifyInput(node),
+		installKey: buildCopyKey(node.id, 'install'),
+		updateKey: buildCopyKey(node.id, 'update'),
 			pushKey: buildCopyKey(node.id, 'push'),
 			handshakeCommand: buildHandshakeCommand(node),
 			lastSeenText: relativeTimestamp(node.last_seen),
@@ -474,8 +474,8 @@
 						<div class="space-y-1 text-xs text-muted-foreground">
 							<p class="font-semibold text-foreground">Run installer</p>
 							<p>
-								Executes install-node-agent.sh, creates the bakery-agent user, and uploads the SSH
-								key.
+								Installs the bakery-agent runtime, registers the node, and enables the systemd
+								service.
 							</p>
 						</div>
 					</div>
@@ -522,7 +522,7 @@
 					</Button>
 					<p class="text-xs text-muted-foreground">
 						Run immediately on the target VPS. Each new node regenerates this script with its own
-						SSH key.
+						credentials.
 					</p>
 				</div>
 			{:else}
@@ -740,19 +740,19 @@
 									</div>
 									{#if view.node.update_command}
 										<div>
-											<p class="font-semibold text-foreground">Update agent</p>
+											<p class="font-semibold text-foreground">Restart agent service</p>
 											<p class="mt-1 text-xs text-muted-foreground">
-												Reruns the installer to pull new dependencies (Docker, Postgres, etc.).
+												Restarts the bakery-agent systemd unit so it reloads the latest config.
 											</p>
 											<Button
 												variant="outline"
 												class="mt-2 w-full gap-2"
-												onclick={() => handleCopy(view.node.update_command, view.updateKey)}
+												onclick={() => handleCopy(view.node.update_command, view.restartKey)}
 											>
-												{#if copyState[view.updateKey]}
+												{#if copyState[view.restartKey]}
 													<Check class="h-4 w-4" /> Copied
 												{:else}
-													<RefreshCw class="h-4 w-4" /> Copy update command
+													<RefreshCw class="h-4 w-4" /> Copy restart command
 												{/if}
 											</Button>
 										</div>

@@ -113,22 +113,9 @@ Bakery can delegate builds, Docker runtime, and Nginx management to additional h
 3. When the script finishes, return to the Servers page, enter the node's SSH host/port, and click **Verify & activate**. Bakery opens an SSH session using the generated key; if the command succeeds, the node is marked **Active** and is ready for deployments.
 4. New deployments expose a **Server node** selector. Pick the remote node to run clones, builds, Nginx, and Certbot there, or choose the control plane to keep workloads local.
 
-### Push-based agent roadmap
+### SSH-driven deployments
 
-Bakery’s node agent currently polls the control plane for work, which requires the agent to be online whenever the control plane needs to trigger an update. You asked for the inverse: the control plane should open an SSH channel to the nodes and push commands (deploy/update) on demand. These are the phases we’ll execute:
-
-1. **Phase 1 — SSH command channel**
-   - Collect SSH metadata for each node (host, port, user, key fingerprint) and validate it when creating/updating the node.
-   - Teach the control plane to open `ssh bakery-agent@node` connections and run scripts that boot the agent, deploy builds, or perform self-updates.
-   - Provide a lightweight bootstrap (install-node-agent) script that sets up the `bakery-agent` user, copies the control plane’s public key, and acknowledges the node registration.
-2. **Phase 2 — Control-plane driven CI/CD**
-   - Route the GitHub App webhook through the new SSH runner so every push to the configured repo/branch executes `infrastructure/scripts/update.js` on the node.
-   - Report webhook delivery status in System → Self-update and tie it to the SSH execution logs for easier debugging.
-3. **Phase 3 — Manual control**
-   - Add “Update now” / “Deploy now” buttons next to each node (and on the System self-update page) that trigger the SSH runner manually.
-   - Stream the result logs back to Bakery and raise alerts when SSH execution fails, so you can see the full lifecycle without dropping into the server directly.
-
-Completing these phases means your laptop-hosted control plane can push updates to the Hetzner node regardless of whether the agent is polling, and GitHub pushes still trigger the same workflow.
+Bakery no longer relies on a background polling agent. The control plane opens SSH sessions directly to each node when a deployment, restart, or cleanup task begins. Every git clone, Bun install, Docker build, systemd reload, and Nginx/Cerbot update streams back through that SSH runner, and the output is written to `deployment_logs` so the UI can tail it live. Nodes simply need the bootstrap script (which creates the `bakery-agent` user, installs Docker/nginx/Bun, and trusts the control plane’s key); no additional daemon or queue worker runs on the remote host.
 
 ## Development Workflow
 
@@ -171,15 +158,7 @@ This streams Docker Compose logs until you hit <kbd>Ctrl</kbd>+<kbd>C</kbd>. Lea
 
 6. Open `http://localhost:5173/login` in your browser to access the UI.
 
-7. Start the lightweight deployment agent in another terminal (no sudo needed):
-
-   ```bash
-   BAKERY_LOCAL_MODE=1 bun agent/index.js
-   ```
-
-   This runs the agent loop against your dev server, spawns Bun apps directly, and writes per-deployment config/log files into `.data/`.
-
-8. From the UI create deployments as usual. Each slot listens on an automatically assigned port (base `5200` by default); no Nginx/systemd interaction happens when `BAKERY_LOCAL_MODE=1`, so you can hit the app via `http://127.0.0.1:<port>`.
+7. From the UI create deployments as usual. Each slot listens on an automatically assigned port (base `5200` by default); when `BAKERY_LOCAL_MODE=1` the control plane runs the process directly on your workstation, so you can hit the app via `http://127.0.0.1:<port>` without starting any extra agent loops.
 
 ## Environment Variables
 
@@ -200,7 +179,7 @@ This streams Docker Compose logs until you hit <kbd>Ctrl</kbd>+<kbd>C</kbd>. Lea
 
 Setting `BAKERY_LOCAL_MODE=1` (the default while `NODE_ENV !== 'production'`) activates a self-contained runtime so you can exercise deployments without touching systemd, nginx, or Certbot on your workstation.
 
-- Deployments are launched by the agent via `bun run start` and tracked in-memory — no sudo required.
+- Deployments are launched directly by the control plane via `bun run start` and tracked in-memory — no sudo required.
 - Generated unit files, nginx templates, and logs are written to `.data/systemd`, `.data/nginx/sites-enabled`, and `.data/logs` for inspection.
 - Nginx reloads and Certbot requests are skipped automatically; domains can still be created and you can inspect the rendered config, but you should hit the app directly on its assigned port (default range `5200+`).
 - Docker-based repositories still use your local Docker CLI if available; otherwise the task will fail just like in production.

@@ -25,6 +25,8 @@ function parseBoolean(value, fallback) {
 }
 
 const rootDir = env.BAKERY_ROOT || defaultRoot;
+const nodeRootDir = env.BAKERY_NODE_ROOT || '/var/lib/bakery-node';
+const nodeLogsDir = env.BAKERY_NODE_LOGS_DIR || '/var/log/bakery-node';
 
 export function getConfig() {
 	const localMode = parseBoolean(env.BAKERY_LOCAL_MODE, env.NODE_ENV !== 'production');
@@ -63,7 +65,13 @@ export function getConfig() {
 			.map((o) => o.trim())
 			.filter(Boolean),
 		blueGreenBasePort: Number(env.BAKERY_BASE_PORT || 5200),
-		logRetentionDays: Number(env.BAKERY_LOG_RETENTION_DAYS || 30)
+		logRetentionDays: Number(env.BAKERY_LOG_RETENTION_DAYS || 30),
+		nodeRootDir,
+		nodeDataDir: env.BAKERY_NODE_DATA_DIR || join(nodeRootDir, 'data'),
+		nodeBuildsDir: env.BAKERY_NODE_BUILDS_DIR || join(nodeRootDir, 'builds'),
+		nodeLogsDir,
+		nodeSystemdDir: env.BAKERY_NODE_SYSTEMD_DIR || '/etc/systemd/system',
+		nodeNginxSitesDir: env.BAKERY_NODE_NGINX_SITES_DIR || '/etc/nginx/conf.d'
 	};
 
 	if (!process.env.DATABASE_URL && config.databaseUrl) {

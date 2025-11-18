@@ -1,216 +1,118 @@
-# 🍞 Bakery — Full Project Roadmap
+# 🍞 Bakery — Refocused Roadmap (SSH-Orchestrated Control Plane)
 
-Bakery is a self-hosted deployment manager for multiple apps on a single instance.  
-Built with **SvelteKit (no TypeScript)**, **Bun**, **PostgreSQL**, and **NGINX + Certbot**, it automates deployments, SSL, analytics, CI/CD, and rollback — all through a GUI.  
-All user apps run on their own instance; Bakery provides orchestration, monitoring, and management.
-
----
-
-## Phase 0 · Foundations
-
-**Goal:** establish repo structure, runtime scaffolding, and base infrastructure.
-
-- Lock repo structure:
-  - `app/` → SvelteKit GUI
-  - `backend/` → Bun backend services
-  - `infrastructure/` → install scripts, systemd, NGINX templates
-- Implement environment configuration:
-  - Config loader for `.env` and production secrets
-  - Runtime detection (Bun, Docker)
-- Stand up Bun service shell:
-  - PostgreSQL connection pool via `bun.sql`
-  - Migration framework
-  - Base auth tables (`users`, `sessions`, `accounts`)
-- Bootstrap SvelteKit frontend:
-  - Global layout + routing skeleton
-  - Shared UI kit import
-  - Auth guard layout for protected routes
+Bakery is a self-hosted deployment manager: SvelteKit UI, Bun backend, PostgreSQL, and Nginx/Certbot for ingress.  
+**New direction:** the control plane now drives every deployment by opening SSH sessions directly to `bakery-agent` users on remote nodes. No remote HTTP agents, no polling queue — all orchestration, logging, and updates originate from the control plane.
 
 ---
 
-## Phase 1 · Core Platform Services
+## Phase 0 · Foundation & Configuration
 
-**Goal:** enable user accounts, GitHub integration, and base deployment management.
-
-- Implement user authentication:
-  - Bcrypt password auth
-  - Session management (JWT or signed cookies)
-  - Initial admin bootstrap
-- GitHub OAuth integration:
-  - Secure token storage
-  - Repo + branch listing
-  - Webhook provisioning for CI/CD triggers
-- Core domain models:
-  - `apps`, `builds`, `deployments`, `environments`, `slots`
-  - CRUD APIs for managing deployments
-- Orchestrator service:
-  - Queue build/deploy tasks
-  - Emit live status via SSE/WebSockets
-- System integration adapters:
-  - NGINX + Certbot template engine
-  - Systemd & Docker adapters for process management
-  - Audit logs for all lifecycle events
-- Database integration:
-  - Each deployment can request a PostgreSQL database
-  - Bakery auto-generates DB, injects `DATABASE_URL`, manages migrations
+**Goals**
+- Keep project layout (`app/`, `backend/`, `infrastructure/`, `scripts/`) and environment loading stable.
+- Maintain Bun + PostgreSQL stack, migration tooling, and auth scaffolding.
+- Continue using SvelteKit (no TS) + shared UI kit.
 
 ---
 
-## Phase 2 · Deployment Engine
+## Phase 1 · Accounts, GitHub, Nodes (read/verify only)
 
-**Goal:** implement build pipelines, blue-green flow, env management, and crash recovery.
+**Deliverables**
+- Password auth + session cookies; admin bootstrap.
+- GitHub OAuth, repo + branch selection, webhook registration.
+- Node CRUD page that mints SSH keys, stores host/port/user, and verifies reachability via `ssh bakery-agent@host echo bakery-ready`.
+- Installer script (`install-node-agent.sh`) that:
+  - Creates `bakery-agent` user
+  - Installs Docker, Docker CLI, Postgres client/server, git, curl, build-essential
+  - Adds Bakery’s public key to `authorized_keys`
+  - Grants sudoers entries needed for deployments (systemctl, docker, postgres utilities)
 
-- Build pipeline:
-  - Detect Bun vs Docker builds automatically
-  - Artifact storage (local `/deployments/` folder)
-  - Port assignment and service isolation
-- Blue-green deployment:
-  - Health checks on new version
-  - Zero-downtime switch-over
-  - Rollback history (retain last 5 versions)
-- Environment management:
-  - Secure env var vault
-  - Template rendering into runtime files
-  - Masked logs for secrets
-- Crash detection and recovery:
-  - Watchdog service monitors process health
-  - Auto-restart crashed deployments (systemd unit regen)
-- CI/CD automation:
-  - On push to selected branch → rebuild and redeploy
-  - Delayed deployments (scheduled start time)
-  - Manual rollback via GUI
+**No background agent yet** — nodes are just SSH targets with required tooling.
 
 ---
 
-## Phase 3 · Observability & Analytics
+## Phase 2 · SSH-Driven Deployment Engine
 
-**Goal:** add full analytics, disk metrics, and predictive alerts.
+**Key refactor**
+- Remove “agent/task queue” architecture.
+- Implement a control-plane executor that:
+  1. Opens SSH session(s) to the node when a deployment starts.
+  2. Runs git clone, Bun install, tests, docker build/run, systemd management **over SSH**.
+  3. Streams stdout/stderr back to the control plane (store in `deployment_logs` and pipe to UI).
+  4. Writes metadata (active slot, dockerized flag, ports) after commands succeed.
 
-- Analytics ingestion:
-  - Parse NGINX logs for traffic, requests, and errors
-  - Collect CPU, RAM, and Disk stats per deployment
-- Disk usage tracking:
-  - Track total + per-deployment usage
-  - Track Postgres DB size
-- Predictive disk alerts:
-  - Forecast low-space conditions and alert users
-- Aggregation + storage:
-  - Daily summaries stored in `analytics` tables
-- Data exposure:
-  - Live metrics and charts over SSE/WebSocket streams
-- GUI analytics dashboard:
-  - CPU/RAM/Disk usage
-  - Traffic + error rates
-  - Predictive alerts and space status
+**Components**
+- SSH job runner with cancellation/timeouts, environment injection, log tap.
+- Deployment orchestrator (formerly agent workflows) rewritten to use the SSH runner.
+- Systemd/Nginx generation now triggered from the control plane (no remote API calls).
+- Status tracking + retries handled entirely by control-plane orchestrator.
 
 ---
 
-## Phase 4 · GUI Experience
+## Phase 3 · UI + API Adjustments
 
-**Goal:** deliver complete GUI-driven management with dashboards and wizards.
-
-- **Sidebar:**
-  - Deployment list with health/status badges
-- **Dashboards:**
-  - Global metrics overview (CPU, RAM, disk, apps count)
-  - Activity feed + recent builds
-- **Deployment detail view:**
-  - Tabs for Overview / Domains / Env Vars / Builds / Logs / Analytics
-  - Rollback + Redeploy buttons
-- **Wizards & Modals:**
-  - New Deployment (GitHub repo + branch + subdomain + env vars)
-  - Domain attach/verify + DNS record instructions
-  - Database provisioning wizard
-  - Environment variable editor (masking secrets)
-- **Logs & Tests:**
-  - Live build/runtime logs viewer
-  - Pre-deploy tests: run project test suite before build; block on fail
-- **Account & Integration:**
-  - GitHub link management
-  - Account settings, roles (Admin, Developer, Viewer)
-  - Multi-user support
+**Goals**
+- `/api/deployments/:id` should reflect SSH-driven executions: include log offsets, running states, active slots.
+- Live Task Log panel must tail the new log stream (no HTTP-agent posts); implement SSE or poll-for-new-rows logic keyed by log ID/timestamp.
+- Nodes UI updates:
+  - Remove agent token/pairing concepts.
+  - Provide two copy buttons per node: “Bootstrap (curl install-node-agent.sh …)” and “Restart agent service” (if we still ship a helper service; optional now).
+  - Show last SSH handshake, last successful deployment, disk usage snapshot.
+- Deployment detail view includes “Deploy now”, “Redeploy last commit”, “Restart systemd service” buttons that trigger SSH workflows.
 
 ---
 
-## Phase 5 · Infrastructure Tooling
+## Phase 4 · Logging, Analytics, and Monitoring (Over SSH)
 
-**Goal:** finalize installation, self-updates, and system-level integration.
-
-- **Install Script (`install.sh`):**
-  - Installs dependencies: git, bun, nginx, certbot, postgresql
-  - Clones Bakery repo, runs setup + migrations
-  - Configures systemd + NGINX base templates
-  - Seeds initial admin user
-- **Systemd Units:**
-  - Manage Bakery backend and all deployed apps
-- **Nginx Templates:**
-  - Reverse proxy config for each deployment
-  - Certbot certificate automation
-- **Log Management:**
-  - Logrotate setup for NGINX + Bakery logs
-- **Self-Update Mechanism:**
-  - Bakery updates itself via CI/CD (pulls latest, runs migrations, restarts)
-  - Manual “Check for updates” option in GUI
-- **Dev Environment:**
-  - Docker Compose for local dev (Bun app + Postgres + Nginx stub)
+**Tasks**
+- Tail runtime logs via SSH (e.g., `journalctl -u bakery-deployment-… -f`) or read from files written during deployment.
+- Continue collecting disk/traffic analytics via control-plane sidecar processes over SSH (or local stats if running on same host).
+- Alerting when SSH commands fail, docker build errors, or systemd status is unhealthy.
 
 ---
 
-## Phase 6 · Extended Capabilities
+## Phase 5 · Infrastructure Tooling Cleanup
 
-**Goal:** expand Bakery beyond a single instance and refine ecosystem.
-
-- Remote Agents:
-  - Allow managing multiple remote Bakery nodes from one GUI
-- Webhooks + External API:
-  - Integrate with Slack/Discord/GitHub Actions
-  - Trigger deployments or receive status updates
-- Team Management:
-  - Role-based permissions and audit logs
-- Multi-instance orchestration:
-  - Manage multiple hosts under one Bakery controller
-- Template system:
-  - Preset deployment configs for SvelteKit, Next.js, Nuxt, etc.
-- Optional 2FA for accounts
-- Extended analytics visualization
-
-## Phase 7 · Push-based control plane
-
-**Goal:** let the control plane initiate SSH runs on nodes so agents no longer have to poll.
-
-- Store SSH metadata (host, port, user, fingerprint) when adding a node and validate reachability before enabling commands.
-- Replace the polling loop with an SSH command runner that logs into `bakery-agent@node` and executes deploy/update/self-update scripts.
-- Offer a bootstrap helper (similar to `install-node-agent.sh`) that configures the `bakery-agent` user, installs the control plane’s key, and registers the node over SSH.
-- Route GitHub App webhook pushes through the SSH runner so the control plane pushes `infrastructure/scripts/update.js` to the node on every push to the configured branch.
-- Add explicit “Update now” / “Deploy now” buttons plus streaming logs so admins can trigger and monitor SSH-driven executions from the GUI.
+**Objectives**
+- Simplify `/api/agent/*` endpoints (remove or repurpose for SSH metadata).
+- Clean DB schema: drop unused columns (`api_token`, `pairing_code`, etc.).
+- Update docs + README to reflect the new SSH-only deployment model.
+- Ensure installer scripts (control-plane + node) cover:
+  - Docker CLI availability
+  - Postgres CLI
+  - Log directories + permissions
+  - Systemd units for Bakery itself
 
 ---
 
-## Dependencies & Sequencing
+## Phase 6 · Advanced Enhancements (Post-SSH Migration)
 
-- **Phase 0** → Required foundation for all backend and GUI work.
-- **Phase 1** → Delivers core identity, GitHub link, and deploy schema.
-- **Phase 2** → Enables live deployments, rollback, and CI/CD.
-- **Phase 3** → Adds analytics, metrics, and system visibility.
-- **Phase 4** → GUI-first usability; no CLI needed afterward.
-- **Phase 5** → Stabilizes infra, install, and self-update tooling.
-- **Phase 6** → Scales Bakery into a multi-node platform.
+- Multi-node orchestration via SSH to multiple hosts.
+- Parallel deployments with connection pooling.
+- Pluggable “execution adapters” (e.g., run over WireGuard, Bastion host, etc.).
+- Notification hooks (Slack, Discord) triggered after SSH runs complete.
 
 ---
 
-## ✅ Completion Criteria
+## Transition Notes
 
-The Bakery project is **complete** when:
+1. **Remove legacy agent artifacts**
+   - Delete `/api/agent/*`, agent install scripts, and task queue code.
+   - Clean up environment variables (`BAKERY_AGENT_API`, etc.).
 
-- The `install.sh` script can bootstrap Bakery fully on a new instance.
-- The GUI can manage deployments end-to-end:
-  - Create, update, delete deployments
-  - Schedule or rollback deployments
-  - Manage domains, SSL, databases, and env vars
-  - View live logs and analytics
-- Bakery automatically self-updates via CI/CD.
-- All processes auto-restart on crash.
-- Postgres is the **only** database used.
-- No manual config files (`apps.json`) — everything via GUI.
+2. **Introduce SSH execution layer**
+   - Central utility for running commands, streaming logs, copying files, managing env.
+   - Support for long-running commands with heartbeat/ping to UI.
 
----
+3. **Refactor deployment workflow**
+   - Map former `agent/workflows.js` steps (clone → build → deploy → configure ingress) to the new SSH utility.
+   - Replace `recordDeploymentVersionRemote` / `updateDeploymentStatus` calls with direct DB writes from the control plane.
+
+4. **UI changes**
+   - Node detail cards show SSH metadata and copyable commands.
+   - Deployment pages update via SSE/poll to reflect new logs and statuses.
+
+5. **Testing/Validation**
+   - Local mode (dev) runs commands against localhost; production mode targets remote nodes over SSH.
+   - Integration tests for end-to-end SSH deploy, rollback, restart.
+
+This roadmap replaces the previous agent-based plan and sets the milestones needed to operate purely via control-plane initiated SSH sessions.

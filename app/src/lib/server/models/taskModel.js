@@ -20,7 +20,7 @@ export async function reservePendingTask(nodeId = null, reservedBy = null) {
       FROM tasks
       WHERE status = 'pending'
       AND (
-        (${nodeId}::text IS NULL AND node_id IS NULL)
+        ${nodeId}::text IS NULL
         OR node_id = ${nodeId}
       )
       ORDER BY created_at

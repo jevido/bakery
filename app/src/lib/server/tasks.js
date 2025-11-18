@@ -22,6 +22,23 @@ import { sql } from 'bun';
 
 let workerRunning = false;
 
+async function appendDeploymentLog(deploymentId, level, message, meta = {}) {
+	if (!deploymentId) return;
+	try {
+		await recordDeploymentLog(deploymentId, level, message, meta);
+	} catch (error) {
+		if (error?.code === '23503') {
+			// Deployment was deleted — nothing else to record
+			return;
+		}
+		console.warn('Failed to record deployment log', {
+			deploymentId,
+			message,
+			error: error?.message || error
+		});
+	}
+}
+
 async function resetStuckTasks() {
 	const rows = await sql`
 	  WITH updated AS (
@@ -50,18 +67,18 @@ const handlers = {
 
 		const ownerAccount = await getGithubAccount(deployment.owner_id);
 		const accessToken = ownerAccount ? decrypt(ownerAccount.access_token) : null;
-	const result = await deploy(deployment, { commitSha, accessToken });
-	await log('info', 'Deployment task finished', { deploymentId, result });
-	await recordDeploymentLog(
-		deploymentId,
-		'info',
-		`Deployment task finished ${JSON.stringify({ deploymentId, result })}`,
-		{
-			stream: 'system',
+		const result = await deploy(deployment, { commitSha, accessToken });
+		await log('info', 'Deployment task finished', { deploymentId, result });
+		await appendDeploymentLog(
 			deploymentId,
-			result
-		}
-	);
+			'info',
+			`Deployment task finished ${JSON.stringify({ deploymentId, result })}`,
+			{
+				stream: 'system',
+				deploymentId,
+				result
+			}
+		);
 	},
 	async rollback(task) {
 		const { deploymentId, version } = task.payload;
@@ -126,31 +143,25 @@ async function processTask() {
 		if (!handler) {
 			throw new Error(`Unknown task type ${task.type}`);
 		}
-		if (deploymentId) {
-			await recordDeploymentLog(deploymentId, 'info', `Task ${task.type} started`, {
-				stream: 'system',
-				taskId: task.id,
-				payload: task.payload
-			});
-		}
+		await appendDeploymentLog(deploymentId, 'info', `Task ${task.type} started`, {
+			stream: 'system',
+			taskId: task.id,
+			payload: task.payload
+		});
 		await handler(task);
 		await finishTask(task.id, 'completed');
-		if (deploymentId) {
-			await recordDeploymentLog(deploymentId, 'info', `Task ${task.type} completed`, {
-				stream: 'system',
-				taskId: task.id
-			});
-		}
+		await appendDeploymentLog(deploymentId, 'info', `Task ${task.type} completed`, {
+			stream: 'system',
+			taskId: task.id
+		});
 	} catch (error) {
 		await log('error', 'Task failed', { taskId: task.id, error: error.message });
 		await finishTask(task.id, 'failed', error.message);
-		if (deploymentId) {
-			await recordDeploymentLog(deploymentId, 'error', `Task ${task.type} failed`, {
-				stream: 'system',
-				taskId: task.id,
-				error: error.message
-			});
-		}
+		await appendDeploymentLog(deploymentId, 'error', `Task ${task.type} failed`, {
+			stream: 'system',
+			taskId: task.id,
+			error: error.message
+		});
 	}
 }
 

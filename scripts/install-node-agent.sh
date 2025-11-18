@@ -32,7 +32,7 @@ info() {
 
 section "Installing prerequisites"
 apt-get update -y
-apt-get install -y curl git docker.io build-essential nginx certbot python3-certbot-nginx postgresql postgresql-contrib
+apt-get install -y curl git docker.io docker-cli build-essential nginx certbot python3-certbot-nginx postgresql postgresql-contrib
 
 section "Creating system user and directories"
 if ! id "$SSH_USER" >/dev/null 2>&1; then

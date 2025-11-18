@@ -24,6 +24,14 @@ import {
 import { detectDockerfile, buildImage, runContainer, stopAndRemoveContainer } from './docker.js';
 import { createLogger } from './logger.js';
 import { startLocalService, stopLocalService } from './localRuntime.js';
+import { computeSlot, resolveRuntimeArgs, ensureControllableSlot } from './deployment/utils.js';
+import {
+	deployToNode,
+	activateRemoteVersion,
+	cleanupRemoteDeployment,
+	stopRemoteDeployment,
+	startRemoteDeployment
+} from './remoteDeployer.js';
 
 const logger = createLogger('deployer');
 const bunExecutable = getBunExecutable();
@@ -66,22 +74,6 @@ async function streamProcessOutput(stream, { deploymentId, streamLabel }) {
 		);
 	}
 	return output;
-}
-
-function computeSlot(deployment) {
-	const active = deployment.active_slot || 'blue';
-	if (!deployment.blue_green_enabled) {
-		return { slot: 'blue', port: computePort(deployment.id, 'blue') };
-	}
-	const slot = active === 'blue' ? 'green' : 'blue';
-	return { slot, port: computePort(deployment.id, slot) };
-}
-
-function computePort(id, slot) {
-	const config = getConfig();
-	const hash = Array.from(id).reduce((acc, char) => acc + char.charCodeAt(0), 0);
-	const base = config.blueGreenBasePort + (hash % 1000) * 4;
-	return slot === 'blue' ? base : base + 1;
 }
 
 async function runCommand(command, args, options = {}) {
@@ -205,18 +197,6 @@ async function buildProject(dir, deploymentId) {
 	};
 }
 
-function resolveRuntimeArgs({ hasBuildOutput, hasStartScript }) {
-	if (hasBuildOutput) {
-		return ['run', 'build/index.js'];
-	}
-	if (hasStartScript) {
-		return ['run', 'start'];
-	}
-	throw new Error(
-		'No production entry point found. Add a build script that outputs build/index.js (recommended) or define a start script.'
-	);
-}
-
 async function createSystemdUnit({ deployment, slot, port, workingDir, env, runtimeArgs }) {
 	const config = getConfig();
 	const templatePath = join(
@@ -334,6 +314,9 @@ async function deployBunApp({ deployment, slot, port, repoDir, env, runtimeArgs 
 }
 
 export async function deploy(deployment, options) {
+	if (deployment.node_id) {
+		return deployToNode(deployment, options);
+	}
 	const config = getConfig();
 	const { slot, port } = computeSlot(deployment);
 	const buildId = nanoid();
@@ -481,6 +464,9 @@ export async function cleanupOldBuilds(deployment) {
 }
 
 export async function activateVersion(deployment, version) {
+	if (deployment.node_id) {
+		return activateRemoteVersion(deployment, version);
+	}
 	const domains = await listDomains(deployment.id);
 	await sql`
     UPDATE deployment_versions
@@ -506,6 +492,9 @@ export async function activateVersion(deployment, version) {
 }
 
 export async function cleanupDeploymentResources(deployment) {
+	if (deployment.node_id) {
+		return cleanupRemoteDeployment(deployment);
+	}
 	const config = getConfig();
 	const slots = deployment.blue_green_enabled ? ['blue', 'green'] : ['blue'];
 	for (const slot of slots) {
@@ -533,14 +522,10 @@ export async function cleanupDeploymentResources(deployment) {
 	await reloadNginx().catch(() => {});
 }
 
-function ensureControllableSlot(deployment) {
-	if (!deployment.active_slot) {
-		throw new Error('Deploy this app at least once before using start/stop controls.');
-	}
-	return deployment.active_slot;
-}
-
 export async function stopDeploymentRuntime(deployment) {
+	if (deployment.node_id) {
+		return stopRemoteDeployment(deployment);
+	}
 	const slot = ensureControllableSlot(deployment);
 	const serviceName = serviceNameForDeployment(deployment.id, slot);
 	const config = getConfig();
@@ -572,6 +557,9 @@ export async function stopDeploymentRuntime(deployment) {
 }
 
 export async function startDeploymentRuntime(deployment) {
+	if (deployment.node_id) {
+		return startRemoteDeployment(deployment);
+	}
 	const slot = ensureControllableSlot(deployment);
 	const serviceName = serviceNameForDeployment(deployment.id, slot);
 	const config = getConfig();

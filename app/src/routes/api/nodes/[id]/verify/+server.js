@@ -71,10 +71,6 @@ const INSTALLER_URL =
 const DEFAULT_SSH_USER = 'bakery-agent';
 
 function buildInstallCommand(node) {
-	return buildUpdateCommand(node);
-}
-
-function buildUpdateCommand(node) {
 	if (!node?.ssh_public_key) return null;
 	const keyBase64 = Buffer.from(node.ssh_public_key, 'utf8').toString('base64');
 	const sshUser = node.ssh_user || DEFAULT_SSH_USER;
@@ -90,10 +86,10 @@ function sanitize(node) {
 		ssh_private_key: _priv,
 		...rest
 	} = node;
-	const updateCommand = buildUpdateCommand(node);
+	const installCommand = buildInstallCommand(node);
 	return {
 		...rest,
-		install_command: node.status === 'active' ? null : buildInstallCommand(node),
-		update_command: updateCommand
+		install_command: node.status === 'active' ? null : installCommand,
+		update_command: installCommand
 	};
 }
