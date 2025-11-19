@@ -219,8 +219,8 @@ server {
 	let http2Directive = '# http/1.1 only';
 	let sslDirectives = '    # TLS disabled until a certificate is available\n';
 	if (enableTls) {
-		listenDirective = 'listen 443 ssl;';
-		http2Directive = 'http2 on;';
+		listenDirective = 'listen 443 ssl http2;';
+		http2Directive = '# HTTP/2 enabled via listen directive';
 		const directives = [
 			`    ssl_certificate /etc/letsencrypt/live/${primaryDomain}/fullchain.pem;`,
 			`    ssl_certificate_key /etc/letsencrypt/live/${primaryDomain}/privkey.pem;`
@@ -277,7 +277,65 @@ async function writeNodeNginxConfig({
 	});
 	const targetPath = path.join(config.nodeNginxSitesDir, `${deployment.id}.conf`);
 	await runner.writeFile(targetPath, body, { sudo: true });
-	await runner.exec(`sudo -n ${SYSTEMCTL_PATH} reload nginx`);
+	await ensureRemoteNginxConfigIsValid(runner, deployment);
+	await reloadRemoteNginx(runner, deployment);
+}
+
+async function ensureRemoteNginxConfigIsValid(runner, deployment) {
+	const config = getConfig();
+	const candidates = [
+		config.nginxExecutable,
+		'/usr/sbin/nginx',
+		'/usr/local/sbin/nginx',
+		'/usr/bin/nginx',
+		'nginx'
+	].filter(Boolean);
+	for (const candidate of candidates) {
+		try {
+			await runner.exec(`sudo -n ${shellEscape(candidate)} -t`, { log: false });
+			return;
+		} catch (error) {
+			if (error?.exitCode === 127) {
+				continue;
+			}
+			const output = sanitizeOutput(`${error?.stdout || ''}\n${error?.stderr || ''}`);
+			const message = output
+				? `nginx config test failed (${candidate}): ${output}`
+				: `nginx config test failed when running ${candidate} -t`;
+			await recordDeploymentLog(deployment.id, 'error', message, {
+				stream: 'system',
+				executable: candidate
+			});
+			throw new Error(message);
+		}
+	}
+	const message = `nginx executable not found on remote node (tried ${candidates.join(', ')})`;
+	await recordDeploymentLog(deployment.id, 'error', message, { stream: 'system' });
+	throw new Error(message);
+}
+
+async function reloadRemoteNginx(runner, deployment) {
+	try {
+		await runner.exec(`sudo -n ${SYSTEMCTL_PATH} reload nginx`);
+	} catch (error) {
+		try {
+			const status = await runner.exec(`sudo -n ${SYSTEMCTL_PATH} status nginx --no-pager`, {
+				log: false,
+				acceptExitCodes: [0, 3, 4, 5],
+				strict: false
+			});
+			const output = sanitizeOutput(`${status.stdout || ''}\n${status.stderr || ''}`);
+			if (output) {
+				await recordDeploymentLog(deployment.id, 'error', 'nginx reload status', {
+					stream: 'system',
+					output
+				});
+			}
+		} catch {
+			// ignore secondary failures
+		}
+		throw error;
+	}
 }
 
 async function remoteCertificateExists(runner, domain) {

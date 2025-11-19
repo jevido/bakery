@@ -135,8 +135,8 @@ render_control_plane_nginx() {
     http_redirects=$'server {\n  listen 80;\n  server_name '"$host"$';\n  return 301 https://'"$host"$'$request_uri;\n}\n'
     if ensure_certificate "$host" "$certbot_email"; then
       ensure_tls_defaults || true
-      listen_directive='listen 443 ssl;'
-      http2_directive='http2 on;'
+      listen_directive='listen 443 ssl http2;'
+      http2_directive='# HTTP/2 enabled via listen directive'
       ssl_directives=$'    ssl_certificate /etc/letsencrypt/live/'"$host"$'/fullchain.pem;\n'
       ssl_directives+=$'    ssl_certificate_key /etc/letsencrypt/live/'"$host"$'/privkey.pem;\n'
       if [[ -f /etc/letsencrypt/options-ssl-nginx.conf ]]; then

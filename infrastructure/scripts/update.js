@@ -226,8 +226,8 @@ async function renderControlPlaneNginx(host, port, certbotEmail) {
   if (wantsHttps && certReady) {
     httpsDomains = `server_name ${host};`;
     primaryDomain = host;
-    listenDirective = 'listen 443 ssl;';
-    http2Directive = 'http2 on;';
+    listenDirective = 'listen 443 ssl http2;';
+    http2Directive = '# HTTP/2 enabled via listen directive';
     const certBase = `/etc/letsencrypt/live/${host}`;
     const directives = [
       `    ssl_certificate ${certBase}/fullchain.pem;`,

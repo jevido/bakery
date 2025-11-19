@@ -230,16 +230,41 @@ export async function createSshRunner(config, hooks = {}) {
 		const encoded = Buffer.from(contents, 'utf8').toString('base64');
 		const dirPath = path.split('/').slice(0, -1).join('/') || '.';
 		const sudoPrefix = options.sudo ? 'sudo -n ' : '';
-		const mkdirCmd = `${sudoPrefix}mkdir -p ${shellEscape(dirPath)}`;
-		await exec(mkdirCmd, { log: options.log ?? false });
-		const writeCmd = options.sudo
-			? `printf %s ${shellEscape(encoded)} | base64 -d | sudo -n tee ${shellEscape(path)} >/dev/null`
-			: `printf %s ${shellEscape(encoded)} | base64 -d > ${shellEscape(path)}`;
-		await exec(writeCmd, { log: options.log ?? false });
-		if (options.mode) {
-			await exec(`${sudoPrefix}chmod ${options.mode.toString(8)} ${shellEscape(path)}`, {
+		await exec(`${sudoPrefix}mkdir -p ${shellEscape(dirPath)}`, { log: options.log ?? false });
+		const tempPath = `/tmp/bakery-upload-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+		const modeValue =
+			typeof options.mode === 'number'
+				? options.mode.toString(8)
+				: options.mode
+					? String(options.mode)
+					: '0644';
+		try {
+			await exec(`printf %s ${shellEscape(encoded)} | base64 -d > ${shellEscape(tempPath)}`, {
 				log: options.log ?? false
 			});
+			await exec(`chmod 600 ${shellEscape(tempPath)}`, { log: options.log ?? false });
+			if (options.sudo) {
+				const installCmd = [
+					'sudo -n install',
+					'-o root',
+					'-g root',
+					`-m ${modeValue}`,
+					shellEscape(tempPath),
+					shellEscape(path)
+				].join(' ');
+				await exec(installCmd, { log: options.log ?? false });
+			} else {
+				await exec(`mv ${shellEscape(tempPath)} ${shellEscape(path)}`, {
+					log: options.log ?? false
+				});
+				await exec(`chmod ${modeValue} ${shellEscape(path)}`, { log: options.log ?? false });
+			}
+		} finally {
+			await exec(`rm -f ${shellEscape(tempPath)}`, {
+				log: false,
+				acceptExitCodes: [0, 1],
+				strict: false
+			}).catch(() => {});
 		}
 	}
 

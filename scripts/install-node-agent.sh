@@ -122,6 +122,7 @@ ${SSH_USER} ALL=(root) NOPASSWD: \
   /usr/bin/certbot, \
   /bin/mkdir, \
   /usr/bin/tee, \
+  /usr/bin/install, \
   /bin/chmod, \
   /bin/rm
 

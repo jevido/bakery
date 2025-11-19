@@ -56,8 +56,8 @@ server {
 	let sslDirectives = '    # TLS disabled until a certificate is available\n';
 
 	if (enableTls) {
-		listenDirective = 'listen 443 ssl;';
-		http2Directive = 'http2 on;';
+		listenDirective = 'listen 443 ssl http2;';
+		http2Directive = '# HTTP/2 enabled via listen directive';
 		sslDirectives = [
 			`    ssl_certificate /etc/letsencrypt/live/${primaryDomain}/fullchain.pem;`,
 			`    ssl_certificate_key /etc/letsencrypt/live/${primaryDomain}/privkey.pem;`
