@@ -567,7 +567,7 @@ export async function cleanupRemoteDeployment(deployment) {
 				})
 				.catch(() => {});
 			await runner
-				.exec(`sudo rm -f ${shellEscape(path.join(config.nodeSystemdDir, `${serviceName}.service`))}`, {
+				.exec(`sudo -n rm -f ${shellEscape(path.join(config.nodeSystemdDir, `${serviceName}.service`))}`, {
 					acceptExitCodes: [0, 1],
 					log: false
 				})
@@ -587,7 +587,7 @@ export async function cleanupRemoteDeployment(deployment) {
 			})
 			.catch(() => {});
 		await runner
-			.exec(`sudo rm -f ${shellEscape(path.join(config.nodeNginxSitesDir, `${deployment.id}.conf`))}`, {
+			.exec(`sudo -n rm -f ${shellEscape(path.join(config.nodeNginxSitesDir, `${deployment.id}.conf`))}`, {
 				acceptExitCodes: [0, 1],
 				log: false
 			})

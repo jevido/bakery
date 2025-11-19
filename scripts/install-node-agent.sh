@@ -119,7 +119,11 @@ Defaults:${SSH_USER} !requiretty
 # Minimal safe root privileges
 ${SSH_USER} ALL=(root) NOPASSWD: \
   /usr/bin/systemctl, \
-  /usr/bin/certbot
+  /usr/bin/certbot, \
+  /bin/mkdir, \
+  /usr/bin/tee, \
+  /bin/chmod, \
+  /bin/rm
 
 # PostgreSQL administrative privileges
 ${SSH_USER} ALL=(postgres) NOPASSWD: \

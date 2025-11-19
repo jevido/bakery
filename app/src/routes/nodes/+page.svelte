@@ -500,39 +500,6 @@ let computedNodes = $derived(
 				</div>
 			</div>
 		</section>
-		<section class="space-y-4">
-			{#if latestInstaller?.command}
-				<div class="space-y-3 rounded-2xl border bg-card p-6 shadow-sm">
-					<p class="text-sm font-semibold">Latest bootstrap command</p>
-					<Textarea
-						readonly
-						class="h-32 w-full resize-none text-xs"
-						value={latestInstaller.command}
-					/>
-					<Button
-						variant="outline"
-						class="w-full gap-2"
-						onclick={() => handleCopy(latestInstaller.command, latestInstallerKey)}
-					>
-						{#if latestInstallerKey && copyState[latestInstallerKey]}
-							<Check class="h-4 w-4" /> Copied
-						{:else}
-							<Copy class="h-4 w-4" /> Copy command
-						{/if}
-					</Button>
-					<p class="text-xs text-muted-foreground">
-						Run immediately on the target VPS. Each new node regenerates this script with its own
-						credentials.
-					</p>
-				</div>
-			{:else}
-				<div
-					class="rounded-2xl border border-dashed bg-background/70 p-6 text-sm text-muted-foreground"
-				>
-					Link a node to generate the install-node-agent command.
-				</div>
-			{/if}
-		</section>
 	</div>
 
 	<section class="space-y-4 rounded-2xl border bg-card p-6 shadow-sm">

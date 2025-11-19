@@ -232,8 +232,10 @@ export async function createSshRunner(config, hooks = {}) {
 		const sudoPrefix = options.sudo ? 'sudo -n ' : '';
 		const mkdirCmd = `${sudoPrefix}mkdir -p ${shellEscape(dirPath)}`;
 		await exec(mkdirCmd, { log: options.log ?? false });
-		const decodeCmd = `${sudoPrefix}bash -c "printf %s ${shellEscape(encoded)} | base64 -d > ${shellEscape(path)}"`;
-		await exec(decodeCmd, { log: options.log ?? false });
+		const writeCmd = options.sudo
+			? `printf %s ${shellEscape(encoded)} | base64 -d | sudo -n tee ${shellEscape(path)} >/dev/null`
+			: `printf %s ${shellEscape(encoded)} | base64 -d > ${shellEscape(path)}`;
+		await exec(writeCmd, { log: options.log ?? false });
 		if (options.mode) {
 			await exec(`${sudoPrefix}chmod ${options.mode.toString(8)} ${shellEscape(path)}`, {
 				log: options.log ?? false
