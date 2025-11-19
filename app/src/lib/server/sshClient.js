@@ -229,14 +229,13 @@ export async function createSshRunner(config, hooks = {}) {
 	async function writeFile(path, contents, options = {}) {
 		const encoded = Buffer.from(contents, 'utf8').toString('base64');
 		const dirPath = path.split('/').slice(0, -1).join('/') || '.';
-		const mkdirCmd = `${options.sudo ? 'sudo ' : ''}mkdir -p ${shellEscape(dirPath)}`;
+		const sudoPrefix = options.sudo ? 'sudo -n ' : '';
+		const mkdirCmd = `${sudoPrefix}mkdir -p ${shellEscape(dirPath)}`;
 		await exec(mkdirCmd, { log: options.log ?? false });
-		const decodeCmd = `${options.sudo ? 'sudo ' : ''}bash -c "printf %s ${shellEscape(
-			encoded
-		)} | base64 -d > ${shellEscape(path)}"`;
+		const decodeCmd = `${sudoPrefix}bash -c "printf %s ${shellEscape(encoded)} | base64 -d > ${shellEscape(path)}"`;
 		await exec(decodeCmd, { log: options.log ?? false });
 		if (options.mode) {
-			await exec(`${options.sudo ? 'sudo ' : ''}chmod ${options.mode.toString(8)} ${shellEscape(path)}`, {
+			await exec(`${sudoPrefix}chmod ${options.mode.toString(8)} ${shellEscape(path)}`, {
 				log: options.log ?? false
 			});
 		}

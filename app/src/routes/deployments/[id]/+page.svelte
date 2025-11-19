@@ -52,26 +52,26 @@
 	let environment = $state(data.environment ?? []);
 	let versions = $state(data.versions ?? []);
 	let databases = $state(data.databases ?? []);
-let logs = $state(data.logs ?? []);
-let tasks = $state(data.tasks ?? []);
-let resourceSummary = $state(data.resourceSummary ?? null);
-let runtimeStatus = $state(data.runtimeStatus ?? null);
-let autoRefreshing = $state(false);
-let activeTab = $state('overview');
-let working = $state(false);
-let workingAction = $state(null);
-let message = $state('');
-let error = $state('');
-let newDomain = $state('');
-let envKey = $state('');
-let envValue = $state('');
-let editingEnv = $state({});
-let deletingDeployment = $state(false);
-let deleteDialogOpen = $state(false);
-let copyFeedback = $state('');
-let copyTimeout;
-let logPanel;
-let logPinned = $state(true);
+	let logs = $state(data.logs ?? []);
+	let tasks = $state(data.tasks ?? []);
+	let resourceSummary = $state(data.resourceSummary ?? null);
+	let runtimeStatus = $state(data.runtimeStatus ?? null);
+	let autoRefreshing = $state(false);
+	let activeTab = $state('overview');
+	let working = $state(false);
+	let workingAction = $state(null);
+	let message = $state('');
+	let error = $state('');
+	let newDomain = $state('');
+	let envKey = $state('');
+	let envValue = $state('');
+	let editingEnv = $state({});
+	let deletingDeployment = $state(false);
+	let deleteDialogOpen = $state(false);
+	let copyFeedback = $state('');
+	let copyTimeout;
+	let logPanel;
+	let logPinned = $state(true);
 	const MIGRATION_COMMAND = 'bun run db:migrate';
 	const LOCAL_DOMAIN_MESSAGE =
 		'Local-only hostnames (like *.local, *.localhost, or private IPs) are disabled for now. We will reintroduce local overrides in a future release.';
@@ -144,30 +144,30 @@ let logPinned = $state(true);
 		return BUSY_DEPLOYMENT_STATUSES.has(String(status).toLowerCase());
 	}
 
-function formatDate(value) {
-	if (!value) return '—';
-	const date = new Date(value);
-	if (Number.isNaN(date.getTime())) return '—';
-	return date.toLocaleString();
-}
+	function formatDate(value) {
+		if (!value) return '—';
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) return '—';
+		return date.toLocaleString();
+	}
 
-function formatLogTimestamp(value) {
-	if (!value) return '--:--:--';
-	const date = new Date(value);
-	if (Number.isNaN(date.getTime())) return '--:--:--';
-	return date.toLocaleTimeString([], {
-		hour12: false,
-		hour: '2-digit',
-		minute: '2-digit',
-		second: '2-digit'
-	});
-}
+	function formatLogTimestamp(value) {
+		if (!value) return '--:--:--';
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) return '--:--:--';
+		return date.toLocaleTimeString([], {
+			hour12: false,
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit'
+		});
+	}
 
-function formatBytes(value) {
-	if (value == null || Number.isNaN(Number(value))) return '—';
-	let size = Number(value);
-	if (!Number.isFinite(size) || size < 0) return '—';
-	const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+	function formatBytes(value) {
+		if (value == null || Number.isNaN(Number(value))) return '—';
+		let size = Number(value);
+		if (!Number.isFinite(size) || size < 0) return '—';
+		const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
 		let idx = 0;
 		while (size >= 1024 && idx < units.length - 1) {
 			size /= 1024;
@@ -188,46 +188,46 @@ function formatBytes(value) {
 		}
 	}
 
-function getLogLevelClass(level) {
-	const normalized = String(level || '').toLowerCase();
-	if (['error', 'err', 'fatal'].includes(normalized)) return 'text-red-400';
-	if (['warn', 'warning'].includes(normalized)) return 'text-amber-300';
-	if (['success', 'ok'].includes(normalized)) return 'text-emerald-300';
-	if (['debug', 'trace'].includes(normalized)) return 'text-sky-300';
-	return 'text-slate-300';
-}
-
-function formatMetadataInline(value) {
-	if (value == null) return '';
-	if (typeof value === 'string') {
-		return value.length > 120 ? `${value.slice(0, 117)}...` : value;
+	function getLogLevelClass(level) {
+		const normalized = String(level || '').toLowerCase();
+		if (['error', 'err', 'fatal'].includes(normalized)) return 'text-red-400';
+		if (['warn', 'warning'].includes(normalized)) return 'text-amber-300';
+		if (['success', 'ok'].includes(normalized)) return 'text-emerald-300';
+		if (['debug', 'trace'].includes(normalized)) return 'text-sky-300';
+		return 'text-slate-300';
 	}
-	try {
-		const rendered = JSON.stringify(value);
-		return rendered.length > 160 ? `${rendered.slice(0, 157)}...` : rendered;
-	} catch {
-		return String(value);
+
+	function formatMetadataInline(value) {
+		if (value == null) return '';
+		if (typeof value === 'string') {
+			return value.length > 120 ? `${value.slice(0, 117)}...` : value;
+		}
+		try {
+			const rendered = JSON.stringify(value);
+			return rendered.length > 160 ? `${rendered.slice(0, 157)}...` : rendered;
+		} catch {
+			return String(value);
+		}
 	}
-}
 
-function formatMetadataExtras(metadata) {
-	const normalized = normalizeLogMetadata(metadata);
-	if (!normalized) return { stream: null, entries: [] };
-	const { stream, ...rest } = normalized;
-	const entries = Object.entries(rest)
-		.map(([key, value]) => {
-			const rendered = formatMetadataInline(value);
-			return rendered ? `${key}=${rendered}` : '';
-		})
-		.filter(Boolean);
-	return { stream, entries };
-}
+	function formatMetadataExtras(metadata) {
+		const normalized = normalizeLogMetadata(metadata);
+		if (!normalized) return { stream: null, entries: [] };
+		const { stream, ...rest } = normalized;
+		const entries = Object.entries(rest)
+			.map(([key, value]) => {
+				const rendered = formatMetadataInline(value);
+				return rendered ? `${key}=${rendered}` : '';
+			})
+			.filter(Boolean);
+		return { stream, entries };
+	}
 
-function normalizeLogMetadata(metadata) {
-	if (!metadata) return null;
-	if (typeof metadata === 'object') return metadata;
-	try {
-		return JSON.parse(metadata);
+	function normalizeLogMetadata(metadata) {
+		if (!metadata) return null;
+		if (typeof metadata === 'object') return metadata;
+		try {
+			return JSON.parse(metadata);
 		} catch {
 			return null;
 		}
@@ -280,8 +280,7 @@ function normalizeLogMetadata(metadata) {
 
 	function handleLogScroll() {
 		if (!logPanel) return;
-		const nearBottom =
-			logPanel.scrollTop + logPanel.clientHeight >= logPanel.scrollHeight - 24;
+		const nearBottom = logPanel.scrollTop + logPanel.clientHeight >= logPanel.scrollHeight - 24;
 		logPinned = nearBottom;
 	}
 
@@ -591,24 +590,28 @@ function normalizeLogMetadata(metadata) {
 	{/if}
 
 	{#if runtimeMismatch}
-		<div class="flex items-start gap-3 rounded-xl border border-rose-400/40 bg-rose-500/10 p-3 text-sm text-rose-600">
+		<div
+			class="flex items-start gap-3 rounded-xl border border-rose-400/40 bg-rose-500/10 p-3 text-sm text-rose-600"
+		>
 			<AlertTriangle class="mt-0.5 h-4 w-4" />
 			<div>
 				<p class="font-semibold text-rose-700">Runtime appears offline</p>
 				<p class="text-xs text-rose-600/90">
-					We couldn&rsquo;t detect an active process even though the deployment is marked as running.
-					Restart or redeploy to bring it back online.
+					We couldn&rsquo;t detect an active process even though the deployment is marked as
+					running. Restart or redeploy to bring it back online.
 				</p>
 			</div>
 		</div>
 	{:else if runtimeStatus?.state === 'unknown'}
-		<div class="flex items-start gap-3 rounded-xl border border-slate-400/40 bg-slate-500/10 p-3 text-sm text-slate-600">
+		<div
+			class="flex items-start gap-3 rounded-xl border border-slate-400/40 bg-slate-500/10 p-3 text-sm text-slate-600"
+		>
 			<Clock class="mt-0.5 h-4 w-4" />
 			<div>
 				<p class="font-semibold text-muted-foreground">Runtime status pending</p>
 				<p class="text-xs text-muted-foreground/90">
-					Remote nodes report their status separately. Refresh or inspect the server directly if this
-					persists.
+					Remote nodes report their status separately. Refresh or inspect the server directly if
+					this persists.
 				</p>
 			</div>
 		</div>
@@ -681,7 +684,7 @@ function normalizeLogMetadata(metadata) {
 
 			<div class="grid gap-6 xl:grid-cols-[2fr,1fr]">
 				<div class="space-y-6">
-					<section class="space-y-4 rounded-2xl border bg-card p-6 shadow-sm">
+					<section class="space-y-4 rounded-2xl border-border bg-card p-6 shadow-sm">
 						<header class="flex flex-wrap items-center justify-between gap-3">
 							<div>
 								<h2 class="text-lg font-semibold">Domains</h2>
@@ -730,7 +733,7 @@ function normalizeLogMetadata(metadata) {
 
 						{#if domains.length === 0}
 							<p
-								class="rounded-lg border border-dashed border-border/60 bg-background/60 p-4 text-sm text-muted-foreground"
+								class="rounded-lg border border-dashed border-border bg-card p-4 text-sm text-muted-foreground"
 							>
 								No domains added yet. Create an A record pointing to your server IP, then add the
 								hostname above.
@@ -786,7 +789,7 @@ function normalizeLogMetadata(metadata) {
 					</section>
 
 					<section
-						class="space-y-3 rounded-2xl border bg-slate-950/90 p-4 text-slate-100 shadow-inner"
+						class="space-y-3 rounded-2xl border border-border bg-card p-4 text-slate-100 shadow-inner"
 					>
 						<header class="flex flex-wrap items-center justify-between gap-3">
 							<div>
@@ -823,7 +826,7 @@ function normalizeLogMetadata(metadata) {
 							</div>
 						</header>
 						<div
-							class="h-64 overflow-y-auto rounded-xl border border-slate-800 bg-black/70 p-3 font-mono text-[11px] leading-relaxed"
+							class="h-64 overflow-y-auto rounded-xl border border-border bg-card p-3 font-mono text-[11px] leading-relaxed"
 							bind:this={logPanel}
 							onscroll={handleLogScroll}
 						>
@@ -833,7 +836,7 @@ function normalizeLogMetadata(metadata) {
 								<div class="space-y-1">
 									{#each terminalLogs as log (log.id ?? `${log.created_at}-${log.level}-${log.message}`)}
 										{@const { stream, entries } = formatMetadataExtras(log.metadata)}
-										<div class="whitespace-pre-wrap text-[11px] leading-relaxed text-slate-100">
+										<div class="text-[11px] leading-relaxed whitespace-pre-wrap text-slate-100">
 											<span class="text-slate-500">
 												[{formatLogTimestamp(log.created_at)}]
 											</span>
@@ -845,7 +848,7 @@ function normalizeLogMetadata(metadata) {
 											</span>
 											<span class="text-slate-100">{log.message}</span>
 											{#if entries.length}
-												<span class="text-slate-400"> -- {entries.join(' ')}</span>
+												<span class="text-slate-400">-- {entries.join(' ')}</span>
 											{/if}
 										</div>
 									{/each}

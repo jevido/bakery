@@ -40,12 +40,19 @@ if ! id "$SSH_USER" >/dev/null 2>&1; then
 else
   usermod --shell /bin/bash "$SSH_USER" || true
 fi
+
+if ! getent group docker >/dev/null; then
+  groupadd docker
+fi
+
 usermod -aG docker "$SSH_USER" || true
+
 mkdir -p "$DATA_ROOT"/{data,logs,builds} "$LOG_ROOT"
 chown -R "$SSH_USER:$SSH_USER" "$DATA_ROOT" "$LOG_ROOT"
 
 TEMPLATE_DIR="$DATA_ROOT/templates/nginx"
 mkdir -p "$TEMPLATE_DIR"
+
 cat >"$TEMPLATE_DIR/app.conf" <<'NGINX_TEMPLATE'
 upstream {{UPSTREAM_NAME}} {
     server 127.0.0.1:{{PORT}};
@@ -80,18 +87,22 @@ server {
     }
 }
 NGINX_TEMPLATE
+
 chown -R "$SSH_USER:$SSH_USER" "$DATA_ROOT/templates"
 
 section "Authorizing Bakery control plane"
 SSH_DIR=$(eval echo "~$SSH_USER/.ssh")
 mkdir -p "$SSH_DIR"
 chmod 700 "$SSH_DIR"
+
 SSH_PUBLIC_KEY=$(printf '%s' "$SSH_KEY_BASE64" | base64 -d)
 AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
 touch "$AUTHORIZED_KEYS"
+
 if ! grep -qxF "$SSH_PUBLIC_KEY" "$AUTHORIZED_KEYS"; then
   echo "$SSH_PUBLIC_KEY" >> "$AUTHORIZED_KEYS"
 fi
+
 chown -R "$SSH_USER:$SSH_USER" "$SSH_DIR"
 chmod 600 "$AUTHORIZED_KEYS"
 
@@ -99,12 +110,26 @@ section "Finalizing"
 systemctl enable --now docker >/dev/null 2>&1 || true
 systemctl enable --now postgresql >/dev/null 2>&1 || true
 
+# SAFER SUDOERS CONFIGURATION
 SUDOERS_FILE="/etc/sudoers.d/${SSH_USER}"
+
 cat >"$SUDOERS_FILE" <<EOF
 Defaults:${SSH_USER} !requiretty
-${SSH_USER} ALL=(root) NOPASSWD:/usr/bin/systemctl,/usr/bin/certbot
-${SSH_USER} ALL=(postgres) NOPASSWD:/usr/bin/psql,/usr/bin/createuser,/usr/bin/createdb,/usr/bin/dropdb,/usr/bin/dropuser
+
+# Minimal safe root privileges
+${SSH_USER} ALL=(root) NOPASSWD: \
+  /usr/bin/systemctl, \
+  /usr/bin/certbot
+
+# PostgreSQL administrative privileges
+${SSH_USER} ALL=(postgres) NOPASSWD: \
+  /usr/bin/psql, \
+  /usr/bin/createuser, \
+  /usr/bin/createdb, \
+  /usr/bin/dropdb, \
+  /usr/bin/dropuser
 EOF
+
 chmod 440 "$SUDOERS_FILE"
 
 cat <<'INFO'
