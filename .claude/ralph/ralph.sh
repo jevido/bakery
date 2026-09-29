@@ -32,7 +32,7 @@ heads() { echo "$(git -C "$repo" rev-parse HEAD) $(git -C "$planning" rev-parse 
 # Turns stream-json events into one readable line each.
 readable='
 def clip(n): tostring | gsub("\n"; " ⏎ ") | if length > n then .[0:n] + "…" else . end;
-def ts: (now | strftime("%H:%M:%S"));
+def ts: (now | strflocaltime("%H:%M:%S"));
 if .type == "system" and .subtype == "init" then
   "\(ts) [start] model \(.model), cwd \(.cwd)"
 elif .type == "assistant" then
