@@ -11,8 +11,12 @@ export type Application = {
   dockerfile_path: string
   port: number
   domain: string
+  /** Empty for an https Source. */
+  deploy_key_public: string
   public_url: string
 }
+
+export type KnownHost = { id: number; host: string; fingerprints: string[]; created_at: string }
 
 export type Environment = { id: number; name: string; applications: Application[] }
 

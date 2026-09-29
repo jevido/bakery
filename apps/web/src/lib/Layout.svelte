@@ -5,7 +5,9 @@
 
   let { children }: { children: Snippet } = $props()
 
-  let section = $derived(router.route.name === 'notfound' ? '' : 'projects')
+  let section = $derived(
+    router.route.name === 'notfound' ? '' : router.route.name === 'settings' ? 'settings' : 'projects',
+  )
 </script>
 
 <div class="shell">
@@ -16,6 +18,7 @@
     </a>
     <nav>
       <a href={href('/projects')} aria-current={section === 'projects' ? 'page' : undefined}>Projects</a>
+      <a href={href('/settings')} aria-current={section === 'settings' ? 'page' : undefined}>Settings</a>
     </nav>
   </aside>
   <div class="main">

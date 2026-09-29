@@ -2,6 +2,7 @@
   import { api, ApiError } from '../lib/api'
   import ApplicationForm from '../lib/ApplicationForm.svelte'
   import ContainerLogs from '../lib/ContainerLogs.svelte'
+  import DeployKey from '../lib/DeployKey.svelte'
   import Deployments from '../lib/Deployments.svelte'
   import EnvEditor from '../lib/EnvEditor.svelte'
   import { go, href } from '../lib/router.svelte'
@@ -10,7 +11,7 @@
 
   let { id }: { id: number } = $props()
 
-  type Tab = 'deployments' | 'logs' | 'general' | 'env'
+  type Tab = 'deployments' | 'logs' | 'source' | 'general' | 'env'
 
   let application = $state.raw<Application | null>(null)
   let deployments = $state.raw<Deployment[]>([])
@@ -102,10 +103,17 @@
     </button>
   </div>
   {#if deployError}<p class="error">{deployError}</p>{/if}
+  {#if application.deploy_key_public && deployments.length === 0}
+    <p class="muted">
+      Private repository: add the deploy key from the <button class="link" onclick={() => (tab = 'source')}>Source</button> tab to
+      the repository before the first deploy.
+    </p>
+  {/if}
 
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected={tab === 'deployments'} onclick={() => (tab = 'deployments')}>Deployments</button>
     <button role="tab" aria-selected={tab === 'logs'} onclick={() => (tab = 'logs')}>Logs</button>
+    <button role="tab" aria-selected={tab === 'source'} onclick={() => (tab = 'source')}>Source</button>
     <button role="tab" aria-selected={tab === 'general'} onclick={() => (tab = 'general')}>General</button>
     <button role="tab" aria-selected={tab === 'env'} onclick={() => (tab = 'env')}>Environment variables</button>
   </div>
@@ -114,6 +122,18 @@
     <Deployments {deployments} bind:selected onchange={() => loadDeployments().catch(() => {})} />
   {:else if tab === 'logs'}
     <ContainerLogs applicationId={application.id} />
+  {:else if tab === 'source'}
+    <dl class="source">
+      <dt>Repository</dt>
+      <dd class="mono">{application.git_url}</dd>
+      <dt>Branch</dt>
+      <dd class="mono">{application.git_branch}</dd>
+    </dl>
+    {#if application.deploy_key_public}
+      <DeployKey {application} onchange={(a) => (application = a)} />
+    {:else}
+      <p class="muted">A public https repository needs no key. For a private one, use its SSH URL (git@host:owner/repo.git) under General.</p>
+    {/if}
   {:else if tab === 'general'}
     {#key application.id}
       <ApplicationForm
@@ -132,6 +152,25 @@
 {/if}
 
 <style>
+  .link {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  .source {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.3rem 1rem;
+    margin: 0 0 1rem;
+  }
+  .source dt {
+    color: var(--muted);
+  }
+  .source dd {
+    margin: 0;
+  }
   .crumbs {
     margin: 0 0 0.5rem;
     font-size: 0.85rem;

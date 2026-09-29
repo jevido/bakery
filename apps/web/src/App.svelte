@@ -8,6 +8,7 @@
   import Application from './pages/Application.svelte'
   import Project from './pages/Project.svelte'
   import Projects from './pages/Projects.svelte'
+  import Settings from './pages/Settings.svelte'
   import Setup from './pages/Setup.svelte'
 
   setUnauthorizedHandler(() => session.signedOut())
@@ -32,6 +33,8 @@
       <Project id={router.route.id} />
     {:else if router.route.name === 'application'}
       <Application id={router.route.id} />
+    {:else if router.route.name === 'settings'}
+      <Settings />
     {:else}
       <NotFound />
     {/if}

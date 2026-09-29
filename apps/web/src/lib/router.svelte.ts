@@ -1,8 +1,9 @@
-// Hash router: #/projects, #/projects/{id}, #/applications/{id}, #/login.
+// Hash router: #/projects, #/projects/{id}, #/applications/{id}, #/settings, #/login.
 export type Route =
   | { name: 'projects' }
   | { name: 'project'; id: number }
   | { name: 'application'; id: number }
+  | { name: 'settings' }
   | { name: 'login' }
   | { name: 'notfound' }
 
@@ -10,6 +11,7 @@ function parse(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent)
   if (parts.length === 0) return { name: 'projects' }
   if (parts[0] === 'login' && parts.length === 1) return { name: 'login' }
+  if (parts[0] === 'settings' && parts.length === 1) return { name: 'settings' }
   if (parts[0] === 'projects') {
     if (parts.length === 1) return { name: 'projects' }
     const id = Number(parts[1])

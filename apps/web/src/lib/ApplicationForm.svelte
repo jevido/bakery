@@ -50,7 +50,13 @@
 
 <form class="form" onsubmit={submit}>
   <Field label="Name" bind:value={name} error={errors.name} required />
-  <Field label="Git repository (https)" bind:value={git_url} error={errors.git_url} placeholder="https://github.com/you/app" required />
+  <Field
+    label="Git repository (https:// for public, SSH for private)"
+    bind:value={git_url}
+    error={errors.git_url}
+    placeholder="https://github.com/you/app or git@github.com:you/app.git"
+    required
+  />
   <div class="row">
     <Field label="Branch" bind:value={git_branch} error={errors.git_branch} />
     <Field label="Dockerfile path" bind:value={dockerfile_path} error={errors.dockerfile_path} />
