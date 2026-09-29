@@ -50,6 +50,11 @@ tasks:
     internal: true
     deps: [api:dev, web:dev]
 
+  ralph:
+    desc: Unattended loop that plans and builds phases until Coolify parity (.claude/ralph)
+    cmds:
+      - ./.claude/ralph/ralph.sh
+
   check:
     desc: Format check, lint, test and type-check every unit
     cmds:
