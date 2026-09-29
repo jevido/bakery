@@ -11,9 +11,10 @@ tasks:
       - go run . artisan jwt:secret
 
   dev:
-    desc: Run the API on 127.0.0.1:4910
+    desc: Migrate, then run the API on 127.0.0.1:4910
     deps: [env]
     cmds:
+      - go run . artisan migrate
       - go run .
 
   check:
