@@ -236,3 +236,44 @@ func TestRenderDashboardRoute(t *testing.T) {
 		t.Fatalf("dashboard domain missing from TLS subjects: %v", subjects)
 	}
 }
+
+func TestRenderACME(t *testing.T) {
+	routes := []domain.Route{{ApplicationID: 1, Domain: "a.example.com", Container: "bakery-app-1-4", Port: 80}}
+	raw, err := Render(routes, RenderOptions{
+		Dashboard: &domain.DashboardRoute{Domain: "bakery.example.com", API: "bakery-api:4910", Web: "bakery-web:80"},
+		ACME:      ACME{CA: "https://pebble:14000/dir", Email: "me@example.com", TrustedRootsFile: "/data/bakery/acme-root.pem"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	apps := cfg["apps"].(map[string]any)
+	servers := apps["http"].(map[string]any)["servers"].(map[string]any)
+	if _, ok := servers["http"]; ok {
+		t.Fatalf("ACME mode must leave :80 to Caddy (challenges, redirects): %s", raw)
+	}
+	if _, ok := servers["https"].(map[string]any)["automatic_https"]; ok {
+		t.Fatalf("ACME mode keeps redirects on: %s", raw)
+	}
+	if _, ok := apps["pki"]; ok {
+		t.Fatalf("no internal CA in ACME mode: %s", raw)
+	}
+	policy := apps["tls"].(map[string]any)["automation"].(map[string]any)["policies"].([]any)[0].(map[string]any)
+	got, _ := json.Marshal(policy)
+	want := `{"issuers":[{"ca":"https://pebble:14000/dir","email":"me@example.com","module":"acme","trusted_roots_pem_files":["/data/bakery/acme-root.pem"]}],"subjects":["bakery.example.com","a.example.com"]}`
+	if string(got) != want {
+		t.Fatalf("policy\n got %s\nwant %s", got, want)
+	}
+
+	// Nothing configured: Caddy's default issuers, no policy of ours.
+	raw, _ = Render(routes, RenderOptions{})
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cfg["apps"].(map[string]any)["tls"]; ok {
+		t.Fatalf("no ACME settings should render no TLS policy: %s", raw)
+	}
+}

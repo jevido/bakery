@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -132,5 +133,44 @@ func TestProxyAdminNotPublished(t *testing.T) {
 	}
 	if b := info.HostConfig.PortBindings["443/tcp"]; len(b) != 1 || b[0].HostPort != "4948" {
 		t.Fatalf("want 443 on host 4948, got %+v", info.HostConfig.PortBindings)
+	}
+}
+
+// Caddy accepts the ACME config and finds the copied root; issuance itself
+// (against Pebble) is proven by task server:test.
+func TestProxyACMEConfigLoads(t *testing.T) {
+	pc := podman.New(podman.DefaultSocket())
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := pc.Ping(ctx); err != nil {
+		t.Skipf("no podman: %v", err)
+	}
+	root := t.TempDir() + "/root.pem"
+	// Any valid PEM certificate will do; Caddy parses it on load.
+	os.WriteFile(root, []byte(testRootPEM), 0o644)
+	const name = "bakery-test-proxy-acme"
+	proxy := NewProxy(pc, ProxyConfig{
+		Name: name, Image: "docker.io/library/caddy:2", Network: "bakery-test",
+		BindIP: "127.0.0.1", HTTPPort: 4951, HTTPSPort: 4952,
+		AdminURL: "http://127.0.0.1:4953", AdminPublish: "127.0.0.1:4953",
+		ACMECA: "https://127.0.0.1:1/dir", ACMEEmail: "me@example.com", ACMERoot: root,
+		VolumePrefix: name,
+	})
+	t.Cleanup(func() {
+		bg := context.Background()
+		pc.RemoveContainer(bg, name)
+		pc.RemoveVolume(bg, name+"-data")
+		pc.RemoveVolume(bg, name+"-config")
+	})
+	if err := proxy.Ensure(ctx); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	got, err := pc.ReadFile(ctx, name, acmeRootInProxy)
+	if err != nil || string(got) != testRootPEM {
+		t.Fatalf("root in proxy: %q %v", got, err)
+	}
+	err = proxy.Apply(ctx, []domain.Route{{ApplicationID: 1, Domain: "a.example.com", Container: "nowhere", Port: 80}})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
 	}
 }

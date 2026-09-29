@@ -1,0 +1,17 @@
+//go:build podman
+
+package infra
+
+// testRootPEM is a throwaway self-signed certificate (no key kept).
+const testRootPEM = `-----BEGIN CERTIFICATE-----
+MIIBizCCATGgAwIBAgIUGnh+kBtxU5BoD5dGbccxxtJEs30wCgYIKoZIzj0EAwIw
+GzEZMBcGA1UEAwwQYmFrZXJ5LXRlc3Qtcm9vdDAeFw0yNjA5MjkyMjI5MjBaFw0z
+NjA5MjYyMjI5MjBaMBsxGTAXBgNVBAMMEGJha2VyeS10ZXN0LXJvb3QwWTATBgcq
+hkjOPQIBBggqhkjOPQMBBwNCAAQ4Breq9W/muLnrOefSdhggV3oW1JByqrBSbLk8
+1vCZw3UzX4pcb8i396lH98S4x5F+bXzTYbQWeWFS/wBkw9nao1MwUTAdBgNVHQ4E
+FgQUuDgUzYOuT/9mVLMcXFsOip5TtVEwHwYDVR0jBBgwFoAUuDgUzYOuT/9mVLMc
+XFsOip5TtVEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiBxCQfs
+5x4n8j4VT58TwHu2UIaCYotNs6msWoNuxpGxXQIhAKy6it6Nh3mX21FOC8phOvSQ
+8pSDcpW3e4Td+/BHvB9b
+-----END CERTIFICATE-----
+`

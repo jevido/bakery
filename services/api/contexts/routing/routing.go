@@ -42,6 +42,9 @@ func svc() *app.Service {
 			AdminPublish: cfg.GetString("bakery.proxy.admin_publish"),
 			InternalTLS:  cfg.GetBool("bakery.proxy.internal_tls"),
 			Dashboard:    dashboard,
+			ACMECA:       cfg.GetString("bakery.acme.ca"),
+			ACMEEmail:    cfg.GetString("bakery.acme.email"),
+			ACMERoot:     cfg.GetString("bakery.acme.ca_root"),
 			VolumePrefix: "bakery-proxy",
 		})
 		service = app.NewService(infra.Routes{}, proxy)

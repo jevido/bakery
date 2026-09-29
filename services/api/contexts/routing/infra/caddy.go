@@ -27,13 +27,29 @@ type RenderOptions struct {
 	InternalTLS bool
 	// Dashboard, when set, is rendered before every Application route.
 	Dashboard *domain.DashboardRoute
+	// ACME configures the certificate issuer when InternalTLS is off.
+	ACME ACME
+}
+
+// ACME says where certificates come from on a Server. All fields empty means
+// Caddy's defaults (Let's Encrypt, then ZeroSSL).
+type ACME struct {
+	CA    string // directory URL
+	Email string
+	// TrustedRootsFile is a PEM file inside the Proxy that the CA's own
+	// HTTPS certificate is signed by (a private CA such as Pebble).
+	TrustedRootsFile string
 }
 
 type obj = map[string]any
 
 // Render returns the full Caddy JSON config for the Routes: one server on
-// :443 (TLS) and one on :80 (plain HTTP), each with a host-matched
-// reverse_proxy route per Route, sorted by Domain so the output is stable.
+// :443 (TLS) with a host-matched reverse_proxy route per Route, sorted by
+// Domain so the output is stable.
+//
+// With Internal TLS a second server on :80 serves the same routes over plain
+// HTTP. With ACME there is no :80 server of ours: Caddy then runs its own
+// there, answering HTTP-01 challenges and redirecting everything to HTTPS.
 func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
 	sorted := append([]domain.Route(nil), routes...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Domain < sorted[j].Domain })
@@ -60,15 +76,22 @@ func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
 	if opts.InternalTLS {
 		https["automatic_https"] = obj{"disable_redirects": true}
 	}
+	servers := obj{"https": https}
+	if opts.InternalTLS {
+		servers["http"] = obj{"listen": []string{":80"}, "routes": caddyRoutes}
+	}
 	apps := obj{
 		"http": obj{
 			"http_port":  80,
 			"https_port": 443,
-			"servers": obj{
-				"https": https,
-				"http":  obj{"listen": []string{":80"}, "routes": caddyRoutes},
-			},
+			"servers":    servers,
 		},
+	}
+	if issuer := acmeIssuer(opts.ACME); !opts.InternalTLS && issuer != nil && len(domains) > 0 {
+		apps["tls"] = obj{"automation": obj{"policies": []obj{{
+			"subjects": domains,
+			"issuers":  []obj{issuer},
+		}}}}
 	}
 	if opts.InternalTLS {
 		apps["pki"] = obj{"certificate_authorities": obj{"local": obj{"install_trust": false}}}
@@ -83,6 +106,25 @@ func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
 		"admin": obj{"listen": CaddyAdminListen},
 		"apps":  apps,
 	}, "", "  ")
+}
+
+// acmeIssuer is the ACME issuer for a, or nil when nothing is configured and
+// Caddy's default issuers apply.
+func acmeIssuer(a ACME) obj {
+	if a == (ACME{}) {
+		return nil
+	}
+	issuer := obj{"module": "acme"}
+	if a.CA != "" {
+		issuer["ca"] = a.CA
+	}
+	if a.Email != "" {
+		issuer["email"] = a.Email
+	}
+	if a.TrustedRootsFile != "" {
+		issuer["trusted_roots_pem_files"] = []string{a.TrustedRootsFile}
+	}
+	return issuer
 }
 
 // dashboardRoute sends /api/* to the API and the rest to the dashboard, so

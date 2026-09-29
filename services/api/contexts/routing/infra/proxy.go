@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"time"
 
@@ -30,6 +31,11 @@ type ProxyConfig struct {
 	// Dashboard is the Dashboard Route; nil when no dashboard domain is
 	// configured (development).
 	Dashboard *domain.DashboardRoute
+	ACMECA    string
+	ACMEEmail string
+	// ACMERoot is a PEM file on the API's side, copied into the Proxy for
+	// Caddy to trust the ACME CA's HTTPS certificate; empty for none.
+	ACMERoot string
 	// Volume prefix for Caddy's /data (certificates, the internal CA) and
 	// /config (the autosaved last config).
 	VolumePrefix string
@@ -66,7 +72,29 @@ func (p *Proxy) Ensure(ctx context.Context) error {
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	return p.caddy.WaitReady(waitCtx)
+	if err := p.caddy.WaitReady(waitCtx); err != nil {
+		return err
+	}
+	return p.copyACMERoot(ctx)
+}
+
+// acmeRootInProxy is where the extra ACME root lands, on the /data volume.
+const acmeRootInProxy = "/data/bakery/acme-root.pem"
+
+// copyACMERoot puts the configured ACME root into the Proxy, every time: a
+// recreated Proxy has a fresh volume, and the file may have changed.
+func (p *Proxy) copyACMERoot(ctx context.Context) error {
+	if p.cfg.ACMERoot == "" {
+		return nil
+	}
+	pem, err := os.ReadFile(p.cfg.ACMERoot)
+	if err != nil {
+		return fmt.Errorf("ACME root: %w", err)
+	}
+	if err := p.podman.CopyInto(ctx, p.cfg.Name, "/data", map[string][]byte{"bakery/acme-root.pem": pem}); err != nil {
+		return fmt.Errorf("copying the ACME root into %s: %w", p.cfg.Name, err)
+	}
+	return nil
 }
 
 func (p *Proxy) create(ctx context.Context) error {
@@ -122,7 +150,15 @@ func (p *Proxy) create(ctx context.Context) error {
 
 // Apply renders the Routes and loads them.
 func (p *Proxy) Apply(ctx context.Context, routes []domain.Route) error {
-	config, err := Render(routes, RenderOptions{InternalTLS: p.cfg.InternalTLS, Dashboard: p.cfg.Dashboard})
+	opts := RenderOptions{
+		InternalTLS: p.cfg.InternalTLS,
+		Dashboard:   p.cfg.Dashboard,
+		ACME:        ACME{CA: p.cfg.ACMECA, Email: p.cfg.ACMEEmail},
+	}
+	if p.cfg.ACMERoot != "" {
+		opts.ACME.TrustedRootsFile = acmeRootInProxy
+	}
+	config, err := Render(routes, opts)
 	if err != nil {
 		return err
 	}

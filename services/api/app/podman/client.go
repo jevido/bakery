@@ -7,6 +7,7 @@
 package podman
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -337,6 +338,39 @@ func (c *Client) StopContainer(ctx context.Context, id string, timeoutSeconds in
 func (c *Client) RemoveContainer(ctx context.Context, id string) error {
 	q := url.Values{"force": {"true"}, "v": {"true"}}
 	return c.call(ctx, http.MethodDelete, "/containers/"+url.PathEscape(id), q, nil, nil)
+}
+
+// CopyInto extracts files (relative path → content) into destDir, which must
+// exist in the container; parent directories of the files are created.
+func (c *Client) CopyInto(ctx context.Context, container, destDir string, files map[string][]byte) error {
+	archive, err := tarFiles(files)
+	if err != nil {
+		return err
+	}
+	res, err := c.do(ctx, http.MethodPut, "/containers/"+url.PathEscape(container)+"/archive", url.Values{"path": {destDir}}, archive, "application/x-tar")
+	if err != nil {
+		return err
+	}
+	return res.Body.Close()
+}
+
+// ReadFile returns one regular file from the container.
+func (c *Client) ReadFile(ctx context.Context, container, file string) ([]byte, error) {
+	res, err := c.do(ctx, http.MethodGet, "/containers/"+url.PathEscape(container)+"/archive", url.Values{"path": {file}}, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	tr := tar.NewReader(res.Body)
+	for {
+		hdr, err := tr.Next()
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", file, err)
+		}
+		if hdr.Typeflag == tar.TypeReg {
+			return io.ReadAll(io.LimitReader(tr, 16<<20))
+		}
+	}
 }
 
 // RemoveVolume force-removes a named volume; a missing one is not an error.

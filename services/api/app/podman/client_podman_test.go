@@ -55,10 +55,12 @@ func TestLifecycle(t *testing.T) {
 	}
 
 	id, err := c.CreateContainer(ctx, ContainerSpec{
-		Name:     "bakery-test-lifecycle",
-		Image:    tag,
-		Env:      map[string]string{"GREETING": "hello-env"},
-		Labels:   map[string]string{"bakery.test": "true"},
+		Name:  "bakery-test-lifecycle",
+		Image: tag,
+		Env:   map[string]string{"GREETING": "hello-env"},
+		// Its own label value: other packages' podman tests run at the same
+		// time with bakery.test=true containers of their own.
+		Labels:   map[string]string{"bakery.test": "lifecycle"},
 		Networks: OnNetwork("bakery-test"),
 	})
 	if err != nil {
@@ -69,7 +71,7 @@ func TestLifecycle(t *testing.T) {
 		t.Fatalf("StartContainer: %v", err)
 	}
 
-	list, err := c.ListContainers(ctx, map[string]string{"bakery.test": "true"})
+	list, err := c.ListContainers(ctx, map[string]string{"bakery.test": "lifecycle"})
 	if err != nil || len(list) != 1 {
 		t.Fatalf("ListContainers: %v %v", list, err)
 	}
@@ -93,7 +95,7 @@ func TestLifecycle(t *testing.T) {
 		}
 	}
 	info, err := c.InspectContainer(ctx, id)
-	if err != nil || info.Config.Labels["bakery.test"] != "true" {
+	if err != nil || info.Config.Labels["bakery.test"] != "lifecycle" {
 		t.Fatalf("Inspect: %+v %v", info, err)
 	}
 	if err := c.RemoveContainer(ctx, id); err != nil {
@@ -101,5 +103,37 @@ func TestLifecycle(t *testing.T) {
 	}
 	if _, err := c.InspectContainer(ctx, id); !IsNotFound(err) {
 		t.Fatalf("after remove: %v", err)
+	}
+}
+
+func TestCopyInto(t *testing.T) {
+	c := client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	image := "docker.io/library/busybox:latest"
+	if ok, _ := c.ImageExists(ctx, image); !ok {
+		if err := c.PullImage(ctx, image, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id, err := c.CreateContainer(ctx, ContainerSpec{
+		Name: "bakery-test-copy", Image: image, Command: []string{"sleep", "60"},
+		Labels: map[string]string{"bakery.test": "copy"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.RemoveContainer(context.Background(), id)
+
+	want := []byte("-----BEGIN CERTIFICATE-----\ntest\n")
+	if err := c.CopyInto(ctx, id, "/tmp", map[string][]byte{"bakery/nested/root.pem": want}); err != nil {
+		t.Fatalf("CopyInto: %v", err)
+	}
+	got, err := c.ReadFile(ctx, id, "/tmp/bakery/nested/root.pem")
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("read back %q, want %q", got, want)
 	}
 }

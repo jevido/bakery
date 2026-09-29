@@ -25,6 +25,15 @@ func init() {
 			"api_upstream": config.Env("BAKERY_DASHBOARD_API_UPSTREAM", "bakery-api:4910"),
 			"web_upstream": config.Env("BAKERY_DASHBOARD_WEB_UPSTREAM", "bakery-web:80"),
 		},
+		// Where certificates come from when internal_tls is off. All empty
+		// means Caddy's defaults (Let's Encrypt, then ZeroSSL). ca_root is a
+		// PEM file the CA's own HTTPS certificate is signed by (Pebble in
+		// tests), copied into the proxy.
+		"acme": map[string]any{
+			"ca":      config.Env("BAKERY_ACME_CA", ""),
+			"email":   config.Env("BAKERY_ACME_EMAIL", ""),
+			"ca_root": config.Env("BAKERY_ACME_CA_ROOT", ""),
+		},
 		"proxy": map[string]any{
 			"image": config.Env("BAKERY_PROXY_IMAGE", "docker.io/library/caddy:2"),
 			// Host address the proxy's HTTP(S) ports are published on; empty

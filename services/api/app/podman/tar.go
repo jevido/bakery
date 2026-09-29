@@ -2,10 +2,13 @@ package podman
 
 import (
 	"archive/tar"
+	"bytes"
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"sort"
 )
 
 // TarDir streams dir as a tar archive (the build context), leaving out .git.
@@ -64,4 +67,43 @@ func TarDir(dir string) io.ReadCloser {
 		pw.CloseWithError(err)
 	}()
 	return pr
+}
+
+// tarFiles builds an in-memory tar of files (slash-separated relative path →
+// content), with a directory entry for every parent so extracting it creates
+// them.
+func tarFiles(files map[string][]byte) (*bytes.Buffer, error) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	dirs := map[string]bool{}
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		for dir := path.Dir(name); dir != "." && !dirs[dir]; dir = path.Dir(dir) {
+			dirs[dir] = true
+		}
+	}
+	parents := make([]string, 0, len(dirs))
+	for dir := range dirs {
+		parents = append(parents, dir)
+	}
+	sort.Strings(parents) // a parent sorts before its children
+	for _, dir := range parents {
+		if err := tw.WriteHeader(&tar.Header{Typeflag: tar.TypeDir, Name: dir + "/", Mode: 0o755}); err != nil {
+			return nil, err
+		}
+	}
+	for _, name := range names {
+		content := files[name]
+		if err := tw.WriteHeader(&tar.Header{Typeflag: tar.TypeReg, Name: name, Mode: 0o644, Size: int64(len(content))}); err != nil {
+			return nil, err
+		}
+		if _, err := tw.Write(content); err != nil {
+			return nil, err
+		}
+	}
+	return &buf, tw.Close()
 }
