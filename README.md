@@ -68,6 +68,25 @@ podman exec bakery-proxy cat /data/caddy/pki/authorities/local/root.crt > bakery
 # then import bakery-root.crt into your browser or system trust store
 ```
 
+### Private repositories
+
+Use the repository's SSH URL, for example `git@github.com:you/app.git` or
+`ssh://git@git.example.com:2222/you/app.git`. Bakery generates a deploy key
+for the application; copy the public key from the **Source** tab and add it
+to the repository as a read-only deploy key (GitHub: Settings → Deploy keys),
+then press **Deploy**. The first clone from a host trusts its SSH host key;
+later clones must see the same key. If a host's key changes on purpose,
+forget it under **Settings → Known hosts**.
+
+### Auto-deploy on push
+
+The **Source** tab also shows the application's webhook: a URL and a secret.
+Add them as a webhook in the repository (content type `application/json`,
+push events). Every push to the application's branch then starts a
+deployment, marked `webhook` in the list next to its commit. The git host
+must be able to reach the URL, so this works on a server, or locally with
+the Forgejo stand-in (`task git:test` runs the whole flow against it).
+
 ## Install on a server
 
 On a fresh Linux server with systemd, ports 80/443 open and DNS for your
