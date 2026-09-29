@@ -18,6 +18,8 @@ const (
 	Starting Status = "starting"
 	Finished Status = "finished"
 	Failed   Status = "failed"
+	// Cancelled is final, like Finished and Failed: the Owner stopped it.
+	Cancelled Status = "cancelled"
 )
 
 // ActiveStatuses are the statuses of a Deployment still under way.
@@ -44,7 +46,11 @@ const (
 	TriggerWebhook Trigger = "webhook"
 )
 
-var ErrAlreadyQueued = errors.New("a deployment of this application is already queued")
+var (
+	ErrAlreadyQueued = errors.New("a deployment of this application is already queued")
+	// ErrCancelled is why a cancelled Deployment's work stopped.
+	ErrCancelled = errors.New("deployment cancelled")
+)
 
 type Deployment struct {
 	ID            uint64
@@ -85,6 +91,15 @@ func (d *Deployment) Fail(reason string) error {
 		return fmt.Errorf("deployment %d is %s and cannot fail", d.ID, d.Status)
 	}
 	d.Status, d.Error = Failed, reason
+	return nil
+}
+
+// Cancel ends an active Deployment as cancelled.
+func (d *Deployment) Cancel() error {
+	if !d.Status.Active() {
+		return fmt.Errorf("deployment %d is %s and cannot be cancelled", d.ID, d.Status)
+	}
+	d.Status, d.Error = Cancelled, ""
 	return nil
 }
 

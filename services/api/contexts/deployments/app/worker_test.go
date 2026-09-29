@@ -58,8 +58,20 @@ func (m *memStore) Save(_ context.Context, d domain.Deployment) error {
 	return nil
 }
 
+func (m *memStore) CancelQueued(_ context.Context, id uint64) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.items[id-1].Status != domain.Queued {
+		return false, nil
+	}
+	m.items[id-1].Status = domain.Cancelled
+	return true, nil
+}
+
 func (m *memStore) FailInterrupted(context.Context, string) (int, error) { return 0, nil }
 func (m *memStore) ByID(_ context.Context, id uint64) (domain.Deployment, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.items[id-1], true, nil
 }
 func (m *memStore) ByApplication(context.Context, uint64, int) ([]domain.Deployment, error) {
@@ -106,8 +118,11 @@ func (f fakeSource) Clone(_ context.Context, req CloneRequest, out func(string, 
 
 type fakeRuntime struct {
 	buildErr, startErr error
-	running            map[string]bool
-	removed            []string
+	// building, when set, is closed once Build started, and Build then
+	// blocks until its ctx ends.
+	building chan struct{}
+	running  map[string]bool
+	removed  []string
 	// probes answers each Probe in turn; the last one repeats.
 	probes []probe
 	probed []string
@@ -126,8 +141,13 @@ func (r *fakeRuntime) Probe(_ context.Context, container, url string, _ time.Dur
 	return p.ok, p.detail, p.err
 }
 
-func (r *fakeRuntime) Build(_ context.Context, _, _, _ string, _ map[string]string, out func(string)) error {
+func (r *fakeRuntime) Build(ctx context.Context, _, _, _ string, _ map[string]string, out func(string)) error {
 	out("STEP 1/1: FROM scratch")
+	if r.building != nil {
+		close(r.building)
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	return r.buildErr
 }
 func (r *fakeRuntime) Start(_ context.Context, s ContainerSpec) error {
@@ -367,5 +387,56 @@ func TestDeployUnhealthyKeepsTheOldContainer(t *testing.T) {
 				t.Fatalf("route switched: %v", s.routes)
 			}
 		})
+	}
+}
+
+func TestCancelQueued(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	d, _ := s.service.Deploy(ctx, 1)
+	got, err := s.service.Cancel(ctx, d.ID)
+	if err != nil || got.Status != domain.Cancelled {
+		t.Fatalf("cancel queued: %v %s", err, got.Status)
+	}
+	if s.worker.RunOnce(ctx) {
+		t.Fatal("claimed a cancelled deployment")
+	}
+	if _, err := s.service.Cancel(ctx, d.ID); !errors.Is(err, ErrNotCancellable) {
+		t.Fatalf("second cancel: %v", err)
+	}
+}
+
+func TestCancelRunning(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	s.runtime.running["bakery-app-1-0"] = true
+	s.runtime.building = make(chan struct{})
+	d, _ := s.service.Deploy(ctx, 1)
+	done := make(chan struct{})
+	go func() {
+		s.worker.RunOnce(ctx)
+		close(done)
+	}()
+	<-s.runtime.building
+	if _, err := s.service.Cancel(ctx, d.ID); err != nil {
+		t.Fatalf("cancel running: %v", err)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker did not stop")
+	}
+	got, _ := s.service.Deployment(ctx, d.ID)
+	if got.Status != domain.Cancelled || got.FinishedAt == nil {
+		t.Fatalf("got %s %q", got.Status, got.Error)
+	}
+	if !strings.Contains(s.logs.text(), "Deployment cancelled.") {
+		t.Errorf("log:\n%s", s.logs.text())
+	}
+	if !s.runtime.running["bakery-app-1-0"] || len(s.routes) != 0 {
+		t.Fatalf("containers %v, routes %v", s.runtime.running, s.routes)
+	}
+	if _, err := s.service.Deploy(ctx, 1); err != nil {
+		t.Fatalf("deploy after cancel: %v", err)
 	}
 }

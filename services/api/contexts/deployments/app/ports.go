@@ -10,7 +10,12 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/deployments/domain"
 )
 
-var ErrNotFound = errors.New("not found")
+var (
+	ErrNotFound = errors.New("not found")
+	// ErrNotCancellable is a Cancel of a Deployment that has ended, or whose
+	// Route has already moved.
+	ErrNotCancellable = errors.New("deployment can no longer be cancelled")
+)
 
 // Store keeps Deployments.
 type Store interface {
@@ -24,6 +29,10 @@ type Store interface {
 	// Save writes status, branch, commit, image, container, error and the
 	// times.
 	Save(ctx context.Context, d domain.Deployment) error
+	// CancelQueued cancels the Deployment if it is still queued, reporting
+	// whether it was; a Worker claiming it at the same moment wins or loses
+	// cleanly.
+	CancelQueued(ctx context.Context, id uint64) (bool, error)
 	// FailInterrupted fails every Deployment left active by a crash or
 	// restart (not queued ones, which still run) and returns how many.
 	FailInterrupted(ctx context.Context, reason string) (int, error)

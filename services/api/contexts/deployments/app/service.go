@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/deployments/domain"
 )
@@ -12,10 +15,15 @@ type Service struct {
 	applications Applications
 	knownHosts   KnownHosts
 	wake         chan struct{}
+
+	mu sync.Mutex
+	// running holds the cancel function of each Deployment the Worker is
+	// running in this process, until its Route moves.
+	running map[uint64]context.CancelCauseFunc
 }
 
 func NewService(store Store, logs Logs, applications Applications, knownHosts KnownHosts) *Service {
-	return &Service{store: store, logs: logs, applications: applications, knownHosts: knownHosts, wake: make(chan struct{}, 1)}
+	return &Service{store: store, logs: logs, applications: applications, knownHosts: knownHosts, wake: make(chan struct{}, 1), running: map[uint64]context.CancelCauseFunc{}}
 }
 
 func (s *Service) KnownHosts(ctx context.Context) ([]domain.KnownHost, error) {
@@ -50,6 +58,57 @@ func (s *Service) queue(ctx context.Context, applicationID uint64, trigger domai
 	default:
 	}
 	return d, nil
+}
+
+// Cancel ends a queued Deployment at once, and stops a running one: the
+// Worker then removes what it made and ends it cancelled. It returns the
+// Deployment as it is now.
+func (s *Service) Cancel(ctx context.Context, id uint64) (domain.Deployment, error) {
+	d, err := s.Deployment(ctx, id)
+	if err != nil {
+		return d, err
+	}
+	if d.Status == domain.Queued {
+		ok, err := s.store.CancelQueued(ctx, id)
+		if err != nil {
+			return d, err
+		}
+		if ok {
+			return s.Deployment(ctx, id)
+		}
+		// Claimed in the meantime: cancel it as a running one.
+	}
+	// A just-claimed Deployment is registered a moment after its claim.
+	for range 10 {
+		if d, err = s.Deployment(ctx, id); err != nil {
+			return d, err
+		}
+		if !d.Status.Active() {
+			return d, fmt.Errorf("%w: it is %s", ErrNotCancellable, d.Status)
+		}
+		s.mu.Lock()
+		cancel := s.running[id]
+		s.mu.Unlock()
+		if cancel != nil {
+			cancel(domain.ErrCancelled)
+			return d, nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return d, fmt.Errorf("%w: its route is already moving", ErrNotCancellable)
+}
+
+// register makes a running Deployment cancellable; release ends that.
+func (s *Service) register(id uint64, cancel context.CancelCauseFunc) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.running[id] = cancel
+}
+
+func (s *Service) release(id uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.running, id)
 }
 
 // Wake is signalled when there may be work; the Worker listens on it.

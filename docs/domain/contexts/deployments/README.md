@@ -129,6 +129,10 @@ None published yet. Notifications will need `DeploymentFinished` and
   keeps a cancel function per running Deployment. A second API process would
   need a `cancel_requested` flag the Worker polls; it is added with remote
   Servers if the Worker moves.
+  Podman's build API has no way to stop a build: when Bakery hangs up, the
+  step being built runs to its end in the background and its result is
+  thrown away (no Image is tagged). The Deployment is cancelled at once and
+  the Application can deploy again straight away.
 - **A Rollback is a new Deployment**, not a change to the old one, so the
   history stays append-only and its log says what ran. It reuses the earlier
   Image tag, so Images of finished Deployments must be kept; image cleanup,

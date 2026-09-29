@@ -104,6 +104,16 @@ func (s Store) Save(ctx context.Context, d domain.Deployment) error {
 	return err
 }
 
+func (s Store) CancelQueued(ctx context.Context, id uint64) (bool, error) {
+	res, err := s.query(ctx).Exec(`
+		UPDATE deployments SET status = 'cancelled', finished_at = now(), updated_at = now()
+		WHERE id = ? AND status = 'queued'`, id)
+	if err != nil {
+		return false, err
+	}
+	return res.RowsAffected == 1, nil
+}
+
 func (s Store) FailInterrupted(ctx context.Context, reason string) (int, error) {
 	res, err := s.query(ctx).Exec(`
 		UPDATE deployments SET status = 'failed', error = ?, finished_at = now(), updated_at = now()

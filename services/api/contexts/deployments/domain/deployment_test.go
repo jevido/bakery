@@ -25,6 +25,27 @@ func TestAdvance(t *testing.T) {
 	}
 }
 
+func TestCancel(t *testing.T) {
+	for _, s := range ActiveStatuses {
+		d := Deployment{ID: 1, Status: s}
+		if err := d.Cancel(); err != nil || d.Status != Cancelled {
+			t.Fatalf("cancel from %s: %v %s", s, err, d.Status)
+		}
+		if d.Status.Active() {
+			t.Fatal("cancelled must not be active")
+		}
+		if err := d.Advance(Finished); err == nil {
+			t.Fatal("a cancelled deployment must not move")
+		}
+	}
+	for _, s := range []Status{Finished, Failed, Cancelled} {
+		d := Deployment{ID: 1, Status: s}
+		if err := d.Cancel(); err == nil {
+			t.Fatalf("cancelled a %s deployment", s)
+		}
+	}
+}
+
 func TestNames(t *testing.T) {
 	if got := ContainerName(3, 17); got != "bakery-app-3-17" {
 		t.Fatal(got)

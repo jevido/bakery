@@ -54,7 +54,7 @@ func (c *Controller) fail(ctx contractshttp.Context, err error) contractshttp.Re
 	switch {
 	case errors.Is(err, app.ErrNotFound), c.isNotFound(err):
 		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
-	case errors.Is(err, domain.ErrAlreadyQueued):
+	case errors.Is(err, domain.ErrAlreadyQueued), errors.Is(err, app.ErrNotCancellable):
 		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
 	}
 	return respond.ServerError(ctx, err)
@@ -104,6 +104,24 @@ func (c *Controller) Show(ctx contractshttp.Context) contractshttp.Response {
 		return c.fail(ctx, err)
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"deployment": ToJSON(d)})
+}
+
+// Cancel answers 200 with a Deployment cancelled at once (it was queued),
+// or 202 with a running one that the Worker is stopping.
+func (c *Controller) Cancel(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := RouteID(ctx)
+	if !ok {
+		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
+	}
+	d, err := c.service.Cancel(ctx.Context(), id)
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	status := contractshttp.StatusOK
+	if d.Status.Active() {
+		status = contractshttp.StatusAccepted
+	}
+	return ctx.Response().Json(status, contractshttp.Json{"deployment": ToJSON(d)})
 }
 
 type knownHostJSON struct {

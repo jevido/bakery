@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -86,8 +87,12 @@ func (w *Worker) RunOnce(ctx context.Context) bool {
 }
 
 func (w *Worker) run(parent context.Context, d domain.Deployment) {
-	ctx, cancel := context.WithTimeout(parent, w.Timeout)
+	cancellable, cancelWith := context.WithCancelCause(parent)
+	defer cancelWith(nil)
+	ctx, cancel := context.WithTimeout(cancellable, w.Timeout)
 	defer cancel()
+	w.service.register(d.ID, cancelWith)
+	defer w.service.release(d.ID)
 	log := w.service.logs.Writer(d.ID)
 	defer func() {
 		if err := log.Close(); err != nil {
@@ -104,7 +109,12 @@ func (w *Worker) run(parent context.Context, d domain.Deployment) {
 	defer cancelSave()
 	end := w.now()
 	d.FinishedAt = &end
-	if err != nil {
+	if err != nil && errors.Is(context.Cause(ctx), domain.ErrCancelled) {
+		info("Deployment cancelled.")
+		if cerr := d.Cancel(); cerr != nil {
+			w.Log("deployments: %v", cerr)
+		}
+	} else if err != nil {
 		reason := err.Error()
 		if ctx.Err() == context.DeadlineExceeded {
 			reason = "timed out after " + w.Timeout.String()
@@ -182,6 +192,15 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 			return err
 		}
 	}
+
+	// From here on the Deployment is no longer cancellable: the Route
+	// moves and the old Container goes, whatever happens to ctx.
+	w.service.release(d.ID)
+	if ctx.Err() != nil {
+		_ = w.runtime.Remove(context.WithoutCancel(ctx), d.Container)
+		return ctx.Err()
+	}
+	ctx = context.WithoutCancel(ctx)
 
 	// Route, before the old Container goes, so traffic never points at
 	// nothing.
