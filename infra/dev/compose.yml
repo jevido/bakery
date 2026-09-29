@@ -1,0 +1,22 @@
+# Local backing services. Credentials here are dev-only, not secrets.
+name: bakery-dev
+
+services:
+  postgres:
+    image: docker.io/library/postgres:18
+    environment:
+      POSTGRES_USER: bakery
+      POSTGRES_PASSWORD: bakery
+      POSTGRES_DB: bakery
+    ports:
+      - "127.0.0.1:4920:5432"
+    volumes:
+      - bakery-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "bakery"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  bakery-db:

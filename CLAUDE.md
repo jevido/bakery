@@ -4,9 +4,17 @@ Guidance for coding agents (and people) working in this repository.
 
 ## What this is
 
-> TODO: what the project is, its core domain, and which units host which
-> bounded contexts. Read `README.md` for the overview and `docs/domain/` for
-> the domain model and why it is shaped the way it is.
+Bakery is a self-hosted deployment platform (Coolify-like) on rootless Podman
+and Caddy. Read `README.md` for the overview and `docs/domain/` for the model.
+
+- **Core domain: deployments.** Turning a source (git repository + Dockerfile)
+  into a running container behind a route.
+- **Supporting: projects** (projects, environments, applications, env vars)
+  and **routing** (the Caddy configuration derived from running deployments).
+- **Generic: identity** (the owner account, sessions).
+
+`services/api` hosts all four contexts. `apps/web` is the dashboard and only
+talks to the API; it holds no domain data of its own.
 
 ## Where things go
 
@@ -30,9 +38,23 @@ Guidance for coding agents (and people) working in this repository.
 
 ## Stack rules
 
-> TODO: add rules per language/framework as the project adopts them (versions,
-> formatters, package manager, patterns to use or avoid, skills to load), each
-> with a one-line reason.
+- **Go 1.27** (mise), `gofmt` + `go vet`. Load the `go` skill for Go code.
+- **`services/api`**: Goravel v1.18, artisan as `go run . artisan ...`. Load
+  the `goravel-development` skill. JSON API only; every UI lives in `apps/`.
+  Postgres 18.
+- **Frontend**: Svelte 5 runes + TypeScript + Vite, **never SvelteKit**.
+  Bun only (no npm, pnpm, yarn or their lockfiles). Load
+  `svelte-core-bestpractices` / `svelte-code-writer` for `.svelte` files.
+- **Rootless Podman only.** The API talks to Podman through the libpod REST
+  API on the rootless socket (`$XDG_RUNTIME_DIR/podman/podman.sock`) with our
+  own thin client. Never shell out to the `podman` CLI and never use
+  `github.com/containers/podman/.../bindings`: the dependency tree is huge and
+  the client must also work over an SSH-tunnelled socket later.
+- **Caddy is configured only through its admin API** with JSON, never a
+  Caddyfile. The full config is rendered from the database and loaded with
+  `POST /load`, so Caddy holds no state of its own and a restart loses nothing.
+- **Every container Bakery creates carries the label `bakery.managed=true`**,
+  so Bakery can find (and never touch anything but) its own containers.
 
 - **Podman**, not Docker, in scripts and docs (`podman compose`,
   `Containerfile`).
@@ -50,9 +72,20 @@ task down            # stop every dev server this repo started
 its own decade, with strict port binding so a clash fails loudly instead of
 silently moving.
 
-| Port | Unit |
-| ---- | ---- |
-|      |      |
+Range **49xx**.
+
+| Port | Unit                                         |
+| ---- | -------------------------------------------- |
+| 4910 | `services/api`                               |
+| 4920 | Postgres (`infra/dev/compose.yml`)           |
+| 4930 | `apps/web` (Vite dev server)                 |
+| 4940 | proxy (Caddy) HTTP                           |
+| 4943 | proxy (Caddy) HTTPS                          |
+| 4949 | proxy (Caddy) admin API, `127.0.0.1` only    |
+
+`DEV_PORTS` lists only 4910 and 4930. Postgres and the proxy are containers;
+killing their port kills Podman's rootless port forwarder and leaves the
+container up but unreachable.
 
 New units take the next free decade; add them here and to `DEV_PORTS` in the
 root `Taskfile.yml` so `task down` stops them.

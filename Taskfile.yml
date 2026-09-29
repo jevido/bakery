@@ -5,7 +5,8 @@ version: "3"
 
 vars:
   # Every port a dev task listens on. Keep in sync with the table in CLAUDE.md.
-  DEV_PORTS: ""
+  # Container ports (Postgres, proxy) stay out: see CLAUDE.md.
+  DEV_PORTS: "4910 4930"
 
 tasks:
   default:
@@ -20,10 +21,20 @@ tasks:
     cmds:
       - ./infra/dev/down.sh {{.DEV_PORTS}}
 
+  db:up:
+    desc: Start the dev Postgres (Podman) and wait until it accepts connections
+    cmds:
+      - podman compose -f infra/dev/compose.yml up -d
+      - until podman compose -f infra/dev/compose.yml exec -T postgres pg_isready -U bakery >/dev/null 2>&1; do sleep 1; done
+
+  db:down:
+    desc: Stop the dev Postgres (data is kept in its volume)
+    cmds:
+      - podman compose -f infra/dev/compose.yml down
+
   dev:
     desc: Run every unit's dev server together (Ctrl+C stops all)
-    # Add each unit's dev task here, e.g. deps: [api:dev, web:dev]
-    deps: []
+    deps: [db:up]
 
   check:
     desc: Format check, lint, test and type-check every unit

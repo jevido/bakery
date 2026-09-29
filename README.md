@@ -1,6 +1,10 @@
-# Project name
+# Bakery
 
-> TODO: one or two sentences on what this project is and who it is for.
+Bakery is a self-hosted platform for deploying applications, databases and
+services on your own servers, in the spirit of [Coolify](https://coolify.io),
+built on rootless Podman, Caddy, Goravel, Svelte 5 and Postgres.
+`services/api` is the source of truth and drives Podman and Caddy;
+`apps/web` is the dashboard.
 
 ## Layout
 
@@ -30,14 +34,3 @@ task down       # stop every dev server this repo started
 Conventions for people and coding agents live in [`CLAUDE.md`](CLAUDE.md).
 The project is built with domain-driven design; the model lives in
 [`docs/domain`](docs/domain).
-
-## Using this starter
-
-1. Create a repository from this template.
-2. Replace the title and TODO above, and the "What this is" section in
-   `CLAUDE.md`.
-3. Name the core domain and first bounded contexts in
-   `docs/domain/context-map.md`, and start the glossary.
-4. Copy `docs/domain/contexts/_template` for each context.
-5. Add the first unit that hosts them, and the stack rules for it in
-   `CLAUDE.md`.
