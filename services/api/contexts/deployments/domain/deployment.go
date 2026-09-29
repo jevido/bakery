@@ -32,13 +32,25 @@ func (s Status) Active() bool {
 	return ok && s != Finished
 }
 
+// Trigger is what started a Deployment.
+type Trigger string
+
+const (
+	TriggerManual  Trigger = "manual"
+	TriggerWebhook Trigger = "webhook"
+)
+
 var ErrActiveDeployment = errors.New("a deployment of this application is already under way")
 
 type Deployment struct {
 	ID            uint64
 	ApplicationID uint64
 	Status        Status
+	Trigger       Trigger
+	Branch        string
 	CommitSHA     string
+	CommitMessage string
+	CommitAuthor  string
 	Image         string
 	Container     string
 	Error         string

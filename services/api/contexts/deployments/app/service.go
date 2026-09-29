@@ -22,7 +22,7 @@ func (s *Service) Deploy(ctx context.Context, applicationID uint64) (domain.Depl
 	if _, err := s.applications(ctx, applicationID); err != nil {
 		return domain.Deployment{}, err
 	}
-	d, err := s.store.Queue(ctx, applicationID)
+	d, err := s.store.Queue(ctx, applicationID, domain.TriggerManual)
 	if err != nil {
 		return domain.Deployment{}, err
 	}

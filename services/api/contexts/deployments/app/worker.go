@@ -121,20 +121,25 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 	if err := os.MkdirAll(w.WorkDir, 0o700); err != nil {
 		return err
 	}
+	// Saved now, so the dashboard shows the branch while cloning.
+	d.Branch = app.GitBranch
+	if err := w.service.store.Save(ctx, *d); err != nil {
+		return err
+	}
 	info("Cloning %s (branch %s)", app.GitURL, app.GitBranch)
 	commit, err := w.source.Clone(ctx, app.GitURL, app.GitBranch, dir, log.Line)
 	if err != nil {
 		return fmt.Errorf("clone failed: %w", err)
 	}
-	d.CommitSHA = commit
-	info("Checked out commit %s", commit)
+	d.CommitSHA, d.CommitMessage, d.CommitAuthor = commit.SHA, commit.Subject, commit.Author
+	info("Checked out %s %q by %s", shortSHA(commit.SHA), commit.Subject, commit.Author)
 
 	// Build.
 	if err := w.advance(ctx, d, domain.Building); err != nil {
 		return err
 	}
 	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(app.DockerfilePath))); err != nil {
-		return fmt.Errorf("no %s in the repository at %s", app.DockerfilePath, shortSHA(commit))
+		return fmt.Errorf("no %s in the repository at %s", app.DockerfilePath, shortSHA(commit.SHA))
 	}
 	d.Image = domain.ImageTag(app.Slug, d.ID)
 	info("Building image %s from %s", d.Image, app.DockerfilePath)

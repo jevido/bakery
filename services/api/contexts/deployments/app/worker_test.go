@@ -18,7 +18,7 @@ type memStore struct {
 	saves []domain.Status
 }
 
-func (m *memStore) Queue(_ context.Context, appID uint64) (domain.Deployment, error) {
+func (m *memStore) Queue(_ context.Context, appID uint64, trigger domain.Trigger) (domain.Deployment, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, d := range m.items {
@@ -26,7 +26,7 @@ func (m *memStore) Queue(_ context.Context, appID uint64) (domain.Deployment, er
 			return domain.Deployment{}, domain.ErrActiveDeployment
 		}
 	}
-	d := domain.Deployment{ID: uint64(len(m.items) + 1), ApplicationID: appID, Status: domain.Queued}
+	d := domain.Deployment{ID: uint64(len(m.items) + 1), ApplicationID: appID, Status: domain.Queued, Trigger: trigger}
 	m.items = append(m.items, d)
 	return d, nil
 }
@@ -82,18 +82,18 @@ func (l *memLogs) text() string { return strings.Join(l.lines, "\n") }
 
 type fakeSource struct{ noDockerfile, fail bool }
 
-func (f fakeSource) Clone(_ context.Context, _, _, dir string, out func(string, string)) (string, error) {
+func (f fakeSource) Clone(_ context.Context, _, _, dir string, out func(string, string)) (Commit, error) {
 	if f.fail {
-		return "", errors.New("Remote branch nope not found")
+		return Commit{}, errors.New("Remote branch nope not found")
 	}
 	out(domain.StreamErr, "Cloning into...")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
+		return Commit{}, err
 	}
 	if !f.noDockerfile {
 		os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte("FROM scratch"), 0o600)
 	}
-	return "0123456789abcdef0123456789abcdef01234567", nil
+	return Commit{SHA: "0123456789abcdef0123456789abcdef01234567", Subject: "Fix the login", Author: "Jane Doe"}, nil
 }
 
 type fakeRuntime struct {
@@ -172,18 +172,21 @@ func TestDeploySucceedsAndReplacesOldContainer(t *testing.T) {
 	if got.Status != domain.Finished || got.CommitSHA == "" || got.Container != "bakery-app-1-1" || got.FinishedAt == nil {
 		t.Fatalf("deployment: %+v\n%s", got, s.logs.text())
 	}
+	if got.Branch != "main" || got.CommitMessage != "Fix the login" || got.CommitAuthor != "Jane Doe" || got.Trigger != domain.TriggerManual {
+		t.Fatalf("source details: %+v", got)
+	}
 	if s.routes["whoami.localhost"] != "bakery-app-1-1" {
 		t.Fatalf("route: %v", s.routes)
 	}
 	if s.runtime.running["bakery-app-1-0"] || !s.runtime.running["bakery-app-1-1"] {
 		t.Fatalf("containers: %v", s.runtime.running)
 	}
-	for _, want := range []string{"info: Cloning https://example.com/r", "err: Cloning into", "out: STEP 1/1", "Removed previous container bakery-app-1-0", "Deployment finished"} {
+	for _, want := range []string{"info: Cloning https://example.com/r", "err: Cloning into", "out: STEP 1/1", `Checked out 0123456789ab "Fix the login" by Jane Doe`, "Removed previous container bakery-app-1-0", "Deployment finished"} {
 		if !strings.Contains(s.logs.text(), want) {
 			t.Errorf("log lacks %q:\n%s", want, s.logs.text())
 		}
 	}
-	want := []domain.Status{domain.Building, domain.Starting, domain.Finished}
+	want := []domain.Status{domain.Cloning, domain.Building, domain.Starting, domain.Finished}
 	if strings.Join(statuses(s.store.saves), ",") != strings.Join(statuses(want), ",") {
 		t.Errorf("saved statuses %v, want %v", s.store.saves, want)
 	}

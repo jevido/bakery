@@ -34,7 +34,11 @@ export type Deployment = {
   application_id: number
   status: DeploymentStatus
   active: boolean
+  trigger: 'manual' | 'webhook'
+  branch: string
   commit_sha: string
+  commit_message: string
+  commit_author: string
   image: string
   container: string
   error: string

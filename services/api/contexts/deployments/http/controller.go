@@ -28,7 +28,11 @@ type deploymentJSON struct {
 	ApplicationID uint64     `json:"application_id"`
 	Status        string     `json:"status"`
 	Active        bool       `json:"active"`
+	Trigger       string     `json:"trigger"`
+	Branch        string     `json:"branch"`
 	CommitSHA     string     `json:"commit_sha"`
+	CommitMessage string     `json:"commit_message"`
+	CommitAuthor  string     `json:"commit_author"`
 	Image         string     `json:"image"`
 	Container     string     `json:"container"`
 	Error         string     `json:"error"`
@@ -40,7 +44,8 @@ type deploymentJSON struct {
 func ToJSON(d domain.Deployment) deploymentJSON {
 	return deploymentJSON{
 		ID: d.ID, ApplicationID: d.ApplicationID, Status: string(d.Status), Active: d.Status.Active(),
-		CommitSHA: d.CommitSHA, Image: d.Image, Container: d.Container, Error: d.Error,
+		Trigger: string(d.Trigger), Branch: d.Branch, CommitSHA: d.CommitSHA,
+		CommitMessage: d.CommitMessage, CommitAuthor: d.CommitAuthor, Image: d.Image, Container: d.Container, Error: d.Error,
 		CreatedAt: d.CreatedAt, StartedAt: d.StartedAt, FinishedAt: d.FinishedAt,
 	}
 }

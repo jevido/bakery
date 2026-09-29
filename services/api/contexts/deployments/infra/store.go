@@ -19,7 +19,11 @@ type deploymentRecord struct {
 	ID            uint64 `gorm:"primaryKey"`
 	ApplicationID uint64
 	Status        string
+	Trigger       string
+	Branch        string
 	CommitSha     string
+	CommitMessage string
+	CommitAuthor  string
 	Image         string
 	ContainerName string
 	Error         string
@@ -33,7 +37,8 @@ func (deploymentRecord) TableName() string { return "deployments" }
 
 func (r deploymentRecord) toDomain() domain.Deployment {
 	return domain.Deployment{
-		ID: r.ID, ApplicationID: r.ApplicationID, Status: domain.Status(r.Status), CommitSHA: r.CommitSha,
+		ID: r.ID, ApplicationID: r.ApplicationID, Status: domain.Status(r.Status), Trigger: domain.Trigger(r.Trigger),
+		Branch: r.Branch, CommitSHA: r.CommitSha, CommitMessage: r.CommitMessage, CommitAuthor: r.CommitAuthor,
 		Image: r.Image, Container: r.ContainerName, Error: r.Error, CreatedAt: r.CreatedAt,
 		StartedAt: r.StartedAt, FinishedAt: r.FinishedAt,
 	}
@@ -47,9 +52,9 @@ func (Store) query(ctx context.Context) contractsorm.Query {
 	return facades.Orm().WithContext(ctx).Query()
 }
 
-func (s Store) Queue(ctx context.Context, applicationID uint64) (domain.Deployment, error) {
+func (s Store) Queue(ctx context.Context, applicationID uint64, trigger domain.Trigger) (domain.Deployment, error) {
 	now := time.Now()
-	rec := deploymentRecord{ApplicationID: applicationID, Status: string(domain.Queued), CreatedAt: now, UpdatedAt: now}
+	rec := deploymentRecord{ApplicationID: applicationID, Status: string(domain.Queued), Trigger: string(trigger), CreatedAt: now, UpdatedAt: now}
 	if err := s.query(ctx).Create(&rec); err != nil {
 		if strings.Contains(err.Error(), "deployments_one_active") || strings.Contains(err.Error(), "23505") {
 			return domain.Deployment{}, domain.ErrActiveDeployment
@@ -79,7 +84,8 @@ func (s Store) ClaimNext(ctx context.Context) (domain.Deployment, bool, error) {
 
 func (s Store) Save(ctx context.Context, d domain.Deployment) error {
 	_, err := s.query(ctx).Model(&deploymentRecord{}).Where("id", d.ID).Update(map[string]any{
-		"status": string(d.Status), "commit_sha": d.CommitSHA, "image": d.Image,
+		"status": string(d.Status), "branch": d.Branch, "commit_sha": d.CommitSHA,
+		"commit_message": d.CommitMessage, "commit_author": d.CommitAuthor, "image": d.Image,
 		"container_name": d.Container, "error": d.Error, "finished_at": d.FinishedAt, "updated_at": time.Now(),
 	})
 	return err

@@ -15,11 +15,12 @@ var ErrNotFound = errors.New("not found")
 type Store interface {
 	// Queue adds a queued Deployment, or returns
 	// domain.ErrActiveDeployment when the Application has an active one.
-	Queue(ctx context.Context, applicationID uint64) (domain.Deployment, error)
+	Queue(ctx context.Context, applicationID uint64, trigger domain.Trigger) (domain.Deployment, error)
 	// ClaimNext moves the oldest queued Deployment to cloning and returns
 	// it; concurrent workers never claim the same one.
 	ClaimNext(ctx context.Context) (domain.Deployment, bool, error)
-	// Save writes status, commit, image, container, error and the times.
+	// Save writes status, branch, commit, image, container, error and the
+	// times.
 	Save(ctx context.Context, d domain.Deployment) error
 	// FailInterrupted fails every Deployment left active by a crash or
 	// restart (not queued ones, which still run) and returns how many.
@@ -59,11 +60,18 @@ type Application struct {
 // Applications is projects' published ApplicationForDeploy.
 type Applications func(ctx context.Context, id uint64) (Application, error)
 
+// Commit is the commit a clone checked out.
+type Commit struct {
+	SHA     string
+	Subject string
+	Author  string
+}
+
 // Source fetches an Application's code.
 type Source interface {
 	// Clone checks the branch out into dir (which must not exist) and
 	// returns the commit.
-	Clone(ctx context.Context, url, branch, dir string, out func(stream, line string)) (commit string, err error)
+	Clone(ctx context.Context, url, branch, dir string, out func(stream, line string)) (Commit, error)
 }
 
 // Runtime builds and runs Containers.
