@@ -36,7 +36,12 @@ func (s *Service) Deploy(ctx context.Context, applicationID uint64) (domain.Depl
 	if _, err := s.applications(ctx, applicationID); err != nil {
 		return domain.Deployment{}, err
 	}
-	d, err := s.store.Queue(ctx, applicationID, domain.TriggerManual)
+	return s.queue(ctx, applicationID, domain.TriggerManual)
+}
+
+// queue queues a Deployment with the trigger and wakes the Worker.
+func (s *Service) queue(ctx context.Context, applicationID uint64, trigger domain.Trigger) (domain.Deployment, error) {
+	d, err := s.store.Queue(ctx, applicationID, trigger)
 	if err != nil {
 		return domain.Deployment{}, err
 	}

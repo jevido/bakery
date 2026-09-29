@@ -99,3 +99,8 @@ None published yet. Notifications will need `DeploymentFinished` and
   forgotten on every upgrade, and not checking host keys at all would let
   anyone in the middle serve their own code. A changed key fails the
   Deployment with a reason until the Owner forgets the host.
+- **Webhook payloads must be JSON.** The signature covers the raw body, and
+  a form-encoded body is parsed by the HTTP layer before the Webhook sees it,
+  so its original bytes are gone. Every supported git host can send JSON
+  (GitHub: content type `application/json`); a form-encoded call is refused
+  with a message saying so.

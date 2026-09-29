@@ -24,9 +24,10 @@ import (
 )
 
 var (
-	once    sync.Once
-	service *app.Service
-	runtime infra.Runtime
+	once     sync.Once
+	service  *app.Service
+	webhooks *app.Webhooks
+	runtime  infra.Runtime
 )
 
 // applications translates projects' snapshot into this context's language.
@@ -44,6 +45,7 @@ func applications(ctx context.Context, id uint64) (app.Application, error) {
 func svc() *app.Service {
 	once.Do(func() {
 		service = app.NewService(infra.Store{}, infra.Logs{}, applications, infra.KnownHosts{})
+		webhooks = app.NewWebhooks(service, infra.Webhooks{})
 		runtime = infra.Runtime{
 			Podman:       podman.Default(),
 			Network:      facades.Config().GetString("bakery.network"),
@@ -57,15 +59,27 @@ func svc() *app.Service {
 			if err := (infra.Store{}).DeleteForApplication(ctx, applicationID); err != nil {
 				facades.Log().Errorf("deployments: deleting deployments of application %d: %v", applicationID, err)
 			}
+			if err := webhooks.DeleteForApplication(ctx, applicationID); err != nil {
+				facades.Log().Errorf("deployments: deleting the webhook of application %d: %v", applicationID, err)
+			}
 		})
 	})
 	return service
 }
 
-// Routes registers the deployments API, all behind identity.Auth.
+func isApplicationNotFound(err error) bool { return errors.Is(err, projects.ErrNotFound) }
+
+// Routes registers the deployments API behind identity.Auth, and the
+// Webhook endpoint git hosts call without a Session (the signature is its
+// authentication).
 func Routes(r route.Router) {
-	c := deploymentshttp.NewController(svc(), func(err error) bool { return errors.Is(err, projects.ErrNotFound) })
+	c := deploymentshttp.NewController(svc(), isApplicationNotFound)
+	wc := deploymentshttp.NewWebhookController(webhooks, isApplicationNotFound)
+	r.Post("/api/webhooks/applications/{id}", wc.Receive)
 	r.Middleware(identity.Auth).Group(func(r route.Router) {
+		r.Get("/api/applications/{id}/webhook", wc.Show)
+		r.Patch("/api/applications/{id}/webhook", wc.Update)
+		r.Post("/api/applications/{id}/webhook/secret", wc.RotateSecret)
 		r.Post("/api/applications/{id}/deploy", c.Deploy)
 		r.Get("/api/applications/{id}/deployments", c.List)
 		r.Get("/api/deployments/{id}", c.Show)
