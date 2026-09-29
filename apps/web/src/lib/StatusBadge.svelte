@@ -23,4 +23,7 @@
   .failed {
     color: var(--danger);
   }
+  .cancelled {
+    color: var(--muted, gray);
+  }
 </style>

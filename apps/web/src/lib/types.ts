@@ -48,20 +48,22 @@ export type ApplicationInput = Pick<Application, 'name' | 'git_url' | 'git_branc
   health_check?: HealthCheck
 }
 
-export type DeploymentStatus = 'queued' | 'cloning' | 'building' | 'starting' | 'finished' | 'failed'
+export type DeploymentStatus = 'queued' | 'cloning' | 'building' | 'starting' | 'finished' | 'failed' | 'cancelled'
 
 export type Deployment = {
   id: number
   application_id: number
   status: DeploymentStatus
   active: boolean
-  trigger: 'manual' | 'webhook'
+  trigger: 'manual' | 'webhook' | 'rollback'
   branch: string
   commit_sha: string
   commit_message: string
   commit_author: string
   image: string
   container: string
+  /** The deployment whose image a rollback starts again. */
+  rollback_of: number | null
   error: string
   created_at: string
   started_at: string | null
