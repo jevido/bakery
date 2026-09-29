@@ -25,6 +25,8 @@ type RenderOptions struct {
 	// (for *.localhost in development) and turns off HTTP→HTTPS redirects,
 	// which would point at 443 while the host publishes another port.
 	InternalTLS bool
+	// Dashboard, when set, is rendered before every Application route.
+	Dashboard *domain.DashboardRoute
 }
 
 type obj = map[string]any
@@ -36,8 +38,12 @@ func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
 	sorted := append([]domain.Route(nil), routes...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Domain < sorted[j].Domain })
 
-	caddyRoutes := make([]obj, 0, len(sorted))
-	domains := make([]string, 0, len(sorted))
+	caddyRoutes := make([]obj, 0, len(sorted)+1)
+	domains := make([]string, 0, len(sorted)+1)
+	if d := opts.Dashboard; d != nil {
+		domains = append(domains, d.Domain)
+		caddyRoutes = append(caddyRoutes, dashboardRoute(*d))
+	}
 	for _, r := range sorted {
 		domains = append(domains, r.Domain)
 		caddyRoutes = append(caddyRoutes, obj{
@@ -77,6 +83,36 @@ func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
 		"admin": obj{"listen": CaddyAdminListen},
 		"apps":  apps,
 	}, "", "  ")
+}
+
+// dashboardRoute sends /api/* to the API and the rest to the dashboard, so
+// both share one origin and the SameSite=Strict session cookie works.
+func dashboardRoute(d domain.DashboardRoute) obj {
+	return obj{
+		"match": []obj{{"host": []string{d.Domain}}},
+		"handle": []obj{{
+			"handler": "subroute",
+			"routes": []obj{
+				{
+					"match": []obj{{"path": []string{"/api/*"}}},
+					"handle": []obj{{
+						"handler":   "reverse_proxy",
+						"upstreams": []obj{{"dial": d.API}},
+						// Log streams are server-sent events: pass every
+						// write through instead of buffering.
+						"flush_interval": -1,
+					}},
+				},
+				{
+					"handle": []obj{{
+						"handler":   "reverse_proxy",
+						"upstreams": []obj{{"dial": d.Web}},
+					}},
+				},
+			},
+		}},
+		"terminal": true,
+	}
 }
 
 // Caddy talks to the Proxy's admin API.

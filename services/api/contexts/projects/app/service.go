@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jevido/bakery/services/api/contexts/projects/domain"
 )
@@ -46,12 +47,16 @@ type Store interface {
 type Service struct {
 	store        Store
 	domainSuffix string
-	onDeleted    []func(ctx context.Context, applicationID uint64)
+	// reservedDomain is the dashboard's own domain; no Application may take
+	// it. Empty when there is none.
+	reservedDomain string
+	onDeleted      []func(ctx context.Context, applicationID uint64)
 }
 
-// NewService takes the suffix default Domains get (`<slug>.<suffix>`).
-func NewService(store Store, domainSuffix string) *Service {
-	return &Service{store: store, domainSuffix: domainSuffix}
+// NewService takes the suffix default Domains get (`<slug>.<suffix>`) and
+// the domain reserved for the Bakery dashboard (empty for none).
+func NewService(store Store, domainSuffix, reservedDomain string) *Service {
+	return &Service{store: store, domainSuffix: domainSuffix, reservedDomain: strings.ToLower(reservedDomain)}
 }
 
 // OnApplicationDeleted registers a handler for the ApplicationDeleted event.
@@ -156,6 +161,9 @@ func (s *Service) freeSlug(ctx context.Context, base string) (string, error) {
 }
 
 func (s *Service) checkDomain(ctx context.Context, d string, exceptID uint64) error {
+	if s.reservedDomain != "" && d == s.reservedDomain {
+		return &domain.FieldError{Field: "domain", Message: "domain is reserved for the Bakery dashboard"}
+	}
 	taken, err := s.store.DomainTaken(ctx, d, exceptID)
 	if err != nil {
 		return err

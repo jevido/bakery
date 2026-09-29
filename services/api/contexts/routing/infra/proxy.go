@@ -27,6 +27,9 @@ type ProxyConfig struct {
 	// on the network).
 	AdminPublish string
 	InternalTLS  bool
+	// Dashboard is the Dashboard Route; nil when no dashboard domain is
+	// configured (development).
+	Dashboard *domain.DashboardRoute
 	// Volume prefix for Caddy's /data (certificates, the internal CA) and
 	// /config (the autosaved last config).
 	VolumePrefix string
@@ -119,7 +122,7 @@ func (p *Proxy) create(ctx context.Context) error {
 
 // Apply renders the Routes and loads them.
 func (p *Proxy) Apply(ctx context.Context, routes []domain.Route) error {
-	config, err := Render(routes, RenderOptions{InternalTLS: p.cfg.InternalTLS})
+	config, err := Render(routes, RenderOptions{InternalTLS: p.cfg.InternalTLS, Dashboard: p.cfg.Dashboard})
 	if err != nil {
 		return err
 	}

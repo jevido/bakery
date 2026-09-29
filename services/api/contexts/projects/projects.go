@@ -20,7 +20,8 @@ var service *app.Service
 
 func svc() *app.Service {
 	if service == nil {
-		service = app.NewService(infra.Store{}, facades.Config().GetString("bakery.domain_suffix", "localhost"))
+		cfg := facades.Config()
+		service = app.NewService(infra.Store{}, cfg.GetString("bakery.domain_suffix", "localhost"), cfg.GetString("bakery.dashboard.domain"))
 	}
 	return service
 }

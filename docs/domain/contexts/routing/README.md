@@ -16,6 +16,7 @@ responsible for which Container is current; deployments tells it.
 | ---- | ------- |
 | Proxy | The Caddy container `bakery-proxy`. |
 | Route | Domain → container name and port. One per Application. |
+| Dashboard Route | Bakery's own dashboard domain: `/api/*` to the API container, everything else to the dashboard container. From configuration, not a stored Route. |
 | Apply | Render the full Caddy JSON config from all Routes and load it with `POST /load`. |
 | Internal TLS | Certificates from Caddy's own CA, for `*.localhost` in development. |
 
@@ -49,6 +50,12 @@ None.
   `POST /load` means Caddy holds no state Bakery does not have: a lost or
   recreated Proxy is fixed by one Apply. Cost: every change re-sends the whole
   config, which is fine for hundreds of routes.
+- **The Dashboard Route is rendered from configuration, not stored as a
+  Route.** It has no Application and must be served before the first
+  deploy, so it lives in `BAKERY_DASHBOARD_DOMAIN` and is rendered first on
+  every Apply. `/api/*` and the dashboard share one origin, which keeps the
+  `SameSite=Strict` session cookie working without CORS. Projects refuses
+  the domain for Applications so the two never collide.
 - **Caddy reaches Containers by name on the `bakery` network**, so
   Application Containers publish no host ports.
 - **The admin API has no authentication**, so it is published on

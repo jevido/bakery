@@ -26,7 +26,7 @@ reaches an Application (routing).
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Project | Name is not empty. Is created together with its `production` Environment, in one transaction. Environment names are unique within the Project. |
-| Application | Slug is unique across Bakery, lowercase `[a-z0-9-]`. Source URL starts with `https://` (no `file://`, `ssh://`, `git@` or local paths). Branch is not empty. Dockerfile path is relative and does not contain `..`. Port is 1–65535. Domain is a lowercase hostname, unique across Bakery, default `<slug>.localhost`. Env var names match `^[A-Za-z_][A-Za-z0-9_]*$` and are unique per Application; values are encrypted at rest and never logged. |
+| Application | Slug is unique across Bakery, lowercase `[a-z0-9-]`. Source URL starts with `https://` (no `file://`, `ssh://`, `git@` or local paths). Branch is not empty. Dockerfile path is relative and does not contain `..`. Port is 1–65535. Domain is a lowercase hostname, unique across Bakery, not the dashboard domain (reserved for the Dashboard Route), default `<slug>.<domain suffix>`. Env var names match `^[A-Za-z_][A-Za-z0-9_]*$` and are unique per Application; values are encrypted at rest and never logged. |
 
 ### Commands
 

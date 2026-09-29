@@ -21,7 +21,7 @@ document; list them here when people outside the context use them too.
 | Source | projects | Where an Application's code comes from: an `https://` git URL and a branch. | Repository on disk |
 | Build pack | projects | How a Source becomes an Image. Only `dockerfile` exists: build the Dockerfile at a path in the Source. | Buildpacks (Heroku/CNB) |
 | Env var | projects | A name and value handed to an Application's Container. The value is encrypted at rest. | Environment |
-| Domain | projects, routing | The hostname an Application is reached on. Unique across Bakery. Defaults to `<slug>.localhost`. | URL |
+| Domain | projects, routing | The hostname an Application is reached on. Unique across Bakery, and never the dashboard domain. Defaults to `<slug>.<domain suffix>` (`localhost` in development). | URL |
 | Deployment | deployments | One attempt to turn an Application's Source into its running Container. | Release, build |
 | Deployment status | deployments | Where a Deployment is: `queued`, `cloning`, `building`, `starting`, then `finished` or `failed`. The first four are *active*. | Container state |
 | Deployment log | deployments | The ordered lines a Deployment wrote: its own `info` lines and the `out`/`err` output of git and the build. | Container logs |
@@ -31,3 +31,4 @@ document; list them here when people outside the context use them too.
 | Server | deployments | A machine Bakery runs Containers on. Only the local one (the rootless Podman socket) exists. | Proxy |
 | Proxy | routing | The Caddy container `bakery-proxy`, configured only through its admin API. | Server |
 | Route | routing | A Domain pointed at one Container and port. One per Application. | Endpoint |
+| Dashboard Route | routing | The Route to Bakery's own dashboard and API on the configured dashboard domain: `/api/*` to the API, the rest to the dashboard. Derived from configuration, never stored. | Route |

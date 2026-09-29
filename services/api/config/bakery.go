@@ -17,6 +17,14 @@ func init() {
 		// The network Bakery's containers share; Caddy reaches Applications
 		// on it by container name.
 		"network": config.Env("BAKERY_NETWORK", "bakery"),
+		// The Dashboard Route: the domain Bakery's own dashboard is served on
+		// through the proxy (empty in development, where Vite serves it), and
+		// the containers it sends /api/* and everything else to.
+		"dashboard": map[string]any{
+			"domain":       config.Env("BAKERY_DASHBOARD_DOMAIN", ""),
+			"api_upstream": config.Env("BAKERY_DASHBOARD_API_UPSTREAM", "bakery-api:4910"),
+			"web_upstream": config.Env("BAKERY_DASHBOARD_WEB_UPSTREAM", "bakery-web:80"),
+		},
 		"proxy": map[string]any{
 			"image": config.Env("BAKERY_PROXY_IMAGE", "docker.io/library/caddy:2"),
 			// Host address the proxy's HTTP(S) ports are published on; empty

@@ -23,6 +23,14 @@ var (
 func svc() *app.Service {
 	once.Do(func() {
 		cfg := facades.Config()
+		var dashboard *domain.DashboardRoute
+		if d := cfg.GetString("bakery.dashboard.domain"); d != "" {
+			dashboard = &domain.DashboardRoute{
+				Domain: d,
+				API:    cfg.GetString("bakery.dashboard.api_upstream"),
+				Web:    cfg.GetString("bakery.dashboard.web_upstream"),
+			}
+		}
 		proxy := infra.NewProxy(podman.Default(), infra.ProxyConfig{
 			Name:         "bakery-proxy",
 			Image:        cfg.GetString("bakery.proxy.image"),
@@ -33,6 +41,7 @@ func svc() *app.Service {
 			AdminURL:     cfg.GetString("bakery.proxy.admin_url"),
 			AdminPublish: cfg.GetString("bakery.proxy.admin_publish"),
 			InternalTLS:  cfg.GetBool("bakery.proxy.internal_tls"),
+			Dashboard:    dashboard,
 			VolumePrefix: "bakery-proxy",
 		})
 		service = app.NewService(infra.Routes{}, proxy)
