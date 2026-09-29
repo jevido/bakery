@@ -44,9 +44,12 @@ func init() {
 			// How the API reaches Caddy's admin API. On a server the API runs
 			// on the bakery network and uses http://bakery-proxy:2019.
 			"admin_url": config.Env("BAKERY_PROXY_ADMIN_URL", "http://127.0.0.1:4949"),
-			// Host address the admin API is published on; empty means not
-			// published. It has no authentication: 127.0.0.1 at most.
-			"admin_publish": config.Env("BAKERY_PROXY_ADMIN_PUBLISH", "127.0.0.1:4949"),
+			// Host address the admin API is published on; empty (the default)
+			// means not published. It has no authentication: 127.0.0.1 at
+			// most. Development sets 127.0.0.1:4949 in .env. The default is
+			// "not published" because an empty environment variable counts as
+			// unset and could never switch publishing off.
+			"admin_publish": config.Env("BAKERY_PROXY_ADMIN_PUBLISH", ""),
 			"internal_tls":  config.Env("BAKERY_PROXY_INTERNAL_TLS", true),
 		},
 	})

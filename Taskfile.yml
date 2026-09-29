@@ -71,8 +71,17 @@ tasks:
     cmds:
       - podman build -f infra/images/web/Containerfile -t localhost/bakery-web:dev .
 
+  install:check:
+    desc: shellcheck the install script
+    cmds:
+      - |
+        if command -v shellcheck >/dev/null; then shellcheck infra/install/install.sh
+        else podman run --rm -v ./infra/install:/mnt:ro,Z docker.io/koalaman/shellcheck-alpine shellcheck /mnt/install.sh
+        fi
+
   check:
     desc: Format check, lint, test and type-check every unit
     cmds:
       - task: api:check
       - task: web:check
+      - task: install:check
