@@ -10,3 +10,14 @@ Local development stack.
   `CLAUDE.md`. Local credentials in it are not secrets.
 - `down.sh` stops every local dev server by the ports it listens on;
   `task down` runs it with `DEV_PORTS` from the root `Taskfile.yml`.
+- `compose.yml` also holds **Forgejo**, the git host stand-in, under the
+  `git` profile: `task git:up` starts it on `127.0.0.1:4950` (HTTP) and
+  `127.0.0.1:4952` (SSH) with host networking, so its webhooks reach the dev
+  API on `127.0.0.1:4910`; `task git:down` removes it and its volumes.
+- `git/test.sh` (`task git:test`, with `task dev` running) creates a private
+  repository in Forgejo, deploys it through Bakery with the Application's
+  Deploy key, adds Bakery's Webhook to it, pushes and waits for the push to
+  deploy by itself, then checks a push signed with a rotated secret deploys
+  nothing. It signs in as the Owner from `BAKERY_OWNER_EMAIL` /
+  `BAKERY_OWNER_PASSWORD` (or `.claude/ralph/state/owner.env`) and removes
+  everything it created, Forgejo included (`KEEP_FORGEJO=1` keeps it).

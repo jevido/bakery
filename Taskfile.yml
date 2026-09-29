@@ -58,6 +58,22 @@ tasks:
     cmds:
       - ./.claude/ralph/ralph.sh
 
+  git:up:
+    desc: Start the Forgejo stand-in (127.0.0.1:4950 HTTP, :4952 SSH)
+    cmds:
+      - podman compose -f infra/dev/compose.yml --profile git up -d forgejo
+
+  git:down:
+    desc: Stop and remove the Forgejo stand-in and its volumes
+    cmds:
+      - podman compose -f infra/dev/compose.yml --profile git rm -sf forgejo
+      - podman volume rm -f bakery-dev_bakery-forgejo-data bakery-dev_bakery-forgejo-config
+
+  git:test:
+    desc: Private repository, deploy key and webhook end to end against Forgejo (needs task dev)
+    cmds:
+      - ./infra/dev/git/test.sh
+
   images:
     desc: Build every image (localhost/bakery-*:dev) from infra/images
     cmds:
@@ -78,8 +94,8 @@ tasks:
     desc: shellcheck the install script
     cmds:
       - |
-        if command -v shellcheck >/dev/null; then shellcheck infra/install/install.sh
-        else podman run --rm -v ./infra/install:/mnt:ro,Z docker.io/koalaman/shellcheck-alpine shellcheck /mnt/install.sh
+        if command -v shellcheck >/dev/null; then shellcheck infra/install/install.sh infra/dev/git/test.sh
+        else podman run --rm -v .:/mnt:ro,Z -w /mnt docker.io/koalaman/shellcheck-alpine shellcheck infra/install/install.sh infra/dev/git/test.sh
         fi
 
   check:

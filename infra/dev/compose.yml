@@ -18,5 +18,33 @@ services:
       timeout: 3s
       retries: 15
 
+  # Git host stand-in for private repositories and webhooks (task git:up,
+  # task git:test). Host networking so Forgejo reaches the dev API on
+  # 127.0.0.1:4910 for webhooks, as a git host on the internet reaches a
+  # server; it listens on 127.0.0.1:4950 (HTTP) and 127.0.0.1:4952 (SSH).
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:16-rootless
+    profiles: [git]
+    network_mode: host
+    environment:
+      FORGEJO__security__INSTALL_LOCK: "true"
+      FORGEJO__server__HTTP_ADDR: 127.0.0.1
+      FORGEJO__server__HTTP_PORT: "4950"
+      FORGEJO__server__ROOT_URL: http://127.0.0.1:4950/
+      FORGEJO__server__DOMAIN: 127.0.0.1
+      FORGEJO__server__SSH_DOMAIN: 127.0.0.1
+      FORGEJO__server__START_SSH_SERVER: "true"
+      FORGEJO__server__SSH_LISTEN_HOST: 127.0.0.1
+      FORGEJO__server__SSH_LISTEN_PORT: "4952"
+      FORGEJO__server__SSH_PORT: "4952"
+      FORGEJO__database__DB_TYPE: sqlite3
+      FORGEJO__webhook__ALLOWED_HOST_LIST: loopback
+      FORGEJO__service__DISABLE_REGISTRATION: "true"
+    volumes:
+      - bakery-forgejo-data:/var/lib/gitea
+      - bakery-forgejo-config:/etc/gitea
+
 volumes:
   bakery-db:
+  bakery-forgejo-data:
+  bakery-forgejo-config:
