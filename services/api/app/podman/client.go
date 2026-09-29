@@ -175,6 +175,15 @@ func (c *Client) ImageExists(ctx context.Context, ref string) (bool, error) {
 	return c.exists(ctx, "/images/"+url.PathEscape(ref)+"/exists")
 }
 
+// RemoveImage force-removes an image; a missing one is not an error.
+func (c *Client) RemoveImage(ctx context.Context, ref string) error {
+	err := c.call(ctx, http.MethodDelete, "/images/"+url.PathEscape(ref), url.Values{"force": {"true"}}, nil, nil)
+	if IsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
 // PullImage pulls ref (fully qualified, e.g. docker.io/library/caddy:2),
 // handing progress lines to out.
 func (c *Client) PullImage(ctx context.Context, ref string, out func(line string)) error {
@@ -207,6 +216,8 @@ type BuildOptions struct {
 	// Dockerfile is the path inside the context, e.g. Dockerfile.
 	Dockerfile string
 	Labels     map[string]string
+	// BuildArgs are handed to the Dockerfile's ARGs.
+	BuildArgs map[string]string
 }
 
 // Build builds an image from a tar of the build context, handing each output
@@ -216,6 +227,10 @@ func (c *Client) Build(ctx context.Context, contextTar io.Reader, opts BuildOpti
 	if len(opts.Labels) > 0 {
 		raw, _ := json.Marshal(opts.Labels)
 		q.Set("labels", string(raw))
+	}
+	if len(opts.BuildArgs) > 0 {
+		raw, _ := json.Marshal(opts.BuildArgs)
+		q.Set("buildargs", string(raw))
 	}
 	res, err := c.do(ctx, http.MethodPost, "/build", q, contextTar, "application/x-tar")
 	if err != nil {
@@ -434,6 +449,49 @@ func (c *Client) ListContainers(ctx context.Context, labels map[string]string) (
 	var out []ContainerSummary
 	err := c.call(ctx, http.MethodGet, "/containers/json", url.Values{"all": {"true"}, "filters": {string(raw)}}, nil, &out)
 	return out, err
+}
+
+// maxExecOutput bounds what Exec keeps of a command's output.
+const maxExecOutput = 4 << 10
+
+// Exec runs cmd inside a running container and returns its exit code and up
+// to 4 KiB of its combined stdout and stderr. ctx bounds the whole run.
+func (c *Client) Exec(ctx context.Context, container string, cmd []string) (int, string, error) {
+	var created struct {
+		ID string `json:"Id"`
+	}
+	if err := c.call(ctx, http.MethodPost, "/containers/"+url.PathEscape(container)+"/exec", nil, map[string]any{
+		"Cmd": cmd, "AttachStdout": true, "AttachStderr": true,
+	}, &created); err != nil {
+		return 0, "", err
+	}
+	raw, _ := json.Marshal(map[string]any{"Detach": false, "Tty": false})
+	res, err := c.do(ctx, http.MethodPost, "/exec/"+url.PathEscape(created.ID)+"/start", nil, bytes.NewReader(raw), "application/json")
+	if err != nil {
+		return 0, "", err
+	}
+	var output strings.Builder
+	err = demux(res.Body, func(_, line string) {
+		if output.Len()+len(line) < maxExecOutput {
+			output.WriteString(line)
+			output.WriteByte('\n')
+		}
+	})
+	res.Body.Close()
+	if err != nil {
+		return 0, "", fmt.Errorf("podman: reading exec output: %w", err)
+	}
+	if ctx.Err() != nil {
+		return 0, "", ctx.Err()
+	}
+	var info struct {
+		ExitCode int  `json:"ExitCode"`
+		Running  bool `json:"Running"`
+	}
+	if err := c.call(ctx, http.MethodGet, "/exec/"+url.PathEscape(created.ID)+"/json", nil, nil, &info); err != nil {
+		return 0, "", err
+	}
+	return info.ExitCode, strings.TrimRight(output.String(), "\n"), nil
 }
 
 // Logs hands a container's output to out line by line ("stdout" or

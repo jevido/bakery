@@ -137,3 +137,69 @@ func TestCopyInto(t *testing.T) {
 		t.Fatalf("read back %q, want %q", got, want)
 	}
 }
+
+func busybox(t *testing.T, ctx context.Context, c *Client) string {
+	t.Helper()
+	image := "docker.io/library/busybox:latest"
+	if ok, _ := c.ImageExists(ctx, image); !ok {
+		if err := c.PullImage(ctx, image, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return image
+}
+
+func TestExec(t *testing.T) {
+	c := client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	id, err := c.CreateContainer(ctx, ContainerSpec{
+		Name: "bakery-test-exec", Image: busybox(t, ctx, c), Command: []string{"sleep", "60"},
+		Labels: map[string]string{"bakery.managed": "true", "bakery.test": "exec"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.RemoveContainer(context.Background(), id)
+	if err := c.StartContainer(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	code, out, err := c.Exec(ctx, id, []string{"sh", "-c", "echo hi; echo oops >&2; exit 3"})
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if code != 3 || out != "hi\noops" {
+		t.Fatalf("Exec: code %d, output %q", code, out)
+	}
+	if code, _, err := c.Exec(ctx, id, []string{"true"}); err != nil || code != 0 {
+		t.Fatalf("Exec true: %d %v", code, err)
+	}
+	// A command the image does not have fails, not hangs.
+	if code, _, err := c.Exec(ctx, id, []string{"no-such-command"}); err == nil && code == 0 {
+		t.Fatalf("Exec of a missing command succeeded")
+	}
+}
+
+func TestBuildArgs(t *testing.T) {
+	c := client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	busybox(t, ctx, c)
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "Containerfile"), []byte("FROM docker.io/library/busybox:latest\nARG GREETING\nRUN test \"$GREETING\" = hello\n"), 0o644)
+	tag := "localhost/bakery-test/buildargs:1"
+	defer c.RemoveImage(context.Background(), tag)
+
+	if _, err := c.Build(ctx, TarDir(dir), BuildOptions{Tag: tag, Dockerfile: "Containerfile"}, func(string) {}); err == nil {
+		t.Fatal("build without the build arg passed")
+	}
+	if _, err := c.Build(ctx, TarDir(dir), BuildOptions{Tag: tag, Dockerfile: "Containerfile", BuildArgs: map[string]string{"GREETING": "hello"}}, func(string) {}); err != nil {
+		t.Fatalf("build with the build arg: %v", err)
+	}
+	if err := c.RemoveImage(ctx, tag); err != nil {
+		t.Fatalf("RemoveImage: %v", err)
+	}
+	if ok, _ := c.ImageExists(ctx, tag); ok {
+		t.Fatal("image still there after RemoveImage")
+	}
+}
