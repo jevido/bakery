@@ -45,11 +45,16 @@ func Routes(r route.Router) {
 		r.Post("/api/applications/{id}/deploy-key", c.RegenerateDeployKey)
 		r.Get("/api/applications/{id}/env", c.ShowEnv)
 		r.Put("/api/applications/{id}/env", c.ReplaceEnv)
+		r.Get("/api/projects/{id}/variables", c.ShowProjectVariables)
+		r.Put("/api/projects/{id}/variables", c.ReplaceProjectVariables)
+		r.Get("/api/environments/{id}/variables", c.ShowEnvironmentVariables)
+		r.Put("/api/environments/{id}/variables", c.ReplaceEnvironmentVariables)
 	})
 }
 
 // ApplicationSnapshot is an Application as deployments needs it, taken once
-// at the start of a Deployment. Env var values are decrypted.
+// at the start of a Deployment. Its variables are merged (Application over
+// Environment over Project), split by scope and decrypted.
 type ApplicationSnapshot struct {
 	ID             uint64
 	Slug           string
@@ -58,7 +63,8 @@ type ApplicationSnapshot struct {
 	DockerfilePath string
 	Port           int
 	Domain         string
-	Env            map[string]string
+	BuildEnv       map[string]string
+	RuntimeEnv     map[string]string
 	// DeployKey is the Deploy key's private half (OpenSSH PEM), empty for
 	// an https Source.
 	DeployKey   string
@@ -81,17 +87,13 @@ func ApplicationForDeploy(ctx context.Context, id uint64) (ApplicationSnapshot, 
 	if err != nil {
 		return ApplicationSnapshot{}, err
 	}
-	vars, err := svc().EnvVars(ctx, id)
+	build, runtime, err := svc().MergedVariables(ctx, a)
 	if err != nil {
 		return ApplicationSnapshot{}, err
 	}
-	env := make(map[string]string, len(vars))
-	for _, v := range vars {
-		env[v.Name] = v.Value
-	}
 	return ApplicationSnapshot{
 		ID: a.ID, Slug: a.Slug, GitURL: a.GitURL, GitBranch: a.GitBranch,
-		DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain, Env: env, DeployKey: a.DeployKey.Private,
+		DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain, BuildEnv: build, RuntimeEnv: runtime, DeployKey: a.DeployKey.Private,
 		HealthCheck: HealthCheck(a.HealthCheck),
 	}, nil
 }

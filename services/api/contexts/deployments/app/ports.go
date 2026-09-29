@@ -67,7 +67,9 @@ type Application struct {
 	DockerfilePath string
 	Port           int
 	Domain         string
-	Env            map[string]string
+	// BuildEnv reaches the build as build args, RuntimeEnv the Container.
+	BuildEnv   map[string]string
+	RuntimeEnv map[string]string
 	// DeployKey is the private key an SSH Source is cloned with; empty for
 	// https.
 	DeployKey   string
@@ -124,7 +126,7 @@ type KnownHosts interface {
 
 // Runtime builds and runs Containers.
 type Runtime interface {
-	Build(ctx context.Context, dir, dockerfile, tag string, labels map[string]string, out func(line string)) error
+	Build(ctx context.Context, req BuildRequest, out func(line string)) error
 	// Start creates and starts the Container and returns once it is
 	// running (and, with spec.Settle, has stayed running for a moment), or
 	// an error (the Container is then removed).
@@ -143,6 +145,14 @@ type Runtime interface {
 	Remove(ctx context.Context, name string) error
 	// RemoveAll removes every Container of the Application.
 	RemoveAll(ctx context.Context, applicationID uint64) error
+}
+
+type BuildRequest struct {
+	Dir        string
+	Dockerfile string
+	Tag        string
+	Labels     map[string]string
+	BuildArgs  map[string]string
 }
 
 type ContainerSpec struct {

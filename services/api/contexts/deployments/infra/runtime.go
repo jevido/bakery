@@ -23,10 +23,10 @@ type Runtime struct {
 	Settle time.Duration
 }
 
-func (r Runtime) Build(ctx context.Context, dir, dockerfile, tag string, labels map[string]string, out func(string)) error {
-	tar := podman.TarDir(dir)
+func (r Runtime) Build(ctx context.Context, req app.BuildRequest, out func(string)) error {
+	tar := podman.TarDir(req.Dir)
 	defer tar.Close()
-	_, err := r.Podman.Build(ctx, tar, podman.BuildOptions{Tag: tag, Dockerfile: dockerfile, Labels: labels}, out)
+	_, err := r.Podman.Build(ctx, tar, podman.BuildOptions{Tag: req.Tag, Dockerfile: req.Dockerfile, Labels: req.Labels, BuildArgs: req.BuildArgs}, out)
 	return err
 }
 

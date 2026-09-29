@@ -2,6 +2,7 @@
 package http
 
 import (
+	"context"
 	"errors"
 	"strconv"
 
@@ -281,36 +282,73 @@ func (c *Controller) DeleteApplication(ctx contractshttp.Context) contractshttp.
 }
 
 type envVarJSON struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
+	Name    string `json:"name"`
+	Value   string `json:"value"`
+	Build   bool   `json:"build"`
+	Runtime bool   `json:"runtime"`
+}
+
+// envVarInput leaves the scope out to mean runtime only.
+type envVarInput struct {
+	Name    string `json:"name"`
+	Value   string `json:"value"`
+	Build   *bool  `json:"build"`
+	Runtime *bool  `json:"runtime"`
 }
 
 type envRequest struct {
-	Env []envVarJSON `json:"env"`
+	Env []envVarInput `json:"env"`
+}
+
+func (r envRequest) vars() []domain.EnvVar {
+	vars := make([]domain.EnvVar, len(r.Env))
+	for i, v := range r.Env {
+		vars[i] = domain.EnvVar{Name: v.Name, Value: v.Value, Runtime: true}
+		if v.Build != nil {
+			vars[i].Build = *v.Build
+		}
+		if v.Runtime != nil {
+			vars[i].Runtime = *v.Runtime
+		}
+	}
+	return vars
 }
 
 func envToJSON(vars []domain.EnvVar) []envVarJSON {
 	out := make([]envVarJSON, len(vars))
 	for i, v := range vars {
-		out[i] = envVarJSON{Name: v.Name, Value: v.Value}
+		out[i] = envVarJSON{Name: v.Name, Value: v.Value, Build: v.Build, Runtime: v.Runtime}
 	}
 	return out
 }
 
+type inheritedJSON struct {
+	envVarJSON
+	From       string `json:"from"`
+	Overridden bool   `json:"overridden"`
+}
+
+// ShowEnv answers with the Application's own variables and the Shared ones
+// it inherits.
 func (c *Controller) ShowEnv(ctx contractshttp.Context) contractshttp.Response {
 	aid, ok := id(ctx)
 	if !ok {
 		return notFound(ctx)
 	}
-	vars, err := c.service.EnvVars(ctx.Context(), aid)
+	own, inherited, err := c.service.Variables(ctx.Context(), aid)
 	if err != nil {
 		return fail(ctx, err)
 	}
-	return ctx.Response().Success().Json(contractshttp.Json{"env": envToJSON(vars)})
+	in := make([]inheritedJSON, len(inherited))
+	for i, v := range inherited {
+		in[i] = inheritedJSON{envVarJSON: envToJSON([]domain.EnvVar{v.EnvVar})[0], From: v.From, Overridden: v.Overridden}
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"env": envToJSON(own), "inherited": in})
 }
 
-func (c *Controller) ReplaceEnv(ctx contractshttp.Context) contractshttp.Response {
-	aid, ok := id(ctx)
+// replaceVariables binds the whole set and hands it to replace.
+func replaceVariables(ctx contractshttp.Context, replace func(ctx context.Context, owner uint64, vars []domain.EnvVar) error) contractshttp.Response {
+	oid, ok := id(ctx)
 	if !ok {
 		return notFound(ctx)
 	}
@@ -318,12 +356,41 @@ func (c *Controller) ReplaceEnv(ctx contractshttp.Context) contractshttp.Respons
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	vars := make([]domain.EnvVar, len(req.Env))
-	for i, v := range req.Env {
-		vars[i] = domain.EnvVar{Name: v.Name, Value: v.Value}
-	}
-	if err := c.service.ReplaceEnvVars(ctx.Context(), aid, vars); err != nil {
+	vars := req.vars()
+	if err := replace(ctx.Context(), oid, vars); err != nil {
 		return fail(ctx, err)
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"env": envToJSON(vars)})
+}
+
+func showVariables(ctx contractshttp.Context, read func(ctx context.Context, owner uint64) ([]domain.EnvVar, error)) contractshttp.Response {
+	oid, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	vars, err := read(ctx.Context(), oid)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"env": envToJSON(vars)})
+}
+
+func (c *Controller) ReplaceEnv(ctx contractshttp.Context) contractshttp.Response {
+	return replaceVariables(ctx, c.service.ReplaceEnvVars)
+}
+
+func (c *Controller) ShowProjectVariables(ctx contractshttp.Context) contractshttp.Response {
+	return showVariables(ctx, c.service.ProjectVariables)
+}
+
+func (c *Controller) ReplaceProjectVariables(ctx contractshttp.Context) contractshttp.Response {
+	return replaceVariables(ctx, c.service.ReplaceProjectVariables)
+}
+
+func (c *Controller) ShowEnvironmentVariables(ctx contractshttp.Context) contractshttp.Response {
+	return showVariables(ctx, c.service.EnvironmentVariables)
+}
+
+func (c *Controller) ReplaceEnvironmentVariables(ctx contractshttp.Context) contractshttp.Response {
+	return replaceVariables(ctx, c.service.ReplaceEnvironmentVariables)
 }

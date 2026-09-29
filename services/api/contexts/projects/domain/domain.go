@@ -277,12 +277,17 @@ func DefaultDomain(slug, suffix string) string {
 	return slug + "." + suffix
 }
 
+// EnvVar is a variable of an Application, or a Shared variable of a
+// Project or Environment. Build and Runtime are its scope.
 type EnvVar struct {
-	Name  string
-	Value string
+	Name    string
+	Value   string
+	Build   bool
+	Runtime bool
 }
 
-// CheckEnvVars validates a whole set: names valid and unique.
+// CheckEnvVars validates a whole set: names valid and unique, and every
+// variable reaching the build, the Container or both.
 func CheckEnvVars(vars []EnvVar) error {
 	seen := make(map[string]bool, len(vars))
 	for _, v := range vars {
@@ -292,7 +297,69 @@ func CheckEnvVars(vars []EnvVar) error {
 		if seen[v.Name] {
 			return invalid("env", "%s is set twice", v.Name)
 		}
+		if !v.Build && !v.Runtime {
+			return invalid("env", "%s must be available at build time, at runtime or both", v.Name)
+		}
 		seen[v.Name] = true
 	}
 	return nil
+}
+
+// Variable levels, from the widest to the one that wins.
+const (
+	FromProject     = "project"
+	FromEnvironment = "environment"
+	FromApplication = "application"
+)
+
+// InheritedVariable is a Shared variable as seen from one Application.
+// Overridden means a narrower level sets the same name, so this value is
+// not used.
+type InheritedVariable struct {
+	EnvVar
+	From       string
+	Overridden bool
+}
+
+// Inherited lists the Shared variables an Application gets, Environment
+// ones first.
+func Inherited(project, environment, application []EnvVar) []InheritedVariable {
+	names := func(vars []EnvVar) map[string]bool {
+		m := make(map[string]bool, len(vars))
+		for _, v := range vars {
+			m[v.Name] = true
+		}
+		return m
+	}
+	inApp, inEnv := names(application), names(environment)
+	out := make([]InheritedVariable, 0, len(project)+len(environment))
+	for _, v := range environment {
+		out = append(out, InheritedVariable{EnvVar: v, From: FromEnvironment, Overridden: inApp[v.Name]})
+	}
+	for _, v := range project {
+		out = append(out, InheritedVariable{EnvVar: v, From: FromProject, Overridden: inApp[v.Name] || inEnv[v.Name]})
+	}
+	return out
+}
+
+// Merge is what an Application's build and Container get: Application
+// variables win over Environment ones, which win over Project ones. A name
+// set at a narrower level takes that level's scope too.
+func Merge(project, environment, application []EnvVar) (build, runtime map[string]string) {
+	merged := map[string]EnvVar{}
+	for _, level := range [][]EnvVar{project, environment, application} {
+		for _, v := range level {
+			merged[v.Name] = v
+		}
+	}
+	build, runtime = map[string]string{}, map[string]string{}
+	for name, v := range merged {
+		if v.Build {
+			build[name] = v.Value
+		}
+		if v.Runtime {
+			runtime[name] = v.Value
+		}
+	}
+	return build, runtime
 }

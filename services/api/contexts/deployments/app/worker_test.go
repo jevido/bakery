@@ -128,6 +128,7 @@ type fakeRuntime struct {
 	probed []string
 	specs  []ContainerSpec
 	built  int
+	builds []BuildRequest
 	// gone lists Images that no longer exist.
 	gone map[string]bool
 }
@@ -148,8 +149,9 @@ func (r *fakeRuntime) Probe(_ context.Context, container, url string, _ time.Dur
 	return p.ok, p.detail, p.err
 }
 
-func (r *fakeRuntime) Build(ctx context.Context, _, _, _ string, _ map[string]string, out func(string)) error {
+func (r *fakeRuntime) Build(ctx context.Context, req BuildRequest, out func(string)) error {
 	r.built++
+	r.builds = append(r.builds, req)
 	out("STEP 1/1: FROM scratch")
 	if r.building != nil {
 		close(r.building)
@@ -195,7 +197,7 @@ type setup struct {
 func newSetup(t *testing.T, src fakeSource, check ...HealthCheck) *setup {
 	s := &setup{store: &memStore{}, logs: &memLogs{}, runtime: &fakeRuntime{running: map[string]bool{}}, routes: map[string]string{}}
 	apps := func(_ context.Context, id uint64) (Application, error) {
-		a := Application{ID: id, Slug: "whoami", GitURL: "https://example.com/r", GitBranch: "main", DockerfilePath: "Dockerfile", Port: 80, Domain: "whoami.localhost", Env: map[string]string{"HELLO": "world"}}
+		a := Application{ID: id, Slug: "whoami", GitURL: "https://example.com/r", GitBranch: "main", DockerfilePath: "Dockerfile", Port: 80, Domain: "whoami.localhost", RuntimeEnv: map[string]string{"HELLO": "world"}, BuildEnv: map[string]string{"VITE_API": "https://api", "B": "1"}}
 		if len(check) > 0 {
 			a.HealthCheck = check[0]
 		}
@@ -239,7 +241,13 @@ func TestDeploySucceedsAndReplacesOldContainer(t *testing.T) {
 	if s.runtime.running["bakery-app-1-0"] || !s.runtime.running["bakery-app-1-1"] {
 		t.Fatalf("containers: %v", s.runtime.running)
 	}
-	for _, want := range []string{"info: Cloning https://example.com/r", "err: Cloning into", "out: STEP 1/1", `Checked out 0123456789ab "Fix the login" by Jane Doe`, "Removed previous container bakery-app-1-0", "Deployment finished"} {
+	if b := s.runtime.builds[0]; b.BuildArgs["VITE_API"] != "https://api" || b.Tag != "localhost/bakery/whoami:1" || b.Dockerfile != "Dockerfile" {
+		t.Errorf("build request %+v", b)
+	}
+	if env := s.runtime.specs[0].Env; env["HELLO"] != "world" || env["VITE_API"] != "" {
+		t.Errorf("container env %v", env)
+	}
+	for _, want := range []string{"info: Build args: B, VITE_API", "info: Cloning https://example.com/r", "err: Cloning into", "out: STEP 1/1", `Checked out 0123456789ab "Fix the login" by Jane Doe`, "Removed previous container bakery-app-1-0", "Deployment finished"} {
 		if !strings.Contains(s.logs.text(), want) {
 			t.Errorf("log lacks %q:\n%s", want, s.logs.text())
 		}

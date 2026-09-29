@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/deployments/domain"
@@ -183,7 +186,11 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 	d.Image = domain.ImageTag(app.Slug, d.ID)
 	info("Building image %s from %s", d.Image, app.DockerfilePath)
 	labels := map[string]string{"bakery.managed": "true", "bakery.application": fmt.Sprint(app.ID), "bakery.deployment": fmt.Sprint(d.ID)}
-	if err := w.runtime.Build(ctx, dir, app.DockerfilePath, d.Image, labels, func(line string) { log.Line(domain.StreamOut, line) }); err != nil {
+	if len(app.BuildEnv) > 0 {
+		info("Build args: %s", strings.Join(slices.Sorted(maps.Keys(app.BuildEnv)), ", "))
+	}
+	req := BuildRequest{Dir: dir, Dockerfile: app.DockerfilePath, Tag: d.Image, Labels: labels, BuildArgs: app.BuildEnv}
+	if err := w.runtime.Build(ctx, req, func(line string) { log.Line(domain.StreamOut, line) }); err != nil {
 		return fmt.Errorf("build failed: %w", err)
 	}
 	return w.goLive(ctx, d, app, info)
@@ -199,7 +206,7 @@ func (w *Worker) goLive(ctx context.Context, d *domain.Deployment, app Applicati
 	d.Container = domain.ContainerName(app.ID, d.ID)
 	info("Starting container %s", d.Container)
 	if err := w.runtime.Start(ctx, ContainerSpec{
-		Name: d.Container, Image: d.Image, ApplicationID: app.ID, DeploymentID: d.ID, Env: app.Env,
+		Name: d.Container, Image: d.Image, ApplicationID: app.ID, DeploymentID: d.ID, Env: app.RuntimeEnv,
 		Settle: !app.HealthCheck.Enabled,
 	}); err != nil {
 		return fmt.Errorf("container did not start: %w", err)

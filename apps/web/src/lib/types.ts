@@ -40,7 +40,8 @@ export type Project = {
   environments?: Environment[]
 }
 
-export type EnvVar = { name: string; value: string }
+/** build: handed to the build as a build arg; runtime: set in the container. */
+export type EnvVar = { name: string; value: string; build: boolean; runtime: boolean }
 
 export type ApplicationInput = Pick<Application, 'name' | 'git_url' | 'git_branch' | 'dockerfile_path' | 'port' | 'domain'> & {
   /** Omitted keeps the current one. */

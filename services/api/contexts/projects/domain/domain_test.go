@@ -62,13 +62,13 @@ func TestSlugify(t *testing.T) {
 }
 
 func TestCheckEnvVars(t *testing.T) {
-	if err := CheckEnvVars([]EnvVar{{"HELLO", "world"}, {"_x1", ""}}); err != nil {
+	if err := CheckEnvVars([]EnvVar{{"HELLO", "world", false, true}, {"_x1", "", true, false}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, vars := range [][]EnvVar{
-		{{"1ABC", "x"}},
-		{{"A-B", "x"}},
-		{{"A", "x"}, {"A", "y"}},
+		{{"1ABC", "x", false, true}},
+		{{"A-B", "x", false, true}},
+		{{"A", "x", false, true}, {"A", "y", false, true}},
 	} {
 		if field(CheckEnvVars(vars)) != "env" {
 			t.Errorf("%v should be refused", vars)
@@ -143,5 +143,40 @@ func TestHealthCheckNormalize(t *testing.T) {
 	in := ApplicationInput{Name: "x", GitURL: "https://github.com/a/b", Port: 80, HealthCheck: &HealthCheck{Path: "nope"}}
 	if _, err := in.Normalize(); field(err) != "health_check.path" {
 		t.Errorf("input with a bad check: %v", err)
+	}
+}
+
+func TestMergeVariables(t *testing.T) {
+	project := []EnvVar{{Name: "A", Value: "p", Runtime: true}, {Name: "B", Value: "p", Runtime: true}, {Name: "C", Value: "p", Build: true, Runtime: true}}
+	environment := []EnvVar{{Name: "B", Value: "e", Runtime: true}, {Name: "D", Value: "e", Build: true}}
+	application := []EnvVar{{Name: "C", Value: "a", Runtime: true}}
+	build, runtime := Merge(project, environment, application)
+	if len(build) != 1 || build["D"] != "e" {
+		t.Errorf("build %v", build)
+	}
+	if len(runtime) != 3 || runtime["A"] != "p" || runtime["B"] != "e" || runtime["C"] != "a" {
+		t.Errorf("runtime %v", runtime)
+	}
+	got := map[string]bool{}
+	for _, v := range Inherited(project, environment, application) {
+		got[v.From+":"+v.Name] = v.Overridden
+	}
+	want := map[string]bool{"environment:B": false, "environment:D": false, "project:A": false, "project:B": true, "project:C": true}
+	if len(got) != len(want) {
+		t.Fatalf("inherited %v", got)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s overridden %v, want %v", k, got[k], v)
+		}
+	}
+}
+
+func TestCheckEnvVarsScope(t *testing.T) {
+	if err := CheckEnvVars([]EnvVar{{Name: "A", Value: "x"}}); field(err) != "env" {
+		t.Fatalf("a variable with no scope: %v", err)
+	}
+	if err := CheckEnvVars([]EnvVar{{Name: "A", Build: true}}); err != nil {
+		t.Fatal(err)
 	}
 }

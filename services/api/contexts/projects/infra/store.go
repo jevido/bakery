@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	contractsorm "github.com/goravel/framework/contracts/database/orm"
 	"github.com/goravel/framework/database/orm"
@@ -85,15 +86,24 @@ func encryptPrivate(k domain.DeployKey) (string, error) {
 	return facades.Crypt().EncryptString(k.Private)
 }
 
-type envVarRecord struct {
+// variableRecord is a row of env_vars, environment_variables or
+// project_variables; Owner is the application, environment or project id.
+type variableRecord struct {
 	ID             uint64 `gorm:"primaryKey"`
-	ApplicationID  uint64
+	Owner          uint64 `gorm:"-"`
 	Name           string
 	ValueEncrypted string
+	Build          bool
+	Runtime        bool
 	orm.Timestamps
 }
 
-func (envVarRecord) TableName() string { return "env_vars" }
+// variableTables maps a variable level to its table and owner column.
+var variableTables = map[string][2]string{
+	domain.FromApplication: {"env_vars", "application_id"},
+	domain.FromEnvironment: {"environment_variables", "environment_id"},
+	domain.FromProject:     {"project_variables", "project_id"},
+}
 
 type Store struct{}
 
@@ -264,39 +274,45 @@ func (s Store) DeleteApplication(ctx context.Context, id uint64) error {
 	return err
 }
 
-func (s Store) EnvVars(ctx context.Context, applicationID uint64) ([]domain.EnvVar, error) {
-	var recs []envVarRecord
-	if err := s.query(ctx).Where("application_id", applicationID).OrderBy("name").Find(&recs); err != nil {
+func (s Store) Variables(ctx context.Context, level string, ownerID uint64) ([]domain.EnvVar, error) {
+	t := variableTables[level]
+	var recs []variableRecord
+	if err := s.query(ctx).Table(t[0]).Where(t[1], ownerID).OrderBy("name").Find(&recs); err != nil {
 		return nil, err
 	}
 	out := make([]domain.EnvVar, len(recs))
 	for i, r := range recs {
 		value, err := facades.Crypt().DecryptString(r.ValueEncrypted)
 		if err != nil {
-			return nil, errors.New("cannot decrypt env var " + r.Name + " (was APP_KEY changed?)")
+			return nil, errors.New("cannot decrypt variable " + r.Name + " (was APP_KEY changed?)")
 		}
-		out[i] = domain.EnvVar{Name: r.Name, Value: value}
+		out[i] = domain.EnvVar{Name: r.Name, Value: value, Build: r.Build, Runtime: r.Runtime}
 	}
 	return out, nil
 }
 
-func (s Store) ReplaceEnvVars(ctx context.Context, applicationID uint64, vars []domain.EnvVar) error {
-	recs := make([]envVarRecord, len(vars))
+func (s Store) ReplaceVariables(ctx context.Context, level string, ownerID uint64, vars []domain.EnvVar) error {
+	t := variableTables[level]
+	rows := make([]map[string]any, len(vars))
+	now := time.Now()
 	for i, v := range vars {
 		enc, err := facades.Crypt().EncryptString(v.Value)
 		if err != nil {
 			return err
 		}
-		recs[i] = envVarRecord{ApplicationID: applicationID, Name: v.Name, ValueEncrypted: enc}
+		rows[i] = map[string]any{
+			t[1]: ownerID, "name": v.Name, "value_encrypted": enc, "build": v.Build, "runtime": v.Runtime,
+			"created_at": now, "updated_at": now,
+		}
 	}
 	return facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
-		if _, err := tx.Where("application_id", applicationID).Delete(&envVarRecord{}); err != nil {
+		if _, err := tx.Table(t[0]).Where(t[1], ownerID).Delete(); err != nil {
 			return err
 		}
-		if len(recs) == 0 {
+		if len(rows) == 0 {
 			return nil
 		}
-		return tx.Create(&recs)
+		return tx.Table(t[0]).Create(&rows)
 	})
 }
 

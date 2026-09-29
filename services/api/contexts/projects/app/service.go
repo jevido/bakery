@@ -40,8 +40,10 @@ type Store interface {
 	UpdateApplication(ctx context.Context, a domain.Application) error
 	DeleteApplication(ctx context.Context, id uint64) error
 
-	EnvVars(ctx context.Context, applicationID uint64) ([]domain.EnvVar, error)
-	ReplaceEnvVars(ctx context.Context, applicationID uint64, vars []domain.EnvVar) error
+	// Variables returns the variables of one level (domain.FromProject,
+	// FromEnvironment or FromApplication) of the owner with that id.
+	Variables(ctx context.Context, level string, ownerID uint64) ([]domain.EnvVar, error)
+	ReplaceVariables(ctx context.Context, level string, ownerID uint64, vars []domain.EnvVar) error
 }
 
 // NewDeployKey generates a Deploy key with the comment on its public half.
@@ -280,15 +282,90 @@ func (s *Service) EnvVars(ctx context.Context, applicationID uint64) ([]domain.E
 	if _, err := s.Application(ctx, applicationID); err != nil {
 		return nil, err
 	}
-	return s.store.EnvVars(ctx, applicationID)
+	return s.store.Variables(ctx, domain.FromApplication, applicationID)
 }
 
 func (s *Service) ReplaceEnvVars(ctx context.Context, applicationID uint64, vars []domain.EnvVar) error {
 	if _, err := s.Application(ctx, applicationID); err != nil {
 		return err
 	}
+	return s.replace(ctx, domain.FromApplication, applicationID, vars)
+}
+
+func (s *Service) replace(ctx context.Context, level string, ownerID uint64, vars []domain.EnvVar) error {
 	if err := domain.CheckEnvVars(vars); err != nil {
 		return err
 	}
-	return s.store.ReplaceEnvVars(ctx, applicationID, vars)
+	return s.store.ReplaceVariables(ctx, level, ownerID, vars)
+}
+
+func (s *Service) ProjectVariables(ctx context.Context, projectID uint64) ([]domain.EnvVar, error) {
+	if _, err := s.Project(ctx, projectID); err != nil {
+		return nil, err
+	}
+	return s.store.Variables(ctx, domain.FromProject, projectID)
+}
+
+func (s *Service) ReplaceProjectVariables(ctx context.Context, projectID uint64, vars []domain.EnvVar) error {
+	if _, err := s.Project(ctx, projectID); err != nil {
+		return err
+	}
+	return s.replace(ctx, domain.FromProject, projectID, vars)
+}
+
+func (s *Service) environment(ctx context.Context, id uint64) (domain.Environment, error) {
+	e, found, err := s.store.Environment(ctx, id)
+	if err == nil && !found {
+		err = ErrNotFound
+	}
+	return e, err
+}
+
+func (s *Service) EnvironmentVariables(ctx context.Context, environmentID uint64) ([]domain.EnvVar, error) {
+	if _, err := s.environment(ctx, environmentID); err != nil {
+		return nil, err
+	}
+	return s.store.Variables(ctx, domain.FromEnvironment, environmentID)
+}
+
+func (s *Service) ReplaceEnvironmentVariables(ctx context.Context, environmentID uint64, vars []domain.EnvVar) error {
+	if _, err := s.environment(ctx, environmentID); err != nil {
+		return err
+	}
+	return s.replace(ctx, domain.FromEnvironment, environmentID, vars)
+}
+
+// Variables returns an Application's own variables and the Shared ones it
+// inherits from its Environment and Project.
+func (s *Service) Variables(ctx context.Context, applicationID uint64) (own []domain.EnvVar, inherited []domain.InheritedVariable, err error) {
+	a, err := s.Application(ctx, applicationID)
+	if err != nil {
+		return nil, nil, err
+	}
+	project, environment, own, err := s.levels(ctx, a)
+	if err != nil {
+		return nil, nil, err
+	}
+	return own, domain.Inherited(project, environment, own), nil
+}
+
+// MergedVariables is what an Application's build and Container get.
+func (s *Service) MergedVariables(ctx context.Context, a domain.Application) (build, runtime map[string]string, err error) {
+	project, environment, own, err := s.levels(ctx, a)
+	if err != nil {
+		return nil, nil, err
+	}
+	build, runtime = domain.Merge(project, environment, own)
+	return build, runtime, nil
+}
+
+func (s *Service) levels(ctx context.Context, a domain.Application) (project, environment, own []domain.EnvVar, err error) {
+	if project, err = s.store.Variables(ctx, domain.FromProject, a.ProjectID); err != nil {
+		return
+	}
+	if environment, err = s.store.Variables(ctx, domain.FromEnvironment, a.EnvironmentID); err != nil {
+		return
+	}
+	own, err = s.store.Variables(ctx, domain.FromApplication, a.ID)
+	return
 }

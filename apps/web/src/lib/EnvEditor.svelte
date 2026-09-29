@@ -28,7 +28,7 @@
   })
 
   function add() {
-    rows.push({ name: '', value: '', key: nextKey++, revealed: true })
+    rows.push({ name: '', value: '', build: false, runtime: true, key: nextKey++, revealed: true })
     saved = false
   }
 
@@ -43,7 +43,7 @@
     error = ''
     saved = false
     try {
-      const env = rows.filter((r) => r.name.trim() !== '').map((r) => ({ name: r.name.trim(), value: r.value }))
+      const env = rows.filter((r) => r.name.trim() !== '').map((r) => ({ name: r.name.trim(), value: r.value, build: r.build, runtime: r.runtime }))
       const res = await api<{ env: EnvVar[] }>('PUT', `/applications/${applicationId}/env`, { env })
       rows = toRows(res.env)
       saved = true
