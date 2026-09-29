@@ -7,7 +7,10 @@ depend on each other.
 
 | Context | Subdomain | Hosted in | Owns |
 | ------- | --------- | --------- | ---- |
-|         | core / supporting / generic | `services/<unit>` | |
+| deployments | core | `services/api` (`contexts/deployments`) | Deployments, their logs, talking to Podman (builds, containers) |
+| projects | supporting | `services/api` (`contexts/projects`) | Projects, Environments, Applications, Env vars |
+| routing | supporting | `services/api` (`contexts/routing`) | Routes and the Proxy (the Caddy container and its config) |
+| identity | generic | `services/api` (`contexts/identity`) | The Owner, Setup, Sessions |
 
 - **Core:** where the project competes. Gets the most care and the richest model.
 - **Supporting:** needed and specific to this project, but not the differentiator.
@@ -21,20 +24,23 @@ adapt to.
 
 | Upstream | Downstream | Pattern | Through |
 | -------- | ---------- | ------- | ------- |
-|          |            |         |         |
+| identity | projects, deployments, routing | open host service | The `auth` HTTP middleware; the others only learn "an Owner is signed in" |
+| projects | deployments | customer/supplier | `projects.ApplicationForDeploy(id)` returns an `ApplicationSnapshot` (Source, Dockerfile path, port, Domain, decrypted Env vars) |
+| routing | deployments | customer/supplier | `routing.SwitchRoute(applicationID, domain, container, port)`, called synchronously in a Deployment's route step, so the old Container is removed only after traffic has moved |
+| projects | routing | published language | `ApplicationDeleted` event: routing drops the Application's Route |
 
 Patterns: *customer/supplier*, *conformist*, *anticorruption layer*,
 *open host service* / *published language*, *shared kernel*, *separate ways*.
 A shared kernel is a deliberate exception and needs a line saying why.
 
-"Through" names the contract: an API, a set of domain events, a module
-interface. Never another context's tables or internal types.
-
 ## Diagram
-
-Optional. Keep it in sync with the tables above, or leave it out.
 
 ```mermaid
 flowchart LR
-  %% A -->|events| B
+  identity -->|auth middleware| projects
+  identity --> deployments
+  identity --> routing
+  projects -->|ApplicationForDeploy| deployments
+  routing -->|SwitchRoute| deployments
+  projects -->|ApplicationDeleted| routing
 ```
