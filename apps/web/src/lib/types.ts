@@ -16,6 +16,8 @@ export type Application = {
   public_url: string
 }
 
+export type Webhook = { path: string; secret: string; auto_deploy: boolean }
+
 export type KnownHost = { id: number; host: string; fingerprints: string[]; created_at: string }
 
 export type Environment = { id: number; name: string; applications: Application[] }

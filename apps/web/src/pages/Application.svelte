@@ -7,6 +7,7 @@
   import EnvEditor from '../lib/EnvEditor.svelte'
   import { go, href } from '../lib/router.svelte'
   import StatusBadge from '../lib/StatusBadge.svelte'
+  import Webhook from '../lib/Webhook.svelte'
   import type { Application, ApplicationInput, Deployment } from '../lib/types'
 
   let { id }: { id: number } = $props()
@@ -43,10 +44,10 @@
       .catch((e) => (loadError = e.message))
   })
 
-  // Keeps the list and badge current while a deployment is under way.
+  // Keeps the list and badge current: quickly while a deployment is under
+  // way, slower otherwise so one started by a push shows up by itself.
   $effect(() => {
-    if (!active) return
-    const t = setInterval(() => loadDeployments().catch(() => {}), 3000)
+    const t = setInterval(() => loadDeployments().catch(() => {}), active ? 3000 : 5000)
     return () => clearInterval(t)
   })
 
@@ -134,6 +135,7 @@
     {:else}
       <p class="muted">A public https repository needs no key. For a private one, use its SSH URL (git@host:owner/repo.git) under General.</p>
     {/if}
+    <Webhook applicationId={application.id} />
   {:else if tab === 'general'}
     {#key application.id}
       <ApplicationForm
