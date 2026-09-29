@@ -149,7 +149,7 @@
     <h2>Danger zone</h2>
     <button class="danger" onclick={remove}>Delete application</button>
   {:else}
-    <EnvEditor applicationId={application.id} />
+    <EnvEditor path={`/applications/${application.id}/env`} />
   {/if}
 {/if}
 

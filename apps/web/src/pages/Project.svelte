@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, ApiError } from '../lib/api'
   import ApplicationForm from '../lib/ApplicationForm.svelte'
+  import EnvEditor from '../lib/EnvEditor.svelte'
   import { go, href } from '../lib/router.svelte'
   import type { Application, ApplicationInput, Project } from '../lib/types'
 
@@ -57,6 +58,14 @@
   </div>
   {#if deleteError}<p class="error">{deleteError}</p>{/if}
 
+  <details>
+    <summary>Shared variables of the project</summary>
+    <EnvEditor
+      path={`/projects/${project.id}/variables`}
+      description="Every application in this project gets these, unless its environment or the application sets the same name."
+    />
+  </details>
+
   {#each project.environments ?? [] as env (env.id)}
     <section>
       <div class="head">
@@ -65,6 +74,13 @@
           <button class="primary" onclick={() => (addingTo = env.id)}>New application</button>
         {/if}
       </div>
+      <details>
+        <summary>Shared variables of {env.name}</summary>
+        <EnvEditor
+          path={`/environments/${env.id}/variables`}
+          description={`Every application in ${env.name} gets these, unless it sets the same name. They win over the project's.`}
+        />
+      </details>
       {#if addingTo === env.id}
         <div class="card">
           <ApplicationForm
@@ -121,5 +137,12 @@
   }
   h2 {
     text-transform: capitalize;
+  }
+  details {
+    margin: 0.5rem 0;
+  }
+  summary {
+    cursor: pointer;
+    margin-bottom: 0.5rem;
   }
 </style>

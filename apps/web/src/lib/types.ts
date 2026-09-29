@@ -43,6 +43,9 @@ export type Project = {
 /** build: handed to the build as a build arg; runtime: set in the container. */
 export type EnvVar = { name: string; value: string; build: boolean; runtime: boolean }
 
+/** A shared variable as seen from an application; overridden when a narrower level sets the same name. */
+export type InheritedVariable = EnvVar & { from: 'project' | 'environment'; overridden: boolean }
+
 export type ApplicationInput = Pick<Application, 'name' | 'git_url' | 'git_branch' | 'dockerfile_path' | 'port' | 'domain'> & {
   /** Omitted keeps the current one. */
   health_check?: HealthCheck
