@@ -35,6 +35,7 @@ type deploymentJSON struct {
 	CommitAuthor  string     `json:"commit_author"`
 	Image         string     `json:"image"`
 	Container     string     `json:"container"`
+	RollbackOf    *uint64    `json:"rollback_of"`
 	Error         string     `json:"error"`
 	CreatedAt     time.Time  `json:"created_at"`
 	StartedAt     *time.Time `json:"started_at"`
@@ -45,7 +46,7 @@ func ToJSON(d domain.Deployment) deploymentJSON {
 	return deploymentJSON{
 		ID: d.ID, ApplicationID: d.ApplicationID, Status: string(d.Status), Active: d.Status.Active(),
 		Trigger: string(d.Trigger), Branch: d.Branch, CommitSHA: d.CommitSHA,
-		CommitMessage: d.CommitMessage, CommitAuthor: d.CommitAuthor, Image: d.Image, Container: d.Container, Error: d.Error,
+		CommitMessage: d.CommitMessage, CommitAuthor: d.CommitAuthor, Image: d.Image, Container: d.Container, RollbackOf: d.RollbackOf, Error: d.Error,
 		CreatedAt: d.CreatedAt, StartedAt: d.StartedAt, FinishedAt: d.FinishedAt,
 	}
 }
@@ -54,7 +55,8 @@ func (c *Controller) fail(ctx contractshttp.Context, err error) contractshttp.Re
 	switch {
 	case errors.Is(err, app.ErrNotFound), c.isNotFound(err):
 		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
-	case errors.Is(err, domain.ErrAlreadyQueued), errors.Is(err, app.ErrNotCancellable):
+	case errors.Is(err, domain.ErrAlreadyQueued), errors.Is(err, app.ErrNotCancellable),
+		errors.Is(err, domain.ErrNotRollbackTarget), errors.Is(err, app.ErrImageGone):
 		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
 	}
 	return respond.ServerError(ctx, err)
@@ -104,6 +106,18 @@ func (c *Controller) Show(ctx contractshttp.Context) contractshttp.Response {
 		return c.fail(ctx, err)
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"deployment": ToJSON(d)})
+}
+
+func (c *Controller) Rollback(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := RouteID(ctx)
+	if !ok {
+		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
+	}
+	d, err := c.service.Rollback(ctx.Context(), id)
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	return ctx.Response().Json(contractshttp.StatusCreated, contractshttp.Json{"deployment": ToJSON(d)})
 }
 
 // Cancel answers 200 with a Deployment cancelled at once (it was queued),

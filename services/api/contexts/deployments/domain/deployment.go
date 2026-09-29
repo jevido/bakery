@@ -42,14 +42,18 @@ func (s Status) Active() bool {
 type Trigger string
 
 const (
-	TriggerManual  Trigger = "manual"
-	TriggerWebhook Trigger = "webhook"
+	TriggerManual   Trigger = "manual"
+	TriggerWebhook  Trigger = "webhook"
+	TriggerRollback Trigger = "rollback"
 )
 
 var (
 	ErrAlreadyQueued = errors.New("a deployment of this application is already queued")
 	// ErrCancelled is why a cancelled Deployment's work stopped.
 	ErrCancelled = errors.New("deployment cancelled")
+	// ErrNotRollbackTarget is a Rollback to a Deployment that did not
+	// finish, or has no Image.
+	ErrNotRollbackTarget = errors.New("only a finished deployment can be rolled back to")
 )
 
 type Deployment struct {
@@ -63,10 +67,12 @@ type Deployment struct {
 	CommitAuthor  string
 	Image         string
 	Container     string
-	Error         string
-	CreatedAt     time.Time
-	StartedAt     *time.Time
-	FinishedAt    *time.Time
+	// RollbackOf is the Deployment whose Image a Rollback starts again.
+	RollbackOf *uint64
+	Error      string
+	CreatedAt  time.Time
+	StartedAt  *time.Time
+	FinishedAt *time.Time
 }
 
 // Advance moves the Deployment forward to status. Statuses only move
@@ -92,6 +98,25 @@ func (d *Deployment) Fail(reason string) error {
 	}
 	d.Status, d.Error = Failed, reason
 	return nil
+}
+
+// NewDeployment is a queued Deployment of the Application.
+func NewDeployment(applicationID uint64, trigger Trigger) Deployment {
+	return Deployment{ApplicationID: applicationID, Status: Queued, Trigger: trigger}
+}
+
+// NewRollback is a queued Deployment that starts of's Image again, showing
+// of's branch and commit. Only a finished Deployment with an Image can be
+// rolled back to.
+func NewRollback(of Deployment) (Deployment, error) {
+	if of.Status != Finished || of.Image == "" {
+		return Deployment{}, ErrNotRollbackTarget
+	}
+	id := of.ID
+	d := NewDeployment(of.ApplicationID, TriggerRollback)
+	d.RollbackOf, d.Image = &id, of.Image
+	d.Branch, d.CommitSHA, d.CommitMessage, d.CommitAuthor = of.Branch, of.CommitSHA, of.CommitMessage, of.CommitAuthor
+	return d, nil
 }
 
 // Cancel ends an active Deployment as cancelled.

@@ -26,6 +26,7 @@ type deploymentRecord struct {
 	CommitAuthor  string
 	Image         string
 	ContainerName string
+	RollbackOf    *uint64
 	Error         string
 	StartedAt     *time.Time
 	FinishedAt    *time.Time
@@ -39,7 +40,7 @@ func (r deploymentRecord) toDomain() domain.Deployment {
 	return domain.Deployment{
 		ID: r.ID, ApplicationID: r.ApplicationID, Status: domain.Status(r.Status), Trigger: domain.Trigger(r.Trigger),
 		Branch: r.Branch, CommitSHA: r.CommitSha, CommitMessage: r.CommitMessage, CommitAuthor: r.CommitAuthor,
-		Image: r.Image, Container: r.ContainerName, Error: r.Error, CreatedAt: r.CreatedAt,
+		Image: r.Image, Container: r.ContainerName, RollbackOf: r.RollbackOf, Error: r.Error, CreatedAt: r.CreatedAt,
 		StartedAt: r.StartedAt, FinishedAt: r.FinishedAt,
 	}
 }
@@ -55,9 +56,13 @@ func (Store) query(ctx context.Context) contractsorm.Query {
 	return facades.Orm().WithContext(ctx).Query()
 }
 
-func (s Store) Queue(ctx context.Context, applicationID uint64, trigger domain.Trigger) (domain.Deployment, error) {
+func (s Store) Queue(ctx context.Context, d domain.Deployment) (domain.Deployment, error) {
 	now := time.Now()
-	rec := deploymentRecord{ApplicationID: applicationID, Status: string(domain.Queued), Trigger: string(trigger), CreatedAt: now, UpdatedAt: now}
+	rec := deploymentRecord{
+		ApplicationID: d.ApplicationID, Status: string(domain.Queued), Trigger: string(d.Trigger),
+		Branch: d.Branch, CommitSha: d.CommitSHA, CommitMessage: d.CommitMessage, CommitAuthor: d.CommitAuthor,
+		Image: d.Image, RollbackOf: d.RollbackOf, CreatedAt: now, UpdatedAt: now,
+	}
 	if err := s.query(ctx).Create(&rec); err != nil {
 		if strings.Contains(err.Error(), "deployments_one_queued") {
 			return domain.Deployment{}, domain.ErrAlreadyQueued

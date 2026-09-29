@@ -46,6 +46,27 @@ func TestCancel(t *testing.T) {
 	}
 }
 
+func TestNewRollback(t *testing.T) {
+	of := Deployment{ID: 7, ApplicationID: 3, Status: Finished, Image: "localhost/bakery/x:7", Branch: "main", CommitSHA: "abc", CommitMessage: "Fix", CommitAuthor: "Jane"}
+	d, err := NewRollback(of)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Status != Queued || d.Trigger != TriggerRollback || d.RollbackOf == nil || *d.RollbackOf != 7 || d.Image != of.Image || d.ApplicationID != 3 || d.CommitMessage != "Fix" {
+		t.Fatalf("%+v", d)
+	}
+	for _, bad := range []Deployment{{ID: 1, Status: Failed, Image: "i"}, {ID: 1, Status: Building, Image: "i"}, {ID: 1, Status: Finished}} {
+		if _, err := NewRollback(bad); err == nil {
+			t.Errorf("rollback to %+v allowed", bad)
+		}
+	}
+	// A Rollback skips cloning and building.
+	d.Status = Cloning
+	if err := d.Advance(Starting); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestNames(t *testing.T) {
 	if got := ContainerName(3, 17); got != "bakery-app-3-17" {
 		t.Fatal(got)

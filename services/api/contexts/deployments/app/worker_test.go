@@ -19,15 +19,15 @@ type memStore struct {
 	saves []domain.Status
 }
 
-func (m *memStore) Queue(_ context.Context, appID uint64, trigger domain.Trigger) (domain.Deployment, error) {
+func (m *memStore) Queue(_ context.Context, d domain.Deployment) (domain.Deployment, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, d := range m.items {
-		if d.ApplicationID == appID && d.Status == domain.Queued {
+	for _, q := range m.items {
+		if q.ApplicationID == d.ApplicationID && q.Status == domain.Queued {
 			return domain.Deployment{}, domain.ErrAlreadyQueued
 		}
 	}
-	d := domain.Deployment{ID: uint64(len(m.items) + 1), ApplicationID: appID, Status: domain.Queued, Trigger: trigger}
+	d.ID = uint64(len(m.items) + 1)
 	m.items = append(m.items, d)
 	return d, nil
 }
@@ -127,6 +127,13 @@ type fakeRuntime struct {
 	probes []probe
 	probed []string
 	specs  []ContainerSpec
+	built  int
+	// gone lists Images that no longer exist.
+	gone map[string]bool
+}
+
+func (r *fakeRuntime) ImageExists(_ context.Context, image string) (bool, error) {
+	return !r.gone[image], nil
 }
 
 type probe struct {
@@ -142,6 +149,7 @@ func (r *fakeRuntime) Probe(_ context.Context, container, url string, _ time.Dur
 }
 
 func (r *fakeRuntime) Build(ctx context.Context, _, _, _ string, _ map[string]string, out func(string)) error {
+	r.built++
 	out("STEP 1/1: FROM scratch")
 	if r.building != nil {
 		close(r.building)
@@ -438,5 +446,72 @@ func TestCancelRunning(t *testing.T) {
 	}
 	if _, err := s.service.Deploy(ctx, 1); err != nil {
 		t.Fatalf("deploy after cancel: %v", err)
+	}
+}
+
+type countingSource struct {
+	fakeSource
+	clones *int
+}
+
+func (c countingSource) Clone(ctx context.Context, req CloneRequest, out func(string, string)) (Commit, error) {
+	*c.clones++
+	return c.fakeSource.Clone(ctx, req, out)
+}
+
+func TestRollback(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	clones := 0
+	s.worker.source = countingSource{clones: &clones}
+	first, _ := s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	if clones != 2 || s.routes["whoami.localhost"] != "bakery-app-1-2" {
+		t.Fatalf("setup: clones %d, routes %v", clones, s.routes)
+	}
+
+	d, err := s.service.Rollback(ctx, first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Trigger != domain.TriggerRollback || d.Image != "localhost/bakery/whoami:1" || d.CommitMessage != "Fix the login" {
+		t.Fatalf("queued rollback: %+v", d)
+	}
+	s.worker.RunOnce(ctx)
+	got, _ := s.service.Deployment(ctx, d.ID)
+	if got.Status != domain.Finished || got.Image != "localhost/bakery/whoami:1" || got.Container != "bakery-app-1-3" {
+		t.Fatalf("rollback: %+v\n%s", got, s.logs.text())
+	}
+	if clones != 2 || s.runtime.built != 2 {
+		t.Fatalf("rollback cloned or built: clones %d, builds %d", clones, s.runtime.built)
+	}
+	if s.routes["whoami.localhost"] != "bakery-app-1-3" || s.runtime.running["bakery-app-1-2"] {
+		t.Fatalf("routes %v, containers %v", s.routes, s.runtime.running)
+	}
+	if last := s.runtime.specs[len(s.runtime.specs)-1]; last.Image != "localhost/bakery/whoami:1" || last.Env["HELLO"] != "world" {
+		t.Fatalf("started %+v", last)
+	}
+	if !strings.Contains(s.logs.text(), "Rolling back to deployment 1") {
+		t.Errorf("log:\n%s", s.logs.text())
+	}
+}
+
+func TestRollbackRefused(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	ok, _ := s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	s.runtime.buildErr = errors.New("boom")
+	failed, _ := s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+
+	if _, err := s.service.Rollback(ctx, failed.ID); !errors.Is(err, domain.ErrNotRollbackTarget) {
+		t.Fatalf("rollback to failed: %v", err)
+	}
+	s.runtime.gone = map[string]bool{"localhost/bakery/whoami:1": true}
+	if _, err := s.service.Rollback(ctx, ok.ID); !errors.Is(err, ErrImageGone) {
+		t.Fatalf("rollback to a removed image: %v", err)
 	}
 }

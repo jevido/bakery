@@ -19,5 +19,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000004CreateKnownHostsTable{},
 		&migrations.M20260930000005CreateWebhooksTable{},
 		&migrations.M20260930000006AddApplicationHealthChecks{},
+		&migrations.M20260930000007AddDeploymentRollbackOf{},
 	}
 }

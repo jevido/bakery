@@ -123,7 +123,7 @@ func (w *Webhooks) ReceivePush(ctx context.Context, applicationID uint64, header
 	if branch != app.GitBranch {
 		return PushOutcome{Ignored: fmt.Sprintf("push to %s, the application deploys %s", branch, app.GitBranch)}, nil
 	}
-	d, err := w.service.queue(ctx, applicationID, domain.TriggerWebhook)
+	d, err := w.service.queue(ctx, domain.NewDeployment(applicationID, domain.TriggerWebhook))
 	if errors.Is(err, domain.ErrAlreadyQueued) {
 		return PushOutcome{Ignored: "a deployment is already queued"}, nil
 	}

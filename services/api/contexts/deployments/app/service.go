@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -15,6 +16,8 @@ type Service struct {
 	applications Applications
 	knownHosts   KnownHosts
 	wake         chan struct{}
+	// images reports whether an Image exists; set by the Worker's Runtime.
+	images func(ctx context.Context, image string) (bool, error)
 
 	mu sync.Mutex
 	// running holds the cancel function of each Deployment the Worker is
@@ -44,12 +47,36 @@ func (s *Service) Deploy(ctx context.Context, applicationID uint64) (domain.Depl
 	if _, err := s.applications(ctx, applicationID); err != nil {
 		return domain.Deployment{}, err
 	}
-	return s.queue(ctx, applicationID, domain.TriggerManual)
+	return s.queue(ctx, domain.NewDeployment(applicationID, domain.TriggerManual))
 }
 
-// queue queues a Deployment with the trigger and wakes the Worker.
-func (s *Service) queue(ctx context.Context, applicationID uint64, trigger domain.Trigger) (domain.Deployment, error) {
-	d, err := s.store.Queue(ctx, applicationID, trigger)
+// Rollback queues a Deployment that starts the given Deployment's Image
+// again with today's runtime settings.
+func (s *Service) Rollback(ctx context.Context, id uint64) (domain.Deployment, error) {
+	of, err := s.Deployment(ctx, id)
+	if err != nil {
+		return of, err
+	}
+	d, err := domain.NewRollback(of)
+	if err != nil {
+		return d, err
+	}
+	if s.images == nil {
+		return domain.Deployment{}, errors.New("no runtime to check images with")
+	}
+	ok, err := s.images(ctx, d.Image)
+	if err != nil {
+		return domain.Deployment{}, err
+	}
+	if !ok {
+		return domain.Deployment{}, fmt.Errorf("%w (%s)", ErrImageGone, d.Image)
+	}
+	return s.queue(ctx, d)
+}
+
+// queue stores a queued Deployment and wakes the Worker.
+func (s *Service) queue(ctx context.Context, d domain.Deployment) (domain.Deployment, error) {
+	d, err := s.store.Queue(ctx, d)
 	if err != nil {
 		return domain.Deployment{}, err
 	}

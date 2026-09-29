@@ -150,6 +150,10 @@ func (r Runtime) remove(name string) {
 	_ = r.Podman.RemoveContainer(ctx, name)
 }
 
+func (r Runtime) ImageExists(ctx context.Context, image string) (bool, error) {
+	return r.Podman.ImageExists(ctx, image)
+}
+
 func (r Runtime) Remove(ctx context.Context, name string) error {
 	err := r.Podman.RemoveContainer(ctx, name)
 	if podman.IsNotFound(err) {

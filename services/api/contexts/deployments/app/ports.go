@@ -15,13 +15,15 @@ var (
 	// ErrNotCancellable is a Cancel of a Deployment that has ended, or whose
 	// Route has already moved.
 	ErrNotCancellable = errors.New("deployment can no longer be cancelled")
+	// ErrImageGone is a Rollback to a Deployment whose Image was removed.
+	ErrImageGone = errors.New("the image of that deployment is gone")
 )
 
 // Store keeps Deployments.
 type Store interface {
-	// Queue adds a queued Deployment, or returns domain.ErrAlreadyQueued
-	// when the Application already has a queued one.
-	Queue(ctx context.Context, applicationID uint64, trigger domain.Trigger) (domain.Deployment, error)
+	// Queue stores a new queued Deployment, or returns
+	// domain.ErrAlreadyQueued when the Application already has a queued one.
+	Queue(ctx context.Context, d domain.Deployment) (domain.Deployment, error)
 	// ClaimNext moves the oldest queued Deployment whose Application has no
 	// running one to cloning and returns it; concurrent workers never claim
 	// the same one.
@@ -135,6 +137,8 @@ type Runtime interface {
 	// RemoveOthers removes the Application's Containers except keep, and
 	// returns the names removed.
 	RemoveOthers(ctx context.Context, applicationID uint64, keep string) ([]string, error)
+	// ImageExists reports whether the Image is still there.
+	ImageExists(ctx context.Context, image string) (bool, error)
 	// Remove removes one Container.
 	Remove(ctx context.Context, name string) error
 	// RemoveAll removes every Container of the Application.

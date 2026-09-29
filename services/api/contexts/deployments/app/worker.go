@@ -43,6 +43,8 @@ func sleep(ctx context.Context, d time.Duration) error {
 }
 
 func NewWorker(service *Service, source Source, runtime Runtime, router Router, workDir string) *Worker {
+	// Rollbacks check with the same Runtime that the Image is still there.
+	service.images = runtime.ImageExists
 	return &Worker{
 		service: service, source: source, runtime: runtime, router: router, WorkDir: workDir,
 		Timeout: 30 * time.Minute, Poll: 2 * time.Second, Log: func(string, ...any) {}, now: time.Now, sleep: sleep,
@@ -139,6 +141,18 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 		return fmt.Errorf("reading the application: %w", err)
 	}
 
+	if d.RollbackOf != nil {
+		info("Rolling back to deployment %d (image %s, commit %s)", *d.RollbackOf, d.Image, shortSHA(d.CommitSHA))
+		ok, err := w.runtime.ImageExists(ctx, d.Image)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("%w (%s)", ErrImageGone, d.Image)
+		}
+		return w.goLive(ctx, d, app, info)
+	}
+
 	// Clone.
 	dir := filepath.Join(w.WorkDir, fmt.Sprintf("deployment-%d", d.ID))
 	_ = os.RemoveAll(dir)
@@ -172,7 +186,12 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 	if err := w.runtime.Build(ctx, dir, app.DockerfilePath, d.Image, labels, func(line string) { log.Line(domain.StreamOut, line) }); err != nil {
 		return fmt.Errorf("build failed: %w", err)
 	}
+	return w.goLive(ctx, d, app, info)
+}
 
+// goLive starts the Deployment's Image, waits for it to be healthy, moves
+// the Route to it and removes the Containers it replaces.
+func (w *Worker) goLive(ctx context.Context, d *domain.Deployment, app Application, info func(string, ...any)) error {
 	// Start.
 	if err := w.advance(ctx, d, domain.Starting); err != nil {
 		return err

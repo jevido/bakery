@@ -85,6 +85,7 @@ func Routes(r route.Router) {
 		r.Get("/api/applications/{id}/deployments", c.List)
 		r.Get("/api/deployments/{id}", c.Show)
 		r.Post("/api/deployments/{id}/cancel", c.Cancel)
+		r.Post("/api/deployments/{id}/rollback", c.Rollback)
 		r.Get("/api/known-hosts", c.KnownHosts)
 		r.Delete("/api/known-hosts/{id}", c.ForgetKnownHost)
 	})
