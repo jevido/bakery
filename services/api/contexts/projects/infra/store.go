@@ -35,25 +35,37 @@ type environmentRecord struct {
 func (environmentRecord) TableName() string { return "environments" }
 
 type applicationRecord struct {
-	ID             uint64 `gorm:"primaryKey"`
-	EnvironmentID  uint64
-	Name           string
-	Slug           string
-	GitURL         string `gorm:"column:git_url"`
-	GitBranch      string
-	DockerfilePath string
-	Port           int
-	Domain         string
+	ID                        uint64 `gorm:"primaryKey"`
+	EnvironmentID             uint64
+	Name                      string
+	Slug                      string
+	GitURL                    string `gorm:"column:git_url"`
+	GitBranch                 string
+	DockerfilePath            string
+	Port                      int
+	Domain                    string
+	DeployKeyPublic           string
+	DeployKeyPrivateEncrypted string
 	orm.Timestamps
 }
 
 func (applicationRecord) TableName() string { return "applications" }
 
+// toDomain leaves the Deploy key's private half out; only Application(id)
+// decrypts it.
 func (r applicationRecord) toDomain(projectID uint64) domain.Application {
 	return domain.Application{
 		ID: r.ID, EnvironmentID: r.EnvironmentID, ProjectID: projectID, Name: r.Name, Slug: r.Slug,
 		GitURL: r.GitURL, GitBranch: r.GitBranch, DockerfilePath: r.DockerfilePath, Port: r.Port, Domain: r.Domain,
+		DeployKey: domain.DeployKey{Public: r.DeployKeyPublic},
 	}
+}
+
+func encryptPrivate(k domain.DeployKey) (string, error) {
+	if k.Private == "" {
+		return "", nil
+	}
+	return facades.Crypt().EncryptString(k.Private)
 }
 
 type envVarRecord struct {
@@ -172,9 +184,14 @@ func (s Store) DomainTaken(ctx context.Context, d string, exceptID uint64) (bool
 }
 
 func (s Store) CreateApplication(ctx context.Context, a domain.Application) (domain.Application, error) {
+	private, err := encryptPrivate(a.DeployKey)
+	if err != nil {
+		return domain.Application{}, err
+	}
 	rec := applicationRecord{
 		EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug, GitURL: a.GitURL, GitBranch: a.GitBranch,
 		DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain,
+		DeployKeyPublic: a.DeployKey.Public, DeployKeyPrivateEncrypted: private,
 	}
 	if err := s.query(ctx).Create(&rec); err != nil {
 		return domain.Application{}, uniqueViolation(err)
@@ -191,13 +208,29 @@ func (s Store) Application(ctx context.Context, id uint64) (domain.Application, 
 	if _, err := first(s.query(ctx).Where("id", rec.EnvironmentID), &env); err != nil {
 		return domain.Application{}, false, err
 	}
-	return rec.toDomain(env.ProjectID), true, nil
+	a := rec.toDomain(env.ProjectID)
+	if rec.DeployKeyPrivateEncrypted != "" {
+		private, err := facades.Crypt().DecryptString(rec.DeployKeyPrivateEncrypted)
+		if err != nil {
+			return domain.Application{}, false, errors.New("cannot decrypt the deploy key of " + rec.Slug + " (was APP_KEY changed?)")
+		}
+		a.DeployKey.Private = private
+	}
+	return a, true, nil
 }
 
+// UpdateApplication writes the Deploy key as given: the service passes the
+// Application it read (private half included), so an unchanged key is
+// rewritten, not lost.
 func (s Store) UpdateApplication(ctx context.Context, a domain.Application) error {
-	_, err := s.query(ctx).Model(&applicationRecord{}).Where("id", a.ID).Update(map[string]any{
+	private, err := encryptPrivate(a.DeployKey)
+	if err != nil {
+		return err
+	}
+	_, err = s.query(ctx).Model(&applicationRecord{}).Where("id", a.ID).Update(map[string]any{
 		"name": a.Name, "git_url": a.GitURL, "git_branch": a.GitBranch,
 		"dockerfile_path": a.DockerfilePath, "port": a.Port, "domain": a.Domain,
+		"deploy_key_public": a.DeployKey.Public, "deploy_key_private_encrypted": private,
 	})
 	return uniqueViolation(err)
 }

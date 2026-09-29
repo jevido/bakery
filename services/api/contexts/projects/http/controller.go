@@ -32,6 +32,8 @@ type applicationJSON struct {
 	DockerfilePath string `json:"dockerfile_path"`
 	Port           int    `json:"port"`
 	Domain         string `json:"domain"`
+	// DeployKeyPublic is empty for an https Source.
+	DeployKeyPublic string `json:"deploy_key_public"`
 	// PublicURL is where the Application is reached through the Proxy,
 	// with the Proxy's HTTPS port when it is not 443 (development).
 	PublicURL string `json:"public_url"`
@@ -41,7 +43,7 @@ func applicationToJSON(a domain.Application) applicationJSON {
 	return applicationJSON{
 		ID: a.ID, ProjectID: a.ProjectID, EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug,
 		GitURL: a.GitURL, GitBranch: a.GitBranch, DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain,
-		PublicURL: publicURL(a.Domain),
+		DeployKeyPublic: a.DeployKey.Public, PublicURL: publicURL(a.Domain),
 	}
 }
 
@@ -223,6 +225,19 @@ func (c *Controller) UpdateApplication(ctx contractshttp.Context) contractshttp.
 		return respond.BadBody(ctx)
 	}
 	a, err := c.service.UpdateApplication(ctx.Context(), aid, req.input())
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"application": applicationToJSON(a)})
+}
+
+// RegenerateDeployKey answers with the Application and its new public key.
+func (c *Controller) RegenerateDeployKey(ctx contractshttp.Context) contractshttp.Response {
+	aid, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	a, err := c.service.RegenerateDeployKey(ctx.Context(), aid)
 	if err != nil {
 		return fail(ctx, err)
 	}

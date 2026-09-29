@@ -29,10 +29,8 @@ func TestApplicationInputNormalize(t *testing.T) {
 	}{
 		{func(i *ApplicationInput) { i.Name = " " }, "name"},
 		{func(i *ApplicationInput) { i.Name = "!!!" }, "name"},
-		{func(i *ApplicationInput) { i.GitURL = "ssh://git@github.com/x/y" }, "git_url"},
 		{func(i *ApplicationInput) { i.GitURL = "file:///etc" }, "git_url"},
 		{func(i *ApplicationInput) { i.GitURL = "/home/me/repo" }, "git_url"},
-		{func(i *ApplicationInput) { i.GitURL = "git@github.com:x/y.git" }, "git_url"},
 		{func(i *ApplicationInput) { i.GitURL = "https://user:pw@github.com/x/y" }, "git_url"},
 		{func(i *ApplicationInput) { i.GitBranch = "--upload-pack=x" }, "git_branch"},
 		{func(i *ApplicationInput) { i.DockerfilePath = "../Dockerfile" }, "dockerfile_path"},
@@ -74,6 +72,42 @@ func TestCheckEnvVars(t *testing.T) {
 	} {
 		if field(CheckEnvVars(vars)) != "env" {
 			t.Errorf("%v should be refused", vars)
+		}
+	}
+}
+
+func TestGitURLKinds(t *testing.T) {
+	for raw, want := range map[string]string{
+		"https://github.com/x/y":                "https",
+		"ssh://git@github.com/x/y.git":          "ssh",
+		"ssh://git@127.0.0.1:4952/me/app.git":   "ssh",
+		"git@github.com:x/y.git":                "ssh",
+		"git@gitlab.com:group/sub/repo.git":     "ssh",
+		"ssh://github.com/x/y":                  "", // no user
+		"ssh://git:pw@github.com/x/y":           "", // password
+		"ssh://-oProxyCommand=x@github.com/x/y": "",
+		"ssh://git@-oProxyCommand=x/y":          "",
+		"ssh://git@github.com/":                 "", // no path
+		"git@github.com:-oProxyCommand=x":       "",
+		"-oProxyCommand=x@github.com:y":         "",
+		"git@github.com":                        "",
+		"ext::sh -c touch% /tmp/pwned":          "",
+		"file:///etc":                           "",
+		"git://github.com/x/y":                  "",
+		"git@github.com:x/y with space":         "",
+		"http://github.com/x/y":                 "",
+	} {
+		in := ApplicationInput{Name: "a", GitURL: raw, Port: 80}
+		_, err := in.Normalize()
+		got := ""
+		if err == nil {
+			got = "https"
+			if IsSSHSource(raw) {
+				got = "ssh"
+			}
+		}
+		if got != want {
+			t.Errorf("%q: got %q (err %v), want %q", raw, got, err, want)
 		}
 	}
 }

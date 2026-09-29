@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/jevido/bakery/services/api/contexts/projects/domain"
@@ -37,7 +39,7 @@ func (f *fakeStore) UpdateApplication(_ context.Context, a domain.Application) e
 
 func TestDashboardDomainIsReserved(t *testing.T) {
 	ctx := context.Background()
-	s := NewService(&fakeStore{}, "example.com", "bakery.example.com")
+	s := NewService(&fakeStore{}, fakeKey, "example.com", "bakery.example.com")
 	in := domain.ApplicationInput{Name: "web", GitURL: "https://example.com/r.git", Port: 80}
 
 	in.Domain = "Bakery.Example.com"
@@ -56,5 +58,44 @@ func TestDashboardDomainIsReserved(t *testing.T) {
 	in.Domain = "bakery.example.com"
 	if _, err := s.UpdateApplication(ctx, a.ID, in); !errors.As(err, &fe) || fe.Field != "domain" {
 		t.Fatalf("update to the dashboard domain: want a domain FieldError, got %v", err)
+	}
+}
+
+var keys int
+
+func fakeKey(comment string) (domain.DeployKey, error) {
+	keys++
+	return domain.DeployKey{Public: fmt.Sprintf("ssh-ed25519 KEY%d %s", keys, comment), Private: "PRIVATE"}, nil
+}
+
+func TestSSHSourceAlwaysHasADeployKey(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStore{}
+	s := NewService(store, fakeKey, "example.com", "")
+
+	a, err := s.CreateApplication(ctx, 1, domain.ApplicationInput{Name: "web", GitURL: "https://example.com/r.git", Port: 80})
+	if err != nil || a.DeployKey != (domain.DeployKey{}) {
+		t.Fatalf("https source: %v, key %+v", err, a.DeployKey)
+	}
+	if _, err := s.RegenerateDeployKey(ctx, a.ID); err == nil {
+		t.Fatal("regenerating the key of an https source must fail")
+	}
+
+	in := domain.ApplicationInput{Name: "web", GitURL: "git@example.com:me/r.git", Port: 80}
+	a, err = s.UpdateApplication(ctx, a.ID, in)
+	if err != nil || !strings.HasSuffix(a.DeployKey.Public, " bakery-web") || a.DeployKey.Private == "" {
+		t.Fatalf("ssh source: %v, key %+v", err, a.DeployKey)
+	}
+	first := a.DeployKey.Public
+	if a, _ = s.UpdateApplication(ctx, a.ID, in); a.DeployKey.Public != first {
+		t.Fatal("an update must keep the deploy key")
+	}
+	if a, _ = s.RegenerateDeployKey(ctx, a.ID); a.DeployKey.Public == first {
+		t.Fatal("regenerate must change the key")
+	}
+
+	in.GitURL = "https://example.com/r.git"
+	if a, _ = s.UpdateApplication(ctx, a.ID, in); a.DeployKey != (domain.DeployKey{}) {
+		t.Fatalf("back to https must drop the key: %+v", a.DeployKey)
 	}
 }

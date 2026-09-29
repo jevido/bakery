@@ -56,6 +56,9 @@ type Application struct {
 	Port           int
 	Domain         string
 	Env            map[string]string
+	// DeployKey is the private key an SSH Source is cloned with; empty for
+	// https.
+	DeployKey string
 }
 
 // Applications is projects' published ApplicationForDeploy.

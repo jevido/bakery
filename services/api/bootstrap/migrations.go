@@ -15,5 +15,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260929000004CreateDeploymentsTables{},
 		&migrations.M20260930000001AddDeploymentSourceDetails{},
 		&migrations.M20260930000002QueueBehindRunningDeployment{},
+		&migrations.M20260930000003AddApplicationDeployKeys{},
 	}
 }

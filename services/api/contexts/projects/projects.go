@@ -21,7 +21,7 @@ var service *app.Service
 func svc() *app.Service {
 	if service == nil {
 		cfg := facades.Config()
-		service = app.NewService(infra.Store{}, cfg.GetString("bakery.domain_suffix", "localhost"), cfg.GetString("bakery.dashboard.domain"))
+		service = app.NewService(infra.Store{}, infra.NewDeployKey, cfg.GetString("bakery.domain_suffix", "localhost"), cfg.GetString("bakery.dashboard.domain"))
 	}
 	return service
 }
@@ -42,6 +42,7 @@ func Routes(r route.Router) {
 		r.Get("/api/applications/{id}", c.ShowApplication)
 		r.Patch("/api/applications/{id}", c.UpdateApplication)
 		r.Delete("/api/applications/{id}", c.DeleteApplication)
+		r.Post("/api/applications/{id}/deploy-key", c.RegenerateDeployKey)
 		r.Get("/api/applications/{id}/env", c.ShowEnv)
 		r.Put("/api/applications/{id}/env", c.ReplaceEnv)
 	})
@@ -58,6 +59,9 @@ type ApplicationSnapshot struct {
 	Port           int
 	Domain         string
 	Env            map[string]string
+	// DeployKey is the Deploy key's private half (OpenSSH PEM), empty for
+	// an https Source.
+	DeployKey string
 }
 
 // ApplicationForDeploy returns the snapshot, or ErrNotFound.
@@ -76,7 +80,7 @@ func ApplicationForDeploy(ctx context.Context, id uint64) (ApplicationSnapshot, 
 	}
 	return ApplicationSnapshot{
 		ID: a.ID, Slug: a.Slug, GitURL: a.GitURL, GitBranch: a.GitBranch,
-		DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain, Env: env,
+		DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain, Env: env, DeployKey: a.DeployKey.Private,
 	}, nil
 }
 

@@ -37,7 +37,7 @@ func applications(ctx context.Context, id uint64) (app.Application, error) {
 	}
 	return app.Application{
 		ID: s.ID, Slug: s.Slug, GitURL: s.GitURL, GitBranch: s.GitBranch,
-		DockerfilePath: s.DockerfilePath, Port: s.Port, Domain: s.Domain, Env: s.Env,
+		DockerfilePath: s.DockerfilePath, Port: s.Port, Domain: s.Domain, Env: s.Env, DeployKey: s.DeployKey,
 	}, nil
 }
 

@@ -44,8 +44,12 @@ type Store interface {
 	ReplaceEnvVars(ctx context.Context, applicationID uint64, vars []domain.EnvVar) error
 }
 
+// NewDeployKey generates a Deploy key with the comment on its public half.
+type NewDeployKey func(comment string) (domain.DeployKey, error)
+
 type Service struct {
 	store        Store
+	newDeployKey NewDeployKey
 	domainSuffix string
 	// reservedDomain is the dashboard's own domain; no Application may take
 	// it. Empty when there is none.
@@ -55,8 +59,27 @@ type Service struct {
 
 // NewService takes the suffix default Domains get (`<slug>.<suffix>`) and
 // the domain reserved for the Bakery dashboard (empty for none).
-func NewService(store Store, domainSuffix, reservedDomain string) *Service {
-	return &Service{store: store, domainSuffix: domainSuffix, reservedDomain: strings.ToLower(reservedDomain)}
+func NewService(store Store, newDeployKey NewDeployKey, domainSuffix, reservedDomain string) *Service {
+	return &Service{store: store, newDeployKey: newDeployKey, domainSuffix: domainSuffix, reservedDomain: strings.ToLower(reservedDomain)}
+}
+
+// keepDeployKey gives an SSH Source a Deploy key if it has none, and takes it
+// away from any other Source: an SSH Source always has one, an https Source
+// never carries an unused one.
+func (s *Service) keepDeployKey(a *domain.Application) error {
+	if !domain.IsSSHSource(a.GitURL) {
+		a.DeployKey = domain.DeployKey{}
+		return nil
+	}
+	if a.DeployKey.Public != "" {
+		return nil
+	}
+	k, err := s.newDeployKey("bakery-" + a.Slug)
+	if err != nil {
+		return fmt.Errorf("generating the deploy key: %w", err)
+	}
+	a.DeployKey = k
+	return nil
 }
 
 // OnApplicationDeleted registers a handler for the ApplicationDeleted event.
@@ -139,6 +162,9 @@ func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, i
 	if err := s.checkDomain(ctx, a.Domain, 0); err != nil {
 		return domain.Application{}, err
 	}
+	if err := s.keepDeployKey(&a); err != nil {
+		return domain.Application{}, err
+	}
 	return s.store.CreateApplication(ctx, a)
 }
 
@@ -199,6 +225,29 @@ func (s *Service) UpdateApplication(ctx context.Context, id uint64, in domain.Ap
 		a.Domain = domain.DefaultDomain(a.Slug, s.domainSuffix)
 	}
 	if err := s.checkDomain(ctx, a.Domain, a.ID); err != nil {
+		return domain.Application{}, err
+	}
+	if err := s.keepDeployKey(&a); err != nil {
+		return domain.Application{}, err
+	}
+	if err := s.store.UpdateApplication(ctx, a); err != nil {
+		return domain.Application{}, err
+	}
+	return a, nil
+}
+
+// RegenerateDeployKey replaces an SSH Application's Deploy key; the old
+// public half stops working once removed from the repository.
+func (s *Service) RegenerateDeployKey(ctx context.Context, id uint64) (domain.Application, error) {
+	a, err := s.Application(ctx, id)
+	if err != nil {
+		return domain.Application{}, err
+	}
+	if !domain.IsSSHSource(a.GitURL) {
+		return domain.Application{}, &domain.FieldError{Field: "git_url", Message: "only an application with an SSH git URL has a deploy key"}
+	}
+	a.DeployKey = domain.DeployKey{}
+	if err := s.keepDeployKey(&a); err != nil {
 		return domain.Application{}, err
 	}
 	if err := s.store.UpdateApplication(ctx, a); err != nil {

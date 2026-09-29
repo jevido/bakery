@@ -63,6 +63,16 @@ type Application struct {
 	DockerfilePath string
 	Port           int
 	Domain         string
+	// DeployKey is set exactly when the Source is SSH.
+	DeployKey DeployKey
+}
+
+// DeployKey is the SSH key pair Bakery generated for one Application. Public
+// is an authorized_keys line; Private is the OpenSSH PEM, empty unless the
+// Application was read for a Deployment.
+type DeployKey struct {
+	Public  string
+	Private string
 }
 
 // ApplicationInput is what the Owner fills in. Empty optional fields get
@@ -80,6 +90,8 @@ var (
 	hostnameLabel = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 	nonSlug       = regexp.MustCompile(`[^a-z0-9]+`)
 	envVarName    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	// scpLikeURL is git's user@host:path form (git@github.com:owner/repo.git).
+	scpLikeURL = regexp.MustCompile(`^[A-Za-z0-9._-]+@[A-Za-z0-9][A-Za-z0-9.-]*:[^-\s][^\s]*$`)
 )
 
 // Normalize trims the input, fills defaults and checks every rule except
@@ -124,18 +136,40 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 	return in, nil
 }
 
-// checkGitURL allows only https URLs: the deployment worker clones on the
-// host, and a file:// URL or a local path would let an Application read the
-// host's files.
+// checkGitURL allows https URLs without credentials and SSH URLs, nothing
+// else: the deployment worker clones where the API runs, and a file:// URL,
+// an ext:: transport or a local path would let an Application read or run
+// things there.
 func checkGitURL(raw string) error {
 	if raw == "" {
 		return invalid("git_url", "git URL is required")
 	}
+	if IsSSHSource(raw) {
+		return nil
+	}
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
-		return invalid("git_url", "git URL must be an https:// URL without credentials")
+		return invalid("git_url", "git URL must be https://… without credentials, or an SSH URL like git@host:owner/repo.git")
 	}
 	return nil
+}
+
+// IsSSHSource reports whether raw is an SSH git URL: ssh://user@host[:port]/path
+// or user@host:path. The user is required and no part may start with "-", so
+// neither can be read as an ssh option.
+func IsSSHSource(raw string) bool {
+	if strings.HasPrefix(raw, "ssh://") {
+		u, err := url.Parse(raw)
+		if err != nil || u.User == nil || u.User.Username() == "" || strings.HasPrefix(u.User.Username(), "-") {
+			return false
+		}
+		if _, hasPassword := u.User.Password(); hasPassword {
+			return false
+		}
+		host := u.Hostname()
+		return host != "" && !strings.HasPrefix(host, "-") && len(strings.Trim(u.Path, "/")) > 0 && !strings.ContainsAny(raw, " \t\n")
+	}
+	return !strings.HasPrefix(raw, "-") && scpLikeURL.MatchString(raw)
 }
 
 func checkDockerfilePath(p string) error {
