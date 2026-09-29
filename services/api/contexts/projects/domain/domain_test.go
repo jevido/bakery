@@ -111,3 +111,37 @@ func TestGitURLKinds(t *testing.T) {
 		}
 	}
 }
+
+func TestHealthCheckNormalize(t *testing.T) {
+	h, err := HealthCheck{Enabled: true}.Normalize()
+	if err != nil {
+		t.Fatalf("empty check: %v", err)
+	}
+	if h != (HealthCheck{Enabled: true, Path: "/", Interval: 5, Timeout: 5, Retries: 10}) {
+		t.Errorf("defaults not filled: %+v", h)
+	}
+	if _, err := (HealthCheck{Path: "/health?full=1", Interval: 300, Timeout: 60, Retries: 100, StartPeriod: 600}).Normalize(); err != nil {
+		t.Errorf("maximums refused: %v", err)
+	}
+	bad := []struct {
+		h     HealthCheck
+		field string
+	}{
+		{HealthCheck{Path: "health"}, "health_check.path"},
+		{HealthCheck{Path: "/a b"}, "health_check.path"},
+		{HealthCheck{Path: "/'; rm -rf /"}, "health_check.path"},
+		{HealthCheck{Interval: 301}, "health_check.interval"},
+		{HealthCheck{Timeout: -1}, "health_check.timeout"},
+		{HealthCheck{Retries: 101}, "health_check.retries"},
+		{HealthCheck{StartPeriod: -1}, "health_check.start_period"},
+	}
+	for _, c := range bad {
+		if _, err := c.h.Normalize(); field(err) != c.field {
+			t.Errorf("%+v: got %v, want an error on %s", c.h, err, c.field)
+		}
+	}
+	in := ApplicationInput{Name: "x", GitURL: "https://github.com/a/b", Port: 80, HealthCheck: &HealthCheck{Path: "nope"}}
+	if _, err := in.Normalize(); field(err) != "health_check.path" {
+		t.Errorf("input with a bad check: %v", err)
+	}
+}

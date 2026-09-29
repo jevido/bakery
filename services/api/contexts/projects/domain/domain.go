@@ -64,7 +64,57 @@ type Application struct {
 	Port           int
 	Domain         string
 	// DeployKey is set exactly when the Source is SSH.
-	DeployKey DeployKey
+	DeployKey   DeployKey
+	HealthCheck HealthCheck
+}
+
+// HealthCheck is how a new Container is probed before it takes traffic:
+// Path is requested until it answers 2xx or 3xx. Times are in seconds.
+type HealthCheck struct {
+	Enabled     bool
+	Path        string
+	Interval    int
+	Timeout     int
+	Retries     int
+	StartPeriod int
+}
+
+// DefaultHealthCheck is the Health check of a new Application: off.
+func DefaultHealthCheck() HealthCheck {
+	return HealthCheck{Path: "/", Interval: 5, Timeout: 5, Retries: 10}
+}
+
+// Normalize fills the defaults of unset fields and checks the ranges.
+func (h HealthCheck) Normalize() (HealthCheck, error) {
+	d := DefaultHealthCheck()
+	h.Path = strings.TrimSpace(h.Path)
+	if h.Path == "" {
+		h.Path = d.Path
+	}
+	if h.Interval == 0 {
+		h.Interval = d.Interval
+	}
+	if h.Timeout == 0 {
+		h.Timeout = d.Timeout
+	}
+	if h.Retries == 0 {
+		h.Retries = d.Retries
+	}
+	switch {
+	case !strings.HasPrefix(h.Path, "/") || strings.ContainsAny(h.Path, " \t\n'\"\\`$"):
+		return h, invalid("health_check.path", "path must start with / and contain no spaces or quotes")
+	case len(h.Path) > 200:
+		return h, invalid("health_check.path", "path is at most 200 characters")
+	case h.Interval < 1 || h.Interval > 300:
+		return h, invalid("health_check.interval", "interval must be between 1 and 300 seconds")
+	case h.Timeout < 1 || h.Timeout > 60:
+		return h, invalid("health_check.timeout", "timeout must be between 1 and 60 seconds")
+	case h.Retries < 1 || h.Retries > 100:
+		return h, invalid("health_check.retries", "retries must be between 1 and 100")
+	case h.StartPeriod < 0 || h.StartPeriod > 600:
+		return h, invalid("health_check.start_period", "start period must be between 0 and 600 seconds")
+	}
+	return h, nil
 }
 
 // DeployKey is the SSH key pair Bakery generated for one Application. Public
@@ -84,6 +134,9 @@ type ApplicationInput struct {
 	DockerfilePath string
 	Port           int
 	Domain         string
+	// HealthCheck nil keeps the Application's current one (the default
+	// for a new Application).
+	HealthCheck *HealthCheck
 }
 
 var (
@@ -132,6 +185,13 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 	}
 	if in.Domain != "" && !IsHostname(in.Domain) {
 		return in, invalid("domain", "domain must be a hostname like app.example.com")
+	}
+	if in.HealthCheck != nil {
+		h, err := in.HealthCheck.Normalize()
+		if err != nil {
+			return in, err
+		}
+		in.HealthCheck = &h
 	}
 	return in, nil
 }

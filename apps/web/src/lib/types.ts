@@ -14,6 +14,17 @@ export type Application = {
   /** Empty for an https Source. */
   deploy_key_public: string
   public_url: string
+  health_check: HealthCheck
+}
+
+/** Times in seconds. */
+export type HealthCheck = {
+  enabled: boolean
+  path: string
+  interval: number
+  timeout: number
+  retries: number
+  start_period: number
 }
 
 export type Webhook = { path: string; secret: string; auto_deploy: boolean }
@@ -31,7 +42,10 @@ export type Project = {
 
 export type EnvVar = { name: string; value: string }
 
-export type ApplicationInput = Pick<Application, 'name' | 'git_url' | 'git_branch' | 'dockerfile_path' | 'port' | 'domain'>
+export type ApplicationInput = Pick<Application, 'name' | 'git_url' | 'git_branch' | 'dockerfile_path' | 'port' | 'domain'> & {
+  /** Omitted keeps the current one. */
+  health_check?: HealthCheck
+}
 
 export type DeploymentStatus = 'queued' | 'cloning' | 'building' | 'starting' | 'finished' | 'failed'
 

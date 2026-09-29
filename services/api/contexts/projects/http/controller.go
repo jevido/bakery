@@ -36,7 +36,21 @@ type applicationJSON struct {
 	DeployKeyPublic string `json:"deploy_key_public"`
 	// PublicURL is where the Application is reached through the Proxy,
 	// with the Proxy's HTTPS port when it is not 443 (development).
-	PublicURL string `json:"public_url"`
+	PublicURL   string          `json:"public_url"`
+	HealthCheck healthCheckJSON `json:"health_check"`
+}
+
+type healthCheckJSON struct {
+	Enabled     bool   `json:"enabled"`
+	Path        string `json:"path"`
+	Interval    int    `json:"interval"`
+	Timeout     int    `json:"timeout"`
+	Retries     int    `json:"retries"`
+	StartPeriod int    `json:"start_period"`
+}
+
+func (h healthCheckJSON) domain() domain.HealthCheck {
+	return domain.HealthCheck{Enabled: h.Enabled, Path: h.Path, Interval: h.Interval, Timeout: h.Timeout, Retries: h.Retries, StartPeriod: h.StartPeriod}
 }
 
 func applicationToJSON(a domain.Application) applicationJSON {
@@ -44,6 +58,10 @@ func applicationToJSON(a domain.Application) applicationJSON {
 		ID: a.ID, ProjectID: a.ProjectID, EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug,
 		GitURL: a.GitURL, GitBranch: a.GitBranch, DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain,
 		DeployKeyPublic: a.DeployKey.Public, PublicURL: publicURL(a.Domain),
+		HealthCheck: healthCheckJSON{
+			Enabled: a.HealthCheck.Enabled, Path: a.HealthCheck.Path, Interval: a.HealthCheck.Interval,
+			Timeout: a.HealthCheck.Timeout, Retries: a.HealthCheck.Retries, StartPeriod: a.HealthCheck.StartPeriod,
+		},
 	}
 }
 
@@ -178,13 +196,20 @@ type applicationRequest struct {
 	DockerfilePath string `json:"dockerfile_path"`
 	Port           int    `json:"port"`
 	Domain         string `json:"domain"`
+	// HealthCheck omitted keeps the current one.
+	HealthCheck *healthCheckJSON `json:"health_check"`
 }
 
 func (r applicationRequest) input() domain.ApplicationInput {
-	return domain.ApplicationInput{
+	in := domain.ApplicationInput{
 		Name: r.Name, GitURL: r.GitURL, GitBranch: r.GitBranch,
 		DockerfilePath: r.DockerfilePath, Port: r.Port, Domain: r.Domain,
 	}
+	if r.HealthCheck != nil {
+		h := r.HealthCheck.domain()
+		in.HealthCheck = &h
+	}
+	return in
 }
 
 func (c *Controller) CreateApplication(ctx contractshttp.Context) contractshttp.Response {

@@ -61,7 +61,18 @@ type ApplicationSnapshot struct {
 	Env            map[string]string
 	// DeployKey is the Deploy key's private half (OpenSSH PEM), empty for
 	// an https Source.
-	DeployKey string
+	DeployKey   string
+	HealthCheck HealthCheck
+}
+
+// HealthCheck is the Application's Health check; times in seconds.
+type HealthCheck struct {
+	Enabled     bool
+	Path        string
+	Interval    int
+	Timeout     int
+	Retries     int
+	StartPeriod int
 }
 
 // ApplicationForDeploy returns the snapshot, or ErrNotFound.
@@ -81,6 +92,7 @@ func ApplicationForDeploy(ctx context.Context, id uint64) (ApplicationSnapshot, 
 	return ApplicationSnapshot{
 		ID: a.ID, Slug: a.Slug, GitURL: a.GitURL, GitBranch: a.GitBranch,
 		DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain, Env: env, DeployKey: a.DeployKey.Private,
+		HealthCheck: HealthCheck(a.HealthCheck),
 	}, nil
 }
 

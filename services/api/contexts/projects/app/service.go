@@ -155,6 +155,10 @@ func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, i
 		DockerfilePath: in.DockerfilePath,
 		Port:           in.Port,
 		Domain:         in.Domain,
+		HealthCheck:    domain.DefaultHealthCheck(),
+	}
+	if in.HealthCheck != nil {
+		a.HealthCheck = *in.HealthCheck
 	}
 	if a.Domain == "" {
 		a.Domain = domain.DefaultDomain(slug, s.domainSuffix)
@@ -221,6 +225,9 @@ func (s *Service) UpdateApplication(ctx context.Context, id uint64, in domain.Ap
 	}
 	a.Name, a.GitURL, a.GitBranch, a.DockerfilePath, a.Port, a.Domain =
 		in.Name, in.GitURL, in.GitBranch, in.DockerfilePath, in.Port, in.Domain
+	if in.HealthCheck != nil {
+		a.HealthCheck = *in.HealthCheck
+	}
 	if a.Domain == "" {
 		a.Domain = domain.DefaultDomain(a.Slug, s.domainSuffix)
 	}

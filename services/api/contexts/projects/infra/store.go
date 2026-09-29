@@ -46,6 +46,12 @@ type applicationRecord struct {
 	Domain                    string
 	DeployKeyPublic           string
 	DeployKeyPrivateEncrypted string
+	HealthCheckEnabled        bool
+	HealthCheckPath           string
+	HealthCheckInterval       int
+	HealthCheckTimeout        int
+	HealthCheckRetries        int
+	HealthCheckStartPeriod    int
 	orm.Timestamps
 }
 
@@ -58,6 +64,17 @@ func (r applicationRecord) toDomain(projectID uint64) domain.Application {
 		ID: r.ID, EnvironmentID: r.EnvironmentID, ProjectID: projectID, Name: r.Name, Slug: r.Slug,
 		GitURL: r.GitURL, GitBranch: r.GitBranch, DockerfilePath: r.DockerfilePath, Port: r.Port, Domain: r.Domain,
 		DeployKey: domain.DeployKey{Public: r.DeployKeyPublic},
+		HealthCheck: domain.HealthCheck{
+			Enabled: r.HealthCheckEnabled, Path: r.HealthCheckPath, Interval: r.HealthCheckInterval,
+			Timeout: r.HealthCheckTimeout, Retries: r.HealthCheckRetries, StartPeriod: r.HealthCheckStartPeriod,
+		},
+	}
+}
+
+func healthCheckColumns(h domain.HealthCheck) map[string]any {
+	return map[string]any{
+		"health_check_enabled": h.Enabled, "health_check_path": h.Path, "health_check_interval": h.Interval,
+		"health_check_timeout": h.Timeout, "health_check_retries": h.Retries, "health_check_start_period": h.StartPeriod,
 	}
 }
 
@@ -192,6 +209,9 @@ func (s Store) CreateApplication(ctx context.Context, a domain.Application) (dom
 		EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug, GitURL: a.GitURL, GitBranch: a.GitBranch,
 		DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain,
 		DeployKeyPublic: a.DeployKey.Public, DeployKeyPrivateEncrypted: private,
+		HealthCheckEnabled: a.HealthCheck.Enabled, HealthCheckPath: a.HealthCheck.Path,
+		HealthCheckInterval: a.HealthCheck.Interval, HealthCheckTimeout: a.HealthCheck.Timeout,
+		HealthCheckRetries: a.HealthCheck.Retries, HealthCheckStartPeriod: a.HealthCheck.StartPeriod,
 	}
 	if err := s.query(ctx).Create(&rec); err != nil {
 		return domain.Application{}, uniqueViolation(err)
@@ -227,11 +247,15 @@ func (s Store) UpdateApplication(ctx context.Context, a domain.Application) erro
 	if err != nil {
 		return err
 	}
-	_, err = s.query(ctx).Model(&applicationRecord{}).Where("id", a.ID).Update(map[string]any{
+	columns := map[string]any{
 		"name": a.Name, "git_url": a.GitURL, "git_branch": a.GitBranch,
 		"dockerfile_path": a.DockerfilePath, "port": a.Port, "domain": a.Domain,
 		"deploy_key_public": a.DeployKey.Public, "deploy_key_private_encrypted": private,
-	})
+	}
+	for k, v := range healthCheckColumns(a.HealthCheck) {
+		columns[k] = v
+	}
+	_, err = s.query(ctx).Model(&applicationRecord{}).Where("id", a.ID).Update(columns)
 	return uniqueViolation(err)
 }
 

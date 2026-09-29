@@ -58,7 +58,19 @@ type Application struct {
 	Env            map[string]string
 	// DeployKey is the private key an SSH Source is cloned with; empty for
 	// https.
-	DeployKey string
+	DeployKey   string
+	HealthCheck HealthCheck
+}
+
+// HealthCheck is how the new Container is probed before the Route moves to
+// it. Times are in seconds.
+type HealthCheck struct {
+	Enabled     bool
+	Path        string
+	Interval    int
+	Timeout     int
+	Retries     int
+	StartPeriod int
 }
 
 // Applications is projects' published ApplicationForDeploy.
