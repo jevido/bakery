@@ -1,0 +1,5 @@
+**
+!apps/web/
+!infra/images/web/caddy.json
+apps/web/node_modules/
+apps/web/dist/

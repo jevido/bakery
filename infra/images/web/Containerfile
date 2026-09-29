@@ -1,0 +1,18 @@
+# The Bakery dashboard: the built Svelte app served by Caddy on :80.
+# Build from the repository root:
+#   podman build -f infra/images/web/Containerfile -t localhost/bakery-web:dev .
+# It has no runtime configuration: the dashboard calls /api on its own origin,
+# which the proxy's Dashboard Route sends to bakery-api.
+
+FROM docker.io/oven/bun:1.4 AS build
+WORKDIR /src
+COPY apps/web/package.json apps/web/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY apps/web/ ./
+RUN bun run build
+
+FROM docker.io/library/caddy:2-alpine
+COPY infra/images/web/caddy.json /etc/caddy/caddy.json
+COPY --from=build /src/dist /srv
+EXPOSE 80
+CMD ["caddy", "run", "--config", "/etc/caddy/caddy.json"]

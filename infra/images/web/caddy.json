@@ -1,0 +1,39 @@
+{
+  "admin": { "disabled": true },
+  "apps": {
+    "http": {
+      "servers": {
+        "web": {
+          "listen": [":80"],
+          "automatic_https": { "disable": true },
+          "routes": [
+            {
+              "match": [{ "path": ["/assets/*"] }],
+              "handle": [
+                {
+                  "handler": "headers",
+                  "response": { "set": { "Cache-Control": ["public, max-age=31536000, immutable"] } }
+                }
+              ]
+            },
+            {
+              "match": [{ "not": [{ "path": ["/assets/*"] }] }],
+              "handle": [
+                {
+                  "handler": "headers",
+                  "response": { "set": { "Cache-Control": ["no-cache"] } }
+                }
+              ]
+            },
+            {
+              "handle": [
+                { "handler": "encode", "encodings": { "zstd": {}, "gzip": {} }, "prefer": ["zstd", "gzip"] },
+                { "handler": "file_server", "root": "/srv" }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

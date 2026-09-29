@@ -59,11 +59,17 @@ tasks:
     desc: Build every image (localhost/bakery-*:dev) from infra/images
     cmds:
       - task: images:api
+      - task: images:web
 
   images:api:
     desc: Build localhost/bakery-api:dev
     cmds:
       - podman build -f infra/images/api/Containerfile -t localhost/bakery-api:dev .
+
+  images:web:
+    desc: Build localhost/bakery-web:dev
+    cmds:
+      - podman build -f infra/images/web/Containerfile -t localhost/bakery-web:dev .
 
   check:
     desc: Format check, lint, test and type-check every unit
