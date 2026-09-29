@@ -53,6 +53,8 @@ talks to the API; it holds no domain data of its own.
 - **Caddy is configured only through its admin API** with JSON, never a
   Caddyfile. The full config is rendered from the database and loaded with
   `POST /load`, so Caddy holds no state of its own and a restart loses nothing.
+- **Shared technical code inside the API** (the Podman client) lives in
+  `services/api/app/`, not in a context: two contexts use it.
 - **Every container Bakery creates carries the label `bakery.managed=true`**,
   so Bakery can find (and never touch anything but) its own containers.
 

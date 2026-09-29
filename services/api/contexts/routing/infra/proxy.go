@@ -1,0 +1,120 @@
+// Package infra runs the Proxy (Caddy) through Podman, configures it through
+// Caddy's admin API, and stores Routes with the Goravel ORM.
+package infra
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"strconv"
+	"time"
+
+	"github.com/jevido/bakery/services/api/app/podman"
+	"github.com/jevido/bakery/services/api/contexts/routing/domain"
+)
+
+// ProxyConfig says how the Proxy container is run.
+type ProxyConfig struct {
+	Name        string // container name, bakery-proxy
+	Image       string // docker.io/library/caddy:2
+	Network     string // bakery
+	BindIP      string // host address for :80 and :443; empty = all
+	HTTPPort    uint16 // host port for :80
+	HTTPSPort   uint16 // host port for :443
+	AdminAddr   string // host address for the admin API, 127.0.0.1:4949
+	InternalTLS bool
+	// Volume prefix for Caddy's /data (certificates, the internal CA) and
+	// /config (the autosaved last config).
+	VolumePrefix string
+}
+
+type Proxy struct {
+	podman *podman.Client
+	cfg    ProxyConfig
+	caddy  *Caddy
+}
+
+func NewProxy(p *podman.Client, cfg ProxyConfig) *Proxy {
+	return &Proxy{podman: p, cfg: cfg, caddy: &Caddy{AdminURL: "http://" + cfg.AdminAddr}}
+}
+
+// Ensure makes sure the network exists and the Proxy container exists and
+// runs, then waits for its admin API.
+func (p *Proxy) Ensure(ctx context.Context) error {
+	if err := p.podman.EnsureNetwork(ctx, p.cfg.Network); err != nil {
+		return fmt.Errorf("network %s: %w", p.cfg.Network, err)
+	}
+	info, err := p.podman.InspectContainer(ctx, p.cfg.Name)
+	switch {
+	case podman.IsNotFound(err):
+		if err := p.create(ctx); err != nil {
+			return err
+		}
+	case err != nil:
+		return err
+	case !info.State.Running:
+		if err := p.podman.StartContainer(ctx, p.cfg.Name); err != nil {
+			return fmt.Errorf("starting %s: %w", p.cfg.Name, err)
+		}
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	return p.caddy.WaitReady(waitCtx)
+}
+
+func (p *Proxy) create(ctx context.Context) error {
+	if ok, err := p.podman.ImageExists(ctx, p.cfg.Image); err != nil {
+		return err
+	} else if !ok {
+		if err := p.podman.PullImage(ctx, p.cfg.Image, nil); err != nil {
+			return fmt.Errorf("pulling %s: %w", p.cfg.Image, err)
+		}
+	}
+	adminHost, adminPort, err := net.SplitHostPort(p.cfg.AdminAddr)
+	if err != nil {
+		return fmt.Errorf("proxy admin address %q: %w", p.cfg.AdminAddr, err)
+	}
+	adminPortNum, err := strconv.ParseUint(adminPort, 10, 16)
+	if err != nil {
+		return fmt.Errorf("proxy admin port %q: %w", adminPort, err)
+	}
+	id, err := p.podman.CreateContainer(ctx, podman.ContainerSpec{
+		Name:  p.cfg.Name,
+		Image: p.cfg.Image,
+		// --resume loads the config Caddy autosaved in /config, so after a
+		// host reboot the Proxy serves the last Routes before Bakery is up.
+		Command: []string{"caddy", "run", "--resume"},
+		// Only used until the first Apply, which sets the same address.
+		Env:      map[string]string{"CADDY_ADMIN": CaddyAdminListen},
+		Labels:   map[string]string{"bakery.managed": "true", "bakery.role": "proxy"},
+		Networks: podman.OnNetwork(p.cfg.Network),
+		PortMappings: []podman.PortMapping{
+			{HostIP: p.cfg.BindIP, HostPort: p.cfg.HTTPPort, ContainerPort: 80, Protocol: "tcp"},
+			{HostIP: p.cfg.BindIP, HostPort: p.cfg.HTTPSPort, ContainerPort: 443, Protocol: "tcp"},
+			// The admin API has no authentication: never publish it beyond
+			// the host address configured (127.0.0.1).
+			{HostIP: adminHost, HostPort: uint16(adminPortNum), ContainerPort: 2019, Protocol: "tcp"},
+		},
+		Volumes: []podman.NamedVolume{
+			{Name: p.cfg.VolumePrefix + "-data", Dest: "/data"},
+			{Name: p.cfg.VolumePrefix + "-config", Dest: "/config"},
+		},
+		RestartPolicy: "always",
+	})
+	if err != nil {
+		return fmt.Errorf("creating %s: %w", p.cfg.Name, err)
+	}
+	if err := p.podman.StartContainer(ctx, id); err != nil {
+		return fmt.Errorf("starting %s: %w", p.cfg.Name, err)
+	}
+	return nil
+}
+
+// Apply renders the Routes and loads them.
+func (p *Proxy) Apply(ctx context.Context, routes []domain.Route) error {
+	config, err := Render(routes, RenderOptions{InternalTLS: p.cfg.InternalTLS})
+	if err != nil {
+		return err
+	}
+	return p.caddy.Load(ctx, config)
+}

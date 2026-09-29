@@ -11,5 +11,22 @@ func init() {
 	config.Add("bakery", map[string]any{
 		// Applications without a Domain get <slug>.<domain_suffix>.
 		"domain_suffix": config.Env("BAKERY_DOMAIN_SUFFIX", "localhost"),
+		// The Podman API socket; empty means the rootless socket of the
+		// user running Bakery ($XDG_RUNTIME_DIR/podman/podman.sock).
+		"podman_socket": config.Env("BAKERY_PODMAN_SOCKET", ""),
+		// The network Bakery's containers share; Caddy reaches Applications
+		// on it by container name.
+		"network": config.Env("BAKERY_NETWORK", "bakery"),
+		"proxy": map[string]any{
+			"image": config.Env("BAKERY_PROXY_IMAGE", "docker.io/library/caddy:2"),
+			// Host address the proxy's HTTP(S) ports are published on; empty
+			// means every interface, as a server needs.
+			"bind":       config.Env("BAKERY_PROXY_BIND", ""),
+			"http_port":  config.Env("BAKERY_PROXY_HTTP_PORT", 4940),
+			"https_port": config.Env("BAKERY_PROXY_HTTPS_PORT", 4943),
+			// No authentication on Caddy's admin API: keep it on 127.0.0.1.
+			"admin":        config.Env("BAKERY_PROXY_ADMIN", "127.0.0.1:4949"),
+			"internal_tls": config.Env("BAKERY_PROXY_INTERNAL_TLS", true),
+		},
 	})
 }

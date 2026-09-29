@@ -53,6 +53,9 @@ None.
   Application Containers publish no host ports.
 - **The admin API has no authentication**, so it is published on
   `127.0.0.1` only.
-- **In development the Proxy listens on 4940/4943 with Internal TLS** and HTTP
+- **Caddy autosaves its last config** (`caddy run --resume`, volume
+  `bakery-proxy-config`), so after a host reboot the Proxy serves the last
+  Routes even before the API is back.
+- **In development the Proxy listens on 127.0.0.1:4940/4943 with Internal TLS** and HTTP
   to HTTPS redirects off (they would point at 443). On a real Server the same
   code uses 80/443 and ACME; only configuration changes.

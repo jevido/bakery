@@ -66,6 +66,12 @@ func IsNotFound(err error) bool {
 	return errors.As(err, &e) && e.Status == http.StatusNotFound
 }
 
+// anonymousAuth is base64("{}"). Sent on pulls and builds so the Podman
+// service does not use whatever registry credentials the host user has
+// saved (a stale Docker Hub login makes every pull fail). Registry
+// credentials Bakery manages itself come in a later phase.
+const anonymousAuth = "e30="
+
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body io.Reader, contentType string) (*http.Response, error) {
 	u := "http://podman" + apiPrefix + path
 	if len(query) > 0 {
@@ -77,6 +83,12 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
+	}
+	switch path {
+	case "/images/pull":
+		req.Header.Set("X-Registry-Auth", anonymousAuth)
+	case "/build":
+		req.Header.Set("X-Registry-Config", anonymousAuth)
 	}
 	res, err := c.http.Do(req)
 	if err != nil {
