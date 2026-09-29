@@ -52,7 +52,9 @@ None.
 - **Caddy reaches Containers by name on the `bakery` network**, so
   Application Containers publish no host ports.
 - **The admin API has no authentication**, so it is published on
-  `127.0.0.1` only.
+  `127.0.0.1` only in development, and not published at all on a server,
+  where the API runs on the `bakery` network and reaches it as
+  `bakery-proxy:2019`.
 - **Caddy autosaves its last config** (`caddy run --resume`, volume
   `bakery-proxy-config`), so after a host reboot the Proxy serves the last
   Routes even before the API is back.

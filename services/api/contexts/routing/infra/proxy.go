@@ -15,14 +15,18 @@ import (
 
 // ProxyConfig says how the Proxy container is run.
 type ProxyConfig struct {
-	Name        string // container name, bakery-proxy
-	Image       string // docker.io/library/caddy:2
-	Network     string // bakery
-	BindIP      string // host address for :80 and :443; empty = all
-	HTTPPort    uint16 // host port for :80
-	HTTPSPort   uint16 // host port for :443
-	AdminAddr   string // host address for the admin API, 127.0.0.1:4949
-	InternalTLS bool
+	Name      string // container name, bakery-proxy
+	Image     string // docker.io/library/caddy:2
+	Network   string // bakery
+	BindIP    string // host address for :80 and :443; empty = all
+	HTTPPort  uint16 // host port for :80
+	HTTPSPort uint16 // host port for :443
+	AdminURL  string // how the API reaches the admin API
+	// Host address the admin API is published on, 127.0.0.1:4949 in dev;
+	// empty means it is not published (a server, where the API reaches it
+	// on the network).
+	AdminPublish string
+	InternalTLS  bool
 	// Volume prefix for Caddy's /data (certificates, the internal CA) and
 	// /config (the autosaved last config).
 	VolumePrefix string
@@ -35,7 +39,7 @@ type Proxy struct {
 }
 
 func NewProxy(p *podman.Client, cfg ProxyConfig) *Proxy {
-	return &Proxy{podman: p, cfg: cfg, caddy: &Caddy{AdminURL: "http://" + cfg.AdminAddr}}
+	return &Proxy{podman: p, cfg: cfg, caddy: &Caddy{AdminURL: cfg.AdminURL}}
 }
 
 // Ensure makes sure the network exists and the Proxy container exists and
@@ -70,13 +74,22 @@ func (p *Proxy) create(ctx context.Context) error {
 			return fmt.Errorf("pulling %s: %w", p.cfg.Image, err)
 		}
 	}
-	adminHost, adminPort, err := net.SplitHostPort(p.cfg.AdminAddr)
-	if err != nil {
-		return fmt.Errorf("proxy admin address %q: %w", p.cfg.AdminAddr, err)
+	ports := []podman.PortMapping{
+		{HostIP: p.cfg.BindIP, HostPort: p.cfg.HTTPPort, ContainerPort: 80, Protocol: "tcp"},
+		{HostIP: p.cfg.BindIP, HostPort: p.cfg.HTTPSPort, ContainerPort: 443, Protocol: "tcp"},
 	}
-	adminPortNum, err := strconv.ParseUint(adminPort, 10, 16)
-	if err != nil {
-		return fmt.Errorf("proxy admin port %q: %w", adminPort, err)
+	if p.cfg.AdminPublish != "" {
+		adminHost, adminPort, err := net.SplitHostPort(p.cfg.AdminPublish)
+		if err != nil {
+			return fmt.Errorf("proxy admin address %q: %w", p.cfg.AdminPublish, err)
+		}
+		adminPortNum, err := strconv.ParseUint(adminPort, 10, 16)
+		if err != nil {
+			return fmt.Errorf("proxy admin port %q: %w", adminPort, err)
+		}
+		// The admin API has no authentication: never publish it beyond
+		// the host address configured (127.0.0.1).
+		ports = append(ports, podman.PortMapping{HostIP: adminHost, HostPort: uint16(adminPortNum), ContainerPort: 2019, Protocol: "tcp"})
 	}
 	id, err := p.podman.CreateContainer(ctx, podman.ContainerSpec{
 		Name:  p.cfg.Name,
@@ -85,16 +98,10 @@ func (p *Proxy) create(ctx context.Context) error {
 		// host reboot the Proxy serves the last Routes before Bakery is up.
 		Command: []string{"caddy", "run", "--resume"},
 		// Only used until the first Apply, which sets the same address.
-		Env:      map[string]string{"CADDY_ADMIN": CaddyAdminListen},
-		Labels:   map[string]string{"bakery.managed": "true", "bakery.role": "proxy"},
-		Networks: podman.OnNetwork(p.cfg.Network),
-		PortMappings: []podman.PortMapping{
-			{HostIP: p.cfg.BindIP, HostPort: p.cfg.HTTPPort, ContainerPort: 80, Protocol: "tcp"},
-			{HostIP: p.cfg.BindIP, HostPort: p.cfg.HTTPSPort, ContainerPort: 443, Protocol: "tcp"},
-			// The admin API has no authentication: never publish it beyond
-			// the host address configured (127.0.0.1).
-			{HostIP: adminHost, HostPort: uint16(adminPortNum), ContainerPort: 2019, Protocol: "tcp"},
-		},
+		Env:          map[string]string{"CADDY_ADMIN": CaddyAdminListen},
+		Labels:       map[string]string{"bakery.managed": "true", "bakery.role": "proxy"},
+		Networks:     podman.OnNetwork(p.cfg.Network),
+		PortMappings: ports,
 		Volumes: []podman.NamedVolume{
 			{Name: p.cfg.VolumePrefix + "-data", Dest: "/data"},
 			{Name: p.cfg.VolumePrefix + "-config", Dest: "/config"},

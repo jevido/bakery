@@ -28,10 +28,15 @@ func TestProxyRoutesToContainer(t *testing.T) {
 
 	proxy := NewProxy(pc, ProxyConfig{
 		Name: "bakery-test-proxy", Image: "docker.io/library/caddy:2", Network: "bakery-test",
-		BindIP: "127.0.0.1", HTTPPort: 4944, HTTPSPort: 4945, AdminAddr: "127.0.0.1:4946",
+		BindIP: "127.0.0.1", HTTPPort: 4944, HTTPSPort: 4945, AdminURL: "http://127.0.0.1:4946", AdminPublish: "127.0.0.1:4946",
 		InternalTLS: true, VolumePrefix: "bakery-test-proxy",
 	})
-	t.Cleanup(func() { pc.RemoveContainer(context.Background(), "bakery-test-proxy") })
+	t.Cleanup(func() {
+		bg := context.Background()
+		pc.RemoveContainer(bg, "bakery-test-proxy")
+		pc.RemoveVolume(bg, "bakery-test-proxy-data")
+		pc.RemoveVolume(bg, "bakery-test-proxy-config")
+	})
 	for range 2 { // the second Ensure must find and keep the first container
 		if err := proxy.Ensure(ctx); err != nil {
 			t.Fatalf("Ensure: %v", err)
@@ -90,4 +95,42 @@ func TestProxyRoutesToContainer(t *testing.T) {
 		}
 	}
 	t.Fatalf("whoami never answered through the proxy; last body %q", body)
+}
+
+// With AdminPublish empty the admin API gets no host port; the API reaches
+// it over the network instead (here: not at all, so only Create is checked).
+func TestProxyAdminNotPublished(t *testing.T) {
+	pc := podman.New(podman.DefaultSocket())
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := pc.Ping(ctx); err != nil {
+		t.Skipf("no podman: %v", err)
+	}
+	if err := pc.EnsureNetwork(ctx, "bakery-test"); err != nil {
+		t.Fatal(err)
+	}
+	proxy := NewProxy(pc, ProxyConfig{
+		Name: "bakery-test-proxy-unpublished", Image: "docker.io/library/caddy:2", Network: "bakery-test",
+		BindIP: "127.0.0.1", HTTPPort: 4947, HTTPSPort: 4948, AdminURL: "http://bakery-test-proxy-unpublished:2019",
+		InternalTLS: true, VolumePrefix: "bakery-test-proxy-unpublished",
+	})
+	t.Cleanup(func() {
+		bg := context.Background()
+		pc.RemoveContainer(bg, "bakery-test-proxy-unpublished")
+		pc.RemoveVolume(bg, "bakery-test-proxy-unpublished-data")
+		pc.RemoveVolume(bg, "bakery-test-proxy-unpublished-config")
+	})
+	if err := proxy.create(ctx); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	info, err := pc.InspectContainer(ctx, "bakery-test-proxy-unpublished")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := info.HostConfig.PortBindings["2019/tcp"]; len(b) != 0 {
+		t.Fatalf("admin API published on the host: %+v", b)
+	}
+	if b := info.HostConfig.PortBindings["443/tcp"]; len(b) != 1 || b[0].HostPort != "4948" {
+		t.Fatalf("want 443 on host 4948, got %+v", info.HostConfig.PortBindings)
+	}
 }

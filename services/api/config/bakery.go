@@ -24,9 +24,13 @@ func init() {
 			"bind":       config.Env("BAKERY_PROXY_BIND", ""),
 			"http_port":  config.Env("BAKERY_PROXY_HTTP_PORT", 4940),
 			"https_port": config.Env("BAKERY_PROXY_HTTPS_PORT", 4943),
-			// No authentication on Caddy's admin API: keep it on 127.0.0.1.
-			"admin":        config.Env("BAKERY_PROXY_ADMIN", "127.0.0.1:4949"),
-			"internal_tls": config.Env("BAKERY_PROXY_INTERNAL_TLS", true),
+			// How the API reaches Caddy's admin API. On a server the API runs
+			// on the bakery network and uses http://bakery-proxy:2019.
+			"admin_url": config.Env("BAKERY_PROXY_ADMIN_URL", "http://127.0.0.1:4949"),
+			// Host address the admin API is published on; empty means not
+			// published. It has no authentication: 127.0.0.1 at most.
+			"admin_publish": config.Env("BAKERY_PROXY_ADMIN_PUBLISH", "127.0.0.1:4949"),
+			"internal_tls":  config.Env("BAKERY_PROXY_INTERNAL_TLS", true),
 		},
 	})
 }

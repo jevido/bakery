@@ -30,7 +30,8 @@ func svc() *app.Service {
 			BindIP:       cfg.GetString("bakery.proxy.bind"),
 			HTTPPort:     uint16(cfg.GetInt("bakery.proxy.http_port")),
 			HTTPSPort:    uint16(cfg.GetInt("bakery.proxy.https_port")),
-			AdminAddr:    cfg.GetString("bakery.proxy.admin"),
+			AdminURL:     cfg.GetString("bakery.proxy.admin_url"),
+			AdminPublish: cfg.GetString("bakery.proxy.admin_publish"),
 			InternalTLS:  cfg.GetBool("bakery.proxy.internal_tls"),
 			VolumePrefix: "bakery-proxy",
 		})

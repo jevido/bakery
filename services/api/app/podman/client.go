@@ -339,6 +339,15 @@ func (c *Client) RemoveContainer(ctx context.Context, id string) error {
 	return c.call(ctx, http.MethodDelete, "/containers/"+url.PathEscape(id), q, nil, nil)
 }
 
+// RemoveVolume force-removes a named volume; a missing one is not an error.
+func (c *Client) RemoveVolume(ctx context.Context, name string) error {
+	err := c.call(ctx, http.MethodDelete, "/volumes/"+url.PathEscape(name), url.Values{"force": {"true"}}, nil, nil)
+	if IsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
 type ContainerState struct {
 	Status   string `json:"Status"`
 	Running  bool   `json:"Running"`
@@ -355,6 +364,16 @@ type ContainerInfo struct {
 		Env    []string          `json:"Env"`
 		Labels map[string]string `json:"Labels"`
 	} `json:"Config"`
+	// PortBindings maps "<port>/<proto>" inside the container to host
+	// bindings, as created (set before the container starts).
+	HostConfig struct {
+		PortBindings map[string][]HostBinding `json:"PortBindings"`
+	} `json:"HostConfig"`
+}
+
+type HostBinding struct {
+	HostIP   string `json:"HostIp"`
+	HostPort string `json:"HostPort"`
 }
 
 func (c *Client) InspectContainer(ctx context.Context, id string) (ContainerInfo, error) {
