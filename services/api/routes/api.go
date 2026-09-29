@@ -1,7 +1,11 @@
 package routes
 
 import (
+	"time"
+
 	"github.com/goravel/framework/contracts/http"
+	"github.com/goravel/framework/contracts/route"
+	goravelgin "github.com/goravel/gin"
 
 	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/contexts/deployments"
@@ -9,15 +13,23 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/projects"
 )
 
-func Api() {
-	facades.Route().Get("/api/health", func(ctx http.Context) http.Response {
-		if err := facades.DB().Select(&[]struct{ One int }{}, "SELECT 1 AS one"); err != nil {
-			return ctx.Response().Json(http.StatusServiceUnavailable, http.Json{"ok": false, "error": "database unreachable"})
-		}
-		return ctx.Response().Json(http.StatusOK, http.Json{"ok": true})
-	})
+// requestTimeout bounds every route except the live log streams (see
+// config/http.go for why the global timeout is off).
+const requestTimeout = 15 * time.Second
 
-	identity.Routes(facades.Route())
-	projects.Routes(facades.Route())
-	deployments.Routes(facades.Route())
+func Api() {
+	facades.Route().Middleware(goravelgin.Timeout(requestTimeout)).Group(func(r route.Router) {
+		r.Get("/api/health", health)
+		identity.Routes(r)
+		projects.Routes(r)
+		deployments.Routes(r)
+	})
+	deployments.StreamRoutes(facades.Route())
+}
+
+func health(ctx http.Context) http.Response {
+	if err := facades.DB().Select(&[]struct{ One int }{}, "SELECT 1 AS one"); err != nil {
+		return ctx.Response().Json(http.StatusServiceUnavailable, http.Json{"ok": false, "error": "database unreachable"})
+	}
+	return ctx.Response().Json(http.StatusOK, http.Json{"ok": true})
 }

@@ -72,12 +72,44 @@ func Routes(r route.Router) {
 	})
 }
 
+var shutdown = make(chan struct{})
+
+// StreamRoutes registers the live log streams, behind identity.Auth but
+// outside the request timeout.
+func StreamRoutes(r route.Router) {
+	isNotFound := func(err error) bool { return errors.Is(err, projects.ErrNotFound) || errors.Is(err, app.ErrNotFound) }
+	c := deploymentshttp.NewStreamController(svc(), followContainer, isNotFound, shutdown)
+	r.Middleware(identity.Auth).Group(func(r route.Router) {
+		r.Get("/api/deployments/{id}/log", c.DeploymentLog)
+		r.Get("/api/applications/{id}/logs", c.ContainerLogs)
+	})
+}
+
+// followContainer follows the Application's running Container.
+func followContainer(ctx context.Context, applicationID uint64, tail int, out func(stream, line string)) (bool, error) {
+	name, found, err := runtime.Running(ctx, applicationID)
+	if err != nil || !found {
+		return false, err
+	}
+	return true, runtime.Podman.Logs(ctx, name, true, tail, func(stream, line string) {
+		if stream == "stderr" {
+			out("err", line)
+		} else {
+			out("out", line)
+		}
+	})
+}
+
 // StartWorker fails Deployments a previous process left half done, then
 // runs the Worker until ctx ends.
 func StartWorker(ctx context.Context) {
 	workDir := filepath.Join(os.TempDir(), "bakery-builds")
 	w := app.NewWorker(svc(), infra.Git{}, runtime, routing.SwitchRoute, workDir)
 	w.Log = facades.Log().Errorf
+	go func() {
+		<-ctx.Done()
+		close(shutdown)
+	}()
 	go func() {
 		for attempt := 1; ; attempt++ {
 			if err := w.Recover(ctx); err == nil {

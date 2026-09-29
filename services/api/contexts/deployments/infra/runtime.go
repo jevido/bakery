@@ -143,6 +143,20 @@ func (r Runtime) RemoveAll(ctx context.Context, applicationID uint64) error {
 	return err
 }
 
+// Running returns the name of the Application's running Container.
+func (r Runtime) Running(ctx context.Context, applicationID uint64) (string, bool, error) {
+	list, err := r.containers(ctx, applicationID)
+	if err != nil {
+		return "", false, err
+	}
+	for _, c := range list {
+		if c.State == "running" {
+			return strings.TrimPrefix(firstName(c.Names), "/"), true, nil
+		}
+	}
+	return "", false, nil
+}
+
 func firstName(names []string) string {
 	if len(names) == 0 {
 		return ""

@@ -26,8 +26,10 @@ func init() {
 		"host": config.Env("APP_HOST", "127.0.0.1"),
 		// HTTP Port
 		"port": config.Env("APP_PORT", "3000"),
-		// HTTP Timeout, default is 3 seconds
-		"request_timeout": 3,
+		// HTTP Timeout. Off (0) because Goravel's timeout middleware buffers
+		// the whole response, which the live log streams cannot live with;
+		// routes/api.go applies a timeout to every other route instead.
+		"request_timeout": 0,
 		// HTTPS Configuration
 		"tls": map[string]any{
 			// HTTPS Host

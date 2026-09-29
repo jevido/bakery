@@ -7,6 +7,7 @@ import (
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
+	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/app/respond"
 	"github.com/jevido/bakery/services/api/contexts/projects/app"
 	"github.com/jevido/bakery/services/api/contexts/projects/domain"
@@ -31,13 +32,25 @@ type applicationJSON struct {
 	DockerfilePath string `json:"dockerfile_path"`
 	Port           int    `json:"port"`
 	Domain         string `json:"domain"`
+	// PublicURL is where the Application is reached through the Proxy,
+	// with the Proxy's HTTPS port when it is not 443 (development).
+	PublicURL string `json:"public_url"`
 }
 
 func applicationToJSON(a domain.Application) applicationJSON {
 	return applicationJSON{
 		ID: a.ID, ProjectID: a.ProjectID, EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug,
 		GitURL: a.GitURL, GitBranch: a.GitBranch, DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain,
+		PublicURL: publicURL(a.Domain),
 	}
+}
+
+func publicURL(d string) string {
+	port := facades.Config().GetInt("bakery.proxy.https_port", 443)
+	if port == 443 {
+		return "https://" + d
+	}
+	return "https://" + d + ":" + strconv.Itoa(port)
 }
 
 type environmentJSON struct {
