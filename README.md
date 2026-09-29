@@ -21,14 +21,45 @@ Each unit is one directory under its category (`apps/<name>`,
 
 ## Getting started
 
-Requirements: [Task](https://taskfile.dev), [Podman](https://podman.io), plus
-whatever each unit's `README.md` lists.
+Requirements: Go 1.27, [bun](https://bun.sh), [Task](https://taskfile.dev),
+git, and rootless [Podman](https://podman.io) with its API socket enabled for
+your user:
 
 ```sh
-task            # list tasks
-task dev        # run every unit's dev server
+systemctl --user enable --now podman.socket
+```
+
+Then:
+
+```sh
+task dev        # Postgres, the API (:4910, migrates first) and the dashboard (:4930)
+task down       # stop the dev servers (Postgres and the proxy keep running)
 task check      # format, lint, test and type-check every unit
-task down       # stop every dev server this repo started
+task api:test:podman   # integration tests against the Podman socket
+```
+
+On start the API creates the `bakery` Podman network and the `bakery-proxy`
+Caddy container (127.0.0.1:4940 HTTP, 127.0.0.1:4943 HTTPS, admin API on
+127.0.0.1:4949).
+
+### Deploy your first application
+
+1. Open <http://127.0.0.1:4930>. The first visit asks you to create the
+   owner account.
+2. Create a project. It comes with a `production` environment.
+3. Add an application, for example `https://github.com/traefik/whoami`,
+   branch `master`, port `80`. Its domain defaults to `whoami.localhost`.
+4. Optionally add environment variables, then press **Deploy**. The build log
+   streams live on the Deployments tab.
+5. Open <https://whoami.localhost:4943>. `*.localhost` resolves to your
+   machine in browsers and curl.
+
+The certificate comes from Caddy's internal CA. To stop the browser warning,
+trust its root:
+
+```sh
+podman exec bakery-proxy cat /data/caddy/pki/authorities/local/root.crt > bakery-root.crt
+# then import bakery-root.crt into your browser or system trust store
 ```
 
 Conventions for people and coding agents live in [`CLAUDE.md`](CLAUDE.md).
