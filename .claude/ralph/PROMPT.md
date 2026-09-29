@@ -64,7 +64,7 @@ Suggested order of phases after the walking skeleton (adjust to what exists):
   `executablePath: '/usr/bin/chromium'`, installed in your scratchpad, never
   in the repo). Anything needing the outside world you cannot reach (a real
   domain, ACME, GitHub, S3, SMTP, a second server) is verified against a
-  local stand-in in a container: Pebble for ACME, MinIO for S3, Mailpit for
+  local stand-in in a container: Pebble for ACME, Garage (`dxflrs/garage`, S3-compatible, AGPL; not MinIO) for S3, Mailpit for
   SMTP, Gitea/Forgejo for git hosting and webhooks, a second Podman host in
   a container or over SSH to localhost. Put stand-ins in
   `infra/dev/compose.yml` or in test code.
