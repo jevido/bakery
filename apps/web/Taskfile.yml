@@ -1,0 +1,21 @@
+version: "3"
+
+tasks:
+  install:
+    desc: Install dependencies with bun
+    sources: [package.json, bun.lock]
+    cmds:
+      - bun install
+
+  dev:
+    desc: Run the dashboard on 127.0.0.1:4930 (proxies /api to :4910)
+    deps: [install]
+    cmds:
+      - bun run dev
+
+  check:
+    desc: svelte-check, tsc and a production build
+    deps: [install]
+    cmds:
+      - bun run check
+      - bun run build

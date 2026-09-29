@@ -7,6 +7,9 @@ includes:
   api:
     taskfile: ./services/api/Taskfile.yml
     dir: ./services/api
+  web:
+    taskfile: ./apps/web/Taskfile.yml
+    dir: ./apps/web
 
 vars:
   # Every port a dev task listens on. Keep in sync with the table in CLAUDE.md.
@@ -39,11 +42,16 @@ tasks:
 
   dev:
     desc: Run every unit's dev server together (Ctrl+C stops all)
-    deps: [db:up]
     cmds:
-      - task: api:dev
+      - task: db:up
+      - task: units
+
+  units:
+    internal: true
+    deps: [api:dev, web:dev]
 
   check:
     desc: Format check, lint, test and type-check every unit
     cmds:
       - task: api:check
+      - task: web:check
