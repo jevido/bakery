@@ -4,6 +4,7 @@ import (
 	"github.com/goravel/framework/contracts/http"
 
 	"github.com/jevido/bakery/services/api/app/facades"
+	"github.com/jevido/bakery/services/api/contexts/identity"
 )
 
 func Api() {
@@ -13,4 +14,6 @@ func Api() {
 		}
 		return ctx.Response().Json(http.StatusOK, http.Json{"ok": true})
 	})
+
+	identity.Routes(facades.Route())
 }
