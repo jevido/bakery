@@ -25,9 +25,9 @@ adapt to.
 | Upstream | Downstream | Pattern | Through |
 | -------- | ---------- | ------- | ------- |
 | identity | projects, deployments, routing | open host service | The `auth` HTTP middleware; the others only learn "an Owner is signed in" |
-| projects | deployments | customer/supplier | `projects.ApplicationForDeploy(id)` returns an `ApplicationSnapshot` (Source, Dockerfile path, port, Domain, decrypted Env vars) |
+| projects | deployments | customer/supplier | `projects.ApplicationForDeploy(id)` returns an `ApplicationSnapshot` (Source, Dockerfile path, port, Domain, decrypted Env vars and Deploy key) |
 | routing | deployments | customer/supplier | `routing.SwitchRoute(applicationID, domain, container, port)`, called synchronously in a Deployment's route step, so the old Container is removed only after traffic has moved |
-| projects | routing | published language | `ApplicationDeleted` event: routing drops the Application's Route |
+| projects | routing, deployments | published language | `ApplicationDeleted` event: routing drops the Application's Route; deployments removes its Containers, Deployments and Webhook |
 
 Patterns: *customer/supplier*, *conformist*, *anticorruption layer*,
 *open host service* / *published language*, *shared kernel*, *separate ways*.
@@ -43,4 +43,5 @@ flowchart LR
   projects -->|ApplicationForDeploy| deployments
   routing -->|SwitchRoute| deployments
   projects -->|ApplicationDeleted| routing
+  projects -->|ApplicationDeleted| deployments
 ```
