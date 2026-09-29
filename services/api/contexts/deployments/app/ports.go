@@ -71,11 +71,31 @@ type Commit struct {
 	Author  string
 }
 
+// CloneRequest is what a clone needs. DeployKey is the private key for an
+// SSH URL, empty for https.
+type CloneRequest struct {
+	URL       string
+	Branch    string
+	Dir       string
+	DeployKey string
+}
+
 // Source fetches an Application's code.
 type Source interface {
-	// Clone checks the branch out into dir (which must not exist) and
+	// Clone checks the branch out into Dir (which must not exist) and
 	// returns the commit.
-	Clone(ctx context.Context, url, branch, dir string, out func(stream, line string)) (Commit, error)
+	Clone(ctx context.Context, req CloneRequest, out func(stream, line string)) (Commit, error)
+}
+
+// KnownHosts keeps the SSH host keys of git hosts.
+type KnownHosts interface {
+	// Lines returns every stored known_hosts line.
+	Lines(ctx context.Context) (string, error)
+	// Remember adds known_hosts lines, merged per host.
+	Remember(ctx context.Context, lines string) error
+	List(ctx context.Context) ([]domain.KnownHost, error)
+	// Forget removes a host, reporting whether it existed.
+	Forget(ctx context.Context, id uint64) (bool, error)
 }
 
 // Runtime builds and runs Containers.

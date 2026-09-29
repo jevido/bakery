@@ -88,7 +88,8 @@ func (l *memLogs) text() string { return strings.Join(l.lines, "\n") }
 
 type fakeSource struct{ noDockerfile, fail bool }
 
-func (f fakeSource) Clone(_ context.Context, _, _, dir string, out func(string, string)) (Commit, error) {
+func (f fakeSource) Clone(_ context.Context, req CloneRequest, out func(string, string)) (Commit, error) {
+	dir := req.Dir
 	if f.fail {
 		return Commit{}, errors.New("Remote branch nope not found")
 	}
@@ -150,7 +151,7 @@ func newSetup(t *testing.T, src fakeSource) *setup {
 	apps := func(_ context.Context, id uint64) (Application, error) {
 		return Application{ID: id, Slug: "whoami", GitURL: "https://example.com/r", GitBranch: "main", DockerfilePath: "Dockerfile", Port: 80, Domain: "whoami.localhost", Env: map[string]string{"HELLO": "world"}}, nil
 	}
-	s.service = NewService(s.store, s.logs, apps)
+	s.service = NewService(s.store, s.logs, apps, nil)
 	router := func(_ context.Context, _ uint64, domain, container string, _ int) error {
 		s.routes[domain] = container
 		return nil

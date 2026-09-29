@@ -105,3 +105,36 @@ func (c *Controller) Show(ctx contractshttp.Context) contractshttp.Response {
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"deployment": ToJSON(d)})
 }
+
+type knownHostJSON struct {
+	ID           uint64    `json:"id"`
+	Host         string    `json:"host"`
+	Fingerprints []string  `json:"fingerprints"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (c *Controller) KnownHosts(ctx contractshttp.Context) contractshttp.Response {
+	hosts, err := c.service.KnownHosts(ctx.Context())
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	out := make([]knownHostJSON, len(hosts))
+	for i, h := range hosts {
+		out[i] = knownHostJSON{ID: h.ID, Host: h.Host, Fingerprints: h.Fingerprints, CreatedAt: h.CreatedAt}
+		if out[i].Fingerprints == nil {
+			out[i].Fingerprints = []string{}
+		}
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"known_hosts": out})
+}
+
+func (c *Controller) ForgetKnownHost(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := RouteID(ctx)
+	if !ok {
+		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
+	}
+	if err := c.service.ForgetKnownHost(ctx.Context(), id); err != nil {
+		return c.fail(ctx, err)
+	}
+	return ctx.Response().NoContent()
+}

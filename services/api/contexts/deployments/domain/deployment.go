@@ -98,6 +98,16 @@ func ImageTag(slug string, deploymentID uint64) string {
 	return "localhost/bakery/" + slug + ":" + strconv.FormatUint(deploymentID, 10)
 }
 
+// KnownHost is a git host's SSH host keys, recorded on the first clone from
+// it. Keys are known_hosts lines; Fingerprints their SHA256 fingerprints.
+type KnownHost struct {
+	ID           uint64
+	Host         string
+	Keys         string
+	Fingerprints []string
+	CreatedAt    time.Time
+}
+
 // Log streams.
 const (
 	StreamInfo = "info"

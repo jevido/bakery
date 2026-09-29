@@ -127,7 +127,7 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 		return err
 	}
 	info("Cloning %s (branch %s)", app.GitURL, app.GitBranch)
-	commit, err := w.source.Clone(ctx, app.GitURL, app.GitBranch, dir, log.Line)
+	commit, err := w.source.Clone(ctx, CloneRequest{URL: app.GitURL, Branch: app.GitBranch, Dir: dir, DeployKey: app.DeployKey}, log.Line)
 	if err != nil {
 		return fmt.Errorf("clone failed: %w", err)
 	}

@@ -43,7 +43,7 @@ func applications(ctx context.Context, id uint64) (app.Application, error) {
 
 func svc() *app.Service {
 	once.Do(func() {
-		service = app.NewService(infra.Store{}, infra.Logs{}, applications)
+		service = app.NewService(infra.Store{}, infra.Logs{}, applications, infra.KnownHosts{})
 		runtime = infra.Runtime{
 			Podman:       podman.Default(),
 			Network:      facades.Config().GetString("bakery.network"),
@@ -69,6 +69,8 @@ func Routes(r route.Router) {
 		r.Post("/api/applications/{id}/deploy", c.Deploy)
 		r.Get("/api/applications/{id}/deployments", c.List)
 		r.Get("/api/deployments/{id}", c.Show)
+		r.Get("/api/known-hosts", c.KnownHosts)
+		r.Delete("/api/known-hosts/{id}", c.ForgetKnownHost)
 	})
 }
 
@@ -104,7 +106,7 @@ func followContainer(ctx context.Context, applicationID uint64, tail int, out fu
 // runs the Worker until ctx ends.
 func StartWorker(ctx context.Context) {
 	workDir := filepath.Join(os.TempDir(), "bakery-builds")
-	w := app.NewWorker(svc(), infra.Git{}, runtime, routing.SwitchRoute, workDir)
+	w := app.NewWorker(svc(), infra.Git{KnownHosts: infra.KnownHosts{}}, runtime, routing.SwitchRoute, workDir)
 	w.Log = facades.Log().Errorf
 	go func() {
 		<-ctx.Done()

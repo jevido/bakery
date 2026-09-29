@@ -10,11 +10,25 @@ type Service struct {
 	store        Store
 	logs         Logs
 	applications Applications
+	knownHosts   KnownHosts
 	wake         chan struct{}
 }
 
-func NewService(store Store, logs Logs, applications Applications) *Service {
-	return &Service{store: store, logs: logs, applications: applications, wake: make(chan struct{}, 1)}
+func NewService(store Store, logs Logs, applications Applications, knownHosts KnownHosts) *Service {
+	return &Service{store: store, logs: logs, applications: applications, knownHosts: knownHosts, wake: make(chan struct{}, 1)}
+}
+
+func (s *Service) KnownHosts(ctx context.Context) ([]domain.KnownHost, error) {
+	return s.knownHosts.List(ctx)
+}
+
+// ForgetKnownHost lets the next clone from the host trust its key again.
+func (s *Service) ForgetKnownHost(ctx context.Context, id uint64) error {
+	found, err := s.knownHosts.Forget(ctx, id)
+	if err == nil && !found {
+		err = ErrNotFound
+	}
+	return err
 }
 
 // Deploy queues a Deployment of the Application and wakes the Worker.
