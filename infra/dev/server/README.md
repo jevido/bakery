@@ -15,9 +15,21 @@ task images          # build localhost/bakery-{api,web}:dev
 task server:up       # start both
 task server:install  # copy the images and install.sh in, run it
 task server:down     # remove everything bakery-test-server made
+task server:test     # all of it end to end, then down
 ```
 
-Quirks of the stand-in, not of real servers: `newuidmap`/`newgidmap` are
+`task server:test` builds the images, installs from clean and runs
+[`checks.sh`](checks.sh) inside the server three times: after the fresh
+install (containers, `/api/health`, dashboard, Pebble certificate, HTTP→HTTPS
+redirect, admin API unpublished, owner setup with a `Secure` cookie, a whoami
+deploy on `whoami.bakery.test`), after a reboot (`podman restart`: every
+container comes back through `podman-restart.service`) and after running
+`install.sh` again (owner and deployments kept). It clones whoami from
+GitHub.
+
+Quirks of the stand-in, not of real servers: `systemd-udev` is installed
+explicitly (it carries `systemd-sysctl`, which applies the port sysctl at
+boot), `newuidmap`/`newgidmap` are
 setuid in the image (file capabilities do not survive in a rootless
 container), `/var/lib/bakery` is a volume (nested overlay storage cannot sit
 on the container's overlay root), and `install.sh` gets `--subids

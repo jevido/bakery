@@ -18,3 +18,9 @@ tasks:
     desc: Remove the fake server, Pebble and their network and volume
     cmds:
       - ./infra/dev/server/server.sh down
+
+  test:
+    desc: Build the images, install into the fake server and check it end to end (fresh, reboot, re-install)
+    cmds:
+      - task: :images
+      - ./infra/dev/server/test.sh

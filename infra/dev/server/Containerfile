@@ -1,8 +1,9 @@
-# A stand-in for a fresh Fedora server: systemd as PID 1, nothing else of
+# A stand-in for a fresh Fedora server: systemd as PID 1 (with systemd-udev,
+# which carries systemd-sysctl, as on a real install), nothing else of
 # Bakery's. install.sh runs in it for real (task server:test). Needs
 # --privileged and --systemd=always.
 FROM registry.fedoraproject.org/fedora:41
-RUN dnf install -y --setopt=install_weak_deps=False systemd util-linux shadow-utils curl openssl procps-ng iproute \
+RUN dnf install -y --setopt=install_weak_deps=False systemd systemd-udev util-linux shadow-utils curl jq openssl procps-ng iproute \
  && dnf clean all \
  && chmod u+s /usr/bin/newuidmap /usr/bin/newgidmap
 # ^ File capabilities do not survive inside a rootless container, so the ID
