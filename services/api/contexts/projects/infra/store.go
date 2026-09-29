@@ -1,0 +1,270 @@
+// Package infra stores the projects context with the Goravel ORM and
+// encrypts env var values with Goravel's Crypt (APP_KEY).
+package infra
+
+import (
+	"context"
+	"errors"
+	"strings"
+
+	contractsorm "github.com/goravel/framework/contracts/database/orm"
+	"github.com/goravel/framework/database/orm"
+	frameworkerrors "github.com/goravel/framework/errors"
+
+	"github.com/jevido/bakery/services/api/app/facades"
+	"github.com/jevido/bakery/services/api/contexts/projects/app"
+	"github.com/jevido/bakery/services/api/contexts/projects/domain"
+)
+
+type projectRecord struct {
+	ID          uint64 `gorm:"primaryKey"`
+	Name        string
+	Description string
+	orm.Timestamps
+}
+
+func (projectRecord) TableName() string { return "projects" }
+
+type environmentRecord struct {
+	ID        uint64 `gorm:"primaryKey"`
+	ProjectID uint64
+	Name      string
+	orm.Timestamps
+}
+
+func (environmentRecord) TableName() string { return "environments" }
+
+type applicationRecord struct {
+	ID             uint64 `gorm:"primaryKey"`
+	EnvironmentID  uint64
+	Name           string
+	Slug           string
+	GitURL         string `gorm:"column:git_url"`
+	GitBranch      string
+	DockerfilePath string
+	Port           int
+	Domain         string
+	orm.Timestamps
+}
+
+func (applicationRecord) TableName() string { return "applications" }
+
+func (r applicationRecord) toDomain(projectID uint64) domain.Application {
+	return domain.Application{
+		ID: r.ID, EnvironmentID: r.EnvironmentID, ProjectID: projectID, Name: r.Name, Slug: r.Slug,
+		GitURL: r.GitURL, GitBranch: r.GitBranch, DockerfilePath: r.DockerfilePath, Port: r.Port, Domain: r.Domain,
+	}
+}
+
+type envVarRecord struct {
+	ID             uint64 `gorm:"primaryKey"`
+	ApplicationID  uint64
+	Name           string
+	ValueEncrypted string
+	orm.Timestamps
+}
+
+func (envVarRecord) TableName() string { return "env_vars" }
+
+type Store struct{}
+
+func (Store) query(ctx context.Context) contractsorm.Query {
+	return facades.Orm().WithContext(ctx).Query()
+}
+
+func (s Store) CreateProject(ctx context.Context, p domain.Project) (domain.Project, error) {
+	rec := projectRecord{Name: p.Name, Description: p.Description}
+	env := environmentRecord{Name: domain.DefaultEnvironment}
+	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		if err := tx.Create(&rec); err != nil {
+			return err
+		}
+		env.ProjectID = rec.ID
+		return tx.Create(&env)
+	})
+	if err != nil {
+		return domain.Project{}, err
+	}
+	p.ID = rec.ID
+	p.Environments = []domain.Environment{{ID: env.ID, ProjectID: rec.ID, Name: env.Name}}
+	return p, nil
+}
+
+func (s Store) Projects(ctx context.Context) ([]domain.Project, error) {
+	var recs []projectRecord
+	if err := s.query(ctx).OrderBy("name").Find(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]domain.Project, len(recs))
+	for i, r := range recs {
+		out[i] = domain.Project{ID: r.ID, Name: r.Name, Description: r.Description}
+	}
+	return out, nil
+}
+
+func (s Store) Project(ctx context.Context, id uint64) (domain.Project, bool, error) {
+	var rec projectRecord
+	if found, err := first(s.query(ctx).Where("id", id), &rec); err != nil || !found {
+		return domain.Project{}, found, err
+	}
+	p := domain.Project{ID: rec.ID, Name: rec.Name, Description: rec.Description}
+
+	var envs []environmentRecord
+	if err := s.query(ctx).Where("project_id", id).OrderBy("id").Find(&envs); err != nil {
+		return domain.Project{}, false, err
+	}
+	envIDs := make([]any, len(envs))
+	for i, e := range envs {
+		envIDs[i] = e.ID
+	}
+	var apps []applicationRecord
+	if len(envIDs) > 0 {
+		if err := s.query(ctx).WhereIn("environment_id", envIDs).OrderBy("name").Find(&apps); err != nil {
+			return domain.Project{}, false, err
+		}
+	}
+	for _, e := range envs {
+		env := domain.Environment{ID: e.ID, ProjectID: id, Name: e.Name, Applications: []domain.Application{}}
+		for _, a := range apps {
+			if a.EnvironmentID == e.ID {
+				env.Applications = append(env.Applications, a.toDomain(id))
+			}
+		}
+		p.Environments = append(p.Environments, env)
+	}
+	return p, true, nil
+}
+
+func (s Store) UpdateProject(ctx context.Context, p domain.Project) error {
+	_, err := s.query(ctx).Model(&projectRecord{}).Where("id", p.ID).Update(map[string]any{"name": p.Name, "description": p.Description})
+	return err
+}
+
+func (s Store) DeleteProject(ctx context.Context, id uint64) error {
+	return facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		n, err := tx.Model(&applicationRecord{}).
+			Where("environment_id IN (SELECT id FROM environments WHERE project_id = ?)", id).Count()
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			return app.ErrProjectNotEmpty
+		}
+		_, err = tx.Where("id", id).Delete(&projectRecord{})
+		return err
+	})
+}
+
+func (s Store) Environment(ctx context.Context, id uint64) (domain.Environment, bool, error) {
+	var rec environmentRecord
+	found, err := first(s.query(ctx).Where("id", id), &rec)
+	return domain.Environment{ID: rec.ID, ProjectID: rec.ProjectID, Name: rec.Name}, found, err
+}
+
+func (s Store) SlugTaken(ctx context.Context, slug string) (bool, error) {
+	n, err := s.query(ctx).Model(&applicationRecord{}).Where("slug", slug).Count()
+	return n > 0, err
+}
+
+func (s Store) DomainTaken(ctx context.Context, d string, exceptID uint64) (bool, error) {
+	n, err := s.query(ctx).Model(&applicationRecord{}).Where("domain", d).Where("id <> ?", exceptID).Count()
+	return n > 0, err
+}
+
+func (s Store) CreateApplication(ctx context.Context, a domain.Application) (domain.Application, error) {
+	rec := applicationRecord{
+		EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug, GitURL: a.GitURL, GitBranch: a.GitBranch,
+		DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain,
+	}
+	if err := s.query(ctx).Create(&rec); err != nil {
+		return domain.Application{}, uniqueViolation(err)
+	}
+	return rec.toDomain(a.ProjectID), nil
+}
+
+func (s Store) Application(ctx context.Context, id uint64) (domain.Application, bool, error) {
+	var rec applicationRecord
+	if found, err := first(s.query(ctx).Where("id", id), &rec); err != nil || !found {
+		return domain.Application{}, found, err
+	}
+	var env environmentRecord
+	if _, err := first(s.query(ctx).Where("id", rec.EnvironmentID), &env); err != nil {
+		return domain.Application{}, false, err
+	}
+	return rec.toDomain(env.ProjectID), true, nil
+}
+
+func (s Store) UpdateApplication(ctx context.Context, a domain.Application) error {
+	_, err := s.query(ctx).Model(&applicationRecord{}).Where("id", a.ID).Update(map[string]any{
+		"name": a.Name, "git_url": a.GitURL, "git_branch": a.GitBranch,
+		"dockerfile_path": a.DockerfilePath, "port": a.Port, "domain": a.Domain,
+	})
+	return uniqueViolation(err)
+}
+
+func (s Store) DeleteApplication(ctx context.Context, id uint64) error {
+	_, err := s.query(ctx).Where("id", id).Delete(&applicationRecord{})
+	return err
+}
+
+func (s Store) EnvVars(ctx context.Context, applicationID uint64) ([]domain.EnvVar, error) {
+	var recs []envVarRecord
+	if err := s.query(ctx).Where("application_id", applicationID).OrderBy("name").Find(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]domain.EnvVar, len(recs))
+	for i, r := range recs {
+		value, err := facades.Crypt().DecryptString(r.ValueEncrypted)
+		if err != nil {
+			return nil, errors.New("cannot decrypt env var " + r.Name + " (was APP_KEY changed?)")
+		}
+		out[i] = domain.EnvVar{Name: r.Name, Value: value}
+	}
+	return out, nil
+}
+
+func (s Store) ReplaceEnvVars(ctx context.Context, applicationID uint64, vars []domain.EnvVar) error {
+	recs := make([]envVarRecord, len(vars))
+	for i, v := range vars {
+		enc, err := facades.Crypt().EncryptString(v.Value)
+		if err != nil {
+			return err
+		}
+		recs[i] = envVarRecord{ApplicationID: applicationID, Name: v.Name, ValueEncrypted: enc}
+	}
+	return facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		if _, err := tx.Where("application_id", applicationID).Delete(&envVarRecord{}); err != nil {
+			return err
+		}
+		if len(recs) == 0 {
+			return nil
+		}
+		return tx.Create(&recs)
+	})
+}
+
+func first(q contractsorm.Query, dest any) (bool, error) {
+	if err := q.FirstOrFail(dest); err != nil {
+		if errors.Is(err, frameworkerrors.OrmRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// uniqueViolation turns a unique index hit (two requests racing past the
+// service's own check) into the field error the service would have given.
+func uniqueViolation(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "23505") && !strings.Contains(msg, "duplicate key") {
+		return err
+	}
+	if strings.Contains(msg, "domain") {
+		return &domain.FieldError{Field: "domain", Message: "domain is already used by another application"}
+	}
+	return &domain.FieldError{Field: "name", Message: "an application with this name was just created; try again"}
+}

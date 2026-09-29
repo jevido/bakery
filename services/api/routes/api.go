@@ -5,6 +5,7 @@ import (
 
 	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/contexts/identity"
+	"github.com/jevido/bakery/services/api/contexts/projects"
 )
 
 func Api() {
@@ -16,4 +17,5 @@ func Api() {
 	})
 
 	identity.Routes(facades.Route())
+	projects.Routes(facades.Route())
 }

@@ -5,6 +5,8 @@
   import { session } from './lib/session.svelte'
   import Login from './pages/Login.svelte'
   import NotFound from './pages/NotFound.svelte'
+  import Application from './pages/Application.svelte'
+  import Project from './pages/Project.svelte'
   import Projects from './pages/Projects.svelte'
   import Setup from './pages/Setup.svelte'
 
@@ -26,6 +28,10 @@
   <Layout>
     {#if router.route.name === 'projects'}
       <Projects />
+    {:else if router.route.name === 'project'}
+      <Project id={router.route.id} />
+    {:else if router.route.name === 'application'}
+      <Application id={router.route.id} />
     {:else}
       <NotFound />
     {/if}
