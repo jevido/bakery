@@ -1,0 +1,27 @@
+# Patterns are anchored on purpose. A bare name matches at every depth and can
+# silently swallow a folder you meant to commit. Prefer `/bin/` over `bin`.
+
+# Build output
+/apps/*/bin/
+/apps/*/dist/
+/services/*/bin/
+/services/*/dist/
+/packages/*/dist/
+
+# Tool caches
+/.task/
+
+# Environment. Secrets never live in the repo.
+.env
+.env.*
+!.env.example
+*.local
+
+# Editors and OS
+.DS_Store
+/.idea/
+/.vscode/*
+!/.vscode/extensions.json
+
+# Claude Code personal settings (shared settings and skills are committed)
+/.claude/settings.local.json

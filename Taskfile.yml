@@ -1,0 +1,32 @@
+# Root task runner. Units keep their own tooling; the tasks below are thin
+# entry points into them. Call sub-tasks through {{.TASK_EXE}}.
+
+version: "3"
+
+vars:
+  # Every port a dev task listens on. Keep in sync with the table in CLAUDE.md.
+  DEV_PORTS: ""
+
+tasks:
+  default:
+    desc: List available tasks
+    silent: true
+    cmds:
+      - "{{.TASK_EXE}} --list"
+
+  down:
+    desc: Stop every dev server this repo started
+    silent: true
+    cmds:
+      - ./infra/dev/down.sh {{.DEV_PORTS}}
+
+  dev:
+    desc: Run every unit's dev server together (Ctrl+C stops all)
+    # Add each unit's dev task here, e.g. deps: [api:dev, web:dev]
+    deps: []
+
+  check:
+    desc: Format check, lint, test and type-check every unit
+    # Add each unit's checks here as units appear.
+    cmds:
+      - echo "no units yet"
