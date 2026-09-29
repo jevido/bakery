@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/deployments/domain"
 )
@@ -113,9 +114,15 @@ type KnownHosts interface {
 // Runtime builds and runs Containers.
 type Runtime interface {
 	Build(ctx context.Context, dir, dockerfile, tag string, labels map[string]string, out func(line string)) error
-	// Start creates and starts the Container and returns once it has
-	// stayed running, or an error (the Container is then removed).
+	// Start creates and starts the Container and returns once it is
+	// running (and, with spec.Settle, has stayed running for a moment), or
+	// an error (the Container is then removed).
 	Start(ctx context.Context, spec ContainerSpec) error
+	// Probe requests url inside the running Container once, within
+	// timeout. ok is false with a detail when it did not answer 2xx or 3xx;
+	// err means probing cannot work at all (the Container stopped, or the
+	// image has no curl or wget), so retrying is pointless.
+	Probe(ctx context.Context, container, url string, timeout time.Duration) (ok bool, detail string, err error)
 	// RemoveOthers removes the Application's Containers except keep, and
 	// returns the names removed.
 	RemoveOthers(ctx context.Context, applicationID uint64, keep string) ([]string, error)
@@ -131,6 +138,9 @@ type ContainerSpec struct {
 	ApplicationID uint64
 	DeploymentID  uint64
 	Env           map[string]string
+	// Settle makes Start wait until the Container has stayed running for a
+	// moment; used when there is no Health check to wait for instead.
+	Settle bool
 }
 
 // Router is routing's SwitchRoute.

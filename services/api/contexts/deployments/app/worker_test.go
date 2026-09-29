@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/deployments/domain"
 )
@@ -107,6 +108,22 @@ type fakeRuntime struct {
 	buildErr, startErr error
 	running            map[string]bool
 	removed            []string
+	// probes answers each Probe in turn; the last one repeats.
+	probes []probe
+	probed []string
+	specs  []ContainerSpec
+}
+
+type probe struct {
+	ok     bool
+	detail string
+	err    error
+}
+
+func (r *fakeRuntime) Probe(_ context.Context, container, url string, _ time.Duration) (bool, string, error) {
+	r.probed = append(r.probed, container+" "+url)
+	p := r.probes[min(len(r.probed), len(r.probes))-1]
+	return p.ok, p.detail, p.err
 }
 
 func (r *fakeRuntime) Build(_ context.Context, _, _, _ string, _ map[string]string, out func(string)) error {
@@ -114,6 +131,7 @@ func (r *fakeRuntime) Build(_ context.Context, _, _, _ string, _ map[string]stri
 	return r.buildErr
 }
 func (r *fakeRuntime) Start(_ context.Context, s ContainerSpec) error {
+	r.specs = append(r.specs, s)
 	if r.startErr != nil {
 		return r.startErr
 	}
@@ -146,10 +164,14 @@ type setup struct {
 	worker  *Worker
 }
 
-func newSetup(t *testing.T, src fakeSource) *setup {
+func newSetup(t *testing.T, src fakeSource, check ...HealthCheck) *setup {
 	s := &setup{store: &memStore{}, logs: &memLogs{}, runtime: &fakeRuntime{running: map[string]bool{}}, routes: map[string]string{}}
 	apps := func(_ context.Context, id uint64) (Application, error) {
-		return Application{ID: id, Slug: "whoami", GitURL: "https://example.com/r", GitBranch: "main", DockerfilePath: "Dockerfile", Port: 80, Domain: "whoami.localhost", Env: map[string]string{"HELLO": "world"}}, nil
+		a := Application{ID: id, Slug: "whoami", GitURL: "https://example.com/r", GitBranch: "main", DockerfilePath: "Dockerfile", Port: 80, Domain: "whoami.localhost", Env: map[string]string{"HELLO": "world"}}
+		if len(check) > 0 {
+			a.HealthCheck = check[0]
+		}
+		return a, nil
 	}
 	s.service = NewService(s.store, s.logs, apps, nil)
 	router := func(_ context.Context, _ uint64, domain, container string, _ int) error {
@@ -157,6 +179,7 @@ func newSetup(t *testing.T, src fakeSource) *setup {
 		return nil
 	}
 	s.worker = NewWorker(s.service, src, s.runtime, router, t.TempDir())
+	s.worker.sleep = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
 	return s
 }
 
@@ -271,5 +294,78 @@ func TestDeployQueuesBehindARunningDeployment(t *testing.T) {
 	}
 	if got, _ := s.service.Deployment(ctx, second.ID); got.Status != domain.Finished {
 		t.Fatalf("second: %s %s", got.Status, got.Error)
+	}
+}
+
+var check = HealthCheck{Enabled: true, Path: "/health", Interval: 1, Timeout: 1, Retries: 3, StartPeriod: 5}
+
+func TestDeployWaitsUntilHealthy(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{}, check)
+	s.runtime.running["bakery-app-1-0"] = true
+	s.runtime.probes = []probe{{detail: "curl: (7) Failed to connect"}, {detail: "HTTP 503"}, {ok: true}}
+	d, _ := s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	got, _ := s.service.Deployment(ctx, d.ID)
+	if got.Status != domain.Finished {
+		t.Fatalf("got %s %q\n%s", got.Status, got.Error, s.logs.text())
+	}
+	if len(s.runtime.probed) != 3 || s.runtime.probed[0] != "bakery-app-1-1 http://127.0.0.1:80/health" {
+		t.Fatalf("probed %v", s.runtime.probed)
+	}
+	if s.runtime.specs[0].Settle {
+		t.Error("settle asked for although a health check follows")
+	}
+	if s.routes["whoami.localhost"] != "bakery-app-1-1" || s.runtime.running["bakery-app-1-0"] {
+		t.Fatalf("route %v, containers %v", s.routes, s.runtime.running)
+	}
+	for _, want := range []string{"Waiting 5s before the first health check", "Waiting for /health (attempt 1/3)", "Not healthy yet: HTTP 503", "Healthy after 3 attempt(s)"} {
+		if !strings.Contains(s.logs.text(), want) {
+			t.Errorf("log lacks %q:\n%s", want, s.logs.text())
+		}
+	}
+}
+
+func TestDeployWithoutHealthCheckSettles(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	if !s.runtime.specs[0].Settle || len(s.runtime.probed) != 0 {
+		t.Fatalf("spec %+v, probed %v", s.runtime.specs[0], s.runtime.probed)
+	}
+}
+
+func TestDeployUnhealthyKeepsTheOldContainer(t *testing.T) {
+	cases := map[string]struct {
+		probes []probe
+		want   string
+		tries  int
+	}{
+		"never healthy": {[]probe{{detail: "curl: (22) The requested URL returned error: 500"}}, "health check failed after 3 attempts: curl: (22) The requested URL returned error: 500", 3},
+		"no tool":       {[]probe{{err: errors.New("the health check needs sh and curl or wget in the image")}}, "health check failed: the health check needs sh and curl or wget in the image", 1},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			s := newSetup(t, fakeSource{}, check)
+			s.runtime.running["bakery-app-1-0"] = true
+			s.runtime.probes = c.probes
+			d, _ := s.service.Deploy(ctx, 1)
+			s.worker.RunOnce(ctx)
+			got, _ := s.service.Deployment(ctx, d.ID)
+			if got.Status != domain.Failed || got.Error != c.want {
+				t.Fatalf("got %s %q, want %q", got.Status, got.Error, c.want)
+			}
+			if len(s.runtime.probed) != c.tries {
+				t.Errorf("probed %d times, want %d", len(s.runtime.probed), c.tries)
+			}
+			if !s.runtime.running["bakery-app-1-0"] || s.runtime.running["bakery-app-1-1"] {
+				t.Fatalf("containers: %v", s.runtime.running)
+			}
+			if len(s.routes) != 0 {
+				t.Fatalf("route switched: %v", s.routes)
+			}
+		})
 	}
 }

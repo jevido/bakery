@@ -21,15 +21,30 @@ type Worker struct {
 	// Timeout bounds one whole Deployment.
 	Timeout time.Duration
 	// Poll is how often the queue is checked without a wake-up.
-	Poll time.Duration
-	Log  func(format string, args ...any)
-	now  func() time.Time
+	Poll  time.Duration
+	Log   func(format string, args ...any)
+	now   func() time.Time
+	sleep func(ctx context.Context, d time.Duration) error
+}
+
+func sleep(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 func NewWorker(service *Service, source Source, runtime Runtime, router Router, workDir string) *Worker {
 	return &Worker{
 		service: service, source: source, runtime: runtime, router: router, WorkDir: workDir,
-		Timeout: 30 * time.Minute, Poll: 2 * time.Second, Log: func(string, ...any) {}, now: time.Now,
+		Timeout: 30 * time.Minute, Poll: 2 * time.Second, Log: func(string, ...any) {}, now: time.Now, sleep: sleep,
 	}
 }
 
@@ -156,8 +171,16 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 	info("Starting container %s", d.Container)
 	if err := w.runtime.Start(ctx, ContainerSpec{
 		Name: d.Container, Image: d.Image, ApplicationID: app.ID, DeploymentID: d.ID, Env: app.Env,
+		Settle: !app.HealthCheck.Enabled,
 	}); err != nil {
 		return fmt.Errorf("container did not start: %w", err)
+	}
+	if app.HealthCheck.Enabled {
+		if err := w.waitHealthy(ctx, d.Container, app.Port, app.HealthCheck, info); err != nil {
+			// The old Container still serves; only the new one goes.
+			_ = w.runtime.Remove(context.WithoutCancel(ctx), d.Container)
+			return err
+		}
 	}
 
 	// Route, before the old Container goes, so traffic never points at
@@ -178,6 +201,41 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 		info("Could not remove every previous container: %v", err)
 	}
 	return w.advance(ctx, d, domain.Finished)
+}
+
+// waitHealthy probes the new Container until its Health check passes, the
+// retries run out, or probing cannot work at all.
+func (w *Worker) waitHealthy(ctx context.Context, container string, port int, h HealthCheck, info func(string, ...any)) error {
+	if h.StartPeriod > 0 {
+		info("Waiting %ds before the first health check", h.StartPeriod)
+		if err := w.sleep(ctx, time.Duration(h.StartPeriod)*time.Second); err != nil {
+			return err
+		}
+	}
+	url := fmt.Sprintf("http://127.0.0.1:%d%s", port, h.Path)
+	detail := ""
+	for attempt := 1; attempt <= h.Retries; attempt++ {
+		if attempt > 1 {
+			if err := w.sleep(ctx, time.Duration(h.Interval)*time.Second); err != nil {
+				return err
+			}
+		}
+		info("Waiting for %s (attempt %d/%d)", h.Path, attempt, h.Retries)
+		ok, d, err := w.runtime.Probe(ctx, container, url, time.Duration(h.Timeout)*time.Second)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return fmt.Errorf("health check failed: %w", err)
+		}
+		if ok {
+			info("Healthy after %d attempt(s)", attempt)
+			return nil
+		}
+		detail = d
+		info("Not healthy yet: %s", d)
+	}
+	return fmt.Errorf("health check failed after %d attempts: %s", h.Retries, detail)
 }
 
 // advance moves the Deployment on and saves it, so the dashboard sees the

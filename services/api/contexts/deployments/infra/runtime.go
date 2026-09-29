@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -49,14 +50,18 @@ func (r Runtime) Start(ctx context.Context, spec app.ContainerSpec) error {
 		r.remove(spec.Name)
 		return err
 	}
-	if err := r.waitRunning(ctx, spec.Name); err != nil {
+	settle := time.Duration(0)
+	if spec.Settle {
+		settle = r.Settle
+	}
+	if err := r.waitRunning(ctx, spec.Name, settle); err != nil {
 		r.remove(spec.Name)
 		return err
 	}
 	return nil
 }
 
-func (r Runtime) waitRunning(ctx context.Context, name string) error {
+func (r Runtime) waitRunning(ctx context.Context, name string, settle time.Duration) error {
 	deadline := time.Now().Add(r.StartTimeout)
 	var runningSince time.Time
 	for {
@@ -67,7 +72,7 @@ func (r Runtime) waitRunning(ctx context.Context, name string) error {
 		switch {
 		case info.State.Running && runningSince.IsZero():
 			runningSince = time.Now()
-		case info.State.Running && time.Since(runningSince) >= r.Settle:
+		case info.State.Running && time.Since(runningSince) >= settle:
 			return nil
 		case !info.State.Running && info.State.Status == "exited":
 			return r.exited(ctx, name, info.State.ExitCode)
@@ -83,6 +88,49 @@ func (r Runtime) waitRunning(ctx context.Context, name string) error {
 		case <-time.After(300 * time.Millisecond):
 		}
 	}
+}
+
+// probeScript requests $0 with curl, or else wget, within $1 seconds, and
+// prints why it failed. Exit 127 means the image has neither.
+const probeScript = `if command -v curl >/dev/null 2>&1; then exec curl -fsS -o /dev/null --max-time "$1" "$0"
+elif command -v wget >/dev/null 2>&1; then exec wget -q -O /dev/null -T "$1" "$0"
+else echo "no curl or wget in the image" >&2; exit 127; fi`
+
+// errNoProbeTool is a Health check that cannot run in this image.
+var errNoProbeTool = errors.New("the health check needs sh and curl or wget in the image")
+
+func (r Runtime) Probe(ctx context.Context, container, url string, timeout time.Duration) (bool, string, error) {
+	info, err := r.Podman.InspectContainer(ctx, container)
+	if err != nil {
+		return false, "", err
+	}
+	if !info.State.Running {
+		if info.State.Status == "exited" {
+			return false, "", r.exited(ctx, container, info.State.ExitCode)
+		}
+		return false, "", fmt.Errorf("container is %s", info.State.Status)
+	}
+	secs := int(timeout.Seconds())
+	// A little longer than the tool's own limit, so its message wins.
+	pctx, cancel := context.WithTimeout(ctx, timeout+2*time.Second)
+	defer cancel()
+	code, out, err := r.Podman.Exec(pctx, container, []string{"sh", "-c", probeScript, url, strconv.Itoa(secs)})
+	switch {
+	case err != nil && ctx.Err() != nil:
+		return false, "", ctx.Err()
+	case err != nil && pctx.Err() != nil:
+		return false, fmt.Sprintf("no answer within %ds", secs), nil
+	case err != nil:
+		return false, "", fmt.Errorf("%w (%v)", errNoProbeTool, err)
+	case code == 127 || code == 126:
+		return false, "", errNoProbeTool
+	case code != 0:
+		if out == "" {
+			out = fmt.Sprintf("exit code %d", code)
+		}
+		return false, strings.TrimSpace(out), nil
+	}
+	return true, "", nil
 }
 
 // exited explains a Container that stopped on its own, with its last output.
