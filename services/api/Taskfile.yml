@@ -13,8 +13,9 @@ tasks:
   dev:
     desc: Migrate, then run the API on 127.0.0.1:4910
     deps: [env]
+    env:
+      MIGRATE_ON_START: "true"
     cmds:
-      - go run . artisan migrate
       - go run .
 
   check:

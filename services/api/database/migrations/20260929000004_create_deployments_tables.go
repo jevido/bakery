@@ -34,8 +34,9 @@ func (r *M20260929000004CreateDeploymentsTables) Up() error {
 		return err
 	}
 	// One active Deployment per Application, enforced by the database so two
-	// Deploy clicks cannot both queue.
-	if _, err := facades.Orm().Query().Exec(`CREATE UNIQUE INDEX deployments_one_active
+	// Deploy clicks cannot both queue. Through Schema, so it runs inside the
+	// migration's transaction where the table already exists.
+	if err := s.Sql(`CREATE UNIQUE INDEX deployments_one_active
 		ON deployments (application_id)
 		WHERE status IN ('queued', 'cloning', 'building', 'starting')`); err != nil {
 		return err
