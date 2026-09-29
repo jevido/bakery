@@ -3,6 +3,11 @@
 
 version: "3"
 
+includes:
+  api:
+    taskfile: ./services/api/Taskfile.yml
+    dir: ./services/api
+
 vars:
   # Every port a dev task listens on. Keep in sync with the table in CLAUDE.md.
   # Container ports (Postgres, proxy) stay out: see CLAUDE.md.
@@ -35,9 +40,10 @@ tasks:
   dev:
     desc: Run every unit's dev server together (Ctrl+C stops all)
     deps: [db:up]
+    cmds:
+      - task: api:dev
 
   check:
     desc: Format check, lint, test and type-check every unit
-    # Add each unit's checks here as units appear.
     cmds:
-      - echo "no units yet"
+      - task: api:check

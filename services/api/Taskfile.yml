@@ -1,0 +1,30 @@
+version: "3"
+
+tasks:
+  env:
+    desc: Create .env from .env.example with fresh APP_KEY and JWT_SECRET (once)
+    status:
+      - test -f .env
+    cmds:
+      - cp .env.example .env
+      - go run . artisan key:generate
+      - go run . artisan jwt:secret
+
+  dev:
+    desc: Run the API on 127.0.0.1:4910
+    deps: [env]
+    cmds:
+      - go run .
+
+  check:
+    desc: gofmt, go vet and go test
+    cmds:
+      - gofmt -l . | (! grep .)
+      - go vet ./...
+      - go test ./...
+
+  migrate:
+    desc: Run database migrations
+    deps: [env]
+    cmds:
+      - go run . artisan migrate
