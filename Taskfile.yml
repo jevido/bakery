@@ -10,6 +10,9 @@ includes:
   web:
     taskfile: ./apps/web/Taskfile.yml
     dir: ./apps/web
+  server:
+    taskfile: ./infra/dev/server/Taskfile.yml
+    dir: .
 
 vars:
   # Every port a dev task listens on. Keep in sync with the table in CLAUDE.md.

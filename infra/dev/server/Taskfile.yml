@@ -1,0 +1,20 @@
+version: "3"
+
+# The fake server stand-in (see README.md). Paths are relative to the repo
+# root, which the root Taskfile sets as dir.
+
+tasks:
+  up:
+    desc: Start the fake server and Pebble
+    cmds:
+      - ./infra/dev/server/server.sh up
+
+  install:
+    desc: Run install.sh in the fake server with the locally built images (task images first)
+    cmds:
+      - ./infra/dev/server/server.sh install
+
+  down:
+    desc: Remove the fake server, Pebble and their network and volume
+    cmds:
+      - ./infra/dev/server/server.sh down

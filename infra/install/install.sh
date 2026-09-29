@@ -22,6 +22,9 @@ ACME_CA=
 ACME_CA_ROOT=
 PULL=true
 LOAD=
+# Subordinate IDs for the bakery user's containers. A server has room for
+# the usual 65536 above 200000; a nested test server has less.
+SUBIDS=200000-265535
 
 usage() {
 	cat <<USAGE
@@ -35,6 +38,7 @@ Usage: install.sh --domain DOMAIN --email EMAIL [options]
   --acme-ca-root FILE  PEM root the ACME directory's HTTPS certificate is signed by
   --load FILE          podman-load images from this archive first
   --no-pull            use images already present instead of pulling
+  --subids FIRST-LAST  subuid/subgid range for $BAKERY_USER (default $SUBIDS)
 USAGE
 }
 
@@ -55,6 +59,7 @@ parse_args() {
 		--acme-ca-root) ACME_CA_ROOT=${2:?}; shift ;;
 		--load) LOAD=${2:?}; shift ;;
 		--no-pull) PULL=false ;;
+		--subids) SUBIDS=${2:?}; shift ;;
 		-h | --help) usage; exit 0 ;;
 		*) usage >&2; die "unknown option: $1" ;;
 		esac
@@ -88,6 +93,7 @@ allow_low_ports() {
 		return
 	fi
 	log "Allowing unprivileged ports from 80"
+	mkdir -p /etc/sysctl.d
 	echo 'net.ipv4.ip_unprivileged_port_start=80' >"$conf"
 	sysctl -q -p "$conf"
 }
@@ -95,14 +101,18 @@ allow_low_ports() {
 create_user() {
 	if ! id "$BAKERY_USER" >/dev/null 2>&1; then
 		log "Creating user $BAKERY_USER"
-		useradd --system --create-home --home-dir "$BAKERY_HOME" --shell /usr/sbin/nologin "$BAKERY_USER"
+		useradd --system --create-home --home-dir "$BAKERY_HOME" \
+			--shell "$(command -v nologin || echo /usr/sbin/nologin)" "$BAKERY_USER"
 	fi
+	# useradd leaves an already existing home alone.
+	chown "$BAKERY_USER:" "$BAKERY_HOME"
+	chmod 700 "$BAKERY_HOME"
 	# Rootless Podman maps container users onto these ranges.
 	if ! grep -q "^$BAKERY_USER:" /etc/subuid; then
-		usermod --add-subuids 200000-265535 "$BAKERY_USER"
+		usermod --add-subuids "$SUBIDS" "$BAKERY_USER"
 	fi
 	if ! grep -q "^$BAKERY_USER:" /etc/subgid; then
-		usermod --add-subgids 200000-265535 "$BAKERY_USER"
+		usermod --add-subgids "$SUBIDS" "$BAKERY_USER"
 	fi
 	BAKERY_UID=$(id -u "$BAKERY_USER")
 	RUNTIME_DIR=/run/user/$BAKERY_UID
@@ -250,7 +260,9 @@ wait_ready() {
 main() {
 	[ "$(id -u)" -eq 0 ] || die "run as root (sudo bash install.sh ...)"
 	parse_args "$@"
-	command -v curl >/dev/null || die "curl is required"
+	for tool in curl runuser loginctl; do
+		command -v "$tool" >/dev/null || die "$tool is required"
+	done
 	install_podman
 	allow_low_ports
 	create_user
