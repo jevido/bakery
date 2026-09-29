@@ -28,3 +28,8 @@ tasks:
     deps: [env]
     cmds:
       - go run . artisan migrate
+
+  test:podman:
+    desc: Integration tests against the rootless Podman socket (tag podman)
+    cmds:
+      - go test -tags podman -count=1 ./...
