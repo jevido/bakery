@@ -1,0 +1,97 @@
+// Package domain is the deployments model: a Deployment and the order its
+// status moves in.
+package domain
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"time"
+)
+
+type Status string
+
+const (
+	Queued   Status = "queued"
+	Cloning  Status = "cloning"
+	Building Status = "building"
+	Starting Status = "starting"
+	Finished Status = "finished"
+	Failed   Status = "failed"
+)
+
+// ActiveStatuses are the statuses of a Deployment still under way. An
+// Application has at most one Deployment in one of them.
+var ActiveStatuses = []Status{Queued, Cloning, Building, Starting}
+
+var order = map[Status]int{Queued: 0, Cloning: 1, Building: 2, Starting: 3, Finished: 4}
+
+// Active reports whether s is one of ActiveStatuses.
+func (s Status) Active() bool {
+	_, ok := order[s]
+	return ok && s != Finished
+}
+
+var ErrActiveDeployment = errors.New("a deployment of this application is already under way")
+
+type Deployment struct {
+	ID            uint64
+	ApplicationID uint64
+	Status        Status
+	CommitSHA     string
+	Image         string
+	Container     string
+	Error         string
+	CreatedAt     time.Time
+	StartedAt     *time.Time
+	FinishedAt    *time.Time
+}
+
+// Advance moves the Deployment forward to status. Statuses only move
+// forward, and only an active Deployment moves at all.
+func (d *Deployment) Advance(to Status) error {
+	if !d.Status.Active() {
+		return fmt.Errorf("deployment %d is %s and cannot move to %s", d.ID, d.Status, to)
+	}
+	if to == Failed {
+		return fmt.Errorf("use Fail to fail deployment %d", d.ID)
+	}
+	if order[to] <= order[d.Status] {
+		return fmt.Errorf("deployment %d cannot move back from %s to %s", d.ID, d.Status, to)
+	}
+	d.Status = to
+	return nil
+}
+
+// Fail ends an active Deployment with the reason.
+func (d *Deployment) Fail(reason string) error {
+	if !d.Status.Active() {
+		return fmt.Errorf("deployment %d is %s and cannot fail", d.ID, d.Status)
+	}
+	d.Status, d.Error = Failed, reason
+	return nil
+}
+
+// ContainerName names the Container a Deployment runs.
+func ContainerName(applicationID, deploymentID uint64) string {
+	return "bakery-app-" + strconv.FormatUint(applicationID, 10) + "-" + strconv.FormatUint(deploymentID, 10)
+}
+
+// ImageTag names the Image a Deployment builds.
+func ImageTag(slug string, deploymentID uint64) string {
+	return "localhost/bakery/" + slug + ":" + strconv.FormatUint(deploymentID, 10)
+}
+
+// Log streams.
+const (
+	StreamInfo = "info"
+	StreamOut  = "out"
+	StreamErr  = "err"
+)
+
+// LogLine is one line of a Deployment log.
+type LogLine struct {
+	ID     uint64
+	Stream string
+	Line   string
+}

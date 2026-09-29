@@ -36,15 +36,12 @@ Application is (projects) or for the Caddy configuration (routing).
 
 ### Domain events
 
-- `DeploymentFinished { deploymentID, applicationID, container }`
-- `DeploymentFailed { deploymentID, applicationID, error }`
-
-Nothing consumes them yet; notifications will.
+None published yet. Notifications will need `DeploymentFinished` and
+`DeploymentFailed`; they are added when something consumes them.
 
 ## Integration
 
-- **Publishes:** the Deployment and its log over HTTP (JSON and SSE); the two
-  events above.
+- **Publishes:** the Deployment and its log over HTTP (JSON and SSE).
 - **Consumes:** `projects.ApplicationForDeploy` (the snapshot is taken once, at
   the start of a Deployment, so editing the Application mid-build does not
   change what is being built); `routing.SwitchRoute`.
@@ -64,5 +61,13 @@ Nothing consumes them yet; notifications will.
   bindings pull in most of Podman's dependency tree; the CLI means parsing
   text. The REST client is small and will work unchanged over an
   SSH-tunnelled socket for remote Servers.
+- **An Application's Containers are found by label**
+  (`bakery.application=<id>`), not by the names Bakery remembers, so a
+  Container left over from a crash is still cleaned up by the next Deployment.
+  When the Application is deleted (`ApplicationDeleted`), its Containers and
+  Deployments go with it.
+- **A Container must stay running for two seconds** before the Route moves to
+  it, so an app that crashes on boot fails its Deployment instead of taking
+  the traffic.
 - **Every log line is stored** (batched inserts), so a reload or a second
   viewer sees the whole log, and failed Deployments keep theirs.

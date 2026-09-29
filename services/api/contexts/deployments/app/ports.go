@@ -1,0 +1,93 @@
+// Package app holds the deployments use cases: queue a Deployment, and the
+// Worker that runs queued ones step by step.
+package app
+
+import (
+	"context"
+	"errors"
+
+	"github.com/jevido/bakery/services/api/contexts/deployments/domain"
+)
+
+var ErrNotFound = errors.New("not found")
+
+// Store keeps Deployments.
+type Store interface {
+	// Queue adds a queued Deployment, or returns
+	// domain.ErrActiveDeployment when the Application has an active one.
+	Queue(ctx context.Context, applicationID uint64) (domain.Deployment, error)
+	// ClaimNext moves the oldest queued Deployment to cloning and returns
+	// it; concurrent workers never claim the same one.
+	ClaimNext(ctx context.Context) (domain.Deployment, bool, error)
+	// Save writes status, commit, image, container, error and the times.
+	Save(ctx context.Context, d domain.Deployment) error
+	// FailInterrupted fails every Deployment left active by a crash or
+	// restart (not queued ones, which still run) and returns how many.
+	FailInterrupted(ctx context.Context, reason string) (int, error)
+	ByID(ctx context.Context, id uint64) (domain.Deployment, bool, error)
+	ByApplication(ctx context.Context, applicationID uint64, limit int) ([]domain.Deployment, error)
+	// Active returns the Application's active Deployment, if any.
+	Active(ctx context.Context, applicationID uint64) (domain.Deployment, bool, error)
+	DeleteForApplication(ctx context.Context, applicationID uint64) error
+}
+
+// Logs writes and reads Deployment logs.
+type Logs interface {
+	// Writer returns a writer for one Deployment's log. Close flushes it.
+	Writer(deploymentID uint64) LogWriter
+	After(ctx context.Context, deploymentID, afterID uint64, limit int) ([]domain.LogLine, error)
+}
+
+type LogWriter interface {
+	Line(stream, line string)
+	Close() error
+}
+
+// Application is what a Deployment needs to know about its Application,
+// snapshotted once at the start.
+type Application struct {
+	ID             uint64
+	Slug           string
+	GitURL         string
+	GitBranch      string
+	DockerfilePath string
+	Port           int
+	Domain         string
+	Env            map[string]string
+}
+
+// Applications is projects' published ApplicationForDeploy.
+type Applications func(ctx context.Context, id uint64) (Application, error)
+
+// Source fetches an Application's code.
+type Source interface {
+	// Clone checks the branch out into dir (which must not exist) and
+	// returns the commit.
+	Clone(ctx context.Context, url, branch, dir string, out func(stream, line string)) (commit string, err error)
+}
+
+// Runtime builds and runs Containers.
+type Runtime interface {
+	Build(ctx context.Context, dir, dockerfile, tag string, labels map[string]string, out func(line string)) error
+	// Start creates and starts the Container and returns once it has
+	// stayed running, or an error (the Container is then removed).
+	Start(ctx context.Context, spec ContainerSpec) error
+	// RemoveOthers removes the Application's Containers except keep, and
+	// returns the names removed.
+	RemoveOthers(ctx context.Context, applicationID uint64, keep string) ([]string, error)
+	// Remove removes one Container.
+	Remove(ctx context.Context, name string) error
+	// RemoveAll removes every Container of the Application.
+	RemoveAll(ctx context.Context, applicationID uint64) error
+}
+
+type ContainerSpec struct {
+	Name          string
+	Image         string
+	ApplicationID uint64
+	DeploymentID  uint64
+	Env           map[string]string
+}
+
+// Router is routing's SwitchRoute.
+type Router func(ctx context.Context, applicationID uint64, domain, container string, port int) error
