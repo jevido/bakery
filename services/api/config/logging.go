@@ -33,11 +33,13 @@ func init() {
 				"formatter": "text",
 			},
 			"daily": map[string]any{
-				"driver":    "daily",
-				"path":      "storage/logs/goravel.log",
-				"level":     config.Env("LOG_LEVEL", "debug"),
-				"days":      7,
-				"print":     false,
+				"driver": "daily",
+				"path":   "storage/logs/goravel.log",
+				"level":  config.Env("LOG_LEVEL", "debug"),
+				"days":   7,
+				// LOG_PRINT also writes every line to the console; the image
+				// sets it so `podman logs bakery-api` shows them.
+				"print":     config.Env("LOG_PRINT", false),
 				"formatter": "text",
 			},
 			"otel": map[string]any{

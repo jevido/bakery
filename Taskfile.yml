@@ -55,6 +55,16 @@ tasks:
     cmds:
       - ./.claude/ralph/ralph.sh
 
+  images:
+    desc: Build every image (localhost/bakery-*:dev) from infra/images
+    cmds:
+      - task: images:api
+
+  images:api:
+    desc: Build localhost/bakery-api:dev
+    cmds:
+      - podman build -f infra/images/api/Containerfile -t localhost/bakery-api:dev .
+
   check:
     desc: Format check, lint, test and type-check every unit
     cmds:

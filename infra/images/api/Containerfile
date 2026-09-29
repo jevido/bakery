@@ -1,0 +1,35 @@
+# The Bakery API. Build from the repository root:
+#   podman build -f infra/images/api/Containerfile -t localhost/bakery-api:dev .
+# Runtime needs: the host user's Podman socket at /run/podman/podman.sock and
+# the environment described in infra/prod/README.md.
+
+FROM docker.io/library/golang:1.27 AS build
+WORKDIR /src
+COPY services/api/go.mod services/api/go.sum ./
+RUN go mod download
+COPY services/api/ ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/bakery-api .
+
+FROM docker.io/library/debian:trixie-slim
+# git: the Deployment worker clones Sources with it. ca-certificates: https
+# clones and image pulls.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=build /out/bakery-api /usr/local/bin/bakery-api
+# Goravel writes its logs under storage/ relative to the working directory.
+RUN mkdir -p /app/storage
+# Root inside a rootless Podman container is the host's bakery user, which
+# owns the Podman socket; nothing here runs with more rights than that user.
+ENV APP_ENV=production \
+    APP_DEBUG=false \
+    LOG_LEVEL=info \
+    LOG_PRINT=true \
+    APP_HOST=0.0.0.0 \
+    DB_CONNECTION=postgres \
+    APP_PORT=4910 \
+    MIGRATE_ON_START=true \
+    BAKERY_PODMAN_SOCKET=/run/podman/podman.sock
+EXPOSE 4910
+CMD ["bakery-api"]
