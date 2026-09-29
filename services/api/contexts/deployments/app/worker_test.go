@@ -22,8 +22,8 @@ func (m *memStore) Queue(_ context.Context, appID uint64, trigger domain.Trigger
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, d := range m.items {
-		if d.ApplicationID == appID && d.Status.Active() {
-			return domain.Deployment{}, domain.ErrActiveDeployment
+		if d.ApplicationID == appID && d.Status == domain.Queued {
+			return domain.Deployment{}, domain.ErrAlreadyQueued
 		}
 	}
 	d := domain.Deployment{ID: uint64(len(m.items) + 1), ApplicationID: appID, Status: domain.Queued, Trigger: trigger}
@@ -34,8 +34,14 @@ func (m *memStore) Queue(_ context.Context, appID uint64, trigger domain.Trigger
 func (m *memStore) ClaimNext(context.Context) (domain.Deployment, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	running := map[uint64]bool{}
+	for _, d := range m.items {
+		if d.Status.Active() && d.Status != domain.Queued {
+			running[d.ApplicationID] = true
+		}
+	}
 	for i, d := range m.items {
-		if d.Status == domain.Queued {
+		if d.Status == domain.Queued && !running[d.ApplicationID] {
 			m.items[i].Status = domain.Cloning
 			return m.items[i], true, nil
 		}
@@ -162,8 +168,8 @@ func TestDeploySucceedsAndReplacesOldContainer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.service.Deploy(ctx, 1); !errors.Is(err, domain.ErrActiveDeployment) {
-		t.Fatalf("second deploy while active: %v", err)
+	if _, err := s.service.Deploy(ctx, 1); !errors.Is(err, domain.ErrAlreadyQueued) {
+		t.Fatalf("second deploy while queued: %v", err)
 	}
 	if !s.worker.RunOnce(ctx) {
 		t.Fatal("nothing claimed")
@@ -235,5 +241,34 @@ func TestDeployFailures(t *testing.T) {
 				t.Fatalf("route switched on failure: %v", s.routes)
 			}
 		})
+	}
+}
+
+func TestDeployQueuesBehindARunningDeployment(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	first, _ := s.service.Deploy(ctx, 1)
+	if _, found, _ := s.store.ClaimNext(ctx); !found {
+		t.Fatal("first not claimed")
+	}
+	second, err := s.service.Deploy(ctx, 1)
+	if err != nil {
+		t.Fatalf("deploy while running: %v", err)
+	}
+	if _, err := s.service.Deploy(ctx, 1); !errors.Is(err, domain.ErrAlreadyQueued) {
+		t.Fatalf("third deploy: %v", err)
+	}
+	if _, found, _ := s.store.ClaimNext(ctx); found {
+		t.Fatal("claimed a queued deployment while its application has a running one")
+	}
+	// The first finishes; now the second is claimed.
+	d, _ := s.service.Deployment(ctx, first.ID)
+	d.Status = domain.Finished
+	s.store.Save(ctx, d)
+	if !s.worker.RunOnce(ctx) {
+		t.Fatal("second not claimed after the first finished")
+	}
+	if got, _ := s.service.Deployment(ctx, second.ID); got.Status != domain.Finished {
+		t.Fatalf("second: %s %s", got.Status, got.Error)
 	}
 }

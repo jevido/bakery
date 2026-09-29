@@ -44,7 +44,10 @@ func (r deploymentRecord) toDomain() domain.Deployment {
 	}
 }
 
-const activeList = "('queued', 'cloning', 'building', 'starting')"
+const (
+	activeList  = "('queued', 'cloning', 'building', 'starting')"
+	runningList = "('cloning', 'building', 'starting')"
+)
 
 type Store struct{}
 
@@ -56,8 +59,8 @@ func (s Store) Queue(ctx context.Context, applicationID uint64, trigger domain.T
 	now := time.Now()
 	rec := deploymentRecord{ApplicationID: applicationID, Status: string(domain.Queued), Trigger: string(trigger), CreatedAt: now, UpdatedAt: now}
 	if err := s.query(ctx).Create(&rec); err != nil {
-		if strings.Contains(err.Error(), "deployments_one_active") || strings.Contains(err.Error(), "23505") {
-			return domain.Deployment{}, domain.ErrActiveDeployment
+		if strings.Contains(err.Error(), "deployments_one_queued") {
+			return domain.Deployment{}, domain.ErrAlreadyQueued
 		}
 		return domain.Deployment{}, err
 	}
@@ -65,17 +68,27 @@ func (s Store) Queue(ctx context.Context, applicationID uint64, trigger domain.T
 }
 
 // ClaimNext is one statement: the inner SELECT locks the oldest queued row
-// and skips rows another worker holds, so two workers never take the same
-// Deployment.
+// of an Application with nothing running and skips rows another worker
+// holds, so two workers never take the same Deployment. Two workers claiming
+// two queued rows of one Application cannot happen either (one queued per
+// Application); should it race anyway, deployments_one_running refuses the
+// second, which is reported as nothing to claim.
 func (s Store) ClaimNext(ctx context.Context) (domain.Deployment, bool, error) {
 	var recs []deploymentRecord
 	err := s.query(ctx).Raw(`
 		UPDATE deployments SET status = 'cloning', started_at = now(), updated_at = now()
 		WHERE id = (
-			SELECT id FROM deployments WHERE status = 'queued'
-			ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1
+			SELECT q.id FROM deployments q
+			WHERE q.status = 'queued' AND NOT EXISTS (
+				SELECT 1 FROM deployments r
+				WHERE r.application_id = q.application_id AND r.status IN ` + runningList + `
+			)
+			ORDER BY q.id FOR UPDATE SKIP LOCKED LIMIT 1
 		)
 		RETURNING *`).Scan(&recs)
+	if err != nil && strings.Contains(err.Error(), "deployments_one_running") {
+		return domain.Deployment{}, false, nil
+	}
 	if err != nil || len(recs) == 0 {
 		return domain.Deployment{}, false, err
 	}

@@ -20,9 +20,13 @@ const (
 	Failed   Status = "failed"
 )
 
-// ActiveStatuses are the statuses of a Deployment still under way. An
-// Application has at most one Deployment in one of them.
+// ActiveStatuses are the statuses of a Deployment still under way.
 var ActiveStatuses = []Status{Queued, Cloning, Building, Starting}
+
+// RunningStatuses are the active statuses past the queue. An Application has
+// at most one queued and one running Deployment; a queued one waits until the
+// Application has no running one.
+var RunningStatuses = []Status{Cloning, Building, Starting}
 
 var order = map[Status]int{Queued: 0, Cloning: 1, Building: 2, Starting: 3, Finished: 4}
 
@@ -40,7 +44,7 @@ const (
 	TriggerWebhook Trigger = "webhook"
 )
 
-var ErrActiveDeployment = errors.New("a deployment of this application is already under way")
+var ErrAlreadyQueued = errors.New("a deployment of this application is already queued")
 
 type Deployment struct {
 	ID            uint64

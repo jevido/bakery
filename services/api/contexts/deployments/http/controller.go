@@ -54,7 +54,7 @@ func (c *Controller) fail(ctx contractshttp.Context, err error) contractshttp.Re
 	switch {
 	case errors.Is(err, app.ErrNotFound), c.isNotFound(err):
 		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
-	case errors.Is(err, domain.ErrActiveDeployment):
+	case errors.Is(err, domain.ErrAlreadyQueued):
 		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
 	}
 	return respond.ServerError(ctx, err)

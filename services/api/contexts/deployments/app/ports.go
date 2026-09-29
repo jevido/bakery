@@ -13,11 +13,12 @@ var ErrNotFound = errors.New("not found")
 
 // Store keeps Deployments.
 type Store interface {
-	// Queue adds a queued Deployment, or returns
-	// domain.ErrActiveDeployment when the Application has an active one.
+	// Queue adds a queued Deployment, or returns domain.ErrAlreadyQueued
+	// when the Application already has a queued one.
 	Queue(ctx context.Context, applicationID uint64, trigger domain.Trigger) (domain.Deployment, error)
-	// ClaimNext moves the oldest queued Deployment to cloning and returns
-	// it; concurrent workers never claim the same one.
+	// ClaimNext moves the oldest queued Deployment whose Application has no
+	// running one to cloning and returns it; concurrent workers never claim
+	// the same one.
 	ClaimNext(ctx context.Context) (domain.Deployment, bool, error)
 	// Save writes status, branch, commit, image, container, error and the
 	// times.

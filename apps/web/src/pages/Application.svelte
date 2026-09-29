@@ -23,6 +23,8 @@
 
   let latest = $derived(deployments[0] ?? null)
   let active = $derived(deployments.some((d) => d.active))
+  // One Deployment can wait behind the running one; a second cannot.
+  let queued = $derived(deployments.some((d) => d.status === 'queued'))
 
   async function loadDeployments() {
     const r = await api<{ deployments: Deployment[] }>('GET', `/applications/${id}/deployments`)
@@ -95,8 +97,8 @@
         <a class="mono" href={application.public_url} target="_blank" rel="noreferrer">{application.public_url}</a>
       </p>
     </div>
-    <button class="primary" onclick={deploy} disabled={deploying || active}>
-      {active ? 'Deploying…' : 'Deploy'}
+    <button class="primary" onclick={deploy} disabled={deploying || queued}>
+      {queued ? 'Queued…' : active ? 'Deploy again' : 'Deploy'}
     </button>
   </div>
   {#if deployError}<p class="error">{deployError}</p>{/if}
