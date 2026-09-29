@@ -1,11 +1,19 @@
 # next
 
-The pre-production environment. Changes land here before `prod`, running the
-same images with their own configuration.
+Pre-production: a second server set up exactly like [`prod`](../prod/README.md),
+with the same `install.sh`, running the same images before they go to prod.
+Only its dashboard domain and image tags differ.
 
-Document here, per resource: domain, port, health check path, what triggers a
-deploy, and which environment variables it needs (names only, never values).
-Keep it structured like `infra/prod/README.md` so the two are easy to diff.
+## Install and upgrade
 
-Commit an `.env.example` or equivalent for the variables; real values live in
-the deploy platform, never in the repo.
+```sh
+sudo bash install.sh --domain next.bakery.example.com --email me@example.com \
+  --api-image <registry>/bakery-api:<tag> --web-image <registry>/bakery-web:<tag>
+```
+
+Promote a tag to prod only after it has run here.
+
+## Resources, configuration, operating it, backups
+
+As in [`infra/prod/README.md`](../prod/README.md). Nothing differs but the
+domain passed to `--domain`.

@@ -36,7 +36,13 @@ task dev        # Postgres, the API (:4910, migrates first) and the dashboard (:
 task down       # stop the dev servers (Postgres and the proxy keep running)
 task check      # format, lint, test and type-check every unit
 task api:test:podman   # integration tests against the Podman socket
+task images     # build localhost/bakery-api:dev and localhost/bakery-web:dev
+task server:test       # install into a fake server container and check it end to end
 ```
+
+A `services/api/.env` from before the admin API split needs
+`BAKERY_PROXY_ADMIN_URL=http://127.0.0.1:4949` and
+`BAKERY_PROXY_ADMIN_PUBLISH=127.0.0.1:4949` added (see `.env.example`).
 
 On start the API creates the `bakery` Podman network and the `bakery-proxy`
 Caddy container (127.0.0.1:4940 HTTP, 127.0.0.1:4943 HTTPS, admin API on
@@ -61,6 +67,27 @@ trust its root:
 podman exec bakery-proxy cat /data/caddy/pki/authorities/local/root.crt > bakery-root.crt
 # then import bakery-root.crt into your browser or system trust store
 ```
+
+## Install on a server
+
+On a fresh Linux server with systemd, ports 80/443 open and DNS for your
+dashboard domain (and `*.<domain>` for applications) pointing at it:
+
+```sh
+sudo bash infra/install/install.sh --domain bakery.example.com --email me@example.com \
+  --api-image <registry>/bakery-api:<tag> --web-image <registry>/bakery-web:<tag>
+```
+
+It installs rootless Podman, runs Bakery as the `bakery` user and serves
+the dashboard on `https://bakery.example.com` with a Let's Encrypt
+certificate; applications get certificates the same way. Run it again to
+upgrade. Images are not published yet: build them with `task images` and
+push them to a registry of your own. See
+[`infra/install`](infra/install/README.md) and the runbook in
+[`infra/prod`](infra/prod/README.md).
+
+`task server:test` proves the whole install locally, in a fake server
+container with Pebble as the ACME CA.
 
 Conventions for people and coding agents live in [`CLAUDE.md`](CLAUDE.md).
 The project is built with domain-driven design; the model lives in

@@ -68,6 +68,8 @@ task                 # list tasks
 task dev             # run every unit's dev server
 task check           # format, lint, test and type-check every unit
 task down            # stop every dev server this repo started
+task images          # build the api and web images (localhost/bakery-*:dev)
+task server:test     # install.sh into a fake server + Pebble, checked end to end
 ```
 
 **Local ports:** pick one range for the repo (e.g. 47xx) and give each unit

@@ -50,8 +50,12 @@ reaches an Application (routing).
   used. Coolify's Project > Environment > Resource shape is what later phases
   (previews, staging) need, and adding a level under existing Applications
   later would be a data migration.
+- **The dashboard domain is reserved through configuration, not by asking
+  routing.** Projects reads `BAKERY_DASHBOARD_DOMAIN` itself, so it needs no
+  dependency on routing to refuse it; both contexts read the same setting.
 - **Source URLs must be `https://`.** The deployment worker clones whatever
-  URL it is given on the host; a `file://` URL or a local path would let an
+  URL it is given where the API runs (on the host in development, in the
+  API container on a server); a `file://` URL or a local path would let an
   Application read the host's files. Private repositories (deploy keys,
   GitHub App) come later as their own Source kinds rather than by loosening
   this rule.
