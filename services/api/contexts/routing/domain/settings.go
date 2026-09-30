@@ -34,8 +34,37 @@ const (
 // RouteSettings is how the Proxy treats one Application's traffic. It is
 // stored apart from the Route, since it exists before the first Deployment.
 type RouteSettings struct {
-	ApplicationID uint64
-	WwwRedirect   WwwRedirect
+	ApplicationID   uint64
+	WwwRedirect     WwwRedirect
+	ResponseHeaders []ResponseHeader
+	BasicAuth       BasicAuth
+}
+
+// ResponseHeader is set (not added) on every response.
+type ResponseHeader struct {
+	Name  string
+	Value string
+}
+
+// BasicAuth asks for one username and password before any request is
+// proxied. Only the bcrypt hash of the password is kept. Switched off, the
+// username and hash stay, so switching it on again needs no new password.
+type BasicAuth struct {
+	Enabled      bool
+	Username     string
+	PasswordHash string
+}
+
+// MaxResponseHeaders is how many Response headers one Route may set.
+const MaxResponseHeaders = 20
+
+// headerToken is an HTTP field name (RFC 9110 token).
+var headerToken = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+
+// forbiddenHeaders belong to the connection or the body, not the app.
+var forbiddenHeaders = map[string]bool{
+	"connection": true, "keep-alive": true, "te": true, "trailer": true,
+	"transfer-encoding": true, "upgrade": true, "content-length": true,
 }
 
 // DefaultRouteSettings is everything off.
@@ -52,6 +81,41 @@ func (s RouteSettings) Check() (RouteSettings, error) {
 	default:
 		return s, invalid("www_redirect", "www redirect must be off, to_apex or to_www")
 	}
+	if len(s.ResponseHeaders) > MaxResponseHeaders {
+		return s, invalid("response_headers", "at most %d response headers", MaxResponseHeaders)
+	}
+	seen := map[string]bool{}
+	headers := make([]ResponseHeader, len(s.ResponseHeaders))
+	for i, h := range s.ResponseHeaders {
+		h.Name = strings.TrimSpace(h.Name)
+		lower := strings.ToLower(h.Name)
+		switch {
+		case !headerToken.MatchString(h.Name):
+			return s, invalid("response_headers", "%q is not a valid header name", h.Name)
+		case forbiddenHeaders[lower] || strings.HasPrefix(lower, "proxy-"):
+			return s, invalid("response_headers", "%s cannot be set by the proxy", h.Name)
+		case seen[lower]:
+			return s, invalid("response_headers", "%s is set twice", h.Name)
+		case strings.ContainsAny(h.Value, "\r\n\x00"):
+			return s, invalid("response_headers", "the value of %s must be on one line", h.Name)
+		case len(h.Value) > 1024:
+			return s, invalid("response_headers", "the value of %s is at most 1024 characters", h.Name)
+		}
+		seen[lower] = true
+		headers[i] = h
+	}
+	s.ResponseHeaders = headers
+	a := s.BasicAuth
+	a.Username = strings.TrimSpace(a.Username)
+	switch {
+	case len(a.Username) > 100 || strings.ContainsAny(a.Username, ":\r\n"):
+		return s, invalid("basic_auth.username", "username is at most 100 characters, without a colon")
+	case a.Enabled && a.Username == "":
+		return s, invalid("basic_auth.username", "username is required for basic auth")
+	case a.Enabled && a.PasswordHash == "":
+		return s, invalid("basic_auth.password", "password is required for basic auth")
+	}
+	s.BasicAuth = a
 	return s, nil
 }
 

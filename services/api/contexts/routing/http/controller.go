@@ -26,11 +26,47 @@ func NewController(service *app.Service, exists ApplicationExists) *Controller {
 }
 
 type settingsJSON struct {
-	WwwRedirect string `json:"www_redirect"`
+	WwwRedirect     string        `json:"www_redirect"`
+	ResponseHeaders []headerJSON  `json:"response_headers"`
+	BasicAuth       basicAuthJSON `json:"basic_auth"`
+}
+
+type headerJSON struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// basicAuthJSON never carries the hash out. Password is only read: empty
+// keeps the stored one.
+type basicAuthJSON struct {
+	Enabled     bool   `json:"enabled"`
+	Username    string `json:"username"`
+	Password    string `json:"password,omitempty"`
+	PasswordSet bool   `json:"password_set"`
 }
 
 func settingsToJSON(s domain.RouteSettings) settingsJSON {
-	return settingsJSON{WwwRedirect: string(s.WwwRedirect)}
+	out := settingsJSON{
+		WwwRedirect:     string(s.WwwRedirect),
+		ResponseHeaders: make([]headerJSON, len(s.ResponseHeaders)),
+		BasicAuth:       basicAuthJSON{Enabled: s.BasicAuth.Enabled, Username: s.BasicAuth.Username, PasswordSet: s.BasicAuth.PasswordHash != ""},
+	}
+	for i, h := range s.ResponseHeaders {
+		out.ResponseHeaders[i] = headerJSON(h)
+	}
+	return out
+}
+
+func (r settingsJSON) settings(applicationID uint64) domain.RouteSettings {
+	s := domain.RouteSettings{
+		ApplicationID: applicationID, WwwRedirect: domain.WwwRedirect(r.WwwRedirect),
+		ResponseHeaders: make([]domain.ResponseHeader, len(r.ResponseHeaders)),
+		BasicAuth:       domain.BasicAuth{Enabled: r.BasicAuth.Enabled, Username: r.BasicAuth.Username},
+	}
+	for i, h := range r.ResponseHeaders {
+		s.ResponseHeaders[i] = domain.ResponseHeader(h)
+	}
+	return s
 }
 
 // application reads the {id} route parameter of an existing Application.
@@ -71,7 +107,7 @@ func (c *Controller) ReplaceSettings(ctx contractshttp.Context) contractshttp.Re
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	s, err := c.service.ChangeRouteSettings(ctx.Context(), domain.RouteSettings{ApplicationID: id, WwwRedirect: domain.WwwRedirect(req.WwwRedirect)})
+	s, err := c.service.ChangeRouteSettings(ctx.Context(), req.settings(id), req.BasicAuth.Password)
 	var fe *domain.FieldError
 	switch {
 	case errors.As(err, &fe):

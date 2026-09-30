@@ -36,3 +36,34 @@ func TestRouteSettingsCheck(t *testing.T) {
 		t.Fatalf("unknown mode: %v", err)
 	}
 }
+
+func TestResponseHeadersAndBasicAuthCheck(t *testing.T) {
+	ok := RouteSettings{ResponseHeaders: []ResponseHeader{{" X-Frame-Options ", "DENY"}}}
+	s, err := ok.Check()
+	if err != nil || s.ResponseHeaders[0].Name != "X-Frame-Options" {
+		t.Fatalf("valid: %v %+v", err, s)
+	}
+	many := make([]ResponseHeader, MaxResponseHeaders+1)
+	for i := range many {
+		many[i] = ResponseHeader{Name: "X-" + string(rune('A'+i)), Value: "1"}
+	}
+	for i, c := range []struct {
+		s     RouteSettings
+		field string
+	}{
+		{RouteSettings{ResponseHeaders: []ResponseHeader{{"Content-Length", "1"}}}, "response_headers"},
+		{RouteSettings{ResponseHeaders: []ResponseHeader{{"Proxy-Authorization", "1"}}}, "response_headers"},
+		{RouteSettings{ResponseHeaders: []ResponseHeader{{"X A", "1"}}}, "response_headers"},
+		{RouteSettings{ResponseHeaders: []ResponseHeader{{"X-A", "1"}, {"x-a", "2"}}}, "response_headers"},
+		{RouteSettings{ResponseHeaders: []ResponseHeader{{"X-A", "a\r\nSet-Cookie: x"}}}, "response_headers"},
+		{RouteSettings{ResponseHeaders: many}, "response_headers"},
+		{RouteSettings{BasicAuth: BasicAuth{Enabled: true, PasswordHash: "h"}}, "basic_auth.username"},
+		{RouteSettings{BasicAuth: BasicAuth{Enabled: true, Username: "a:b", PasswordHash: "h"}}, "basic_auth.username"},
+		{RouteSettings{BasicAuth: BasicAuth{Enabled: true, Username: "me"}}, "basic_auth.password"},
+	} {
+		var fe *FieldError
+		if _, err := c.s.Check(); !errors.As(err, &fe) || fe.Field != c.field {
+			t.Errorf("case %d: %v, want field %s", i, err, c.field)
+		}
+	}
+}

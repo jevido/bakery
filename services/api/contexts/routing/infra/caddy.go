@@ -82,11 +82,8 @@ func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
 	for _, r := range sorted {
 		domains = append(domains, r.Domains...)
 		caddyRoutes = append(caddyRoutes, obj{
-			"match": []obj{{"host": r.Domains}},
-			"handle": []obj{{
-				"handler":   "reverse_proxy",
-				"upstreams": []obj{{"dial": r.Container + ":" + strconv.Itoa(r.Port)}},
-			}},
+			"match":    []obj{{"host": r.Domains}},
+			"handle":   applicationHandlers(r),
 			"terminal": true,
 		})
 		// An explicit Domain of any Route wins over a counterpart.
@@ -137,6 +134,38 @@ func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
 		"admin": obj{"listen": CaddyAdminListen},
 		"apps":  apps,
 	}, "", "  ")
+}
+
+// applicationHandlers are a Route's handlers in order: its Response headers
+// (first, so a 401 carries them too), Basic auth, then the Container.
+func applicationHandlers(r domain.Route) []obj {
+	var handlers []obj
+	if hs := r.Settings.ResponseHeaders; len(hs) > 0 {
+		set := obj{}
+		for _, h := range hs {
+			set[h.Name] = []string{h.Value}
+		}
+		// Set twice: at once, so a response Caddy writes itself (a 401)
+		// carries them, and deferred until the app's response is written,
+		// so a header the app sends itself is replaced, not doubled.
+		handlers = append(handlers,
+			obj{"handler": "headers", "response": obj{"set": set}},
+			obj{"handler": "headers", "response": obj{"set": set, "deferred": true}})
+	}
+	if a := r.Settings.BasicAuth; a.Enabled && a.PasswordHash != "" {
+		handlers = append(handlers, obj{
+			"handler": "authentication",
+			"providers": obj{"http_basic": obj{
+				"hash":     obj{"algorithm": "bcrypt"},
+				"accounts": []obj{{"username": a.Username, "password": a.PasswordHash}},
+				"realm":    "restricted",
+			}},
+		})
+	}
+	return append(handlers, obj{
+		"handler":   "reverse_proxy",
+		"upstreams": []obj{{"dial": r.Container + ":" + strconv.Itoa(r.Port)}},
+	})
 }
 
 // redirectRoute answers every request for host with a permanent redirect to

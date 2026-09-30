@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/jevido/bakery/services/api/app/podman"
 	"github.com/jevido/bakery/services/api/contexts/routing/domain"
 )
@@ -92,6 +94,32 @@ func TestProxyRoutesToContainer(t *testing.T) {
 		res := get("www.test.localhost", "/path?q=1", nil)
 		return res != nil && res.StatusCode == 308 && res.Header.Get("Location") == "https://test.localhost:4945/path?q=1"
 	}, "www.test.localhost redirecting")
+
+	// Response headers and Basic auth.
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.MinCost)
+	route.Settings = domain.RouteSettings{
+		ResponseHeaders: []domain.ResponseHeader{{Name: "X-Frame-Options", Value: "DENY"}},
+		BasicAuth:       domain.BasicAuth{Enabled: true, Username: "me", PasswordHash: string(hash)},
+	}
+	if err := proxy.Apply(ctx, []domain.Route{route}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	auth := func(user, password string) http.Header {
+		req, _ := http.NewRequest(http.MethodGet, "/", nil)
+		req.SetBasicAuth(user, password)
+		return req.Header
+	}
+	waitFor(t, func() bool {
+		res := get("test.localhost", "/", nil)
+		return res != nil && res.StatusCode == 401 && res.Header.Get("X-Frame-Options") == "DENY"
+	}, "401 with the header, without credentials")
+	if res := get("test.localhost", "/", auth("me", "wrong")); res == nil || res.StatusCode != 401 {
+		t.Fatalf("wrong password: %+v", res)
+	}
+	res := get("test.localhost", "/", auth("me", "secret"))
+	if res == nil || res.StatusCode != 200 || res.Header.Get("X-Frame-Options") != "DENY" || !strings.Contains(res.Body, "Hostname:") {
+		t.Fatalf("right password: %+v", res)
+	}
 }
 
 // response is what get saw.

@@ -6,6 +6,8 @@ import (
 	"context"
 	"sync"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/jevido/bakery/services/api/contexts/routing/domain"
 )
 
@@ -58,8 +60,27 @@ func (s *Service) RouteSettings(ctx context.Context, applicationID uint64) (doma
 	return rs, nil
 }
 
-// ChangeRouteSettings checks and stores the settings, then Applies.
-func (s *Service) ChangeRouteSettings(ctx context.Context, rs domain.RouteSettings) (domain.RouteSettings, error) {
+// ChangeRouteSettings checks and stores the settings, then Applies. A
+// non-empty password becomes the Basic auth password (only its bcrypt hash
+// is kept); an empty one keeps the stored hash.
+func (s *Service) ChangeRouteSettings(ctx context.Context, rs domain.RouteSettings, password string) (domain.RouteSettings, error) {
+	if password == "" {
+		current, err := s.RouteSettings(ctx, rs.ApplicationID)
+		if err != nil {
+			return rs, err
+		}
+		rs.BasicAuth.PasswordHash = current.BasicAuth.PasswordHash
+	} else {
+		// bcrypt only reads the first 72 bytes.
+		if len(password) > 72 {
+			return rs, &domain.FieldError{Field: "basic_auth.password", Message: "password is at most 72 bytes"}
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return rs, err
+		}
+		rs.BasicAuth.PasswordHash = string(hash)
+	}
 	rs, err := rs.Check()
 	if err != nil {
 		return rs, err

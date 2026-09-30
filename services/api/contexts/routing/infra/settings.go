@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/goravel/framework/database/orm"
 
@@ -13,13 +14,35 @@ type settingsRecord struct {
 	ID            uint64 `gorm:"primaryKey"`
 	ApplicationID uint64
 	WwwRedirect   string
+	// ResponseHeaders is a JSON array of {name, value}.
+	ResponseHeaders       string
+	BasicAuthEnabled      bool
+	BasicAuthUsername     string
+	BasicAuthPasswordHash string
 	orm.Timestamps
+}
+
+type headerJSON struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 func (settingsRecord) TableName() string { return "route_settings" }
 
-func (r settingsRecord) toDomain() domain.RouteSettings {
-	return domain.RouteSettings{ApplicationID: r.ApplicationID, WwwRedirect: domain.WwwRedirect(r.WwwRedirect)}
+func (r settingsRecord) toDomain() (domain.RouteSettings, error) {
+	var headers []headerJSON
+	if err := json.Unmarshal([]byte(r.ResponseHeaders), &headers); err != nil {
+		return domain.RouteSettings{}, err
+	}
+	s := domain.RouteSettings{
+		ApplicationID: r.ApplicationID, WwwRedirect: domain.WwwRedirect(r.WwwRedirect),
+		ResponseHeaders: make([]domain.ResponseHeader, len(headers)),
+		BasicAuth:       domain.BasicAuth{Enabled: r.BasicAuthEnabled, Username: r.BasicAuthUsername, PasswordHash: r.BasicAuthPasswordHash},
+	}
+	for i, h := range headers {
+		s.ResponseHeaders[i] = domain.ResponseHeader(h)
+	}
+	return s, nil
 }
 
 // Settings stores Route settings, one row per Application.
@@ -33,7 +56,11 @@ func (Settings) All(ctx context.Context) (map[uint64]domain.RouteSettings, error
 	}
 	out := make(map[uint64]domain.RouteSettings, len(recs))
 	for _, r := range recs {
-		out[r.ApplicationID] = r.toDomain()
+		s, err := r.toDomain()
+		if err != nil {
+			return nil, err
+		}
+		out[r.ApplicationID] = s
 	}
 	return out, nil
 }
@@ -45,16 +72,29 @@ func (Settings) Get(ctx context.Context, applicationID uint64) (domain.RouteSett
 	if err := facades.Orm().WithContext(ctx).Query().Where("application_id", applicationID).Find(&recs); err != nil || len(recs) == 0 {
 		return domain.RouteSettings{}, false, err
 	}
-	return recs[0].toDomain(), true, nil
+	s, err := recs[0].toDomain()
+	return s, err == nil, err
 }
 
 func (Settings) Put(ctx context.Context, s domain.RouteSettings) error {
-	_, err := facades.Orm().WithContext(ctx).Query().Exec(`
-		INSERT INTO route_settings (application_id, www_redirect, created_at, updated_at)
-		VALUES (?, ?, now(), now())
+	headers := make([]headerJSON, len(s.ResponseHeaders))
+	for i, h := range s.ResponseHeaders {
+		headers[i] = headerJSON(h)
+	}
+	raw, err := json.Marshal(headers)
+	if err != nil {
+		return err
+	}
+	_, err = facades.Orm().WithContext(ctx).Query().Exec(`
+		INSERT INTO route_settings (application_id, www_redirect, response_headers,
+		    basic_auth_enabled, basic_auth_username, basic_auth_password_hash, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, now(), now())
 		ON CONFLICT (application_id) DO UPDATE
-		SET www_redirect = EXCLUDED.www_redirect, updated_at = now()`,
-		s.ApplicationID, string(s.WwwRedirect))
+		SET www_redirect = EXCLUDED.www_redirect, response_headers = EXCLUDED.response_headers,
+		    basic_auth_enabled = EXCLUDED.basic_auth_enabled, basic_auth_username = EXCLUDED.basic_auth_username,
+		    basic_auth_password_hash = EXCLUDED.basic_auth_password_hash, updated_at = now()`,
+		s.ApplicationID, string(s.WwwRedirect), string(raw),
+		s.BasicAuth.Enabled, s.BasicAuth.Username, s.BasicAuth.PasswordHash)
 	return err
 }
 
