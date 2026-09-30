@@ -4,6 +4,7 @@ package infra
 import (
 	"context"
 	"errors"
+	"time"
 
 	contractsorm "github.com/goravel/framework/contracts/database/orm"
 	"github.com/goravel/framework/database/orm"
@@ -29,6 +30,11 @@ type databaseRecord struct {
 	MemoryMB              int     `gorm:"column:memory_mb"`
 	CPUs                  float64 `gorm:"column:cpus"`
 	DesiredState          string
+	BackupEnabled         bool
+	BackupCron            string
+	BackupRetention       int
+	BackupS3StorageID     *uint64 `gorm:"column:backup_s3_storage_id"`
+	BackupEnabledAt       *time.Time
 	orm.Timestamps
 }
 
@@ -63,7 +69,10 @@ func toRecord(d domain.Database) (databaseRecord, error) {
 		Username: d.Credentials.Username, PasswordEncrypted: password, RootPasswordEncrypted: root,
 		DatabaseName: d.Credentials.DatabaseName,
 		MemoryMB:     d.ResourceLimits.MemoryMB, CPUs: d.ResourceLimits.CPUs,
-		DesiredState: string(d.DesiredState),
+		DesiredState:  string(d.DesiredState),
+		BackupEnabled: d.BackupSchedule.Enabled, BackupCron: d.BackupSchedule.Cron,
+		BackupRetention:   d.BackupSchedule.Retention,
+		BackupS3StorageID: nonZero(d.BackupSchedule.S3StorageID), BackupEnabledAt: nonZeroTime(d.BackupSchedule.EnabledAt),
 	}
 	if d.PublicPort != 0 {
 		port := d.PublicPort
@@ -87,6 +96,10 @@ func (r databaseRecord) toDomain() (domain.Database, error) {
 		Credentials:    domain.Credentials{Username: r.Username, Password: password, RootPassword: root, DatabaseName: r.DatabaseName},
 		ResourceLimits: domain.ResourceLimits{MemoryMB: r.MemoryMB, CPUs: r.CPUs},
 		DesiredState:   domain.DesiredState(r.DesiredState),
+		BackupSchedule: domain.BackupSchedule{
+			Enabled: r.BackupEnabled, Cron: r.BackupCron, Retention: r.BackupRetention,
+			S3StorageID: deref(r.BackupS3StorageID), EnabledAt: derefTime(r.BackupEnabledAt),
+		},
 	}
 	if r.PublicPort != nil {
 		d.PublicPort = *r.PublicPort
@@ -160,6 +173,8 @@ func (s Store) Update(ctx context.Context, d domain.Database) error {
 	_, err = s.query(ctx).Model(&databaseRecord{}).Where("id", d.ID).Update(map[string]any{
 		"name": rec.Name, "version": rec.Version, "public_port": rec.PublicPort,
 		"memory_mb": rec.MemoryMB, "cpus": rec.CPUs, "desired_state": rec.DesiredState,
+		"backup_enabled": rec.BackupEnabled, "backup_cron": rec.BackupCron, "backup_retention": rec.BackupRetention,
+		"backup_s3_storage_id": rec.BackupS3StorageID, "backup_enabled_at": rec.BackupEnabledAt,
 	})
 	return err
 }
@@ -183,4 +198,44 @@ func (s Store) PublicPortTaken(ctx context.Context, port int, exceptID uint64) (
 
 func (s Store) CountForProject(ctx context.Context, projectID uint64) (int64, error) {
 	return s.query(ctx).Model(&databaseRecord{}).Where("project_id", projectID).Count()
+}
+
+// ScheduledDatabases lists every Database whose Backup schedule is on.
+func (s Store) ScheduledDatabases(ctx context.Context) ([]domain.Database, error) {
+	return s.list(s.query(ctx).Where("backup_enabled", true))
+}
+
+// S3StorageInUse reports whether a Backup schedule names the S3 storage.
+func (s Store) S3StorageInUse(ctx context.Context, id uint64) (bool, error) {
+	n, err := s.query(ctx).Model(&databaseRecord{}).Where("backup_s3_storage_id", id).Count()
+	return n > 0, err
+}
+
+func nonZero(id uint64) *uint64 {
+	if id == 0 {
+		return nil
+	}
+	return &id
+}
+
+func deref(id *uint64) uint64 {
+	if id == nil {
+		return 0
+	}
+	return *id
+}
+
+func nonZeroTime(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	t = t.UTC()
+	return &t
+}
+
+func derefTime(t *time.Time) time.Time {
+	if t == nil {
+		return time.Time{}
+	}
+	return t.UTC()
 }

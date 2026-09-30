@@ -31,5 +31,8 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000016CreateApplicationStoragesTable{},
 		&migrations.M20260930000017AddApplicationResourceLimits{},
 		&migrations.M20260930000018CreateDatabasesTable{},
+		&migrations.M20260930000019AddDatabaseBackupSchedule{},
+		&migrations.M20260930000020CreateS3StoragesTable{},
+		&migrations.M20260930000021CreateDatabaseBackupsTable{},
 	}
 }

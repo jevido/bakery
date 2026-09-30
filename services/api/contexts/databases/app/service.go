@@ -26,6 +26,27 @@ type Store interface {
 	SlugTaken(ctx context.Context, slug string) (bool, error)
 	PublicPortTaken(ctx context.Context, port int, exceptID uint64) (bool, error)
 	CountForProject(ctx context.Context, projectID uint64) (int64, error)
+	// ScheduledDatabases lists the Databases whose Backup schedule is on.
+	ScheduledDatabases(ctx context.Context) ([]domain.Database, error)
+
+	CreateBackup(ctx context.Context, b domain.Backup) (domain.Backup, error)
+	SaveBackup(ctx context.Context, b domain.Backup) error
+	Backup(ctx context.Context, id uint64) (domain.Backup, bool, error)
+	// Backups lists a Database's Backups, newest first.
+	Backups(ctx context.Context, databaseID uint64) ([]domain.Backup, error)
+	LastScheduledStart(ctx context.Context, databaseID uint64) (time.Time, error)
+	DeleteBackup(ctx context.Context, id uint64) error
+	DeleteBackups(ctx context.Context, databaseID uint64) error
+	FailRunningBackups(ctx context.Context, reason string, at time.Time) (int64, error)
+
+	// S3 storages; the secret key is encrypted by the Store.
+	S3Storages(ctx context.Context) ([]domain.S3Storage, error)
+	S3Storage(ctx context.Context, id uint64) (domain.S3Storage, bool, error)
+	S3StorageNameTaken(ctx context.Context, name string, exceptID uint64) (bool, error)
+	S3StorageInUse(ctx context.Context, id uint64) (bool, error)
+	CreateS3Storage(ctx context.Context, st domain.S3Storage) (domain.S3Storage, error)
+	SaveS3Storage(ctx context.Context, st domain.S3Storage) error
+	DeleteS3Storage(ctx context.Context, id uint64) error
 }
 
 // Runtime runs Database Containers. A Database that is stopped has no

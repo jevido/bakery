@@ -1,20 +1,28 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/databases/domain"
 )
 
 type memStore struct {
-	mu  sync.Mutex
-	dbs map[uint64]domain.Database
+	mu       sync.Mutex
+	dbs      map[uint64]domain.Database
+	backups  map[uint64]domain.Backup
+	storages map[uint64]domain.S3Storage
+	nextID   uint64
 }
 
-func newMemStore() *memStore { return &memStore{dbs: map[uint64]domain.Database{}} }
+func newMemStore() *memStore {
+	return &memStore{dbs: map[uint64]domain.Database{}, backups: map[uint64]domain.Backup{}, storages: map[uint64]domain.S3Storage{}}
+}
 
 func (m *memStore) Create(_ context.Context, d domain.Database) (domain.Database, error) {
 	m.mu.Lock()
@@ -76,6 +84,149 @@ func (m *memStore) PublicPortTaken(_ context.Context, port int, exceptID uint64)
 func (m *memStore) CountForProject(ctx context.Context, projectID uint64) (int64, error) {
 	l, _ := m.ForProject(ctx, projectID)
 	return int64(len(l)), nil
+}
+func (m *memStore) ScheduledDatabases(context.Context) ([]domain.Database, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []domain.Database
+	for _, d := range m.dbs {
+		if d.BackupSchedule.Enabled {
+			out = append(out, d)
+		}
+	}
+	slices.SortFunc(out, func(a, b domain.Database) int { return cmp.Compare(a.ID, b.ID) })
+	return out, nil
+}
+func (m *memStore) CreateBackup(_ context.Context, b domain.Backup) (domain.Backup, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.nextID++
+	b.ID = m.nextID
+	m.backups[b.ID] = b
+	return b, nil
+}
+func (m *memStore) SaveBackup(_ context.Context, b domain.Backup) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.backups[b.ID] = b
+	return nil
+}
+func (m *memStore) Backup(_ context.Context, id uint64) (domain.Backup, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b, ok := m.backups[id]
+	return b, ok, nil
+}
+func (m *memStore) Backups(_ context.Context, databaseID uint64) ([]domain.Backup, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []domain.Backup
+	for _, b := range m.backups {
+		if b.DatabaseID == databaseID {
+			out = append(out, b)
+		}
+	}
+	slices.SortFunc(out, func(a, b domain.Backup) int {
+		if c := b.StartedAt.Compare(a.StartedAt); c != 0 {
+			return c
+		}
+		return cmp.Compare(b.ID, a.ID)
+	})
+	return out, nil
+}
+func (m *memStore) LastScheduledStart(ctx context.Context, databaseID uint64) (time.Time, error) {
+	bs, _ := m.Backups(ctx, databaseID)
+	for _, b := range bs {
+		if b.Trigger == domain.TriggerScheduled {
+			return b.StartedAt, nil
+		}
+	}
+	return time.Time{}, nil
+}
+func (m *memStore) DeleteBackup(_ context.Context, id uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.backups, id)
+	return nil
+}
+func (m *memStore) DeleteBackups(_ context.Context, databaseID uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, b := range m.backups {
+		if b.DatabaseID == databaseID {
+			delete(m.backups, id)
+		}
+	}
+	return nil
+}
+func (m *memStore) FailRunningBackups(_ context.Context, reason string, at time.Time) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var n int64
+	for id, b := range m.backups {
+		if b.Status == domain.BackupRunning {
+			b.Fail(reason, false, 0, at)
+			m.backups[id] = b
+			n++
+		}
+	}
+	return n, nil
+}
+func (m *memStore) S3Storages(context.Context) ([]domain.S3Storage, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []domain.S3Storage
+	for _, st := range m.storages {
+		out = append(out, st)
+	}
+	slices.SortFunc(out, func(a, b domain.S3Storage) int { return cmp.Compare(a.Name, b.Name) })
+	return out, nil
+}
+func (m *memStore) S3Storage(_ context.Context, id uint64) (domain.S3Storage, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st, ok := m.storages[id]
+	return st, ok, nil
+}
+func (m *memStore) S3StorageNameTaken(_ context.Context, name string, exceptID uint64) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, st := range m.storages {
+		if st.Name == name && st.ID != exceptID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (m *memStore) S3StorageInUse(_ context.Context, id uint64) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, d := range m.dbs {
+		if d.BackupSchedule.S3StorageID == id {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (m *memStore) CreateS3Storage(_ context.Context, st domain.S3Storage) (domain.S3Storage, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.nextID++
+	st.ID = m.nextID
+	m.storages[st.ID] = st
+	return st, nil
+}
+func (m *memStore) SaveS3Storage(_ context.Context, st domain.S3Storage) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.storages[st.ID] = st
+	return nil
+}
+func (m *memStore) DeleteS3Storage(_ context.Context, id uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.storages, id)
+	return nil
 }
 
 // fakeRuntime records calls and keeps which Databases have a Container.
