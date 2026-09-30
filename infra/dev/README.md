@@ -20,6 +20,15 @@ Local development stack.
   layout and creates the bucket `bakery-backups` and a key for it, written to
   `.claude/ralph/state/garage.env`. `task s3:down` removes it, its volumes
   and that file.
+- `compose.yml` also holds the **Remote server stand-in** under the `remote`
+  profile (`remote/Containerfile`): sshd and rootless Podman for the user
+  `podman` (uid 1000), SSH on `127.0.0.1:4972`, no passwords. `task
+  remote:up` builds and starts it, `task remote:down` removes it. Every start
+  is a fresh server: new host keys, an empty `authorized_keys` (add a key
+  with `podman exec -i bakery-dev-remote-1 sh -c 'cat >>
+  /home/podman/.ssh/authorized_keys'`). There is no systemd inside, so the
+  entrypoint starts the Podman API socket and a `loginctl` shim reports
+  linger, which `touch /etc/bakery-stand-in/no-linger` turns off.
 - `git/test.sh` (`task git:test`, with `task dev` running) creates a private
   repository in Forgejo, deploys it through Bakery with the Application's
   Deploy key, adds Bakery's Webhook to it, pushes and waits for the push to

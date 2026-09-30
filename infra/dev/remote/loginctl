@@ -1,0 +1,8 @@
+#!/bin/sh
+# loginctl stand-in: only `loginctl show-user <user> -p Linger [--value]`.
+linger=yes
+[ -e /etc/bakery-stand-in/no-linger ] && linger=no
+case " $* " in
+*" --value "*) echo "$linger" ;;
+*) echo "Linger=$linger" ;;
+esac

@@ -69,6 +69,16 @@ tasks:
       - podman compose -f infra/dev/compose.yml --profile git rm -sf forgejo
       - podman volume rm -f bakery-dev_bakery-forgejo-data bakery-dev_bakery-forgejo-config
 
+  remote:up:
+    desc: Start the Remote server stand-in (sshd + rootless Podman, 127.0.0.1:4972, user podman)
+    cmds:
+      - podman compose -f infra/dev/compose.yml --profile remote up -d --build remote
+
+  remote:down:
+    desc: Stop and remove the Remote server stand-in
+    cmds:
+      - podman compose -f infra/dev/compose.yml --profile remote rm -sf remote
+
   s3:up:
     desc: Start the Garage S3 stand-in (127.0.0.1:4960) with bucket bakery-backups; key in .claude/ralph/state/garage.env
     cmds:

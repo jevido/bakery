@@ -1,0 +1,23 @@
+# A Remote server stand-in: sshd and rootless Podman for the user `podman`
+# (uid 1000), as on a server Bakery reaches over SSH. There is no systemd in
+# here, so the entrypoint starts the Podman API socket itself and a shim
+# stands in for loginctl (see below).
+FROM quay.io/podman/stable:v5
+
+RUN dnf install -y --setopt=install_weak_deps=False openssh-server procps-ng \
+ && dnf clean all \
+ && ssh-keygen -A \
+ && install -d -m 700 -o podman -g podman /home/podman/.ssh \
+ && install -m 600 -o podman -g podman /dev/null /home/podman/.ssh/authorized_keys
+
+COPY sshd_config /etc/ssh/sshd_config.d/10-bakery.conf
+COPY entrypoint.sh /usr/local/bin/bakery-entrypoint
+# Linger needs logind, which a container does not have. The shim answers
+# like `loginctl show-user` does and says Linger=no once
+# /etc/bakery-stand-in/no-linger exists, so a test can turn linger off.
+COPY loginctl /usr/local/bin/loginctl
+RUN chmod 755 /usr/local/bin/bakery-entrypoint /usr/local/bin/loginctl \
+ && install -d -m 777 /etc/bakery-stand-in
+
+EXPOSE 22
+ENTRYPOINT ["/usr/local/bin/bakery-entrypoint"]

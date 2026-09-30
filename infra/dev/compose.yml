@@ -57,6 +57,23 @@ services:
       - bakery-garage-meta:/var/lib/garage/meta
       - bakery-garage-data:/var/lib/garage/data
 
+  # Remote server stand-in (task remote:up, task servers:test): sshd and
+  # rootless Podman for the user `podman`, SSH on 127.0.0.1:4972. Privileged
+  # because Podman runs Containers inside it; under rootless Podman that is
+  # still only this user's privileges. No volumes: every start is a fresh
+  # server with new host keys and an empty authorized_keys.
+  remote:
+    build:
+      context: ./remote
+      dockerfile: Containerfile
+    image: localhost/bakery-dev-remote:dev
+    profiles: [remote]
+    privileged: true
+    labels:
+      bakery.test: "true"
+    ports:
+      - "127.0.0.1:4972:22"
+
 volumes:
   bakery-db:
   bakery-forgejo-data:

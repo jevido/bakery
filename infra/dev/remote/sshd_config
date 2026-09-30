@@ -1,0 +1,6 @@
+Port 22
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+AllowUsers podman
+AllowStreamLocalForwarding yes
