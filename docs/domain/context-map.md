@@ -10,7 +10,7 @@ depend on each other.
 | deployments | core | `services/api` (`contexts/deployments`) | Deployments, their logs, talking to Podman (builds, containers) |
 | projects | supporting | `services/api` (`contexts/projects`) | Projects, Environments, Applications, Env vars |
 | routing | supporting | `services/api` (`contexts/routing`) | Routes, Route settings and the Proxy (the Caddy container and its config) |
-| databases | supporting | `services/api` (`contexts/databases`) | Databases, their Containers and volumes |
+| databases | supporting | `services/api` (`contexts/databases`) | Databases, their Containers and volumes, Backups and S3 storages |
 | identity | generic | `services/api` (`contexts/identity`) | The Owner, Setup, Sessions |
 
 - **Core:** where the project competes. Gets the most care and the richest model.
@@ -32,6 +32,14 @@ adapt to.
 | projects | routing, deployments | published language | `ApplicationDeleted` event: routing drops the Application's Route and Route settings; deployments removes its Containers, volumes, Deployments and Webhook |
 | projects | databases | customer/supplier | `projects.Environment(id)` places a new Database and names its Project; `projects.OnProjectDeleting` lets databases refuse deleting a Project that still has Databases |
 | projects | routing | published language | `ApplicationDomainsChanged { applicationID, domains }` event: routing moves the Application's Route to the new Domains at once |
+
+## External systems
+
+| System | Used by | Through |
+| ------ | ------- | ------- |
+| Podman (rootless libpod API) | deployments, routing, databases | Bakery's own thin client in `app/podman` |
+| Caddy admin API | routing | JSON config loaded with `POST /load` |
+| S3-compatible storage | databases | Its own thin S3 client (Signature V4), for Backups |
 
 Patterns: *customer/supplier*, *conformist*, *anticorruption layer*,
 *open host service* / *published language*, *shared kernel*, *separate ways*.
