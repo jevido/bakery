@@ -22,7 +22,9 @@ Local development stack.
   and that file.
 - `compose.yml` also holds the **Remote server stand-in** under the `remote`
   profile (`remote/Containerfile`): sshd and rootless Podman for the user
-  `podman` (uid 1000), SSH on `127.0.0.1:4972`, no passwords. `task
+  `podman` (uid 1000), SSH on `127.0.0.1:4972`, no passwords; unprivileged
+  ports start at 80 inside it, so a Remote Proxy can bind 80/443, published
+  on `127.0.0.1:4974` (HTTP) and `4975` (HTTPS). `task
   remote:up` builds and starts it, `task remote:down` removes it. Every start
   is a fresh server: new host keys, an empty `authorized_keys` (add a key
   with `podman exec -i bakery-dev-remote-1 sh -c 'cat >>

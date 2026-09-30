@@ -606,6 +606,17 @@ func (c *Client) CreateVolume(ctx context.Context, name string, labels map[strin
 	return err
 }
 
+// VolumeMountpoint returns where a named volume's data lives on the host.
+func (c *Client) VolumeMountpoint(ctx context.Context, name string) (string, error) {
+	var out struct {
+		Mountpoint string `json:"Mountpoint"`
+	}
+	if err := c.call(ctx, http.MethodGet, "/volumes/"+url.PathEscape(name)+"/json", nil, nil, &out); err != nil {
+		return "", err
+	}
+	return out.Mountpoint, nil
+}
+
 type VolumeSummary struct {
 	Name   string            `json:"Name"`
 	Labels map[string]string `json:"Labels"`

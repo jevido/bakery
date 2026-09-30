@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -32,6 +33,9 @@ type RenderOptions struct {
 	// HTTPSPort is the Proxy's public HTTPS port, put in redirects when it
 	// is not 443 (development).
 	HTTPSPort int
+	// AdminListen is the admin API's address in the config; empty is
+	// CaddyAdminListen. A Remote Proxy's is a unix socket.
+	AdminListen string
 }
 
 // ACME says where certificates come from on a Server. All fields empty means
@@ -130,8 +134,12 @@ func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
 			}}}}
 		}
 	}
+	admin := opts.AdminListen
+	if admin == "" {
+		admin = CaddyAdminListen
+	}
 	return json.MarshalIndent(obj{
-		"admin": obj{"listen": CaddyAdminListen},
+		"admin": obj{"listen": admin},
 		"apps":  apps,
 	}, "", "  ")
 }
@@ -238,6 +246,15 @@ func dashboardRoute(d domain.DashboardRoute) obj {
 type Caddy struct {
 	AdminURL string // e.g. http://127.0.0.1:4949
 	http     http.Client
+}
+
+// newSocketCaddy talks to an admin API on a unix socket, opened with dial
+// (over SSH for a Remote Proxy).
+func newSocketCaddy(dial func(ctx context.Context) (net.Conn, error)) *Caddy {
+	return &Caddy{AdminURL: "http://caddy", http: http.Client{Transport: &http.Transport{
+		DialContext:       func(ctx context.Context, _, _ string) (net.Conn, error) { return dial(ctx) },
+		DisableKeepAlives: true,
+	}}}
 }
 
 // Load replaces Caddy's whole config.

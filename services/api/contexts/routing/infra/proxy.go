@@ -41,14 +41,62 @@ type ProxyConfig struct {
 	VolumePrefix string
 }
 
+// Remote Proxy admin socket: a volume mounted into the Proxy, so the socket
+// Caddy creates there is a file on the Server that SSH can open.
+const (
+	adminVolumeSuffix = "-admin"
+	adminSocketDir    = "/run/bakery-admin"
+	adminSocketName   = "caddy.sock"
+)
+
 type Proxy struct {
 	podman *podman.Client
 	cfg    ProxyConfig
 	caddy  *Caddy
+	// dial opens a unix socket on the Proxy's Server; set for a Remote
+	// Proxy, whose admin API is a socket rather than a URL.
+	dial func(ctx context.Context, path string) (net.Conn, error)
 }
 
 func NewProxy(p *podman.Client, cfg ProxyConfig) *Proxy {
 	return &Proxy{podman: p, cfg: cfg, caddy: &Caddy{AdminURL: cfg.AdminURL}}
+}
+
+// NewRemoteProxy is the Proxy of a Remote server: p is that Server's Podman
+// and dial opens unix sockets on it. It listens on 80/443 of every address
+// of the Server and never serves the Dashboard Route; its admin API is a
+// unix socket in a volume, published on no port.
+func NewRemoteProxy(p *podman.Client, dial func(ctx context.Context, path string) (net.Conn, error), cfg ProxyConfig) *Proxy {
+	cfg.BindIP, cfg.HTTPPort, cfg.HTTPSPort = "", 80, 443
+	cfg.AdminURL, cfg.AdminPublish, cfg.Dashboard = "", "", nil
+	return &Proxy{podman: p, cfg: cfg, dial: dial}
+}
+
+func (p *Proxy) remote() bool { return p.dial != nil }
+
+func (p *Proxy) adminVolume() string { return p.cfg.VolumePrefix + adminVolumeSuffix }
+
+// adminListen is the admin API address inside the Proxy.
+func (p *Proxy) adminListen() string {
+	if p.remote() {
+		return "unix/" + adminSocketDir + "/" + adminSocketName
+	}
+	return CaddyAdminListen
+}
+
+// connectAdmin points a Remote Proxy's Caddy client at the socket in its
+// admin volume on the Server.
+func (p *Proxy) connectAdmin(ctx context.Context) error {
+	if !p.remote() || p.caddy != nil {
+		return nil
+	}
+	dir, err := p.podman.VolumeMountpoint(ctx, p.adminVolume())
+	if err != nil {
+		return fmt.Errorf("volume %s: %w", p.adminVolume(), err)
+	}
+	sock := dir + "/" + adminSocketName
+	p.caddy = newSocketCaddy(func(ctx context.Context) (net.Conn, error) { return p.dial(ctx, sock) })
+	return nil
 }
 
 // Ensure makes sure the network exists and the Proxy container exists and
@@ -69,6 +117,9 @@ func (p *Proxy) Ensure(ctx context.Context) error {
 		if err := p.podman.StartContainer(ctx, p.cfg.Name); err != nil {
 			return fmt.Errorf("starting %s: %w", p.cfg.Name, err)
 		}
+	}
+	if err := p.connectAdmin(ctx); err != nil {
+		return err
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -122,6 +173,19 @@ func (p *Proxy) create(ctx context.Context) error {
 		// the host address configured (127.0.0.1).
 		ports = append(ports, podman.PortMapping{HostIP: adminHost, HostPort: uint16(adminPortNum), ContainerPort: 2019, Protocol: "tcp"})
 	}
+	labels := map[string]string{"bakery.managed": "true", "bakery.role": "proxy"}
+	volumes := []podman.NamedVolume{
+		{Name: p.cfg.VolumePrefix + "-data", Dest: "/data"},
+		{Name: p.cfg.VolumePrefix + "-config", Dest: "/config"},
+	}
+	if p.remote() {
+		// Created with Bakery's labels, so its mountpoint can be read
+		// before the container exists.
+		if err := p.podman.CreateVolume(ctx, p.adminVolume(), labels); err != nil {
+			return fmt.Errorf("volume %s: %w", p.adminVolume(), err)
+		}
+		volumes = append(volumes, podman.NamedVolume{Name: p.adminVolume(), Dest: adminSocketDir})
+	}
 	id, err := p.podman.CreateContainer(ctx, podman.ContainerSpec{
 		Name:  p.cfg.Name,
 		Image: p.cfg.Image,
@@ -129,14 +193,11 @@ func (p *Proxy) create(ctx context.Context) error {
 		// host reboot the Proxy serves the last Routes before Bakery is up.
 		Command: []string{"caddy", "run", "--resume"},
 		// Only used until the first Apply, which sets the same address.
-		Env:          map[string]string{"CADDY_ADMIN": CaddyAdminListen},
-		Labels:       map[string]string{"bakery.managed": "true", "bakery.role": "proxy"},
-		Networks:     podman.OnNetwork(p.cfg.Network),
-		PortMappings: ports,
-		Volumes: []podman.NamedVolume{
-			{Name: p.cfg.VolumePrefix + "-data", Dest: "/data"},
-			{Name: p.cfg.VolumePrefix + "-config", Dest: "/config"},
-		},
+		Env:           map[string]string{"CADDY_ADMIN": p.adminListen()},
+		Labels:        labels,
+		Networks:      podman.OnNetwork(p.cfg.Network),
+		PortMappings:  ports,
+		Volumes:       volumes,
 		RestartPolicy: "always",
 	})
 	if err != nil {
@@ -155,12 +216,16 @@ func (p *Proxy) Apply(ctx context.Context, routes []domain.Route) error {
 		Dashboard:   p.cfg.Dashboard,
 		ACME:        ACME{CA: p.cfg.ACMECA, Email: p.cfg.ACMEEmail},
 		HTTPSPort:   int(p.cfg.HTTPSPort),
+		AdminListen: p.adminListen(),
 	}
 	if p.cfg.ACMERoot != "" {
 		opts.ACME.TrustedRootsFile = acmeRootInProxy
 	}
 	config, err := Render(routes, opts)
 	if err != nil {
+		return err
+	}
+	if err := p.connectAdmin(ctx); err != nil {
 		return err
 	}
 	return p.caddy.Load(ctx, config)

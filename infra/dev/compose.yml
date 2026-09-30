@@ -58,7 +58,8 @@ services:
       - bakery-garage-data:/var/lib/garage/data
 
   # Remote server stand-in (task remote:up, task servers:test): sshd and
-  # rootless Podman for the user `podman`, SSH on 127.0.0.1:4972. Privileged
+  # rootless Podman for the user `podman`, SSH on 127.0.0.1:4972, its Proxy's
+  # HTTP and HTTPS on 127.0.0.1:4974 and 4975. Privileged
   # because Podman runs Containers inside it; under rootless Podman that is
   # still only this user's privileges. No volumes: every start is a fresh
   # server with new host keys and an empty authorized_keys.
@@ -71,8 +72,14 @@ services:
     privileged: true
     labels:
       bakery.test: "true"
+    # A Remote Proxy binds 80/443 inside the stand-in as its rootless user,
+    # published here on 4974 (HTTP) and 4975 (HTTPS).
+    sysctls:
+      - net.ipv4.ip_unprivileged_port_start=80
     ports:
       - "127.0.0.1:4972:22"
+      - "127.0.0.1:4974:80"
+      - "127.0.0.1:4975:443"
 
 volumes:
   bakery-db:
