@@ -230,3 +230,37 @@ func (c *Controller) Test(ctx contractshttp.Context) contractshttp.Response {
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"ok": true})
 }
+
+type deliveryJSON struct {
+	ID        uint64     `json:"id"`
+	EventKind string     `json:"event_kind"`
+	Title     string     `json:"title"`
+	Status    string     `json:"status"`
+	Attempts  int        `json:"attempts"`
+	LastError string     `json:"last_error"`
+	CreatedAt time.Time  `json:"created_at"`
+	SentAt    *time.Time `json:"sent_at"`
+}
+
+func (c *Controller) Deliveries(ctx contractshttp.Context) contractshttp.Response {
+	cid, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	list, err := c.service.Deliveries(ctx.Context(), cid)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out := make([]deliveryJSON, len(list))
+	for i, d := range list {
+		out[i] = deliveryJSON{
+			ID: d.ID, EventKind: string(d.Notification.Kind), Title: d.Notification.Title, Status: string(d.Status),
+			Attempts: d.Attempts, LastError: d.LastError, CreatedAt: d.CreatedAt,
+		}
+		if !d.SentAt.IsZero() {
+			at := d.SentAt
+			out[i].SentAt = &at
+		}
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"deliveries": out})
+}

@@ -7,17 +7,20 @@ import (
 	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/contexts/databases"
 	"github.com/jevido/bakery/services/api/contexts/deployments"
+	"github.com/jevido/bakery/services/api/contexts/notifications"
 	"github.com/jevido/bakery/services/api/contexts/routing"
 	"github.com/jevido/bakery/services/api/contexts/servers"
 	"github.com/jevido/bakery/services/api/contexts/services"
 )
 
 // StartRuntime starts what runs next to the HTTP server: the Proxy, the
-// deployment Worker, and the Databases and Services that should run. It is
+// deployment Worker, the Notification dispatcher (first, so it hears what
+// the others announce), and the Databases and Services that should run. It is
 // not called for artisan commands. Failures are retried in the background
 // so a Podman or database hiccup at start does not keep the API down.
 func StartRuntime(ctx context.Context) {
 	routing.Init()
+	notifications.Start(ctx)
 	deployments.StartWorker(ctx)
 	databases.Recover(ctx)
 	services.Recover(ctx)

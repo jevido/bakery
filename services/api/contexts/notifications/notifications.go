@@ -1,9 +1,11 @@
 // Package notifications is what the router and the boot code may use from
-// the notifications context: its routes. Nothing else in
+// the notifications context: its routes, Start (the dispatcher and the
+// events it subscribes to) and DashboardURL. Nothing else in
 // contexts/notifications is for outside use.
 package notifications
 
 import (
+	"context"
 	"strings"
 	"sync"
 
@@ -43,6 +45,7 @@ func Routes(r route.Router) {
 		r.Patch("/api/notification-channels/{id}", c.Update)
 		r.Delete("/api/notification-channels/{id}", c.Delete)
 		r.Post("/api/notification-channels/{id}/test", c.Test)
+		r.Get("/api/notification-channels/{id}/deliveries", c.Deliveries)
 	})
 }
 
@@ -58,4 +61,10 @@ func DashboardURL() string {
 		return "https://" + d
 	}
 	return "http://localhost:4930"
+}
+
+// Start runs the dispatcher until ctx ends, resuming Deliveries a previous
+// process left pending.
+func Start(ctx context.Context) {
+	go svc().Run(ctx)
 }
