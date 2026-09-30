@@ -326,3 +326,50 @@ export type Invitation = {
   created_at: string
   expires_at: string
 }
+
+export type ChannelKind = 'email' | 'discord' | 'slack' | 'telegram' | 'ntfy' | 'webhook'
+
+export type EventKind = {
+  kind: string
+  label: string
+  /** Whether a new channel is subscribed to it. */
+  default: boolean
+}
+
+/** A Notification channel as shown: secrets only as whether they are set. */
+export type NotificationChannel = {
+  id: number
+  name: string
+  kind: ChannelKind
+  settings: {
+    host?: string
+    port?: number
+    security?: 'none' | 'starttls' | 'tls'
+    username?: string
+    has_password: boolean
+    from?: string
+    to?: string[]
+    /** ntfy's server; the other kinds' URLs are secret. */
+    url?: string
+    /** Of a secret URL, only its host. */
+    url_host?: string
+    chat_id?: string
+    has_bot_token: boolean
+    topic?: string
+    has_token: boolean
+    has_secret: boolean
+  }
+  event_kinds: string[]
+  created_at: string
+}
+
+export type Delivery = {
+  id: number
+  event_kind: string
+  title: string
+  status: 'pending' | 'sent' | 'failed'
+  attempts: number
+  last_error: string
+  created_at: string
+  sent_at: string | null
+}

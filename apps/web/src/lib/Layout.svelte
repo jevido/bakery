@@ -13,6 +13,8 @@
         return 'settings'
       case 'members':
         return 'members'
+      case 'notifications':
+        return 'notifications'
       case 'api-tokens':
         return 'api-tokens'
       case 'servers':
@@ -33,10 +35,11 @@
     <nav>
       <a href={href('/projects')} aria-current={section === 'projects' ? 'page' : undefined}>Projects</a>
       <a href={href('/servers')} aria-current={section === 'servers' ? 'page' : undefined}>Servers</a>
-      <!-- Settings holds only admin areas (Known hosts, S3 storages). -->
+      <!-- Settings holds only admin areas (Known hosts, S3 storages), as do Members and Notifications. -->
       {#if session.isAdmin}
         <a href={href('/settings')} aria-current={section === 'settings' ? 'page' : undefined}>Settings</a>
         <a href={href('/members')} aria-current={section === 'members' ? 'page' : undefined}>Members</a>
+        <a href={href('/notifications')} aria-current={section === 'notifications' ? 'page' : undefined}>Notifications</a>
       {/if}
     </nav>
   </aside>

@@ -226,7 +226,7 @@ func (c *Controller) Test(ctx contractshttp.Context) contractshttp.Response {
 		return fail(ctx, err)
 	}
 	if sendErr != nil {
-		return ctx.Response().Json(contractshttp.StatusUnprocessableEntity, contractshttp.Json{"ok": false, "error": sendErr.Error()})
+		return ctx.Response().Json(contractshttp.StatusUnprocessableEntity, contractshttp.Json{"ok": false, "message": sendErr.Error()})
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"ok": true})
 }

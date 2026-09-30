@@ -16,6 +16,7 @@
   import Servers from './pages/Servers.svelte'
   import Service from './pages/Service.svelte'
   import Settings from './pages/Settings.svelte'
+  import Notifications from './pages/Notifications.svelte'
   import Setup from './pages/Setup.svelte'
 
   setUnauthorizedHandler(() => session.signedOut())
@@ -55,6 +56,8 @@
       <Settings />
     {:else if router.route.name === 'members'}
       <Members />
+    {:else if router.route.name === 'notifications'}
+      <Notifications />
     {:else if router.route.name === 'api-tokens'}
       <ApiTokens />
     {:else}
