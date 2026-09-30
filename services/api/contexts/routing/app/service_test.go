@@ -56,6 +56,75 @@ func (f *fakeProxy) Apply(_ context.Context, routes []domain.Route) error {
 	return nil
 }
 
+// oneProxy serves every Server with the same Proxy.
+type oneProxy struct{ p *fakeProxy }
+
+func (o oneProxy) For(context.Context, uint64) (Proxy, error) { return o.p, nil }
+
+// proxies has one fake Proxy per Server.
+type proxies map[uint64]*fakeProxy
+
+func (p proxies) For(_ context.Context, serverID uint64) (Proxy, error) {
+	if _, ok := p[serverID]; !ok {
+		p[serverID] = &fakeProxy{}
+	}
+	return p[serverID], nil
+}
+
+// upsertRoutes replaces a Route per Application, like the store.
+type upsertRoutes struct{ fakeRoutes }
+
+func (u *upsertRoutes) Upsert(_ context.Context, r domain.Route) error {
+	u.routes = slices.DeleteFunc(u.routes, func(x domain.Route) bool { return x.ApplicationID == r.ApplicationID })
+	u.routes = append(u.routes, r)
+	return nil
+}
+func (u *upsertRoutes) Delete(_ context.Context, applicationID uint64) error {
+	u.routes = slices.DeleteFunc(u.routes, func(x domain.Route) bool { return x.ApplicationID == applicationID })
+	return nil
+}
+
+func TestRoutesPerServer(t *testing.T) {
+	ctx := context.Background()
+	routes := &upsertRoutes{fakeRoutes{routes: []domain.Route{{ApplicationID: 1, Domains: []string{"local.localhost"}, Container: "bakery-app-1-1", Port: 80}}}}
+	svcRoutes := &fakeServiceRoutes{routes: []domain.ServiceRoute{{ServiceID: 3, Component: "web", Domains: []string{"shop.localhost"}, Container: "bakery-svc-3-web", Port: 80}}}
+	ps := proxies{}
+	s := NewService(routes, svcRoutes, &fakeSettings{}, ps)
+
+	if err := s.SwitchRoute(ctx, domain.Route{ApplicationID: 2, ServerID: 7, Domains: []string{"remote.localhost"}, Container: "bakery-app-2-5", Port: 8080}); err != nil {
+		t.Fatal(err)
+	}
+	if ps[0] != nil && len(ps[0].applied) != 0 {
+		t.Fatalf("a Route on Server 7 applied the Local server: %+v", ps[0].applied)
+	}
+	remote := ps[7].applied
+	if len(remote) != 1 || len(remote[0]) != 1 || remote[0][0].ApplicationID != 2 {
+		t.Fatalf("Server 7 got %+v", remote)
+	}
+
+	// The Local server gets its own Routes and the Service routes, never
+	// Server 7's.
+	if err := s.EnsureProxy(ctx); err != nil {
+		t.Fatal(err)
+	}
+	local := ps[0].applied[len(ps[0].applied)-1]
+	if len(local) != 2 || local[0].ApplicationID != 1 || local[1].Container != "bakery-svc-3-web" {
+		t.Fatalf("Local got %+v", local)
+	}
+	if ids, _ := s.RemoteServers(ctx); !slices.Equal(ids, []uint64{7}) {
+		t.Fatalf("remote servers %v", ids)
+	}
+
+	// Dropping the remote Route applies Server 7 only, now empty.
+	localApplies := len(ps[0].applied)
+	if err := s.DropRoute(ctx, 2); err != nil {
+		t.Fatal(err)
+	}
+	if len(ps[0].applied) != localApplies || len(ps[7].applied[len(ps[7].applied)-1]) != 0 {
+		t.Fatalf("drop: local %d applies, server 7 last %+v", len(ps[0].applied), ps[7].applied[len(ps[7].applied)-1])
+	}
+}
+
 func TestServiceRoutes(t *testing.T) {
 	ctx := context.Background()
 	apps := &fakeRoutes{routes: []domain.Route{{ApplicationID: 1, Domains: []string{"app.localhost"}, Container: "bakery-app-1-1", Port: 80}}}
@@ -63,7 +132,7 @@ func TestServiceRoutes(t *testing.T) {
 	// Settings for application id 0 must never reach a Service route.
 	settings := &fakeSettings{all: map[uint64]domain.RouteSettings{0: {WwwRedirect: domain.ToApex}}}
 	proxy := &fakeProxy{}
-	s := NewService(apps, svcRoutes, settings, proxy)
+	s := NewService(apps, svcRoutes, settings, oneProxy{proxy})
 
 	web := domain.ServiceRoute{ServiceID: 3, Component: "web", Domains: []string{"shop.localhost"}, Container: "bakery-svc-3-web", Port: 80}
 	admin := domain.ServiceRoute{ServiceID: 3, Component: "admin", Domains: []string{"shop-admin.localhost"}, Container: "bakery-svc-3-admin", Port: 8080}

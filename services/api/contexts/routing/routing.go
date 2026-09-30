@@ -8,6 +8,7 @@ package routing
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/goravel/framework/contracts/route"
 	"github.com/jevido/bakery/services/api/app/facades"
@@ -19,6 +20,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/routing/domain"
 	routinghttp "github.com/jevido/bakery/services/api/contexts/routing/http"
 	"github.com/jevido/bakery/services/api/contexts/routing/infra"
+	"github.com/jevido/bakery/services/api/contexts/servers"
 )
 
 var (
@@ -37,7 +39,7 @@ func svc() *app.Service {
 				Web:    cfg.GetString("bakery.dashboard.web_upstream"),
 			}
 		}
-		proxy := infra.NewProxy(podman.Default(), infra.ProxyConfig{
+		cfgProxy := infra.ProxyConfig{
 			Name:         "bakery-proxy",
 			Image:        cfg.GetString("bakery.proxy.image"),
 			Network:      cfg.GetString("bakery.network"),
@@ -52,8 +54,19 @@ func svc() *app.Service {
 			ACMEEmail:    cfg.GetString("bakery.acme.email"),
 			ACMERoot:     cfg.GetString("bakery.acme.ca_root"),
 			VolumePrefix: "bakery-proxy",
-		})
-		service = app.NewService(infra.Routes{}, infra.ServiceRoutes{}, infra.Settings{}, proxy)
+		}
+		proxies := &infra.Proxies{
+			Local:  infra.NewProxy(podman.Default(), cfgProxy),
+			Config: cfgProxy,
+			Connect: func(ctx context.Context, serverID uint64) (*podman.Client, infra.Dial, error) {
+				conn, err := servers.Connect(ctx, serverID)
+				if err != nil {
+					return nil, nil, err
+				}
+				return conn.Podman, conn.DialUnix, nil
+			},
+		}
+		service = app.NewService(infra.Routes{}, infra.ServiceRoutes{}, infra.Settings{}, proxies)
 		projects.OnApplicationDomainsChanged(func(ctx context.Context, applicationID uint64, domains []string) {
 			if err := service.ChangeDomains(ctx, applicationID, domains); err != nil {
 				facades.Log().Errorf("routing: moving the route of application %d to %v: %v", applicationID, domains, err)
@@ -80,16 +93,46 @@ func Routes(r route.Router) {
 // Init wires routing's event handlers. Call once at start.
 func Init() { svc() }
 
-// EnsureProxy makes sure the network and the Proxy exist and run, and loads
-// every Route into it.
+// EnsureProxy makes sure the network and the Local server's Proxy exist and
+// run, and loads every Route there into it. Then, in the background, it
+// does the same for every Remote server with Routes, retrying one that
+// cannot be reached without holding up the others or the API.
 func EnsureProxy(ctx context.Context) error {
-	return svc().EnsureProxy(ctx)
+	if err := svc().EnsureProxy(ctx); err != nil {
+		return err
+	}
+	remote, err := svc().RemoteServers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, id := range remote {
+		go ensureRemote(ctx, id)
+	}
+	return nil
 }
 
-// SwitchRoute points an Application's Domains at a Container and port, and
-// Applies. When it returns nil, Caddy is serving the new Container.
-func SwitchRoute(ctx context.Context, applicationID uint64, domains []string, container string, port int) error {
-	return svc().SwitchRoute(ctx, domain.Route{ApplicationID: applicationID, Domains: domains, Container: container, Port: port})
+func ensureRemote(ctx context.Context, serverID uint64) {
+	for attempt := 1; ; attempt++ {
+		err := svc().EnsureRemoteProxy(ctx, serverID)
+		if err == nil {
+			facades.Log().Infof("proxy: the proxy of server %d is running and configured", serverID)
+			return
+		}
+		facades.Log().Errorf("proxy: server %d, attempt %d: %v", serverID, attempt, err)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(min(time.Duration(attempt)*5*time.Second, 5*time.Minute)):
+		}
+	}
+}
+
+// SwitchRoute points an Application's Domains at a Container and port on
+// its Target server (0 the Local server), and Applies that Server's Proxy,
+// creating it on the Server's first Route. When it returns nil, Caddy there
+// is serving the new Container.
+func SwitchRoute(ctx context.Context, serverID, applicationID uint64, domains []string, container string, port int) error {
+	return svc().SwitchRoute(ctx, domain.Route{ApplicationID: applicationID, ServerID: serverID, Domains: domains, Container: container, Port: port})
 }
 
 // ServiceRoute is a Public Component's Domains, primary first, served from

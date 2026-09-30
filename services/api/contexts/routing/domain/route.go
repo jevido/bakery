@@ -5,6 +5,9 @@ package domain
 // Route is where an Application's Domains are served from.
 type Route struct {
 	ApplicationID uint64
+	// ServerID is the Application's Target server, 0 for the Local server;
+	// only that Server's Proxy serves the Route.
+	ServerID uint64
 	// Domains has at least one Domain, the primary first.
 	Domains   []string
 	Container string

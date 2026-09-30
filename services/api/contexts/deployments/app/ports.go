@@ -230,5 +230,5 @@ type Mount struct {
 	Path   string
 }
 
-// Router is routing's SwitchRoute.
-type Router func(ctx context.Context, applicationID uint64, domains []string, container string, port int) error
+// Router is routing's SwitchRoute; serverID 0 is the Local server.
+type Router func(ctx context.Context, serverID, applicationID uint64, domains []string, container string, port int) error

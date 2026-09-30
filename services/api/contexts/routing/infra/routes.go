@@ -18,6 +18,8 @@ type routeRecord struct {
 	Domains       string
 	ContainerName string
 	ContainerPort int
+	// ServerID is the Server the Route is served on, 0 the Local server.
+	ServerID uint64
 	orm.Timestamps
 }
 
@@ -32,7 +34,7 @@ func (Routes) All(ctx context.Context) ([]domain.Route, error) {
 	}
 	out := make([]domain.Route, len(recs))
 	for i, r := range recs {
-		out[i] = domain.Route{ApplicationID: r.ApplicationID, Container: r.ContainerName, Port: r.ContainerPort}
+		out[i] = domain.Route{ApplicationID: r.ApplicationID, ServerID: r.ServerID, Container: r.ContainerName, Port: r.ContainerPort}
 		if err := json.Unmarshal([]byte(r.Domains), &out[i].Domains); err != nil {
 			return nil, err
 		}
@@ -48,12 +50,12 @@ func (Routes) Upsert(ctx context.Context, r domain.Route) error {
 		return err
 	}
 	_, err = facades.Orm().WithContext(ctx).Query().Exec(`
-		INSERT INTO routes (application_id, domains, container_name, container_port, created_at, updated_at)
-		VALUES (?, ?, ?, ?, now(), now())
+		INSERT INTO routes (application_id, server_id, domains, container_name, container_port, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, now(), now())
 		ON CONFLICT (application_id) DO UPDATE
-		SET domains = EXCLUDED.domains, container_name = EXCLUDED.container_name,
+		SET server_id = EXCLUDED.server_id, domains = EXCLUDED.domains, container_name = EXCLUDED.container_name,
 		    container_port = EXCLUDED.container_port, updated_at = now()`,
-		r.ApplicationID, string(domains), r.Container, r.Port)
+		r.ApplicationID, r.ServerID, string(domains), r.Container, r.Port)
 	return err
 }
 

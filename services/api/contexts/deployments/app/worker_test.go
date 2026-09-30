@@ -250,7 +250,7 @@ func newSetup(t *testing.T, src fakeSource, check ...HealthCheck) *setup {
 		return a, nil
 	}
 	s.service = NewService(s.store, s.logs, apps, nil)
-	router := func(_ context.Context, _ uint64, domains []string, container string, _ int) error {
+	router := func(_ context.Context, _, _ uint64, domains []string, container string, _ int) error {
 		for _, d := range domains {
 			s.routes[d] = container
 		}

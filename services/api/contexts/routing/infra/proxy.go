@@ -8,9 +8,11 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/jevido/bakery/services/api/app/podman"
+	"github.com/jevido/bakery/services/api/contexts/routing/app"
 	"github.com/jevido/bakery/services/api/contexts/routing/domain"
 )
 
@@ -56,6 +58,8 @@ type Proxy struct {
 	// dial opens a unix socket on the Proxy's Server; set for a Remote
 	// Proxy, whose admin API is a socket rather than a URL.
 	dial func(ctx context.Context, path string) (net.Conn, error)
+	// adminMu guards connecting caddy to a Remote Proxy's socket.
+	adminMu sync.Mutex
 }
 
 func NewProxy(p *podman.Client, cfg ProxyConfig) *Proxy {
@@ -87,7 +91,12 @@ func (p *Proxy) adminListen() string {
 // connectAdmin points a Remote Proxy's Caddy client at the socket in its
 // admin volume on the Server.
 func (p *Proxy) connectAdmin(ctx context.Context) error {
-	if !p.remote() || p.caddy != nil {
+	if !p.remote() {
+		return nil
+	}
+	p.adminMu.Lock()
+	defer p.adminMu.Unlock()
+	if p.caddy != nil {
 		return nil
 	}
 	dir, err := p.podman.VolumeMountpoint(ctx, p.adminVolume())
@@ -229,4 +238,43 @@ func (p *Proxy) Apply(ctx context.Context, routes []domain.Route) error {
 		return err
 	}
 	return p.caddy.Load(ctx, config)
+}
+
+// Dial opens a unix socket on a Server.
+type Dial func(ctx context.Context, path string) (net.Conn, error)
+
+// Proxies hands out the Proxy of each Server: the Local one as configured,
+// Remote ones built on that Server's connection with the same config.
+type Proxies struct {
+	Local  *Proxy
+	Config ProxyConfig
+	// Connect returns the Podman client and socket dialer of a Remote
+	// server (servers' pooled Server connection).
+	Connect func(ctx context.Context, serverID uint64) (*podman.Client, Dial, error)
+
+	mu     sync.Mutex
+	remote map[uint64]*Proxy
+}
+
+// For returns the Server's Proxy. A Remote Proxy is rebuilt whenever the
+// Server's connection was redialled, so it never talks through a dead one.
+func (p *Proxies) For(ctx context.Context, serverID uint64) (app.Proxy, error) {
+	if serverID == 0 {
+		return p.Local, nil
+	}
+	client, dial, err := p.Connect(ctx, serverID)
+	if err != nil {
+		return nil, err
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if cached, ok := p.remote[serverID]; ok && cached.podman == client {
+		return cached, nil
+	}
+	if p.remote == nil {
+		p.remote = map[uint64]*Proxy{}
+	}
+	proxy := NewRemoteProxy(client, dial, p.Config)
+	p.remote[serverID] = proxy
+	return proxy, nil
 }
