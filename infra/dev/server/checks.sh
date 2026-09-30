@@ -66,6 +66,9 @@ check_running() {
 	for name in "${want[@]}"; do
 		expect "$name runs as bakery" contains "$running" "^$name"
 	done
+	local mounts
+	mounts=$(as_bakery podman inspect bakery-api --format '{{range .Mounts}}{{.Name}}:{{.Destination}} {{end}}')
+	expect "bakery-api keeps Backups on the bakery-backups volume" contains "$mounts" "bakery-backups:/var/lib/bakery/backups"
 }
 
 check_platform() {

@@ -3,6 +3,7 @@ package infra
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"time"
 
@@ -162,4 +163,20 @@ func (r Runtime) Logs(ctx context.Context, d domain.Database, follow bool, tail 
 		return false, nil
 	}
 	return true, err
+}
+
+// Dump runs the Database's DumpCommand in its Container, streaming stdout
+// to w.
+func (r Runtime) Dump(ctx context.Context, d domain.Database, w io.Writer) (int, string, error) {
+	return r.Podman.ExecStream(ctx, domain.ContainerName(d.Slug), d.DumpCommand(), w)
+}
+
+// CopyIn streams a file into the Container's RestoreDir.
+func (r Runtime) CopyIn(ctx context.Context, d domain.Database, name string, size int64, rd io.Reader) error {
+	return r.Podman.CopyFileInto(ctx, domain.ContainerName(d.Slug), d.RestoreDir(), name, size, rd)
+}
+
+// Exec runs cmd in the Container.
+func (r Runtime) Exec(ctx context.Context, d domain.Database, cmd []string) (int, string, error) {
+	return r.Podman.Exec(ctx, domain.ContainerName(d.Slug), cmd)
 }

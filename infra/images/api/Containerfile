@@ -36,7 +36,8 @@ WORKDIR /app
 COPY --from=build /out/bakery-api /usr/local/bin/bakery-api
 COPY --from=nixpacks /usr/local/bin/nixpacks /usr/local/bin/nixpacks
 # Goravel writes its logs under storage/ relative to the working directory.
-RUN mkdir -p /app/storage
+# Backups go to /var/lib/bakery/backups, the bakery-backups volume on a server.
+RUN mkdir -p /app/storage && install -d -m 700 /var/lib/bakery/backups
 # Root inside a rootless Podman container is the host's bakery user, which
 # owns the Podman socket; nothing here runs with more rights than that user.
 ENV APP_ENV=production \
@@ -47,6 +48,7 @@ ENV APP_ENV=production \
     DB_CONNECTION=postgres \
     APP_PORT=4910 \
     MIGRATE_ON_START=true \
-    BAKERY_PODMAN_SOCKET=/run/podman/podman.sock
+    BAKERY_PODMAN_SOCKET=/run/podman/podman.sock \
+    BAKERY_BACKUPS_DIR=/var/lib/bakery/backups
 EXPOSE 4910
 CMD ["bakery-api"]

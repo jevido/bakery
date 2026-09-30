@@ -47,6 +47,11 @@ func init() {
 			"public_bind": config.Env("BAKERY_DATABASES_PUBLIC_BIND", ""),
 			"public_host": config.Env("BAKERY_DATABASES_PUBLIC_HOST", ""),
 		},
+		// Where Backup files are written, one directory per Database. On a
+		// server: /var/lib/bakery/backups on the bakery-backups volume.
+		"backups": map[string]any{
+			"dir": config.Env("BAKERY_BACKUPS_DIR", "storage/backups"),
+		},
 		"proxy": map[string]any{
 			"image": config.Env("BAKERY_PROXY_IMAGE", "docker.io/library/caddy:2"),
 			// Host address the proxy's HTTP(S) ports are published on; empty

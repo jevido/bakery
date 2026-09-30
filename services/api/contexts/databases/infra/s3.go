@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -137,20 +136,17 @@ func (c S3) Check(ctx context.Context) error {
 	return res.Body.Close()
 }
 
-// Put uploads the file as key, signed with its SHA-256.
-func (c S3) Put(ctx context.Context, key string, f *os.File) error {
-	info, err := f.Stat()
-	if err != nil {
-		return err
-	}
-	if info.Size() > maxPut {
-		return fmt.Errorf("s3: %d bytes is more than one upload may hold (5 GiB)", info.Size())
+// Put uploads size bytes read from r as key, signed with their SHA-256
+// (r is read twice: once to hash, once to send).
+func (c S3) Put(ctx context.Context, key string, r io.ReaderAt, size int64) error {
+	if size > maxPut {
+		return fmt.Errorf("s3: %d bytes is more than one upload may hold (5 GiB)", size)
 	}
 	h := sha256.New()
-	if _, err := io.Copy(h, io.NewSectionReader(f, 0, info.Size())); err != nil {
+	if _, err := io.Copy(h, io.NewSectionReader(r, 0, size)); err != nil {
 		return err
 	}
-	res, err := c.request(ctx, http.MethodPut, key, nil, io.NewSectionReader(f, 0, info.Size()), info.Size(), hex.EncodeToString(h.Sum(nil)))
+	res, err := c.request(ctx, http.MethodPut, key, nil, io.NewSectionReader(r, 0, size), size, hex.EncodeToString(h.Sum(nil)))
 	if err != nil {
 		return err
 	}

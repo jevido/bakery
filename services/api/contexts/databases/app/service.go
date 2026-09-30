@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -59,6 +60,13 @@ type Runtime interface {
 	Remove(ctx context.Context, d domain.Database) error
 	Status(ctx context.Context, d domain.Database) (domain.Status, string, error)
 	Logs(ctx context.Context, d domain.Database, follow bool, tail int, out func(stream, line string)) (bool, error)
+	// Dump runs the Database's DumpCommand in its Container, writing its
+	// stdout to w; it returns the exit code and stderr.
+	Dump(ctx context.Context, d domain.Database, w io.Writer) (int, string, error)
+	// CopyIn streams a file of size bytes into the Container's RestoreDir.
+	CopyIn(ctx context.Context, d domain.Database, name string, size int64, r io.Reader) error
+	// Exec runs cmd in the Container: exit code and output.
+	Exec(ctx context.Context, d domain.Database, cmd []string) (int, string, error)
 }
 
 // Environment is where a Database is placed, as projects told us.
@@ -95,19 +103,25 @@ type Service struct {
 	NewPassword  func() string
 	// Log reports background failures; nil discards them.
 	Log func(format string, args ...any)
+	// Files keeps Backup files; S3 makes a client for an S3 storage.
+	Files BackupFiles
+	S3    func(domain.S3Storage) S3Client
+	// Now is the clock of Backups and schedules.
+	Now func() time.Time
 
 	mu      sync.Mutex
 	locks   map[uint64]*sync.Mutex
 	pending map[uint64]*op
 	errs    map[uint64]string
+	jobs    map[uint64]*job
 	wg      sync.WaitGroup
 }
 
 func NewService(store Store, runtime Runtime, environments Environments, publicHost string) *Service {
 	return &Service{
 		store: store, runtime: runtime, environments: environments, publicHost: publicHost,
-		NewPassword: newPassword,
-		locks:       map[uint64]*sync.Mutex{}, pending: map[uint64]*op{}, errs: map[uint64]string{},
+		NewPassword: newPassword, Now: time.Now,
+		locks: map[uint64]*sync.Mutex{}, pending: map[uint64]*op{}, errs: map[uint64]string{}, jobs: map[uint64]*job{},
 	}
 }
 
@@ -363,13 +377,23 @@ func (s *Service) Stop(ctx context.Context, id uint64) (View, error) {
 	return s.view(ctx, d)
 }
 
-// Delete removes the Container, the volume with all data, and the Database.
+// Delete removes the Container, the volume with all data, the Database's
+// Backup files and rows, and the Database. Its S3 objects stay.
 func (s *Service) Delete(ctx context.Context, id uint64) error {
 	d, err := s.get(ctx, id)
 	if err != nil {
 		return err
 	}
+	s.endJob(id)
 	if err := s.now(ctx, d, s.runtime.Remove); err != nil {
+		return err
+	}
+	if s.Files != nil {
+		if err := s.Files.RemoveAll(id); err != nil {
+			return err
+		}
+	}
+	if err := s.store.DeleteBackups(ctx, id); err != nil {
 		return err
 	}
 	if err := s.store.Delete(ctx, id); err != nil {
@@ -389,9 +413,13 @@ func (s *Service) InUse(ctx context.Context, projectID uint64) (bool, error) {
 	return n > 0, err
 }
 
-// Recover starts, in the background, every Database that should run but
-// has no Container (removed by hand, or lost with an upgrade).
+// Recover marks Backups a stopped API left running as failed, and starts,
+// in the background, every Database that should run but has no Container
+// (removed by hand, or lost with an upgrade).
 func (s *Service) Recover(ctx context.Context) error {
+	if _, err := s.store.FailRunningBackups(ctx, "interrupted: the API stopped during the backup", s.Now()); err != nil {
+		return err
+	}
 	list, err := s.store.Wanted(ctx)
 	if err != nil {
 		return err

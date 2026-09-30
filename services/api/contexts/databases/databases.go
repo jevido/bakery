@@ -14,6 +14,7 @@ import (
 	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/app/podman"
 	"github.com/jevido/bakery/services/api/contexts/databases/app"
+	"github.com/jevido/bakery/services/api/contexts/databases/domain"
 	databaseshttp "github.com/jevido/bakery/services/api/contexts/databases/http"
 	"github.com/jevido/bakery/services/api/contexts/databases/infra"
 	"github.com/jevido/bakery/services/api/contexts/identity"
@@ -59,6 +60,8 @@ func svc() *app.Service {
 		}
 		service = app.NewService(infra.Store{}, runtime, environments, publicHost())
 		service.Log = facades.Log().Errorf
+		service.Files = infra.BackupFiles{Dir: cfg.GetString("bakery.backups.dir")}
+		service.S3 = func(st domain.S3Storage) app.S3Client { return infra.S3{Storage: st} }
 		projects.OnProjectDeleting(service.InUse)
 	})
 	return service

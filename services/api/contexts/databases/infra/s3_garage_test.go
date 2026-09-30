@@ -61,7 +61,7 @@ func TestGarage(t *testing.T) {
 	f, _ := os.Open(path)
 	defer f.Close()
 	key := prefix + "20260930T030000Z a+b.dump"
-	if err := c.Put(ctx, key, f); err != nil {
+	if err := c.Put(ctx, key, f, int64(len(payload))); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
 	keys, err := c.List(ctx, prefix)

@@ -254,6 +254,7 @@ start_bakery() {
 		--restart=always --label bakery.managed=true --label bakery.role=api \
 		--security-opt label=disable \
 		-v "$RUNTIME_DIR/podman/podman.sock:/run/podman/podman.sock" \
+		-v bakery-backups:/var/lib/bakery/backups \
 		"${root_mount[@]}" \
 		--env-file "$ENV_FILE" \
 		-e APP_URL="https://$DOMAIN" \
@@ -262,6 +263,7 @@ start_bakery() {
 		-e BAKERY_DOMAIN_SUFFIX="$DOMAIN" \
 		-e BAKERY_DASHBOARD_DOMAIN="$DOMAIN" \
 		-e BAKERY_DATABASES_PUBLIC_HOST="$DOMAIN" \
+		-e BAKERY_BACKUPS_DIR=/var/lib/bakery/backups \
 		-e BAKERY_PROXY_HTTP_PORT=80 -e BAKERY_PROXY_HTTPS_PORT=443 \
 		-e BAKERY_PROXY_INTERNAL_TLS=false \
 		-e BAKERY_PROXY_ADMIN_URL=http://bakery-proxy:2019 \

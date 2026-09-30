@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"io"
 	"slices"
 	"sync"
 	"testing"
@@ -235,6 +236,17 @@ type fakeRuntime struct {
 	calls      []string
 	containers map[uint64]bool
 	startErr   error
+
+	// dump is what Dump writes and exits with; dumpGate, when set, is
+	// waited on before Dump returns.
+	dump       []byte
+	dumpCode   int
+	dumpStderr string
+	dumpGate   chan struct{}
+	// copied is what CopyIn received, by name; execs every Exec'd command.
+	copied   map[string][]byte
+	execs    [][]string
+	execCode int
 }
 
 func (f *fakeRuntime) record(call string, id uint64, has bool) {
@@ -275,6 +287,42 @@ func (f *fakeRuntime) Status(_ context.Context, d domain.Database) (domain.Statu
 }
 func (f *fakeRuntime) Logs(context.Context, domain.Database, bool, int, func(string, string)) (bool, error) {
 	return false, nil
+}
+func (f *fakeRuntime) Dump(ctx context.Context, d domain.Database, w io.Writer) (int, string, error) {
+	if f.dumpGate != nil {
+		select {
+		case <-f.dumpGate:
+		case <-ctx.Done():
+			return 0, "", ctx.Err()
+		}
+	}
+	w.Write(f.dump)
+	return f.dumpCode, f.dumpStderr, nil
+}
+func (f *fakeRuntime) CopyIn(_ context.Context, d domain.Database, name string, size int64, r io.Reader) error {
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	if int64(len(b)) != size {
+		return errors.New("size mismatch")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.copied == nil {
+		f.copied = map[string][]byte{}
+	}
+	f.copied[name] = b
+	return nil
+}
+func (f *fakeRuntime) Exec(_ context.Context, d domain.Database, cmd []string) (int, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.execs = append(f.execs, cmd)
+	if f.execCode != 0 {
+		return f.execCode, "restore broke", nil
+	}
+	return 0, "", nil
 }
 func (f *fakeRuntime) Calls() []string {
 	f.mu.Lock()

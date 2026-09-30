@@ -35,7 +35,7 @@ restore (see Backups).
 | Container | Image | Port (on the `bakery` network) | Health | Volumes |
 | --------- | ----- | ------------------------------ | ------ | ------- |
 | `bakery-proxy` | `docker.io/library/caddy:2` | 80, 443 published on the host; admin API 2019 not published | serves `https://<domain>/` | `bakery-proxy-data` (certificates), `bakery-proxy-config` |
-| `bakery-api` | `bakery-api` | 4910 | `GET /api/health` → `{"ok":true}` | none (mounts the Podman socket) |
+| `bakery-api` | `bakery-api` | 4910 | `GET /api/health` → `{"ok":true}` | `bakery-backups` (Backup files of Databases, at `/var/lib/bakery/backups`); mounts the Podman socket |
 | `bakery-web` | `bakery-web` | 80 | `GET /` | none |
 | `bakery-postgres` | `docker.io/library/postgres:18` | 5432 | `pg_isready -U bakery` | `bakery-postgres` |
 
@@ -53,7 +53,8 @@ Secrets, generated once by the install script, live in
 `BAKERY_NETWORK`, `BAKERY_DOMAIN_SUFFIX`, `BAKERY_DASHBOARD_DOMAIN`,
 `BAKERY_PROXY_HTTP_PORT`, `BAKERY_PROXY_HTTPS_PORT`,
 `BAKERY_PROXY_INTERNAL_TLS=false`, `BAKERY_PROXY_ADMIN_URL`,
-`BAKERY_ACME_CA`, `BAKERY_ACME_EMAIL`, `BAKERY_ACME_CA_ROOT`. Their meaning
+`BAKERY_ACME_CA`, `BAKERY_ACME_EMAIL`, `BAKERY_ACME_CA_ROOT`,
+`BAKERY_BACKUPS_DIR=/var/lib/bakery/backups`. Their meaning
 is in `services/api/.env.example`. `BAKERY_NIXPACKS` and
 `BAKERY_INSECURE_REGISTRIES` keep their defaults: the image's own `nixpacks`,
 and TLS verified for every registry.
