@@ -9,6 +9,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 
 	"github.com/jevido/bakery/services/api/app/respond"
+	"github.com/jevido/bakery/services/api/contexts/identity"
 	"github.com/jevido/bakery/services/api/contexts/services/app"
 	"github.com/jevido/bakery/services/api/contexts/services/domain"
 )
@@ -39,6 +40,8 @@ type variableJSON struct {
 	// one the Owner sets.
 	Magic   string  `json:"magic"`
 	Default *string `json:"default"`
+	// Hidden says Value was left out for a viewer.
+	Hidden bool `json:"hidden,omitempty"`
 }
 
 type serviceJSON struct {
@@ -130,7 +133,13 @@ func one(ctx contractshttp.Context, status int, v app.View, err error) contracts
 	if err != nil {
 		return fail(ctx, err)
 	}
-	return ctx.Response().Json(status, contractshttp.Json{"service": toJSON(v, true)})
+	out := toJSON(v, true)
+	if !identity.CanSeeSecrets(ctx) && out.Variables != nil {
+		for i := range *out.Variables {
+			(*out.Variables)[i].Value, (*out.Variables)[i].Hidden = "", true
+		}
+	}
+	return ctx.Response().Json(status, contractshttp.Json{"service": out})
 }
 
 // createRequest names a template or carries a Compose file.

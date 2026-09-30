@@ -122,26 +122,30 @@ func OnCleanup(retention func(ctx context.Context, serverID uint64) (int64, erro
 	svc().Retention = retention
 }
 
-// Routes registers the servers API, all behind identity.Auth.
+// Routes registers the servers API behind identity.Auth. Every Member may
+// list the Servers (to pick a Target server) and see their usage; only
+// admins change them.
 func Routes(r route.Router) {
 	c := servershttp.NewController(svc())
 	r.Middleware(identity.Auth).Group(func(r route.Router) {
 		r.Get("/api/servers", c.List)
-		r.Post("/api/servers", c.Create)
 		r.Get("/api/servers/{id}", c.Show)
+		r.Get("/api/servers/{id}/metrics", c.Metrics)
+	})
+	r.Middleware(identity.Auth, identity.Admin).Group(func(r route.Router) {
+		r.Post("/api/servers", c.Create)
 		r.Patch("/api/servers/{id}", c.Update)
 		r.Delete("/api/servers/{id}", c.Delete)
 		r.Delete("/api/servers/{id}/host-key", c.ForgetHostKey)
-		r.Get("/api/servers/{id}/metrics", c.Metrics)
 	})
 }
 
 // LongRoutes registers Validate and Clean up, which talk to a Server for
 // longer than the request timeout allows (a Validation up to 30 s, a
-// Cleanup minutes), behind identity.Auth.
+// Cleanup minutes), behind identity.Auth and identity.Admin.
 func LongRoutes(r route.Router) {
 	c := servershttp.NewController(svc())
-	r.Middleware(identity.Auth).Group(func(r route.Router) {
+	r.Middleware(identity.Auth, identity.Admin).Group(func(r route.Router) {
 		r.Post("/api/servers/{id}/validate", c.Validate)
 		r.Post("/api/servers/{id}/cleanup", c.CleanUp)
 	})

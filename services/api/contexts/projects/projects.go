@@ -50,12 +50,15 @@ func Routes(r route.Router) {
 		r.Patch("/api/applications/{id}", c.UpdateApplication)
 		r.Delete("/api/applications/{id}", c.DeleteApplication)
 		r.Post("/api/applications/{id}/deploy-key", c.RegenerateDeployKey)
-		r.Get("/api/applications/{id}/env", c.ShowEnv)
 		r.Put("/api/applications/{id}/env", c.ReplaceEnv)
-		r.Get("/api/projects/{id}/variables", c.ShowProjectVariables)
 		r.Put("/api/projects/{id}/variables", c.ReplaceProjectVariables)
-		r.Get("/api/environments/{id}/variables", c.ShowEnvironmentVariables)
 		r.Put("/api/environments/{id}/variables", c.ReplaceEnvironmentVariables)
+	})
+	// Variable values are Secrets.
+	r.Middleware(identity.Auth, identity.Secrets).Group(func(r route.Router) {
+		r.Get("/api/applications/{id}/env", c.ShowEnv)
+		r.Get("/api/projects/{id}/variables", c.ShowProjectVariables)
+		r.Get("/api/environments/{id}/variables", c.ShowEnvironmentVariables)
 	})
 }
 

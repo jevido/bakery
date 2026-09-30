@@ -11,6 +11,7 @@ import (
 	"github.com/jevido/bakery/services/api/app/respond"
 	"github.com/jevido/bakery/services/api/contexts/databases/app"
 	"github.com/jevido/bakery/services/api/contexts/databases/domain"
+	"github.com/jevido/bakery/services/api/contexts/identity"
 )
 
 type Controller struct {
@@ -73,6 +74,8 @@ type databaseJSON struct {
 	Credentials *credentialsJSON `json:"credentials,omitempty"`
 	InternalURL string           `json:"internal_url,omitempty"`
 	PublicURL   *string          `json:"public_url,omitempty"`
+	// SecretsHidden says the credentials and URLs were left out for a viewer.
+	SecretsHidden bool `json:"secrets_hidden,omitempty"`
 
 	BackupsSupported bool         `json:"backups_supported"`
 	BackupSchedule   scheduleJSON `json:"backup_schedule"`
@@ -156,7 +159,12 @@ func one(ctx contractshttp.Context, status int, v app.View, err error) contracts
 	if err != nil {
 		return fail(ctx, err)
 	}
-	return ctx.Response().Json(status, contractshttp.Json{"database": toJSON(v, true)})
+	out := toJSON(v, true)
+	if !identity.CanSeeSecrets(ctx) {
+		out.Credentials, out.InternalURL, out.PublicURL = nil, "", nil
+		out.SecretsHidden = true
+	}
+	return ctx.Response().Json(status, contractshttp.Json{"database": out})
 }
 
 func (c *Controller) Create(ctx contractshttp.Context) contractshttp.Response {

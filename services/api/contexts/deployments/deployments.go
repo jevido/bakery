@@ -134,15 +134,24 @@ func svc() *app.Service {
 
 func isApplicationNotFound(err error) bool { return errors.Is(err, projects.ErrNotFound) }
 
-// Routes registers the deployments API behind identity.Auth, and the
+// Routes registers the deployments API behind identity.Auth (Known hosts
+// also behind identity.Admin, the Webhook with its secret behind
+// identity.Secrets), and the
 // Webhook endpoint git hosts call without a Session (the signature is its
 // authentication).
 func Routes(r route.Router) {
 	c := deploymentshttp.NewController(svc(), isApplicationNotFound)
 	wc := deploymentshttp.NewWebhookController(webhooks, isApplicationNotFound)
 	r.Post("/api/webhooks/applications/{id}", wc.Receive)
-	r.Middleware(identity.Auth).Group(func(r route.Router) {
+	// The Webhook answers with its secret, even after a change.
+	r.Middleware(identity.Auth, identity.Secrets).Group(func(r route.Router) {
 		r.Get("/api/applications/{id}/webhook", wc.Show)
+	})
+	r.Middleware(identity.Auth, identity.Admin).Group(func(r route.Router) {
+		r.Get("/api/known-hosts", c.KnownHosts)
+		r.Delete("/api/known-hosts/{id}", c.ForgetKnownHost)
+	})
+	r.Middleware(identity.Auth).Group(func(r route.Router) {
 		r.Patch("/api/applications/{id}/webhook", wc.Update)
 		r.Post("/api/applications/{id}/webhook/secret", wc.RotateSecret)
 		r.Post("/api/applications/{id}/deploy", c.Deploy)
@@ -150,8 +159,6 @@ func Routes(r route.Router) {
 		r.Get("/api/deployments/{id}", c.Show)
 		r.Post("/api/deployments/{id}/cancel", c.Cancel)
 		r.Post("/api/deployments/{id}/rollback", c.Rollback)
-		r.Get("/api/known-hosts", c.KnownHosts)
-		r.Delete("/api/known-hosts/{id}", c.ForgetKnownHost)
 	})
 }
 

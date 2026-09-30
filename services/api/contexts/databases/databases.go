@@ -67,7 +67,8 @@ func svc() *app.Service {
 	return service
 }
 
-// Routes registers the databases API, all behind identity.Auth.
+// Routes registers the databases API behind identity.Auth; S3 storages
+// also need identity.Admin.
 func Routes(r route.Router) {
 	c := databaseshttp.NewController(svc())
 	r.Middleware(identity.Auth).Group(func(r route.Router) {
@@ -84,6 +85,8 @@ func Routes(r route.Router) {
 		r.Post("/api/databases/{id}/backups", c.BackUp)
 		r.Post("/api/backups/{id}/restore", c.Restore)
 		r.Delete("/api/backups/{id}", c.DeleteBackup)
+	})
+	r.Middleware(identity.Auth, identity.Admin).Group(func(r route.Router) {
 		r.Get("/api/s3-storages", c.S3Storages)
 		r.Post("/api/s3-storages", c.CreateS3Storage)
 		r.Post("/api/s3-storages/check", c.CheckS3Storage)
@@ -93,11 +96,14 @@ func Routes(r route.Router) {
 }
 
 // StreamRoutes registers the log stream and Backup downloads, behind
-// identity.Auth but outside the request timeout.
+// identity.Auth but outside the request timeout. A Backup holds the
+// Database's data, so its download is a Secret.
 func StreamRoutes(r route.Router) {
 	c := databaseshttp.NewStreamController(svc(), shutdown)
 	r.Middleware(identity.Auth).Group(func(r route.Router) {
 		r.Get("/api/databases/{id}/logs", c.Logs)
+	})
+	r.Middleware(identity.Auth, identity.Secrets).Group(func(r route.Router) {
 		r.Get("/api/backups/{id}/download", c.Download)
 	})
 }
