@@ -7,10 +7,10 @@
 
 Knows who may use this Bakery and what each of them may do: the Members,
 each with a Role, the one Owner created by Setup, the Invitations that bring
-in the others, and how a request proves who sent it (a Session or an API
-token). It is **not** responsible for several Teams, two-factor
-authentication or OAuth login; those come in later phases and will grow
-this context.
+in the others, how a request proves who sent it (a Session or an API
+token), and each Member's own Account, Two-factor authentication included.
+It is **not** responsible for several Teams or OAuth login; those come in
+later phases and will grow this context.
 
 ## Language
 
@@ -25,6 +25,12 @@ this context.
 | API token | A named `bky_…` secret of one Member, sent as `Authorization: Bearer`. |
 | Principal | Who a request is from: a Member and the Role the request acts with (the Member's, or viewer for a read-only API token). |
 | Secret | A value a viewer may not read (see the glossary). |
+| Account | A Member's own name, password, Sessions and Two-factor authentication, changed only by that Member. |
+| Two-factor authentication | A TOTP secret on a Member: `off`, `pending` (made, not yet confirmed with a code) or `on`. When on, signing in needs an Authenticator code or a Recovery code after the password. |
+| Authenticator code | 6 digits from the Member's app (RFC 6238, SHA-1, 30 s steps), accepted for the current step ± 1 and only once. |
+| Recovery code | One of 10 single-use codes handed out when Two-factor authentication is switched on or the codes are renewed. |
+| Login challenge | The 5 minutes between a correct password and the second step, carried in the `bakery_login` cookie; at most 5 wrong codes. |
+| Sessions valid from | The moment before which a Member's Sessions no longer count; set by a password change, "sign out everywhere else" and a two-factor reset. |
 
 ## Model
 
@@ -32,7 +38,7 @@ this context.
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Member | Email is a valid address and unique; name is not empty; password has at least 12 characters and is only stored hashed. Exactly one Member is the Owner; the Owner's Role never changes and the Owner is never removed. Nobody changes their own Role or removes themselves. |
+| Member | Email is a valid address and unique; name is not empty; password has at least 12 characters and is only stored hashed. Exactly one Member is the Owner; the Owner's Role never changes and the Owner is never removed. Nobody changes their own Role or removes themselves. Two-factor authentication only counts for sign-in when `on`; its secret is stored only encrypted and Recovery codes only hashed; an Authenticator code is accepted only for a time step later than the last one accepted. A new password has at least 12 characters and needs the current one. |
 | Invitation | Email is valid and not an existing Member's; Role is admin, member or viewer, never owner; at most one open Invitation per email; expires 7 days after it was made; accepted at most once; a revoked or expired one cannot be accepted. Only the hash of its token is stored. |
 | API token | Name is 1–64 characters and unique per Member; belongs to one Member and is removed with them; only the SHA-256 of its value is stored, and the value is shown once. |
 
@@ -51,6 +57,13 @@ Who may run each is in brackets.
 - `RemoveMember(member)` [admin, owner]: never the Owner, never yourself; their Sessions and API tokens stop working at once.
 - `CreateAPIToken(name, readOnly)` [any Member, with a Session]: returns the value once.
 - `RevokeAPIToken(id)` [the token's Member].
+- `ChangeName(name)`, `ChangePassword(current, new)`, `SignOutOtherSessions()` [the Member themselves, with a Session]: a new password and signing out elsewhere end every other Session of the Member; the current one gets a fresh Session.
+- `StartTwoFactor()` [the Member, with a Session]: a new secret and its `otpauth://` URI; two-factor becomes pending. Refused while on.
+- `ConfirmTwoFactor(code)` [the Member, with a Session]: switches it on and returns 10 Recovery codes, once.
+- `RegenerateRecoveryCodes(code)` [the Member, with a Session]: 10 new Recovery codes; the old ones stop working.
+- `DisableTwoFactor(password, code or Recovery code)` [the Member, with a Session].
+- `LoginTwoFactor(challenge, code or Recovery code)` [anyone holding a Login challenge]: returns a Session; the fifth wrong code ends the challenge.
+- `ResetTwoFactor(member)` [admin, owner]: switches it off for someone locked out and ends their Sessions; never the Owner's, never your own. From the server, `artisan identity:reset-two-factor <email>` does it for anyone, the Owner included.
 
 ### Domain events
 
@@ -110,6 +123,37 @@ Who may run each is in brackets.
   prefix makes a leaked token recognisable to secret scanners. A request
   made with an API token cannot create or revoke tokens, so a leaked token
   cannot mint more.
+- **Own TOTP code, no library.** RFC 6238 is a few dozen lines on
+  `crypto/hmac` and `encoding/base32`, fits the domain's no-I/O rule (the
+  time and the randomness are passed in) and is checked against the RFC's
+  test vectors. TOTP only: it works with every authenticator app and needs
+  no outside service; passkeys can come next to it later.
+- **An Authenticator code is good once.** The last accepted time step is
+  stored per Member and only a later step is accepted, with a conditional
+  update so two racing sign-ins cannot both use one code. A code seen over
+  someone's shoulder cannot be replayed inside its 90 s window.
+- **The Login challenge is a cookie, not a table.** After a correct
+  password the API sets `bakery_login` (HttpOnly, SameSite=Strict, 5
+  minutes): the Member, the expiry and the wrong attempts so far, encrypted
+  with the app key. Nothing to clean up in the database. Replaying an older
+  challenge cookie only gives back attempts within its 5 minutes, and
+  one-time codes still hold.
+- **Other Sessions end by a timestamp, not a session table.**
+  `sessions_valid_from` on the Member; Auth refuses a Session JWT issued
+  before it. JWTs carry their issue time in whole seconds, so the stamp is
+  kept in whole seconds and a Session issued in that same second still
+  counts: that is what lets the fresh cookie handed out by the same request
+  survive. The trade-off is a window of under a second.
+- **Recovery codes are random (10 base32 characters, 50 bits) and stored
+  as SHA-256**, like API tokens, and each is deleted when used.
+- **API tokens are not asked for a code.** A token is created from a
+  Session that already passed two-factor; asking scripts for codes would
+  make tokens useless. The two-factor and Account routes take a Session
+  only, so a leaked token can neither switch two-factor off nor change the
+  password.
+- **The Owner's lost phone is an artisan command.** Nobody outranks the
+  Owner in the dashboard, and whoever has a shell on the server already
+  controls Bakery.
 - **The Owner is not transferable yet**, and can be neither demoted nor
   removed, so an installation can never be left without someone who can
   manage it.

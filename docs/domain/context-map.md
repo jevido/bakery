@@ -13,7 +13,7 @@ depend on each other.
 | databases | supporting | `services/api` (`contexts/databases`) | Databases, their Containers and volumes, Backups and S3 storages |
 | services | supporting | `services/api` (`contexts/services`) | Services, their Components, networks, volumes and Service variables, and the Service templates |
 | servers | supporting | `services/api` (`contexts/servers`) | Servers, their Server keys and Host keys, Server connections, Validation, metrics and Cleanup |
-| identity | generic | `services/api` (`contexts/identity`) | Members and their Roles, Setup, Invitations, Sessions, API tokens |
+| identity | generic | `services/api` (`contexts/identity`) | Members and their Roles, Setup, Invitations, Sessions, API tokens, Accounts and Two-factor authentication |
 | notifications | generic | `services/api` (`contexts/notifications`) | Notification channels and their Deliveries |
 
 - **Core:** where the project competes. Gets the most care and the richest model.

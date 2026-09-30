@@ -16,7 +16,12 @@ document; list them here when people outside the context use them too.
 | Owner | identity | The Member with the `owner` Role. Exactly one, created by Setup; can be neither demoted nor removed. | Admin, account |
 | Setup | identity | The one-time step that creates the Owner. Refused once an Owner exists. | Install |
 | Invitation | identity | An email and a Role (admin, member or viewer) that an admin or the Owner invites, with a link that is good once and for 7 days, until revoked. Accepting it creates the Member. | Notification |
-| Session | identity | Proof that a Member signed in: a JWT carried in the `bakery_session` cookie. | API token |
+| Session | identity | Proof that a Member signed in: a JWT carried in the `bakery_session` cookie. It stops counting when the Member changes their password or signs out everywhere else. | API token |
+| Account | identity | A Member's own name, password, Sessions and Two-factor authentication, changed only by that Member. | Member (as others see them) |
+| Two-factor authentication | identity | A TOTP secret on a Member. When it is on, signing in needs an Authenticator code or a Recovery code after the password. | Deploy key, API token |
+| Authenticator code | identity | The 6 digits the Member's authenticator app shows (RFC 6238, 30 second steps). Accepted for the current step or one either side, and only once. | Recovery code |
+| Recovery code | identity | One of 10 single-use codes handed out when Two-factor authentication is switched on, for signing in without the phone. Stored hashed. | Authenticator code, API token |
+| Login challenge | identity | The 5 minutes between a correct password and the second sign-in step of a Member with Two-factor authentication; at most 5 wrong codes. | Session |
 | API token | identity | A named secret (`bky_…`) of one Member, sent as `Authorization: Bearer`, acting with that Member's Role, or as viewer when it is *read-only*. Shown once, stored hashed, revocable; it dies with its Member. | Session, Deploy key |
 | Secret | identity (used by every context) | A value a viewer may not read: Env var and Shared variable values, Database credentials and URLs, Service variable values, the Webhook secret, Backup contents. | Env var |
 | Project | projects | A named group of Environments, usually one product. | Repository |
