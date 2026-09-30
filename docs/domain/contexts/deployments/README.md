@@ -5,8 +5,10 @@
 
 ## Purpose
 
-Turns an Application into a running Container: clone the Source, build the
-Image with Podman, start the Container, move the Route to it, and remove the
+Turns an Application into a running Container: clone the Source and build
+the Image with Podman (from its Dockerfile, a Dockerfile Nixpacks writes, or
+a generated static file server), or pull its Image reference, then start the
+Container, move the Route to it, and remove the
 Container it replaces once the new one passes its Health check, writing
 every step to the Deployment log. Also cancels a Deployment and rolls back to
 an earlier one's Image. Also follows
@@ -17,7 +19,8 @@ Application is (projects) or for the Caddy configuration (routing).
 
 | Term | Meaning |
 | ---- | ------- |
-| Deployment | One attempt, with a status, its trigger, the branch and commit (SHA, subject, author) it built, its Image and Container. |
+| Deployment | One attempt, with a status, its trigger, the branch and commit (SHA, subject, author) it built or the Source image (reference with digest) it pulled, its Image and Container. |
+| Source image | The pulled reference with its digest, e.g. `docker.io/traefik/whoami@sha256:…`, recorded by an `image` Deployment. |
 | Health check | Probed inside the new Container (`curl`, else `wget`) before the Route moves. |
 | Cancelled | The final status of a Deployment the Owner cancelled. |
 | Rollback | A Deployment that starts an earlier finished Deployment's Image, skipping clone and build. |
@@ -35,7 +38,7 @@ Application is (projects) or for the Caddy configuration (routing).
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Deployment | Status only moves forward: `queued` → `cloning` → `building` → `starting` → `finished`, and any active status → `failed` (with an error) or `cancelled`. A Rollback moves from `queued` straight to `starting`; it names its source Deployment, which is `finished`, of the same Application, and whose Image still exists. An Application has at most one queued and at most one running Deployment; a queued one is only picked up once the Application has no running one, and a new Deploy while one is already queued is refused. Its log is append-only and ordered. |
+| Deployment | Status only moves forward: `queued` → `cloning` → `building` → `starting` → `finished` (an `image` Deployment moves from `cloning` straight on to `building` without cloning), and any active status → `failed` (with an error) or `cancelled`. A Rollback moves from `queued` straight to `starting`; it names its source Deployment, which is `finished`, of the same Application, and whose Image still exists. An Application has at most one queued and at most one running Deployment; a queued one is only picked up once the Application has no running one, and a new Deploy while one is already queued is refused. Its log is append-only and ordered. |
 | Webhook | One per Application, with a secret and Auto-deploy on or off. A call is accepted only with a valid signature for that secret (HMAC-SHA256 of the body for GitHub, Gitea and Forgejo; the token for GitLab). Only a push to the Application's branch, with Auto-deploy on, queues a Deployment. |
 | Known host | One per host (and port). The first clone from a host records its keys; every later clone must see the same ones, or the Deployment fails. Only the Owner can forget a host. |
 
@@ -53,7 +56,15 @@ Application is (projects) or for the Caddy configuration (routing).
 - `RotateWebhookSecret(application)`, `SetAutoDeploy(application, on)`.
 - `ForgetKnownHost(host)`.
 - The Worker's steps: `Clone`, `Build`, `Start`, `WaitHealthy`,
-  `SwitchRoute`, `CleanUp`, `Fail(reason)`.
+  `SwitchRoute`, `CleanUp`, `Fail(reason)`. What comes before `Start`
+  depends on the Build pack:
+  - `dockerfile`: `Clone`, `Build` the Dockerfile at its path.
+  - `nixpacks`: `Clone`, `Plan` (Nixpacks writes `.nixpacks/Dockerfile`
+    into the clone), `Build` it with the build variables as build args.
+  - `static`: `Clone`, write a generated Containerfile (Caddy serving the
+    Publish directory on port 80) into the clone, `Build` it.
+  - `image`: `Pull` the Image reference with the Registry credentials,
+    record the Source image, tag it as the Deployment's Image.
 
 ### Domain events
 
@@ -67,6 +78,7 @@ None published yet. Notifications will need `DeploymentFinished` and
   the start of a Deployment, so editing the Application mid-build does not
   change what is being built; it carries the Deploy key for SSH Sources);
   `routing.SwitchRoute`; `ApplicationDeleted` (the Webhook goes too).
+  A push Webhook for an `image` Application is ignored: it has no branch.
 - **Receives:** Webhook calls from git hosts, unauthenticated but signed.
 
 ## Why it's shaped this way
@@ -138,3 +150,20 @@ None published yet. Notifications will need `DeploymentFinished` and
   Image tag, so Images of finished Deployments must be kept; image cleanup,
   when it comes, keeps them or makes the Rollback refuse with "the image is
   gone".
+- **A pulled image is re-tagged as the Deployment's Image**
+  (`localhost/bakery/<slug>:<id>`). Rollback, cleanup and Container naming
+  then work the same for every Build pack, and a moving tag like `:latest`
+  never changes what an old Deployment rolls back to. The digest is recorded
+  as the Source image so the history says exactly what ran.
+- **An `image` Deployment has no status of its own for pulling**: it skips
+  `cloning` and pulls during `building` ("getting the Image"). Its log says
+  what happens, and the dashboard needs no new status.
+- **Registry credentials go to Podman per pull** in the `X-Registry-Auth`
+  header, never into a Podman `auth.json` and never into the log.
+- **Plain-http registries only by allow-list.** `BAKERY_INSECURE_REGISTRIES`
+  (comma-separated registry hosts, empty by default) turns TLS verification
+  off for those hosts only; development lists the Forgejo stand-in.
+- **Nixpacks runs as a subprocess of the API**, like `git`: it only reads the
+  clone and writes a Dockerfile, it never talks to a container engine, so
+  the rule to reach Podman only through its REST API still holds. The binary
+  is pinned in the API image; `BAKERY_NIXPACKS` points at it elsewhere.
