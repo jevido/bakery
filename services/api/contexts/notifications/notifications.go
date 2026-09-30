@@ -66,5 +66,6 @@ func DashboardURL() string {
 // Start runs the dispatcher until ctx ends, resuming Deliveries a previous
 // process left pending.
 func Start(ctx context.Context) {
+	subscribe()
 	go svc().Run(ctx)
 }

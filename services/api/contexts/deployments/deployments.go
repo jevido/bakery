@@ -1,6 +1,6 @@
 // Package deployments is what the router and the boot code may use from the
-// deployments context: its routes and the Worker. Nothing else in
-// contexts/deployments is for outside use.
+// deployments context: its routes, the Worker and the DeploymentFinished
+// event. Nothing else in contexts/deployments is for outside use.
 package deployments
 
 import (
@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/contexts/deployments/app"
+	"github.com/jevido/bakery/services/api/contexts/deployments/domain"
 	deploymentshttp "github.com/jevido/bakery/services/api/contexts/deployments/http"
 	"github.com/jevido/bakery/services/api/contexts/deployments/infra"
 	"github.com/jevido/bakery/services/api/contexts/identity"
@@ -206,6 +208,7 @@ func StartWorker(ctx context.Context) {
 	w := app.NewWorker(svc(), infra.Git{KnownHosts: infra.KnownHosts{}}, runtimes, routing.SwitchRoute, workDir)
 	w.Planner = infra.Nixpacks{Binary: facades.Config().GetString("bakery.nixpacks")}
 	w.Log = facades.Log().Errorf
+	w.Finished = publishFinished
 	go func() {
 		<-ctx.Done()
 		close(shutdown)
@@ -236,4 +239,64 @@ func splitList(s string) []string {
 		}
 	}
 	return out
+}
+
+// DeploymentFinished is a Deployment that ended succeeded or failed; a
+// cancelled one, or one failed because a restart interrupted it, is not
+// announced.
+type DeploymentFinished struct {
+	DeploymentID    uint64
+	ApplicationID   uint64
+	ApplicationSlug string
+	Succeeded       bool
+	// Reason is why it failed.
+	Reason        string
+	Branch        string
+	CommitSHA     string
+	CommitMessage string
+	// Trigger is "manual", "webhook" or "rollback".
+	Trigger    string
+	Rollback   bool
+	FinishedAt time.Time
+}
+
+var (
+	finishedMu sync.Mutex
+	onFinished []func(ctx context.Context, e DeploymentFinished)
+)
+
+// OnDeploymentFinished registers f to hear of every DeploymentFinished. It
+// runs in its own goroutine, so it can neither hold up nor break the
+// Worker.
+func OnDeploymentFinished(f func(ctx context.Context, e DeploymentFinished)) {
+	finishedMu.Lock()
+	defer finishedMu.Unlock()
+	onFinished = append(onFinished, f)
+}
+
+func publishFinished(_ context.Context, d domain.Deployment, slug string) {
+	e := DeploymentFinished{
+		DeploymentID: d.ID, ApplicationID: d.ApplicationID, ApplicationSlug: slug,
+		Succeeded: d.Status == domain.Finished, Reason: d.Error, Branch: d.Branch,
+		CommitSHA: d.CommitSHA, CommitMessage: d.CommitMessage, Trigger: string(d.Trigger),
+		Rollback: d.RollbackOf != nil, FinishedAt: time.Now(),
+	}
+	if d.FinishedAt != nil {
+		e.FinishedAt = *d.FinishedAt
+	}
+	finishedMu.Lock()
+	subscribers := slices.Clone(onFinished)
+	finishedMu.Unlock()
+	for _, f := range subscribers {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					facades.Log().Errorf("deployments: a DeploymentFinished subscriber panicked: %v", r)
+				}
+			}()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			f(ctx, e)
+		}()
+	}
 }

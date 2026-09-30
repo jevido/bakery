@@ -40,12 +40,14 @@ func (r *M20260930000033CreateNotificationTables) Up() error {
 		t.Text("title")
 		t.Text("body")
 		t.Text("link")
-		t.TimestampTz("happened_at")
+		t.TimestampTz("happened_at", 6)
 		t.String("status", 16)
 		t.Integer("attempts").Default(0)
 		t.Text("last_error")
-		t.TimestampTz("next_attempt_at").Nullable()
-		t.TimestampTz("sent_at").Nullable()
+		// Microseconds: at 0 digits a Delivery created at .6 s would only
+		// be due a second later.
+		t.TimestampTz("next_attempt_at", 6).Nullable()
+		t.TimestampTz("sent_at", 6).Nullable()
 		t.TimestampsTz()
 		t.Index("channel_id", "id")
 		t.Index("status", "next_attempt_at")

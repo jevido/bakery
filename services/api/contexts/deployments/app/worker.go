@@ -30,10 +30,14 @@ type Worker struct {
 	// Timeout bounds one whole Deployment.
 	Timeout time.Duration
 	// Poll is how often the queue is checked without a wake-up.
-	Poll  time.Duration
-	Log   func(format string, args ...any)
-	now   func() time.Time
-	sleep func(ctx context.Context, d time.Duration) error
+	Poll time.Duration
+	Log  func(format string, args ...any)
+	// Finished, when set, hears of every Deployment that ended finished or
+	// failed (not cancelled), after it was saved, with the Application's
+	// Slug (empty when the Application could not be read).
+	Finished func(ctx context.Context, d domain.Deployment, slug string)
+	now      func() time.Time
+	sleep    func(ctx context.Context, d time.Duration) error
 }
 
 func sleep(ctx context.Context, d time.Duration) error {
@@ -112,7 +116,8 @@ func (w *Worker) run(parent context.Context, d domain.Deployment) {
 	info := func(format string, args ...any) { log.Line(domain.StreamInfo, fmt.Sprintf(format, args...)) }
 	started := w.now()
 
-	err := w.steps(ctx, &d, log, info)
+	var slug string
+	err := w.steps(ctx, &d, &slug, log, info)
 	// Saving the outcome must not be cut short by the Deployment's own
 	// timeout or a shutdown.
 	saveCtx, cancelSave := context.WithTimeout(context.WithoutCancel(parent), 10*time.Second)
@@ -141,13 +146,17 @@ func (w *Worker) run(parent context.Context, d domain.Deployment) {
 	if serr := w.service.store.Save(saveCtx, d); serr != nil {
 		w.Log("deployments: saving %d: %v", d.ID, serr)
 	}
+	if w.Finished != nil && (d.Status == domain.Finished || d.Status == domain.Failed) {
+		w.Finished(saveCtx, d, slug)
+	}
 }
 
-func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter, info func(string, ...any)) error {
+func (w *Worker) steps(ctx context.Context, d *domain.Deployment, slug *string, log LogWriter, info func(string, ...any)) error {
 	app, err := w.service.applications(ctx, d.ApplicationID)
 	if err != nil {
 		return fmt.Errorf("reading the application: %w", err)
 	}
+	*slug = app.Slug
 
 	// Every step runs on the Target server. Saved with the next step, or
 	// with the failure when the Server cannot be reached.

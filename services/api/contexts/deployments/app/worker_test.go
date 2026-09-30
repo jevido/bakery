@@ -798,3 +798,47 @@ func TestDeployOnTargetServer(t *testing.T) {
 		t.Fatalf("routes %v, remote builds %d", s.routes, len(remote.builds))
 	}
 }
+
+func TestFinishedHearsFinishedAndFailedNotCancelled(t *testing.T) {
+	ctx := context.Background()
+	type heard struct {
+		status domain.Status
+		reason string
+		slug   string
+	}
+	listen := func(s *setup) *[]heard {
+		var got []heard
+		s.worker.Finished = func(_ context.Context, d domain.Deployment, slug string) {
+			got = append(got, heard{d.Status, d.Error, slug})
+		}
+		return &got
+	}
+
+	s := newSetup(t, fakeSource{})
+	got := listen(s)
+	_, _ = s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	s.runtime.buildErr = errors.New("exit status 1")
+	_, _ = s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	want := []heard{{domain.Finished, "", "whoami"}, {domain.Failed, "build failed: exit status 1", "whoami"}}
+	if len(*got) != 2 || (*got)[0] != want[0] || (*got)[1] != want[1] {
+		t.Fatalf("heard %+v, want %+v", *got, want)
+	}
+
+	c := newSetup(t, fakeSource{})
+	got = listen(c)
+	c.runtime.building = make(chan struct{})
+	d, _ := c.service.Deploy(ctx, 1)
+	done := make(chan struct{})
+	go func() {
+		c.worker.RunOnce(ctx)
+		close(done)
+	}()
+	<-c.runtime.building
+	_, _ = c.service.Cancel(ctx, d.ID)
+	<-done
+	if len(*got) != 0 {
+		t.Fatalf("a cancelled deployment was heard: %+v", *got)
+	}
+}
