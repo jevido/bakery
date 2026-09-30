@@ -4,6 +4,9 @@ package podman
 
 import (
 	"context"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -295,5 +298,64 @@ func TestVolumesAndLimits(t *testing.T) {
 	}
 	if list, _ := c.ListVolumes(ctx, map[string]string{"bakery.test": vol}); len(list) != 0 {
 		t.Fatalf("volume still there: %+v", list)
+	}
+}
+
+// A published port is reachable on the host address, and a sh -c command
+// reads a secret from the environment instead of its own command line (how
+// Databases pass passwords).
+func TestPublishedPort(t *testing.T) {
+	c := client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := c.EnsureNetwork(ctx, "bakery-test"); err != nil {
+		t.Fatal(err)
+	}
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+
+	name := "bakery-test-published"
+	c.RemoveContainer(ctx, name)
+	_, err = c.CreateContainer(ctx, ContainerSpec{
+		Name: name, Image: busybox(t, ctx, c),
+		Command:      []string{"sh", "-c", `mkdir -p /www && echo "$SECRET" > /www/index.html && exec httpd -f -p 8080 -h /www`},
+		Env:          map[string]string{"SECRET": "from-env"},
+		Labels:       map[string]string{"bakery.managed": "true", "bakery.test": "published"},
+		Networks:     OnNetwork("bakery-test"),
+		PortMappings: []PortMapping{{HostIP: "127.0.0.1", HostPort: uint16(port), ContainerPort: 8080, Protocol: "tcp"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.RemoveContainer(context.Background(), name)
+	if err := c.StartContainer(ctx, name); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := c.InspectContainer(ctx, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := info.HostConfig.PortBindings["8080/tcp"]; len(b) != 1 || b[0].HostPort != strconv.Itoa(port) || b[0].HostIP != "127.0.0.1" {
+		t.Fatalf("port bindings: %+v", info.HostConfig.PortBindings)
+	}
+
+	var body string
+	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(300 * time.Millisecond) {
+		res, err := http.Get("http://127.0.0.1:" + strconv.Itoa(port) + "/")
+		if err != nil {
+			continue
+		}
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		body = strings.TrimSpace(string(b))
+		break
+	}
+	if body != "from-env" {
+		t.Fatalf("published port answered %q", body)
 	}
 }
