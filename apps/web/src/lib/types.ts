@@ -257,3 +257,52 @@ export type ServiceTemplate = {
 
 /** Either a template key or a compose file. */
 export type ServiceInput = { name: string; template?: string; compose?: string }
+
+export type ServerStatus = 'unvalidated' | 'reachable' | 'unreachable'
+
+export type ServerCheck = {
+  name: 'ssh' | 'socket' | 'podman' | 'linger' | 'ports'
+  ok: boolean
+  required: boolean
+  detail: string
+}
+
+export type Server = {
+  id: number
+  name: string
+  kind: 'local' | 'remote'
+  host: string
+  port: number
+  user: string
+  status: ServerStatus
+  validation: { checks: ServerCheck[]; checked_at: string | null }
+  last_cleanup: { at: string | null; reclaimed_bytes: number }
+  created_at: string
+  /** Only on a single Server. */
+  public_key?: string
+  host_key_fingerprint?: string
+}
+
+export type ServerMetrics = {
+  cpus: number
+  cpu_percent: number
+  memory_used_bytes: number
+  memory_total_bytes: number
+  disk_used_bytes: number
+  disk_total_bytes: number
+  images_bytes: number
+  containers_bytes: number
+  volumes_bytes: number
+  read_at: string
+}
+
+export type ContainerMetrics = {
+  name: string
+  owner: 'application' | 'database' | 'service' | 'proxy' | ''
+  owner_id: string
+  cpu_percent: number
+  memory_used_bytes: number
+  memory_limit_bytes: number
+}
+
+export type Metrics = { server: ServerMetrics; containers: ContainerMetrics[] }

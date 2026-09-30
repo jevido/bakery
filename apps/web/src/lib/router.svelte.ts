@@ -1,10 +1,12 @@
-// Hash router: #/projects, #/projects/{id}, #/applications/{id}, #/databases/{id}, #/services/{id}, #/settings, #/login.
+// Hash router: #/projects, #/projects/{id}, #/applications/{id}, #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/settings, #/login.
 export type Route =
   | { name: 'projects' }
   | { name: 'project'; id: number }
   | { name: 'application'; id: number }
   | { name: 'database'; id: number }
   | { name: 'service'; id: number }
+  | { name: 'servers' }
+  | { name: 'server'; id: number }
   | { name: 'settings' }
   | { name: 'login' }
   | { name: 'notfound' }
@@ -14,6 +16,11 @@ function parse(hash: string): Route {
   if (parts.length === 0) return { name: 'projects' }
   if (parts[0] === 'login' && parts.length === 1) return { name: 'login' }
   if (parts[0] === 'settings' && parts.length === 1) return { name: 'settings' }
+  if (parts[0] === 'servers') {
+    if (parts.length === 1) return { name: 'servers' }
+    const id = Number(parts[1])
+    if (parts.length === 2 && Number.isInteger(id)) return { name: 'server', id }
+  }
   if (parts[0] === 'projects') {
     if (parts.length === 1) return { name: 'projects' }
     const id = Number(parts[1])

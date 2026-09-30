@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { size } from './format'
   import { untrack } from 'svelte'
   import { api, ApiError } from './api'
   import { href } from './router.svelte'
@@ -102,16 +103,6 @@
   function remove(b: Backup) {
     if (!confirm('Delete this backup, on this server and in S3 storage?')) return
     run(() => api('DELETE', `/backups/${b.id}`))
-  }
-
-  function size(n: number): string {
-    const units = ['B', 'KB', 'MB', 'GB', 'TB']
-    let i = 0
-    while (n >= 1024 && i < units.length - 1) {
-      n /= 1024
-      i++
-    }
-    return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${units[i]}`
   }
 
   function where(b: Backup): string {

@@ -5,9 +5,19 @@
 
   let { children }: { children: Snippet } = $props()
 
-  let section = $derived(
-    router.route.name === 'notfound' ? '' : router.route.name === 'settings' ? 'settings' : 'projects',
-  )
+  let section = $derived.by(() => {
+    switch (router.route.name) {
+      case 'notfound':
+        return ''
+      case 'settings':
+        return 'settings'
+      case 'servers':
+      case 'server':
+        return 'servers'
+      default:
+        return 'projects'
+    }
+  })
 </script>
 
 <div class="shell">
@@ -18,6 +28,7 @@
     </a>
     <nav>
       <a href={href('/projects')} aria-current={section === 'projects' ? 'page' : undefined}>Projects</a>
+      <a href={href('/servers')} aria-current={section === 'servers' ? 'page' : undefined}>Servers</a>
       <a href={href('/settings')} aria-current={section === 'settings' ? 'page' : undefined}>Settings</a>
     </nav>
   </aside>
