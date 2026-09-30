@@ -25,5 +25,11 @@ Local development stack.
   from Forgejo with a Health check, a build-only variable and Shared
   variables; redeploys while polling it (no request may fail); checks a
   commit whose health check fails keeps the old version; cancels a slow
-  build; and rolls back to the first deployment. Both scripts share
-  `lib/e2e.sh`.
+  build; and rolls back to the first deployment.
+- `buildpack/test.sh` (`task buildpack:test`) deploys one Application per
+  Build pack, including a private image from Forgejo's registry.
+- `settings/test.sh` (`task settings:test`) checks Application settings:
+  two Domains, removing one without a deploy, the Www redirect, a Response
+  header, Basic auth, a file in Persistent storage surviving a redeploy and
+  a rollback, Resource limits on the Container, and the volume going with
+  the Application. Every script shares `lib/e2e.sh`.
