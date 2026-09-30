@@ -11,6 +11,10 @@
         return ''
       case 'settings':
         return 'settings'
+      case 'members':
+        return 'members'
+      case 'api-tokens':
+        return 'api-tokens'
       case 'servers':
       case 'server':
         return 'servers'
@@ -30,6 +34,9 @@
       <a href={href('/projects')} aria-current={section === 'projects' ? 'page' : undefined}>Projects</a>
       <a href={href('/servers')} aria-current={section === 'servers' ? 'page' : undefined}>Servers</a>
       <a href={href('/settings')} aria-current={section === 'settings' ? 'page' : undefined}>Settings</a>
+      {#if session.isAdmin}
+        <a href={href('/members')} aria-current={section === 'members' ? 'page' : undefined}>Members</a>
+      {/if}
     </nav>
   </aside>
   <div class="main">

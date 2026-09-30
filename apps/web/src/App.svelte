@@ -4,6 +4,7 @@
   import { router } from './lib/router.svelte'
   import { session } from './lib/session.svelte'
   import Login from './pages/Login.svelte'
+  import Members from './pages/Members.svelte'
   import NotFound from './pages/NotFound.svelte'
   import Application from './pages/Application.svelte'
   import Database from './pages/Database.svelte'
@@ -47,6 +48,8 @@
       <Server id={router.route.id} />
     {:else if router.route.name === 'settings'}
       <Settings />
+    {:else if router.route.name === 'members'}
+      <Members />
     {:else}
       <NotFound />
     {/if}

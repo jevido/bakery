@@ -312,3 +312,13 @@ export type ContainerMetrics = {
 }
 
 export type Metrics = { server: ServerMetrics; containers: ContainerMetrics[] }
+
+export type { Member, Role } from './session.svelte'
+
+export type Invitation = {
+  id: number
+  email: string
+  role: 'admin' | 'member' | 'viewer'
+  created_at: string
+  expires_at: string
+}

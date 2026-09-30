@@ -131,7 +131,8 @@ func (c *Controller) Invite(ctx contractshttp.Context) contractshttp.Response {
 	if err != nil {
 		return memberFailure(ctx, err)
 	}
-	path := "/invite/" + token
+	// The dashboard routes by hash.
+	path := "/#/invite/" + token
 	out := contractshttp.Json{"invitation": invitationToJSON(inv), "path": path}
 	if origin := dashboardOrigin(ctx); origin != "" {
 		out["link"] = origin + path
