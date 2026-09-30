@@ -88,3 +88,15 @@ func TestReceivePush(t *testing.T) {
 		t.Fatalf("old secret after rotating: %v", err)
 	}
 }
+
+func TestReceivePushIgnoresImageApplications(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	s.app = imageApp
+	hooks := NewWebhooks(s.service, memWebhooks{})
+	hook, _ := hooks.Webhook(ctx, 1)
+	h, body := githubPush(hook.Secret, "refs/heads/main")
+	if out, err := hooks.ReceivePush(ctx, 1, h, body); err != nil || out.Deployment != nil || out.Ignored != "image applications are not built from git" {
+		t.Fatalf("push: %+v %v", out, err)
+	}
+}

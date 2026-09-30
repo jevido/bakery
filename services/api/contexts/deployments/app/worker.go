@@ -156,6 +156,9 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 		return w.goLive(ctx, d, app, info)
 	}
 
+	if app.BuildPack == BuildPackImage {
+		return w.pull(ctx, d, app, log, info)
+	}
 	if app.BuildPack != "" && app.BuildPack != BuildPackDockerfile {
 		return fmt.Errorf("build pack %s is not supported yet", app.BuildPack)
 	}
@@ -196,6 +199,32 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 	req := BuildRequest{Dir: dir, Dockerfile: app.DockerfilePath, Tag: d.Image, Labels: labels, BuildArgs: app.BuildEnv}
 	if err := w.runtime.Build(ctx, req, func(line string) { log.Line(domain.StreamOut, line) }); err != nil {
 		return fmt.Errorf("build failed: %w", err)
+	}
+	return w.goLive(ctx, d, app, info)
+}
+
+// pull gets an image Application's Image reference from its registry and
+// tags it as the Deployment's Image; there is nothing to clone or build.
+func (w *Worker) pull(ctx context.Context, d *domain.Deployment, app Application, log LogWriter, info func(string, ...any)) error {
+	if err := w.advance(ctx, d, domain.Building); err != nil {
+		return err
+	}
+	d.Image = domain.ImageTag(app.Slug, d.ID)
+	if app.RegistryUsername != "" {
+		info("Pulling %s with registry credentials for %s", app.ImageReference, app.RegistryUsername)
+	} else {
+		info("Pulling %s", app.ImageReference)
+	}
+	digest, err := w.runtime.Pull(ctx, PullRequest{
+		Reference: app.ImageReference, Tag: d.Image, Username: app.RegistryUsername, Password: app.RegistryPassword,
+	}, func(line string) { log.Line(domain.StreamOut, line) })
+	if err != nil {
+		return fmt.Errorf("pull failed: %w", err)
+	}
+	d.SourceImage = digest
+	info("Pulled %s as %s", digest, d.Image)
+	if err := w.service.store.Save(ctx, *d); err != nil {
+		return err
 	}
 	return w.goLive(ctx, d, app, info)
 }

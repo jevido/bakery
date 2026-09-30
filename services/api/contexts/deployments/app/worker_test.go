@@ -130,7 +130,18 @@ type fakeRuntime struct {
 	built  int
 	builds []BuildRequest
 	// gone lists Images that no longer exist.
-	gone map[string]bool
+	gone    map[string]bool
+	pulls   []PullRequest
+	pullErr error
+}
+
+func (r *fakeRuntime) Pull(_ context.Context, req PullRequest, out func(string)) (string, error) {
+	r.pulls = append(r.pulls, req)
+	out("Copying blob 1234")
+	if r.pullErr != nil {
+		return "", r.pullErr
+	}
+	return "docker.io/traefik/whoami@sha256:abc", nil
 }
 
 func (r *fakeRuntime) ImageExists(_ context.Context, image string) (bool, error) {
@@ -192,6 +203,8 @@ type setup struct {
 	routes  map[string]string
 	service *Service
 	worker  *Worker
+	// app, when set, changes the Application every Deployment reads.
+	app func(*Application)
 }
 
 func newSetup(t *testing.T, src fakeSource, check ...HealthCheck) *setup {
@@ -200,6 +213,9 @@ func newSetup(t *testing.T, src fakeSource, check ...HealthCheck) *setup {
 		a := Application{ID: id, Slug: "whoami", GitURL: "https://example.com/r", GitBranch: "main", DockerfilePath: "Dockerfile", Port: 80, Domain: "whoami.localhost", RuntimeEnv: map[string]string{"HELLO": "world"}, BuildEnv: map[string]string{"VITE_API": "https://api", "B": "1"}}
 		if len(check) > 0 {
 			a.HealthCheck = check[0]
+		}
+		if s.app != nil {
+			s.app(&a)
 		}
 		return a, nil
 	}
@@ -521,5 +537,64 @@ func TestRollbackRefused(t *testing.T) {
 	s.runtime.gone = map[string]bool{"localhost/bakery/whoami:1": true}
 	if _, err := s.service.Rollback(ctx, ok.ID); !errors.Is(err, ErrImageGone) {
 		t.Fatalf("rollback to a removed image: %v", err)
+	}
+}
+
+func imageApp(a *Application) {
+	a.BuildPack, a.ImageReference = BuildPackImage, "docker.io/traefik/whoami:v1.10"
+	a.GitURL, a.GitBranch, a.DockerfilePath = "", "", ""
+	a.RegistryUsername, a.RegistryPassword = "me", "s3cret"
+}
+
+func TestImageBuildPackPullsInsteadOfBuilding(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{fail: true}) // a clone would fail
+	s.app = imageApp
+	d, _ := s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	got, _ := s.service.Deployment(ctx, d.ID)
+	if got.Status != domain.Finished || got.SourceImage != "docker.io/traefik/whoami@sha256:abc" || got.Image != "localhost/bakery/whoami:1" {
+		t.Fatalf("deployment: %+v\n%s", got, s.logs.text())
+	}
+	if s.runtime.built != 0 {
+		t.Errorf("built %d times", s.runtime.built)
+	}
+	want := PullRequest{Reference: "docker.io/traefik/whoami:v1.10", Tag: "localhost/bakery/whoami:1", Username: "me", Password: "s3cret"}
+	if len(s.runtime.pulls) != 1 || s.runtime.pulls[0] != want {
+		t.Errorf("pulls %+v", s.runtime.pulls)
+	}
+	if s.runtime.specs[0].Image != "localhost/bakery/whoami:1" || s.routes["whoami.localhost"] != "bakery-app-1-1" {
+		t.Errorf("start %+v, routes %v", s.runtime.specs, s.routes)
+	}
+	text := s.logs.text()
+	for _, w := range []string{"Pulling docker.io/traefik/whoami:v1.10 with registry credentials for me", "out: Copying blob", "Pulled docker.io/traefik/whoami@sha256:abc"} {
+		if !strings.Contains(text, w) {
+			t.Errorf("log lacks %q:\n%s", w, text)
+		}
+	}
+	if strings.Contains(text, "s3cret") || strings.Contains(text, "Cloning") {
+		t.Errorf("log has the password or a clone:\n%s", text)
+	}
+
+	// A Rollback shows the pulled image too.
+	rb, err := s.service.Rollback(ctx, d.ID)
+	if err != nil || rb.SourceImage != got.SourceImage {
+		t.Fatalf("rollback %+v, %v", rb, err)
+	}
+}
+
+func TestImageBuildPackPullFailure(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	s.app = imageApp
+	s.runtime.pullErr = errors.New("unauthorized: authentication required")
+	d, _ := s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	got, _ := s.service.Deployment(ctx, d.ID)
+	if got.Status != domain.Failed || got.Error != "pull failed: unauthorized: authentication required" {
+		t.Fatalf("deployment: %+v", got)
+	}
+	if len(s.runtime.specs) != 0 {
+		t.Errorf("started %+v", s.runtime.specs)
 	}
 }

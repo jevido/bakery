@@ -33,6 +33,7 @@ type deploymentJSON struct {
 	CommitSHA     string     `json:"commit_sha"`
 	CommitMessage string     `json:"commit_message"`
 	CommitAuthor  string     `json:"commit_author"`
+	SourceImage   string     `json:"source_image"`
 	Image         string     `json:"image"`
 	Container     string     `json:"container"`
 	RollbackOf    *uint64    `json:"rollback_of"`
@@ -46,7 +47,7 @@ func ToJSON(d domain.Deployment) deploymentJSON {
 	return deploymentJSON{
 		ID: d.ID, ApplicationID: d.ApplicationID, Status: string(d.Status), Active: d.Status.Active(),
 		Trigger: string(d.Trigger), Branch: d.Branch, CommitSHA: d.CommitSHA,
-		CommitMessage: d.CommitMessage, CommitAuthor: d.CommitAuthor, Image: d.Image, Container: d.Container, RollbackOf: d.RollbackOf, Error: d.Error,
+		CommitMessage: d.CommitMessage, CommitAuthor: d.CommitAuthor, SourceImage: d.SourceImage, Image: d.Image, Container: d.Container, RollbackOf: d.RollbackOf, Error: d.Error,
 		CreatedAt: d.CreatedAt, StartedAt: d.StartedAt, FinishedAt: d.FinishedAt,
 	}
 }

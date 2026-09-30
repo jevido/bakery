@@ -209,7 +209,9 @@ func TestPullTagDigest(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	id, err := c.PullImageWith(ctx, "docker.io/library/busybox:latest", PullOptions{TLSVerify: true}, nil)
+	// Not Docker Hub: pulls there always go to the registry and are
+	// rate limited.
+	id, err := c.PullImageWith(ctx, "ghcr.io/traefik/whoami:v1.10", PullOptions{TLSVerify: true}, nil)
 	if err != nil {
 		t.Fatalf("pull: %v", err)
 	}
@@ -220,7 +222,7 @@ func TestPullTagDigest(t *testing.T) {
 	if err := c.TagImage(ctx, id, "localhost/bakery/test-tag", "1"); err != nil {
 		t.Fatalf("tag: %v", err)
 	}
-	// Untag only our own name; the busybox image may be used elsewhere.
+	// Untag only our own name.
 	defer c.call(context.Background(), "POST", "/images/"+id+"/untag", map[string][]string{"repo": {"localhost/bakery/test-tag"}, "tag": {"1"}}, nil, nil)
 	if ok, err := c.ImageExists(ctx, tagged); err != nil || !ok {
 		t.Fatalf("tagged image exists = %v, %v", ok, err)
@@ -233,7 +235,7 @@ func TestPullTagDigest(t *testing.T) {
 		t.Fatalf("digest %q has no @sha256:", digest)
 	}
 
-	if _, err := c.PullImageWith(ctx, "docker.io/library/bakery-does-not-exist:1", PullOptions{TLSVerify: true}, nil); err == nil {
+	if _, err := c.PullImageWith(ctx, "ghcr.io/jevido/bakery-does-not-exist:1", PullOptions{TLSVerify: true}, nil); err == nil {
 		t.Fatal("pulling a missing image succeeded")
 	}
 }

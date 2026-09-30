@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,10 +51,11 @@ func svc() *app.Service {
 		service = app.NewService(infra.Store{}, infra.Logs{}, applications, infra.KnownHosts{})
 		webhooks = app.NewWebhooks(service, infra.Webhooks{})
 		runtime = infra.Runtime{
-			Podman:       podman.Default(),
-			Network:      facades.Config().GetString("bakery.network"),
-			StartTimeout: 30 * time.Second,
-			Settle:       2 * time.Second,
+			Podman:             podman.Default(),
+			Network:            facades.Config().GetString("bakery.network"),
+			StartTimeout:       30 * time.Second,
+			Settle:             2 * time.Second,
+			InsecureRegistries: splitList(facades.Config().GetString("bakery.insecure_registries")),
 		}
 		projects.OnApplicationDeleted(func(ctx context.Context, applicationID uint64) {
 			if err := runtime.RemoveAll(ctx, applicationID); err != nil {
@@ -146,4 +148,15 @@ func StartWorker(ctx context.Context) {
 		}
 		w.Run(ctx)
 	}()
+}
+
+// splitList splits a comma-separated setting, dropping empty items.
+func splitList(s string) []string {
+	var out []string
+	for _, item := range strings.Split(s, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }

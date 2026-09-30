@@ -76,3 +76,29 @@ func TestProbe(t *testing.T) {
 		t.Fatalf("image without a tool: %v", err)
 	}
 }
+
+func TestPull(t *testing.T) {
+	sock := podman.DefaultSocket()
+	if _, err := os.Stat(sock); err != nil {
+		t.Skipf("no podman socket at %s", sock)
+	}
+	c := podman.New(sock)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	r := Runtime{Podman: c}
+	const tag = "localhost/bakery/test-pull:1"
+	t.Cleanup(func() { c.RemoveImage(context.Background(), tag) })
+	digest, err := r.Pull(ctx, app.PullRequest{Reference: "ghcr.io/traefik/whoami:v1.10", Tag: tag}, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(digest, "ghcr.io/traefik/whoami@sha256:") {
+		t.Errorf("digest %q", digest)
+	}
+	if ok, _ := c.ImageExists(ctx, tag); !ok {
+		t.Errorf("%s not tagged", tag)
+	}
+	if RegistryHost("127.0.0.1:4950/me/app:1") != "127.0.0.1:4950" {
+		t.Error("RegistryHost")
+	}
+}

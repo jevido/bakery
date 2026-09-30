@@ -113,6 +113,9 @@ func (w *Webhooks) ReceivePush(ctx context.Context, applicationID uint64, header
 	if !domain.IsPush(provider, event) {
 		return PushOutcome{Ignored: fmt.Sprintf("%s event", event)}, nil
 	}
+	if app.BuildPack == BuildPackImage {
+		return PushOutcome{Ignored: "image applications are not built from git"}, nil
+	}
 	if !hook.AutoDeploy {
 		return PushOutcome{Ignored: "auto-deploy is off"}, nil
 	}

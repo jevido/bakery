@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,9 @@ type Runtime struct {
 	// Settle is how long it must then stay running; an app that crashes on
 	// boot fails the Deployment instead of taking the Route.
 	Settle time.Duration
+	// InsecureRegistries are registry hosts (host[:port]) pulled from
+	// without TLS verification.
+	InsecureRegistries []string
 }
 
 func (r Runtime) Build(ctx context.Context, req app.BuildRequest, out func(string)) error {
@@ -28,6 +32,25 @@ func (r Runtime) Build(ctx context.Context, req app.BuildRequest, out func(strin
 	defer tar.Close()
 	_, err := r.Podman.Build(ctx, tar, podman.BuildOptions{Tag: req.Tag, Dockerfile: req.Dockerfile, Labels: req.Labels, BuildArgs: req.BuildArgs}, out)
 	return err
+}
+
+func (r Runtime) Pull(ctx context.Context, req app.PullRequest, out func(string)) (string, error) {
+	opts := podman.PullOptions{Username: req.Username, Password: req.Password, TLSVerify: !slices.Contains(r.InsecureRegistries, RegistryHost(req.Reference))}
+	id, err := r.Podman.PullImageWith(ctx, req.Reference, opts, out)
+	if err != nil {
+		return "", err
+	}
+	i := strings.LastIndex(req.Tag, ":")
+	if err := r.Podman.TagImage(ctx, id, req.Tag[:i], req.Tag[i+1:]); err != nil {
+		return "", fmt.Errorf("tagging %s: %w", req.Tag, err)
+	}
+	return r.Podman.ImageDigest(ctx, req.Reference)
+}
+
+// RegistryHost is the registry part of a full image reference.
+func RegistryHost(ref string) string {
+	host, _, _ := strings.Cut(ref, "/")
+	return host
 }
 
 func (r Runtime) Start(ctx context.Context, spec app.ContainerSpec) error {

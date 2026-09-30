@@ -24,6 +24,7 @@ type deploymentRecord struct {
 	CommitSha     string
 	CommitMessage string
 	CommitAuthor  string
+	SourceImage   string
 	Image         string
 	ContainerName string
 	RollbackOf    *uint64
@@ -40,7 +41,7 @@ func (r deploymentRecord) toDomain() domain.Deployment {
 	return domain.Deployment{
 		ID: r.ID, ApplicationID: r.ApplicationID, Status: domain.Status(r.Status), Trigger: domain.Trigger(r.Trigger),
 		Branch: r.Branch, CommitSHA: r.CommitSha, CommitMessage: r.CommitMessage, CommitAuthor: r.CommitAuthor,
-		Image: r.Image, Container: r.ContainerName, RollbackOf: r.RollbackOf, Error: r.Error, CreatedAt: r.CreatedAt,
+		SourceImage: r.SourceImage, Image: r.Image, Container: r.ContainerName, RollbackOf: r.RollbackOf, Error: r.Error, CreatedAt: r.CreatedAt,
 		StartedAt: r.StartedAt, FinishedAt: r.FinishedAt,
 	}
 }
@@ -61,7 +62,7 @@ func (s Store) Queue(ctx context.Context, d domain.Deployment) (domain.Deploymen
 	rec := deploymentRecord{
 		ApplicationID: d.ApplicationID, Status: string(domain.Queued), Trigger: string(d.Trigger),
 		Branch: d.Branch, CommitSha: d.CommitSHA, CommitMessage: d.CommitMessage, CommitAuthor: d.CommitAuthor,
-		Image: d.Image, RollbackOf: d.RollbackOf, CreatedAt: now, UpdatedAt: now,
+		SourceImage: d.SourceImage, Image: d.Image, RollbackOf: d.RollbackOf, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.query(ctx).Create(&rec); err != nil {
 		if strings.Contains(err.Error(), "deployments_one_queued") {
@@ -103,7 +104,7 @@ func (s Store) ClaimNext(ctx context.Context) (domain.Deployment, bool, error) {
 func (s Store) Save(ctx context.Context, d domain.Deployment) error {
 	_, err := s.query(ctx).Model(&deploymentRecord{}).Where("id", d.ID).Update(map[string]any{
 		"status": string(d.Status), "branch": d.Branch, "commit_sha": d.CommitSHA,
-		"commit_message": d.CommitMessage, "commit_author": d.CommitAuthor, "image": d.Image,
+		"commit_message": d.CommitMessage, "commit_author": d.CommitAuthor, "source_image": d.SourceImage, "image": d.Image,
 		"container_name": d.Container, "error": d.Error, "finished_at": d.FinishedAt, "updated_at": time.Now(),
 	})
 	return err

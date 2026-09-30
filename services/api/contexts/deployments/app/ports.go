@@ -145,6 +145,9 @@ type KnownHosts interface {
 // Runtime builds and runs Containers.
 type Runtime interface {
 	Build(ctx context.Context, req BuildRequest, out func(line string)) error
+	// Pull pulls req.Reference, tags it req.Tag and returns the pulled
+	// reference with its digest.
+	Pull(ctx context.Context, req PullRequest, out func(line string)) (digest string, err error)
 	// Start creates and starts the Container and returns once it is
 	// running (and, with spec.Settle, has stayed running for a moment), or
 	// an error (the Container is then removed).
@@ -171,6 +174,14 @@ type BuildRequest struct {
 	Tag        string
 	Labels     map[string]string
 	BuildArgs  map[string]string
+}
+
+// PullRequest is an image pull. Username and Password empty is anonymous.
+type PullRequest struct {
+	Reference string
+	Tag       string
+	Username  string
+	Password  string
 }
 
 type ContainerSpec struct {

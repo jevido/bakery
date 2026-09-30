@@ -256,8 +256,9 @@ func (c *Client) TagImage(ctx context.Context, ref, repo, tag string) error {
 	return c.call(ctx, http.MethodPost, "/images/"+url.PathEscape(ref)+"/tag", url.Values{"repo": {repo}, "tag": {tag}}, nil, nil)
 }
 
-// ImageDigest returns the image's reference by digest, e.g.
-// docker.io/traefik/whoami@sha256:…, or its bare digest if it has none.
+// ImageDigest returns ref's image by digest in the repository it was
+// pulled from, e.g. docker.io/traefik/whoami@sha256:…. One image can be
+// known under several repositories; the one in ref wins.
 func (c *Client) ImageDigest(ctx context.Context, ref string) (string, error) {
 	var out struct {
 		Digest      string   `json:"Digest"`
@@ -266,10 +267,22 @@ func (c *Client) ImageDigest(ctx context.Context, ref string) (string, error) {
 	if err := c.call(ctx, http.MethodGet, "/images/"+url.PathEscape(ref)+"/json", nil, nil, &out); err != nil {
 		return "", err
 	}
-	if len(out.RepoDigests) > 0 {
-		return out.RepoDigests[0], nil
+	repo := Repository(ref)
+	for _, d := range out.RepoDigests {
+		if strings.HasPrefix(d, repo+"@") {
+			return d, nil
+		}
 	}
-	return out.Digest, nil
+	return repo + "@" + out.Digest, nil
+}
+
+// Repository is ref without its tag or digest.
+func Repository(ref string) string {
+	ref, _, _ = strings.Cut(ref, "@")
+	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+		ref = ref[:i]
+	}
+	return ref
 }
 
 type BuildOptions struct {

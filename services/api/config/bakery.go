@@ -17,6 +17,9 @@ func init() {
 		// The network Bakery's containers share; Caddy reaches Applications
 		// on it by container name.
 		"network": config.Env("BAKERY_NETWORK", "bakery"),
+		// Registry hosts (host[:port], comma-separated) image Applications
+		// are pulled from without TLS verification. Empty on a server.
+		"insecure_registries": config.Env("BAKERY_INSECURE_REGISTRIES", ""),
 		// The Dashboard Route: the domain Bakery's own dashboard is served on
 		// through the proxy (empty in development, where Vite serves it), and
 		// the containers it sends /api/* and everything else to.

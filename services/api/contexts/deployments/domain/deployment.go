@@ -65,8 +65,10 @@ type Deployment struct {
 	CommitSHA     string
 	CommitMessage string
 	CommitAuthor  string
-	Image         string
-	Container     string
+	// SourceImage is the reference with digest an image Deployment pulled.
+	SourceImage string
+	Image       string
+	Container   string
 	// RollbackOf is the Deployment whose Image a Rollback starts again.
 	RollbackOf *uint64
 	Error      string
@@ -116,6 +118,7 @@ func NewRollback(of Deployment) (Deployment, error) {
 	d := NewDeployment(of.ApplicationID, TriggerRollback)
 	d.RollbackOf, d.Image = &id, of.Image
 	d.Branch, d.CommitSHA, d.CommitMessage, d.CommitAuthor = of.Branch, of.CommitSHA, of.CommitMessage, of.CommitAuthor
+	d.SourceImage = of.SourceImage
 	return d, nil
 }
 

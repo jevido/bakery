@@ -23,5 +23,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000008AddVariableScopeAndSharedVariables{},
 		&migrations.M20260930000009AddApplicationBuildPack{},
 		&migrations.M20260930000010AddApplicationRegistryCredentials{},
+		&migrations.M20260930000011AddDeploymentSourceImage{},
 	}
 }
