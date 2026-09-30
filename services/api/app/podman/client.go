@@ -10,6 +10,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -70,10 +72,15 @@ func IsNotFound(err error) bool {
 // anonymousAuth is base64("{}"). Sent on pulls and builds so the Podman
 // service does not use whatever registry credentials the host user has
 // saved (a stale Docker Hub login makes every pull fail). Registry
-// credentials Bakery manages itself come in a later phase.
+// credentials Bakery manages itself replace it per pull (PullOptions).
 const anonymousAuth = "e30="
 
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body io.Reader, contentType string) (*http.Response, error) {
+	return c.doWith(ctx, method, path, query, body, contentType, nil)
+}
+
+// doWith is do with extra request headers, which win over the defaults.
+func (c *Client) doWith(ctx context.Context, method, path string, query url.Values, body io.Reader, contentType string, header http.Header) (*http.Response, error) {
 	u := "http://podman" + apiPrefix + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
@@ -90,6 +97,9 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		req.Header.Set("X-Registry-Auth", anonymousAuth)
 	case "/build":
 		req.Header.Set("X-Registry-Config", anonymousAuth)
+	}
+	for k, v := range header {
+		req.Header[k] = v
 	}
 	res, err := c.http.Do(req)
 	if err != nil {
@@ -184,30 +194,82 @@ func (c *Client) RemoveImage(ctx context.Context, ref string) error {
 	return err
 }
 
-// PullImage pulls ref (fully qualified, e.g. docker.io/library/caddy:2),
-// handing progress lines to out.
+// PullImage pulls ref (fully qualified, e.g. docker.io/library/caddy:2)
+// anonymously with TLS verified, handing progress lines to out.
 func (c *Client) PullImage(ctx context.Context, ref string, out func(line string)) error {
-	res, err := c.do(ctx, http.MethodPost, "/images/pull", url.Values{"reference": {ref}}, nil, "")
+	_, err := c.PullImageWith(ctx, ref, PullOptions{TLSVerify: true}, out)
+	return err
+}
+
+// PullOptions are the registry credentials (both empty: anonymous) and
+// whether the registry's TLS certificate is verified.
+type PullOptions struct {
+	Username  string
+	Password  string
+	TLSVerify bool
+}
+
+// PullImageWith pulls ref, always asking the registry for the newest image
+// behind the tag, and returns the image id.
+func (c *Client) PullImageWith(ctx context.Context, ref string, opts PullOptions, out func(line string)) (string, error) {
+	q := url.Values{"reference": {ref}, "policy": {"always"}, "tlsVerify": {strconv.FormatBool(opts.TLSVerify)}}
+	var header http.Header
+	if opts.Username != "" {
+		// libpod reads a single DockerAuthConfig, base64url encoded.
+		raw, _ := json.Marshal(map[string]string{"username": opts.Username, "password": opts.Password})
+		header = http.Header{"X-Registry-Auth": {base64.URLEncoding.EncodeToString(raw)}}
+	}
+	res, err := c.doWith(ctx, http.MethodPost, "/images/pull", q, nil, "", header)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer res.Body.Close()
 	dec := json.NewDecoder(res.Body)
+	id := ""
 	for {
 		var msg struct {
 			Stream string `json:"stream"`
 			Error  string `json:"error"`
+			ID     string `json:"id"`
 		}
 		if err := dec.Decode(&msg); err == io.EOF {
-			return nil
+			break
 		} else if err != nil {
-			return fmt.Errorf("podman: reading pull output: %w", err)
+			return "", fmt.Errorf("podman: reading pull output: %w", err)
 		}
 		if msg.Error != "" {
-			return &Error{Status: http.StatusInternalServerError, Message: msg.Error}
+			return "", &Error{Status: http.StatusInternalServerError, Message: strings.TrimSpace(msg.Error)}
+		}
+		if msg.ID != "" {
+			id = msg.ID
 		}
 		emitLines(msg.Stream, out)
 	}
+	if id == "" {
+		return "", errors.New("podman: pull ended without an image")
+	}
+	return id, nil
+}
+
+// TagImage adds the name repo:tag to the image ref.
+func (c *Client) TagImage(ctx context.Context, ref, repo, tag string) error {
+	return c.call(ctx, http.MethodPost, "/images/"+url.PathEscape(ref)+"/tag", url.Values{"repo": {repo}, "tag": {tag}}, nil, nil)
+}
+
+// ImageDigest returns the image's reference by digest, e.g.
+// docker.io/traefik/whoami@sha256:…, or its bare digest if it has none.
+func (c *Client) ImageDigest(ctx context.Context, ref string) (string, error) {
+	var out struct {
+		Digest      string   `json:"Digest"`
+		RepoDigests []string `json:"RepoDigests"`
+	}
+	if err := c.call(ctx, http.MethodGet, "/images/"+url.PathEscape(ref)+"/json", nil, nil, &out); err != nil {
+		return "", err
+	}
+	if len(out.RepoDigests) > 0 {
+		return out.RepoDigests[0], nil
+	}
+	return out.Digest, nil
 }
 
 type BuildOptions struct {

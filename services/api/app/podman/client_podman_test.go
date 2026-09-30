@@ -203,3 +203,37 @@ func TestBuildArgs(t *testing.T) {
 		t.Fatal("image still there after RemoveImage")
 	}
 }
+
+func TestPullTagDigest(t *testing.T) {
+	c := client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	id, err := c.PullImageWith(ctx, "docker.io/library/busybox:latest", PullOptions{TLSVerify: true}, nil)
+	if err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	if id == "" {
+		t.Fatal("pull returned no image id")
+	}
+	const tagged = "localhost/bakery/test-tag:1"
+	if err := c.TagImage(ctx, id, "localhost/bakery/test-tag", "1"); err != nil {
+		t.Fatalf("tag: %v", err)
+	}
+	// Untag only our own name; the busybox image may be used elsewhere.
+	defer c.call(context.Background(), "POST", "/images/"+id+"/untag", map[string][]string{"repo": {"localhost/bakery/test-tag"}, "tag": {"1"}}, nil, nil)
+	if ok, err := c.ImageExists(ctx, tagged); err != nil || !ok {
+		t.Fatalf("tagged image exists = %v, %v", ok, err)
+	}
+	digest, err := c.ImageDigest(ctx, tagged)
+	if err != nil {
+		t.Fatalf("digest: %v", err)
+	}
+	if !strings.Contains(digest, "@sha256:") {
+		t.Fatalf("digest %q has no @sha256:", digest)
+	}
+
+	if _, err := c.PullImageWith(ctx, "docker.io/library/bakery-does-not-exist:1", PullOptions{TLSVerify: true}, nil); err == nil {
+		t.Fatal("pulling a missing image succeeded")
+	}
+}
