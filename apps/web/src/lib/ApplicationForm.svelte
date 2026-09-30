@@ -2,7 +2,7 @@
   import { untrack } from 'svelte'
   import { ApiError } from './api'
   import Field from './Field.svelte'
-  import type { ApplicationInput, BuildPack, HealthCheck } from './types'
+  import type { ApplicationInput, BuildPack, HealthCheck, ResourceLimits, Storage } from './types'
 
   let {
     initial,
@@ -49,8 +49,19 @@
   let git_branch = $state(start.git_branch || 'main')
   let dockerfile_path = $state(start.dockerfile_path || 'Dockerfile')
   let port = $state(String(start.port))
-  let domain = $state(start.domains[0] ?? '')
-  const otherDomains = start.domains.slice(1)
+  // Rows carry a key so removing one keeps the others' inputs in place.
+  let nextKey = 0
+  const startDomains = start.domains.length > 0 ? start.domains : ['']
+  let domains = $state(startDomains.map((value) => ({ key: nextKey++, value })))
+  let storages = $state((start.storages ?? []).map((s: Storage) => ({ key: nextKey++, ...s })))
+  const limits: ResourceLimits = start.resource_limits ?? { memory_mb: null, cpus: null }
+  let memoryMB = $state(limits.memory_mb == null ? '' : String(limits.memory_mb))
+  let cpus = $state(limits.cpus == null ? '' : String(limits.cpus))
+
+  function makePrimary(key: number) {
+    const i = domains.findIndex((d) => d.key === key)
+    domains.unshift(...domains.splice(i, 1))
+  }
   const check: HealthCheck = start.health_check ?? { enabled: false, path: '/', interval: 5, timeout: 5, retries: 10, start_period: 0 }
   let checkEnabled = $state(check.enabled)
   let checkPath = $state(check.path)
@@ -85,8 +96,15 @@
         git_branch,
         dockerfile_path,
         port: build_pack === 'static' ? 80 : Number(port),
-        domains: [domain, ...otherDomains].filter((d) => d.trim() !== ''),
+        domains: domains.map((d) => d.value.trim()).filter((d) => d !== ''),
         health_check,
+        storages: storages
+          .filter((s) => s.name.trim() !== '' || s.mount_path.trim() !== '')
+          .map((s) => ({ name: s.name.trim(), mount_path: s.mount_path.trim() })),
+        resource_limits: {
+          memory_mb: memoryMB.trim() === '' ? null : Number(memoryMB),
+          cpus: cpus.trim() === '' ? null : Number(cpus),
+        },
       }
       if (build_pack === 'image') input.registry_credentials = { username: registryUsername, password: registryPassword }
       await onsubmit(input)
@@ -161,7 +179,32 @@
       {/if}
     </fieldset>
   {/if}
-  <Field label="Domain (empty for the default)" bind:value={domain} error={errors.domains} placeholder={domainPlaceholder} />
+  <fieldset>
+    <legend>Domains</legend>
+    <p class="muted">The first is the primary domain. Changes reach the proxy at once, without a deploy.</p>
+    {#each domains as d, i (d.key)}
+      <div class="line">
+        <input
+          aria-label={i === 0 ? 'Primary domain' : `Domain ${i + 1}`}
+          bind:value={d.value}
+          placeholder={i === 0 ? `${domainPlaceholder} (the default)` : 'www.example.com'}
+          aria-invalid={errors.domains ? 'true' : undefined}
+        />
+        {#if i === 0}
+          <span class="tag">primary</span>
+        {:else}
+          <button type="button" onclick={() => makePrimary(d.key)}>Make primary</button>
+        {/if}
+        {#if domains.length > 1}
+          <button type="button" aria-label="Remove domain" onclick={() => (domains = domains.filter((x) => x.key !== d.key))}>×</button>
+        {/if}
+      </div>
+    {/each}
+    {#if errors.domains}<small class="error">{errors.domains}</small>{/if}
+    {#if domains.length < 10}
+      <div><button type="button" onclick={() => domains.push({ key: nextKey++, value: '' })}>Add domain</button></div>
+    {/if}
+  </fieldset>
   <fieldset>
     <legend>Health check</legend>
     <label class="check">
@@ -181,6 +224,34 @@
         <Field label="Start period (s)" type="number" bind:value={checkStartPeriod} error={errors['health_check.start_period']} />
       </div>
     {/if}
+  </fieldset>
+  <fieldset>
+    <legend>Persistent storage</legend>
+    <p class="muted">
+      A volume per name, mounted at its path in every container, so what the app writes there survives deploys and rollbacks. Removing
+      a row keeps the data until the application is deleted.
+    </p>
+    {#each storages as s (s.key)}
+      <div class="line">
+        <input aria-label="Storage name" bind:value={s.name} placeholder="data" />
+        <input aria-label="Mount path" bind:value={s.mount_path} placeholder="/data" />
+        <button type="button" aria-label="Remove storage" onclick={() => (storages = storages.filter((x) => x.key !== s.key))}>×</button>
+      </div>
+    {/each}
+    {#if errors.storages}<small class="error">{errors.storages}</small>{/if}
+    {#if storages.length < 10}
+      <div>
+        <button type="button" onclick={() => storages.push({ key: nextKey++, name: '', mount_path: '' })}>Add storage</button>
+      </div>
+    {/if}
+  </fieldset>
+  <fieldset>
+    <legend>Resource limits</legend>
+    <p class="muted">Empty is unlimited. Limits apply from the next deploy.</p>
+    <div class="row">
+      <Field label="Memory (MB)" type="number" bind:value={memoryMB} error={errors['resource_limits.memory_mb']} placeholder="unlimited" />
+      <Field label="CPU (cores)" bind:value={cpus} error={errors['resource_limits.cpus']} placeholder="unlimited" />
+    </div>
   </fieldset>
   {#if message}<p class="error">{message}</p>{/if}
   <div class="actions">
@@ -228,6 +299,19 @@
   .choice.selected {
     border-color: currentColor;
     font-weight: 600;
+  }
+  .line {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .line input {
+    flex: 1;
+    min-width: 0;
+  }
+  .tag {
+    font-size: 0.8rem;
+    color: var(--muted);
   }
   .check {
     display: flex;

@@ -98,8 +98,18 @@
       {#if latest}<StatusBadge status={latest.status} />{/if}
       <p>
         <span class="muted">{packLabel[application.build_pack]} ·</span>
-        <a class="mono" href={application.public_url} target="_blank" rel="noreferrer">{application.public_url}</a>
+        {#each application.public_urls as url, i (url)}
+          {#if i > 0}<span class="muted"> · </span>{/if}
+          <a class="mono" href={url} target="_blank" rel="noreferrer">{url}</a>
+        {/each}
       </p>
+      {#if application.storages.length > 0 || application.resource_limits.memory_mb || application.resource_limits.cpus}
+        <p class="muted settings">
+          {#each application.storages as s (s.name)}<span>storage <span class="mono">{s.name}</span> at <span class="mono">{s.mount_path}</span></span>{/each}
+          {#if application.resource_limits.memory_mb}<span>{application.resource_limits.memory_mb} MB memory</span>{/if}
+          {#if application.resource_limits.cpus}<span>{application.resource_limits.cpus} CPU</span>{/if}
+        </p>
+      {/if}
     </div>
     <button class="primary" onclick={deploy} disabled={deploying || queued}>
       {queued ? 'Queued…' : active ? 'Deploy again' : 'Deploy'}
@@ -162,7 +172,7 @@
         onsubmit={update}
       />
     {/key}
-    {#if saved}<p class="ok">Saved. Changes apply on the next deploy.</p>{/if}
+    {#if saved}<p class="ok">Saved. Domains apply at once; everything else on the next deploy.</p>{/if}
     <h2>Danger zone</h2>
     <button class="danger" onclick={remove}>Delete application</button>
   {:else}
@@ -215,6 +225,12 @@
   .title p {
     grid-column: 1 / -1;
     margin: 0.2rem 0 0;
+  }
+  .settings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 1rem;
+    font-size: 0.85rem;
   }
   .tabs {
     display: flex;

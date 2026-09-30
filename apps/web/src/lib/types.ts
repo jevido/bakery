@@ -26,7 +26,15 @@ export type Application = {
   registry_username: string
   /** The password itself is never returned. */
   has_registry_password: boolean
+  storages: Storage[]
+  resource_limits: ResourceLimits
 }
+
+/** A persistent storage: the volume `name`, mounted at `mount_path` in every container. */
+export type Storage = { name: string; mount_path: string }
+
+/** null is unlimited. */
+export type ResourceLimits = { memory_mb: number | null; cpus: number | null }
 
 export type BuildPack = 'dockerfile' | 'nixpacks' | 'static' | 'image'
 
@@ -67,6 +75,10 @@ export type ApplicationInput = Pick<
   health_check?: HealthCheck
   /** Omitted keeps the current ones; an empty username removes them; an empty password keeps the stored one. */
   registry_credentials?: { username: string; password: string }
+  /** Omitted keeps the current ones. */
+  storages?: Storage[]
+  /** Omitted keeps the current ones. */
+  resource_limits?: ResourceLimits
 }
 
 export type DeploymentStatus = 'queued' | 'cloning' | 'building' | 'starting' | 'finished' | 'failed' | 'cancelled'
