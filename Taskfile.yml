@@ -107,6 +107,11 @@ tasks:
     cmds:
       - ./infra/dev/databases/test.sh
 
+  services:test:
+    desc: Services from a template and a compose file, through the Proxy, end to end (needs task dev)
+    cmds:
+      - ./infra/dev/services/test.sh
+
   backups:test:
     desc: Backups of every engine to local disk and Garage, restore, retention and schedule end to end (needs task dev and task s3:up)
     cmds:
@@ -132,8 +137,8 @@ tasks:
     desc: shellcheck the install script
     cmds:
       - |
-        if command -v shellcheck >/dev/null; then shellcheck -x infra/dev/garage/setup.sh infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/databases/test.sh infra/dev/backups/test.sh infra/dev/server/checks.sh
-        else podman run --rm -v .:/mnt:ro,Z -w /mnt docker.io/koalaman/shellcheck-alpine shellcheck -x infra/dev/garage/setup.sh infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/databases/test.sh infra/dev/backups/test.sh infra/dev/server/checks.sh
+        if command -v shellcheck >/dev/null; then shellcheck -x infra/dev/garage/setup.sh infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/databases/test.sh infra/dev/backups/test.sh infra/dev/services/test.sh infra/dev/server/checks.sh
+        else podman run --rm -v .:/mnt:ro,Z -w /mnt docker.io/koalaman/shellcheck-alpine shellcheck -x infra/dev/garage/setup.sh infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/databases/test.sh infra/dev/backups/test.sh infra/dev/services/test.sh infra/dev/server/checks.sh
         fi
 
   check:

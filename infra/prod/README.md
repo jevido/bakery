@@ -92,6 +92,15 @@ sudo -u bakery XDG_RUNTIME_DIR=/run/user/$(id -u bakery) \
 
 Redis and Valkey are not backed up.
 
+**Services** (from the template catalog or a compose file) keep their data
+in volumes named `bakery-svc-<service id>-<volume>`; they are not backed
+up yet. Copy one off the server by hand while the Service is stopped:
+
+```sh
+sudo -u bakery XDG_RUNTIME_DIR=/run/user/$(id -u bakery) \
+  podman volume export bakery-svc-3-postgresql-data > postgresql-data.tar
+```
+
 **Bakery's own database** (`bakery-postgres`) is not backed up
 automatically yet. By hand:
 

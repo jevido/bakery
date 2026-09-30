@@ -53,4 +53,13 @@ Local development stack.
   after removing the local file; checks Retention 2 leaves two files and two
   objects; waits for an every-minute schedule to back up by itself; checks
   Redis refuses; and deletes the Databases, whose local Backups go while
-  the S3 copies stay. Every script shares `lib/e2e.sh`.
+  the S3 copies stay.
+- `services/test.sh` (`task services:test`, needs `task dev`) creates a
+  Service from the whoami template and one from a compose file (a whoami
+  `web` and a Postgres `db`), checks both answer through the Proxy, that
+  `db` resolves by name on the Service network and keeps its row and
+  generated password across Redeploy, that Stop takes the Domain away and
+  Start brings it back, that `build:` is refused with its line, that
+  Applications and Services cannot take each other's Domains and a Project
+  with a Service cannot be deleted, and that deleting the Services leaves
+  no container, network or volume. Every script shares `lib/e2e.sh`.

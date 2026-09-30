@@ -138,6 +138,23 @@ can be downloaded or restored (from S3 when the local file is gone).
 `task databases:test` and `task backups:test` (with `task s3:up`, the
 Garage S3 stand-in) run all of this end to end.
 
+### Services
+
+**New service** in an environment runs multi-container software in one
+step: pick Uptime Kuma, Umami (with its own PostgreSQL), n8n, Gitea or
+whoami from the catalog, or paste a `compose.yml` of your own. Passwords
+the file asks for as `${SERVICE_PASSWORD_<X>}` or `${SERVICE_USER_<X>}` are
+generated once and shown under **Variables**; a service whose environment
+names `SERVICE_FQDN_<NAME>_<PORT>` gets a domain with HTTPS on that port,
+editable on the Service page, and every other `${VAR:-default}` is a
+variable you can set. Compose files may use `image:` services with
+`command`, `entrypoint`, `environment`, named volumes, `depends_on`,
+`working_dir`, `user` and `labels`; `build:`, `ports:`, bind mounts,
+`privileged` and the like are refused with the line they are on. The
+Service page starts, stops, redeploys (pulling the images again, keeping
+the volumes) and deletes it, and follows each component's logs.
+`task services:test` runs all of this end to end.
+
 ## Install on a server
 
 On a fresh Linux server with systemd, ports 80/443 open and DNS for your

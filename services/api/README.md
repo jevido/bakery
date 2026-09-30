@@ -1,7 +1,7 @@
 # api
 
-Bakery's JSON API: the source of truth for the Owner, projects, applications
-and deployments, and the unit that drives Podman and Caddy. Goravel v1.18 on
+Bakery's JSON API: the source of truth for the Owner, projects, applications,
+deployments, databases and services, and the unit that drives Podman and Caddy. Goravel v1.18 on
 Postgres 18, listening on `127.0.0.1:4910`.
 
 ## Run
@@ -26,6 +26,10 @@ Backups of Databases are written to `BAKERY_BACKUPS_DIR` (`storage/backups`
 here); S3 storages are tested against the Garage stand-in on
 `127.0.0.1:4960` (`task s3:up` from the repo root writes its key to
 `.claude/ralph/state/garage.env`).
+
+Services are run from their Compose file through the Podman API (no
+`podman compose`); the template catalog is the YAML files embedded from
+`contexts/services/templates/`, one per template.
 
 Other tasks: `task api:check` (gofmt, go vet, go test), `task api:migrate`,
 `task api:test:podman` (against the rootless Podman socket),

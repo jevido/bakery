@@ -402,8 +402,11 @@ func TestNetworkAliasesAndSpec(t *testing.T) {
 	if got, err := c.ListNetworks(ctx, map[string]string{"bakery.test": "aliases", "bakery.managed": "true"}); err != nil || len(got) != 1 || got[0] != network {
 		t.Fatalf("ListNetworks: %v %v", got, err)
 	}
-	if err := c.PullImage(ctx, "docker.io/library/busybox", func(string) {}); err != nil {
-		t.Fatal(err)
+	// Only when missing: Docker Hub now and then refuses a token request.
+	if ok, _ := c.ImageExists(ctx, "docker.io/library/busybox"); !ok {
+		if err := c.PullImage(ctx, "docker.io/library/busybox", func(string) {}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for i, n := range names {
 		net, opts := NetworkWithAliases(network, []string{"db", "app"}[i])
