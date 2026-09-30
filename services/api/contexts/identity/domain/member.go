@@ -79,7 +79,7 @@ func NewMember(name, email, password string, role Role) (Member, error) {
 	if _, err := ParseRole(string(role)); err != nil {
 		return Member{}, err
 	}
-	return Member{Name: name, Email: email, Role: role}, nil
+	return Member{Name: name, Email: email, Role: role, TwoFactor: TwoFactor{State: TwoFactorOff}}, nil
 }
 
 // ValidateEmail accepts a bare, already normalised address.

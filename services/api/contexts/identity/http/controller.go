@@ -47,10 +47,12 @@ type memberJSON struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
 	Role  string `json:"role"`
+	// TwoFactor is whether the Member's Two-factor authentication is on.
+	TwoFactor bool `json:"two_factor"`
 }
 
 func toJSON(m domain.Member) memberJSON {
-	return memberJSON{ID: m.ID, Name: m.Name, Email: m.Email, Role: string(m.Role)}
+	return memberJSON{ID: m.ID, Name: m.Name, Email: m.Email, Role: string(m.Role), TwoFactor: m.TwoFactor.On()}
 }
 
 func (c *Controller) SetupStatus(ctx contractshttp.Context) contractshttp.Response {
@@ -158,8 +160,9 @@ func sessionCookie(value string, maxAge int) contractshttp.Cookie {
 type Auth struct {
 	Service *app.Service
 	// SelfService is for the routes where a Member manages their own API
-	// tokens: every Role may change those, but only with a Session, so a
-	// leaked token cannot mint more.
+	// tokens, Account and two-factor: every Role may change those, but only
+	// with a Session, so a leaked token can neither mint more nor switch
+	// two-factor off.
 	SelfService bool
 }
 
@@ -172,7 +175,7 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 	}
 	if a.SelfService {
 		if p.viaAPIToken {
-			_ = respond.Error(ctx, contractshttp.StatusForbidden, "API tokens are managed with a signed-in session, not with an API token").Abort()
+			_ = respond.Error(ctx, contractshttp.StatusForbidden, "this needs a signed-in session, not an API token").Abort()
 			return
 		}
 	} else if reason := refusal(ctx.Request().Method(), p.role); reason != "" {

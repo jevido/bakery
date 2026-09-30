@@ -1,7 +1,7 @@
 import { api, ApiError } from './api'
 
 export type Role = 'viewer' | 'member' | 'admin' | 'owner'
-export type Member = { id: number; name: string; email: string; role: Role }
+export type Member = { id: number; name: string; email: string; role: Role; two_factor: boolean }
 
 type State = 'loading' | 'setup' | 'signed-out' | 'signed-in'
 

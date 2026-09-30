@@ -4,7 +4,9 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
+	"io"
 	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/identity/domain"
@@ -71,10 +73,12 @@ type Service struct {
 	hasher      Hasher
 	// Now is the clock; time.Now unless a test sets it.
 	Now func() time.Time
+	// Random is where secrets come from; crypto/rand unless a test sets it.
+	Random io.Reader
 }
 
 func NewService(members Members, invitations Invitations, apiTokens APITokens, hasher Hasher) *Service {
-	return &Service{members: members, invitations: invitations, apiTokens: apiTokens, hasher: hasher, Now: time.Now}
+	return &Service{members: members, invitations: invitations, apiTokens: apiTokens, hasher: hasher, Now: time.Now, Random: rand.Reader}
 }
 
 func (s *Service) now() time.Time { return s.Now() }
