@@ -42,7 +42,7 @@ reaches an Application (routing).
 
 ### Commands
 
-- `CreateProject`, `RenameProject`, `DeleteProject` (refused while it has Applications).
+- `CreateProject`, `RenameProject`, `DeleteProject` (refused while it has Applications, or while a registered in-use check, such as databases', says the Project is in use).
 - `CreateApplication(environment, ...)`, `UpdateApplication`, `DeleteApplication`.
 - `ReplaceEnvVars(application, [name, value, build, runtime])`: the whole set is replaced at once.
 - `ReplaceProjectVariables(project, ...)`, `ReplaceEnvironmentVariables(environment, ...)`: the same, for Shared variables.
@@ -62,6 +62,9 @@ reaches an Application (routing).
   Changing its fields is a breaking change for deployments.
   `ApplicationExists(id)` for routing, which keeps Route settings per
   Application and refuses them for one that does not exist.
+  `Environment(id)` (id, Project id, name) and `OnProjectDeleting(check)`
+  for databases, which places Databases in Environments and refuses the
+  deletion of a Project that still has them.
 - **Consumes:** the Owner's Session (identity middleware).
 
 ## Why it's shaped this way

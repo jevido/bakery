@@ -15,7 +15,7 @@ document; list them here when people outside the context use them too.
 | Session | identity | Proof that the Owner signed in: a JWT carried in the `bakery_session` cookie. | Token (API tokens come later) |
 | Setup | identity | The one-time step that creates the Owner. Refused once an Owner exists. | Install |
 | Project | projects | A named group of Environments, usually one product. | Repository |
-| Environment | projects | A stage inside a Project (`production` is created with every Project). Holds Applications. | Env var, the dev/next/prod environments of this repo |
+| Environment | projects | A stage inside a Project (`production` is created with every Project). Holds Applications and Databases. | Env var, the dev/next/prod environments of this repo |
 | Application | projects | Something Bakery builds from a Source (or pulls as an Image reference) and runs as one Container behind its Domains. | Service (templates, later), Container |
 | Slug | projects | The URL-safe, unique short name of an Application, used in its default Domain and image name. | Name |
 | Source | projects | Where an Application's code comes from, for every Build pack except `image`: a git URL and a branch. Either a public `https://` URL, or an SSH URL (`ssh://git@host/path` or `git@host:path`) that always has a Deploy key. | Repository on disk |
@@ -30,14 +30,14 @@ document; list them here when people outside the context use them too.
 | Health check | projects, deployments | An HTTP path probed inside a new Container until it answers 2xx or 3xx, with an interval, a timeout, a number of retries and a start period. Off by default. The Route only moves to a Container that passed it. | Container state |
 | Domain | projects, routing | One of the hostnames an Application is reached on. An Application has 1 to 10; the first is its *primary* Domain (shown in lists, used for links). Each is unique across Bakery, and never the dashboard domain. The default is one Domain `<slug>.<domain suffix>` (`localhost` in development). | URL |
 | Persistent storage | projects, deployments | A named volume of one Application (`bakery-app-<application-id>-<name>`), mounted at its mount path in every Container of that Application, so what is written there survives redeploys and rollbacks. | Bind mount (later), Image |
-| Resource limits | projects, deployments | The memory (MB) and CPU (cores) each Container of an Application may use. Empty means unlimited. Applied from the next Deployment. | Server capacity |
+| Resource limits | projects, deployments, databases | The memory (MB) and CPU (cores) each Container of an Application, or the Container of a Database, may use. Empty means unlimited. Applied from an Application's next Deployment, and to a Database at once (its Container is recreated). | Server capacity |
 | Deployment | deployments | One attempt to turn an Application's Source into its running Container. | Release, build |
 | Deploy trigger | deployments | What started a Deployment: `manual` (the Owner pressed Deploy), `webhook` (a push) or `rollback` (the Owner rolled back to an earlier Deployment). | Build pack |
 | Deployment status | deployments | Where a Deployment is: `queued`, `cloning`, `building`, `starting`, then `finished`, `failed` or `cancelled`. An `image` Deployment skips `cloning` and pulls during `building`. The first four are *active*; `cloning`, `building` and `starting` are *running*. | Container state |
 | Cancel | deployments | The Owner ending an active Deployment before it finishes. It ends `cancelled`, what it made is removed, and the running version stays. | Fail, rollback |
 | Rollback | deployments | A Deployment that starts an earlier finished Deployment's Image again, without cloning or building. | Revert (git), redeploy |
 | Deployment log | deployments | The ordered lines a Deployment wrote: its own `info` lines and the `out`/`err` output of git and the build. | Container logs |
-| Container logs | deployments | What a running Application's Container writes to stdout and stderr. | Deployment log |
+| Container logs | deployments, databases | What a running Application's or Database's Container writes to stdout and stderr. | Deployment log |
 | Image | deployments | The result of a Deployment, built or pulled and re-tagged as `localhost/bakery/<slug>:<deployment-id>`. | Container |
 | Source image | deployments | The reference with digest an `image` Deployment pulled, e.g. `docker.io/traefik/whoami@sha256:…`. Shown where git Deployments show their commit. | Image reference |
 | Container | deployments | A running instance of an Image, named `bakery-app-<application-id>-<deployment-id>`. | Application |
@@ -52,3 +52,11 @@ document; list them here when people outside the context use them too.
 | Response header | routing | A header name and value the Proxy sets on every response of an Application. | Env var |
 | Basic auth | routing | One username and password the Proxy asks for before any request reaches the Application. Only a bcrypt hash of the password is kept. | Owner, Session |
 | Dashboard Route | routing | The Route to Bakery's own dashboard and API on the configured dashboard domain: `/api/*` to the API, the rest to the dashboard. Derived from configuration, never stored. | Route |
+| Database | databases | A data store of one Engine that Bakery runs as one Container (`bakery-db-<slug>`) in an Environment, with its data in one volume. Created in one step; never built or deployed. | Application, Postgres (Bakery's own database) |
+| Engine | databases | What kind of Database it is: `postgresql`, `mysql`, `mariadb`, `redis`, `valkey` or `mongodb`. Fixed once the Database exists. | Build pack |
+| Database version | databases | The image tag of the Engine a Database runs, e.g. `18-alpine`. Each Engine has a default. | Deployment |
+| Database credentials | databases | The username, password (and for MySQL/MariaDB a root password) and database name of a Database. Generated by Bakery, encrypted at rest, shown to the Owner. | Registry credentials, Owner |
+| Internal URL | databases | The connection URL of a Database on the `bakery` network, with host `bakery-db-<slug>`. What Applications use. | Public URL, Domain |
+| Public port | databases | A host port (1024–65535, unique among Databases) a Database is published on, so it can be reached from outside the Server. None by default. | Port (of an Application) |
+| Public URL | databases | The connection URL of a Database through its Public port on the Server's public host. Only exists with a Public port. | Internal URL, Domain |
+| Database status | databases | What a Database's Container is doing, read from Podman: `starting` (running, not answering yet), `running` (answers its Engine's readiness probe), `stopped` (the Owner stopped it), `exited` (stopped on its own) or `missing` (no Container). Not stored; the Owner's wish (running or stopped) is its *desired state*. | Deployment status |
