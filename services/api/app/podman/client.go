@@ -382,9 +382,46 @@ type ContainerSpec struct {
 	PortMappings  []PortMapping             `json:"portmappings,omitempty"`
 	Volumes       []NamedVolume             `json:"volumes,omitempty"`
 	RestartPolicy string                    `json:"restart_policy,omitempty"`
+	// ResourceLimits are the container's cgroup limits; nil is unlimited.
+	ResourceLimits *ResourceLimits `json:"resource_limits,omitempty"`
 	// Netns is set by CreateContainer: joining named networks needs bridge
 	// mode, which rootless Podman does not pick by itself.
 	Netns *namespace `json:"netns,omitempty"`
+}
+
+// ResourceLimits is the part of the OCI LinuxResources Bakery sets.
+type ResourceLimits struct {
+	Memory *MemoryLimit `json:"memory,omitempty"`
+	CPU    *CPULimit    `json:"cpu,omitempty"`
+}
+
+// MemoryLimit is in bytes.
+type MemoryLimit struct {
+	Limit int64 `json:"limit"`
+}
+
+// CPULimit allows Quota µs of CPU time per Period µs: 50000/100000 is half a
+// core.
+type CPULimit struct {
+	Quota  int64  `json:"quota"`
+	Period uint64 `json:"period"`
+}
+
+// Limits returns the ResourceLimits for memoryMB megabytes and cpus cores;
+// zero means no limit for either, and nil when both are zero.
+func Limits(memoryMB int, cpus float64) *ResourceLimits {
+	if memoryMB <= 0 && cpus <= 0 {
+		return nil
+	}
+	l := &ResourceLimits{}
+	if memoryMB > 0 {
+		l.Memory = &MemoryLimit{Limit: int64(memoryMB) << 20}
+	}
+	if cpus > 0 {
+		const period = 100000
+		l.CPU = &CPULimit{Quota: int64(cpus*period + 0.5), Period: period}
+	}
+	return l
 }
 
 type namespace struct {
@@ -463,6 +500,41 @@ func (c *Client) ReadFile(ctx context.Context, container, file string) ([]byte, 
 	}
 }
 
+// CreateVolume creates a named volume with the labels; one that already
+// exists is left as it is.
+func (c *Client) CreateVolume(ctx context.Context, name string, labels map[string]string) error {
+	if ok, err := c.exists(ctx, "/volumes/"+url.PathEscape(name)+"/exists"); err != nil || ok {
+		return err
+	}
+	err := c.call(ctx, http.MethodPost, "/volumes/create", nil, map[string]any{"Name": name, "Label": labels}, nil)
+	var e *Error
+	if errors.As(err, &e) && e.Status == http.StatusConflict {
+		return nil
+	}
+	return err
+}
+
+type VolumeSummary struct {
+	Name   string            `json:"Name"`
+	Labels map[string]string `json:"Labels"`
+}
+
+// ListVolumes lists the volumes carrying every one of the labels.
+func (c *Client) ListVolumes(ctx context.Context, labels map[string]string) ([]VolumeSummary, error) {
+	var out []VolumeSummary
+	err := c.call(ctx, http.MethodGet, "/volumes/json", url.Values{"filters": {labelFilters(labels)}}, nil, &out)
+	return out, err
+}
+
+func labelFilters(labels map[string]string) string {
+	filters := map[string][]string{}
+	for k, v := range labels {
+		filters["label"] = append(filters["label"], k+"="+v)
+	}
+	raw, _ := json.Marshal(filters)
+	return string(raw)
+}
+
 // RemoveVolume force-removes a named volume; a missing one is not an error.
 func (c *Client) RemoveVolume(ctx context.Context, name string) error {
 	err := c.call(ctx, http.MethodDelete, "/volumes/"+url.PathEscape(name), url.Values{"force": {"true"}}, nil, nil)
@@ -492,7 +564,14 @@ type ContainerInfo struct {
 	// bindings, as created (set before the container starts).
 	HostConfig struct {
 		PortBindings map[string][]HostBinding `json:"PortBindings"`
+		Memory       int64                    `json:"Memory"`
+		CPUQuota     int64                    `json:"CpuQuota"`
 	} `json:"HostConfig"`
+	Mounts []struct {
+		Type        string `json:"Type"`
+		Name        string `json:"Name"`
+		Destination string `json:"Destination"`
+	} `json:"Mounts"`
 }
 
 type HostBinding struct {
@@ -516,13 +595,8 @@ type ContainerSummary struct {
 // ListContainers lists all containers (running or not) carrying every one
 // of the labels.
 func (c *Client) ListContainers(ctx context.Context, labels map[string]string) ([]ContainerSummary, error) {
-	filters := map[string][]string{}
-	for k, v := range labels {
-		filters["label"] = append(filters["label"], k+"="+v)
-	}
-	raw, _ := json.Marshal(filters)
 	var out []ContainerSummary
-	err := c.call(ctx, http.MethodGet, "/containers/json", url.Values{"all": {"true"}, "filters": {string(raw)}}, nil, &out)
+	err := c.call(ctx, http.MethodGet, "/containers/json", url.Values{"all": {"true"}, "filters": {labelFilters(labels)}}, nil, &out)
 	return out, err
 }
 

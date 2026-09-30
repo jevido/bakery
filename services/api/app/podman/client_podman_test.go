@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -237,5 +238,62 @@ func TestPullTagDigest(t *testing.T) {
 
 	if _, err := c.PullImageWith(ctx, "ghcr.io/jevido/bakery-does-not-exist:1", PullOptions{TLSVerify: true}, nil); err == nil {
 		t.Fatal("pulling a missing image succeeded")
+	}
+}
+
+func TestVolumesAndLimits(t *testing.T) {
+	c := client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	vol := "bakery-test-volume-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	labels := map[string]string{"bakery.managed": "true", "bakery.test": vol}
+	for range 2 {
+		if err := c.CreateVolume(ctx, vol, labels); err != nil {
+			t.Fatalf("CreateVolume: %v", err)
+		}
+	}
+	defer c.RemoveVolume(context.Background(), vol)
+	list, err := c.ListVolumes(ctx, map[string]string{"bakery.test": vol})
+	if err != nil || len(list) != 1 || list[0].Name != vol || list[0].Labels["bakery.managed"] != "true" {
+		t.Fatalf("ListVolumes: %+v %v", list, err)
+	}
+
+	if err := c.PullImage(ctx, "docker.io/library/busybox", func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	name := vol + "-ctr"
+	_, err = c.CreateContainer(ctx, ContainerSpec{
+		Name: name, Image: "docker.io/library/busybox", Command: []string{"sleep", "60"},
+		Labels:         map[string]string{"bakery.managed": "true"},
+		Volumes:        []NamedVolume{{Name: vol, Dest: "/data"}},
+		ResourceLimits: Limits(64, 0.5),
+	})
+	if err != nil {
+		t.Fatalf("CreateContainer: %v", err)
+	}
+	defer c.RemoveContainer(context.Background(), name)
+	info, err := c.InspectContainer(ctx, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.HostConfig.Memory != 64<<20 || info.HostConfig.CPUQuota != 50000 {
+		t.Fatalf("limits: memory %d, cpu quota %d", info.HostConfig.Memory, info.HostConfig.CPUQuota)
+	}
+	if len(info.Mounts) != 1 || info.Mounts[0].Name != vol || info.Mounts[0].Destination != "/data" {
+		t.Fatalf("mounts: %+v", info.Mounts)
+	}
+	if err := c.StartContainer(ctx, name); err != nil {
+		t.Fatalf("start with limits: %v", err)
+	}
+
+	if err := c.RemoveContainer(ctx, name); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.RemoveVolume(ctx, vol); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := c.ListVolumes(ctx, map[string]string{"bakery.test": vol}); len(list) != 0 {
+		t.Fatalf("volume still there: %+v", list)
 	}
 }
