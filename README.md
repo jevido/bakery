@@ -187,6 +187,21 @@ at once. Under **API tokens** anyone creates tokens for scripts, sent as
 `Authorization: Bearer bky_…`, with their own role or read-only; a token is
 shown once. `task access:test` runs this end to end.
 
+### Notifications
+
+Under **Notifications** an admin adds channels Bakery reports to: email
+(any SMTP server), Discord or Slack (an incoming webhook URL), Telegram (a
+bot token and chat id), ntfy (a topic on ntfy.sh or your own server) or a
+webhook (JSON, signed with `X-Bakery-Signature: sha256=…` when it has a
+secret). Each channel picks its events: a deployment or backup failed (or
+succeeded, off by default), a server became unreachable or came back, a
+server's disk is almost full. Bakery probes every validated server every 5
+minutes and only reports a change. **Test** sends a test message, and each
+channel lists what it recently sent; a channel that cannot be reached is
+tried three times. With an email channel, invitations are also emailed to
+the people you invite. `task mail:up && task notifications:test` runs this
+end to end against Mailpit and a local receiver.
+
 ## Install on a server
 
 On a fresh Linux server with systemd, ports 80/443 open and DNS for your

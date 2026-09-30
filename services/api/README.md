@@ -22,6 +22,11 @@ A Database's Public port is published on `BAKERY_DATABASES_PUBLIC_BIND`
 Public URL names `BAKERY_DATABASES_PUBLIC_HOST` (empty: the dashboard domain,
 else `localhost`).
 
+Notifications link to the dashboard at `BAKERY_DASHBOARD_URL` (empty:
+`https://$BAKERY_DASHBOARD_DOMAIN`, or `http://localhost:4930` without one).
+`BAKERY_TELEGRAM_API_URL` (default `https://api.telegram.org`) and
+`BAKERY_SERVER_PROBE_INTERVAL` (default `5m`) only change for tests.
+
 Backups of Databases are written to `BAKERY_BACKUPS_DIR` (`storage/backups`
 here); S3 storages are tested against the Garage stand-in on
 `127.0.0.1:4960` (`task s3:up` from the repo root writes its key to

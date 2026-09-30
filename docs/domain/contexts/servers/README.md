@@ -31,7 +31,7 @@ Local server. It does not keep a metrics history either.
 | Server status | `unvalidated` (never checked, or host, port or user changed since), `reachable` (every required check passed) or `unreachable`. |
 | Server metrics | CPU use, memory used and total, and disk used and total of Podman's storage on a Server, read live. |
 | Container metrics | CPU and memory use of each Bakery Container on a Server, read live. |
-| Server probe | Every 5 minutes, each validated Server is connected to and its disk read. Two failures in a row make a Reachable Server Unreachable; one success makes an Unreachable one Reachable again. *Disk almost full* is set at 90 % used and cleared below 85 %. |
+| Server probe | Every 5 minutes, each Server whose latest Validation passed is connected to and its disk read. Two failures in a row make a Reachable Server Unreachable; one success makes an Unreachable one Reachable again. *Disk almost full* is set at 90 % used and cleared below 85 %. |
 | Cleanup | Freeing disk on a Server: dangling Bakery images and build layers, and Image retention for the Applications on it. Daily and on demand. |
 | Server connection | What other contexts get from `Connect(server)`: the Server's Podman client and a way to open a unix socket on it. Pooled: one SSH connection per Remote server, redialled when it drops, dropped when the Server is edited, deleted or its Host key forgotten. |
 
@@ -54,7 +54,8 @@ Local server. It does not keep a metrics history either.
   pins the Host key on first contact. A Server that cannot be reached is
   recorded `unreachable` with the reason; that is an outcome, not an error.
 - `ForgetHostKey(server)`.
-- `ProbeAll()`: a Server probe of every validated Server, every 5 minutes
+- `ProbeAll()`: a Server probe of every Server whose latest Validation
+  passed (one that failed it stays as it is until validated again), every 5 minutes
   (`BAKERY_SERVER_PROBE_INTERVAL`).
 - `Metrics(server)`: Server metrics and Container metrics, live.
 - `CleanUp(server)`: runs Cleanup and records when it ran and how much it

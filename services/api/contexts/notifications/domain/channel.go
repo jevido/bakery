@@ -246,7 +246,7 @@ func (c *Channel) merge(in Settings) (Settings, error) {
 	case Discord, Slack:
 		s = Settings{URL: in.URL}
 		keep(&s.URL, old.URL)
-		if err := checkURL(s.URL, true); err != nil {
+		if err := checkURL(s.URL); err != nil {
 			return s, err
 		}
 	case Telegram:
@@ -266,7 +266,8 @@ func (c *Channel) merge(in Settings) (Settings, error) {
 		}
 		trim(&s.Topic)
 		keep(&s.Token, old.Token)
-		if err := checkURL(s.URL, false); err != nil {
+		// A path is fine: a self-hosted ntfy may sit below one.
+		if err := checkURL(s.URL); err != nil {
 			return s, err
 		}
 		if s.Topic == "" || len(s.Topic) > 64 || strings.ContainsAny(s.Topic, " /?#") {
@@ -276,7 +277,7 @@ func (c *Channel) merge(in Settings) (Settings, error) {
 		s = Settings{URL: in.URL, Secret: in.Secret}
 		keep(&s.URL, old.URL)
 		keep(&s.Secret, old.Secret)
-		if err := checkURL(s.URL, true); err != nil {
+		if err := checkURL(s.URL); err != nil {
 			return s, err
 		}
 	}
@@ -288,13 +289,10 @@ func isAddress(s string) bool {
 	return err == nil && a.Name == "" && a.Address == s
 }
 
-func checkURL(raw string, pathAllowed bool) error {
+func checkURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
 		return invalid("url", "url is an http:// or https:// URL")
-	}
-	if !pathAllowed && u.Path != "" {
-		return invalid("url", "url is the server's address without a path, e.g. https://ntfy.sh")
 	}
 	return nil
 }

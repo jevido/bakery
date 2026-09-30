@@ -31,6 +31,20 @@ Local development stack.
   /home/podman/.ssh/authorized_keys'`). There is no systemd inside, so the
   entrypoint starts the Podman API socket and a `loginctl` shim reports
   linger, which `touch /etc/bakery-stand-in/no-linger` turns off.
+- `compose.yml` also holds **Mailpit**, the SMTP stand-in, under the `mail`
+  profile: `task mail:up` starts it with SMTP on `127.0.0.1:4980` (any
+  login, no TLS) and its web UI and API on `http://127.0.0.1:4985`; `task
+  mail:down` removes it.
+- `notifications/test.sh` (`task notifications:test`, needs `task dev` and
+  `task mail:up`) restarts the API with the Telegram API pointed at
+  `notifications/receiver.ts` (a Bun server on `127.0.0.1:4988` standing in
+  for Discord, Slack, Telegram, ntfy and webhooks) and a 10 s Server probe,
+  adds a channel of every kind and tests each, then checks that a failed
+  Deployment, a succeeded one (only where asked for), a failed Backup and,
+  when `task remote:up` runs, the stand-in going down and coming back each
+  notify once, that a channel on a closed port fails after three attempts,
+  and that an Invitation is emailed to the invited person with a working
+  link. It restarts the API as it was at the end.
 - `git/test.sh` (`task git:test`, with `task dev` running) creates a private
   repository in Forgejo, deploys it through Bakery with the Application's
   Deploy key, adds Bakery's Webhook to it, pushes and waits for the push to

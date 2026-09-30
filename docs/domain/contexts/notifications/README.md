@@ -22,7 +22,7 @@ each channel; an audit log is something else.
 | Term | Meaning |
 | ---- | ------- |
 | Notification channel | A named place Notifications go to: a Channel kind, its settings (secrets encrypted) and the Event kinds it is subscribed to. |
-| Channel kind | `email` (SMTP server, from address, recipients), `discord` and `slack` (an incoming webhook URL), `telegram` (a bot token and a chat id), `ntfy` (a server URL, a topic and optionally a token) or `webhook` (any URL, JSON signed with an optional secret). |
+| Channel kind | `email` (SMTP server, from address, recipients), `discord` and `slack` (an incoming webhook URL, a secret), `telegram` (a bot token and a chat id), `ntfy` (a server URL, a topic and optionally a token) or `webhook` (any URL, kept secret, JSON signed with an optional secret). |
 | Event kind | What a Notification is about: `deployment_failed`, `deployment_succeeded`, `backup_failed`, `backup_succeeded`, `server_unreachable`, `server_reachable`, `disk_almost_full`. A new channel is subscribed to all but the two `_succeeded` ones. |
 | Notification | What a publisher hands over: an Event kind, a title, a body, an optional link into the dashboard and when it happened. Not stored on its own. |
 | Delivery | One Notification sent to one Notification channel: `pending`, `sent` or `failed`, the attempts made (at most 3) and the last error. The 50 newest per channel are kept. |
@@ -56,8 +56,9 @@ None published.
 
 - **Publishes:** the Notification channels API
   (`/api/notification-channels` and its Test and Deliveries) for the
-  dashboard, admin-only; `notifications.Notify(ctx, notification)`;
-  `notifications.Start(ctx)` (the dispatcher, and the subscriptions below).
+  dashboard, admin-only; `notifications.Start(ctx)` (the dispatcher, and the
+  subscriptions below). Nothing calls into it: it hears what the others
+  announce.
 - **Consumes**, each translated into a Notification in this context's words:
   - `deployments.OnDeploymentFinished` (succeeded or failed; not cancelled
     ones, nor those failed by a restart) → `deployment_failed` /

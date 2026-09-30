@@ -92,8 +92,11 @@ Range **49xx**.
 | 4972 | Remote server stand-in SSH (compose profile `remote`) |
 | 4974 | Remote server stand-in: its Proxy's HTTP (compose profile `remote`) |
 | 4975 | Remote server stand-in: its Proxy's HTTPS (compose profile `remote`) |
+| 4980 | Mailpit SMTP (SMTP stand-in, compose profile `mail`) |
+| 4985 | Mailpit web UI and API |
+| 4988 | `task notifications:test` receiver (Discord, Slack, Telegram, ntfy, webhook stand-in; only while it runs) |
 
-`DEV_PORTS` lists only 4910 and 4930. Postgres, the proxy, Forgejo, Garage and the Remote server stand-in are containers;
+`DEV_PORTS` lists only 4910 and 4930. Postgres, the proxy, Forgejo, Garage, Mailpit and the Remote server stand-in are containers;
 killing their port kills Podman's rootless port forwarder and leaves the
 container up but unreachable.
 

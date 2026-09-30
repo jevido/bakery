@@ -57,6 +57,19 @@ services:
       - bakery-garage-meta:/var/lib/garage/meta
       - bakery-garage-data:/var/lib/garage/data
 
+  # SMTP stand-in for email Notification channels and Invitation emails
+  # (task mail:up, task notifications:test): SMTP on 127.0.0.1:4980 taking
+  # any login without TLS, its web UI and API on 127.0.0.1:4985.
+  mailpit:
+    image: docker.io/axllent/mailpit:v1.27
+    profiles: [mail]
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    ports:
+      - "127.0.0.1:4980:1025"
+      - "127.0.0.1:4985:8025"
+
   # Remote server stand-in (task remote:up, task servers:test): sshd and
   # rootless Podman for the user `podman`, SSH on 127.0.0.1:4972, its Proxy's
   # HTTP and HTTPS on 127.0.0.1:4974 and 4975. Privileged

@@ -57,9 +57,6 @@ func TestChannelValidation(t *testing.T) {
 		{"telegram token", func() Input { return Input{Name: "t", Kind: Telegram, Settings: Settings{ChatID: "1"}} }, "bot_token"},
 		{"telegram chat", func() Input { return Input{Name: "t", Kind: Telegram, Settings: Settings{BotToken: "1:a"}} }, "chat_id"},
 		{"ntfy topic", func() Input { return Input{Name: "n", Kind: Ntfy, Settings: Settings{Topic: "a/b"}} }, "topic"},
-		{"ntfy path", func() Input {
-			return Input{Name: "n", Kind: Ntfy, Settings: Settings{URL: "https://ntfy.sh/x", Topic: "a"}}
-		}, "url"},
 		{"no events", func() Input { in := emailInput(); in.EventKinds = []EventKind{}; return in }, "event_kinds"},
 		{"unknown event", func() Input { in := emailInput(); in.EventKinds = []EventKind{"reboot"}; return in }, "event_kinds"},
 	}

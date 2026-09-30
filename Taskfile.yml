@@ -79,6 +79,16 @@ tasks:
     cmds:
       - podman compose -f infra/dev/compose.yml --profile remote rm -sf remote
 
+  mail:up:
+    desc: Start the Mailpit SMTP stand-in (127.0.0.1:4980 SMTP, http://127.0.0.1:4985 web and API)
+    cmds:
+      - podman compose -f infra/dev/compose.yml --profile mail up -d mailpit
+
+  mail:down:
+    desc: Stop and remove the Mailpit stand-in
+    cmds:
+      - podman compose -f infra/dev/compose.yml --profile mail rm -sf mailpit
+
   s3:up:
     desc: Start the Garage S3 stand-in (127.0.0.1:4960) with bucket bakery-backups; key in .claude/ralph/state/garage.env
     cmds:
@@ -142,6 +152,11 @@ tasks:
     cmds:
       - ./infra/dev/backups/test.sh
 
+  notifications:test:
+    desc: Every Notification channel kind, the events that notify and emailed Invitations end to end (needs task dev and task mail:up; task remote:up adds the Server probe)
+    cmds:
+      - ./infra/dev/notifications/test.sh
+
   images:
     desc: Build every image (localhost/bakery-*:dev) from infra/images
     cmds:
@@ -162,8 +177,8 @@ tasks:
     desc: shellcheck the install script
     cmds:
       - |
-        if command -v shellcheck >/dev/null; then shellcheck -x infra/dev/garage/setup.sh infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/access/test.sh infra/dev/databases/test.sh infra/dev/backups/test.sh infra/dev/services/test.sh infra/dev/servers/test.sh infra/dev/remote-deploy/test.sh infra/dev/server/checks.sh
-        else podman run --rm -v .:/mnt:ro,Z -w /mnt docker.io/koalaman/shellcheck-alpine shellcheck -x infra/dev/garage/setup.sh infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/access/test.sh infra/dev/databases/test.sh infra/dev/backups/test.sh infra/dev/services/test.sh infra/dev/servers/test.sh infra/dev/remote-deploy/test.sh infra/dev/server/checks.sh
+        if command -v shellcheck >/dev/null; then shellcheck -x infra/dev/garage/setup.sh infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/access/test.sh infra/dev/databases/test.sh infra/dev/backups/test.sh infra/dev/services/test.sh infra/dev/servers/test.sh infra/dev/remote-deploy/test.sh infra/dev/notifications/test.sh infra/dev/server/checks.sh
+        else podman run --rm -v .:/mnt:ro,Z -w /mnt docker.io/koalaman/shellcheck-alpine shellcheck -x infra/dev/garage/setup.sh infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/access/test.sh infra/dev/databases/test.sh infra/dev/backups/test.sh infra/dev/services/test.sh infra/dev/servers/test.sh infra/dev/remote-deploy/test.sh infra/dev/notifications/test.sh infra/dev/server/checks.sh
         fi
 
   check:
