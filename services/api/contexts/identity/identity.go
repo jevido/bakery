@@ -1,7 +1,7 @@
 // Package identity is what other contexts and the router may use from the
 // identity context: its routes, the Auth, Admin and Secrets middlewares,
-// CanSeeSecrets and the InvitationCreated event. Nothing else in
-// contexts/identity is for outside use.
+// CanSeeSecrets, the InvitationCreated event and the artisan Commands.
+// Nothing else in contexts/identity is for outside use.
 package identity
 
 import (
@@ -9,10 +9,12 @@ import (
 	"sync"
 	"time"
 
+	contractsconsole "github.com/goravel/framework/contracts/console"
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/route"
 
 	"github.com/jevido/bakery/services/api/contexts/identity/app"
+	identityconsole "github.com/jevido/bakery/services/api/contexts/identity/console"
 	"github.com/jevido/bakery/services/api/contexts/identity/domain"
 	identityhttp "github.com/jevido/bakery/services/api/contexts/identity/http"
 	"github.com/jevido/bakery/services/api/contexts/identity/infra"
@@ -71,10 +73,16 @@ func Routes(r route.Router) {
 		r.Get("/api/members", c.Members)
 		r.Patch("/api/members/{id}", c.ChangeRole)
 		r.Delete("/api/members/{id}", c.RemoveMember)
+		r.Delete("/api/members/{id}/two-factor", c.ResetTwoFactor)
 		r.Get("/api/invitations", c.Invitations)
 		r.Post("/api/invitations", c.Invite)
 		r.Delete("/api/invitations/{id}", c.RevokeInvitation)
 	})
+}
+
+// Commands are identity's artisan commands.
+func Commands() []contractsconsole.Command {
+	return []contractsconsole.Command{identityconsole.ResetTwoFactor{Service: service}}
 }
 
 // InvitationCreated is an Invitation just made, with its link: the only

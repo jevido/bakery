@@ -212,3 +212,25 @@ func (c *Controller) AcceptInvitation(ctx contractshttp.Context) contractshttp.R
 	}
 	return c.withSession(ctx, contractshttp.StatusCreated, m)
 }
+
+// ResetTwoFactor switches another Member's two-factor off, for someone
+// locked out.
+func (c *Controller) ResetTwoFactor(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return respond.Error(ctx, contractshttp.StatusNotFound, "member not found")
+	}
+	actor, _ := MemberID(ctx)
+	err := c.service.ResetTwoFactor(ctx.Context(), actor, id)
+	switch {
+	case errors.Is(err, domain.ErrOwnerIsFixed):
+		return respond.Error(ctx, contractshttp.StatusForbidden, "the owner's two-factor can only be reset on the server")
+	case errors.Is(err, domain.ErrSelf):
+		return respond.Error(ctx, contractshttp.StatusForbidden, "switch your own two-factor off on your Account page")
+	case errors.Is(err, app.ErrTwoFactorOff):
+		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
+	case err != nil:
+		return memberFailure(ctx, err)
+	}
+	return ctx.Response().NoContent()
+}
