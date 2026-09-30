@@ -64,13 +64,16 @@ backing up Redis and Valkey (see below).
 
 ### Domain events
 
-None published yet.
+- `BackupFinished { backup, database, name, engine, succeeded, reason,
+  trigger, size, off-site }`: a Backup ended. Not for one marked failed by
+  `Recover` after a restart. Registered with `OnBackupFinished(f)`; each
+  subscriber runs in its own goroutine.
 
 ## Integration
 
 - **Publishes:** the Databases API (`/api/environments/{id}/databases`,
   `/api/projects/{id}/databases`, `/api/databases/{id}` and its actions and
-  log stream) for the dashboard.
+  log stream) for the dashboard, and `OnBackupFinished` (notifications).
 - **Talks to:** S3-compatible storage (AWS S3, Garage, and the like) over
   its HTTP API, for S3 storages.
 - **Consumes:** `projects.Environment(id)` to place a new Database (and

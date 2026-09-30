@@ -54,7 +54,10 @@ Who may run each is in brackets.
 
 ### Domain events
 
-None yet.
+- `InvitationCreated { email, role, invited by, link, expires }`: an
+  Invitation was made. Its one subscriber (notifications, with
+  `OnInvitationCreated(f)`) is called synchronously and answers whether it
+  emailed the link, which the invite response reports as `emailed`.
 
 ## Integration
 
@@ -69,6 +72,7 @@ None yet.
     the list of S3 storages, which members pick for a Backup schedule).
   - `identity.CanSeeSecrets(ctx)`: for a response that mixes Secrets with
     fields a viewer may see; the controller leaves the Secrets out.
+  - `OnInvitationCreated(f)`: see Domain events.
   Other contexts learn nothing else about Members.
 - **Consumes:** nothing.
 

@@ -14,6 +14,7 @@ depend on each other.
 | services | supporting | `services/api` (`contexts/services`) | Services, their Components, networks, volumes and Service variables, and the Service templates |
 | servers | supporting | `services/api` (`contexts/servers`) | Servers, their Server keys and Host keys, Server connections, Validation, metrics and Cleanup |
 | identity | generic | `services/api` (`contexts/identity`) | Members and their Roles, Setup, Invitations, Sessions, API tokens |
+| notifications | generic | `services/api` (`contexts/notifications`) | Notification channels and their Deliveries |
 
 - **Core:** where the project competes. Gets the most care and the richest model.
 - **Supporting:** needed and specific to this project, but not the differentiator.
@@ -27,7 +28,7 @@ adapt to.
 
 | Upstream | Downstream | Pattern | Through |
 | -------- | ---------- | ------- | ------- |
-| identity | projects, deployments, routing, databases, services, servers | open host service (they are conformist) | The `identity.Auth` middleware (a signed-in Member, by Session or API token; viewers refused on every change), `identity.Admin` around admin-only areas, `identity.Secrets` around GETs that return Secrets, and `identity.CanSeeSecrets(ctx)` where one response mixes Secrets with public fields. The others learn nothing else about Members |
+| identity | projects, deployments, routing, databases, services, servers, notifications | open host service (they are conformist) | The `identity.Auth` middleware (a signed-in Member, by Session or API token; viewers refused on every change), `identity.Admin` around admin-only areas, `identity.Secrets` around GETs that return Secrets, and `identity.CanSeeSecrets(ctx)` where one response mixes Secrets with public fields. The others learn nothing else about Members |
 | projects | deployments | customer/supplier | `projects.ApplicationForDeploy(id)` returns an `ApplicationSnapshot` (Target server, Source, Dockerfile path, port, Domains, Persistent storage, Resource limits, decrypted Env vars and Deploy key) |
 | projects | routing | customer/supplier | `projects.ApplicationExists(id)`, so the Route settings API answers 404 for an unknown Application without reading projects' tables |
 | routing | deployments | customer/supplier | `routing.SwitchRoute(serverID, applicationID, domains, container, port)`, called synchronously in a Deployment's route step, so the old Container is removed only after traffic has moved |
@@ -39,6 +40,10 @@ adapt to.
 | servers | deployments | customer/supplier | `servers.Connect(serverID)` gives the Server connection every step of a Deployment runs through; deployments registers its Image retention with `servers.OnCleanup`, called with the Server's id during every Cleanup |
 | servers | routing | customer/supplier | `servers.Connect(serverID)` to run and configure the Proxy of a Remote server |
 | servers | projects | customer/supplier | `servers.Exists(id)` when an Application is created with a Target server; projects registers `servers.OnServerDeleting` so a Server Applications target is not deleted |
+| deployments | notifications | published language | `deployments.OnDeploymentFinished { deployment, application, slug, succeeded, reason, branch, commit, trigger, rollback }`: a Deployment ended succeeded or failed (not cancelled, not failed by a restart) |
+| databases | notifications | published language | `databases.OnBackupFinished { backup, database, name, engine, succeeded, reason, trigger, size, off-site }`: a Backup ended (not one failed by a restart) |
+| servers | notifications | published language | `servers.OnServerHealthChanged { server, name, change, reason, disk used/total }`: a Server probe found a Server unreachable, reachable again, or its disk almost full |
+| identity | notifications | customer/supplier | `identity.OnInvitationCreated { email, role, invited by, link, expires }`, called synchronously; notifications answers whether it emailed the link |
 
 ## External systems
 
@@ -48,6 +53,8 @@ adapt to.
 | SSH | servers (for deployments and routing through Server connections) | `golang.org/x/crypto/ssh`: Podman's socket and the Remote Proxy's admin socket through `direct-streamlocal` channels, plain commands for checks |
 | Caddy admin API | routing | JSON config loaded with `POST /load` |
 | S3-compatible storage | databases | Its own thin S3 client (Signature V4), for Backups |
+| SMTP servers | notifications | `net/smtp`, with the settings of an email Notification channel |
+| Discord, Slack, Telegram, ntfy, webhook receivers | notifications | Plain HTTPS POSTs, one small sender per Channel kind |
 
 Patterns: *customer/supplier*, *conformist*, *anticorruption layer*,
 *open host service* / *published language*, *shared kernel*, *separate ways*.
@@ -74,4 +81,8 @@ flowchart LR
   servers -->|Connect, OnCleanup| deployments
   servers -->|Connect| routing
   servers -->|Exists, OnServerDeleting| projects
+  identity -->|OnInvitationCreated| notifications
+  deployments -->|OnDeploymentFinished| notifications
+  databases -->|OnBackupFinished| notifications
+  servers -->|OnServerHealthChanged| notifications
 ```

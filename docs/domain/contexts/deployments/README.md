@@ -72,12 +72,16 @@ Application is (projects) or for the Caddy configuration (routing).
 
 ### Domain events
 
-None published yet. Notifications will need `DeploymentFinished` and
-`DeploymentFailed`; they are added when something consumes them.
+- `DeploymentFinished { deployment, application, slug, succeeded, reason,
+  branch, commit, trigger, rollback }`: a Deployment ended succeeded or
+  failed. Not for a cancelled Deployment, nor for one failed because a
+  restart interrupted it. Registered with `OnDeploymentFinished(f)`; each
+  subscriber runs in its own goroutine so it cannot hold up the Worker.
 
 ## Integration
 
-- **Publishes:** the Deployment and its log over HTTP (JSON and SSE).
+- **Publishes:** the Deployment and its log over HTTP (JSON and SSE), and
+  `OnDeploymentFinished` (notifications).
 - **Consumes:** `projects.ApplicationForDeploy` (the snapshot is taken once, at
   the start of a Deployment, so editing the Application mid-build does not
   change what is being built; it carries the Deploy key for SSH Sources);

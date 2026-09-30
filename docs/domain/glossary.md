@@ -56,10 +56,11 @@ document; list them here when people outside the context use them too.
 | Remote server | servers | A Server reached over SSH as a given user, its rootless Podman socket tunnelled through that connection. | Local server |
 | Server key | servers | The SSH key pair Bakery generates for one Remote server. The Owner adds the public half to the user's `authorized_keys`; the private half is encrypted at rest. | Deploy key |
 | Host key | servers | A Remote server's SSH host key, pinned on the first connection and required to match on every later one until the Owner forgets it. | Known host (git hosts) |
-| Validation | servers | The checks run against a Server (`ssh`, `podman`, `socket`, `linger`, `ports`) and their outcome; it sets the Server status. | Health check |
+| Validation | servers | The checks run against a Server (`ssh`, `podman`, `socket`, `linger`, `ports`) and their outcome; it sets the Server status, as does the Server probe. | Health check, Server probe |
 | Server status | servers | `unvalidated`, `reachable` (every required check passed) or `unreachable`. | Container state |
 | Server metrics | servers | CPU, memory and disk use of a Server, read live from Podman. | Container metrics |
 | Container metrics | servers | CPU and memory use of each Bakery Container on a Server, read live. | Server metrics, Container logs |
+| Server probe | servers | The check of every validated Server every 5 minutes: can Bakery reach it, and how full is its disk. Two failed probes in a row make a Reachable Server Unreachable, one good probe makes it Reachable again; *Disk almost full* is set at 90 % used and cleared below 85 %. Only a change is announced. | Health check, Validation |
 | Cleanup | servers | Freeing a Server's disk: dangling Bakery images and build layers, plus Image retention for the Applications that run on it. Daily and on demand. | Delete |
 | Image retention | deployments | Per Application, the Images of the running Deployment and of the last five finished Deployments are kept; older ones are removed during Cleanup, and a Rollback to one of those is refused ("the image is gone"). | Cleanup |
 | Service | services | Multi-container software described by a Compose file and run in an Environment, created from a Service template or a pasted Compose file. | Application, a compose `services:` entry (that is a Component), the repo's `services/` directory |
@@ -91,3 +92,8 @@ document; list them here when people outside the context use them too.
 | Backups directory | databases | The directory on the Server Bakery writes Backup files to, `<database id>/<UTC timestamp>.<ext>` below it. The volume `bakery-backups` on a server. | Persistent storage |
 | S3 storage | databases | An S3-compatible bucket Backups are uploaded to: endpoint, region, bucket, optional prefix, access key and secret key. The secret key is encrypted at rest and never shown. | Persistent storage, Backups directory |
 | Restore | databases | Replacing the data of a running Database with the contents of one of its succeeded Backups, from the Backups directory or, when the file is gone, from its S3 storage. Anything written since the Backup is lost. | Rollback |
+| Notification channel | notifications | A named place Notifications go to: a Channel kind, its settings (secrets encrypted, never shown) and the Event kinds it is subscribed to. Managed by admins. | Webhook (inbound, deployments) |
+| Channel kind | notifications | `email`, `discord`, `slack`, `telegram`, `ntfy` or `webhook`: how a Notification channel is reached. | Event kind |
+| Event kind | notifications | What a Notification is about: `deployment_failed`, `deployment_succeeded`, `backup_failed`, `backup_succeeded`, `server_unreachable`, `server_reachable`, `disk_almost_full`. | Domain event |
+| Notification | notifications | A message about one thing that happened: Event kind, title, body, a link into the dashboard. Sent to every Notification channel subscribed to its Event kind. | Invitation, log line |
+| Delivery | notifications | One Notification sent to one Notification channel: `pending`, `sent` or `failed`, with up to 3 attempts and the last error. The 50 newest per channel are kept. | Deployment |
