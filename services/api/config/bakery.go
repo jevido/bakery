@@ -40,6 +40,13 @@ func init() {
 			"email":   config.Env("BAKERY_ACME_EMAIL", ""),
 			"ca_root": config.Env("BAKERY_ACME_CA_ROOT", ""),
 		},
+		// Databases' Public ports: the host address they are published on
+		// (empty: every interface, as a server needs) and the host shown in
+		// Public URLs (empty: the dashboard domain, else localhost).
+		"databases": map[string]any{
+			"public_bind": config.Env("BAKERY_DATABASES_PUBLIC_BIND", ""),
+			"public_host": config.Env("BAKERY_DATABASES_PUBLIC_HOST", ""),
+		},
 		"proxy": map[string]any{
 			"image": config.Env("BAKERY_PROXY_IMAGE", "docker.io/library/caddy:2"),
 			// Host address the proxy's HTTP(S) ports are published on; empty
