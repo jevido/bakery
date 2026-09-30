@@ -225,3 +225,27 @@ func TestBuildPacks(t *testing.T) {
 		t.Errorf("default pack = %q", d.BuildPack)
 	}
 }
+
+func TestRegistryCredentials(t *testing.T) {
+	base := ApplicationInput{Name: "x", BuildPack: Image, ImageReference: "ghcr.io/me/app:1", Port: 80}
+	with := func(u, p string) ApplicationInput {
+		in := base
+		in.RegistryCredentials = &RegistryCredentials{Username: u, Password: p}
+		return in
+	}
+	if in, err := with(" me ", "token").Normalize(); err != nil || in.RegistryCredentials.Username != "me" {
+		t.Errorf("valid: %+v, %v", in.RegistryCredentials, err)
+	}
+	if in, err := with("", "left over").Normalize(); err != nil || *in.RegistryCredentials != (RegistryCredentials{}) {
+		t.Errorf("clearing: %+v, %v", in.RegistryCredentials, err)
+	}
+	for _, c := range [][2]string{{"me", ""}, {"a b", "x"}} {
+		if _, err := with(c[0], c[1]).Normalize(); field(err) != "registry_credentials" {
+			t.Errorf("%q: err = %v", c, err)
+		}
+	}
+	git := ApplicationInput{Name: "x", GitURL: "https://github.com/x/y", Port: 80, RegistryCredentials: &RegistryCredentials{Username: "me", Password: "pw"}}
+	if in, err := git.Normalize(); err != nil || *in.RegistryCredentials != (RegistryCredentials{}) {
+		t.Errorf("git pack keeps credentials: %+v, %v", in.RegistryCredentials, err)
+	}
+}

@@ -61,7 +61,11 @@ type ApplicationSnapshot struct {
 	// BuildPack is "dockerfile", "nixpacks", "static" or "image".
 	BuildPack string
 	// ImageReference is set for the image pack, which has no Source.
-	ImageReference   string
+	ImageReference string
+	// RegistryUsername and RegistryPassword (decrypted) are what the image
+	// pack pulls with; both empty means anonymous.
+	RegistryUsername string
+	RegistryPassword string
 	PublishDirectory string
 	GitURL           string
 	GitBranch        string
@@ -98,6 +102,7 @@ func ApplicationForDeploy(ctx context.Context, id uint64) (ApplicationSnapshot, 
 	}
 	return ApplicationSnapshot{
 		ID: a.ID, Slug: a.Slug, BuildPack: string(a.BuildPack), ImageReference: a.ImageReference, PublishDirectory: a.PublishDirectory,
+		RegistryUsername: a.RegistryCredentials.Username, RegistryPassword: a.RegistryCredentials.Password,
 		GitURL: a.GitURL, GitBranch: a.GitBranch,
 		DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain, BuildEnv: build, RuntimeEnv: runtime, DeployKey: a.DeployKey.Private,
 		HealthCheck: HealthCheck(a.HealthCheck),

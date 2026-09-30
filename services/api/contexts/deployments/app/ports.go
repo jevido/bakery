@@ -66,6 +66,10 @@ type Application struct {
 	BuildPack string
 	// ImageReference is what the image pack pulls; it has no Source.
 	ImageReference string
+	// RegistryUsername and RegistryPassword pull ImageReference; both empty
+	// is anonymous.
+	RegistryUsername string
+	RegistryPassword string
 	// PublishDirectory is what the static pack serves.
 	PublishDirectory string
 	GitURL           string

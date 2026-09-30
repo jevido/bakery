@@ -38,6 +38,9 @@ type applicationJSON struct {
 	Domain           string `json:"domain"`
 	// DeployKeyPublic is empty for an https Source.
 	DeployKeyPublic string `json:"deploy_key_public"`
+	// The registry password itself is never returned.
+	RegistryUsername    string `json:"registry_username"`
+	HasRegistryPassword bool   `json:"has_registry_password"`
 	// PublicURL is where the Application is reached through the Proxy,
 	// with the Proxy's HTTPS port when it is not 443 (development).
 	PublicURL   string          `json:"public_url"`
@@ -63,6 +66,7 @@ func applicationToJSON(a domain.Application) applicationJSON {
 		BuildPack: string(a.BuildPack), ImageReference: a.ImageReference, PublishDirectory: a.PublishDirectory,
 		GitURL: a.GitURL, GitBranch: a.GitBranch, DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain,
 		DeployKeyPublic: a.DeployKey.Public, PublicURL: publicURL(a.Domain),
+		RegistryUsername: a.RegistryCredentials.Username, HasRegistryPassword: a.RegistryCredentials.Username != "", // both or neither
 		HealthCheck: healthCheckJSON{
 			Enabled: a.HealthCheck.Enabled, Path: a.HealthCheck.Path, Interval: a.HealthCheck.Interval,
 			Timeout: a.HealthCheck.Timeout, Retries: a.HealthCheck.Retries, StartPeriod: a.HealthCheck.StartPeriod,
@@ -208,6 +212,14 @@ type applicationRequest struct {
 	Domain           string `json:"domain"`
 	// HealthCheck omitted keeps the current one.
 	HealthCheck *healthCheckJSON `json:"health_check"`
+	// RegistryCredentials omitted keeps the current ones; an empty username
+	// removes them; an empty password keeps the stored one.
+	RegistryCredentials *registryCredentialsJSON `json:"registry_credentials"`
+}
+
+type registryCredentialsJSON struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 func (r applicationRequest) input() domain.ApplicationInput {
@@ -219,6 +231,9 @@ func (r applicationRequest) input() domain.ApplicationInput {
 	if r.HealthCheck != nil {
 		h := r.HealthCheck.domain()
 		in.HealthCheck = &h
+	}
+	if r.RegistryCredentials != nil {
+		in.RegistryCredentials = &domain.RegistryCredentials{Username: r.RegistryCredentials.Username, Password: r.RegistryCredentials.Password}
 	}
 	return in
 }

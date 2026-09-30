@@ -50,6 +50,8 @@ type applicationRecord struct {
 	Domain                    string
 	DeployKeyPublic           string
 	DeployKeyPrivateEncrypted string
+	RegistryUsername          string
+	RegistryPasswordEncrypted string
 	HealthCheckEnabled        bool
 	HealthCheckPath           string
 	HealthCheckInterval       int
@@ -68,7 +70,8 @@ func (r applicationRecord) toDomain(projectID uint64) domain.Application {
 		ID: r.ID, EnvironmentID: r.EnvironmentID, ProjectID: projectID, Name: r.Name, Slug: r.Slug,
 		BuildPack: domain.BuildPack(r.BuildPack), ImageReference: r.ImageReference, PublishDirectory: r.PublishDirectory,
 		GitURL: r.GitURL, GitBranch: r.GitBranch, DockerfilePath: r.DockerfilePath, Port: r.Port, Domain: r.Domain,
-		DeployKey: domain.DeployKey{Public: r.DeployKeyPublic},
+		DeployKey:           domain.DeployKey{Public: r.DeployKeyPublic},
+		RegistryCredentials: domain.RegistryCredentials{Username: r.RegistryUsername},
 		HealthCheck: domain.HealthCheck{
 			Enabled: r.HealthCheckEnabled, Path: r.HealthCheckPath, Interval: r.HealthCheckInterval,
 			Timeout: r.HealthCheckTimeout, Retries: r.HealthCheckRetries, StartPeriod: r.HealthCheckStartPeriod,
@@ -81,6 +84,13 @@ func healthCheckColumns(h domain.HealthCheck) map[string]any {
 		"health_check_enabled": h.Enabled, "health_check_path": h.Path, "health_check_interval": h.Interval,
 		"health_check_timeout": h.Timeout, "health_check_retries": h.Retries, "health_check_start_period": h.StartPeriod,
 	}
+}
+
+func encryptRegistryPassword(c domain.RegistryCredentials) (string, error) {
+	if c.Password == "" {
+		return "", nil
+	}
+	return facades.Crypt().EncryptString(c.Password)
 }
 
 func encryptPrivate(k domain.DeployKey) (string, error) {
@@ -219,11 +229,16 @@ func (s Store) CreateApplication(ctx context.Context, a domain.Application) (dom
 	if err != nil {
 		return domain.Application{}, err
 	}
+	password, err := encryptRegistryPassword(a.RegistryCredentials)
+	if err != nil {
+		return domain.Application{}, err
+	}
 	rec := applicationRecord{
 		EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug, GitURL: a.GitURL, GitBranch: a.GitBranch,
 		BuildPack: string(a.BuildPack), ImageReference: a.ImageReference, PublishDirectory: a.PublishDirectory,
 		DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain,
 		DeployKeyPublic: a.DeployKey.Public, DeployKeyPrivateEncrypted: private,
+		RegistryUsername: a.RegistryCredentials.Username, RegistryPasswordEncrypted: password,
 		HealthCheckEnabled: a.HealthCheck.Enabled, HealthCheckPath: a.HealthCheck.Path,
 		HealthCheckInterval: a.HealthCheck.Interval, HealthCheckTimeout: a.HealthCheck.Timeout,
 		HealthCheckRetries: a.HealthCheck.Retries, HealthCheckStartPeriod: a.HealthCheck.StartPeriod,
@@ -251,6 +266,13 @@ func (s Store) Application(ctx context.Context, id uint64) (domain.Application, 
 		}
 		a.DeployKey.Private = private
 	}
+	if rec.RegistryPasswordEncrypted != "" {
+		password, err := facades.Crypt().DecryptString(rec.RegistryPasswordEncrypted)
+		if err != nil {
+			return domain.Application{}, false, errors.New("cannot decrypt the registry password of " + rec.Slug + " (was APP_KEY changed?)")
+		}
+		a.RegistryCredentials.Password = password
+	}
 	return a, true, nil
 }
 
@@ -262,11 +284,16 @@ func (s Store) UpdateApplication(ctx context.Context, a domain.Application) erro
 	if err != nil {
 		return err
 	}
+	password, err := encryptRegistryPassword(a.RegistryCredentials)
+	if err != nil {
+		return err
+	}
 	columns := map[string]any{
 		"name": a.Name, "git_url": a.GitURL, "git_branch": a.GitBranch,
 		"build_pack": string(a.BuildPack), "image_reference": a.ImageReference, "publish_directory": a.PublishDirectory,
 		"dockerfile_path": a.DockerfilePath, "port": a.Port, "domain": a.Domain,
 		"deploy_key_public": a.DeployKey.Public, "deploy_key_private_encrypted": private,
+		"registry_username": a.RegistryCredentials.Username, "registry_password_encrypted": password,
 	}
 	for k, v := range healthCheckColumns(a.HealthCheck) {
 		columns[k] = v

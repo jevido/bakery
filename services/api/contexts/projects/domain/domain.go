@@ -94,8 +94,11 @@ type Application struct {
 	Port             int
 	Domain           string
 	// DeployKey is set exactly when the Source is SSH.
-	DeployKey   DeployKey
-	HealthCheck HealthCheck
+	DeployKey DeployKey
+	// RegistryCredentials are only set for the image pack. Password is
+	// empty unless the Application was read for a Deployment.
+	RegistryCredentials RegistryCredentials
+	HealthCheck         HealthCheck
 }
 
 // HealthCheck is how a new Container is probed before it takes traffic:
@@ -147,6 +150,13 @@ func (h HealthCheck) Normalize() (HealthCheck, error) {
 	return h, nil
 }
 
+// RegistryCredentials are what an image Application pulls with. Both
+// empty means anonymous.
+type RegistryCredentials struct {
+	Username string
+	Password string
+}
+
 // DeployKey is the SSH key pair Bakery generated for one Application. Public
 // is an authorized_keys line; Private is the OpenSSH PEM, empty unless the
 // Application was read for a Deployment.
@@ -170,6 +180,10 @@ type ApplicationInput struct {
 	// HealthCheck nil keeps the Application's current one (the default
 	// for a new Application).
 	HealthCheck *HealthCheck
+	// RegistryCredentials nil keeps the current ones; an empty Username
+	// removes them; a Username with an empty Password keeps the stored
+	// password (the service fills it in before Normalize).
+	RegistryCredentials *RegistryCredentials
 }
 
 var (
@@ -238,6 +252,25 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 		}
 		if err := checkRepositoryPath("dockerfile_path", "Dockerfile path", in.DockerfilePath); err != nil {
 			return in, err
+		}
+	}
+	if in.RegistryCredentials != nil {
+		c := RegistryCredentials{Username: strings.TrimSpace(in.RegistryCredentials.Username), Password: in.RegistryCredentials.Password}
+		if c.Username == "" {
+			c.Password = ""
+		}
+		in.RegistryCredentials = &c
+	}
+	if in.BuildPack != Image {
+		in.RegistryCredentials = &RegistryCredentials{}
+	} else if c := in.RegistryCredentials; c != nil {
+		switch {
+		case len(c.Username) > 255 || strings.ContainsAny(c.Username, " \t\n\r"):
+			return in, invalid("registry_credentials", "registry username is at most 255 characters without spaces")
+		case c.Username != "" && c.Password == "":
+			return in, invalid("registry_credentials", "registry password or token is required with a username")
+		case len(c.Password) > 4096:
+			return in, invalid("registry_credentials", "registry password is at most 4096 characters")
 		}
 	}
 	if in.BuildPack == Static {

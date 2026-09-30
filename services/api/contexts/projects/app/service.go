@@ -165,6 +165,9 @@ func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, i
 	if in.HealthCheck != nil {
 		a.HealthCheck = *in.HealthCheck
 	}
+	if in.RegistryCredentials != nil {
+		a.RegistryCredentials = *in.RegistryCredentials
+	}
 	if a.Domain == "" {
 		a.Domain = domain.DefaultDomain(slug, s.domainSuffix)
 	}
@@ -227,11 +230,19 @@ func (s *Service) UpdateApplication(ctx context.Context, id uint64, in domain.Ap
 	if in.BuildPack == "" {
 		in.BuildPack = a.BuildPack
 	}
+	if c := in.RegistryCredentials; c != nil && c.Username != "" && c.Password == "" {
+		// The form does not show the stored password; saving without
+		// typing it again keeps it.
+		in.RegistryCredentials = &domain.RegistryCredentials{Username: c.Username, Password: a.RegistryCredentials.Password}
+	}
 	in, err = in.Normalize()
 	if err != nil {
 		return domain.Application{}, err
 	}
 	a.BuildPack, a.ImageReference, a.PublishDirectory = in.BuildPack, in.ImageReference, in.PublishDirectory
+	if in.RegistryCredentials != nil {
+		a.RegistryCredentials = *in.RegistryCredentials
+	}
 	a.Name, a.GitURL, a.GitBranch, a.DockerfilePath, a.Port, a.Domain =
 		in.Name, in.GitURL, in.GitBranch, in.DockerfilePath, in.Port, in.Domain
 	if in.HealthCheck != nil {
