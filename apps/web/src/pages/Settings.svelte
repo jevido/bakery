@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api } from '../lib/api'
+  import S3Storages from '../lib/S3Storages.svelte'
   import type { KnownHost } from '../lib/types'
 
   let hosts = $state.raw<KnownHost[] | null>(null)
@@ -50,6 +51,8 @@
     </tbody>
   </table>
 {/if}
+
+<S3Storages />
 
 <style>
   .small {

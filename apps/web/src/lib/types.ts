@@ -149,3 +149,26 @@ export type DatabaseInput = {
   public_port: number | null
   resource_limits: ResourceLimits
 }
+
+/** An S3-compatible bucket Backups are uploaded to; the secret is write-only. */
+export type S3Storage = {
+  id: number
+  name: string
+  endpoint: string
+  region: string
+  bucket: string
+  prefix: string
+  access_key: string
+  has_secret_key: boolean
+}
+
+export type S3StorageInput = {
+  name: string
+  endpoint: string
+  region: string
+  bucket: string
+  prefix: string
+  access_key: string
+  /** Empty on an update keeps the stored one. */
+  secret_key: string
+}
