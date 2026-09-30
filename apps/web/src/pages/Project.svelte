@@ -5,29 +5,35 @@
   import { engineLabel } from '../lib/engines'
   import { sourceLine } from '../lib/buildPacks'
   import EnvEditor from '../lib/EnvEditor.svelte'
+  import ServiceForm from '../lib/ServiceForm.svelte'
   import { go, href } from '../lib/router.svelte'
   import StatusBadge from '../lib/StatusBadge.svelte'
-  import type { Application, ApplicationInput, Database, DatabaseInput, Project } from '../lib/types'
+  import type { Application, ApplicationInput, Database, DatabaseInput, Project, Service, ServiceInput } from '../lib/types'
 
   let { id }: { id: number } = $props()
 
   let project = $state.raw<Project | null>(null)
   let loadError = $state('')
   let databases = $state.raw<Database[]>([])
+  let services = $state.raw<Service[]>([])
   let addingTo = $state<number | null>(null)
   let addingDatabaseTo = $state<number | null>(null)
+  let addingServiceTo = $state<number | null>(null)
   let deleteError = $state('')
 
   $effect(() => {
     project = null
     loadError = ''
     databases = []
+    services = []
     Promise.all([
       api<{ project: Project }>('GET', `/projects/${id}`),
       api<{ databases: Database[] }>('GET', `/projects/${id}/databases`),
+      api<{ services: Service[] }>('GET', `/projects/${id}/services`),
     ])
-      .then(([p, d]) => {
+      .then(([p, d, sv]) => {
         databases = d.databases
+        services = sv.services
         project = p.project
       })
       .catch((e) => (loadError = e.message))
@@ -45,6 +51,11 @@
   async function addDatabase(environmentId: number, input: DatabaseInput) {
     const { database } = await api<{ database: Database }>('POST', `/environments/${environmentId}/databases`, input)
     go(`/databases/${database.id}`)
+  }
+
+  async function addService(environmentId: number, input: ServiceInput) {
+    const { service } = await api<{ service: Service }>('POST', `/environments/${environmentId}/services`, input)
+    go(`/services/${service.id}`)
   }
 
   async function remove() {
@@ -86,10 +97,14 @@
 
   {#each project.environments ?? [] as env (env.id)}
     {@const envDatabases = databases.filter((d) => d.environment_id === env.id)}
+    {@const envServices = services.filter((sv) => sv.environment_id === env.id)}
     <section>
       <div class="head">
         <h2>{env.name}</h2>
         <div class="buttons">
+          {#if addingServiceTo !== env.id}
+            <button onclick={() => (addingServiceTo = env.id)}>New service</button>
+          {/if}
           {#if addingDatabaseTo !== env.id}
             <button onclick={() => (addingDatabaseTo = env.id)}>New database</button>
           {/if}
@@ -123,6 +138,11 @@
           />
         </div>
       {/if}
+      {#if addingServiceTo === env.id}
+        <div class="card">
+          <ServiceForm onsubmit={(input) => addService(env.id, input)} oncancel={() => (addingServiceTo = null)} />
+        </div>
+      {/if}
       {#if env.applications.length === 0}
         <p class="muted">No applications in {env.name} yet.</p>
       {:else}
@@ -148,6 +168,24 @@
                 <td><a href={href(`/databases/${d.id}`)}>{d.name}</a></td>
                 <td class="muted">{engineLabel(d.engine)} {d.version}</td>
                 <td><StatusBadge status={d.status} /></td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/if}
+      {#if envServices.length > 0}
+        <table>
+          <thead><tr><th>Service</th><th>Domain</th><th>Components</th><th>Status</th></tr></thead>
+          <tbody>
+            {#each envServices as sv (sv.id)}
+              {@const primary = sv.components.find((c) => c.public)}
+              <tr>
+                <td><a href={href(`/services/${sv.id}`)}>{sv.name}</a></td>
+                <td class="mono">
+                  {#if primary?.url}<a href={primary.url} target="_blank" rel="noreferrer">{primary.domains[0]}</a>{:else}<span class="muted">none</span>{/if}
+                </td>
+                <td class="muted">{sv.components.length}</td>
+                <td><StatusBadge status={sv.status} /></td>
               </tr>
             {/each}
           </tbody>
