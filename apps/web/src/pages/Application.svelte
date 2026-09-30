@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { packLabel } from '../lib/buildPacks'
   import { api, ApiError } from '../lib/api'
   import ApplicationForm from '../lib/ApplicationForm.svelte'
   import ContainerLogs from '../lib/ContainerLogs.svelte'
@@ -96,6 +97,7 @@
       <h1>{application.name}</h1>
       {#if latest}<StatusBadge status={latest.status} />{/if}
       <p>
+        <span class="muted">{packLabel[application.build_pack]} ·</span>
         <a class="mono" href={application.public_url} target="_blank" rel="noreferrer">{application.public_url}</a>
       </p>
     </div>
@@ -123,12 +125,27 @@
     <Deployments {deployments} bind:selected onchange={() => loadDeployments().catch(() => {})} />
   {:else if tab === 'logs'}
     <ContainerLogs applicationId={application.id} />
+  {:else if tab === 'source' && application.build_pack === 'image'}
+    <dl class="source">
+      <dt>Image</dt>
+      <dd class="mono">{application.image_reference}</dd>
+      <dt>Registry credentials</dt>
+      <dd>{application.registry_username ? `as ${application.registry_username}` : 'none (public image)'}</dd>
+    </dl>
+    <p class="muted">Every deploy pulls the image again, so a moved tag is picked up. Rollbacks start the exact image pulled then.</p>
   {:else if tab === 'source'}
     <dl class="source">
       <dt>Repository</dt>
       <dd class="mono">{application.git_url}</dd>
       <dt>Branch</dt>
       <dd class="mono">{application.git_branch}</dd>
+      {#if application.build_pack === 'static'}
+        <dt>Publish directory</dt>
+        <dd class="mono">{application.publish_directory}</dd>
+      {:else if application.build_pack === 'dockerfile'}
+        <dt>Dockerfile</dt>
+        <dd class="mono">{application.dockerfile_path}</dd>
+      {/if}
     </dl>
     {#if application.deploy_key_public}
       <DeployKey {application} onchange={(a) => (application = a)} />

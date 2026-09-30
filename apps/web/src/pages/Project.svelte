@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, ApiError } from '../lib/api'
   import ApplicationForm from '../lib/ApplicationForm.svelte'
+  import { sourceLine } from '../lib/buildPacks'
   import EnvEditor from '../lib/EnvEditor.svelte'
   import { go, href } from '../lib/router.svelte'
   import type { Application, ApplicationInput, Project } from '../lib/types'
@@ -99,7 +100,7 @@
             {#each env.applications as a (a.id)}
               <tr>
                 <td><a href={href(`/applications/${a.id}`)}>{a.name}</a></td>
-                <td class="mono muted">{a.git_url} @ {a.git_branch}</td>
+                <td class="mono muted">{sourceLine(a)}</td>
                 <td class="mono">{a.domain}</td>
               </tr>
             {/each}

@@ -6,6 +6,11 @@ export type Application = {
   environment_id: number
   name: string
   slug: string
+  build_pack: BuildPack
+  /** Set for the image build pack, which has no git source. */
+  image_reference: string
+  /** What the static build pack serves. */
+  publish_directory: string
   git_url: string
   git_branch: string
   dockerfile_path: string
@@ -15,7 +20,12 @@ export type Application = {
   deploy_key_public: string
   public_url: string
   health_check: HealthCheck
+  registry_username: string
+  /** The password itself is never returned. */
+  has_registry_password: boolean
 }
+
+export type BuildPack = 'dockerfile' | 'nixpacks' | 'static' | 'image'
 
 /** Times in seconds. */
 export type HealthCheck = {
@@ -46,9 +56,14 @@ export type EnvVar = { name: string; value: string; build: boolean; runtime: boo
 /** A shared variable as seen from an application; overridden when a narrower level sets the same name. */
 export type InheritedVariable = EnvVar & { from: 'project' | 'environment'; overridden: boolean }
 
-export type ApplicationInput = Pick<Application, 'name' | 'git_url' | 'git_branch' | 'dockerfile_path' | 'port' | 'domain'> & {
+export type ApplicationInput = Pick<
+  Application,
+  'name' | 'build_pack' | 'image_reference' | 'publish_directory' | 'git_url' | 'git_branch' | 'dockerfile_path' | 'port' | 'domain'
+> & {
   /** Omitted keeps the current one. */
   health_check?: HealthCheck
+  /** Omitted keeps the current ones; an empty username removes them; an empty password keeps the stored one. */
+  registry_credentials?: { username: string; password: string }
 }
 
 export type DeploymentStatus = 'queued' | 'cloning' | 'building' | 'starting' | 'finished' | 'failed' | 'cancelled'
@@ -63,6 +78,8 @@ export type Deployment = {
   commit_sha: string
   commit_message: string
   commit_author: string
+  /** The reference with digest an image deployment pulled. */
+  source_image: string
   image: string
   container: string
   /** The deployment whose image a rollback starts again. */

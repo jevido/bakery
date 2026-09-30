@@ -42,8 +42,15 @@
   }
 
   async function rollback(d: Deployment) {
-    const r = await act(`/deployments/${d.id}/rollback`, `Roll back to deployment #${d.id} (${d.commit_sha.slice(0, 7)})?`)
+    const what = d.source_image ? shortImage(d.source_image) : d.commit_sha.slice(0, 7)
+    const r = await act(`/deployments/${d.id}/rollback`, `Roll back to deployment #${d.id} (${what})?`)
     if (r) selected = r.id
+  }
+
+  /** docker.io/traefik/whoami@sha256:0123456789ab… → whoami@0123456789ab */
+  function shortImage(ref: string): string {
+    const [repo, digest = ''] = ref.split('@')
+    return `${repo.split('/').pop()}@${digest.replace('sha256:', '').slice(0, 12)}`
   }
 
   function duration(d: Deployment): string {
@@ -65,6 +72,7 @@
     {#if current.branch}<span class="muted">{current.branch}</span>{/if}
     {#if current.commit_sha}<span class="mono muted">{current.commit_sha.slice(0, 12)}</span>{/if}
     {#if current.commit_message}<span class="subject" title={current.commit_message}>{current.commit_message}</span>{/if}
+    {#if current.source_image}<span class="mono muted" title={current.source_image}>{shortImage(current.source_image)}</span>{/if}
     {#if current.active}<button class="danger" disabled={busy} onclick={() => cancel(current)}>Cancel</button>{/if}
   </div>
   {#if actionError}<p class="error">{actionError}</p>{/if}
@@ -77,16 +85,20 @@
 {:else}
   {#if actionError}<p class="error">{actionError}</p>{/if}
   <table>
-    <thead><tr><th>#</th><th>Status</th><th>Commit</th><th>Started</th><th>Duration</th><th></th></tr></thead>
+    <thead><tr><th>#</th><th>Status</th><th>Source</th><th>Started</th><th>Duration</th><th></th></tr></thead>
     <tbody>
       {#each deployments as d (d.id)}
         <tr>
           <td><button class="link" onclick={() => (selected = d.id)}>#{d.id}</button></td>
           <td><StatusBadge status={d.status} /></td>
           <td class="commit">
-            <div class="subject" title={d.commit_message}>
-              <span class="mono muted">{d.commit_sha.slice(0, 7)}</span>
-              {d.commit_message}
+            <div class="subject" title={d.source_image || d.commit_message}>
+              {#if d.source_image}
+                <span class="mono">{shortImage(d.source_image)}</span>
+              {:else}
+                <span class="mono muted">{d.commit_sha.slice(0, 7)}</span>
+                {d.commit_message}
+              {/if}
               {@render trigger(d)}
             </div>
             {#if d.branch || d.commit_author}
