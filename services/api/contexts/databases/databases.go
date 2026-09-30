@@ -1,11 +1,12 @@
 // Package databases is what the router and the boot code may use from the
-// databases context: its routes, the log stream and Recover. Nothing else in
-// contexts/databases is for outside use.
+// databases context: its routes, the log stream, Recover and the
+// BackupFinished event. Nothing else in contexts/databases is for outside use.
 package databases
 
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -62,6 +63,7 @@ func svc() *app.Service {
 		service.Log = facades.Log().Errorf
 		service.Files = infra.BackupFiles{Dir: cfg.GetString("bakery.backups.dir")}
 		service.S3 = func(st domain.S3Storage) app.S3Client { return infra.S3{Storage: st} }
+		service.BackupFinished = publishBackupFinished
 		projects.OnProjectDeleting(service.InUse)
 	})
 	return service
@@ -157,5 +159,59 @@ func schedule(ctx context.Context, s *app.Service) {
 		if err := s.Tick(ctx, time.Now()); err != nil && ctx.Err() == nil {
 			facades.Log().Errorf("databases: backup scheduler: %v", err)
 		}
+	}
+}
+
+// BackupFinished is a Backup that ended; one Recover fails after a restart
+// is not announced.
+type BackupFinished struct {
+	BackupID     uint64
+	DatabaseID   uint64
+	DatabaseName string
+	Engine       string
+	Succeeded    bool
+	// Reason is why it failed.
+	Reason string
+	// Trigger is "manual" or "scheduled".
+	Trigger   string
+	SizeBytes int64
+	// OffSite says the Backup was also uploaded to its S3 storage.
+	OffSite    bool
+	FinishedAt time.Time
+}
+
+var (
+	backupMu         sync.Mutex
+	onBackupFinished []func(ctx context.Context, e BackupFinished)
+)
+
+// OnBackupFinished registers f to hear of every BackupFinished. It runs in
+// its own goroutine, so it can neither hold up nor break a Backup.
+func OnBackupFinished(f func(ctx context.Context, e BackupFinished)) {
+	backupMu.Lock()
+	defer backupMu.Unlock()
+	onBackupFinished = append(onBackupFinished, f)
+}
+
+func publishBackupFinished(_ context.Context, d domain.Database, b domain.Backup) {
+	e := BackupFinished{
+		BackupID: b.ID, DatabaseID: d.ID, DatabaseName: d.Name, Engine: string(d.Engine),
+		Succeeded: b.Status == domain.BackupSucceeded, Reason: b.Error, Trigger: string(b.Trigger),
+		SizeBytes: b.SizeBytes, OffSite: b.S3, FinishedAt: b.FinishedAt,
+	}
+	backupMu.Lock()
+	subscribers := slices.Clone(onBackupFinished)
+	backupMu.Unlock()
+	for _, f := range subscribers {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					facades.Log().Errorf("databases: a BackupFinished subscriber panicked: %v", r)
+				}
+			}()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			f(ctx, e)
+		}()
 	}
 }

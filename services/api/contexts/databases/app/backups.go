@@ -170,6 +170,9 @@ func (s *Service) runBackup(ctx context.Context, d domain.Database, b domain.Bac
 		if serr := s.store.SaveBackup(sctx, b); serr != nil {
 			s.logf("databases: saving backup %d: %v", b.ID, serr)
 		}
+		if s.BackupFinished != nil {
+			s.BackupFinished(sctx, d, b)
+		}
 		if err != nil {
 			s.logf("databases: backup %d of database %d: %v", b.ID, d.ID, err)
 		}

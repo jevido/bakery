@@ -88,11 +88,14 @@ func TestChangeKeepsSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Change(Input{Name: "hook 2", Settings: Settings{URL: "https://example.com/h2"}}); err != nil {
+	if err := c.Change(Input{Name: "hook 2"}); err != nil {
 		t.Fatal(err)
 	}
-	if c.Name != "hook 2" || c.Settings.Secret != "s3cret" || c.Settings.URL != "https://example.com/h2" {
+	if c.Name != "hook 2" || c.Settings.Secret != "s3cret" || c.Settings.URL != "https://example.com/h" {
 		t.Errorf("got %+v", c)
+	}
+	if err := c.Change(Input{Name: "hook 2", Settings: Settings{URL: "https://example.com/h2"}}); err != nil || c.Settings.URL != "https://example.com/h2" {
+		t.Errorf("url %q, %v", c.Settings.URL, err)
 	}
 	if !slices.Equal(c.EventKinds, DefaultEventKinds()) {
 		t.Errorf("nil event kinds changed them: %v", c.EventKinds)

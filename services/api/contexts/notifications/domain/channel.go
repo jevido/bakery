@@ -97,8 +97,9 @@ const (
 )
 
 // Settings are a channel's settings; which fields matter depends on its
-// Kind. Password, BotToken, Token, Secret and, for discord and slack, URL
-// are secrets: never shown, and kept when a change leaves them empty.
+// Kind. Password, BotToken, Token, Secret and, for discord, slack and
+// webhook, URL are secrets: never shown, and kept when a change leaves them
+// empty.
 type Settings struct {
 	// email
 	Host     string   `json:"host,omitempty"`
@@ -120,9 +121,10 @@ type Settings struct {
 	Secret string `json:"secret,omitempty"`
 }
 
-// URLIsSecret says whether the Kind's URL is a credential (a Discord or
-// Slack incoming webhook URL is all it takes to post).
-func (k Kind) URLIsSecret() bool { return k == Discord || k == Slack }
+// URLIsSecret says whether the Kind's URL is a credential: a Discord or
+// Slack incoming webhook URL is all it takes to post, and a webhook's often
+// carries a token too.
+func (k Kind) URLIsSecret() bool { return k == Discord || k == Slack || k == Webhook }
 
 // DefaultNtfyURL is the ntfy server used when none is given.
 const DefaultNtfyURL = "https://ntfy.sh"
@@ -272,7 +274,7 @@ func (c *Channel) merge(in Settings) (Settings, error) {
 		}
 	case Webhook:
 		s = Settings{URL: in.URL, Secret: in.Secret}
-		trim(&s.URL)
+		keep(&s.URL, old.URL)
 		keep(&s.Secret, old.Secret)
 		if err := checkURL(s.URL, true); err != nil {
 			return s, err

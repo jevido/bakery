@@ -474,3 +474,25 @@ func TestS3Storages(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestBackupFinishedIsHeard(t *testing.T) {
+	e, v, _ := newBackupEnv(t)
+	var mu sync.Mutex
+	var heard []domain.Backup
+	e.s.BackupFinished = func(_ context.Context, d domain.Database, b domain.Backup) {
+		mu.Lock()
+		defer mu.Unlock()
+		if d.ID != v.ID {
+			t.Errorf("database %d, want %d", d.ID, v.ID)
+		}
+		heard = append(heard, b)
+	}
+	e.backUp(t, v.ID)
+	e.rt.dumpCode, e.rt.dumpStderr = 1, "pg_dump: error: connection refused"
+	e.backUp(t, v.ID)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(heard) != 2 || heard[0].Status != domain.BackupSucceeded || heard[1].Status != domain.BackupFailed || !strings.Contains(heard[1].Error, "connection refused") {
+		t.Fatalf("heard %+v", heard)
+	}
+}

@@ -89,7 +89,7 @@ func lines(parts ...string) string {
 // credential.
 func scrub(msg string, c domain.Channel) string {
 	s := c.Settings
-	if c.Kind.URLIsSecret() || c.Kind == domain.Webhook {
+	if c.Kind.URLIsSecret() {
 		if u, err := url.Parse(s.URL); err == nil && u.Host != "" {
 			msg = strings.ReplaceAll(msg, s.URL, u.Scheme+"://"+u.Host+"/…")
 		}

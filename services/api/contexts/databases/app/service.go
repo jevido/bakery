@@ -112,6 +112,9 @@ type Service struct {
 	S3    func(domain.S3Storage) S3Client
 	// Now is the clock of Backups and schedules.
 	Now func() time.Time
+	// BackupFinished, when set, hears of every Backup that ended, after it
+	// was saved (not of those Recover fails after a restart).
+	BackupFinished func(ctx context.Context, d domain.Database, b domain.Backup)
 
 	mu      sync.Mutex
 	locks   map[uint64]*sync.Mutex
