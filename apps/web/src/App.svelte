@@ -4,7 +4,9 @@
   import { router } from './lib/router.svelte'
   import { session } from './lib/session.svelte'
   import Login from './pages/Login.svelte'
+  import Invite from './pages/Invite.svelte'
   import Members from './pages/Members.svelte'
+  import ApiTokens from './pages/ApiTokens.svelte'
   import NotFound from './pages/NotFound.svelte'
   import Application from './pages/Application.svelte'
   import Database from './pages/Database.svelte'
@@ -26,6 +28,9 @@
   <main class="auth"><p class="error">Cannot reach the API: {failed}</p></main>
 {:else if session.state === 'loading'}
   <main class="auth"><p class="muted">Loading…</p></main>
+{:else if router.route.name === 'invite'}
+  <!-- An Invitation link opens for anyone, signed in or not. -->
+  <Invite token={router.route.token} />
 {:else if session.state === 'setup'}
   <Setup />
 {:else if session.state === 'signed-out' || router.route.name === 'login'}
@@ -50,6 +55,8 @@
       <Settings />
     {:else if router.route.name === 'members'}
       <Members />
+    {:else if router.route.name === 'api-tokens'}
+      <ApiTokens />
     {:else}
       <NotFound />
     {/if}

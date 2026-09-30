@@ -41,7 +41,8 @@
   </aside>
   <div class="main">
     <header>
-      <span class="muted">{session.member?.name} · {session.member?.email}</span>
+      <span class="muted">{session.member?.name} · {session.member?.email} · {session.member?.role}</span>
+      <a href={href('/api-tokens')} aria-current={section === 'api-tokens' ? 'page' : undefined}>API tokens</a>
       <button onclick={() => session.logout()}>Log out</button>
     </header>
     <main>
