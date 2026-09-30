@@ -131,3 +131,53 @@ func TestDomainsChanged(t *testing.T) {
 		t.Fatalf("taken domain: %v, events %v", err, events)
 	}
 }
+
+// projectStore holds one Project and records whether it was deleted.
+type projectStore struct {
+	Store
+	deleted bool
+}
+
+func (p *projectStore) Project(_ context.Context, id uint64) (domain.Project, bool, error) {
+	return domain.Project{ID: 1, Name: "p"}, id == 1, nil
+}
+func (p *projectStore) DeleteProject(context.Context, uint64) error {
+	p.deleted = true
+	return nil
+}
+
+func TestDeleteProjectAsksInUseChecks(t *testing.T) {
+	ctx := context.Background()
+	boom := errors.New("boom")
+	for _, tc := range []struct {
+		name   string
+		used   bool
+		err    error
+		want   error
+		delete bool
+	}{
+		{name: "in use", used: true, want: ErrProjectNotEmpty},
+		{name: "free", delete: true},
+		{name: "check fails", err: boom, want: boom},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &projectStore{}
+			s := NewService(store, fakeKey, "localhost", "")
+			var asked uint64
+			s.OnProjectDeleting(func(_ context.Context, projectID uint64) (bool, error) {
+				asked = projectID
+				return tc.used, tc.err
+			})
+			err := s.DeleteProject(ctx, 1)
+			if !errors.Is(err, tc.want) || (tc.want == nil && err != nil) {
+				t.Fatalf("DeleteProject: want %v, got %v", tc.want, err)
+			}
+			if asked != 1 || store.deleted != tc.delete {
+				t.Fatalf("asked %d, deleted %v", asked, store.deleted)
+			}
+		})
+	}
+	if err := NewService(&projectStore{}, fakeKey, "localhost", "").DeleteProject(ctx, 2); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown project: %v", err)
+	}
+}

@@ -13,7 +13,7 @@ import (
 
 var (
 	ErrNotFound        = errors.New("not found")
-	ErrProjectNotEmpty = errors.New("delete the project's applications first")
+	ErrProjectNotEmpty = errors.New("delete the project's applications and databases first")
 )
 
 // Store keeps projects, environments, applications and env vars. Env var
@@ -59,6 +59,7 @@ type Service struct {
 	reservedDomain   string
 	onDeleted        []func(ctx context.Context, applicationID uint64)
 	onDomainsChanged []func(ctx context.Context, applicationID uint64, domains []string)
+	onDeleting       []func(ctx context.Context, projectID uint64) (bool, error)
 }
 
 // NewService takes the suffix default Domains get (`<slug>.<suffix>`) and
@@ -95,6 +96,13 @@ func (s *Service) OnApplicationDeleted(f func(ctx context.Context, applicationID
 // ApplicationDomainsChanged event.
 func (s *Service) OnApplicationDomainsChanged(f func(ctx context.Context, applicationID uint64, domains []string)) {
 	s.onDomainsChanged = append(s.onDomainsChanged, f)
+}
+
+// OnProjectDeleting registers a check DeleteProject asks first: another
+// context that keeps something in the Project answers true while it does,
+// and the deletion is refused.
+func (s *Service) OnProjectDeleting(inUse func(ctx context.Context, projectID uint64) (bool, error)) {
+	s.onDeleting = append(s.onDeleting, inUse)
 }
 
 func (s *Service) CreateProject(ctx context.Context, name, description string) (domain.Project, error) {
@@ -135,6 +143,15 @@ func (s *Service) UpdateProject(ctx context.Context, id uint64, name, descriptio
 func (s *Service) DeleteProject(ctx context.Context, id uint64) error {
 	if _, err := s.Project(ctx, id); err != nil {
 		return err
+	}
+	for _, inUse := range s.onDeleting {
+		used, err := inUse(ctx, id)
+		if err != nil {
+			return err
+		}
+		if used {
+			return ErrProjectNotEmpty
+		}
 	}
 	return s.store.DeleteProject(ctx, id)
 }
@@ -359,6 +376,12 @@ func (s *Service) ReplaceProjectVariables(ctx context.Context, projectID uint64,
 		return err
 	}
 	return s.replace(ctx, domain.FromProject, projectID, vars)
+}
+
+// Environment returns the Environment (without its Applications), or
+// ErrNotFound.
+func (s *Service) Environment(ctx context.Context, id uint64) (domain.Environment, error) {
+	return s.environment(ctx, id)
 }
 
 func (s *Service) environment(ctx context.Context, id uint64) (domain.Environment, error) {
