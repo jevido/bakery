@@ -141,7 +141,8 @@ func NewBackup(d Database, trigger BackupTrigger, now time.Time) (Backup, error)
 	if !d.Engine.Spec().Backups {
 		return Backup{}, ErrNoBackups
 	}
-	now = now.UTC()
+	// Whole seconds: that is what the store keeps.
+	now = now.UTC().Truncate(time.Second)
 	return Backup{
 		DatabaseID: d.ID, Status: BackupRunning, Trigger: trigger,
 		FileName:    now.Format("20060102T150405Z") + d.BackupExt(),
@@ -155,7 +156,7 @@ func (b *Backup) Succeed(size int64, s3 bool, at time.Time) error {
 	if b.Status != BackupRunning {
 		return ErrBackupFinished
 	}
-	b.Status, b.SizeBytes, b.Local, b.S3, b.FinishedAt = BackupSucceeded, size, true, s3, at.UTC()
+	b.Status, b.SizeBytes, b.Local, b.S3, b.FinishedAt = BackupSucceeded, size, true, s3, at.UTC().Truncate(time.Second)
 	if !s3 {
 		b.S3StorageID = 0
 	}
@@ -168,7 +169,7 @@ func (b *Backup) Fail(reason string, local bool, size int64, at time.Time) error
 	if b.Status != BackupRunning {
 		return ErrBackupFinished
 	}
-	b.Status, b.Error, b.Local, b.SizeBytes, b.S3, b.FinishedAt = BackupFailed, reason, local, size, false, at.UTC()
+	b.Status, b.Error, b.Local, b.SizeBytes, b.S3, b.FinishedAt = BackupFailed, reason, local, size, false, at.UTC().Truncate(time.Second)
 	return nil
 }
 

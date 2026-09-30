@@ -4,6 +4,7 @@ package http
 import (
 	"errors"
 	"strconv"
+	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
@@ -72,6 +73,12 @@ type databaseJSON struct {
 	Credentials *credentialsJSON `json:"credentials,omitempty"`
 	InternalURL string           `json:"internal_url,omitempty"`
 	PublicURL   *string          `json:"public_url,omitempty"`
+
+	BackupsSupported bool         `json:"backups_supported"`
+	BackupSchedule   scheduleJSON `json:"backup_schedule"`
+	NextBackupAt     *time.Time   `json:"next_backup_at"`
+	Restoring        bool         `json:"restoring"`
+	LastRestore      *restoreJSON `json:"last_restore"`
 }
 
 func toJSON(v app.View, full bool) databaseJSON {
@@ -79,7 +86,16 @@ func toJSON(v app.View, full bool) databaseJSON {
 		ID: v.ID, EnvironmentID: v.EnvironmentID, ProjectID: v.ProjectID,
 		Name: v.Name, Slug: v.Slug, Engine: string(v.Engine), Version: v.Version,
 		Status: string(v.Status), DesiredState: string(v.DesiredState), Error: v.Error,
-		ResourceLimits: limitsToJSON(v.ResourceLimits),
+		ResourceLimits:   limitsToJSON(v.ResourceLimits),
+		BackupsSupported: v.Engine.Spec().Backups, BackupSchedule: scheduleToJSON(v.BackupSchedule),
+		Restoring: v.Restoring,
+	}
+	if !v.NextBackupAt.IsZero() {
+		next := v.NextBackupAt
+		out.NextBackupAt = &next
+	}
+	if r := v.LastRestore; r != nil {
+		out.LastRestore = &restoreJSON{BackupID: r.BackupID, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt, Error: r.Error}
 	}
 	if v.PublicPort != 0 {
 		port := v.PublicPort

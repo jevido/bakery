@@ -79,15 +79,26 @@ func Routes(r route.Router) {
 		r.Post("/api/databases/{id}/start", c.Start)
 		r.Post("/api/databases/{id}/stop", c.Stop)
 		r.Post("/api/databases/{id}/restart", c.Restart)
+		r.Put("/api/databases/{id}/backup-schedule", c.SetBackupSchedule)
+		r.Get("/api/databases/{id}/backups", c.Backups)
+		r.Post("/api/databases/{id}/backups", c.BackUp)
+		r.Post("/api/backups/{id}/restore", c.Restore)
+		r.Delete("/api/backups/{id}", c.DeleteBackup)
+		r.Get("/api/s3-storages", c.S3Storages)
+		r.Post("/api/s3-storages", c.CreateS3Storage)
+		r.Post("/api/s3-storages/check", c.CheckS3Storage)
+		r.Patch("/api/s3-storages/{id}", c.UpdateS3Storage)
+		r.Delete("/api/s3-storages/{id}", c.DeleteS3Storage)
 	})
 }
 
-// StreamRoutes registers the log stream, behind identity.Auth but outside
-// the request timeout.
+// StreamRoutes registers the log stream and Backup downloads, behind
+// identity.Auth but outside the request timeout.
 func StreamRoutes(r route.Router) {
 	c := databaseshttp.NewStreamController(svc(), shutdown)
 	r.Middleware(identity.Auth).Group(func(r route.Router) {
 		r.Get("/api/databases/{id}/logs", c.Logs)
+		r.Get("/api/backups/{id}/download", c.Download)
 	})
 }
 

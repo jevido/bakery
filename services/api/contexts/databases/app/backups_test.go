@@ -442,3 +442,35 @@ func TestRestore(t *testing.T) {
 	close(e.rt.dumpGate)
 	e.s.Wait()
 }
+
+func TestS3Storages(t *testing.T) {
+	e, v, st := newBackupEnv(t)
+	ctx := context.Background()
+	in := domain.S3Input{Name: "garage", Endpoint: "http://127.0.0.1:4960", Bucket: "bakery-backups", AccessKey: "a", SecretKey: "s"}
+	var fe *domain.FieldError
+	if _, err := e.s.CreateS3Storage(ctx, in); !errors.As(err, &fe) || fe.Field != "name" {
+		t.Fatalf("duplicate name: %v", err)
+	}
+	in.Name = "other"
+	other, err := e.s.CreateS3Storage(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.SecretKey = ""
+	if got, err := e.s.UpdateS3Storage(ctx, other.ID, in); err != nil || got.SecretKey != "s" {
+		t.Fatalf("update keeps secret: %+v %v", got, err)
+	}
+	if connErr, err := e.s.CheckS3Storage(ctx, other.ID, in); connErr != nil || err != nil {
+		t.Fatalf("check: %v %v", connErr, err)
+	}
+	if _, err := e.s.CheckS3Storage(ctx, 0, in); !errors.As(err, &fe) || fe.Field != "secret_key" {
+		t.Fatalf("check without a secret: %v", err)
+	}
+	setSchedule(t, e, v.ID, domain.BackupSchedule{Cron: "0 3 * * *", Retention: 7, S3StorageID: st.ID})
+	if err := e.s.DeleteS3Storage(ctx, st.ID); !errors.Is(err, ErrS3StorageInUse) {
+		t.Fatalf("delete in use: %v", err)
+	}
+	if err := e.s.DeleteS3Storage(ctx, other.ID); err != nil {
+		t.Fatal(err)
+	}
+}

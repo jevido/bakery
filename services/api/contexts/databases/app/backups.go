@@ -370,13 +370,13 @@ func (s *Service) Restore(ctx context.Context, backupID uint64) error {
 	s.mu.Lock()
 	s.restoring[d.ID] = true
 	s.mu.Unlock()
-	started := s.Now()
+	started := s.Now().UTC()
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		defer s.release(d.ID, j)
 		err := s.runRestore(jctx, d, b)
-		out := RestoreOutcome{BackupID: b.ID, StartedAt: started, FinishedAt: s.Now()}
+		out := RestoreOutcome{BackupID: b.ID, StartedAt: started, FinishedAt: s.Now().UTC()}
 		if err != nil {
 			out.Error = err.Error()
 			s.logf("databases: restoring backup %d into database %d: %v", b.ID, d.ID, err)
