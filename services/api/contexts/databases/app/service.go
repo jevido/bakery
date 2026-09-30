@@ -87,6 +87,10 @@ type View struct {
 	Error       string
 	InternalURL string
 	PublicURL   string
+	// NextBackupAt is when the Backup schedule fires next; zero when off.
+	NextBackupAt time.Time
+	Restoring    bool
+	LastRestore  *RestoreOutcome
 }
 
 // opTimeout bounds one background start, pull included.
@@ -114,7 +118,11 @@ type Service struct {
 	pending map[uint64]*op
 	errs    map[uint64]string
 	jobs    map[uint64]*job
-	wg      sync.WaitGroup
+	// restoring and restores: which Databases a Restore runs for, and how
+	// the last one went.
+	restoring map[uint64]bool
+	restores  map[uint64]RestoreOutcome
+	wg        sync.WaitGroup
 }
 
 func NewService(store Store, runtime Runtime, environments Environments, publicHost string) *Service {
@@ -122,6 +130,7 @@ func NewService(store Store, runtime Runtime, environments Environments, publicH
 		store: store, runtime: runtime, environments: environments, publicHost: publicHost,
 		NewPassword: newPassword, Now: time.Now,
 		locks: map[uint64]*sync.Mutex{}, pending: map[uint64]*op{}, errs: map[uint64]string{}, jobs: map[uint64]*job{},
+		restoring: map[uint64]bool{}, restores: map[uint64]RestoreOutcome{},
 	}
 }
 
@@ -292,7 +301,15 @@ func (s *Service) view(ctx context.Context, d domain.Database) (View, error) {
 	if lastErr != "" {
 		detail = lastErr
 	}
-	return View{Database: d, Status: status, Error: detail, InternalURL: d.InternalURL(), PublicURL: d.PublicURL(s.publicHost)}, nil
+	next, err := s.nextBackup(ctx, d)
+	if err != nil {
+		return View{}, err
+	}
+	restoring, lastRestore := s.restoreState(d.ID)
+	return View{
+		Database: d, Status: status, Error: detail, InternalURL: d.InternalURL(), PublicURL: d.PublicURL(s.publicHost),
+		NextBackupAt: next, Restoring: restoring, LastRestore: lastRestore,
+	}, nil
 }
 
 func (s *Service) Get(ctx context.Context, id uint64) (View, error) {
@@ -402,6 +419,7 @@ func (s *Service) Delete(ctx context.Context, id uint64) error {
 	s.mu.Lock()
 	delete(s.errs, id)
 	delete(s.locks, id)
+	delete(s.restores, id)
 	s.mu.Unlock()
 	return nil
 }

@@ -92,13 +92,15 @@ func StreamRoutes(r route.Router) {
 }
 
 // Recover starts, in the background, every Database that should run and has
-// no Container, retrying while Podman or the database is unreachable.
+// no Container, retrying while Podman or the database is unreachable, and
+// then the scheduler of Backups.
 func Recover(ctx context.Context) {
 	s := svc()
 	go func() {
 		<-ctx.Done()
 		close(shutdown)
 	}()
+
 	go func() {
 		for attempt := 1; ; attempt++ {
 			err := runtime.Podman.EnsureNetwork(ctx, runtime.Network)
@@ -106,6 +108,9 @@ func Recover(ctx context.Context) {
 				err = s.Recover(ctx)
 			}
 			if err == nil {
+				// Only now: Recover marks Backups left running as failed,
+				// which must not hit one the scheduler just started.
+				go schedule(ctx, s)
 				return
 			}
 			facades.Log().Errorf("databases: recovering (attempt %d): %v", attempt, err)
@@ -116,4 +121,20 @@ func Recover(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// schedule runs the Backup scheduler at the start of every minute until
+// ctx ends.
+func schedule(ctx context.Context, s *app.Service) {
+	for {
+		now := time.Now()
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(now.Truncate(time.Minute).Add(time.Minute).Sub(now)):
+		}
+		if err := s.Tick(ctx, time.Now()); err != nil && ctx.Err() == nil {
+			facades.Log().Errorf("databases: backup scheduler: %v", err)
+		}
+	}
 }

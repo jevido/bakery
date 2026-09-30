@@ -340,3 +340,155 @@ func (s *Service) openBackup(ctx context.Context, d domain.Database, b domain.Ba
 }
 
 func isNotExist(err error) bool { return errors.Is(err, fs.ErrNotExist) }
+
+// RestoreOutcome is how the last Restore of a Database went. It is kept in
+// memory only: an API restart forgets the note, never data.
+type RestoreOutcome struct {
+	BackupID   uint64
+	StartedAt  time.Time
+	FinishedAt time.Time
+	Error      string
+}
+
+// Restore replaces the running Database's data with the Backup, in the
+// background.
+func (s *Service) Restore(ctx context.Context, backupID uint64) error {
+	b, d, err := s.backup(ctx, backupID)
+	if err != nil {
+		return err
+	}
+	if !b.Restorable() {
+		return ErrNotRestorable
+	}
+	if err := s.checkRunning(ctx, d); err != nil {
+		return err
+	}
+	j, jctx, err := s.claim(d.ID)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.restoring[d.ID] = true
+	s.mu.Unlock()
+	started := s.Now()
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		defer s.release(d.ID, j)
+		err := s.runRestore(jctx, d, b)
+		out := RestoreOutcome{BackupID: b.ID, StartedAt: started, FinishedAt: s.Now()}
+		if err != nil {
+			out.Error = err.Error()
+			s.logf("databases: restoring backup %d into database %d: %v", b.ID, d.ID, err)
+		}
+		s.mu.Lock()
+		delete(s.restoring, d.ID)
+		s.restores[d.ID] = out
+		s.mu.Unlock()
+	}()
+	return nil
+}
+
+func (s *Service) runRestore(ctx context.Context, d domain.Database, b domain.Backup) error {
+	r, size, err := s.openBackup(ctx, d, b)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	if err := s.runtime.CopyIn(ctx, d, d.RestoreFile(), size, r); err != nil {
+		return fmt.Errorf("copying the backup into the database's container: %w", err)
+	}
+	code, out, err := s.runtime.Exec(ctx, d, d.RestoreCommand())
+	switch {
+	case err != nil:
+		return fmt.Errorf("restoring: %w", err)
+	case code != 0:
+		return fmt.Errorf("the restore exited with code %d: %s", code, out)
+	}
+	return nil
+}
+
+// restoreState is whether a Restore of the Database runs, and how the last
+// one went.
+func (s *Service) restoreState(id uint64) (bool, *RestoreOutcome) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out, ok := s.restores[id]
+	if !ok {
+		return s.restoring[id], nil
+	}
+	return s.restoring[id], &out
+}
+
+// SetBackupSchedule replaces the Database's Backup schedule.
+func (s *Service) SetBackupSchedule(ctx context.Context, id uint64, sched domain.BackupSchedule) (View, error) {
+	d, err := s.get(ctx, id)
+	if err != nil {
+		return View{}, err
+	}
+	if sched.S3StorageID != 0 {
+		_, found, err := s.store.S3Storage(ctx, sched.S3StorageID)
+		if err != nil {
+			return View{}, err
+		}
+		if !found {
+			return View{}, &domain.FieldError{Field: "backup_schedule.s3_storage_id", Message: "that S3 storage does not exist"}
+		}
+	}
+	if err := d.SetBackupSchedule(sched, s.Now()); err != nil {
+		return View{}, err
+	}
+	if err := s.store.Update(ctx, d); err != nil {
+		return View{}, err
+	}
+	return s.view(ctx, d)
+}
+
+// nextBackup is when the Database's schedule fires next; zero when off.
+func (s *Service) nextBackup(ctx context.Context, d domain.Database) (time.Time, error) {
+	sched := d.BackupSchedule
+	if !sched.Enabled {
+		return time.Time{}, nil
+	}
+	last, err := s.store.LastScheduledStart(ctx, d.ID)
+	if err != nil {
+		return time.Time{}, err
+	}
+	from := sched.EnabledAt
+	if last.After(from) {
+		from = last
+	}
+	return sched.Next(from), nil
+}
+
+// Tick starts a Backup of every Database whose schedule is due at now. A
+// due Backup that cannot start (the Database is stopped, or busy) is
+// recorded as a failed scheduled Backup, so the Owner sees why a run was
+// missed, and the schedule waits for its next time.
+func (s *Service) Tick(ctx context.Context, now time.Time) error {
+	list, err := s.store.ScheduledDatabases(ctx)
+	if err != nil {
+		return err
+	}
+	for _, d := range list {
+		last, err := s.store.LastScheduledStart(ctx, d.ID)
+		if err != nil {
+			return err
+		}
+		if !d.BackupSchedule.Due(last, now) {
+			continue
+		}
+		if _, err := s.BackUp(ctx, d.ID, domain.TriggerScheduled); err != nil {
+			s.logf("databases: scheduled backup of database %d: %v", d.ID, err)
+			b, nerr := domain.NewBackup(d, domain.TriggerScheduled, now)
+			if nerr != nil {
+				continue
+			}
+			b.Fail(err.Error(), false, 0, now)
+			if _, cerr := s.store.CreateBackup(ctx, b); cerr != nil {
+				return cerr
+			}
+		}
+	}
+	return nil
+}

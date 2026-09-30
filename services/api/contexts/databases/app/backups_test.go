@@ -320,3 +320,125 @@ func TestRecoverFailsInterrupted(t *testing.T) {
 		t.Fatalf("after recover %+v", got)
 	}
 }
+
+func TestSetBackupSchedule(t *testing.T) {
+	e, v, st := newBackupEnv(t)
+	ctx := context.Background()
+	on := domain.BackupSchedule{Enabled: true, Cron: "0 3 * * *", Retention: 3, S3StorageID: st.ID}
+	got, err := e.s.SetBackupSchedule(ctx, v.ID, on)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The clock is just past 03:00 on 1 October: the next run is tomorrow.
+	if !got.BackupSchedule.Enabled || !got.NextBackupAt.Equal(time.Date(2026, 10, 2, 3, 0, 0, 0, time.UTC)) {
+		t.Fatalf("schedule %+v, next %s", got.BackupSchedule, got.NextBackupAt)
+	}
+	on.S3StorageID = 999
+	var fe *domain.FieldError
+	if _, err := e.s.SetBackupSchedule(ctx, v.ID, on); !errors.As(err, &fe) || fe.Field != "backup_schedule.s3_storage_id" {
+		t.Fatalf("unknown storage: %v", err)
+	}
+	on.S3StorageID, on.Cron = 0, "every night"
+	if _, err := e.s.SetBackupSchedule(ctx, v.ID, on); !errors.As(err, &fe) || fe.Field != "backup_schedule.cron" {
+		t.Fatalf("bad cron: %v", err)
+	}
+	off, _ := e.s.SetBackupSchedule(ctx, v.ID, domain.BackupSchedule{Cron: "0 3 * * *", Retention: 3})
+	if !off.NextBackupAt.IsZero() {
+		t.Fatalf("off has a next backup: %s", off.NextBackupAt)
+	}
+}
+
+func TestTick(t *testing.T) {
+	e, v, _ := newBackupEnv(t)
+	ctx := context.Background()
+	// Switched on at 03:00:0x on 1 October.
+	if _, err := e.s.SetBackupSchedule(ctx, v.ID, domain.BackupSchedule{Enabled: true, Cron: "0 3 * * *", Retention: 7}); err != nil {
+		t.Fatal(err)
+	}
+	day := func(d, h, m int) time.Time { return time.Date(2026, 10, d, h, m, 0, 0, time.UTC) }
+	count := func() int {
+		e.s.Wait()
+		l, _ := e.s.Backups(ctx, v.ID)
+		return len(l)
+	}
+	e.s.Tick(ctx, day(1, 14, 0))
+	if n := count(); n != 0 {
+		t.Fatalf("fired the day it was switched on: %d", n)
+	}
+	// The API was down for three nights; the first tick catches up once.
+	e.clock = day(4, 12, 0)
+	e.s.Tick(ctx, day(4, 12, 0))
+	e.s.Tick(ctx, day(4, 12, 1))
+	if n := count(); n != 1 {
+		t.Fatalf("after a long outage: %d backups", n)
+	}
+	l, _ := e.s.Backups(ctx, v.ID)
+	if l[0].Trigger != domain.TriggerScheduled || l[0].Status != domain.BackupSucceeded {
+		t.Fatalf("scheduled backup %+v", l[0])
+	}
+	// Stopped when due: a failed scheduled Backup says why, once.
+	e.s.Stop(ctx, v.ID)
+	e.clock = day(5, 3, 0)
+	e.s.Tick(ctx, day(5, 3, 0))
+	e.s.Tick(ctx, day(5, 3, 1))
+	if n := count(); n != 2 {
+		t.Fatalf("while stopped: %d backups", n)
+	}
+	l, _ = e.s.Backups(ctx, v.ID)
+	if l[0].Status != domain.BackupFailed || !strings.Contains(l[0].Error, "not running") {
+		t.Fatalf("missed run %+v", l[0])
+	}
+}
+
+func TestRestore(t *testing.T) {
+	e, v, st := newBackupEnv(t)
+	ctx := context.Background()
+	setSchedule(t, e, v.ID, domain.BackupSchedule{Cron: "0 3 * * *", Retention: 7, S3StorageID: st.ID})
+	b := e.backUp(t, v.ID)
+	d, _, _ := e.store.Get(ctx, v.ID)
+
+	if err := e.s.Restore(ctx, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	e.s.Wait()
+	if got := string(e.rt.copied[d.RestoreFile()]); got != "PGDMP-data" {
+		t.Fatalf("copied %q", got)
+	}
+	if len(e.rt.execs) != 1 || e.rt.execs[0][2] != d.RestoreCommand()[2] {
+		t.Fatalf("execs %v", e.rt.execs)
+	}
+	view, _ := e.s.Get(ctx, v.ID)
+	if view.Restoring || view.LastRestore == nil || view.LastRestore.BackupID != b.ID || view.LastRestore.Error != "" {
+		t.Fatalf("after restore: %v %+v", view.Restoring, view.LastRestore)
+	}
+
+	// The local file is gone: it comes from S3.
+	e.files.Remove(v.ID, b.FileName)
+	e.bucket.objects["p/main-1/"+b.FileName] = []byte("PGDMP-from-s3")
+	e.s.Restore(ctx, b.ID)
+	e.s.Wait()
+	if got := string(e.rt.copied[d.RestoreFile()]); got != "PGDMP-from-s3" {
+		t.Fatalf("copied from S3 %q", got)
+	}
+
+	// A failing restore is reported with its output.
+	e.rt.execCode = 1
+	e.s.Restore(ctx, b.ID)
+	e.s.Wait()
+	view, _ = e.s.Get(ctx, v.ID)
+	if view.LastRestore == nil || !strings.Contains(view.LastRestore.Error, "restore broke") {
+		t.Fatalf("failed restore %+v", view.LastRestore)
+	}
+
+	// Not while a Backup runs; not a failed Backup.
+	e.rt.dumpGate = make(chan struct{})
+	running, _ := e.s.BackUp(ctx, v.ID, domain.TriggerManual)
+	if err := e.s.Restore(ctx, b.ID); !errors.Is(err, ErrBusy) {
+		t.Fatalf("restore while backing up: %v", err)
+	}
+	if err := e.s.Restore(ctx, running.ID); !errors.Is(err, ErrNotRestorable) {
+		t.Fatalf("restore of a running backup: %v", err)
+	}
+	close(e.rt.dumpGate)
+	e.s.Wait()
+}
