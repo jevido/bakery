@@ -6,6 +6,8 @@ export class ApiError extends Error {
     message: string,
     public status: number,
     public errors: Record<string, string> = {},
+    /** The whole JSON body of the error response. */
+    public body: Record<string, unknown> = {},
   ) {
     super(message)
   }
@@ -29,7 +31,7 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     if (res.status === 401) onUnauthorized()
-    throw new ApiError(data.message ?? res.statusText, res.status, data.errors ?? {})
+    throw new ApiError(data.message ?? res.statusText, res.status, data.errors ?? {}, data)
   }
   return data as T
 }

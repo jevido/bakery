@@ -87,6 +87,17 @@
     await load()
   }
 
+  async function resetTwoFactor(m: Member) {
+    if (!confirm(`Turn off two-factor for ${m.name} (${m.email})? They are signed out, sign in with only their password, and should set it up again.`)) return
+    rowError = {}
+    try {
+      await api('DELETE', `/members/${m.id}/two-factor`)
+    } catch (err) {
+      rowError = { [m.id]: err instanceof Error ? err.message : String(err) }
+    }
+    await load()
+  }
+
   async function revoke(i: Invitation) {
     if (!confirm(`Revoke the invitation of ${i.email}? Its link stops working.`)) return
     await api('DELETE', `/invitations/${i.id}`)
@@ -138,7 +149,7 @@
   <p class="muted">Loading…</p>
 {:else}
   <table>
-    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>2FA</th><th></th></tr></thead>
     <tbody>
       {#each members as m (m.id)}
         <tr data-testid="member">
@@ -154,8 +165,14 @@
             {/if}
             {#if rowError[m.id]}<small class="error">{rowError[m.id]}</small>{/if}
           </td>
+          <td class={m.two_factor ? '' : 'muted'}>{m.two_factor ? 'on' : 'off'}</td>
           <td>
-            {#if manageable(m)}<button class="danger" onclick={() => remove(m)}>Remove</button>{/if}
+            {#if manageable(m)}
+              <div class="row-actions">
+                {#if m.two_factor}<button onclick={() => resetTwoFactor(m)}>Reset 2FA</button>{/if}
+                <button class="danger" onclick={() => remove(m)}>Remove</button>
+              </div>
+            {/if}
           </td>
         </tr>
       {/each}
@@ -183,6 +200,11 @@
 {/if}
 
 <style>
+  .row-actions {
+    display: flex;
+    gap: 0.4rem;
+    justify-content: flex-end;
+  }
   .form {
     display: grid;
     gap: 0.8rem;
