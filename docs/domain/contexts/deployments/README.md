@@ -30,6 +30,7 @@ Application is (projects) or for the Caddy configuration (routing).
 | Webhook | The URL and secret a git host calls on push. |
 | Known host | A git host's SSH host key, trusted on first use. |
 | Worker | The loop inside the API that claims queued Deployments and runs them. |
+| Volume | The Podman volume `bakery-app-<application-id>-<storage name>` behind one Persistent storage, labelled `bakery.managed=true` and `bakery.application=<id>`. |
 | Podman client | Our thin client for the libpod REST API on the rootless socket. |
 
 ## Model
@@ -50,7 +51,7 @@ Application is (projects) or for the Caddy configuration (routing).
   the Route has moved it is too late, and the Deployment finishes.
 - `Rollback(deployment)`: queues a Deployment with trigger `rollback` that
   runs the given Deployment's Image with today's runtime variables, port,
-  Domain and Health check.
+  Domains, Health check, Persistent storage and Resource limits.
 - `ReceivePush(application, headers, body)`: verifies a Webhook call and
   queues a Deployment with trigger `webhook`.
 - `RotateWebhookSecret(application)`, `SetAutoDeploy(application, on)`.
@@ -167,3 +168,14 @@ None published yet. Notifications will need `DeploymentFinished` and
   clone and writes a Dockerfile, it never talks to a container engine, so
   the rule to reach Podman only through its REST API still holds. The binary
   is pinned in the API image; `BAKERY_NIXPACKS` points at it elsewhere.
+- **Volumes are created by the Deployment, removed with the Application.**
+  `Start` creates each Persistent storage's volume (if missing) with Bakery's
+  labels before creating the Container, so Bakery only ever removes volumes
+  it made. On `ApplicationDeleted` the volumes go after the Containers.
+  During a zero-downtime switch the old and new Container mount the same
+  volume for a moment: an app that cannot share its data directory (SQLite
+  with an exclusive lock) sees two writers briefly.
+- **Resource limits go to Podman as cgroup limits** (`resource_limits`:
+  memory in bytes, CPU as a quota over a 100 ms period). Rootless, that
+  needs the `cpu` and `memory` controllers delegated to the Bakery user,
+  which the install script makes sure of.

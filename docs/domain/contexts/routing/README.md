@@ -7,7 +7,7 @@
 
 Makes Domains reach Containers. Owns the Proxy (the Caddy container
 `bakery-proxy`: it exists, runs and sits on the `bakery` network) and the
-Routes, and renders the whole Caddy configuration from them. It is **not**
+Routes and the Route settings, and renders the whole Caddy configuration from them. It is **not**
 responsible for which Container is current; deployments tells it.
 
 ## Language
@@ -15,7 +15,12 @@ responsible for which Container is current; deployments tells it.
 | Term | Meaning |
 | ---- | ------- |
 | Proxy | The Caddy container `bakery-proxy`. |
-| Route | Domain → container name and port. One per Application. |
+| Route | An Application's Domains → container name and port. One per Application. |
+| Route settings | How the Proxy treats an Application's traffic: Www redirect, Response headers, Basic auth. One per Application, default all off. |
+| Www redirect | `off`, `to_apex` or `to_www`. Each Domain's counterpart (`www.` added or removed) answers 308 to the Domain, keeping path and query. |
+| Counterpart | The host a Www redirect adds for one Domain. |
+| Response header | Name and value set on every response. |
+| Basic auth | One username + password asked for before any request is proxied. |
 | Dashboard Route | Bakery's own dashboard domain: `/api/*` to the API container, everything else to the dashboard container. From configuration, not a stored Route. |
 | Apply | Render the full Caddy JSON config from all Routes and load it with `POST /load`. |
 | ACME | Certificates from an ACME CA (Let's Encrypt by default; any directory URL, e.g. Pebble in tests), used on a Server when Internal TLS is off. |
@@ -27,13 +32,16 @@ responsible for which Container is current; deployments tells it.
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Route | One per Application; its Domain is unique. It always points at a Container that was running when the Route was switched. |
+| Route | One per Application, with at least one Domain. It always points at a Container that was running when the Route was switched. (That Domains are unique is projects' rule.) |
+| Route settings | One per Application, stored even before it has a Route. Www redirect is `off`, `to_apex` or `to_www`. At most 20 Response headers, names are HTTP tokens, listed once (case-insensitively), never hop-by-hop (`Connection`, `Keep-Alive`, `Proxy-*`, `TE`, `Trailer`, `Transfer-Encoding`, `Upgrade`) or `Content-Length`; values on one line, at most 1024 characters. Basic auth, when on, has a username (1–100 characters, no `:`) and a password hash; only the bcrypt hash is kept and it is never returned. |
 
 ### Commands
 
 - `EnsureProxy()`: at API start, create or start `bakery-proxy` and Apply.
-- `SwitchRoute(applicationID, domain, container, port)`: upsert the Route, then Apply.
-- `DropRoute(applicationID)`: on `ApplicationDeleted`, then Apply.
+- `SwitchRoute(applicationID, domains, container, port)`: upsert the Route, then Apply.
+- `ChangeDomains(applicationID, domains)`: on `ApplicationDomainsChanged`; moves an existing Route to the Domains, then Applies. No Route yet: nothing to do.
+- `ChangeRouteSettings(applicationID, settings)`: store, then Apply.
+- `DropRoute(applicationID)`: on `ApplicationDeleted`, drops the Route and the Route settings, then Applies.
 
 ### Domain events
 
@@ -41,8 +49,8 @@ None.
 
 ## Integration
 
-- **Publishes:** `SwitchRoute` for deployments.
-- **Consumes:** `ApplicationDeleted` from projects.
+- **Publishes:** `SwitchRoute` for deployments; the Route settings over HTTP (`GET/PUT /api/applications/{id}/routing`) for the dashboard.
+- **Consumes:** `ApplicationDeleted` and `ApplicationDomainsChanged` from projects.
 
 ## Why it's shaped this way
 
@@ -77,3 +85,17 @@ None.
 - **An extra ACME root is copied into the Proxy through the Podman API**
   (`/data/bakery/acme-root.pem`) on every EnsureProxy, so a private CA such
   as Pebble can stand in for Let's Encrypt without building a Caddy image.
+- **Route settings live here, not on the Application in projects.** They
+  are about what the Proxy does with traffic, which is routing's language,
+  and they need no Deployment, so routing owns a small API of its own and a
+  `route_settings` table keyed by application id (no foreign key, like
+  `routes`). The Domains stay in projects, which checks they are unique.
+- **An explicit Domain wins over a counterpart.** When a Www redirect's
+  counterpart is another Application's Domain, the counterpart is not
+  rendered, so one Application's redirect setting can never take traffic
+  from another.
+- **Basic auth keeps only a bcrypt hash**, which is also what Caddy's
+  `http_basic` provider wants; the password is never stored or returned, and
+  Health checks are unaffected because they run inside the Container.
+- **Response headers are set, not added**, so a header the app already sends
+  is replaced rather than doubled.
