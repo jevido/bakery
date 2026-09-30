@@ -1,0 +1,16 @@
+# Garage, the S3 stand-in for development and tests (task s3:up). One node,
+# no replication. Every secret here is dev-only, not a secret.
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+rpc_secret = "0e2c4bf8c7bd7a4ff6fb1de7c3b0e0f7a0d6c0b1a8e3f2d4c5b6a7980112233a"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage.localhost"

@@ -69,6 +69,19 @@ tasks:
       - podman compose -f infra/dev/compose.yml --profile git rm -sf forgejo
       - podman volume rm -f bakery-dev_bakery-forgejo-data bakery-dev_bakery-forgejo-config
 
+  s3:up:
+    desc: Start the Garage S3 stand-in (127.0.0.1:4960) with bucket bakery-backups; key in .claude/ralph/state/garage.env
+    cmds:
+      - podman compose -f infra/dev/compose.yml --profile s3 up -d garage
+      - ./infra/dev/garage/setup.sh
+
+  s3:down:
+    desc: Stop and remove the Garage stand-in and its volumes
+    cmds:
+      - podman compose -f infra/dev/compose.yml --profile s3 rm -sf garage
+      - podman volume rm -f bakery-dev_bakery-garage-meta bakery-dev_bakery-garage-data
+      - rm -f .claude/ralph/state/garage.env
+
   git:test:
     desc: Private repository, deploy key and webhook end to end against Forgejo (needs task dev)
     cmds:
@@ -114,8 +127,8 @@ tasks:
     desc: shellcheck the install script
     cmds:
       - |
-        if command -v shellcheck >/dev/null; then shellcheck -x infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/databases/test.sh infra/dev/server/checks.sh
-        else podman run --rm -v .:/mnt:ro,Z -w /mnt docker.io/koalaman/shellcheck-alpine shellcheck -x infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/databases/test.sh infra/dev/server/checks.sh
+        if command -v shellcheck >/dev/null; then shellcheck -x infra/dev/garage/setup.sh infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/databases/test.sh infra/dev/server/checks.sh
+        else podman run --rm -v .:/mnt:ro,Z -w /mnt docker.io/koalaman/shellcheck-alpine shellcheck -x infra/dev/garage/setup.sh infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/databases/test.sh infra/dev/server/checks.sh
         fi
 
   check:

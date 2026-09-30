@@ -88,8 +88,9 @@ Range **49xx**.
 | 4949 | proxy (Caddy) admin API, `127.0.0.1` only    |
 | 4950 | Forgejo HTTP (git stand-in, compose profile `git`) |
 | 4952 | Forgejo SSH                                  |
+| 4960 | Garage S3 API (S3 stand-in, compose profile `s3`) |
 
-`DEV_PORTS` lists only 4910 and 4930. Postgres, the proxy and Forgejo are containers;
+`DEV_PORTS` lists only 4910 and 4930. Postgres, the proxy, Forgejo and Garage are containers;
 killing their port kills Podman's rootless port forwarder and leaves the
 container up but unreachable.
 

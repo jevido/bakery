@@ -50,3 +50,8 @@ tasks:
     desc: Integration tests against the rootless Podman socket (tag podman)
     cmds:
       - go test -tags podman -count=1 ./...
+
+  test:s3:
+    desc: S3 client tests against the Garage stand-in (task s3:up first; tag garage)
+    cmds:
+      - go test -tags garage -count=1 -run Garage ./contexts/databases/infra/

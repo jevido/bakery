@@ -44,7 +44,22 @@ services:
       - bakery-forgejo-data:/var/lib/gitea
       - bakery-forgejo-config:/etc/gitea
 
+  # S3 stand-in for Backups (task s3:up, task api:test:s3, task
+  # backups:test). Its S3 API listens on 127.0.0.1:4960; the API reaches it
+  # there in development, as a server reaches a bucket on the internet.
+  garage:
+    image: docker.io/dxflrs/garage:v2.1.0
+    profiles: [s3]
+    ports:
+      - "127.0.0.1:4960:3900"
+    volumes:
+      - ./garage/garage.toml:/etc/garage.toml:ro,Z
+      - bakery-garage-meta:/var/lib/garage/meta
+      - bakery-garage-data:/var/lib/garage/data
+
 volumes:
   bakery-db:
   bakery-forgejo-data:
   bakery-forgejo-config:
+  bakery-garage-meta:
+  bakery-garage-data:
