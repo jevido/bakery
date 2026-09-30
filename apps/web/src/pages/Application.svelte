@@ -6,6 +6,7 @@
   import DeployKey from '../lib/DeployKey.svelte'
   import Deployments from '../lib/Deployments.svelte'
   import EnvEditor from '../lib/EnvEditor.svelte'
+  import Routing from '../lib/Routing.svelte'
   import { go, href } from '../lib/router.svelte'
   import StatusBadge from '../lib/StatusBadge.svelte'
   import Webhook from '../lib/Webhook.svelte'
@@ -13,7 +14,7 @@
 
   let { id }: { id: number } = $props()
 
-  type Tab = 'deployments' | 'logs' | 'source' | 'general' | 'env'
+  type Tab = 'deployments' | 'logs' | 'source' | 'general' | 'routing' | 'env'
 
   let application = $state.raw<Application | null>(null)
   let deployments = $state.raw<Deployment[]>([])
@@ -99,7 +100,7 @@
       <p>
         <span class="muted">{packLabel[application.build_pack]} ·</span>
         {#each application.public_urls as url, i (url)}
-          {#if i > 0}<span class="muted"> · </span>{/if}
+          {#if i > 0}<span class="muted">{' · '}</span>{/if}
           <a class="mono" href={url} target="_blank" rel="noreferrer">{url}</a>
         {/each}
       </p>
@@ -128,6 +129,7 @@
     <button role="tab" aria-selected={tab === 'logs'} onclick={() => (tab = 'logs')}>Logs</button>
     <button role="tab" aria-selected={tab === 'source'} onclick={() => (tab = 'source')}>Source</button>
     <button role="tab" aria-selected={tab === 'general'} onclick={() => (tab = 'general')}>General</button>
+    <button role="tab" aria-selected={tab === 'routing'} onclick={() => (tab = 'routing')}>Routing</button>
     <button role="tab" aria-selected={tab === 'env'} onclick={() => (tab = 'env')}>Environment variables</button>
   </div>
 
@@ -175,6 +177,8 @@
     {#if saved}<p class="ok">Saved. Domains apply at once; everything else on the next deploy.</p>{/if}
     <h2>Danger zone</h2>
     <button class="danger" onclick={remove}>Delete application</button>
+  {:else if tab === 'routing'}
+    <Routing applicationId={application.id} domains={application.domains} />
   {:else}
     <EnvEditor path={`/applications/${application.id}/env`} />
   {/if}

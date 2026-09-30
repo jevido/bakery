@@ -48,6 +48,15 @@ export type HealthCheck = {
   start_period: number
 }
 
+export type WwwRedirect = 'off' | 'to_apex' | 'to_www'
+
+/** How the proxy treats an application's traffic; the password hash is never returned. */
+export type RouteSettings = {
+  www_redirect: WwwRedirect
+  response_headers: { name: string; value: string }[]
+  basic_auth: { enabled: boolean; username: string; password_set: boolean }
+}
+
 export type Webhook = { path: string; secret: string; auto_deploy: boolean }
 
 export type KnownHost = { id: number; host: string; fingerprints: string[]; created_at: string }
