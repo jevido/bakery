@@ -91,3 +91,39 @@ func TestTwoFactorEnrolment(t *testing.T) {
 		t.Fatalf("disable twice: %v", err)
 	}
 }
+
+func TestLoginTwoFactor(t *testing.T) {
+	ctx := context.Background()
+	s, now, m := twoFactorService(t)
+
+	if _, err := s.LoginTwoFactor(ctx, m.ID, "123456", ""); !errors.Is(err, ErrBadCredentials) {
+		t.Fatalf("two-factor off: %v", err)
+	}
+	if _, err := s.StartTwoFactor(ctx, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	codes, err := s.ConfirmTwoFactor(ctx, m.ID, codeAt(t, s, m.ID, *now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	*now = now.Add(30 * time.Second)
+	code := codeAt(t, s, m.ID, *now)
+	if got, err := s.LoginTwoFactor(ctx, m.ID, code, ""); err != nil || got.ID != m.ID {
+		t.Fatalf("right code: %v", err)
+	}
+	if _, err := s.LoginTwoFactor(ctx, m.ID, code, ""); !errors.Is(err, domain.ErrCodeUsed) {
+		t.Fatalf("same code again: %v", err)
+	}
+	if _, err := s.LoginTwoFactor(ctx, m.ID, "", codes[3]); err != nil {
+		t.Fatalf("recovery code: %v", err)
+	}
+	if _, err := s.LoginTwoFactor(ctx, m.ID, "", codes[3]); !errors.Is(err, domain.ErrWrongCode) {
+		t.Fatalf("recovery code twice: %v", err)
+	}
+	if left, _ := s.TwoFactorStatus(ctx, m.ID); left.RecoveryCodesLeft != 9 {
+		t.Fatalf("left: %d", left.RecoveryCodesLeft)
+	}
+	if _, err := s.LoginTwoFactor(ctx, 999, code, ""); !errors.Is(err, ErrBadCredentials) {
+		t.Fatalf("unknown member: %v", err)
+	}
+}

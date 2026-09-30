@@ -47,6 +47,7 @@ func Routes(r route.Router) {
 	r.Get("/api/setup", c.SetupStatus)
 	r.Post("/api/setup", c.Setup)
 	r.Post("/api/login", c.Login)
+	r.Post("/api/login/two-factor", c.LoginTwoFactor)
 	r.Post("/api/logout", c.Logout)
 	r.Middleware(Auth).Get("/api/me", c.Me)
 	r.Get("/api/invitations/by-token/{token}", c.InvitationByToken)

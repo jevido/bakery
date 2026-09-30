@@ -164,3 +164,23 @@ func (s *Service) newRecoveryCodes() (codes, hashes []string, err error) {
 	}
 	return codes, hashes, nil
 }
+
+// LoginTwoFactor is the second sign-in step of a Member whose password was
+// right: an Authenticator code or a Recovery code gives the Session. A
+// Member removed, or whose two-factor went off meanwhile, starts over.
+func (s *Service) LoginTwoFactor(ctx context.Context, memberID uint64, code, recoveryCode string) (domain.Member, error) {
+	m, err := s.CurrentMember(ctx, memberID)
+	if errors.Is(err, ErrMemberNotFound) {
+		return domain.Member{}, ErrBadCredentials
+	}
+	if err != nil {
+		return domain.Member{}, err
+	}
+	if !m.TwoFactor.On() {
+		return domain.Member{}, ErrBadCredentials
+	}
+	if err := s.checkSecondFactor(ctx, m, code, recoveryCode); err != nil {
+		return domain.Member{}, err
+	}
+	return m, nil
+}

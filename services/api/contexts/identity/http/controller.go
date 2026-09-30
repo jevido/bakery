@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
@@ -100,14 +101,21 @@ func (c *Controller) Login(ctx contractshttp.Context) contractshttp.Response {
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	owner, err := c.service.Login(ctx.Context(), req.Email, req.Password)
+	m, err := c.service.Login(ctx.Context(), req.Email, req.Password)
 	if errors.Is(err, app.ErrBadCredentials) {
 		return respond.Error(ctx, contractshttp.StatusUnauthorized, err.Error())
 	}
 	if err != nil {
 		return respond.ServerError(ctx, err)
 	}
-	return c.withSession(ctx, contractshttp.StatusOK, owner)
+	if m.TwoFactor.On() {
+		// No Session yet: the Login challenge waits for the second step.
+		if err := setLoginChallenge(ctx, loginChallenge{MemberID: m.ID, ExpiresAt: time.Now().Add(loginChallengeTTL)}); err != nil {
+			return respond.ServerError(ctx, err)
+		}
+		return ctx.Response().Success().Json(contractshttp.Json{"two_factor_required": true})
+	}
+	return c.withSession(ctx, contractshttp.StatusOK, m)
 }
 
 func (c *Controller) Logout(ctx contractshttp.Context) contractshttp.Response {
