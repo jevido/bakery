@@ -44,7 +44,9 @@ document; list them here when people outside the context use them too.
 | Webhook | deployments | The URL and secret a git host calls on every push, so a push to an Application's branch deploys it. | Notification webhook (later) |
 | Auto-deploy | deployments | Whether a verified push to the Application's branch queues a Deployment. On by default. | Redeploy |
 | Known host | deployments | A git host's SSH host key, remembered on the first clone from that host and required to match on every later one. | Host key (Servers) |
-| Server | servers | A machine Bakery runs Containers on: the Local server, through the rootless Podman socket, or a Remote server over SSH. Every Container still runs on the Local server. | Proxy |
+| Server | servers | A machine Bakery runs Containers on: the Local server, through the rootless Podman socket, or a Remote server over SSH. Applications run on their Target server; Databases and Services still run on the Local server. | Proxy |
+| Target server | projects, deployments, routing | The Server an Application's Images are built on and its Containers run on. Chosen when the Application is added and fixed afterwards; the Local server when none was chosen. | Server connection |
+| Server connection | servers | A pooled way for other contexts to reach one Server: its Podman API and any unix socket on it. One SSH connection per Remote server, redialled when it drops. | Validation |
 | Local server | servers | The Server Bakery itself runs on (`localhost`). Always exists; can be neither edited nor deleted. | Remote server |
 | Remote server | servers | A Server reached over SSH as a given user, its rootless Podman socket tunnelled through that connection. | Local server |
 | Server key | servers | The SSH key pair Bakery generates for one Remote server. The Owner adds the public half to the user's `authorized_keys`; the private half is encrypted at rest. | Deploy key |
@@ -53,7 +55,7 @@ document; list them here when people outside the context use them too.
 | Server status | servers | `unvalidated`, `reachable` (every required check passed) or `unreachable`. | Container state |
 | Server metrics | servers | CPU, memory and disk use of a Server, read live from Podman. | Container metrics |
 | Container metrics | servers | CPU and memory use of each Bakery Container on a Server, read live. | Server metrics, Container logs |
-| Cleanup | servers | Freeing a Server's disk: dangling Bakery images and build layers, plus Image retention on the Local server. Daily and on demand. | Delete |
+| Cleanup | servers | Freeing a Server's disk: dangling Bakery images and build layers, plus Image retention for the Applications that run on it. Daily and on demand. | Delete |
 | Image retention | deployments | Per Application, the Images of the running Deployment and of the last five finished Deployments are kept; older ones are removed during Cleanup, and a Rollback to one of those is refused ("the image is gone"). | Cleanup |
 | Service | services | Multi-container software described by a Compose file and run in an Environment, created from a Service template or a pasted Compose file. | Application, a compose `services:` entry (that is a Component), the repo's `services/` directory |
 | Compose file | services | The `compose.yml` text a Service is made of, in the subset Bakery supports; anything else is refused with its line. | Containerfile |
@@ -63,8 +65,8 @@ document; list them here when people outside the context use them too.
 | Service template | services | A named, described Compose file embedded in Bakery; the catalog under New → Service. | Build pack |
 | Service status | services | `running`, `stopped`, `deploying`, `degraded` or `failed`, summed up from each Component's status (read from Podman like a Database status). Only the desired state is stored. | Deployment status |
 | Service route | routing | A Public Component's Domains pointed at its Container and port. One per Public Component, rendered with the Routes. | Route |
-| Proxy | routing | The Caddy container `bakery-proxy`, configured only through its admin API. | Server |
-| Route | routing | An Application's Domains pointed at one Container and port. One per Application. | Endpoint |
+| Proxy | routing | The Caddy container `bakery-proxy` on a Server, configured only through its admin API. One per Server that has Routes; the Local server's also serves the Dashboard Route and Service routes. | Server |
+| Route | routing | An Application's Domains pointed at one Container and port on its Target server, served by that Server's Proxy. One per Application. | Endpoint |
 | Route settings | routing | How the Proxy treats one Application's traffic: its Www redirect, Response headers and Basic auth. Applied at once, without a Deployment. | Application settings in projects |
 | Www redirect | routing | `off`, `to_apex` or `to_www`: for every Domain, the counterpart with `www.` added or removed answers with a permanent (308) redirect to it, keeping path and query. | Domain |
 | Response header | routing | A header name and value the Proxy sets on every response of an Application. | Env var |

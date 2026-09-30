@@ -5,8 +5,8 @@
 
 ## Purpose
 
-Turns an Application into a running Container: clone the Source and build
-the Image with Podman (from its Dockerfile, a Dockerfile Nixpacks writes, or
+Turns an Application into a running Container on its Target server: clone the Source and build
+the Image with Podman on that Server (from its Dockerfile, a Dockerfile Nixpacks writes, or
 a generated static file server), or pull its Image reference, then start the
 Container, move the Route to it, and remove the
 Container it replaces once the new one passes its Health check, writing
@@ -19,7 +19,7 @@ Application is (projects) or for the Caddy configuration (routing).
 
 | Term | Meaning |
 | ---- | ------- |
-| Deployment | One attempt, with a status, its trigger, the branch and commit (SHA, subject, author) it built or the Source image (reference with digest) it pulled, its Image and Container. |
+| Deployment | One attempt on one Server (the Application's Target server when it started), with a status, its trigger, the branch and commit (SHA, subject, author) it built or the Source image (reference with digest) it pulled, its Image and Container. |
 | Source image | The pulled reference with its digest, e.g. `docker.io/traefik/whoami@sha256:…`, recorded by an `image` Deployment. |
 | Health check | Probed inside the new Container (`curl`, else `wget`) before the Route moves. |
 | Cancelled | The final status of a Deployment the Owner cancelled. |
@@ -56,8 +56,9 @@ Application is (projects) or for the Caddy configuration (routing).
   queues a Deployment with trigger `webhook`.
 - `RotateWebhookSecret(application)`, `SetAutoDeploy(application, on)`.
 - `ForgetKnownHost(host)`.
-- `PruneImages()`: Image retention for every Application; published for the
-  servers context's Cleanup.
+- `PruneImages(server)`: Image retention for every Application whose
+  Deployments ran on that Server, with that Server's Podman; registered with
+  servers through `servers.OnCleanup`.
 - The Worker's steps: `Clone`, `Build`, `Start`, `WaitHealthy`,
   `SwitchRoute`, `CleanUp`, `Fail(reason)`. What comes before `Start`
   depends on the Build pack:
@@ -80,7 +81,10 @@ None published yet. Notifications will need `DeploymentFinished` and
 - **Consumes:** `projects.ApplicationForDeploy` (the snapshot is taken once, at
   the start of a Deployment, so editing the Application mid-build does not
   change what is being built; it carries the Deploy key for SSH Sources);
-  `routing.SwitchRoute`; `ApplicationDeleted` (the Webhook goes too).
+  `routing.SwitchRoute` (with the Target server); `ApplicationDeleted` (the
+  Webhook goes too, and Containers and Volumes are removed on every Server
+  the Application's Deployments ran on); `servers.Connect`, the Server
+  connection every step of a Deployment runs through.
   A push Webhook for an `image` Application is ignored: it has no branch.
 - **Receives:** Webhook calls from git hosts, unauthenticated but signed.
 
@@ -152,8 +156,8 @@ None published yet. Notifications will need `DeploymentFinished` and
   history stays append-only and its log says what ran. It reuses the earlier
   Image tag, so Images of finished Deployments must be kept. Image retention
   keeps the running Deployment's Image and those of the last five finished
-  Deployments per Application; older ones are removed during Cleanup (the
-  servers context calls `PruneImages`), and a Rollback to one of those is
+  Deployments per Application; older ones are removed during Cleanup of the
+  Server they are on (servers calls the `PruneImages` it registered), and a Rollback to one of those is
   refused with "the image is gone". Five covers the rollbacks people make
   in practice without letting every build stay on disk forever.
 - **A pulled image is re-tagged as the Deployment's Image**
@@ -184,3 +188,15 @@ None published yet. Notifications will need `DeploymentFinished` and
   memory in bytes, CPU as a quota over a 100 ms period). Rootless, that
   needs the `cpu` and `memory` controllers delegated to the Bakery user,
   which the install script makes sure of.
+- **Every step runs on the Target server, except the clone.** The clone
+  stays on Bakery's side, which holds the Deploy keys and Known hosts, and
+  is streamed to the Server's Podman as the build context; the libpod build
+  endpoint takes it over any connection, SSH included. So the Image is
+  built where it runs and no registry is needed. Building on one Server and
+  running on another comes with a registry, later.
+- **A Deployment records its Server.** Rollback checks the Image on that
+  Server, Image retention prunes per Server, and deleting an Application
+  finds every Server its Containers and Volumes may be on without asking
+  projects about an Application that no longer exists.
+- **A Server that cannot be reached fails the Deployment before anything
+  changes**, with the reason, so the running version (if any) stays.

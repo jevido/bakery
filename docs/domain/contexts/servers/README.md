@@ -11,9 +11,11 @@ context knows how to reach a Server, whether it is fit to run on
 (Validation), what it uses (Server metrics and Container metrics) and how to
 free its disk (Cleanup).
 
-It does **not** decide what runs where: deploying Applications, Databases and
-Services to a Remote server is not there yet, and every Container still runs
-on the Local server. It does not keep a metrics history either.
+It also hands other contexts a Server connection, so deployments and routing
+can run Containers and a Proxy on any Server. It does **not** decide what
+runs where: an Application's Target server is projects' and the Deployment
+that runs there is deployments'. Databases and Services still run on the
+Local server. It does not keep a metrics history either.
 
 ## Language
 
@@ -28,7 +30,8 @@ on the Local server. It does not keep a metrics history either.
 | Server status | `unvalidated` (never checked, or host, port or user changed since), `reachable` (every required check passed) or `unreachable`. |
 | Server metrics | CPU use, memory used and total, and disk used and total of Podman's storage on a Server, read live. |
 | Container metrics | CPU and memory use of each Bakery Container on a Server, read live. |
-| Cleanup | Freeing disk on a Server: dangling Bakery images and build layers, and Image retention on the Local server. Daily and on demand. |
+| Cleanup | Freeing disk on a Server: dangling Bakery images and build layers, and Image retention for the Applications on it. Daily and on demand. |
+| Server connection | What other contexts get from `Connect(server)`: the Server's Podman client and a way to open a unix socket on it. Pooled: one SSH connection per Remote server, redialled when it drops, dropped when the Server is edited, deleted or its Host key forgotten. |
 
 ## Model
 
@@ -43,6 +46,8 @@ on the Local server. It does not keep a metrics history either.
 - `Add(name, host, port, user)`: a Remote server with a new Server key,
   `unvalidated`.
 - `Edit(server, name, host, port, user)`, `Delete(server)`: Remote servers only.
+  Delete is refused while a registered check says the Server is still in
+  use (an Application targets it).
 - `Validate(server)`: connects, runs the checks, records the Validation and
   pins the Host key on first contact. A Server that cannot be reached is
   recorded `unreachable` with the reason; that is an outcome, not an error.
@@ -57,11 +62,13 @@ None yet.
 
 ## Integration
 
-- **Publishes:** nothing yet. The next phase publishes the Servers other
-  contexts deploy to.
-- **Consumes:** `deployments.PruneImages(ctx)` during Cleanup of the Local
-  server (Image retention), behind an `ImageRetention` port. The auth
-  middleware from identity.
+- **Publishes:** `Connect(server)` (a Server connection; 0 is the Local
+  server; a changed Host key refuses as Validate does), `LocalID()`,
+  `Exists(server)`, `OnServerDeleting(check)` (projects: a Server Applications
+  target is not deleted) and `OnCleanup(retention)` (deployments registers its
+  Image retention, called with the Server's id during every Cleanup).
+- **Consumes:** the auth middleware from identity. Nothing else: servers
+  imports no other context, so every context may depend on it.
 
 ## Why it's shaped this way
 
@@ -70,10 +77,17 @@ None yet.
   lifecycle of its own (keys, Validation, metrics, Cleanup). Keeping it in
   deployments would make three other contexts depend on deployments'
   internals to find a machine.
-- **Registered and observed first, deployed to later.** Deploying to a Remote
-  server needs a Proxy per Server, a target Server on Applications,
-  Databases and Services, and images built where they run. That depends on
-  Servers being real, so it is the next step, not this one.
+- **Registered and observed first, deployed to later.** Servers were added,
+  validated and observed before anything ran on them; Applications came
+  next, Databases and Services follow the same pattern later.
+- **Retention is a hook, not a call into deployments.** servers used to call
+  `deployments.PruneImages` directly; once deployments and routing needed
+  `servers.Connect` that would be an import cycle, so deployments registers
+  its retention with `OnCleanup` instead and servers depends on no context.
+- **Server connections are pooled.** A Deployment or a log follow makes many
+  Podman calls; a new SSH handshake per call would be slow and fill the
+  Server's auth log. One connection per Server, checked with a keepalive and
+  redialled when dead, is enough for one Bakery.
 - **SSH through `golang.org/x/crypto/ssh`, Podman's socket through a
   `direct-streamlocal` channel.** The libpod client is unchanged: only its
   dialer differs. There is no `ssh -L` process to supervise and no podman

@@ -5,8 +5,8 @@
 
 ## Purpose
 
-Makes Domains reach Containers. Owns the Proxy (the Caddy container
-`bakery-proxy`: it exists, runs and sits on the `bakery` network) and the
+Makes Domains reach Containers. Owns the Proxies (the Caddy container
+`bakery-proxy` on each Server that has Routes: it exists, runs and sits on that Server's `bakery` network) and the
 Routes, the Service routes and the Route settings, and renders the whole Caddy configuration from them. It is **not**
 responsible for which Container is current; deployments tells it.
 
@@ -14,8 +14,9 @@ responsible for which Container is current; deployments tells it.
 
 | Term | Meaning |
 | ---- | ------- |
-| Proxy | The Caddy container `bakery-proxy`. |
-| Route | An Application's Domains → container name and port. One per Application. |
+| Proxy | The Caddy container `bakery-proxy` on one Server. The Local server's also serves the Dashboard Route and the Service routes. |
+| Remote Proxy | The Proxy on a Remote server. Its admin API is a unix socket in the volume `bakery-proxy-admin`, reached over the Server connection. |
+| Route | An Application's Domains → container name and port on its Target server. One per Application. |
 | Service route | A Public Component's Domains → its Container and port. One per Public Component of a Service. |
 | Route settings | How the Proxy treats an Application's traffic: Www redirect, Response headers, Basic auth. One per Application, default all off. |
 | Www redirect | `off`, `to_apex` or `to_www`. Each Domain's counterpart (`www.` added or removed) answers 308 to the Domain, keeping path and query. |
@@ -23,7 +24,7 @@ responsible for which Container is current; deployments tells it.
 | Response header | Name and value set on every response. |
 | Basic auth | One username + password asked for before any request is proxied. |
 | Dashboard Route | Bakery's own dashboard domain: `/api/*` to the API container, everything else to the dashboard container. From configuration, not a stored Route. |
-| Apply | Render the full Caddy JSON config from all Routes and load it with `POST /load`. |
+| Apply | For one Server: render the full Caddy JSON config from that Server's Routes (plus, on the Local server, the Service routes and the Dashboard Route) and load it into that Server's Proxy with `POST /load`. |
 | ACME | Certificates from an ACME CA (Let's Encrypt by default; any directory URL, e.g. Pebble in tests), used on a Server when Internal TLS is off. |
 | Internal TLS | Certificates from Caddy's own CA, for `*.localhost` in development. |
 
@@ -33,14 +34,14 @@ responsible for which Container is current; deployments tells it.
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Route | One per Application, with at least one Domain. It always points at a Container that was running when the Route was switched. (That Domains are unique is projects' rule.) |
+| Route | One per Application, with at least one Domain, on one Server. It always points at a Container on that Server that was running when the Route was switched. (That Domains are unique is projects' rule.) |
 | Service route | One per (Service, Component), with at least one Domain, pointing at a Container that was running when the Service's routes were set. A Service's routes are always replaced as a set. Rendered with default Route settings. |
 | Route settings | One per Application, stored even before it has a Route. Www redirect is `off`, `to_apex` or `to_www`. At most 20 Response headers, names are HTTP tokens, listed once (case-insensitively), never hop-by-hop (`Connection`, `Keep-Alive`, `Proxy-*`, `TE`, `Trailer`, `Transfer-Encoding`, `Upgrade`) or `Content-Length`; values on one line, at most 1024 characters. Basic auth, when on, has a username (1–100 characters, no `:`) and a password hash; only the bcrypt hash is kept and it is never returned. |
 
 ### Commands
 
-- `EnsureProxy()`: at API start, create or start `bakery-proxy` and Apply.
-- `SwitchRoute(applicationID, domains, container, port)`: upsert the Route, then Apply.
+- `EnsureProxy()`: at API start, create or start the Local server's `bakery-proxy` and Apply; then, in the background, the same for every Remote server that has Routes.
+- `SwitchRoute(server, applicationID, domains, container, port)`: upsert the Route, ensure that Server's Proxy (creating it on a Server's first Route), then Apply that Server.
 - `ChangeDomains(applicationID, domains)`: on `ApplicationDomainsChanged`; moves an existing Route to the Domains, then Applies. No Route yet: nothing to do.
 - `ChangeRouteSettings(applicationID, settings)`: store, then Apply.
 - `DropRoute(applicationID)`: on `ApplicationDeleted`, drops the Route and the Route settings, then Applies.
@@ -54,7 +55,7 @@ None.
 ## Integration
 
 - **Publishes:** `SwitchRoute` for deployments; `SetServiceRoutes` and `DropServiceRoutes` for services; the Route settings over HTTP (`GET/PUT /api/applications/{id}/routing`) for the dashboard.
-- **Consumes:** `ApplicationDeleted` and `ApplicationDomainsChanged` from projects.
+- **Consumes:** `ApplicationDeleted` and `ApplicationDomainsChanged` from projects; `servers.Connect` to run and configure a Remote Proxy.
 
 ## Why it's shaped this way
 
@@ -109,3 +110,18 @@ None.
   (service id, component) and turned into the same Route shape before
   rendering, so the Caddy config stays one full render of everything the
   Proxy serves. They have no Route settings yet.
+- **A Proxy per Server, not one central Proxy.** Each Server serves its own
+  Applications on its own 80/443, so the DNS of an Application's Domain
+  points at the Server it runs on, as in Coolify. A central Proxy would need
+  host ports on every Server and traffic between hosts, and would make
+  Bakery's own server a single point of failure for all of them. Each
+  Server's Proxy gets only its own Routes; Apply works per Server, so a
+  change on one Server never reloads another.
+- **A Remote Proxy's admin API is a unix socket in a volume**
+  (`bakery-proxy-admin`, mounted at `/run/bakery-admin`), opened through the
+  Server's SSH connection (`direct-streamlocal`, like the Podman socket) at
+  the volume's mountpoint. No port on the Server is published for it, so
+  nothing clashes and nothing outside can reach the unauthenticated admin
+  API.
+- **Service routes and the Dashboard Route stay on the Local server**:
+  Services still run there, and the dashboard is Bakery's own.
