@@ -24,5 +24,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000009AddApplicationBuildPack{},
 		&migrations.M20260930000010AddApplicationRegistryCredentials{},
 		&migrations.M20260930000011AddDeploymentSourceImage{},
+		&migrations.M20260930000012CreateApplicationDomainsTable{},
 	}
 }

@@ -21,8 +21,14 @@ func (f *fakeStore) Environment(context.Context, uint64) (domain.Environment, bo
 	return domain.Environment{ID: 1, ProjectID: 1, Name: domain.DefaultEnvironment}, true, nil
 }
 func (f *fakeStore) SlugTaken(context.Context, string) (bool, error) { return false, nil }
-func (f *fakeStore) DomainTaken(context.Context, string, uint64) (bool, error) {
-	return false, nil
+func (f *fakeStore) DomainsTaken(_ context.Context, domains []string, _ uint64) ([]string, error) {
+	var taken []string
+	for _, d := range domains {
+		if d == "taken.example.com" {
+			taken = append(taken, d)
+		}
+	}
+	return taken, nil
 }
 func (f *fakeStore) CreateApplication(_ context.Context, a domain.Application) (domain.Application, error) {
 	a.ID = 1
@@ -42,21 +48,21 @@ func TestDashboardDomainIsReserved(t *testing.T) {
 	s := NewService(&fakeStore{}, fakeKey, "example.com", "bakery.example.com")
 	in := domain.ApplicationInput{Name: "web", GitURL: "https://example.com/r.git", Port: 80}
 
-	in.Domain = "Bakery.Example.com"
+	in.Domains = []string{"web.example.com", "Bakery.Example.com"}
 	_, err := s.CreateApplication(ctx, 1, in)
 	var fe *domain.FieldError
-	if !errors.As(err, &fe) || fe.Field != "domain" {
+	if !errors.As(err, &fe) || fe.Field != "domains" {
 		t.Fatalf("create with the dashboard domain: want a domain FieldError, got %v", err)
 	}
 
-	in.Domain = ""
+	in.Domains = nil
 	a, err := s.CreateApplication(ctx, 1, in)
-	if err != nil || a.Domain != "web.example.com" {
-		t.Fatalf("create with the default domain: %v, %q", err, a.Domain)
+	if err != nil || len(a.Domains) != 1 || a.Domains[0] != "web.example.com" {
+		t.Fatalf("create with the default domain: %v, %q", err, a.Domains)
 	}
 
-	in.Domain = "bakery.example.com"
-	if _, err := s.UpdateApplication(ctx, a.ID, in); !errors.As(err, &fe) || fe.Field != "domain" {
+	in.Domains = []string{"bakery.example.com"}
+	if _, err := s.UpdateApplication(ctx, a.ID, in); !errors.As(err, &fe) || fe.Field != "domains" {
 		t.Fatalf("update to the dashboard domain: want a domain FieldError, got %v", err)
 	}
 }
@@ -97,5 +103,31 @@ func TestSSHSourceAlwaysHasADeployKey(t *testing.T) {
 	in.GitURL = "https://example.com/r.git"
 	if a, _ = s.UpdateApplication(ctx, a.ID, in); a.DeployKey != (domain.DeployKey{}) {
 		t.Fatalf("back to https must drop the key: %+v", a.DeployKey)
+	}
+}
+
+func TestDomainsChanged(t *testing.T) {
+	ctx := context.Background()
+	s := NewService(&fakeStore{}, fakeKey, "example.com", "")
+	var events [][]string
+	s.OnApplicationDomainsChanged(func(_ context.Context, id uint64, domains []string) {
+		events = append(events, domains)
+	})
+	in := domain.ApplicationInput{Name: "web", GitURL: "https://example.com/r.git", Port: 80}
+	a, err := s.CreateApplication(ctx, 1, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpdateApplication(ctx, a.ID, in); err != nil || len(events) != 0 {
+		t.Fatalf("unchanged domains: %v, events %v", err, events)
+	}
+	in.Domains = []string{"web.example.com", "www.example.com"}
+	if _, err := s.UpdateApplication(ctx, a.ID, in); err != nil || len(events) != 1 || len(events[0]) != 2 {
+		t.Fatalf("changed domains: %v, events %v", err, events)
+	}
+	in.Domains = []string{"taken.example.com"}
+	var fe *domain.FieldError
+	if _, err := s.UpdateApplication(ctx, a.ID, in); !errors.As(err, &fe) || fe.Field != "domains" || len(events) != 1 {
+		t.Fatalf("taken domain: %v, events %v", err, events)
 	}
 }

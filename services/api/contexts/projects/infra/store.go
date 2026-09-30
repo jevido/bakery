@@ -47,7 +47,6 @@ type applicationRecord struct {
 	GitBranch                 string
 	DockerfilePath            string
 	Port                      int
-	Domain                    string
 	DeployKeyPublic           string
 	DeployKeyPrivateEncrypted string
 	RegistryUsername          string
@@ -63,13 +62,58 @@ type applicationRecord struct {
 
 func (applicationRecord) TableName() string { return "applications" }
 
+type domainRecord struct {
+	ID            uint64 `gorm:"primaryKey"`
+	ApplicationID uint64
+	Domain        string
+	Position      int
+	orm.Timestamps
+}
+
+func (domainRecord) TableName() string { return "application_domains" }
+
+// domainsOf returns the Domains of each of the Applications, in order.
+func (s Store) domainsOf(ctx context.Context, ids ...uint64) (map[uint64][]string, error) {
+	out := make(map[uint64][]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	in := make([]any, len(ids))
+	for i, id := range ids {
+		in[i] = id
+	}
+	var recs []domainRecord
+	if err := s.query(ctx).WhereIn("application_id", in).OrderBy("application_id").OrderBy("position").Find(&recs); err != nil {
+		return nil, err
+	}
+	for _, r := range recs {
+		out[r.ApplicationID] = append(out[r.ApplicationID], r.Domain)
+	}
+	return out, nil
+}
+
+// writeDomains replaces the Application's Domains inside tx.
+func writeDomains(tx contractsorm.Query, applicationID uint64, domains []string) error {
+	if _, err := tx.Where("application_id", applicationID).Delete(&domainRecord{}); err != nil {
+		return err
+	}
+	if len(domains) == 0 {
+		return nil
+	}
+	recs := make([]domainRecord, len(domains))
+	for i, d := range domains {
+		recs[i] = domainRecord{ApplicationID: applicationID, Domain: d, Position: i}
+	}
+	return tx.Create(&recs)
+}
+
 // toDomain leaves the Deploy key's private half out; only Application(id)
 // decrypts it.
 func (r applicationRecord) toDomain(projectID uint64) domain.Application {
 	return domain.Application{
 		ID: r.ID, EnvironmentID: r.EnvironmentID, ProjectID: projectID, Name: r.Name, Slug: r.Slug,
 		BuildPack: domain.BuildPack(r.BuildPack), ImageReference: r.ImageReference, PublishDirectory: r.PublishDirectory,
-		GitURL: r.GitURL, GitBranch: r.GitBranch, DockerfilePath: r.DockerfilePath, Port: r.Port, Domain: r.Domain,
+		GitURL: r.GitURL, GitBranch: r.GitBranch, DockerfilePath: r.DockerfilePath, Port: r.Port,
 		DeployKey:           domain.DeployKey{Public: r.DeployKeyPublic},
 		RegistryCredentials: domain.RegistryCredentials{Username: r.RegistryUsername},
 		HealthCheck: domain.HealthCheck{
@@ -176,11 +220,21 @@ func (s Store) Project(ctx context.Context, id uint64) (domain.Project, bool, er
 			return domain.Project{}, false, err
 		}
 	}
+	appIDs := make([]uint64, len(apps))
+	for i, a := range apps {
+		appIDs[i] = a.ID
+	}
+	domains, err := s.domainsOf(ctx, appIDs...)
+	if err != nil {
+		return domain.Project{}, false, err
+	}
 	for _, e := range envs {
 		env := domain.Environment{ID: e.ID, ProjectID: id, Name: e.Name, Applications: []domain.Application{}}
 		for _, a := range apps {
 			if a.EnvironmentID == e.ID {
-				env.Applications = append(env.Applications, a.toDomain(id))
+				app := a.toDomain(id)
+				app.Domains = domains[a.ID]
+				env.Applications = append(env.Applications, app)
 			}
 		}
 		p.Environments = append(p.Environments, env)
@@ -219,9 +273,23 @@ func (s Store) SlugTaken(ctx context.Context, slug string) (bool, error) {
 	return n > 0, err
 }
 
-func (s Store) DomainTaken(ctx context.Context, d string, exceptID uint64) (bool, error) {
-	n, err := s.query(ctx).Model(&applicationRecord{}).Where("domain", d).Where("id <> ?", exceptID).Count()
-	return n > 0, err
+func (s Store) DomainsTaken(ctx context.Context, domains []string, exceptID uint64) ([]string, error) {
+	if len(domains) == 0 {
+		return nil, nil
+	}
+	in := make([]any, len(domains))
+	for i, d := range domains {
+		in[i] = d
+	}
+	var recs []domainRecord
+	if err := s.query(ctx).WhereIn("domain", in).Where("application_id <> ?", exceptID).OrderBy("domain").Find(&recs); err != nil {
+		return nil, err
+	}
+	taken := make([]string, len(recs))
+	for i, r := range recs {
+		taken[i] = r.Domain
+	}
+	return taken, nil
 }
 
 func (s Store) CreateApplication(ctx context.Context, a domain.Application) (domain.Application, error) {
@@ -236,17 +304,25 @@ func (s Store) CreateApplication(ctx context.Context, a domain.Application) (dom
 	rec := applicationRecord{
 		EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug, GitURL: a.GitURL, GitBranch: a.GitBranch,
 		BuildPack: string(a.BuildPack), ImageReference: a.ImageReference, PublishDirectory: a.PublishDirectory,
-		DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain,
+		DockerfilePath: a.DockerfilePath, Port: a.Port,
 		DeployKeyPublic: a.DeployKey.Public, DeployKeyPrivateEncrypted: private,
 		RegistryUsername: a.RegistryCredentials.Username, RegistryPasswordEncrypted: password,
 		HealthCheckEnabled: a.HealthCheck.Enabled, HealthCheckPath: a.HealthCheck.Path,
 		HealthCheckInterval: a.HealthCheck.Interval, HealthCheckTimeout: a.HealthCheck.Timeout,
 		HealthCheckRetries: a.HealthCheck.Retries, HealthCheckStartPeriod: a.HealthCheck.StartPeriod,
 	}
-	if err := s.query(ctx).Create(&rec); err != nil {
+	err = facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		if err := tx.Create(&rec); err != nil {
+			return err
+		}
+		return writeDomains(tx, rec.ID, a.Domains)
+	})
+	if err != nil {
 		return domain.Application{}, uniqueViolation(err)
 	}
-	return rec.toDomain(a.ProjectID), nil
+	created := rec.toDomain(a.ProjectID)
+	created.Domains = a.Domains
+	return created, nil
 }
 
 func (s Store) Application(ctx context.Context, id uint64) (domain.Application, bool, error) {
@@ -259,6 +335,11 @@ func (s Store) Application(ctx context.Context, id uint64) (domain.Application, 
 		return domain.Application{}, false, err
 	}
 	a := rec.toDomain(env.ProjectID)
+	domains, err := s.domainsOf(ctx, rec.ID)
+	if err != nil {
+		return domain.Application{}, false, err
+	}
+	a.Domains = domains[rec.ID]
 	if rec.DeployKeyPrivateEncrypted != "" {
 		private, err := facades.Crypt().DecryptString(rec.DeployKeyPrivateEncrypted)
 		if err != nil {
@@ -291,14 +372,19 @@ func (s Store) UpdateApplication(ctx context.Context, a domain.Application) erro
 	columns := map[string]any{
 		"name": a.Name, "git_url": a.GitURL, "git_branch": a.GitBranch,
 		"build_pack": string(a.BuildPack), "image_reference": a.ImageReference, "publish_directory": a.PublishDirectory,
-		"dockerfile_path": a.DockerfilePath, "port": a.Port, "domain": a.Domain,
+		"dockerfile_path": a.DockerfilePath, "port": a.Port,
 		"deploy_key_public": a.DeployKey.Public, "deploy_key_private_encrypted": private,
 		"registry_username": a.RegistryCredentials.Username, "registry_password_encrypted": password,
 	}
 	for k, v := range healthCheckColumns(a.HealthCheck) {
 		columns[k] = v
 	}
-	_, err = s.query(ctx).Model(&applicationRecord{}).Where("id", a.ID).Update(columns)
+	err = facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		if _, err := tx.Model(&applicationRecord{}).Where("id", a.ID).Update(columns); err != nil {
+			return err
+		}
+		return writeDomains(tx, a.ID, a.Domains)
+	})
 	return uniqueViolation(err)
 }
 
@@ -370,7 +456,7 @@ func uniqueViolation(err error) error {
 		return err
 	}
 	if strings.Contains(msg, "domain") {
-		return &domain.FieldError{Field: "domain", Message: "domain is already used by another application"}
+		return &domain.FieldError{Field: "domains", Message: "a domain is already used by another application"}
 	}
 	return &domain.FieldError{Field: "name", Message: "an application with this name was just created; try again"}
 }

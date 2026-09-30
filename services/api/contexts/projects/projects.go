@@ -71,9 +71,12 @@ type ApplicationSnapshot struct {
 	GitBranch        string
 	DockerfilePath   string
 	Port             int
-	Domain           string
-	BuildEnv         map[string]string
-	RuntimeEnv       map[string]string
+	// Domains are the Application's Domains, primary first.
+	Domains []string
+	// Domain is the primary Domain.
+	Domain     string
+	BuildEnv   map[string]string
+	RuntimeEnv map[string]string
 	// DeployKey is the Deploy key's private half (OpenSSH PEM), empty for
 	// an https Source.
 	DeployKey   string
@@ -104,9 +107,16 @@ func ApplicationForDeploy(ctx context.Context, id uint64) (ApplicationSnapshot, 
 		ID: a.ID, Slug: a.Slug, BuildPack: string(a.BuildPack), ImageReference: a.ImageReference, PublishDirectory: a.PublishDirectory,
 		RegistryUsername: a.RegistryCredentials.Username, RegistryPassword: a.RegistryCredentials.Password,
 		GitURL: a.GitURL, GitBranch: a.GitBranch,
-		DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain, BuildEnv: build, RuntimeEnv: runtime, DeployKey: a.DeployKey.Private,
+		DockerfilePath: a.DockerfilePath, Port: a.Port, Domains: a.Domains, Domain: a.PrimaryDomain(), BuildEnv: build, RuntimeEnv: runtime, DeployKey: a.DeployKey.Private,
 		HealthCheck: HealthCheck(a.HealthCheck),
 	}, nil
+}
+
+// OnApplicationDomainsChanged registers a handler for the
+// ApplicationDomainsChanged event: an update changed the Application's
+// Domains, which are passed in their new order.
+func OnApplicationDomainsChanged(f func(ctx context.Context, applicationID uint64, domains []string)) {
+	svc().OnApplicationDomainsChanged(f)
 }
 
 // OnApplicationDeleted registers a handler for the ApplicationDeleted event.

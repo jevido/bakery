@@ -101,7 +101,7 @@
               <tr>
                 <td><a href={href(`/applications/${a.id}`)}>{a.name}</a></td>
                 <td class="mono muted">{sourceLine(a)}</td>
-                <td class="mono">{a.domain}</td>
+                <td class="mono">{a.domains[0]}</td>
               </tr>
             {/each}
           </tbody>

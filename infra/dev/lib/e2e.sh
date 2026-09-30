@@ -134,7 +134,7 @@ new_app() {
 	APP_ID=$(echo "$app" | json "d['application']['id']") || fail "creating the application: $app"
 	APP_SLUG=$(echo "$app" | json "d['application']['slug']")
 	APPS+=("$APP_ID $APP_SLUG")
-	DOMAIN=$(echo "$app" | json "d['application']['domain']")
+	DOMAIN=$(echo "$app" | json "d['application']['domains'][0]")
 	PUBLIC_URL=$(echo "$app" | json "d['application']['public_url']")
 	key=$(echo "$app" | json "d['application']['deploy_key_public']")
 	if [[ $1 == *'"ssh://'* ]]; then

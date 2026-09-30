@@ -92,7 +92,8 @@ type Application struct {
 	GitBranch        string
 	DockerfilePath   string
 	Port             int
-	Domain           string
+	// Domains are 1 to MaxDomains hostnames; the first is the primary one.
+	Domains []string
 	// DeployKey is set exactly when the Source is SSH.
 	DeployKey DeployKey
 	// RegistryCredentials are only set for the image pack. Password is
@@ -176,7 +177,8 @@ type ApplicationInput struct {
 	GitBranch        string
 	DockerfilePath   string
 	Port             int
-	Domain           string
+	// Domains empty means the one default Domain.
+	Domains []string
 	// HealthCheck nil keeps the Application's current one (the default
 	// for a new Application).
 	HealthCheck *HealthCheck
@@ -201,7 +203,6 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 	in.GitURL = strings.TrimSpace(in.GitURL)
 	in.GitBranch = strings.TrimSpace(in.GitBranch)
 	in.DockerfilePath = strings.TrimSpace(in.DockerfilePath)
-	in.Domain = strings.ToLower(strings.TrimSpace(in.Domain))
 	in.ImageReference = strings.TrimSpace(in.ImageReference)
 	in.PublishDirectory = strings.TrimSpace(in.PublishDirectory)
 	if in.BuildPack == "" {
@@ -281,9 +282,11 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 	if in.Port < 1 || in.Port > 65535 {
 		return in, invalid("port", "port must be between 1 and 65535")
 	}
-	if in.Domain != "" && !IsHostname(in.Domain) {
-		return in, invalid("domain", "domain must be a hostname like app.example.com")
+	domains, err := normalizeDomains(in.Domains)
+	if err != nil {
+		return in, err
 	}
+	in.Domains = domains
 	if in.HealthCheck != nil {
 		h, err := in.HealthCheck.Normalize()
 		if err != nil {
@@ -292,6 +295,41 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 		in.HealthCheck = &h
 	}
 	return in, nil
+}
+
+// MaxDomains is how many Domains one Application may have.
+const MaxDomains = 10
+
+// normalizeDomains lowercases and trims each Domain, drops empty ones and
+// checks the list: hostnames, each once, at most MaxDomains.
+func normalizeDomains(in []string) ([]string, error) {
+	out := make([]string, 0, len(in))
+	seen := make(map[string]bool, len(in))
+	for _, d := range in {
+		d = strings.ToLower(strings.TrimSpace(d))
+		switch {
+		case d == "":
+			continue
+		case !IsHostname(d):
+			return nil, invalid("domains", "%s is not a hostname like app.example.com", d)
+		case seen[d]:
+			return nil, invalid("domains", "%s is listed twice", d)
+		}
+		seen[d] = true
+		out = append(out, d)
+	}
+	if len(out) > MaxDomains {
+		return nil, invalid("domains", "an application has at most %d domains", MaxDomains)
+	}
+	return out, nil
+}
+
+// PrimaryDomain is the first Domain, or "" for none.
+func (a Application) PrimaryDomain() string {
+	if len(a.Domains) == 0 {
+		return ""
+	}
+	return a.Domains[0]
 }
 
 // checkGitURL allows https URLs without credentials and SSH URLs, nothing

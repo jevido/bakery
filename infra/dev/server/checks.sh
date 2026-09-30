@@ -94,7 +94,7 @@ deploy_whoami() {
 	local project env app deployment status=
 	project=$(api -f -d '{"name":"Server test"}' "https://$DOMAIN/api/projects" | jq -r .project.id)
 	env=$(api -f "https://$DOMAIN/api/projects/$project" | jq -r '.project.environments[0].id')
-	app=$(api -f -d "{\"name\":\"whoami\",\"git_url\":\"https://github.com/traefik/whoami\",\"git_branch\":\"master\",\"port\":80,\"domain\":\"$APP_DOMAIN\"}" \
+	app=$(api -f -d "{\"name\":\"whoami\",\"git_url\":\"https://github.com/traefik/whoami\",\"git_branch\":\"master\",\"port\":80,\"domains\":[\"$APP_DOMAIN\"]}" \
 		"https://$DOMAIN/api/environments/$env/applications" | jq -r .application.id)
 	api -f -o /dev/null -X PUT -d '{"env":[{"name":"HELLO","value":"from-bakery"}]}' "https://$DOMAIN/api/applications/$app/env"
 	deployment=$(api -f -X POST "https://$DOMAIN/api/applications/$app/deploy" | jq -r .deployment.id)

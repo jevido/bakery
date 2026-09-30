@@ -29,7 +29,7 @@
     git_branch: 'main',
     dockerfile_path: 'Dockerfile',
     port: 3000,
-    domain: '',
+    domains: [] as string[],
   }
   const packs: { value: BuildPack; label: string; hint: string }[] = [
     { value: 'dockerfile', label: 'Dockerfile', hint: 'Build the Dockerfile in the repository.' },
@@ -49,7 +49,8 @@
   let git_branch = $state(start.git_branch || 'main')
   let dockerfile_path = $state(start.dockerfile_path || 'Dockerfile')
   let port = $state(String(start.port))
-  let domain = $state(start.domain)
+  let domain = $state(start.domains[0] ?? '')
+  const otherDomains = start.domains.slice(1)
   const check: HealthCheck = start.health_check ?? { enabled: false, path: '/', interval: 5, timeout: 5, retries: 10, start_period: 0 }
   let checkEnabled = $state(check.enabled)
   let checkPath = $state(check.path)
@@ -84,7 +85,7 @@
         git_branch,
         dockerfile_path,
         port: build_pack === 'static' ? 80 : Number(port),
-        domain,
+        domains: [domain, ...otherDomains].filter((d) => d.trim() !== ''),
         health_check,
       }
       if (build_pack === 'image') input.registry_credentials = { username: registryUsername, password: registryPassword }
@@ -160,7 +161,7 @@
       {/if}
     </fieldset>
   {/if}
-  <Field label="Domain (empty for the default)" bind:value={domain} error={errors.domain} placeholder={domainPlaceholder} />
+  <Field label="Domain (empty for the default)" bind:value={domain} error={errors.domains} placeholder={domainPlaceholder} />
   <fieldset>
     <legend>Health check</legend>
     <label class="check">

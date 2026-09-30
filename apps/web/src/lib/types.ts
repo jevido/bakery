@@ -15,10 +15,13 @@ export type Application = {
   git_branch: string
   dockerfile_path: string
   port: number
-  domain: string
+  /** 1–10 hostnames; the first is the primary one. */
+  domains: string[]
   /** Empty for an https Source. */
   deploy_key_public: string
+  /** On the primary Domain. */
   public_url: string
+  public_urls: string[]
   health_check: HealthCheck
   registry_username: string
   /** The password itself is never returned. */
@@ -58,7 +61,7 @@ export type InheritedVariable = EnvVar & { from: 'project' | 'environment'; over
 
 export type ApplicationInput = Pick<
   Application,
-  'name' | 'build_pack' | 'image_reference' | 'publish_directory' | 'git_url' | 'git_branch' | 'dockerfile_path' | 'port' | 'domain'
+  'name' | 'build_pack' | 'image_reference' | 'publish_directory' | 'git_url' | 'git_branch' | 'dockerfile_path' | 'port' | 'domains'
 > & {
   /** Omitted keeps the current one. */
   health_check?: HealthCheck

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/jevido/bakery/services/api/contexts/projects/domain"
@@ -32,9 +33,9 @@ type Store interface {
 	Environment(ctx context.Context, id uint64) (domain.Environment, bool, error)
 
 	SlugTaken(ctx context.Context, slug string) (bool, error)
-	// DomainTaken reports whether another Application than exceptID has the
-	// Domain.
-	DomainTaken(ctx context.Context, domain string, exceptID uint64) (bool, error)
+	// DomainsTaken returns those of the Domains that an Application other
+	// than exceptID has.
+	DomainsTaken(ctx context.Context, domains []string, exceptID uint64) ([]string, error)
 	CreateApplication(ctx context.Context, a domain.Application) (domain.Application, error)
 	Application(ctx context.Context, id uint64) (domain.Application, bool, error)
 	UpdateApplication(ctx context.Context, a domain.Application) error
@@ -55,8 +56,9 @@ type Service struct {
 	domainSuffix string
 	// reservedDomain is the dashboard's own domain; no Application may take
 	// it. Empty when there is none.
-	reservedDomain string
-	onDeleted      []func(ctx context.Context, applicationID uint64)
+	reservedDomain   string
+	onDeleted        []func(ctx context.Context, applicationID uint64)
+	onDomainsChanged []func(ctx context.Context, applicationID uint64, domains []string)
 }
 
 // NewService takes the suffix default Domains get (`<slug>.<suffix>`) and
@@ -87,6 +89,12 @@ func (s *Service) keepDeployKey(a *domain.Application) error {
 // OnApplicationDeleted registers a handler for the ApplicationDeleted event.
 func (s *Service) OnApplicationDeleted(f func(ctx context.Context, applicationID uint64)) {
 	s.onDeleted = append(s.onDeleted, f)
+}
+
+// OnApplicationDomainsChanged registers a handler for the
+// ApplicationDomainsChanged event.
+func (s *Service) OnApplicationDomainsChanged(f func(ctx context.Context, applicationID uint64, domains []string)) {
+	s.onDomainsChanged = append(s.onDomainsChanged, f)
 }
 
 func (s *Service) CreateProject(ctx context.Context, name, description string) (domain.Project, error) {
@@ -159,7 +167,7 @@ func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, i
 		GitBranch:        in.GitBranch,
 		DockerfilePath:   in.DockerfilePath,
 		Port:             in.Port,
-		Domain:           in.Domain,
+		Domains:          in.Domains,
 		HealthCheck:      domain.DefaultHealthCheck(),
 	}
 	if in.HealthCheck != nil {
@@ -168,10 +176,10 @@ func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, i
 	if in.RegistryCredentials != nil {
 		a.RegistryCredentials = *in.RegistryCredentials
 	}
-	if a.Domain == "" {
-		a.Domain = domain.DefaultDomain(slug, s.domainSuffix)
+	if len(a.Domains) == 0 {
+		a.Domains = []string{domain.DefaultDomain(slug, s.domainSuffix)}
 	}
-	if err := s.checkDomain(ctx, a.Domain, 0); err != nil {
+	if err := s.checkDomains(ctx, a.Domains, 0); err != nil {
 		return domain.Application{}, err
 	}
 	if err := s.keepDeployKey(&a); err != nil {
@@ -198,16 +206,18 @@ func (s *Service) freeSlug(ctx context.Context, base string) (string, error) {
 	return "", &domain.FieldError{Field: "name", Message: "too many applications with this name"}
 }
 
-func (s *Service) checkDomain(ctx context.Context, d string, exceptID uint64) error {
-	if s.reservedDomain != "" && d == s.reservedDomain {
-		return &domain.FieldError{Field: "domain", Message: "domain is reserved for the Bakery dashboard"}
+func (s *Service) checkDomains(ctx context.Context, domains []string, exceptID uint64) error {
+	for _, d := range domains {
+		if s.reservedDomain != "" && d == s.reservedDomain {
+			return &domain.FieldError{Field: "domains", Message: d + " is reserved for the Bakery dashboard"}
+		}
 	}
-	taken, err := s.store.DomainTaken(ctx, d, exceptID)
+	taken, err := s.store.DomainsTaken(ctx, domains, exceptID)
 	if err != nil {
 		return err
 	}
-	if taken {
-		return &domain.FieldError{Field: "domain", Message: d + " is already used by another application"}
+	if len(taken) > 0 {
+		return &domain.FieldError{Field: "domains", Message: taken[0] + " is already used by another application"}
 	}
 	return nil
 }
@@ -221,7 +231,9 @@ func (s *Service) Application(ctx context.Context, id uint64) (domain.Applicatio
 }
 
 // UpdateApplication changes everything but the Slug, which names Images and
-// Containers and so stays fixed. An empty Domain goes back to the default.
+// Containers and so stays fixed. No Domains goes back to the default one.
+// When the Domains changed, ApplicationDomainsChanged is fired after the
+// update is stored.
 func (s *Service) UpdateApplication(ctx context.Context, id uint64, in domain.ApplicationInput) (domain.Application, error) {
 	a, err := s.Application(ctx, id)
 	if err != nil {
@@ -243,15 +255,16 @@ func (s *Service) UpdateApplication(ctx context.Context, id uint64, in domain.Ap
 	if in.RegistryCredentials != nil {
 		a.RegistryCredentials = *in.RegistryCredentials
 	}
-	a.Name, a.GitURL, a.GitBranch, a.DockerfilePath, a.Port, a.Domain =
-		in.Name, in.GitURL, in.GitBranch, in.DockerfilePath, in.Port, in.Domain
+	before := a.Domains
+	a.Name, a.GitURL, a.GitBranch, a.DockerfilePath, a.Port, a.Domains =
+		in.Name, in.GitURL, in.GitBranch, in.DockerfilePath, in.Port, in.Domains
 	if in.HealthCheck != nil {
 		a.HealthCheck = *in.HealthCheck
 	}
-	if a.Domain == "" {
-		a.Domain = domain.DefaultDomain(a.Slug, s.domainSuffix)
+	if len(a.Domains) == 0 {
+		a.Domains = []string{domain.DefaultDomain(a.Slug, s.domainSuffix)}
 	}
-	if err := s.checkDomain(ctx, a.Domain, a.ID); err != nil {
+	if err := s.checkDomains(ctx, a.Domains, a.ID); err != nil {
 		return domain.Application{}, err
 	}
 	if err := s.keepDeployKey(&a); err != nil {
@@ -259,6 +272,11 @@ func (s *Service) UpdateApplication(ctx context.Context, id uint64, in domain.Ap
 	}
 	if err := s.store.UpdateApplication(ctx, a); err != nil {
 		return domain.Application{}, err
+	}
+	if !slices.Equal(before, a.Domains) {
+		for _, f := range s.onDomainsChanged {
+			f(ctx, a.ID, slices.Clone(a.Domains))
+		}
 	}
 	return a, nil
 }

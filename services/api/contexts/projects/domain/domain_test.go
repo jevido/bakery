@@ -37,8 +37,14 @@ func TestApplicationInputNormalize(t *testing.T) {
 		{func(i *ApplicationInput) { i.DockerfilePath = "/etc/passwd" }, "dockerfile_path"},
 		{func(i *ApplicationInput) { i.Port = 0 }, "port"},
 		{func(i *ApplicationInput) { i.Port = 70000 }, "port"},
-		{func(i *ApplicationInput) { i.Domain = "localhost" }, "domain"},
-		{func(i *ApplicationInput) { i.Domain = "a_b.example.com" }, "domain"},
+		{func(i *ApplicationInput) { i.Domains = []string{"localhost"} }, "domains"},
+		{func(i *ApplicationInput) { i.Domains = []string{"a_b.example.com"} }, "domains"},
+		{func(i *ApplicationInput) { i.Domains = []string{"a.example.com", "A.example.com "} }, "domains"},
+		{func(i *ApplicationInput) {
+			for n := range MaxDomains + 1 {
+				i.Domains = append(i.Domains, string(rune('a'+n))+".example.com")
+			}
+		}, "domains"},
 	}
 	for i, c := range bad {
 		in := ok
@@ -46,6 +52,20 @@ func TestApplicationInputNormalize(t *testing.T) {
 		if _, err := in.Normalize(); field(err) != c.field {
 			t.Errorf("case %d: err = %v, want field %s", i, err, c.field)
 		}
+	}
+}
+
+func TestDomainsNormalize(t *testing.T) {
+	in := ApplicationInput{Name: "web", GitURL: "https://example.com/r.git", Port: 80, Domains: []string{" B.Example.com", "", "a.example.com"}}
+	out, err := in.Normalize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Domains) != 2 || out.Domains[0] != "b.example.com" || out.Domains[1] != "a.example.com" {
+		t.Fatalf("domains: %v", out.Domains)
+	}
+	if (Application{Domains: out.Domains}).PrimaryDomain() != "b.example.com" {
+		t.Fatal("primary is the first domain")
 	}
 }
 
