@@ -7,7 +7,7 @@
 
 Makes Domains reach Containers. Owns the Proxy (the Caddy container
 `bakery-proxy`: it exists, runs and sits on the `bakery` network) and the
-Routes and the Route settings, and renders the whole Caddy configuration from them. It is **not**
+Routes, the Service routes and the Route settings, and renders the whole Caddy configuration from them. It is **not**
 responsible for which Container is current; deployments tells it.
 
 ## Language
@@ -16,6 +16,7 @@ responsible for which Container is current; deployments tells it.
 | ---- | ------- |
 | Proxy | The Caddy container `bakery-proxy`. |
 | Route | An Application's Domains → container name and port. One per Application. |
+| Service route | A Public Component's Domains → its Container and port. One per Public Component of a Service. |
 | Route settings | How the Proxy treats an Application's traffic: Www redirect, Response headers, Basic auth. One per Application, default all off. |
 | Www redirect | `off`, `to_apex` or `to_www`. Each Domain's counterpart (`www.` added or removed) answers 308 to the Domain, keeping path and query. |
 | Counterpart | The host a Www redirect adds for one Domain. |
@@ -33,6 +34,7 @@ responsible for which Container is current; deployments tells it.
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Route | One per Application, with at least one Domain. It always points at a Container that was running when the Route was switched. (That Domains are unique is projects' rule.) |
+| Service route | One per (Service, Component), with at least one Domain, pointing at a Container that was running when the Service's routes were set. A Service's routes are always replaced as a set. Rendered with default Route settings. |
 | Route settings | One per Application, stored even before it has a Route. Www redirect is `off`, `to_apex` or `to_www`. At most 20 Response headers, names are HTTP tokens, listed once (case-insensitively), never hop-by-hop (`Connection`, `Keep-Alive`, `Proxy-*`, `TE`, `Trailer`, `Transfer-Encoding`, `Upgrade`) or `Content-Length`; values on one line, at most 1024 characters. Basic auth, when on, has a username (1–100 characters, no `:`) and a password hash; only the bcrypt hash is kept and it is never returned. |
 
 ### Commands
@@ -42,6 +44,8 @@ responsible for which Container is current; deployments tells it.
 - `ChangeDomains(applicationID, domains)`: on `ApplicationDomainsChanged`; moves an existing Route to the Domains, then Applies. No Route yet: nothing to do.
 - `ChangeRouteSettings(applicationID, settings)`: store, then Apply.
 - `DropRoute(applicationID)`: on `ApplicationDeleted`, drops the Route and the Route settings, then Applies.
+- `SetServiceRoutes(serviceID, routes)`: replaces the Service's Service routes, then Applies.
+- `DropServiceRoutes(serviceID)`: removes them, then Applies.
 
 ### Domain events
 
@@ -49,7 +53,7 @@ None.
 
 ## Integration
 
-- **Publishes:** `SwitchRoute` for deployments; the Route settings over HTTP (`GET/PUT /api/applications/{id}/routing`) for the dashboard.
+- **Publishes:** `SwitchRoute` for deployments; `SetServiceRoutes` and `DropServiceRoutes` for services; the Route settings over HTTP (`GET/PUT /api/applications/{id}/routing`) for the dashboard.
 - **Consumes:** `ApplicationDeleted` and `ApplicationDomainsChanged` from projects.
 
 ## Why it's shaped this way
@@ -99,3 +103,9 @@ None.
   Health checks are unaffected because they run inside the Container.
 - **Response headers are set, not added**, so a header the app already sends
   is replaced rather than doubled.
+- **Service routes are their own table, rendered as Routes.** A Service
+  has several Public Components and no Application id, so `routes` (one
+  per Application) cannot hold them; `service_routes` is keyed by
+  (service id, component) and turned into the same Route shape before
+  rendering, so the Caddy config stays one full render of everything the
+  Proxy serves. They have no Route settings yet.
