@@ -54,7 +54,9 @@ Secrets, generated once by the install script, live in
 `BAKERY_PROXY_HTTP_PORT`, `BAKERY_PROXY_HTTPS_PORT`,
 `BAKERY_PROXY_INTERNAL_TLS=false`, `BAKERY_PROXY_ADMIN_URL`,
 `BAKERY_ACME_CA`, `BAKERY_ACME_EMAIL`, `BAKERY_ACME_CA_ROOT`. Their meaning
-is in `services/api/.env.example`.
+is in `services/api/.env.example`. `BAKERY_NIXPACKS` and
+`BAKERY_INSECURE_REGISTRIES` keep their defaults: the image's own `nixpacks`,
+and TLS verified for every registry.
 
 ## Operating it
 

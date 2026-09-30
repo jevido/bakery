@@ -13,6 +13,8 @@ WORK=$(mktemp -d)
 JAR="$WORK/cookies"
 RUN="e2e-$(date +%s)-$RANDOM"
 APP_ID="" APP_SLUG="" PROJECT_ID="" KEEP_FORGEJO=${KEEP_FORGEJO:-}
+# Every "id slug" of an Application the test made, for cleanup.
+APPS=()
 REPO="$WORK/repo"
 FORGEJO_USER=bakery
 
@@ -27,10 +29,11 @@ cleanup() {
 	set +e
 	say "Cleaning up"
 	e2e_cleanup_hook
-	if [ -n "$APP_ID" ]; then bakery DELETE "/api/applications/$APP_ID" >/dev/null; fi
-	if [ -n "$APP_SLUG" ]; then
-		podman images --format '{{.Repository}}:{{.Tag}}' | grep "^localhost/bakery/$APP_SLUG:" | xargs -r podman rmi -f >/dev/null 2>&1
-	fi
+	local entry
+	for entry in "${APPS[@]}"; do
+		bakery DELETE "/api/applications/${entry% *}" >/dev/null
+		podman images --format '{{.Repository}}:{{.Tag}}' | grep "^localhost/bakery/${entry#* }:" | xargs -r podman rmi -f >/dev/null 2>&1
+	done
 	if [ -n "$PROJECT_ID" ]; then bakery DELETE "/api/projects/$PROJECT_ID" >/dev/null; fi
 	for id in $(bakery GET /api/known-hosts 2>/dev/null | json "' '.join(str(h['id']) for h in d['known_hosts'] if h['host']=='[127.0.0.1]:4952')"); do
 		bakery DELETE "/api/known-hosts/$id" >/dev/null
@@ -115,18 +118,29 @@ push() {
 # Sets PROJECT_ID, ENV_ID, APP_ID, APP_SLUG, DOMAIN and PUBLIC_URL.
 create_app() {
 	say "Bakery application with the SSH URL"
-	PROJECT_ID=$(bakery POST /api/projects "{\"name\":\"$RUN\"}" | json "d['project']['id']")
-	ENV_ID=$(bakery GET "/api/projects/$PROJECT_ID" | json "d['project']['environments'][0]['id']")
+	new_app "{\"name\":\"$RUN\",\"git_url\":\"ssh://git@127.0.0.1:4952/$FORGEJO_USER/$RUN.git\",\"git_branch\":\"main\",\"port\":$1${2:-}}"
+}
+
+# new_app JSON creates an Application (and the Project, the first time).
+# An Application with a Deploy key gets it added to the repository. Sets
+# the same variables as create_app.
+new_app() {
+	if [ -z "$PROJECT_ID" ]; then
+		PROJECT_ID=$(bakery POST /api/projects "{\"name\":\"$RUN\"}" | json "d['project']['id']")
+		ENV_ID=$(bakery GET "/api/projects/$PROJECT_ID" | json "d['project']['environments'][0]['id']")
+	fi
 	local app key
-	app=$(bakery POST "/api/environments/$ENV_ID/applications" \
-		"{\"name\":\"$RUN\",\"git_url\":\"ssh://git@127.0.0.1:4952/$FORGEJO_USER/$RUN.git\",\"git_branch\":\"main\",\"port\":$1${2:-}}")
-	APP_ID=$(echo "$app" | json "d['application']['id']")
+	app=$(bakery POST "/api/environments/$ENV_ID/applications" "$1")
+	APP_ID=$(echo "$app" | json "d['application']['id']") || fail "creating the application: $app"
 	APP_SLUG=$(echo "$app" | json "d['application']['slug']")
+	APPS+=("$APP_ID $APP_SLUG")
 	DOMAIN=$(echo "$app" | json "d['application']['domain']")
 	PUBLIC_URL=$(echo "$app" | json "d['application']['public_url']")
 	key=$(echo "$app" | json "d['application']['deploy_key_public']")
-	[[ $key == ssh-ed25519\ * ]] || fail "no deploy key: $app"
-	forgejo POST "/repos/$FORGEJO_USER/$RUN/keys" "$(KEY=$key python3 -c 'import json,os; print(json.dumps({"title":"bakery","key":os.environ["KEY"],"read_only":True}))')" >/dev/null
+	if [[ $1 == *'"ssh://'* ]]; then
+		[[ $key == ssh-ed25519\ * ]] || fail "no deploy key: $app"
+		forgejo POST "/repos/$FORGEJO_USER/$RUN/keys" "$(KEY=$key TITLE="bakery-$APP_SLUG" python3 -c 'import json,os; print(json.dumps({"title":os.environ["TITLE"],"key":os.environ["KEY"],"read_only":True}))')" >/dev/null
+	fi
 }
 
 latest() { bakery GET "/api/applications/$APP_ID/deployments" | json "d['deployments'][0]$1"; }

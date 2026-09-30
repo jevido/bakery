@@ -79,6 +79,11 @@ tasks:
     cmds:
       - ./infra/dev/deploy/test.sh
 
+  buildpack:test:
+    desc: Every build pack end to end against Forgejo and its registry (needs task dev)
+    cmds:
+      - ./infra/dev/buildpack/test.sh
+
   images:
     desc: Build every image (localhost/bakery-*:dev) from infra/images
     cmds:
@@ -99,8 +104,8 @@ tasks:
     desc: shellcheck the install script
     cmds:
       - |
-        if command -v shellcheck >/dev/null; then shellcheck -x infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh
-        else podman run --rm -v .:/mnt:ro,Z -w /mnt docker.io/koalaman/shellcheck-alpine shellcheck -x infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh
+        if command -v shellcheck >/dev/null; then shellcheck -x infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh
+        else podman run --rm -v .:/mnt:ro,Z -w /mnt docker.io/koalaman/shellcheck-alpine shellcheck -x infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh
         fi
 
   check:

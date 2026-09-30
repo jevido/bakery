@@ -24,4 +24,19 @@ grep -q "Healthy after" <<<"$(bakery GET "/api/deployments/$(latest "['id']")/lo
 [ "$(fetch /)" = "static marker $RUN" ] || fail "static site answers: $(fetch / || true)"
 if fetch /secret.txt >/dev/null; then fail "a file outside the publish directory is served"; fi
 
+say "Nixpacks: a Node app without a Dockerfile"
+rm -rf "${REPO:?}/public" "$REPO/secret.txt"
+cat >"$REPO/package.json" <<'JSON'
+{"name":"hello","version":"1.0.0","scripts":{"start":"node index.js"}}
+JSON
+cat >"$REPO/index.js" <<'JS'
+require("http").createServer((q, r) => r.end("nixpacks " + process.env.GREETING + " " + process.env.NODE_ENV)).listen(3000)
+JS
+push "A Node app"
+new_app "{\"name\":\"$RUN-node\",\"git_url\":\"ssh://git@127.0.0.1:4952/$FORGEJO_USER/$RUN.git\",\"port\":3000,\"build_pack\":\"nixpacks\"}"
+bakery PUT "/api/applications/$APP_ID/env" '{"env":[{"name":"GREETING","value":"hello","build":true,"runtime":true}]}' >/dev/null
+bakery POST "/api/applications/$APP_ID/deploy" >/dev/null
+wait_for 900 "the nixpacks deployment" deployment_done
+[ "$(fetch /)" = "nixpacks hello production" ] || fail "nixpacks app answers: $(fetch / || true)"
+
 say "PASS"

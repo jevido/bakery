@@ -128,6 +128,7 @@ func followContainer(ctx context.Context, applicationID uint64, tail int, out fu
 func StartWorker(ctx context.Context) {
 	workDir := filepath.Join(os.TempDir(), "bakery-builds")
 	w := app.NewWorker(svc(), infra.Git{KnownHosts: infra.KnownHosts{}}, runtime, routing.SwitchRoute, workDir)
+	w.Planner = infra.Nixpacks{Binary: facades.Config().GetString("bakery.nixpacks")}
 	w.Log = facades.Log().Errorf
 	go func() {
 		<-ctx.Done()

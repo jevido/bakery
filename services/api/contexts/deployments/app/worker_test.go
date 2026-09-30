@@ -645,3 +645,44 @@ func TestStaticBuildPack(t *testing.T) {
 		t.Fatalf("missing dir: %+v, built %d", got, s.runtime.built)
 	}
 }
+
+type fakePlanner struct{ env map[string]string }
+
+func (p *fakePlanner) Plan(_ context.Context, dir string, env map[string]string, out func(string, string)) (string, map[string]string, error) {
+	p.env = env
+	out(domain.StreamOut, "║ setup │ nodejs_18 ║")
+	return ".nixpacks/Dockerfile", map[string]string{"NODE_ENV": "production", "VITE_API": env["VITE_API"]}, nil
+}
+
+func TestNixpacksBuildPack(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{noDockerfile: true})
+	s.app = func(a *Application) { a.BuildPack = BuildPackNixpacks }
+	d, _ := s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	got, _ := s.service.Deployment(ctx, d.ID)
+	if got.Status != domain.Failed || got.Error != "the nixpacks build pack is not available here" {
+		t.Fatalf("without a planner: %+v", got)
+	}
+
+	p := &fakePlanner{}
+	s.worker.Planner = p
+	d, _ = s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	got, _ = s.service.Deployment(ctx, d.ID)
+	if got.Status != domain.Finished {
+		t.Fatalf("deployment: %+v\n%s", got, s.logs.text())
+	}
+	b := s.runtime.builds[0]
+	if b.Dockerfile != ".nixpacks/Dockerfile" || b.BuildArgs["NODE_ENV"] != "production" || b.BuildArgs["VITE_API"] != "https://api" {
+		t.Errorf("build request %+v", b)
+	}
+	if p.env["VITE_API"] != "https://api" {
+		t.Errorf("planner got %v", p.env)
+	}
+	for _, w := range []string{"Generating a build plan with Nixpacks", "out: ║ setup │ nodejs_18 ║", "Building image localhost/bakery/whoami:2 from .nixpacks/Dockerfile"} {
+		if !strings.Contains(s.logs.text(), w) {
+			t.Errorf("log lacks %q:\n%s", w, s.logs.text())
+		}
+	}
+}

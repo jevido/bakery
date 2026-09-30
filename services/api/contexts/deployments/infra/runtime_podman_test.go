@@ -102,3 +102,41 @@ func TestPull(t *testing.T) {
 		t.Error("RegistryHost")
 	}
 }
+
+// TestNixpacksBuild plans a tiny Node app with the real nixpacks binary
+// (task api:tools) and builds it with Podman.
+func TestNixpacksBuild(t *testing.T) {
+	sock := podman.DefaultSocket()
+	if _, err := os.Stat(sock); err != nil {
+		t.Skipf("no podman socket at %s", sock)
+	}
+	bin := os.Getenv("BAKERY_NIXPACKS")
+	if bin == "" {
+		bin, _ = filepath.Abs("../../../bin/nixpacks")
+	}
+	if _, err := os.Stat(bin); err != nil {
+		t.Skipf("no nixpacks at %s (run task api:tools)", bin)
+	}
+	c := podman.New(sock)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"hello","version":"1.0.0","scripts":{"start":"node index.js"}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "index.js"), []byte(`require("http").createServer((q, r) => r.end(process.env.GREETING)).listen(3000)`), 0o644)
+
+	file, args, err := Nixpacks{Binary: bin}.Plan(ctx, dir, map[string]string{"GREETING": "hi"}, func(string, string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if args["NODE_ENV"] != "production" || args["GREETING"] != "hi" {
+		t.Errorf("build args %v", args)
+	}
+	const tag = "localhost/bakery/test-nixpacks:1"
+	t.Cleanup(func() { c.RemoveImage(context.Background(), tag) })
+	var tail []string
+	err = Runtime{Podman: c}.Build(ctx, app.BuildRequest{Dir: dir, Dockerfile: file, Tag: tag, BuildArgs: args,
+		Labels: map[string]string{"bakery.managed": "true"}}, func(line string) { tail = append(tail, line) })
+	if err != nil {
+		t.Fatalf("build: %v\n%s", err, strings.Join(tail[max(0, len(tail)-20):], "\n"))
+	}
+}

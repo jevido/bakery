@@ -10,6 +10,22 @@ RUN go mod download
 COPY services/api/ ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/bakery-api .
 
+# nixpacks writes the Dockerfile of nixpacks Applications; it runs as a
+# subprocess of the API like git. Keep the version in step with the tools
+# task in services/api/Taskfile.yml.
+FROM docker.io/library/debian:trixie-slim AS nixpacks
+ARG TARGETARCH
+ARG NIXPACKS_VERSION=1.41.0
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN case "$TARGETARCH" in \
+      amd64|"") arch=x86_64; sum=0f55de7874507b9cf7502113120bd96f2ab6979f78d10eaf2eb2ade9207b3af6 ;; \
+      arm64) arch=aarch64; sum=912bd02dd2bb6f9c3a9ed965fe8a68b4aa318dc7a2546e2eca6f2806a894ba39 ;; \
+      *) echo "no nixpacks for $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL -o /tmp/nixpacks.tar.gz "https://github.com/railwayapp/nixpacks/releases/download/v${NIXPACKS_VERSION}/nixpacks-v${NIXPACKS_VERSION}-${arch}-unknown-linux-musl.tar.gz" \
+ && echo "$sum  /tmp/nixpacks.tar.gz" | sha256sum -c --quiet \
+ && tar -xzf /tmp/nixpacks.tar.gz -C /usr/local/bin nixpacks
+
 FROM docker.io/library/debian:trixie-slim
 # git: the Deployment worker clones Sources with it; openssh-client for SSH
 # Sources. ca-certificates: https clones and image pulls.
@@ -18,6 +34,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /out/bakery-api /usr/local/bin/bakery-api
+COPY --from=nixpacks /usr/local/bin/nixpacks /usr/local/bin/nixpacks
 # Goravel writes its logs under storage/ relative to the working directory.
 RUN mkdir -p /app/storage
 # Root inside a rootless Podman container is the host's bakery user, which

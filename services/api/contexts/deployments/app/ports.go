@@ -142,6 +142,13 @@ type KnownHosts interface {
 	Forget(ctx context.Context, id uint64) (bool, error)
 }
 
+// Planner writes a Dockerfile for a clone that has none (Nixpacks).
+type Planner interface {
+	// Plan writes the Dockerfile into dir and returns its path relative to
+	// dir and the build args to build it with (buildEnv included).
+	Plan(ctx context.Context, dir string, buildEnv map[string]string, out func(stream, line string)) (dockerfile string, buildArgs map[string]string, err error)
+}
+
 // Runtime builds and runs Containers.
 type Runtime interface {
 	Build(ctx context.Context, req BuildRequest, out func(line string)) error

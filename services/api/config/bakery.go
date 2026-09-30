@@ -20,6 +20,9 @@ func init() {
 		// Registry hosts (host[:port], comma-separated) image Applications
 		// are pulled from without TLS verification. Empty on a server.
 		"insecure_registries": config.Env("BAKERY_INSECURE_REGISTRIES", ""),
+		// The nixpacks binary the nixpacks Build pack writes Dockerfiles
+		// with: a path, or a name on PATH (the API image has it there).
+		"nixpacks": config.Env("BAKERY_NIXPACKS", "nixpacks"),
 		// The Dashboard Route: the domain Bakery's own dashboard is served on
 		// through the proxy (empty in development, where Vite serves it), and
 		// the containers it sends /api/* and everything else to.

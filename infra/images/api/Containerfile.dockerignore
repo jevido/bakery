@@ -3,3 +3,4 @@
 services/api/.env
 services/api/storage/
 services/api/tmp/
+services/api/bin/

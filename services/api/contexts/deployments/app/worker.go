@@ -22,6 +22,8 @@ type Worker struct {
 	source  Source
 	runtime Runtime
 	router  Router
+	// Planner writes the Dockerfile of nixpacks Applications; nil fails them.
+	Planner Planner
 	// WorkDir holds the clones while they are built.
 	WorkDir string
 	// Timeout bounds one whole Deployment.
@@ -190,7 +192,7 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 	if err := w.advance(ctx, d, domain.Building); err != nil {
 		return err
 	}
-	dockerfile, buildArgs, err := w.dockerfile(d, app, dir, commit, info)
+	dockerfile, buildArgs, err := w.dockerfile(ctx, d, app, dir, commit, log, info)
 	if err != nil {
 		return err
 	}
@@ -209,8 +211,14 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 
 // dockerfile returns the Dockerfile to build from the clone in dir, and the
 // build args it gets, by Build pack.
-func (w *Worker) dockerfile(d *domain.Deployment, app Application, dir string, commit Commit, info func(string, ...any)) (string, map[string]string, error) {
+func (w *Worker) dockerfile(ctx context.Context, d *domain.Deployment, app Application, dir string, commit Commit, log LogWriter, info func(string, ...any)) (string, map[string]string, error) {
 	switch app.BuildPack {
+	case BuildPackNixpacks:
+		if w.Planner == nil {
+			return "", nil, errors.New("the nixpacks build pack is not available here")
+		}
+		info("Generating a build plan with Nixpacks")
+		return w.Planner.Plan(ctx, dir, app.BuildEnv, log.Line)
 	case BuildPackStatic:
 		publish := path.Clean(app.PublishDirectory)
 		if st, err := os.Stat(filepath.Join(dir, filepath.FromSlash(publish))); err != nil || !st.IsDir() {
