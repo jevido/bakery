@@ -62,7 +62,8 @@ None published.
 - **Consumes**, each translated into a Notification in this context's words:
   - `deployments.OnDeploymentFinished` (succeeded or failed; not cancelled
     ones, nor those failed by a restart) → `deployment_failed` /
-    `deployment_succeeded`.
+    `deployment_succeeded`; a Preview Deployment's message names the
+    Preview ("preview of pull request #n").
   - `databases.OnBackupFinished` (succeeded or failed; not those failed by a
     restart) → `backup_failed` / `backup_succeeded`.
   - `servers.OnServerHealthChanged` (a Server probe changed something) →

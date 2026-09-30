@@ -11,7 +11,8 @@ a generated static file server), or pull its Image reference, then start the
 Container, move the Route to it, and remove the
 Container it replaces once the new one passes its Health check, writing
 every step to the Deployment log. Also cancels a Deployment and rolls back to
-an earlier one's Image. Also follows
+an earlier one's Image, and runs Previews: a copy of the Application per open
+Pull request, deployed from its head branch and removed when it closes. Also follows
 a running Application's Container logs. It is **not** responsible for what an
 Application is (projects) or for the Caddy configuration (routing).
 
@@ -27,7 +28,12 @@ Application is (projects) or for the Caddy configuration (routing).
 | Active | A Deployment in `queued`, `cloning`, `building` or `starting`. |
 | Running | A Deployment in `cloning`, `building` or `starting`. |
 | Deploy trigger | `manual`, `webhook` or `rollback`. |
-| Webhook | The URL and secret a git host calls on push. |
+| Webhook | The URL and secret a git host calls on push and on Pull request events, with Previews on or off and the Git host token. |
+| Pull request | A git host's request to merge a branch into the Application's branch (a GitLab merge request too), as its Webhook calls describe it. |
+| Preview | A copy of the Application built from one open Pull request's head branch, with its own Containers (`bakery-app-<id>-pr<n>-<deployment>`, labelled `bakery.preview=<n>`), Volumes (`bakery-app-<id>-pr<n>-<storage>`) and Preview route on the Preview domain `pr-<n>.<primary Domain>`. |
+| Preview Deployment | A Deployment that belongs to a Preview. The history shows it next to the Application's own, marked with its Preview number. |
+| Preview comment | The one comment on the Pull request Bakery posts after the first Preview Deployment and edits after each later one and when the Preview goes. |
+| Git host token | The git host access token the Preview comment is written with. Encrypted at rest, never returned. |
 | Known host | A git host's SSH host key, trusted on first use. |
 | Worker | The loop inside the API that claims queued Deployments and runs them. |
 | Volume | The Podman volume `bakery-app-<application-id>-<storage name>` behind one Persistent storage, labelled `bakery.managed=true` and `bakery.application=<id>`. |
@@ -39,8 +45,9 @@ Application is (projects) or for the Caddy configuration (routing).
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Deployment | Status only moves forward: `queued` → `cloning` → `building` → `starting` → `finished` (an `image` Deployment moves from `cloning` straight on to `building` without cloning), and any active status → `failed` (with an error) or `cancelled`. A Rollback moves from `queued` straight to `starting`; it names its source Deployment, which is `finished`, of the same Application, and whose Image still exists. An Application has at most one queued and at most one running Deployment; a queued one is only picked up once the Application has no running one, and a new Deploy while one is already queued is refused. Its log is append-only and ordered. |
-| Webhook | One per Application, with a secret and Auto-deploy on or off. A call is accepted only with a valid signature for that secret (HMAC-SHA256 of the body for GitHub, Gitea and Forgejo; the token for GitLab). Only a push to the Application's branch, with Auto-deploy on, queues a Deployment. |
+| Deployment | Belongs to the Application itself or to one of its Previews. Status only moves forward: `queued` → `cloning` → `building` → `starting` → `finished` (an `image` Deployment moves from `cloning` straight on to `building` without cloning), and any active status → `failed` (with an error) or `cancelled`. A Rollback moves from `queued` straight to `starting`; it names its source Deployment, which is `finished`, of the same Application, and whose Image still exists. An Application has at most one queued Deployment of its own and one per Preview, and at most one running Deployment in all; a queued one is only picked up once the Application has no running one, and a new Deploy while one is already queued (for the same Preview) is refused. A Preview Deployment cannot be rolled back to: a Preview always builds its head. Its log is append-only and ordered. |
+| Webhook | One per Application, with a secret and Auto-deploy on or off. A call is accepted only with a valid signature for that secret (HMAC-SHA256 of the body for GitHub, Gitea and Forgejo; the token for GitLab). Only a push to the Application's branch, with Auto-deploy on, queues a Deployment. Only a Pull request event, with Previews on, whose head is a branch of the same repository and whose base is the Application's branch, opens, deploys or closes a Preview. |
+| Preview | One per Application and Preview number. `open` → `closed`, and back to `open` when the Pull request is reopened. Only an open Preview is deployed. Closing it removes its Containers, Volumes, Images and Preview route on its Server; a closed Preview has nothing left running. Never for an `image` Application. |
 | Known host | One per host (and port). The first clone from a host records its keys; every later clone must see the same ones, or the Deployment fails. Only the Owner can forget a host. |
 
 ### Commands
@@ -54,13 +61,27 @@ Application is (projects) or for the Caddy configuration (routing).
   Domains, Health check, Persistent storage and Resource limits.
 - `ReceivePush(application, headers, body)`: verifies a Webhook call and
   queues a Deployment with trigger `webhook`.
-- `RotateWebhookSecret(application)`, `SetAutoDeploy(application, on)`.
+- `ReceivePullRequest(application, headers, body)`: verifies the call like a
+  push; opened or reopened opens the Preview and queues its Deployment,
+  pushed-to queues its Deployment, closed or merged closes it. Ignored (with
+  the reason) when Previews are off, the head is a fork, or the base is not
+  the Application's branch.
+- `DeployPreview(application, number)`: queues a Deployment of an open
+  Preview (trigger `webhook`, or `manual` from the dashboard).
+- `ClosePreview(application, number)`: cancels its active Deployment, marks
+  it closed, removes what it ran on its Server, and edits the Preview comment
+  to say so.
+- `RotateWebhookSecret(application)`, `SetAutoDeploy(application, on)`,
+  `SetPreviews(application, on, git host token)`.
 - `ForgetKnownHost(host)`.
 - `PruneImages(server)`: Image retention for every Application whose
   Deployments ran on that Server, with that Server's Podman; registered with
   servers through `servers.OnCleanup`.
 - The Worker's steps: `Clone`, `Build`, `Start`, `WaitHealthy`,
-  `SwitchRoute`, `CleanUp`, `Fail(reason)`. What comes before `Start`
+  `SwitchRoute` (`SwitchPreviewRoute` for a Preview), `CleanUp` (only
+  Containers of the same Preview, or of the Application itself),
+  `Fail(reason)`, and for a Preview Deployment that finished or failed
+  `CommentPreview` (never fails the Deployment). What comes before `Start`
   depends on the Build pack:
   - `dockerfile`: `Clone`, `Build` the Dockerfile at its path.
   - `nixpacks`: `Clone`, `Plan` (Nixpacks writes `.nixpacks/Dockerfile`
@@ -73,7 +94,7 @@ Application is (projects) or for the Caddy configuration (routing).
 ### Domain events
 
 - `DeploymentFinished { deployment, application, slug, succeeded, reason,
-  branch, commit, trigger, rollback }`: a Deployment ended succeeded or
+  branch, commit, trigger, rollback, preview }`: a Deployment ended succeeded or
   failed. Not for a cancelled Deployment, nor for one failed because a
   restart interrupted it. Registered with `OnDeploymentFinished(f)`; each
   subscriber runs in its own goroutine so it cannot hold up the Worker.
@@ -90,7 +111,12 @@ Application is (projects) or for the Caddy configuration (routing).
   the Application's Deployments ran on); `servers.Connect`, the Server
   connection every step of a Deployment runs through.
   A push Webhook for an `image` Application is ignored: it has no branch.
-- **Receives:** Webhook calls from git hosts, unauthenticated but signed.
+  `routing.SwitchPreviewRoute` and `routing.DropPreviewRoute` for Previews.
+- **Receives:** Webhook calls from git hosts, unauthenticated but signed:
+  pushes and Pull request events.
+- **Talks to:** the git hosts' REST APIs (Forgejo and Gitea, GitHub,
+  GitLab) to write the Preview comment, with the Git host token; the API
+  base comes from the Pull request event.
 
 ## Why it's shaped this way
 
@@ -204,3 +230,31 @@ Application is (projects) or for the Caddy configuration (routing).
   projects about an Application that no longer exists.
 - **A Server that cannot be reached fails the Deployment before anything
   changes**, with the reason, so the running version (if any) stays.
+- **Previews only for Pull requests from the same repository.** A Preview
+  runs with the Application's runtime variables; building a fork's code with
+  them would hand those Secrets to anyone who opens a Pull request. Keeping
+  to the same repository also means the head is a branch of the
+  Application's own Source, cloned with the same Deploy key.
+- **A Preview has its own Volumes but the Application's variables,
+  settings and Target server.** A Pull request must never write into
+  production's data; everything else is what makes it a faithful copy.
+  Preview-specific variables can come later.
+- **The Preview belongs to deployments, not projects.** Like the Webhook it
+  is a way to run an existing Application, not a new kind of Application:
+  it has no settings of its own, and projects' rules (unique Domains, one
+  Target server) keep holding for the Application.
+- **Deployments stay serial per Application, Previews included.** One
+  running Deployment per Application keeps the Worker's claim unchanged;
+  one queued per (Application, Preview) keeps a burst of pushes to many
+  Pull requests from dropping any of them.
+- **Image retention per Preview is one Image.** Previews cannot be rolled
+  back, so an open Preview keeps only the Image it runs, and a closed one
+  none; production keeps its five for Rollback.
+- **One Preview comment, edited.** A Pull request that is pushed to often
+  would otherwise fill with Bakery comments. The API base URL is read from
+  the Pull request event, so self-hosted Forgejo, Gitea, GitLab and GitHub
+  Enterprise work without configuration. A failed comment is logged in the
+  Deployment log and never fails the Deployment: the Preview itself works.
+- **The Preview domain is `pr-<n>.<primary Domain>`.** It works under
+  `*.localhost` with no setup and, on a server, needs one wildcard DNS record
+  per Application; certificates are still issued per host.

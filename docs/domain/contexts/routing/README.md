@@ -7,7 +7,7 @@
 
 Makes Domains reach Containers. Owns the Proxies (the Caddy container
 `bakery-proxy` on each Server that has Routes: it exists, runs and sits on that Server's `bakery` network) and the
-Routes, the Service routes and the Route settings, and renders the whole Caddy configuration from them. It is **not**
+Routes, the Preview routes, the Service routes and the Route settings, and renders the whole Caddy configuration from them. It is **not**
 responsible for which Container is current; deployments tells it.
 
 ## Language
@@ -17,6 +17,7 @@ responsible for which Container is current; deployments tells it.
 | Proxy | The Caddy container `bakery-proxy` on one Server. The Local server's also serves the Dashboard Route and the Service routes. |
 | Remote Proxy | The Proxy on a Remote server. Its admin API is a unix socket in the volume `bakery-proxy-admin`, reached over the Server connection. |
 | Route | An Application's Domains → container name and port on its Target server. One per Application. |
+| Preview route | A Preview's Preview domain (`pr-<n>.<primary Domain>`) → its container name and port on the Application's Server. One per Application and Preview number. |
 | Service route | A Public Component's Domains → its Container and port. One per Public Component of a Service. |
 | Route settings | How the Proxy treats an Application's traffic: Www redirect, Response headers, Basic auth. One per Application, default all off. |
 | Www redirect | `off`, `to_apex` or `to_www`. Each Domain's counterpart (`www.` added or removed) answers 308 to the Domain, keeping path and query. |
@@ -35,6 +36,7 @@ responsible for which Container is current; deployments tells it.
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Route | One per Application, with at least one Domain, on one Server. It always points at a Container on that Server that was running when the Route was switched. (That Domains are unique is projects' rule.) |
+| Preview route | One per (Application, Preview number), on the Application's Server, pointing at a Container that was running when it was switched. Rendered with the Application's Response headers and Basic auth but never a Www redirect, and after every Route and Service route, so a Domain someone set explicitly always wins over a Preview domain. |
 | Service route | One per (Service, Component), with at least one Domain, pointing at a Container that was running when the Service's routes were set. A Service's routes are always replaced as a set. Rendered with default Route settings. |
 | Route settings | One per Application, stored even before it has a Route. Www redirect is `off`, `to_apex` or `to_www`. At most 20 Response headers, names are HTTP tokens, listed once (case-insensitively), never hop-by-hop (`Connection`, `Keep-Alive`, `Proxy-*`, `TE`, `Trailer`, `Transfer-Encoding`, `Upgrade`) or `Content-Length`; values on one line, at most 1024 characters. Basic auth, when on, has a username (1–100 characters, no `:`) and a password hash; only the bcrypt hash is kept and it is never returned. |
 
@@ -44,7 +46,9 @@ responsible for which Container is current; deployments tells it.
 - `SwitchRoute(server, applicationID, domains, container, port)`: upsert the Route, ensure that Server's Proxy (creating it on a Server's first Route), then Apply that Server.
 - `ChangeDomains(applicationID, domains)`: on `ApplicationDomainsChanged`; moves an existing Route to the Domains, then Applies. No Route yet: nothing to do.
 - `ChangeRouteSettings(applicationID, settings)`: store, then Apply.
-- `DropRoute(applicationID)`: on `ApplicationDeleted`, drops the Route and the Route settings, then Applies.
+- `SwitchPreviewRoute(server, applicationID, preview, domains, container, port)`: like `SwitchRoute`, for a Preview.
+- `DropPreviewRoute(applicationID, preview)`: when a Preview closes; removes it, then Applies its Server.
+- `DropRoute(applicationID)`: on `ApplicationDeleted`, drops the Route, the Preview routes and the Route settings, then Applies.
 - `SetServiceRoutes(serviceID, routes)`: replaces the Service's Service routes, then Applies.
 - `DropServiceRoutes(serviceID)`: removes them, then Applies.
 
@@ -54,7 +58,7 @@ None.
 
 ## Integration
 
-- **Publishes:** `SwitchRoute` for deployments; `SetServiceRoutes` and `DropServiceRoutes` for services; the Route settings over HTTP (`GET/PUT /api/applications/{id}/routing`) for the dashboard.
+- **Publishes:** `SwitchRoute`, `SwitchPreviewRoute` and `DropPreviewRoute` for deployments; `SetServiceRoutes` and `DropServiceRoutes` for services; the Route settings over HTTP (`GET/PUT /api/applications/{id}/routing`) for the dashboard.
 - **Consumes:** `ApplicationDeleted` and `ApplicationDomainsChanged` from projects; `servers.Connect` to run and configure a Remote Proxy.
 
 ## Why it's shaped this way
@@ -125,3 +129,9 @@ None.
   API.
 - **Service routes and the Dashboard Route stay on the Local server**:
   Services still run there, and the dashboard is Bakery's own.
+- **Preview routes are a table of their own**, not extra rows of Route. A
+  Route is one per Application (the upsert relies on it) and projects owns
+  its Domains; a Preview route's Domain is derived, and it disappears when
+  its Pull request closes. Rendering it with the Application's Route
+  settings keeps an Application behind Basic auth protected in its Previews
+  too; a Www redirect makes no sense for a derived host.

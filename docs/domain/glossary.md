@@ -23,7 +23,7 @@ document; list them here when people outside the context use them too.
 | Recovery code | identity | One of 10 single-use codes handed out when Two-factor authentication is switched on, for signing in without the phone. Stored hashed. | Authenticator code, API token |
 | Login challenge | identity | The 5 minutes between a correct password and the second sign-in step of a Member with Two-factor authentication; at most 5 wrong codes. | Session |
 | API token | identity | A named secret (`bky_…`) of one Member, sent as `Authorization: Bearer`, acting with that Member's Role, or as viewer when it is *read-only*. Shown once, stored hashed, revocable; it dies with its Member. | Session, Deploy key |
-| Secret | identity (used by every context) | A value a viewer may not read: Env var and Shared variable values, Database credentials and URLs, Service variable values, the Webhook secret, Backup contents. | Env var |
+| Secret | identity (used by every context) | A value a viewer may not read: Env var and Shared variable values, Database credentials and URLs, Service variable values, the Webhook secret, the Git host token, Backup contents. | Env var |
 | Project | projects | A named group of Environments, usually one product. | Repository |
 | Environment | projects | A stage inside a Project (`production` is created with every Project). Holds Applications and Databases. | Env var, the dev/next/prod environments of this repo |
 | Application | projects | Something Bakery builds from a Source (or pulls as an Image reference) and runs as one Container behind its Domains. | Service, Container |
@@ -52,6 +52,14 @@ document; list them here when people outside the context use them too.
 | Source image | deployments | The reference with digest an `image` Deployment pulled, e.g. `docker.io/traefik/whoami@sha256:…`. Shown where git Deployments show their commit. | Image reference |
 | Container | deployments, services | A running instance of an Image, named `bakery-app-<application-id>-<deployment-id>` for an Application and `bakery-svc-<service-id>-<component>` for a Component. | Application |
 | Webhook | deployments | The URL and secret a git host calls on every push, so a push to an Application's branch deploys it. | Notification webhook (later) |
+| Pull request | deployments | A request on a git host to merge a branch into the Application's branch; a GitLab merge request counts as one. Known to Bakery only through Webhook calls. | Deployment |
+| Previews | deployments | The switch on an Application's Webhook that lets Pull requests start Previews. Off until switched on. | Preview |
+| Preview | deployments | A running copy of an Application built from the head branch of one open Pull request in the Application's own repository, with its own Containers, Volumes and Preview route. `open` until the Pull request closes, then `closed` with nothing left running. | Environment, Rollback |
+| Preview number | deployments | The Pull request's number (GitLab: its `iid`); names the Preview, its Containers, Volumes and Preview domain. | Deployment id |
+| Preview domain | deployments, routing | `pr-<number>.<primary Domain>`, where a Preview is served. | Domain |
+| Preview route | routing | Where a Preview's Preview domain is served from: one per Application and Preview number, on the Application's Server, with the Application's headers and basic auth. | Route |
+| Preview comment | deployments | The one comment Bakery keeps on a Pull request, edited after every Preview Deployment and when the Preview is removed. Needs a Git host token. | Notification |
+| Git host token | deployments | An access token for the git host, stored encrypted on the Webhook, that lets Bakery write the Preview comment. A Secret. | Deploy key, API token |
 | Auto-deploy | deployments | Whether a verified push to the Application's branch queues a Deployment. On by default. | Redeploy |
 | Known host | deployments | A git host's SSH host key, remembered on the first clone from that host and required to match on every later one. | Host key (Servers) |
 | Server | servers | A machine Bakery runs Containers on: the Local server, through the rootless Podman socket, or a Remote server over SSH. Applications run on their Target server; Databases and Services still run on the Local server. | Proxy |

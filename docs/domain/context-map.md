@@ -7,7 +7,7 @@ depend on each other.
 
 | Context | Subdomain | Hosted in | Owns |
 | ------- | --------- | --------- | ---- |
-| deployments | core | `services/api` (`contexts/deployments`) | Deployments, their logs, talking to Podman (builds, containers) |
+| deployments | core | `services/api` (`contexts/deployments`) | Deployments, their logs, Webhooks, Previews and Known hosts, talking to Podman (builds, containers) |
 | projects | supporting | `services/api` (`contexts/projects`) | Projects, Environments, Applications, Env vars |
 | routing | supporting | `services/api` (`contexts/routing`) | Routes, Service routes, Route settings and the Proxies (a Caddy container per Server and its config) |
 | databases | supporting | `services/api` (`contexts/databases`) | Databases, their Containers and volumes, Backups and S3 storages |
@@ -31,8 +31,8 @@ adapt to.
 | identity | projects, deployments, routing, databases, services, servers, notifications | open host service (they are conformist) | The `identity.Auth` middleware (a signed-in Member, by Session or API token; viewers refused on every change), `identity.Admin` around admin-only areas, `identity.Secrets` around GETs that return Secrets, and `identity.CanSeeSecrets(ctx)` where one response mixes Secrets with public fields. The others learn nothing else about Members |
 | projects | deployments | customer/supplier | `projects.ApplicationForDeploy(id)` returns an `ApplicationSnapshot` (Target server, Source, Dockerfile path, port, Domains, Persistent storage, Resource limits, decrypted Env vars and Deploy key) |
 | projects | routing | customer/supplier | `projects.ApplicationExists(id)`, so the Route settings API answers 404 for an unknown Application without reading projects' tables |
-| routing | deployments | customer/supplier | `routing.SwitchRoute(serverID, applicationID, domains, container, port)`, called synchronously in a Deployment's route step, so the old Container is removed only after traffic has moved |
-| projects | routing, deployments | published language | `ApplicationDeleted` event: routing drops the Application's Route and Route settings; deployments removes its Containers, volumes, Deployments and Webhook |
+| routing | deployments | customer/supplier | `routing.SwitchRoute(serverID, applicationID, domains, container, port)`, called synchronously in a Deployment's route step, so the old Container is removed only after traffic has moved; `routing.SwitchPreviewRoute(serverID, applicationID, preview, domains, container, port)` the same for a Preview, and `routing.DropPreviewRoute(applicationID, preview)` when a Preview closes |
+| projects | routing, deployments | published language | `ApplicationDeleted` event: routing drops the Application's Route, Preview routes and Route settings; deployments removes its Containers, volumes, Deployments, Previews and Webhook |
 | projects | databases | customer/supplier | `projects.Environment(id)` places a new Database and names its Project; `projects.OnProjectDeleting` lets databases refuse deleting a Project that still has Databases |
 | projects | routing | published language | `ApplicationDomainsChanged { applicationID, domains }` event: routing moves the Application's Route to the new Domains at once |
 | projects | services | customer/supplier | `projects.Environment(id)` places a Service; `projects.DomainInUse(domain)` before a Service stores a Domain; services registers `projects.OnDomainCheck` (an Application cannot take a Service's Domain) and `projects.OnProjectDeleting` (a Project with Services is not deleted) |
@@ -53,6 +53,7 @@ adapt to.
 | SSH | servers (for deployments and routing through Server connections) | `golang.org/x/crypto/ssh`: Podman's socket and the Remote Proxy's admin socket through `direct-streamlocal` channels, plain commands for checks |
 | Caddy admin API | routing | JSON config loaded with `POST /load` |
 | S3-compatible storage | databases | Its own thin S3 client (Signature V4), for Backups |
+| Git hosts' REST APIs (Forgejo and Gitea, GitHub, GitLab) | deployments | Plain HTTPS calls with the Git host token, to write the Preview comment |
 | SMTP servers | notifications | `net/smtp`, with the settings of an email Notification channel |
 | Discord, Slack, Telegram, ntfy, webhook receivers | notifications | Plain HTTPS POSTs, one small sender per Channel kind |
 
