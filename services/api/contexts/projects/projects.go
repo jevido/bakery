@@ -72,9 +72,7 @@ type ApplicationSnapshot struct {
 	DockerfilePath   string
 	Port             int
 	// Domains are the Application's Domains, primary first.
-	Domains []string
-	// Domain is the primary Domain.
-	Domain     string
+	Domains    []string
 	BuildEnv   map[string]string
 	RuntimeEnv map[string]string
 	// DeployKey is the Deploy key's private half (OpenSSH PEM), empty for
@@ -107,7 +105,7 @@ func ApplicationForDeploy(ctx context.Context, id uint64) (ApplicationSnapshot, 
 		ID: a.ID, Slug: a.Slug, BuildPack: string(a.BuildPack), ImageReference: a.ImageReference, PublishDirectory: a.PublishDirectory,
 		RegistryUsername: a.RegistryCredentials.Username, RegistryPassword: a.RegistryCredentials.Password,
 		GitURL: a.GitURL, GitBranch: a.GitBranch,
-		DockerfilePath: a.DockerfilePath, Port: a.Port, Domains: a.Domains, Domain: a.PrimaryDomain(), BuildEnv: build, RuntimeEnv: runtime, DeployKey: a.DeployKey.Private,
+		DockerfilePath: a.DockerfilePath, Port: a.Port, Domains: a.Domains, BuildEnv: build, RuntimeEnv: runtime, DeployKey: a.DeployKey.Private,
 		HealthCheck: HealthCheck(a.HealthCheck),
 	}, nil
 }

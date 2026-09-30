@@ -72,30 +72,58 @@ func TestProxyRoutesToContainer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := proxy.Apply(ctx, []domain.Route{{ApplicationID: 1, Domain: "test.localhost", Container: "bakery-test-whoami", Port: 80}}); err != nil {
+	if err := proxy.Apply(ctx, []domain.Route{{ApplicationID: 1, Domains: []string{"test.localhost", "alias.localhost"}, Container: "bakery-test-whoami", Port: 80}}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
+	for _, host := range []string{"test.localhost", "alias.localhost"} {
+		waitFor(t, func() bool {
+			res := get(host, "/", nil)
+			return res != nil && res.StatusCode == 200 && strings.Contains(res.Body, "Hostname:")
+		}, "whoami answering on "+host)
+	}
+}
 
-	// curl -k --resolve test.localhost:4945:127.0.0.1 https://test.localhost:4945
-	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, network, "127.0.0.1:4945")
+// response is what get saw.
+type response struct {
+	StatusCode int
+	Header     http.Header
+	Body       string
+}
+
+// get requests https://host:4945/path from the test proxy, like
+// curl -k --resolve host:4945:127.0.0.1, without following redirects.
+func get(host, path string, header http.Header) *response {
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, network, "127.0.0.1:4945")
+			},
 		},
-	}}
-	var body string
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	req, _ := http.NewRequest(http.MethodGet, "https://"+host+":4945"+path, nil)
+	for k, v := range header {
+		req.Header[k] = v
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(res.Body)
+	return &response{StatusCode: res.StatusCode, Header: res.Header, Body: string(raw)}
+}
+
+func waitFor(t *testing.T, ok func() bool, what string) {
+	t.Helper()
 	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(500 * time.Millisecond) {
-		res, err := client.Get("https://test.localhost:4945/")
-		if err != nil {
-			continue
-		}
-		raw, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		if body = string(raw); res.StatusCode == 200 && strings.Contains(body, "Hostname:") {
+		if ok() {
 			return
 		}
 	}
-	t.Fatalf("whoami never answered through the proxy; last body %q", body)
+	t.Fatalf("timed out waiting for %s", what)
 }
 
 // With AdminPublish empty the admin API gets no host port; the API reaches
@@ -169,7 +197,7 @@ func TestProxyACMEConfigLoads(t *testing.T) {
 	if err != nil || string(got) != testRootPEM {
 		t.Fatalf("root in proxy: %q %v", got, err)
 	}
-	err = proxy.Apply(ctx, []domain.Route{{ApplicationID: 1, Domain: "a.example.com", Container: "nowhere", Port: 80}})
+	err = proxy.Apply(ctx, []domain.Route{{ApplicationID: 1, Domains: []string{"a.example.com"}, Container: "nowhere", Port: 80}})
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}

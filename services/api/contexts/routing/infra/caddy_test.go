@@ -2,6 +2,7 @@ package infra
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/jevido/bakery/services/api/contexts/routing/domain"
@@ -9,8 +10,8 @@ import (
 
 func TestRenderInternalTLS(t *testing.T) {
 	raw, err := Render([]domain.Route{
-		{ApplicationID: 2, Domain: "zeta.localhost", Container: "bakery-app-2-9", Port: 8080},
-		{ApplicationID: 1, Domain: "whoami.localhost", Container: "bakery-app-1-4", Port: 80},
+		{ApplicationID: 2, Domains: []string{"zeta.localhost"}, Container: "bakery-app-2-9", Port: 8080},
+		{ApplicationID: 1, Domains: []string{"whoami.localhost"}, Container: "bakery-app-1-4", Port: 80},
 	}, RenderOptions{InternalTLS: true})
 	if err != nil {
 		t.Fatal(err)
@@ -176,7 +177,7 @@ func TestRenderACMEAndEmpty(t *testing.T) {
 
 func TestRenderDashboardRoute(t *testing.T) {
 	raw, err := Render([]domain.Route{
-		{ApplicationID: 1, Domain: "a.example.com", Container: "bakery-app-1-4", Port: 80},
+		{ApplicationID: 1, Domains: []string{"a.example.com"}, Container: "bakery-app-1-4", Port: 80},
 	}, RenderOptions{InternalTLS: true, Dashboard: &domain.DashboardRoute{
 		Domain: "bakery.example.com", API: "bakery-api:4910", Web: "bakery-web:80",
 	}})
@@ -238,7 +239,7 @@ func TestRenderDashboardRoute(t *testing.T) {
 }
 
 func TestRenderACME(t *testing.T) {
-	routes := []domain.Route{{ApplicationID: 1, Domain: "a.example.com", Container: "bakery-app-1-4", Port: 80}}
+	routes := []domain.Route{{ApplicationID: 1, Domains: []string{"a.example.com"}, Container: "bakery-app-1-4", Port: 80}}
 	raw, err := Render(routes, RenderOptions{
 		Dashboard: &domain.DashboardRoute{Domain: "bakery.example.com", API: "bakery-api:4910", Web: "bakery-web:80"},
 		ACME:      ACME{CA: "https://pebble:14000/dir", Email: "me@example.com", TrustedRootsFile: "/data/bakery/acme-root.pem"},
@@ -275,5 +276,41 @@ func TestRenderACME(t *testing.T) {
 	}
 	if _, ok := cfg["apps"].(map[string]any)["tls"]; ok {
 		t.Fatalf("no ACME settings should render no TLS policy: %s", raw)
+	}
+}
+
+func TestRenderSeveralDomains(t *testing.T) {
+	raw, err := Render([]domain.Route{
+		{ApplicationID: 1, Domains: []string{"b.example.com", "a.example.com"}, Container: "bakery-app-1-4", Port: 80},
+		{ApplicationID: 2, Domains: nil, Container: "bakery-app-2-1", Port: 80},
+	}, RenderOptions{InternalTLS: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Apps struct {
+			HTTP struct {
+				Servers map[string]struct {
+					Routes []struct {
+						Match []struct{ Host []string } `json:"match"`
+					} `json:"routes"`
+				} `json:"servers"`
+			} `json:"http"`
+			TLS struct {
+				Automation struct {
+					Policies []struct{ Subjects []string }
+				}
+			} `json:"tls"`
+		} `json:"apps"`
+	}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	routes := cfg.Apps.HTTP.Servers["https"].Routes
+	if len(routes) != 1 || strings.Join(routes[0].Match[0].Host, ",") != "b.example.com,a.example.com" {
+		t.Fatalf("one route matching both domains, none for a route without domains: %s", raw)
+	}
+	if got := strings.Join(cfg.Apps.TLS.Automation.Policies[0].Subjects, ","); got != "b.example.com,a.example.com" {
+		t.Fatalf("subjects %s", got)
 	}
 }

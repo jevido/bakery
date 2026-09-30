@@ -219,7 +219,7 @@ type setup struct {
 func newSetup(t *testing.T, src fakeSource, check ...HealthCheck) *setup {
 	s := &setup{store: &memStore{}, logs: &memLogs{}, runtime: &fakeRuntime{running: map[string]bool{}}, routes: map[string]string{}}
 	apps := func(_ context.Context, id uint64) (Application, error) {
-		a := Application{ID: id, Slug: "whoami", GitURL: "https://example.com/r", GitBranch: "main", DockerfilePath: "Dockerfile", Port: 80, Domain: "whoami.localhost", RuntimeEnv: map[string]string{"HELLO": "world"}, BuildEnv: map[string]string{"VITE_API": "https://api", "B": "1"}}
+		a := Application{ID: id, Slug: "whoami", GitURL: "https://example.com/r", GitBranch: "main", DockerfilePath: "Dockerfile", Port: 80, Domains: []string{"whoami.localhost"}, RuntimeEnv: map[string]string{"HELLO": "world"}, BuildEnv: map[string]string{"VITE_API": "https://api", "B": "1"}}
 		if len(check) > 0 {
 			a.HealthCheck = check[0]
 		}
@@ -229,8 +229,10 @@ func newSetup(t *testing.T, src fakeSource, check ...HealthCheck) *setup {
 		return a, nil
 	}
 	s.service = NewService(s.store, s.logs, apps, nil)
-	router := func(_ context.Context, _ uint64, domain, container string, _ int) error {
-		s.routes[domain] = container
+	router := func(_ context.Context, _ uint64, domains []string, container string, _ int) error {
+		for _, d := range domains {
+			s.routes[d] = container
+		}
 		return nil
 	}
 	s.worker = NewWorker(s.service, src, s.runtime, router, t.TempDir())

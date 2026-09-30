@@ -44,15 +44,20 @@ type ACME struct {
 type obj = map[string]any
 
 // Render returns the full Caddy JSON config for the Routes: one server on
-// :443 (TLS) with a host-matched reverse_proxy route per Route, sorted by
-// Domain so the output is stable.
+// :443 (TLS) with a host-matched reverse_proxy route per Route, matching
+// all its Domains, sorted by primary Domain so the output is stable.
 //
 // With Internal TLS a second server on :80 serves the same routes over plain
 // HTTP. With ACME there is no :80 server of ours: Caddy then runs its own
 // there, answering HTTP-01 challenges and redirecting everything to HTTPS.
 func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
-	sorted := append([]domain.Route(nil), routes...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Domain < sorted[j].Domain })
+	sorted := make([]domain.Route, 0, len(routes))
+	for _, r := range routes {
+		if len(r.Domains) > 0 {
+			sorted = append(sorted, r)
+		}
+	}
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Domains[0] < sorted[j].Domains[0] })
 
 	caddyRoutes := make([]obj, 0, len(sorted)+1)
 	domains := make([]string, 0, len(sorted)+1)
@@ -61,9 +66,9 @@ func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
 		caddyRoutes = append(caddyRoutes, dashboardRoute(*d))
 	}
 	for _, r := range sorted {
-		domains = append(domains, r.Domain)
+		domains = append(domains, r.Domains...)
 		caddyRoutes = append(caddyRoutes, obj{
-			"match": []obj{{"host": []string{r.Domain}}},
+			"match": []obj{{"host": r.Domains}},
 			"handle": []obj{{
 				"handler":   "reverse_proxy",
 				"upstreams": []obj{{"dial": r.Container + ":" + strconv.Itoa(r.Port)}},

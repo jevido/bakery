@@ -76,7 +76,8 @@ type Application struct {
 	GitBranch        string
 	DockerfilePath   string
 	Port             int
-	Domain           string
+	// Domains are the Application's Domains, primary first.
+	Domains []string
 	// BuildEnv reaches the build as build args, RuntimeEnv the Container.
 	BuildEnv   map[string]string
 	RuntimeEnv map[string]string
@@ -203,4 +204,4 @@ type ContainerSpec struct {
 }
 
 // Router is routing's SwitchRoute.
-type Router func(ctx context.Context, applicationID uint64, domain, container string, port int) error
+type Router func(ctx context.Context, applicationID uint64, domains []string, container string, port int) error

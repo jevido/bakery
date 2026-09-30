@@ -1,13 +1,14 @@
-// Package domain is the routing model: a Route sends a Domain to one
-// Container and port.
+// Package domain is the routing model: a Route sends an Application's
+// Domains to one Container and port.
 package domain
 
-// Route is where an Application's Domain is served from.
+// Route is where an Application's Domains are served from.
 type Route struct {
 	ApplicationID uint64
-	Domain        string
-	Container     string
-	Port          int
+	// Domains has at least one Domain, the primary first.
+	Domains   []string
+	Container string
+	Port      int
 }
 
 // DashboardRoute serves Bakery's own dashboard on its Domain: /api/* goes to

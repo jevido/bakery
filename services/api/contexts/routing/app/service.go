@@ -13,6 +13,9 @@ import (
 type Routes interface {
 	All(ctx context.Context) ([]domain.Route, error)
 	Upsert(ctx context.Context, r domain.Route) error
+	// ChangeDomains changes the Domains of an existing Route; found is
+	// false when the Application has none.
+	ChangeDomains(ctx context.Context, applicationID uint64, domains []string) (found bool, err error)
 	Delete(ctx context.Context, applicationID uint64) error
 }
 
@@ -44,7 +47,18 @@ func (s *Service) EnsureProxy(ctx context.Context) error {
 	return s.apply(ctx)
 }
 
-// SwitchRoute points the Application's Domain at a new Container, then
+// ChangeDomains moves the Application's Route, if it has one, to the
+// Domains, then Applies. Without a Route there is nothing to serve yet: the
+// first Deployment passes the Domains.
+func (s *Service) ChangeDomains(ctx context.Context, applicationID uint64, domains []string) error {
+	found, err := s.routes.ChangeDomains(ctx, applicationID, domains)
+	if err != nil || !found {
+		return err
+	}
+	return s.apply(ctx)
+}
+
+// SwitchRoute points the Application's Domains at a new Container, then
 // Applies.
 func (s *Service) SwitchRoute(ctx context.Context, r domain.Route) error {
 	if err := s.routes.Upsert(ctx, r); err != nil {

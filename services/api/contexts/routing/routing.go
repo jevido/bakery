@@ -48,6 +48,11 @@ func svc() *app.Service {
 			VolumePrefix: "bakery-proxy",
 		})
 		service = app.NewService(infra.Routes{}, proxy)
+		projects.OnApplicationDomainsChanged(func(ctx context.Context, applicationID uint64, domains []string) {
+			if err := service.ChangeDomains(ctx, applicationID, domains); err != nil {
+				facades.Log().Errorf("routing: moving the route of application %d to %v: %v", applicationID, domains, err)
+			}
+		})
 		projects.OnApplicationDeleted(func(ctx context.Context, applicationID uint64) {
 			if err := service.DropRoute(ctx, applicationID); err != nil {
 				facades.Log().Errorf("routing: dropping route of application %d: %v", applicationID, err)
@@ -66,8 +71,8 @@ func EnsureProxy(ctx context.Context) error {
 	return svc().EnsureProxy(ctx)
 }
 
-// SwitchRoute points an Application's Domain at a Container and port, and
+// SwitchRoute points an Application's Domains at a Container and port, and
 // Applies. When it returns nil, Caddy is serving the new Container.
-func SwitchRoute(ctx context.Context, applicationID uint64, domainName, container string, port int) error {
-	return svc().SwitchRoute(ctx, domain.Route{ApplicationID: applicationID, Domain: domainName, Container: container, Port: port})
+func SwitchRoute(ctx context.Context, applicationID uint64, domains []string, container string, port int) error {
+	return svc().SwitchRoute(ctx, domain.Route{ApplicationID: applicationID, Domains: domains, Container: container, Port: port})
 }

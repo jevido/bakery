@@ -315,8 +315,8 @@ func (w *Worker) goLive(ctx context.Context, d *domain.Deployment, app Applicati
 
 	// Route, before the old Container goes, so traffic never points at
 	// nothing.
-	info("Routing %s to %s:%d", app.Domain, d.Container, app.Port)
-	if err := w.router(ctx, app.ID, app.Domain, d.Container, app.Port); err != nil {
+	info("Routing %s to %s:%d", strings.Join(app.Domains, ", "), d.Container, app.Port)
+	if err := w.router(ctx, app.ID, app.Domains, d.Container, app.Port); err != nil {
 		// The old Container still serves; only the new one goes.
 		_ = w.runtime.Remove(context.WithoutCancel(ctx), d.Container)
 		return fmt.Errorf("routing failed: %w", err)
