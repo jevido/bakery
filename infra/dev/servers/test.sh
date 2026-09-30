@@ -83,7 +83,7 @@ start_stand_in
 authorise "$SERVER_ID"
 bakery POST "/api/servers/$SERVER_ID/validate" >/dev/null
 [ "$(server "$SERVER_ID" "['status']")" = unreachable ] || fail "a changed host key was accepted"
-check "$SERVER_ID" ssh "['detail']" | grep -q "host key changed" || fail "no host key reason: $(check "$SERVER_ID" ssh "['detail']")"
+grep -q "host key changed" <<<"$(check "$SERVER_ID" ssh "['detail']")" || fail "no host key reason: $(check "$SERVER_ID" ssh "['detail']")"
 bakery DELETE "/api/servers/$SERVER_ID/host-key" >/dev/null
 bakery POST "/api/servers/$SERVER_ID/validate" >/dev/null
 [ "$(server "$SERVER_ID" "['status']")" = reachable ] || fail "not reachable after forgetting the host key"

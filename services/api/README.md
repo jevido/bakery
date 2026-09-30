@@ -34,8 +34,11 @@ Services are run from their Compose file through the Podman API (no
 Servers are the Local server (the Podman socket above) and Remote servers,
 reached over SSH with a key Bakery generates; the Podman API is tunnelled
 through that connection (`app/podman/ssh.go`). `task remote:up` from the repo
-root starts a stand-in on `127.0.0.1:4972` for `task api:test:podman` and
-`task servers:test`.
+root starts a stand-in on `127.0.0.1:4972` for `task api:test:podman`,
+`task servers:test` and `task remote-deploy:test`. Other contexts reach a
+Server through `servers.Connect` (one pooled SSH connection per Server);
+an Application's Deployments run on its Target server, served by that
+Server's own Proxy, whose admin API is a unix socket opened over SSH.
 
 Other tasks: `task api:check` (gofmt, go vet, go test), `task api:migrate`,
 `task api:test:podman` (against the rootless Podman socket),

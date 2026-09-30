@@ -80,4 +80,14 @@ Local development stack.
   validates it, sees a Bakery container running there in its metrics, cleans
   up both Servers without touching an unlabelled image, replaces the
   stand-in's host keys and checks the Server is refused until the host key
-  is forgotten, and removes it. Every script shares `lib/e2e.sh`.
+  is forgotten, and removes it.
+- `remote-deploy/test.sh` (`task remote-deploy:test`, needs `task dev`)
+  deploys an Application from the Forgejo stand-in to the Remote server
+  stand-in: built and running there with a Health check, served by the
+  stand-in's own Proxy on `127.0.0.1:4974` and not by the local one, a
+  redeploy that never fails a request, a Rollback without a build, the
+  remote container's logs, a Server with Applications that cannot be
+  removed, Cleanup there, a Server that stops answering (a relay on
+  `127.0.0.1:4979` that is shut down) failing a Deployment with the reason,
+  and deleting the Application leaving nothing on the stand-in. Every
+  script shares `lib/e2e.sh`.

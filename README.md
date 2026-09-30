@@ -155,6 +155,25 @@ Service page starts, stops, redeploys (pulling the images again, keeping
 the volumes) and deletes it, and follows each component's logs.
 `task services:test` runs all of this end to end.
 
+### Servers
+
+**Servers** lists the machine Bakery runs on and any server you add over
+SSH: give its host, port and user, add the key Bakery shows to that user's
+`~/.ssh/authorized_keys`, and press **Validate** (rootless Podman 4.4 or
+newer, its API socket, and linger on). Each server shows its CPU, memory
+and disk, and every night (or on **Clean up now**) Bakery removes images
+nothing needs any more.
+
+When you add an application you pick the server it runs on. It is cloned
+here, built on that server and served there by that server's own proxy on
+80/443, so its domains' DNS must point at that server; the server needs
+80/443 free and `net.ipv4.ip_unprivileged_port_start=80`. Redeploys,
+rollbacks, logs and cleanup work as they do locally. The server cannot be
+changed afterwards, and a server that still runs applications cannot be
+removed. Databases and services run on Bakery's own server for now.
+`task servers:test` and `task remote-deploy:test` run this end to end
+against a stand-in server in a container (`task remote:up`).
+
 ## Install on a server
 
 On a fresh Linux server with systemd, ports 80/443 open and DNS for your

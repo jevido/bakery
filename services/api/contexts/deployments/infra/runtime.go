@@ -59,6 +59,11 @@ func RegistryHost(ref string) string {
 
 func (r Runtime) Start(ctx context.Context, spec app.ContainerSpec) error {
 	application := strconv.FormatUint(spec.ApplicationID, 10)
+	// A Server's first Container comes before its Proxy, which otherwise
+	// makes the network.
+	if err := r.Podman.EnsureNetwork(ctx, r.Network); err != nil {
+		return fmt.Errorf("network %s: %w", r.Network, err)
+	}
 	volumes := make([]podman.NamedVolume, len(spec.Mounts))
 	for i, m := range spec.Mounts {
 		// Created here, with Bakery's labels, rather than implicitly by
