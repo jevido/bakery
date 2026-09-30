@@ -19,7 +19,7 @@ document; list them here when people outside the context use them too.
 | Application | projects | Something Bakery builds from a Source (or pulls as an Image reference) and runs as one Container behind its Domains. | Service, Container |
 | Slug | projects | The URL-safe, unique short name of an Application, used in its default Domain and image name. | Name |
 | Source | projects | Where an Application's code comes from, for every Build pack except `image`: a git URL and a branch. Either a public `https://` URL, or an SSH URL (`ssh://git@host/path` or `git@host:path`) that always has a Deploy key. | Repository on disk |
-| Deploy key | projects | The SSH key pair Bakery generates for one Application. The Owner adds the public half to the repository as a read-only deploy key; the private half is encrypted at rest. | The Server's SSH key, API token |
+| Deploy key | projects | The SSH key pair Bakery generates for one Application. The Owner adds the public half to the repository as a read-only deploy key; the private half is encrypted at rest. | Server key, API token |
 | Build pack | projects | How an Application becomes an Image: `dockerfile` (build the Dockerfile at a path in the Source), `nixpacks` (Nixpacks detects the language and writes the Dockerfile), `static` (serve the Publish directory of the Source as files on port 80), or `image` (pull an Image reference from a registry; no Source). | Buildpacks (Heroku/CNB) |
 | Image reference | projects | The registry reference an `image` Application runs, always with its registry host, e.g. `docker.io/traefik/whoami:v1.10`. | Image (the Deployment's own tag) |
 | Registry credentials | projects | The username and password or token an `image` Application pulls its Image reference with. The password is encrypted at rest and never shown. | Deploy key |
@@ -43,8 +43,18 @@ document; list them here when people outside the context use them too.
 | Container | deployments, services | A running instance of an Image, named `bakery-app-<application-id>-<deployment-id>` for an Application and `bakery-svc-<service-id>-<component>` for a Component. | Application |
 | Webhook | deployments | The URL and secret a git host calls on every push, so a push to an Application's branch deploys it. | Notification webhook (later) |
 | Auto-deploy | deployments | Whether a verified push to the Application's branch queues a Deployment. On by default. | Redeploy |
-| Known host | deployments | A git host's SSH host key, remembered on the first clone from that host and required to match on every later one. | Server |
-| Server | deployments | A machine Bakery runs Containers on. Only the local one (the rootless Podman socket) exists. | Proxy |
+| Known host | deployments | A git host's SSH host key, remembered on the first clone from that host and required to match on every later one. | Host key (Servers) |
+| Server | servers | A machine Bakery runs Containers on: the Local server, through the rootless Podman socket, or a Remote server over SSH. Every Container still runs on the Local server. | Proxy |
+| Local server | servers | The Server Bakery itself runs on (`localhost`). Always exists; can be neither edited nor deleted. | Remote server |
+| Remote server | servers | A Server reached over SSH as a given user, its rootless Podman socket tunnelled through that connection. | Local server |
+| Server key | servers | The SSH key pair Bakery generates for one Remote server. The Owner adds the public half to the user's `authorized_keys`; the private half is encrypted at rest. | Deploy key |
+| Host key | servers | A Remote server's SSH host key, pinned on the first connection and required to match on every later one until the Owner forgets it. | Known host (git hosts) |
+| Validation | servers | The checks run against a Server (`ssh`, `podman`, `socket`, `linger`, `ports`) and their outcome; it sets the Server status. | Health check |
+| Server status | servers | `unvalidated`, `reachable` (every required check passed) or `unreachable`. | Container state |
+| Server metrics | servers | CPU, memory and disk use of a Server, read live from Podman. | Container metrics |
+| Container metrics | servers | CPU and memory use of each Bakery Container on a Server, read live. | Server metrics, Container logs |
+| Cleanup | servers | Freeing a Server's disk: dangling Bakery images and build layers, plus Image retention on the Local server. Daily and on demand. | Delete |
+| Image retention | deployments | Per Application, the Images of the running Deployment and of the last five finished Deployments are kept; older ones are removed during Cleanup, and a Rollback to one of those is refused ("the image is gone"). | Cleanup |
 | Service | services | Multi-container software described by a Compose file and run in an Environment, created from a Service template or a pasted Compose file. | Application, a compose `services:` entry (that is a Component), the repo's `services/` directory |
 | Compose file | services | The `compose.yml` text a Service is made of, in the subset Bakery supports; anything else is refused with its line. | Containerfile |
 | Component | services | One entry under a Compose file's `services:`, run as one Container `bakery-svc-<service-id>-<name>`. *Public* when it has a port and Domains. | Service, Application |

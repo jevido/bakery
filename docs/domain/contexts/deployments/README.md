@@ -56,6 +56,8 @@ Application is (projects) or for the Caddy configuration (routing).
   queues a Deployment with trigger `webhook`.
 - `RotateWebhookSecret(application)`, `SetAutoDeploy(application, on)`.
 - `ForgetKnownHost(host)`.
+- `PruneImages()`: Image retention for every Application; published for the
+  servers context's Cleanup.
 - The Worker's steps: `Clone`, `Build`, `Start`, `WaitHealthy`,
   `SwitchRoute`, `CleanUp`, `Fail(reason)`. What comes before `Start`
   depends on the Build pack:
@@ -148,9 +150,12 @@ None published yet. Notifications will need `DeploymentFinished` and
   the Application can deploy again straight away.
 - **A Rollback is a new Deployment**, not a change to the old one, so the
   history stays append-only and its log says what ran. It reuses the earlier
-  Image tag, so Images of finished Deployments must be kept; image cleanup,
-  when it comes, keeps them or makes the Rollback refuse with "the image is
-  gone".
+  Image tag, so Images of finished Deployments must be kept. Image retention
+  keeps the running Deployment's Image and those of the last five finished
+  Deployments per Application; older ones are removed during Cleanup (the
+  servers context calls `PruneImages`), and a Rollback to one of those is
+  refused with "the image is gone". Five covers the rollbacks people make
+  in practice without letting every build stay on disk forever.
 - **A pulled image is re-tagged as the Deployment's Image**
   (`localhost/bakery/<slug>:<id>`). Rollback, cleanup and Container naming
   then work the same for every Build pack, and a moving tag like `:latest`
