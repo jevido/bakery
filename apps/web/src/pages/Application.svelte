@@ -136,7 +136,11 @@
   {#if tab === 'deployments'}
     <Deployments {deployments} bind:selected onchange={() => loadDeployments().catch(() => {})} />
   {:else if tab === 'logs'}
-    <ContainerLogs applicationId={application.id} />
+    <ContainerLogs
+      url={`/api/applications/${application.id}/logs`}
+      empty="No running container. Deploy the application first."
+      stopped="The container stopped (a new deployment may have replaced it)."
+    />
   {:else if tab === 'source' && application.build_pack === 'image'}
     <dl class="source">
       <dt>Image</dt>

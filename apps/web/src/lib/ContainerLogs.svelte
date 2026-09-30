@@ -1,7 +1,18 @@
 <script lang="ts">
   import LogView from './LogView.svelte'
 
-  let { applicationId }: { applicationId: number } = $props()
+  // url is the log stream of an Application's or a Database's container.
+  let {
+    url,
+    empty,
+    stopped,
+  }: {
+    url: string
+    /** Shown when there is no running container. */
+    empty: string
+    /** Shown after the container stopped. */
+    stopped: string
+  } = $props()
 
   // Bumped to reconnect after the container stopped or was replaced.
   let attempt = $state(0)
@@ -15,13 +26,9 @@
   {/if}
 </div>
 {#key attempt}
-  <LogView
-    url={`/api/applications/${applicationId}/logs`}
-    empty="No running container. Deploy the application first."
-    onend={(e) => (reason = e.reason ?? 'ended')}
-  />
+  <LogView {url} {empty} onend={(e) => (reason = e.reason ?? 'ended')} />
 {/key}
-{#if reason === 'stopped'}<p class="muted">The container stopped (a new deployment may have replaced it).</p>{/if}
+{#if reason === 'stopped'}<p class="muted">{stopped}</p>{/if}
 
 <style>
   .head {

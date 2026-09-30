@@ -20,7 +20,8 @@
 
 <label class="field">
   <span>{label}</span>
-  <input {type} bind:value {autocomplete} {placeholder} {required} aria-invalid={error ? 'true' : undefined} />
+  <!-- A number input binds a number (or null); value stays a string. -->
+  <input {type} bind:value={() => value, (v) => (value = v == null ? '' : String(v))} {autocomplete} {placeholder} {required} aria-invalid={error ? 'true' : undefined} />
   {#if error}<small class="error">{error}</small>{/if}
 </label>
 
