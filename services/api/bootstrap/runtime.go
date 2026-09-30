@@ -8,6 +8,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/databases"
 	"github.com/jevido/bakery/services/api/contexts/deployments"
 	"github.com/jevido/bakery/services/api/contexts/routing"
+	"github.com/jevido/bakery/services/api/contexts/servers"
 	"github.com/jevido/bakery/services/api/contexts/services"
 )
 
@@ -20,6 +21,7 @@ func StartRuntime(ctx context.Context) {
 	deployments.StartWorker(ctx)
 	databases.Recover(ctx)
 	services.Recover(ctx)
+	servers.Start(ctx)
 	go func() {
 		for attempt := 1; ; attempt++ {
 			err := routing.EnsureProxy(ctx)
