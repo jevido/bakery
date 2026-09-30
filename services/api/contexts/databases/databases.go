@@ -1,5 +1,5 @@
 // Package databases is what the router and the boot code may use from the
-// databases context: its routes and Recover. Nothing else in
+// databases context: its routes, the log stream and Recover. Nothing else in
 // contexts/databases is for outside use.
 package databases
 
@@ -24,6 +24,9 @@ var (
 	once    sync.Once
 	service *app.Service
 	runtime infra.Runtime
+	// shutdown closes when the context Recover got ends, ending log
+	// streams so a stopping API does not wait on open tabs.
+	shutdown = make(chan struct{})
 )
 
 // environments translates projects' Environment into this context's.
@@ -76,10 +79,23 @@ func Routes(r route.Router) {
 	})
 }
 
+// StreamRoutes registers the log stream, behind identity.Auth but outside
+// the request timeout.
+func StreamRoutes(r route.Router) {
+	c := databaseshttp.NewStreamController(svc(), shutdown)
+	r.Middleware(identity.Auth).Group(func(r route.Router) {
+		r.Get("/api/databases/{id}/logs", c.Logs)
+	})
+}
+
 // Recover starts, in the background, every Database that should run and has
 // no Container, retrying while Podman or the database is unreachable.
 func Recover(ctx context.Context) {
 	s := svc()
+	go func() {
+		<-ctx.Done()
+		close(shutdown)
+	}()
 	go func() {
 		for attempt := 1; ; attempt++ {
 			err := runtime.Podman.EnsureNetwork(ctx, runtime.Network)

@@ -2,23 +2,19 @@ package http
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	nethttp "net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
 	"github.com/jevido/bakery/services/api/app/respond"
+	"github.com/jevido/bakery/services/api/app/sse"
 	"github.com/jevido/bakery/services/api/contexts/deployments/app"
 	"github.com/jevido/bakery/services/api/contexts/deployments/domain"
 )
 
 const (
 	pollEvery = 500 * time.Millisecond
-	pingEvery = 20 * time.Second
 	batch     = 500
 )
 
@@ -40,49 +36,6 @@ func NewStreamController(service *app.Service, containers ContainerLogs, isNotFo
 	return &StreamController{service: service, containers: containers, isNotFound: isNotFound, shutdown: shutdown}
 }
 
-// sse writes events; it is safe for the log callback and the ping ticker to
-// use at once.
-type sse struct {
-	mu sync.Mutex
-	w  nethttp.ResponseWriter
-	f  nethttp.Flusher
-}
-
-func startSSE(ctx contractshttp.Context) (*sse, bool) {
-	w := ctx.Response().Writer()
-	f, ok := w.(nethttp.Flusher)
-	if !ok {
-		return nil, false
-	}
-	h := w.Header()
-	h.Set("Content-Type", "text/event-stream")
-	h.Set("Cache-Control", "no-cache")
-	h.Set("Connection", "keep-alive")
-	h.Set("X-Accel-Buffering", "no")
-	w.WriteHeader(contractshttp.StatusOK)
-	s := &sse{w: w, f: f}
-	s.raw("retry: 3000\n\n")
-	return s, true
-}
-
-func (s *sse) raw(text string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	fmt.Fprint(s.w, text)
-	s.f.Flush()
-}
-
-// event sends one event; id (when not empty) is what EventSource sends back
-// as Last-Event-ID on reconnect.
-func (s *sse) event(name, id string, data any) {
-	b, _ := json.Marshal(data)
-	text := ""
-	if id != "" {
-		text = "id: " + id + "\n"
-	}
-	s.raw(text + "event: " + name + "\ndata: " + string(b) + "\n\n")
-}
-
 // DeploymentLog sends the stored log lines, then new ones as they are
 // written, and `status` events when the status changes. After a final
 // status it sends `end`; the client closes then, or EventSource would
@@ -101,7 +54,7 @@ func (c *StreamController) DeploymentLog(ctx contractshttp.Context) contractshtt
 		return respond.ServerError(ctx, err)
 	}
 	after, _ := strconv.ParseUint(ctx.Request().Header("Last-Event-ID"), 10, 64)
-	stream, ok := startSSE(ctx)
+	stream, ok := sse.Start(ctx)
 	if !ok {
 		return respond.Error(ctx, contractshttp.StatusInternalServerError, "streaming is not supported")
 	}
@@ -115,7 +68,7 @@ func (c *StreamController) DeploymentLog(ctx contractshttp.Context) contractshtt
 		}
 		for _, l := range lines {
 			after = l.ID
-			stream.event("line", strconv.FormatUint(l.ID, 10), map[string]any{"id": l.ID, "stream": l.Stream, "line": l.Line})
+			stream.Event("line", strconv.FormatUint(l.ID, 10), map[string]any{"id": l.ID, "stream": l.Stream, "line": l.Line})
 		}
 		if len(lines) == batch {
 			continue // more waiting; send before checking the status
@@ -125,18 +78,18 @@ func (c *StreamController) DeploymentLog(ctx contractshttp.Context) contractshtt
 		}
 		if d.Status != lastStatus {
 			lastStatus = d.Status
-			stream.event("status", "", ToJSON(d))
+			stream.Event("status", "", ToJSON(d))
 		}
 		if !d.Status.Active() {
 			// Lines written just before the final status was saved.
 			if more, err := c.service.LogAfter(reqCtx, id, after, batch); err == nil && len(more) > 0 {
 				continue
 			}
-			stream.event("end", "", map[string]any{"status": d.Status})
+			stream.Event("end", "", map[string]any{"status": d.Status})
 			return nil
 		}
-		if time.Since(lastPing) > pingEvery {
-			stream.raw(": ping\n\n")
+		if time.Since(lastPing) > sse.PingEvery {
+			stream.Raw(": ping\n\n")
 			lastPing = time.Now()
 		}
 		select {
@@ -164,41 +117,13 @@ func (c *StreamController) ContainerLogs(ctx contractshttp.Context) contractshtt
 		}
 		return respond.ServerError(ctx, err)
 	}
-	stream, ok := startSSE(ctx)
+	stream, ok := sse.Start(ctx)
 	if !ok {
 		return respond.Error(ctx, contractshttp.StatusInternalServerError, "streaming is not supported")
 	}
 
-	followCtx, cancel := context.WithCancel(reqCtx)
-	defer cancel()
-	go func() {
-		ping := time.NewTicker(pingEvery)
-		defer ping.Stop()
-		for {
-			select {
-			case <-followCtx.Done():
-				return
-			case <-c.shutdown:
-				cancel()
-				return
-			case <-ping.C:
-				stream.raw(": ping\n\n")
-			}
-		}
-	}()
-	found, err := c.containers(followCtx, id, 200, func(s, line string) {
-		stream.event("line", "", map[string]any{"stream": s, "line": line})
+	sse.Follow(reqCtx, stream, c.shutdown, func(ctx context.Context, out func(stream, line string)) (bool, error) {
+		return c.containers(ctx, id, 200, out)
 	})
-	if followCtx.Err() != nil {
-		return nil
-	}
-	reason := "stopped"
-	switch {
-	case err != nil:
-		reason = "error"
-	case !found:
-		reason = "not running"
-	}
-	stream.event("end", "", map[string]any{"reason": reason})
 	return nil
 }

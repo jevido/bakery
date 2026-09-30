@@ -29,6 +29,7 @@ func Api() {
 		databases.Routes(r)
 	})
 	deployments.StreamRoutes(facades.Route())
+	databases.StreamRoutes(facades.Route())
 }
 
 func health(ctx http.Context) http.Response {
