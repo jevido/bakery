@@ -141,7 +141,11 @@ func (s *Service) get(ctx context.Context, id uint64) (domain.Service, error) {
 	return sv, err
 }
 
-func (s *Service) freeSlug(ctx context.Context, base string) (string, error) {
+// newService makes the Service with the first Slug that is free and whose
+// default Domains nobody has, so a second "whoami" becomes whoami-2 with
+// its own Domain instead of a refusal.
+func (s *Service) newService(ctx context.Context, env Environment, in Input) (domain.Service, error) {
+	base := domain.Slugify(in.Name)
 	for i := 1; i < 100; i++ {
 		slug := base
 		if i > 1 {
@@ -149,13 +153,24 @@ func (s *Service) freeSlug(ctx context.Context, base string) (string, error) {
 		}
 		taken, err := s.store.SlugTaken(ctx, slug)
 		if err != nil {
-			return "", err
+			return domain.Service{}, err
 		}
-		if !taken {
-			return slug, nil
+		if taken {
+			continue
 		}
+		sv, err := domain.NewService(env.ID, env.ProjectID, in.Name, slug, in.Compose, s.domainSuffix, s.Generate)
+		if err != nil {
+			return domain.Service{}, err
+		}
+		sv.TemplateKey = in.TemplateKey
+		err = s.checkDomains(ctx, sv)
+		var fe *domain.FieldError
+		if errors.As(err, &fe) && fe.Field == "domains" {
+			continue
+		}
+		return sv, err
 	}
-	return "", &domain.FieldError{Field: "name", Message: "too many services with this name"}
+	return domain.Service{}, &domain.FieldError{Field: "name", Message: "too many services with this name"}
 }
 
 // checkDomains refuses a Domain an Application, the dashboard or another
@@ -185,16 +200,8 @@ func (s *Service) Create(ctx context.Context, environmentID uint64, in Input) (V
 	if err != nil {
 		return View{}, err
 	}
-	slug, err := s.freeSlug(ctx, domain.Slugify(in.Name))
+	sv, err := s.newService(ctx, env, in)
 	if err != nil {
-		return View{}, err
-	}
-	sv, err := domain.NewService(env.ID, env.ProjectID, in.Name, slug, in.Compose, s.domainSuffix, s.Generate)
-	if err != nil {
-		return View{}, err
-	}
-	sv.TemplateKey = in.TemplateKey
-	if err := s.checkDomains(ctx, sv); err != nil {
 		return View{}, err
 	}
 	sv, err = s.store.Create(ctx, sv)

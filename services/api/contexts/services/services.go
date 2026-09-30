@@ -9,11 +9,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/goravel/framework/contracts/route"
+
 	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/app/podman"
+	"github.com/jevido/bakery/services/api/contexts/identity"
 	"github.com/jevido/bakery/services/api/contexts/projects"
 	"github.com/jevido/bakery/services/api/contexts/routing"
 	"github.com/jevido/bakery/services/api/contexts/services/app"
+	serviceshttp "github.com/jevido/bakery/services/api/contexts/services/http"
 	"github.com/jevido/bakery/services/api/contexts/services/infra"
 )
 
@@ -60,6 +64,31 @@ func svc() *app.Service {
 		projects.OnDomainCheck(service.DomainInUse)
 	})
 	return service
+}
+
+// Routes registers the services API, all behind identity.Auth.
+func Routes(r route.Router) {
+	c := serviceshttp.NewController(svc())
+	r.Middleware(identity.Auth).Group(func(r route.Router) {
+		r.Post("/api/environments/{id}/services", c.Create)
+		r.Get("/api/projects/{id}/services", c.ForProject)
+		r.Get("/api/services/{id}", c.Show)
+		r.Patch("/api/services/{id}", c.Update)
+		r.Delete("/api/services/{id}", c.Delete)
+		r.Post("/api/services/{id}/start", c.Start)
+		r.Post("/api/services/{id}/stop", c.Stop)
+		r.Post("/api/services/{id}/restart", c.Restart)
+		r.Post("/api/services/{id}/redeploy", c.Redeploy)
+	})
+}
+
+// StreamRoutes registers the Component log stream, behind identity.Auth
+// but outside the request timeout.
+func StreamRoutes(r route.Router) {
+	c := serviceshttp.NewStreamController(svc(), shutdown)
+	r.Middleware(identity.Auth).Group(func(r route.Router) {
+		r.Get("/api/services/{id}/components/{component}/logs", c.Logs)
+	})
 }
 
 // Recover brings Up, in the background, every Service that should run and
