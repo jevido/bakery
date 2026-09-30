@@ -168,6 +168,19 @@ func OnProjectDeleting(inUse func(ctx context.Context, projectID uint64) (bool, 
 	svc().OnProjectDeleting(inUse)
 }
 
+// DomainInUse reports whether an Application has the Domain, or it is the
+// dashboard domain. services asks it before giving a Component a Domain.
+func DomainInUse(ctx context.Context, domain string) (bool, error) {
+	return svc().DomainInUse(ctx, domain)
+}
+
+// OnDomainCheck registers a check asked for every Domain an Application is
+// given; a context that serves the Domain itself answers true and the
+// Application is refused it. An error aborts the create or update.
+func OnDomainCheck(inUse func(ctx context.Context, domain string) (bool, error)) {
+	svc().OnDomainCheck(inUse)
+}
+
 // OnApplicationDeleted registers a handler for the ApplicationDeleted event.
 func OnApplicationDeleted(f func(ctx context.Context, applicationID uint64)) {
 	svc().OnApplicationDeleted(f)

@@ -13,7 +13,7 @@ import (
 
 var (
 	ErrNotFound        = errors.New("not found")
-	ErrProjectNotEmpty = errors.New("delete the project's applications and databases first")
+	ErrProjectNotEmpty = errors.New("delete the project's applications, databases and services first")
 )
 
 // Store keeps projects, environments, applications and env vars. Env var
@@ -60,6 +60,7 @@ type Service struct {
 	onDeleted        []func(ctx context.Context, applicationID uint64)
 	onDomainsChanged []func(ctx context.Context, applicationID uint64, domains []string)
 	onDeleting       []func(ctx context.Context, projectID uint64) (bool, error)
+	onDomainCheck    []func(ctx context.Context, domain string) (bool, error)
 }
 
 // NewService takes the suffix default Domains get (`<slug>.<suffix>`) and
@@ -103,6 +104,24 @@ func (s *Service) OnApplicationDomainsChanged(f func(ctx context.Context, applic
 // and the deletion is refused.
 func (s *Service) OnProjectDeleting(inUse func(ctx context.Context, projectID uint64) (bool, error)) {
 	s.onDeleting = append(s.onDeleting, inUse)
+}
+
+// OnDomainCheck registers a check asked for every Domain an Application is
+// given: another context that serves the Domain answers true, and the
+// Application is refused it. An error aborts the create or update.
+func (s *Service) OnDomainCheck(inUse func(ctx context.Context, domain string) (bool, error)) {
+	s.onDomainCheck = append(s.onDomainCheck, inUse)
+}
+
+// DomainInUse reports whether an Application has the Domain or it is the
+// dashboard's own.
+func (s *Service) DomainInUse(ctx context.Context, d string) (bool, error) {
+	d = strings.ToLower(strings.TrimSpace(d))
+	if s.reservedDomain != "" && d == s.reservedDomain {
+		return true, nil
+	}
+	taken, err := s.store.DomainsTaken(ctx, []string{d}, 0)
+	return len(taken) > 0, err
 }
 
 func (s *Service) CreateProject(ctx context.Context, name, description string) (domain.Project, error) {
@@ -241,6 +260,17 @@ func (s *Service) checkDomains(ctx context.Context, domains []string, exceptID u
 	}
 	if len(taken) > 0 {
 		return &domain.FieldError{Field: "domains", Message: taken[0] + " is already used by another application"}
+	}
+	for _, d := range domains {
+		for _, inUse := range s.onDomainCheck {
+			used, err := inUse(ctx, d)
+			if err != nil {
+				return err
+			}
+			if used {
+				return &domain.FieldError{Field: "domains", Message: d + " is already used by another application or service"}
+			}
+		}
 	}
 	return nil
 }

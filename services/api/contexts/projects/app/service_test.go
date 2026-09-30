@@ -181,3 +181,37 @@ func TestDeleteProjectAsksInUseChecks(t *testing.T) {
 		t.Fatalf("unknown project: %v", err)
 	}
 }
+
+func TestDomainChecks(t *testing.T) {
+	ctx := context.Background()
+	s := NewService(&fakeStore{}, fakeKey, "example.com", "bakery.example.com")
+	boom := errors.New("boom")
+	var checkErr error
+	s.OnDomainCheck(func(_ context.Context, d string) (bool, error) {
+		return d == "svc.example.com", checkErr
+	})
+	in := domain.ApplicationInput{Name: "web", GitURL: "https://example.com/r.git", Port: 80, Domains: []string{"web.example.com", "svc.example.com"}}
+	var fe *domain.FieldError
+	if _, err := s.CreateApplication(ctx, 1, in); !errors.As(err, &fe) || !strings.Contains(fe.Message, "svc.example.com is already used by another application or service") {
+		t.Fatalf("create with a Service's domain: %v", err)
+	}
+	in.Domains = []string{"web.example.com"}
+	a, err := s.CreateApplication(ctx, 1, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.Domains = []string{"svc.example.com"}
+	if _, err := s.UpdateApplication(ctx, a.ID, in); !errors.As(err, &fe) {
+		t.Fatalf("update to a Service's domain: %v", err)
+	}
+	checkErr = boom
+	if _, err := s.UpdateApplication(ctx, a.ID, in); !errors.Is(err, boom) {
+		t.Fatalf("a failing check: %v", err)
+	}
+
+	for d, want := range map[string]bool{"taken.example.com": true, "Bakery.example.com": true, "free.example.com": false} {
+		if got, err := s.DomainInUse(ctx, d); err != nil || got != want {
+			t.Errorf("DomainInUse(%s) = %v, %v", d, got, err)
+		}
+	}
+}
