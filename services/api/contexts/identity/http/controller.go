@@ -237,6 +237,10 @@ func (a Auth) principal(ctx contractshttp.Context) (principal, bool) {
 		_ = respond.ServerError(ctx, err).Abort()
 		return principal{}, false
 	}
+	// A password change or "sign out everywhere else" ended it.
+	if !m.SessionCounts(payload.IssuedAt) {
+		return unauthorized()
+	}
 	return principal{memberID: m.ID, role: m.Role}, true
 }
 

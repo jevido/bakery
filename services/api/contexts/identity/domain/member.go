@@ -65,21 +65,48 @@ type Member struct {
 // NewMember validates a new Member and returns it without an ID or password
 // hash; the caller hashes the password it validated here.
 func NewMember(name, email, password string, role Role) (Member, error) {
-	name = strings.TrimSpace(name)
-	email = NormalizeEmail(email)
-	if name == "" {
-		return Member{}, ErrInvalidName
+	name, err := ValidateName(name)
+	if err != nil {
+		return Member{}, err
 	}
+	email = NormalizeEmail(email)
 	if err := ValidateEmail(email); err != nil {
 		return Member{}, err
 	}
-	if utf8.RuneCountInString(password) < MinPasswordLength {
-		return Member{}, ErrPasswordTooShort
+	if err := ValidatePassword(password); err != nil {
+		return Member{}, err
 	}
 	if _, err := ParseRole(string(role)); err != nil {
 		return Member{}, err
 	}
 	return Member{Name: name, Email: email, Role: role, TwoFactor: TwoFactor{State: TwoFactorOff}}, nil
+}
+
+// ValidateName trims a Member's name and refuses an empty one.
+func ValidateName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", ErrInvalidName
+	}
+	return name, nil
+}
+
+// ValidatePassword refuses a password shorter than MinPasswordLength.
+func ValidatePassword(password string) error {
+	if utf8.RuneCountInString(password) < MinPasswordLength {
+		return ErrPasswordTooShort
+	}
+	return nil
+}
+
+// SessionsValidFromNow is the Sessions valid from stamp for "now": whole
+// seconds, like a Session's issue time, so a Session issued in this same
+// second (the fresh one of the request that set the stamp) still counts.
+func SessionsValidFromNow(now time.Time) time.Time { return now.Truncate(time.Second) }
+
+// SessionCounts reports whether a Session issued at issuedAt still counts.
+func (m Member) SessionCounts(issuedAt time.Time) bool {
+	return !issuedAt.Before(m.SessionsValidFrom)
 }
 
 // ValidateEmail accepts a bare, already normalised address.
