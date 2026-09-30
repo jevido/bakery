@@ -83,6 +83,15 @@ func TestValidateStandIn(t *testing.T) {
 		t.Logf("%s ok=%v required=%v: %s", c.Name, c.OK, c.Required, c.Detail)
 	}
 
+	m, err := s.Metrics(ctx, srv.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("remote: %+v", m.Server)
+	if m.Server.MemTotal <= 0 || m.Server.DiskTotal <= 0 || m.Server.CPUs <= 0 {
+		t.Fatalf("remote metrics %+v", m.Server)
+	}
+
 	standInExec(t, local, "touch /etc/bakery-stand-in/no-linger")
 	srv, err = s.Validate(ctx, srv.ID)
 	if err != nil {
@@ -115,6 +124,17 @@ func TestValidateLocal(t *testing.T) {
 		t.Logf("%s ok=%v required=%v: %s", c.Name, c.OK, c.Required, c.Detail)
 	}
 	if srv.Status != domain.Reachable {
-		t.Fatalf("%+v", srv)
+		t.Fatalf("%s %+v", srv.Status, srv.Validation)
+	}
+	m, err := s.Metrics(context.Background(), srv.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("local: %+v", m.Server)
+	for _, c := range m.Containers {
+		t.Logf("  %s %s/%s cpu=%.2f mem=%d", c.Name, c.Owner, c.OwnerID, c.CPUPercent, c.MemUsed)
+	}
+	if m.Server.MemTotal <= 0 || m.Server.DiskTotal <= 0 || m.Server.CPUs <= 0 || m.Server.CPUPercent <= 0 {
+		t.Fatalf("local metrics %+v", m.Server)
 	}
 }

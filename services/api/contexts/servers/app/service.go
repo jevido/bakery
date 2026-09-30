@@ -32,6 +32,14 @@ type Service struct {
 	newKey    func(comment string) (domain.ServerKey, error)
 	connector Connector
 	now       func() time.Time
+	// Log reports failures that do not fail the use case.
+	Log func(format string, args ...any)
+}
+
+func (s *Service) log(format string, args ...any) {
+	if s.Log != nil {
+		s.Log(format, args...)
+	}
 }
 
 func NewService(store Store, newKey func(comment string) (domain.ServerKey, error), connector Connector) *Service {

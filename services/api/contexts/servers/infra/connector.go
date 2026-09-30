@@ -24,7 +24,10 @@ type Connector struct {
 
 func (c Connector) Connect(ctx context.Context, s domain.Server) (app.Connection, error) {
 	if s.Kind == domain.Local {
-		return localConnection{client: c.Local, socket: c.LocalSocket}, nil
+		return localConnection{
+			observer: observer{client: c.Local, readProc: localProc, filesystem: localFilesystem},
+			client:   c.Local, socket: c.LocalSocket,
+		}, nil
 	}
 	conn, err := podman.DialSSH(ctx, podman.SSHTarget{
 		Host: s.Host, Port: s.Port, User: s.User,
@@ -37,7 +40,9 @@ func (c Connector) Connect(ctx context.Context, s domain.Server) (app.Connection
 	if err != nil {
 		return nil, err
 	}
-	return &remoteConnection{ssh: conn, client: conn.Podman(), user: s.User}, nil
+	r := &remoteConnection{ssh: conn, client: conn.Podman(), user: s.User}
+	r.observer = observer{client: r.client, readProc: r.readProc, filesystem: r.filesystem}
+	return r, nil
 }
 
 // inContainer reports whether Bakery runs in a Podman container (as the API
@@ -49,6 +54,7 @@ func inContainer() bool {
 }
 
 type localConnection struct {
+	observer
 	client *podman.Client
 	socket string
 }
@@ -89,6 +95,7 @@ func (l localConnection) UnprivilegedPortStart(context.Context) (int, bool, erro
 }
 
 type remoteConnection struct {
+	observer
 	ssh    *podman.SSHConn
 	client *podman.Client
 	user   string
@@ -118,4 +125,16 @@ func (r *remoteConnection) UnprivilegedPortStart(ctx context.Context) (int, bool
 	}
 	n, err := strconv.Atoi(strings.TrimSpace(out))
 	return n, err == nil, err
+}
+
+func (r *remoteConnection) readProc(ctx context.Context, path string) (string, error) {
+	return r.ssh.Run(ctx, "cat "+shellQuote(path))
+}
+
+func (r *remoteConnection) filesystem(ctx context.Context, path string) (int64, int64, error) {
+	out, err := r.ssh.Run(ctx, "df -P -B1 "+shellQuote(path))
+	if err != nil {
+		return 0, 0, err
+	}
+	return parseDF(out)
 }

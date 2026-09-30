@@ -16,6 +16,7 @@ type fakeConnection struct {
 	lingerKnown bool
 	port        int
 	hostKey     string
+	cpuErr      error
 	closed      bool
 }
 
@@ -33,7 +34,28 @@ func (f *fakeConnection) UnprivilegedPortStart(context.Context) (int, bool, erro
 	return f.port, true, nil
 }
 func (f *fakeConnection) HostKey() string { return f.hostKey }
-func (f *fakeConnection) Close() error    { f.closed = true; return nil }
+func (f *fakeConnection) HostInfo(context.Context) (HostInfo, error) {
+	return HostInfo{CPUs: 4, MemTotal: 8 << 30, MemFree: 2 << 30, GraphRoot: "/var/lib/containers"}, nil
+}
+func (f *fakeConnection) CPUPercent(context.Context) (float64, error) {
+	if f.cpuErr != nil {
+		return 0, f.cpuErr
+	}
+	return 25, nil
+}
+func (f *fakeConnection) Filesystem(context.Context, string) (int64, int64, error) {
+	return 100 << 30, 40 << 30, nil
+}
+func (f *fakeConnection) PodmanDiskUsage(context.Context) (PodmanDiskUsage, error) {
+	return PodmanDiskUsage{Images: 5 << 30, Volumes: 1 << 30}, nil
+}
+func (f *fakeConnection) Containers(context.Context) ([]ContainerSample, error) {
+	return []ContainerSample{
+		{Name: "bakery-proxy", Labels: map[string]string{"bakery.role": "proxy"}, CPU: 1, MemUsage: 30 << 20},
+		{Name: "bakery-app-3-7", Labels: map[string]string{"bakery.application": "3"}, CPU: 2, MemUsage: 60 << 20, MemLimit: 512 << 20},
+	}, nil
+}
+func (f *fakeConnection) Close() error { f.closed = true; return nil }
 
 type fakeConnector struct {
 	conn *fakeConnection

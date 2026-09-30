@@ -25,6 +25,7 @@ type Connection interface {
 	UnprivilegedPortStart(ctx context.Context) (port int, known bool, err error)
 	// HostKey is the SSH host key presented (empty for the Local server).
 	HostKey() string
+	Observer
 	Close() error
 }
 
