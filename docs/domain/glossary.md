@@ -11,9 +11,14 @@ document; list them here when people outside the context use them too.
 
 | Term | Context | Meaning | Not to be confused with |
 | ---- | ------- | ------- | ----------------------- |
-| Owner | identity | The one person who administers this Bakery installation. Created by setup on first run. | User, admin, account |
-| Session | identity | Proof that the Owner signed in: a JWT carried in the `bakery_session` cookie. | Token (API tokens come later) |
+| Member | identity | A person who may sign in to this Bakery, with a name, an email, a password hash and a Role. | User, account |
+| Role | identity | What a Member may do: `viewer` reads everything except Secrets and changes nothing; `member` also changes Projects, Environments, Applications, Deployments, Databases, Backups, Services and their routing settings; `admin` also manages Servers, S3 storages, Known hosts, Members and Invitations; `owner` has every right of admin and is the Owner. | Permission, team |
+| Owner | identity | The Member with the `owner` Role. Exactly one, created by Setup; can be neither demoted nor removed. | Admin, account |
 | Setup | identity | The one-time step that creates the Owner. Refused once an Owner exists. | Install |
+| Invitation | identity | An email and a Role (admin, member or viewer) that an admin or the Owner invites, with a link that is good once and for 7 days, until revoked. Accepting it creates the Member. | Notification |
+| Session | identity | Proof that a Member signed in: a JWT carried in the `bakery_session` cookie. | API token |
+| API token | identity | A named secret (`bky_…`) of one Member, sent as `Authorization: Bearer`, acting with that Member's Role, or as viewer when it is *read-only*. Shown once, stored hashed, revocable; it dies with its Member. | Session, Deploy key |
+| Secret | identity (used by every context) | A value a viewer may not read: Env var and Shared variable values, Database credentials and URLs, Service variable values, the Webhook secret, Backup contents. | Env var |
 | Project | projects | A named group of Environments, usually one product. | Repository |
 | Environment | projects | A stage inside a Project (`production` is created with every Project). Holds Applications and Databases. | Env var, the dev/next/prod environments of this repo |
 | Application | projects | Something Bakery builds from a Source (or pulls as an Image reference) and runs as one Container behind its Domains. | Service, Container |
