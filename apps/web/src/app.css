@@ -85,12 +85,21 @@ a:focus-visible {
   outline-offset: 1px;
 }
 
-button {
+button,
+a.button {
   background: var(--hover);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.4rem 0.8rem;
   cursor: pointer;
+}
+
+/* A link that looks like a button, e.g. a download. */
+a.button {
+  color: inherit;
+  text-decoration: none;
+  font: inherit;
+  display: inline-block;
 }
 
 button.primary {

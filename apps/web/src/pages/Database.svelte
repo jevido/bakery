@@ -2,6 +2,7 @@
   import { api, ApiError } from '../lib/api'
   import ContainerLogs from '../lib/ContainerLogs.svelte'
   import CopyButton from '../lib/CopyButton.svelte'
+  import DatabaseBackups from '../lib/DatabaseBackups.svelte'
   import DatabaseForm from '../lib/DatabaseForm.svelte'
   import { engineLabel } from '../lib/engines'
   import { go, href } from '../lib/router.svelte'
@@ -10,7 +11,7 @@
 
   let { id }: { id: number } = $props()
 
-  type Tab = 'connect' | 'logs' | 'settings'
+  type Tab = 'connect' | 'logs' | 'backups' | 'settings'
 
   let database = $state.raw<Database | null>(null)
   let loadError = $state('')
@@ -64,7 +65,9 @@
 
   async function remove() {
     if (!database) return
-    const ok = confirm(`Delete ${database.name}? Its container and all its data are removed. This cannot be undone.`)
+    const ok = confirm(
+      `Delete ${database.name}? Its container, all its data and its backups on this server are removed; copies in S3 storage stay. This cannot be undone.`,
+    )
     if (!ok) return
     const projectId = database.project_id
     await api('DELETE', `/databases/${id}`)
@@ -108,6 +111,7 @@
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected={tab === 'connect'} onclick={() => (tab = 'connect')}>Connect</button>
     <button role="tab" aria-selected={tab === 'logs'} onclick={() => (tab = 'logs')}>Logs</button>
+    <button role="tab" aria-selected={tab === 'backups'} onclick={() => (tab = 'backups')}>Backups</button>
     <button role="tab" aria-selected={tab === 'settings'} onclick={() => (tab = 'settings')}>Settings</button>
   </div>
 
@@ -157,13 +161,15 @@
         stopped="The container stopped (a restart or a settings change replaces it)."
       />
     {/key}
+  {:else if tab === 'backups'}
+    <DatabaseBackups {database} onchange={(d) => (database = d)} />
   {:else if tab === 'settings'}
     {#key formKey}
       <DatabaseForm database={database} submitLabel="Save" onsubmit={update} />
     {/key}
     {#if saved}<p class="ok">Saved.</p>{/if}
     <h2>Danger zone</h2>
-    <p class="muted">Deleting removes the container and the data volume.</p>
+    <p class="muted">Deleting removes the container, the data volume and the backups on this server. Copies in S3 storage stay.</p>
     <button class="danger" onclick={remove}>Delete database</button>
   {/if}
 {/if}

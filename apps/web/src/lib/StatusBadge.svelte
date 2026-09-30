@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { DatabaseStatus, DeploymentStatus } from './types'
+  import type { BackupStatus, DatabaseStatus, DeploymentStatus } from './types'
 
-  let { status }: { status: DeploymentStatus | DatabaseStatus } = $props()
+  let { status }: { status: DeploymentStatus | DatabaseStatus | BackupStatus } = $props()
 </script>
 
 <span class={['badge', status]}>{status}</span>
@@ -18,6 +18,7 @@
     white-space: nowrap;
   }
   .finished,
+  .succeeded,
   .running {
     color: var(--ok);
   }

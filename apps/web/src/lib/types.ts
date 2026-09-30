@@ -140,6 +140,38 @@ export type Database = {
   credentials?: { username: string; password: string; root_password?: string; database_name: string }
   internal_url?: string
   public_url?: string | null
+  /** false for Redis and Valkey. */
+  backups_supported: boolean
+  backup_schedule: BackupSchedule
+  /** When the schedule fires next (UTC); null when it is off. */
+  next_backup_at: string | null
+  restoring: boolean
+  last_restore: { backup_id: number; started_at: string; finished_at: string; error?: string } | null
+}
+
+export type BackupSchedule = {
+  enabled: boolean
+  /** Five-field cron expression, in UTC. */
+  cron: string
+  retention: number
+  /** null: local disk only. */
+  s3_storage_id: number | null
+}
+
+export type BackupStatus = 'running' | 'succeeded' | 'failed'
+
+export type Backup = {
+  id: number
+  database_id: number
+  status: BackupStatus
+  trigger: 'manual' | 'scheduled'
+  file_name: string
+  size_bytes: number
+  local: boolean
+  s3: boolean
+  error?: string
+  started_at: string
+  finished_at: string | null
 }
 
 export type DatabaseInput = {
