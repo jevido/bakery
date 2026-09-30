@@ -11,6 +11,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/databases"
 	"github.com/jevido/bakery/services/api/contexts/deployments"
 	"github.com/jevido/bakery/services/api/contexts/identity"
+	"github.com/jevido/bakery/services/api/contexts/notifications"
 	"github.com/jevido/bakery/services/api/contexts/projects"
 	"github.com/jevido/bakery/services/api/contexts/routing"
 	"github.com/jevido/bakery/services/api/contexts/servers"
@@ -31,6 +32,7 @@ func Api() {
 		databases.Routes(r)
 		services.Routes(r)
 		servers.Routes(r)
+		notifications.Routes(r)
 	})
 	deployments.StreamRoutes(facades.Route())
 	databases.StreamRoutes(facades.Route())
