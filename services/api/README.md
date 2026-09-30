@@ -56,7 +56,12 @@ days. `task access:test` checks it all end to end.
 Other tasks: `task api:check` (gofmt, go vet, go test), `task api:migrate`,
 `task api:test:podman` (against the rootless Podman socket),
 `task api:test:s3` (the S3 client against Garage).
-Artisan runs as `go run . artisan ...`.
+Artisan runs as `go run . artisan ...`. `go run . artisan
+identity:reset-two-factor <email>` switches a Member's two-factor
+authentication off (the Owner's included) and signs them out, for someone
+who lost their phone and their recovery codes. Account and two-factor are
+under `/api/me` (Session only) and `POST /api/login/two-factor`; `task
+account:test` checks them end to end.
 
 ## Layout
 

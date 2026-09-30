@@ -71,6 +71,14 @@ sudo -u bakery XDG_RUNTIME_DIR=/run/user/$(id -u bakery) podman logs -f bakery-a
 (`cd /var/lib/bakery` first if your working directory is not readable by
 `bakery`.)
 
+Locked out by two-factor authentication (phone and recovery codes lost)?
+An admin can reset it from Members; for the owner, or with no admin left,
+switch it off on the server and sign in with the password alone:
+
+```sh
+sudo -u bakery XDG_RUNTIME_DIR=/run/user/$(id -u bakery) podman exec bakery-api bakery-api artisan identity:reset-two-factor owner@example.com
+```
+
 ## Backups
 
 **Databases** (the one-click ones on the dashboard) are backed up from

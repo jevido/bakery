@@ -187,6 +187,19 @@ at once. Under **API tokens** anyone creates tokens for scripts, sent as
 `Authorization: Bearer bky_…`, with their own role or read-only; a token is
 shown once. `task access:test` runs this end to end.
 
+### Account and two-factor authentication
+
+Everyone's own **Account** page (their name in the header) changes their
+name and password and signs out every other browser; a new password does
+that too. **Two-factor authentication** is switched on there with any
+authenticator app (TOTP, from a QR code or the key typed in) and hands out
+10 single-use recovery codes; signing in then asks for a code after the
+password, and five wrong codes start the sign-in over. API tokens keep
+working without codes. An admin can reset someone's two-factor from
+**Members**; the owner's is reset on the server with
+`identity:reset-two-factor` (see `infra/prod/README.md`). `task
+account:test` runs this end to end.
+
 ### Notifications
 
 Under **Notifications** an admin adds channels Bakery reports to: email
