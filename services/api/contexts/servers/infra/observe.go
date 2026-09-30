@@ -101,15 +101,30 @@ func (o observer) Containers(ctx context.Context) ([]app.ContainerSample, error)
 	}
 	var ids []string
 	labels := map[string]map[string]string{}
+	names := map[string]string{}
 	for _, c := range list {
 		if c.State == "running" {
 			ids = append(ids, c.ID)
 			labels[c.ID] = c.Labels
+			if len(c.Names) > 0 {
+				names[c.ID] = c.Names[0]
+			}
 		}
 	}
 	stats, err := o.client.Stats(ctx, ids)
 	if err != nil {
-		return nil, err
+		// One container Podman cannot read (it stopped meanwhile, or runs
+		// without a cgroup) fails the whole call: read them one by one and
+		// list the unreadable ones without figures.
+		stats = nil
+		for _, id := range ids {
+			one, err := o.client.Stats(ctx, []string{id})
+			if err != nil || len(one) == 0 {
+				stats = append(stats, podman.ContainerStats{ID: id, Name: names[id]})
+				continue
+			}
+			stats = append(stats, one[0])
+		}
 	}
 	out := make([]app.ContainerSample, len(stats))
 	for i, s := range stats {

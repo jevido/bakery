@@ -122,6 +122,11 @@ tasks:
     cmds:
       - ./infra/dev/services/test.sh
 
+  servers:test:
+    desc: Servers, local and a Remote server over SSH (the stand-in), end to end (needs task dev)
+    cmds:
+      - ./infra/dev/servers/test.sh
+
   backups:test:
     desc: Backups of every engine to local disk and Garage, restore, retention and schedule end to end (needs task dev and task s3:up)
     cmds:

@@ -71,4 +71,11 @@ Local development stack.
   Start brings it back, that `build:` is refused with its line, that
   Applications and Services cannot take each other's Domains and a Project
   with a Service cannot be deleted, and that deleting the Services leaves
-  no container, network or volume. Every script shares `lib/e2e.sh`.
+  no container, network or volume.
+- `servers/test.sh` (`task servers:test`, needs `task dev`) checks the Local
+  server is reachable with metrics and cannot be deleted, starts the Remote
+  server stand-in, adds it as a Server, authorises its Server key and
+  validates it, sees a Bakery container running there in its metrics, cleans
+  up both Servers without touching an unlabelled image, replaces the
+  stand-in's host keys and checks the Server is refused until the host key
+  is forgotten, and removes it. Every script shares `lib/e2e.sh`.
