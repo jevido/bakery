@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, ApiError } from '../lib/api'
   import Field from '../lib/Field.svelte'
-  import { session, type Owner } from '../lib/session.svelte'
+  import { session, type Member } from '../lib/session.svelte'
 
   let name = $state('')
   let email = $state('')
@@ -16,8 +16,8 @@
     errors = {}
     message = ''
     try {
-      const { owner } = await api<{ owner: Owner }>('POST', '/setup', { name, email, password })
-      session.signedIn(owner)
+      const { member } = await api<{ member: Member }>('POST', '/setup', { name, email, password })
+      session.signedIn(member)
     } catch (err) {
       if (!(err instanceof ApiError)) throw err
       if (err.status === 409) {

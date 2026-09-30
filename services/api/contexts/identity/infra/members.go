@@ -1,4 +1,4 @@
-// Package infra stores the Owner with the Goravel ORM and hashes passwords
+// Package infra stores the Members with the Goravel ORM and hashes passwords
 // with Goravel's hasher.
 package infra
 
@@ -20,35 +20,36 @@ type userRecord struct {
 	Name     string
 	Email    string
 	Password string
+	Role     string
 	orm.Timestamps
 }
 
 func (userRecord) TableName() string { return "users" }
 
-func (r userRecord) toDomain() domain.Owner {
-	return domain.Owner{ID: r.ID, Name: r.Name, Email: r.Email, PasswordHash: r.Password}
+func (r userRecord) toDomain() domain.Member {
+	return domain.Member{ID: r.ID, Name: r.Name, Email: r.Email, PasswordHash: r.Password, Role: domain.Role(r.Role)}
 }
 
-type Owners struct{}
+type Members struct{}
 
-func (Owners) query(ctx context.Context) contractsorm.Query {
+func (Members) query(ctx context.Context) contractsorm.Query {
 	return facades.Orm().WithContext(ctx).Query()
 }
 
-func (o Owners) Exists(ctx context.Context) (bool, error) {
-	n, err := o.query(ctx).Model(&userRecord{}).Count()
+func (o Members) OwnerExists(ctx context.Context) (bool, error) {
+	n, err := o.query(ctx).Model(&userRecord{}).Where("role", string(domain.RoleOwner)).Count()
 	return n > 0, err
 }
 
-func (o Owners) AddIfNone(ctx context.Context, owner domain.Owner) (domain.Owner, error) {
-	rec := userRecord{Name: owner.Name, Email: owner.Email, Password: owner.PasswordHash}
+func (o Members) AddOwnerIfNone(ctx context.Context, owner domain.Member) (domain.Member, error) {
+	rec := userRecord{Name: owner.Name, Email: owner.Email, Password: owner.PasswordHash, Role: string(domain.RoleOwner)}
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		// Serialises racing Setups: the second waits here, then sees the
 		// first one's row.
 		if _, err := tx.Exec("LOCK TABLE users IN EXCLUSIVE MODE"); err != nil {
 			return err
 		}
-		n, err := tx.Model(&userRecord{}).Count()
+		n, err := tx.Model(&userRecord{}).Where("role", string(domain.RoleOwner)).Count()
 		if err != nil {
 			return err
 		}
@@ -58,26 +59,26 @@ func (o Owners) AddIfNone(ctx context.Context, owner domain.Owner) (domain.Owner
 		return tx.Create(&rec)
 	})
 	if err != nil {
-		return domain.Owner{}, err
+		return domain.Member{}, err
 	}
 	return rec.toDomain(), nil
 }
 
-func (o Owners) ByEmail(ctx context.Context, email string) (domain.Owner, bool, error) {
+func (o Members) ByEmail(ctx context.Context, email string) (domain.Member, bool, error) {
 	return first(o.query(ctx).Where("email", email))
 }
 
-func (o Owners) ByID(ctx context.Context, id uint64) (domain.Owner, bool, error) {
+func (o Members) ByID(ctx context.Context, id uint64) (domain.Member, bool, error) {
 	return first(o.query(ctx).Where("id", id))
 }
 
-func first(q contractsorm.Query) (domain.Owner, bool, error) {
+func first(q contractsorm.Query) (domain.Member, bool, error) {
 	var rec userRecord
 	if err := q.FirstOrFail(&rec); err != nil {
 		if errors.Is(err, frameworkerrors.OrmRecordNotFound) {
-			return domain.Owner{}, false, nil
+			return domain.Member{}, false, nil
 		}
-		return domain.Owner{}, false, err
+		return domain.Member{}, false, err
 	}
 	return rec.toDomain(), true, nil
 }

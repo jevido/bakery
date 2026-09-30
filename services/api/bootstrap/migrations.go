@@ -42,5 +42,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000027AddApplicationServer{},
 		&migrations.M20260930000028AddRouteServer{},
 		&migrations.M20260930000029AddDeploymentServer{},
+		&migrations.M20260930000030AddUserRole{},
 	}
 }

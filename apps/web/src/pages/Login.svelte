@@ -2,7 +2,7 @@
   import { api, ApiError } from '../lib/api'
   import Field from '../lib/Field.svelte'
   import { go } from '../lib/router.svelte'
-  import { session, type Owner } from '../lib/session.svelte'
+  import { session, type Member } from '../lib/session.svelte'
 
   let email = $state('')
   let password = $state('')
@@ -14,8 +14,8 @@
     busy = true
     message = ''
     try {
-      const { owner } = await api<{ owner: Owner }>('POST', '/login', { email, password })
-      session.signedIn(owner)
+      const { member } = await api<{ member: Member }>('POST', '/login', { email, password })
+      session.signedIn(member)
       go('/projects')
     } catch (err) {
       if (!(err instanceof ApiError)) throw err

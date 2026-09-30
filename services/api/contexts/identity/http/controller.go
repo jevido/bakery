@@ -18,7 +18,13 @@ import (
 // read. A cookie, not a header, because EventSource cannot send headers.
 const SessionCookie = "bakery_session"
 
-type ownerKey struct{}
+type principalKey struct{}
+
+// principal is who a request comes from: a Member and the Role it acts with.
+type principal struct {
+	memberID uint64
+	role     domain.Role
+}
 
 type Controller struct {
 	service *app.Service
@@ -28,14 +34,15 @@ func NewController(service *app.Service) *Controller {
 	return &Controller{service: service}
 }
 
-type ownerJSON struct {
+type memberJSON struct {
 	ID    uint64 `json:"id"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
+	Role  string `json:"role"`
 }
 
-func toJSON(o domain.Owner) ownerJSON {
-	return ownerJSON{ID: o.ID, Name: o.Name, Email: o.Email}
+func toJSON(m domain.Member) memberJSON {
+	return memberJSON{ID: m.ID, Name: m.Name, Email: m.Email, Role: string(m.Role)}
 }
 
 func (c *Controller) SetupStatus(ctx contractshttp.Context) contractshttp.Response {
@@ -99,24 +106,25 @@ func (c *Controller) Logout(ctx contractshttp.Context) contractshttp.Response {
 }
 
 func (c *Controller) Me(ctx contractshttp.Context) contractshttp.Response {
-	id, _ := OwnerID(ctx)
-	owner, err := c.service.CurrentOwner(ctx.Context(), id)
-	if errors.Is(err, app.ErrOwnerNotFound) {
+	id, _ := MemberID(ctx)
+	m, err := c.service.CurrentMember(ctx.Context(), id)
+	if errors.Is(err, app.ErrMemberNotFound) {
 		return respond.Error(ctx, contractshttp.StatusUnauthorized, "not signed in")
 	}
 	if err != nil {
 		return respond.ServerError(ctx, err)
 	}
-	return ctx.Response().Success().Json(contractshttp.Json{"owner": toJSON(owner)})
+	m.Role = RoleOf(ctx)
+	return ctx.Response().Success().Json(contractshttp.Json{"member": toJSON(m)})
 }
 
-func (c *Controller) withSession(ctx contractshttp.Context, status int, o domain.Owner) contractshttp.Response {
-	token, err := facades.Auth(ctx).LoginUsingID(o.ID)
+func (c *Controller) withSession(ctx contractshttp.Context, status int, m domain.Member) contractshttp.Response {
+	token, err := facades.Auth(ctx).LoginUsingID(m.ID)
 	if err != nil {
 		return respond.ServerError(ctx, err)
 	}
 	ctx.Response().Cookie(sessionCookie(token, facades.Config().GetInt("jwt.ttl")*60))
-	return ctx.Response().Json(status, contractshttp.Json{"owner": toJSON(o)})
+	return ctx.Response().Json(status, contractshttp.Json{"member": toJSON(m)})
 }
 
 // sessionCookie is host-only and SameSite=Strict: the dashboard reaches the
@@ -134,34 +142,101 @@ func sessionCookie(value string, maxAge int) contractshttp.Cookie {
 	}
 }
 
-// Auth lets a request through only with a valid Session, and puts the
-// Owner's id on the context for OwnerID.
-type Auth struct{}
+// Auth lets a request through only from a Member, and puts the principal
+// on the context for MemberID, RoleOf and the other middlewares. The Member
+// is read on every request, so a changed Role or a removed Member counts at
+// once. A viewer is refused anything but reading.
+type Auth struct {
+	Service *app.Service
+}
 
 func (Auth) Signature() string { return "identity.auth" }
 
-func (Auth) Handle(ctx contractshttp.Context) {
-	token := ctx.Request().Cookie(SessionCookie)
-	if token == "" {
-		_ = respond.Error(ctx, contractshttp.StatusUnauthorized, "not signed in").Abort()
+func (a Auth) Handle(ctx contractshttp.Context) {
+	p, ok := a.principal(ctx)
+	if !ok {
 		return
 	}
-	payload, err := facades.Auth(ctx).Parse(token)
-	if err != nil {
-		_ = respond.Error(ctx, contractshttp.StatusUnauthorized, "not signed in").Abort()
+	if reason := refusal(ctx.Request().Method(), p.role); reason != "" {
+		_ = respond.Error(ctx, contractshttp.StatusForbidden, reason).Abort()
 		return
 	}
-	id, err := strconv.ParseUint(payload.Key, 10, 64)
-	if err != nil {
-		_ = respond.Error(ctx, contractshttp.StatusUnauthorized, "not signed in").Abort()
-		return
-	}
-	ctx.WithValue(ownerKey{}, id)
+	ctx.WithValue(principalKey{}, p)
 	ctx.Request().Next()
 }
 
-// OwnerID returns the id of the Owner Auth let through.
-func OwnerID(ctx contractshttp.Context) (uint64, bool) {
-	id, ok := ctx.Value(ownerKey{}).(uint64)
-	return id, ok
+// principal authenticates the request, answering 401 itself when it cannot.
+func (a Auth) principal(ctx contractshttp.Context) (principal, bool) {
+	unauthorized := func() (principal, bool) {
+		_ = respond.Error(ctx, contractshttp.StatusUnauthorized, "not signed in").Abort()
+		return principal{}, false
+	}
+	token := ctx.Request().Cookie(SessionCookie)
+	if token == "" {
+		return unauthorized()
+	}
+	payload, err := facades.Auth(ctx).Parse(token)
+	if err != nil {
+		return unauthorized()
+	}
+	id, err := strconv.ParseUint(payload.Key, 10, 64)
+	if err != nil {
+		return unauthorized()
+	}
+	m, err := a.Service.CurrentMember(ctx.Context(), id)
+	if errors.Is(err, app.ErrMemberNotFound) {
+		return unauthorized()
+	}
+	if err != nil {
+		_ = respond.ServerError(ctx, err).Abort()
+		return principal{}, false
+	}
+	return principal{memberID: m.ID, role: m.Role}, true
+}
+
+// refusal is why a Role may not make a request with this method, or "".
+func refusal(method string, role domain.Role) string {
+	if method == contractshttp.MethodGet || method == contractshttp.MethodHead || role.CanWrite() {
+		return ""
+	}
+	return "your role cannot change this"
+}
+
+// Admin lets only admins and the Owner through. It runs after Auth.
+type Admin struct{}
+
+func (Admin) Signature() string { return "identity.admin" }
+
+func (Admin) Handle(ctx contractshttp.Context) {
+	if !RoleOf(ctx).IsAdmin() {
+		_ = respond.Error(ctx, contractshttp.StatusForbidden, "only admins can do this").Abort()
+		return
+	}
+	ctx.Request().Next()
+}
+
+// Secrets keeps viewers away from routes that return Secrets. It runs after
+// Auth.
+type Secrets struct{}
+
+func (Secrets) Signature() string { return "identity.secrets" }
+
+func (Secrets) Handle(ctx contractshttp.Context) {
+	if !RoleOf(ctx).CanSeeSecrets() {
+		_ = respond.Error(ctx, contractshttp.StatusForbidden, "your role cannot see secrets").Abort()
+		return
+	}
+	ctx.Request().Next()
+}
+
+// MemberID returns the id of the Member Auth let through.
+func MemberID(ctx contractshttp.Context) (uint64, bool) {
+	p, ok := ctx.Value(principalKey{}).(principal)
+	return p.memberID, ok
+}
+
+// RoleOf returns the Role the request acts with ("" before Auth ran).
+func RoleOf(ctx contractshttp.Context) domain.Role {
+	p, _ := ctx.Value(principalKey{}).(principal)
+	return p.role
 }

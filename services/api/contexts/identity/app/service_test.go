@@ -9,40 +9,54 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/identity/domain"
 )
 
-type memOwners struct {
-	mu    sync.Mutex
-	owner *domain.Owner
+type memMembers struct {
+	mu      sync.Mutex
+	members []domain.Member
 }
 
-func (m *memOwners) Exists(context.Context) (bool, error) {
+func (m *memMembers) OwnerExists(context.Context) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.owner != nil, nil
+	for _, x := range m.members {
+		if x.Role == domain.RoleOwner {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
-func (m *memOwners) AddIfNone(_ context.Context, o domain.Owner) (domain.Owner, error) {
+func (m *memMembers) AddOwnerIfNone(ctx context.Context, o domain.Member) (domain.Member, error) {
+	if exists, _ := m.OwnerExists(ctx); exists {
+		return domain.Member{}, ErrOwnerExists
+	}
+	return m.add(o), nil
+}
+
+func (m *memMembers) add(x domain.Member) domain.Member {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.owner != nil {
-		return domain.Owner{}, ErrOwnerExists
-	}
-	o.ID = 1
-	m.owner = &o
-	return o, nil
+	x.ID = uint64(len(m.members) + 1)
+	m.members = append(m.members, x)
+	return x
 }
 
-func (m *memOwners) ByEmail(_ context.Context, email string) (domain.Owner, bool, error) {
-	if m.owner == nil || m.owner.Email != email {
-		return domain.Owner{}, false, nil
+func (m *memMembers) find(match func(domain.Member) bool) (domain.Member, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, x := range m.members {
+		if match(x) {
+			return x, true, nil
+		}
 	}
-	return *m.owner, true, nil
+	return domain.Member{}, false, nil
 }
 
-func (m *memOwners) ByID(_ context.Context, id uint64) (domain.Owner, bool, error) {
-	if m.owner == nil || m.owner.ID != id {
-		return domain.Owner{}, false, nil
-	}
-	return *m.owner, true, nil
+func (m *memMembers) ByEmail(_ context.Context, email string) (domain.Member, bool, error) {
+	return m.find(func(x domain.Member) bool { return x.Email == email })
+}
+
+func (m *memMembers) ByID(_ context.Context, id uint64) (domain.Member, bool, error) {
+	return m.find(func(x domain.Member) bool { return x.ID == id })
 }
 
 type plainHasher struct{}
@@ -52,7 +66,7 @@ func (plainHasher) Check(p, h string) bool        { return h == "h:"+p }
 
 func TestSetupOnlyOnce(t *testing.T) {
 	ctx := context.Background()
-	s := NewService(&memOwners{}, plainHasher{})
+	s := NewService(&memMembers{}, plainHasher{})
 
 	if needed, _ := s.SetupNeeded(ctx); !needed {
 		t.Fatal("setup should be needed on a fresh install")
@@ -70,7 +84,7 @@ func TestSetupOnlyOnce(t *testing.T) {
 
 func TestLogin(t *testing.T) {
 	ctx := context.Background()
-	s := NewService(&memOwners{}, plainHasher{})
+	s := NewService(&memMembers{}, plainHasher{})
 	if _, err := s.SetupOwner(ctx, "Ada", "ada@example.com", "correct horse"); err != nil {
 		t.Fatal(err)
 	}

@@ -34,7 +34,7 @@
   </aside>
   <div class="main">
     <header>
-      <span class="muted">{session.owner?.name} · {session.owner?.email}</span>
+      <span class="muted">{session.member?.name} · {session.member?.email}</span>
       <button onclick={() => session.logout()}>Log out</button>
     </header>
     <main>

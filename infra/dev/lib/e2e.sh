@@ -80,7 +80,7 @@ sign_in() {
 	if [ "$(bakery GET /api/setup | json "d.get('needed', d.get('setup_needed', False))")" = True ]; then
 		bakery POST /api/setup "{\"name\":\"Owner\",\"email\":\"$BAKERY_OWNER_EMAIL\",\"password\":\"$BAKERY_OWNER_PASSWORD\"}" >/dev/null
 	fi
-	grep -q owner <<<"$(bakery POST /api/login "{\"email\":\"$BAKERY_OWNER_EMAIL\",\"password\":\"$BAKERY_OWNER_PASSWORD\"}")" || fail "cannot sign in"
+	grep -q "\"member\"" <<<"$(bakery POST /api/login "{\"email\":\"$BAKERY_OWNER_EMAIL\",\"password\":\"$BAKERY_OWNER_PASSWORD\"}")" || fail "cannot sign in"
 }
 
 # start_forgejo starts Forgejo and sets PASSWORD and TOKEN for its admin.

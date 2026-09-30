@@ -1,12 +1,20 @@
 import { api, ApiError } from './api'
 
-export type Owner = { id: number; name: string; email: string }
+export type Role = 'viewer' | 'member' | 'admin' | 'owner'
+export type Member = { id: number; name: string; email: string; role: Role }
 
 type State = 'loading' | 'setup' | 'signed-out' | 'signed-in'
 
 class Session {
   state = $state<State>('loading')
-  owner = $state.raw<Owner | null>(null)
+  member = $state.raw<Member | null>(null)
+
+  /** Whether the signed-in Role may change anything (not a viewer). */
+  canWrite = $derived(this.member !== null && this.member.role !== 'viewer')
+  /** Whether the signed-in Role may read Secrets. */
+  canSeeSecrets = $derived(this.canWrite)
+  /** Whether the signed-in Role manages Servers, S3 storages, Known hosts and Members. */
+  isAdmin = $derived(this.member?.role === 'admin' || this.member?.role === 'owner')
 
   /** Works out which screen to show: Setup, Login or the dashboard. */
   async load() {
@@ -16,21 +24,21 @@ class Session {
       return
     }
     try {
-      const { owner } = await api<{ owner: Owner }>('GET', '/me')
-      this.signedIn(owner)
+      const { member } = await api<{ member: Member }>('GET', '/me')
+      this.signedIn(member)
     } catch (e) {
       if (!(e instanceof ApiError) || e.status !== 401) throw e
       this.state = 'signed-out'
     }
   }
 
-  signedIn(owner: Owner) {
-    this.owner = owner
+  signedIn(member: Member) {
+    this.member = member
     this.state = 'signed-in'
   }
 
   signedOut() {
-    this.owner = null
+    this.member = null
     this.state = 'signed-out'
   }
 
