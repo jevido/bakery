@@ -11,5 +11,10 @@ task web:check   # svelte-check, tsc, build
 ```
 
 - `src/lib/router.svelte.ts` is a small hash router (`#/projects`,
-  `#/projects/:id`, `#/applications/:id`).
+  `#/projects/:id`, `#/applications/:id`, `#/members`, `#/api-tokens`,
+  `#/invite/:token`, …). An Invitation link opens `#/invite/:token` for
+  anyone, signed in or not.
+- `src/lib/session.svelte.ts` knows the signed-in Member and their Role;
+  pages hide what the Role may not do with `session.canWrite`,
+  `session.canSeeSecrets` and `session.isAdmin`.
 - `src/lib/api.ts` is the only place that calls `fetch`.

@@ -1,6 +1,6 @@
 # api
 
-Bakery's JSON API: the source of truth for the Owner, projects, applications,
+Bakery's JSON API: the source of truth for the Members, projects, applications,
 deployments, databases, services and servers, and the unit that drives Podman and Caddy. Goravel v1.18 on
 Postgres 18, listening on `127.0.0.1:4910`.
 
@@ -39,6 +39,14 @@ root starts a stand-in on `127.0.0.1:4972` for `task api:test:podman`,
 Server through `servers.Connect` (one pooled SSH connection per Server);
 an Application's Deployments run on its Target server, served by that
 Server's own Proxy, whose admin API is a unix socket opened over SSH.
+
+Members sign in with a Session cookie (the dashboard) or send an API token
+as `Authorization: Bearer bky_…` (scripts; made under API tokens in the
+dashboard or `POST /api/api-tokens`). Each Member has a Role (owner, admin,
+member, viewer) that `identity.Auth`, `identity.Admin` and
+`identity.Secrets` enforce on every route; admins invite people with
+`POST /api/invitations`, which answers a link that is good once, for 7
+days. `task access:test` checks it all end to end.
 
 Other tasks: `task api:check` (gofmt, go vet, go test), `task api:migrate`,
 `task api:test:podman` (against the rootless Podman socket),

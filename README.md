@@ -174,6 +174,19 @@ removed. Databases and services run on Bakery's own server for now.
 `task servers:test` and `task remote-deploy:test` run this end to end
 against a stand-in server in a container (`task remote:up`).
 
+### Members and API tokens
+
+The first account is the **owner**. Under **Members** the owner (or an
+admin) invites people by email with a role and copies the link Bakery gives
+back (it works once, for 7 days): a **viewer** reads everything except
+secrets (variables, database credentials, webhook secrets, backups) and
+changes nothing, a **member** also adds, changes and deploys applications,
+databases and services, and an **admin** also manages servers, S3 storage,
+known hosts and members. Changing someone's role or removing them counts
+at once. Under **API tokens** anyone creates tokens for scripts, sent as
+`Authorization: Bearer bky_…`, with their own role or read-only; a token is
+shown once. `task access:test` runs this end to end.
+
 ## Install on a server
 
 On a fresh Linux server with systemd, ports 80/443 open and DNS for your
