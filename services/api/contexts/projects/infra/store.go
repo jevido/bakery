@@ -40,6 +40,9 @@ type applicationRecord struct {
 	EnvironmentID             uint64
 	Name                      string
 	Slug                      string
+	BuildPack                 string
+	ImageReference            string
+	PublishDirectory          string
 	GitURL                    string `gorm:"column:git_url"`
 	GitBranch                 string
 	DockerfilePath            string
@@ -63,6 +66,7 @@ func (applicationRecord) TableName() string { return "applications" }
 func (r applicationRecord) toDomain(projectID uint64) domain.Application {
 	return domain.Application{
 		ID: r.ID, EnvironmentID: r.EnvironmentID, ProjectID: projectID, Name: r.Name, Slug: r.Slug,
+		BuildPack: domain.BuildPack(r.BuildPack), ImageReference: r.ImageReference, PublishDirectory: r.PublishDirectory,
 		GitURL: r.GitURL, GitBranch: r.GitBranch, DockerfilePath: r.DockerfilePath, Port: r.Port, Domain: r.Domain,
 		DeployKey: domain.DeployKey{Public: r.DeployKeyPublic},
 		HealthCheck: domain.HealthCheck{
@@ -217,6 +221,7 @@ func (s Store) CreateApplication(ctx context.Context, a domain.Application) (dom
 	}
 	rec := applicationRecord{
 		EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug, GitURL: a.GitURL, GitBranch: a.GitBranch,
+		BuildPack: string(a.BuildPack), ImageReference: a.ImageReference, PublishDirectory: a.PublishDirectory,
 		DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain,
 		DeployKeyPublic: a.DeployKey.Public, DeployKeyPrivateEncrypted: private,
 		HealthCheckEnabled: a.HealthCheck.Enabled, HealthCheckPath: a.HealthCheck.Path,
@@ -259,6 +264,7 @@ func (s Store) UpdateApplication(ctx context.Context, a domain.Application) erro
 	}
 	columns := map[string]any{
 		"name": a.Name, "git_url": a.GitURL, "git_branch": a.GitBranch,
+		"build_pack": string(a.BuildPack), "image_reference": a.ImageReference, "publish_directory": a.PublishDirectory,
 		"dockerfile_path": a.DockerfilePath, "port": a.Port, "domain": a.Domain,
 		"deploy_key_public": a.DeployKey.Public, "deploy_key_private_encrypted": private,
 	}

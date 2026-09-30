@@ -56,15 +56,20 @@ func Routes(r route.Router) {
 // at the start of a Deployment. Its variables are merged (Application over
 // Environment over Project), split by scope and decrypted.
 type ApplicationSnapshot struct {
-	ID             uint64
-	Slug           string
-	GitURL         string
-	GitBranch      string
-	DockerfilePath string
-	Port           int
-	Domain         string
-	BuildEnv       map[string]string
-	RuntimeEnv     map[string]string
+	ID   uint64
+	Slug string
+	// BuildPack is "dockerfile", "nixpacks", "static" or "image".
+	BuildPack string
+	// ImageReference is set for the image pack, which has no Source.
+	ImageReference   string
+	PublishDirectory string
+	GitURL           string
+	GitBranch        string
+	DockerfilePath   string
+	Port             int
+	Domain           string
+	BuildEnv         map[string]string
+	RuntimeEnv       map[string]string
 	// DeployKey is the Deploy key's private half (OpenSSH PEM), empty for
 	// an https Source.
 	DeployKey   string
@@ -92,7 +97,8 @@ func ApplicationForDeploy(ctx context.Context, id uint64) (ApplicationSnapshot, 
 		return ApplicationSnapshot{}, err
 	}
 	return ApplicationSnapshot{
-		ID: a.ID, Slug: a.Slug, GitURL: a.GitURL, GitBranch: a.GitBranch,
+		ID: a.ID, Slug: a.Slug, BuildPack: string(a.BuildPack), ImageReference: a.ImageReference, PublishDirectory: a.PublishDirectory,
+		GitURL: a.GitURL, GitBranch: a.GitBranch,
 		DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain, BuildEnv: build, RuntimeEnv: runtime, DeployKey: a.DeployKey.Private,
 		HealthCheck: HealthCheck(a.HealthCheck),
 	}, nil

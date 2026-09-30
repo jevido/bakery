@@ -60,13 +60,19 @@ type LogWriter interface {
 // Application is what a Deployment needs to know about its Application,
 // snapshotted once at the start.
 type Application struct {
-	ID             uint64
-	Slug           string
-	GitURL         string
-	GitBranch      string
-	DockerfilePath string
-	Port           int
-	Domain         string
+	ID   uint64
+	Slug string
+	// BuildPack is one of the BuildPack* constants.
+	BuildPack string
+	// ImageReference is what the image pack pulls; it has no Source.
+	ImageReference string
+	// PublishDirectory is what the static pack serves.
+	PublishDirectory string
+	GitURL           string
+	GitBranch        string
+	DockerfilePath   string
+	Port             int
+	Domain           string
 	// BuildEnv reaches the build as build args, RuntimeEnv the Container.
 	BuildEnv   map[string]string
 	RuntimeEnv map[string]string
@@ -75,6 +81,14 @@ type Application struct {
 	DeployKey   string
 	HealthCheck HealthCheck
 }
+
+// Build packs, as projects names them.
+const (
+	BuildPackDockerfile = "dockerfile"
+	BuildPackNixpacks   = "nixpacks"
+	BuildPackStatic     = "static"
+	BuildPackImage      = "image"
+)
 
 // HealthCheck is how the new Container is probed before the Route moves to
 // it. Times are in seconds.

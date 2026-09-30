@@ -148,16 +148,19 @@ func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, i
 		return domain.Application{}, err
 	}
 	a := domain.Application{
-		EnvironmentID:  env.ID,
-		ProjectID:      env.ProjectID,
-		Name:           in.Name,
-		Slug:           slug,
-		GitURL:         in.GitURL,
-		GitBranch:      in.GitBranch,
-		DockerfilePath: in.DockerfilePath,
-		Port:           in.Port,
-		Domain:         in.Domain,
-		HealthCheck:    domain.DefaultHealthCheck(),
+		EnvironmentID:    env.ID,
+		ProjectID:        env.ProjectID,
+		Name:             in.Name,
+		Slug:             slug,
+		BuildPack:        in.BuildPack,
+		ImageReference:   in.ImageReference,
+		PublishDirectory: in.PublishDirectory,
+		GitURL:           in.GitURL,
+		GitBranch:        in.GitBranch,
+		DockerfilePath:   in.DockerfilePath,
+		Port:             in.Port,
+		Domain:           in.Domain,
+		HealthCheck:      domain.DefaultHealthCheck(),
 	}
 	if in.HealthCheck != nil {
 		a.HealthCheck = *in.HealthCheck
@@ -221,10 +224,14 @@ func (s *Service) UpdateApplication(ctx context.Context, id uint64, in domain.Ap
 	if err != nil {
 		return domain.Application{}, err
 	}
+	if in.BuildPack == "" {
+		in.BuildPack = a.BuildPack
+	}
 	in, err = in.Normalize()
 	if err != nil {
 		return domain.Application{}, err
 	}
+	a.BuildPack, a.ImageReference, a.PublishDirectory = in.BuildPack, in.ImageReference, in.PublishDirectory
 	a.Name, a.GitURL, a.GitBranch, a.DockerfilePath, a.Port, a.Domain =
 		in.Name, in.GitURL, in.GitBranch, in.DockerfilePath, in.Port, in.Domain
 	if in.HealthCheck != nil {

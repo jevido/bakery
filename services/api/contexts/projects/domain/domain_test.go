@@ -180,3 +180,48 @@ func TestCheckEnvVarsScope(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestBuildPacks(t *testing.T) {
+	img, err := ApplicationInput{Name: "who", BuildPack: Image, ImageReference: " docker.io/traefik/whoami:v1.10 ",
+		GitURL: "https://github.com/x/y", Port: 80}.Normalize()
+	if err != nil {
+		t.Fatalf("image: %v", err)
+	}
+	if img.ImageReference != "docker.io/traefik/whoami:v1.10" || img.GitURL != "" || img.GitBranch != "" || img.DockerfilePath != "" {
+		t.Errorf("image input not cleaned: %+v", img)
+	}
+	for _, ref := range []string{"localhost/app:1", "127.0.0.1:4950/me/app:1", "ghcr.io/me/app@sha256:abc"} {
+		if _, err := (ApplicationInput{Name: "x", BuildPack: Image, ImageReference: ref, Port: 80}).Normalize(); err != nil {
+			t.Errorf("%s: %v", ref, err)
+		}
+	}
+	for _, ref := range []string{"", "nginx", "nginx:1.27", "library/nginx", "-x/y", "docker.io/a b"} {
+		if _, err := (ApplicationInput{Name: "x", BuildPack: Image, ImageReference: ref, Port: 80}).Normalize(); field(err) != "image_reference" {
+			t.Errorf("%q: err = %v, want image_reference", ref, err)
+		}
+	}
+
+	st, err := ApplicationInput{Name: "site", BuildPack: Static, GitURL: "https://github.com/x/y", Port: 3000, ImageReference: "docker.io/x/y"}.Normalize()
+	if err != nil {
+		t.Fatalf("static: %v", err)
+	}
+	if st.Port != StaticPort || st.PublishDirectory != "." || st.ImageReference != "" {
+		t.Errorf("static defaults: %+v", st)
+	}
+	for _, dir := range []string{"../x", "/srv", "a/../../b"} {
+		if _, err := (ApplicationInput{Name: "x", BuildPack: Static, GitURL: "https://github.com/x/y", PublishDirectory: dir}).Normalize(); field(err) != "publish_directory" {
+			t.Errorf("%q: err = %v, want publish_directory", dir, err)
+		}
+	}
+
+	if _, err := (ApplicationInput{Name: "x", BuildPack: "heroku", GitURL: "https://github.com/x/y", Port: 80}).Normalize(); field(err) != "build_pack" {
+		t.Errorf("unknown pack: err = %v", err)
+	}
+	if _, err := (ApplicationInput{Name: "x", BuildPack: Nixpacks, Port: 80}).Normalize(); field(err) != "git_url" {
+		t.Errorf("nixpacks without source: err = %v", err)
+	}
+	d, _ := ApplicationInput{Name: "x", GitURL: "https://github.com/x/y", Port: 80}.Normalize()
+	if d.BuildPack != Dockerfile {
+		t.Errorf("default pack = %q", d.BuildPack)
+	}
+}

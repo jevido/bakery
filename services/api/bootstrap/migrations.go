@@ -21,5 +21,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000006AddApplicationHealthChecks{},
 		&migrations.M20260930000007AddDeploymentRollbackOf{},
 		&migrations.M20260930000008AddVariableScopeAndSharedVariables{},
+		&migrations.M20260930000009AddApplicationBuildPack{},
 	}
 }

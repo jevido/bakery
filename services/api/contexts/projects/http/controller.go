@@ -23,16 +23,19 @@ func NewController(service *app.Service) *Controller {
 }
 
 type applicationJSON struct {
-	ID             uint64 `json:"id"`
-	ProjectID      uint64 `json:"project_id"`
-	EnvironmentID  uint64 `json:"environment_id"`
-	Name           string `json:"name"`
-	Slug           string `json:"slug"`
-	GitURL         string `json:"git_url"`
-	GitBranch      string `json:"git_branch"`
-	DockerfilePath string `json:"dockerfile_path"`
-	Port           int    `json:"port"`
-	Domain         string `json:"domain"`
+	ID               uint64 `json:"id"`
+	ProjectID        uint64 `json:"project_id"`
+	EnvironmentID    uint64 `json:"environment_id"`
+	Name             string `json:"name"`
+	Slug             string `json:"slug"`
+	BuildPack        string `json:"build_pack"`
+	ImageReference   string `json:"image_reference"`
+	PublishDirectory string `json:"publish_directory"`
+	GitURL           string `json:"git_url"`
+	GitBranch        string `json:"git_branch"`
+	DockerfilePath   string `json:"dockerfile_path"`
+	Port             int    `json:"port"`
+	Domain           string `json:"domain"`
 	// DeployKeyPublic is empty for an https Source.
 	DeployKeyPublic string `json:"deploy_key_public"`
 	// PublicURL is where the Application is reached through the Proxy,
@@ -57,6 +60,7 @@ func (h healthCheckJSON) domain() domain.HealthCheck {
 func applicationToJSON(a domain.Application) applicationJSON {
 	return applicationJSON{
 		ID: a.ID, ProjectID: a.ProjectID, EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug,
+		BuildPack: string(a.BuildPack), ImageReference: a.ImageReference, PublishDirectory: a.PublishDirectory,
 		GitURL: a.GitURL, GitBranch: a.GitBranch, DockerfilePath: a.DockerfilePath, Port: a.Port, Domain: a.Domain,
 		DeployKeyPublic: a.DeployKey.Public, PublicURL: publicURL(a.Domain),
 		HealthCheck: healthCheckJSON{
@@ -191,12 +195,17 @@ func (c *Controller) DeleteProject(ctx contractshttp.Context) contractshttp.Resp
 }
 
 type applicationRequest struct {
-	Name           string `json:"name"`
-	GitURL         string `json:"git_url"`
-	GitBranch      string `json:"git_branch"`
-	DockerfilePath string `json:"dockerfile_path"`
-	Port           int    `json:"port"`
-	Domain         string `json:"domain"`
+	Name string `json:"name"`
+	// BuildPack omitted keeps the current one (dockerfile for a new
+	// Application).
+	BuildPack        string `json:"build_pack"`
+	ImageReference   string `json:"image_reference"`
+	PublishDirectory string `json:"publish_directory"`
+	GitURL           string `json:"git_url"`
+	GitBranch        string `json:"git_branch"`
+	DockerfilePath   string `json:"dockerfile_path"`
+	Port             int    `json:"port"`
+	Domain           string `json:"domain"`
 	// HealthCheck omitted keeps the current one.
 	HealthCheck *healthCheckJSON `json:"health_check"`
 }
@@ -204,6 +213,7 @@ type applicationRequest struct {
 func (r applicationRequest) input() domain.ApplicationInput {
 	in := domain.ApplicationInput{
 		Name: r.Name, GitURL: r.GitURL, GitBranch: r.GitBranch,
+		BuildPack: domain.BuildPack(r.BuildPack), ImageReference: r.ImageReference, PublishDirectory: r.PublishDirectory,
 		DockerfilePath: r.DockerfilePath, Port: r.Port, Domain: r.Domain,
 	}
 	if r.HealthCheck != nil {

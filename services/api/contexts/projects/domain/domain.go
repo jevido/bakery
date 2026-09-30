@@ -52,17 +52,47 @@ func NewProject(name, description string) (Project, error) {
 	return Project{Name: name, Description: strings.TrimSpace(description)}, nil
 }
 
+// BuildPack is how an Application becomes an Image.
+type BuildPack string
+
+const (
+	// Dockerfile builds the Dockerfile at a path in the Source.
+	Dockerfile BuildPack = "dockerfile"
+	// Nixpacks lets Nixpacks write the Dockerfile for the Source.
+	Nixpacks BuildPack = "nixpacks"
+	// Static serves the Publish directory of the Source on port 80.
+	Static BuildPack = "static"
+	// Image pulls the Image reference; there is no Source.
+	Image BuildPack = "image"
+)
+
+// StaticPort is the port every static Application listens on.
+const StaticPort = 80
+
+func (b BuildPack) Valid() bool {
+	switch b {
+	case Dockerfile, Nixpacks, Static, Image:
+		return true
+	}
+	return false
+}
+
 type Application struct {
-	ID             uint64
-	EnvironmentID  uint64
-	ProjectID      uint64
-	Name           string
-	Slug           string
-	GitURL         string
-	GitBranch      string
-	DockerfilePath string
-	Port           int
-	Domain         string
+	ID            uint64
+	EnvironmentID uint64
+	ProjectID     uint64
+	Name          string
+	Slug          string
+	BuildPack     BuildPack
+	// ImageReference is set exactly when BuildPack is Image; the Source
+	// fields are then empty.
+	ImageReference   string
+	PublishDirectory string
+	GitURL           string
+	GitBranch        string
+	DockerfilePath   string
+	Port             int
+	Domain           string
 	// DeployKey is set exactly when the Source is SSH.
 	DeployKey   DeployKey
 	HealthCheck HealthCheck
@@ -128,12 +158,15 @@ type DeployKey struct {
 // ApplicationInput is what the Owner fills in. Empty optional fields get
 // their defaults in Normalize.
 type ApplicationInput struct {
-	Name           string
-	GitURL         string
-	GitBranch      string
-	DockerfilePath string
-	Port           int
-	Domain         string
+	Name             string
+	BuildPack        BuildPack
+	ImageReference   string
+	PublishDirectory string
+	GitURL           string
+	GitBranch        string
+	DockerfilePath   string
+	Port             int
+	Domain           string
 	// HealthCheck nil keeps the Application's current one (the default
 	// for a new Application).
 	HealthCheck *HealthCheck
@@ -155,11 +188,29 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 	in.GitBranch = strings.TrimSpace(in.GitBranch)
 	in.DockerfilePath = strings.TrimSpace(in.DockerfilePath)
 	in.Domain = strings.ToLower(strings.TrimSpace(in.Domain))
-	if in.GitBranch == "" {
-		in.GitBranch = "main"
+	in.ImageReference = strings.TrimSpace(in.ImageReference)
+	in.PublishDirectory = strings.TrimSpace(in.PublishDirectory)
+	if in.BuildPack == "" {
+		in.BuildPack = Dockerfile
 	}
-	if in.DockerfilePath == "" {
-		in.DockerfilePath = "Dockerfile"
+	if in.BuildPack == Image {
+		in.GitURL, in.GitBranch, in.DockerfilePath = "", "", ""
+	} else {
+		in.ImageReference = ""
+		if in.GitBranch == "" {
+			in.GitBranch = "main"
+		}
+		if in.DockerfilePath == "" {
+			in.DockerfilePath = "Dockerfile"
+		}
+	}
+	if in.BuildPack == Static {
+		if in.PublishDirectory == "" {
+			in.PublishDirectory = "."
+		}
+		in.Port = StaticPort
+	} else {
+		in.PublishDirectory = "."
 	}
 
 	if in.Name == "" {
@@ -171,14 +222,28 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 	if Slugify(in.Name) == "" {
 		return in, invalid("name", "name needs at least one letter or digit")
 	}
-	if err := checkGitURL(in.GitURL); err != nil {
-		return in, err
+	if !in.BuildPack.Valid() {
+		return in, invalid("build_pack", "build pack must be dockerfile, nixpacks, static or image")
 	}
-	if strings.ContainsAny(in.GitBranch, " \t\n") || strings.HasPrefix(in.GitBranch, "-") {
-		return in, invalid("git_branch", "branch is not a valid git branch name")
+	if in.BuildPack == Image {
+		if err := checkImageReference(in.ImageReference); err != nil {
+			return in, err
+		}
+	} else {
+		if err := checkGitURL(in.GitURL); err != nil {
+			return in, err
+		}
+		if strings.ContainsAny(in.GitBranch, " \t\n") || strings.HasPrefix(in.GitBranch, "-") {
+			return in, invalid("git_branch", "branch is not a valid git branch name")
+		}
+		if err := checkRepositoryPath("dockerfile_path", "Dockerfile path", in.DockerfilePath); err != nil {
+			return in, err
+		}
 	}
-	if err := checkDockerfilePath(in.DockerfilePath); err != nil {
-		return in, err
+	if in.BuildPack == Static {
+		if err := checkRepositoryPath("publish_directory", "publish directory", in.PublishDirectory); err != nil {
+			return in, err
+		}
 	}
 	if in.Port < 1 || in.Port > 65535 {
 		return in, invalid("port", "port must be between 1 and 65535")
@@ -232,14 +297,37 @@ func IsSSHSource(raw string) bool {
 	return !strings.HasPrefix(raw, "-") && scpLikeURL.MatchString(raw)
 }
 
-func checkDockerfilePath(p string) error {
+// checkRepositoryPath keeps a path of the Source inside the clone.
+func checkRepositoryPath(field, what, p string) error {
 	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "-") {
-		return invalid("dockerfile_path", "Dockerfile path must be relative to the repository root")
+		return invalid(field, "%s must be relative to the repository root", what)
+	}
+	if strings.ContainsAny(p, "\n\r") {
+		return invalid(field, "%s must be on one line", what)
 	}
 	for _, part := range strings.Split(path.Clean(p), "/") {
 		if part == ".." {
-			return invalid("dockerfile_path", "Dockerfile path must stay inside the repository")
+			return invalid(field, "%s must stay inside the repository", what)
 		}
+	}
+	return nil
+}
+
+// checkImageReference asks for a reference that names its registry: a
+// short name like nginx resolves differently per server (Podman's
+// unqualified-search-registries) and may prompt.
+func checkImageReference(ref string) error {
+	switch {
+	case ref == "":
+		return invalid("image_reference", "image reference is required")
+	case len(ref) > 500:
+		return invalid("image_reference", "image reference is at most 500 characters")
+	case strings.HasPrefix(ref, "-") || strings.ContainsAny(ref, " \t\n\r\"'`$\\"):
+		return invalid("image_reference", "image reference must not contain spaces or quotes")
+	}
+	host, _, found := strings.Cut(ref, "/")
+	if !found || (!strings.ContainsAny(host, ".:") && host != "localhost") {
+		return invalid("image_reference", "use a full reference like docker.io/library/nginx:1.27")
 	}
 	return nil
 }

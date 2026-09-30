@@ -156,6 +156,10 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 		return w.goLive(ctx, d, app, info)
 	}
 
+	if app.BuildPack != "" && app.BuildPack != BuildPackDockerfile {
+		return fmt.Errorf("build pack %s is not supported yet", app.BuildPack)
+	}
+
 	// Clone.
 	dir := filepath.Join(w.WorkDir, fmt.Sprintf("deployment-%d", d.ID))
 	_ = os.RemoveAll(dir)
