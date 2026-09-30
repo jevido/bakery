@@ -133,9 +133,11 @@ func one(ctx contractshttp.Context, status int, v app.View, err error) contracts
 	return ctx.Response().Json(status, contractshttp.Json{"service": toJSON(v, true)})
 }
 
+// createRequest names a template or carries a Compose file.
 type createRequest struct {
-	Name    string `json:"name"`
-	Compose string `json:"compose"`
+	Name     string `json:"name"`
+	Compose  string `json:"compose"`
+	Template string `json:"template"`
 }
 
 func (c *Controller) Create(ctx contractshttp.Context) contractshttp.Response {
@@ -147,8 +149,32 @@ func (c *Controller) Create(ctx contractshttp.Context) contractshttp.Response {
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	v, err := c.service.Create(ctx.Context(), envID, app.Input{Name: req.Name, Compose: req.Compose})
+	var v app.View
+	var err error
+	if req.Template != "" {
+		v, err = c.service.CreateFromTemplate(ctx.Context(), envID, req.Template, req.Name)
+	} else {
+		v, err = c.service.Create(ctx.Context(), envID, app.Input{Name: req.Name, Compose: req.Compose})
+	}
 	return one(ctx, contractshttp.StatusCreated, v, err)
+}
+
+type templateJSON struct {
+	Key         string   `json:"key"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	DocsURL     string   `json:"docs_url"`
+	Tags        []string `json:"tags"`
+}
+
+// Templates lists the catalog.
+func (c *Controller) Templates(ctx contractshttp.Context) contractshttp.Response {
+	list := c.service.Templates()
+	out := make([]templateJSON, len(list))
+	for i, t := range list {
+		out[i] = templateJSON{Key: t.Key, Name: t.Name, Description: t.Description, DocsURL: t.DocsURL, Tags: t.Tags}
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"templates": out})
 }
 
 func (c *Controller) ForProject(ctx contractshttp.Context) contractshttp.Response {

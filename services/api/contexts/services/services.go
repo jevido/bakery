@@ -60,6 +60,13 @@ func svc() *app.Service {
 		service = app.NewService(infra.Store{}, runtime, routes{}, environments, projects.DomainInUse,
 			cfg.GetString("bakery.domain_suffix"), infra.Generate)
 		service.Log = facades.Log().Errorf
+		catalog, err := infra.Templates()
+		if err != nil {
+			// The catalog is embedded and tested; a broken one is a build
+			// mistake, not something to run with.
+			panic(err)
+		}
+		service.SetTemplates(catalog)
 		projects.OnProjectDeleting(service.InUse)
 		projects.OnDomainCheck(service.DomainInUse)
 	})
@@ -70,6 +77,7 @@ func svc() *app.Service {
 func Routes(r route.Router) {
 	c := serviceshttp.NewController(svc())
 	r.Middleware(identity.Auth).Group(func(r route.Router) {
+		r.Get("/api/service-templates", c.Templates)
 		r.Post("/api/environments/{id}/services", c.Create)
 		r.Get("/api/projects/{id}/services", c.ForProject)
 		r.Get("/api/services/{id}", c.Show)

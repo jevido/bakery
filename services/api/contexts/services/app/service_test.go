@@ -351,3 +351,21 @@ func TestUpdateKeepsGeneratedValuesAndMovesRoutes(t *testing.T) {
 		t.Error("set a magic variable")
 	}
 }
+
+func TestCreateFromTemplate(t *testing.T) {
+	ctx := context.Background()
+	s, store, _ := newTestService(&fakeRuntime{})
+	s.SetTemplates([]domain.Template{{Key: "who", Name: "Who", Compose: webCompose}})
+	v, err := s.CreateFromTemplate(ctx, 1, "who", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Wait()
+	if sv, _, _ := store.Get(ctx, v.ID); sv.Name != "Who" || sv.TemplateKey != "who" || sv.ComposeFile != webCompose {
+		t.Errorf("created %+v", sv)
+	}
+	var fe *domain.FieldError
+	if _, err := s.CreateFromTemplate(ctx, 1, "nope", ""); !errors.As(err, &fe) || fe.Field != "template" {
+		t.Errorf("unknown template: %v", err)
+	}
+}

@@ -89,6 +89,8 @@ type Service struct {
 	Generate     domain.Generate
 	// Log reports background failures; nil discards them.
 	Log func(format string, args ...any)
+	// catalog is the Service templates, set with SetTemplates.
+	catalog []domain.Template
 
 	mu   sync.Mutex
 	busy map[uint64]context.CancelFunc
@@ -102,6 +104,9 @@ func NewService(store Store, runtime Runtime, routes Routes, environments Enviro
 		busy: map[uint64]context.CancelFunc{},
 	}
 }
+
+// SetTemplates gives the Service its catalog of templates.
+func (s *Service) SetTemplates(list []domain.Template) { s.catalog = list }
 
 // View is a Service as the Owner sees it.
 type View struct {

@@ -1,0 +1,17 @@
+name: Gitea
+description: A lightweight git hosting service with issues, pull requests and packages.
+docs_url: https://docs.gitea.com/installation/install-with-docker
+tags: [git, code hosting]
+compose: |
+  services:
+    gitea:
+      image: docker.io/gitea/gitea:1
+      environment:
+        - SERVICE_URL_GITEA_3000
+        - USER_UID=1000
+        - USER_GID=1000
+        - GITEA__server__DOMAIN=${SERVICE_FQDN_GITEA}
+        - GITEA__server__ROOT_URL=${SERVICE_URL_GITEA}
+        - GITEA__server__DISABLE_SSH=true
+      volumes:
+        - gitea-data:/data

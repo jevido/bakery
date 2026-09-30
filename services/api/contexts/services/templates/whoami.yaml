@@ -1,0 +1,10 @@
+name: whoami
+description: A tiny web server that answers with what it sees of each request. Handy to check that a Domain reaches Bakery.
+docs_url: https://github.com/traefik/whoami
+tags: [test, http]
+compose: |
+  services:
+    whoami:
+      image: docker.io/traefik/whoami:v1.10
+      environment:
+        - SERVICE_FQDN_WHOAMI_80

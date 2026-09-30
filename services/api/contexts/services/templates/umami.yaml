@@ -1,0 +1,22 @@
+name: Umami
+description: Simple, privacy-friendly web analytics, with its own PostgreSQL.
+docs_url: https://umami.is/docs
+tags: [analytics]
+compose: |
+  services:
+    umami:
+      image: ghcr.io/umami-software/umami:3
+      environment:
+        - SERVICE_URL_UMAMI_3000
+        - DATABASE_URL=postgresql://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@postgresql:5432/${POSTGRES_DB:-umami}
+        - APP_SECRET=${SERVICE_PASSWORD_64_UMAMI}
+      depends_on:
+        - postgresql
+    postgresql:
+      image: docker.io/library/postgres:16-alpine
+      environment:
+        - POSTGRES_USER=${SERVICE_USER_POSTGRES}
+        - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+        - POSTGRES_DB=${POSTGRES_DB:-umami}
+      volumes:
+        - postgresql-data:/var/lib/postgresql/data

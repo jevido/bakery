@@ -1,0 +1,19 @@
+name: n8n
+description: Workflow automation with a visual editor and hundreds of integrations.
+docs_url: https://docs.n8n.io/hosting/
+tags: [automation, workflows]
+compose: |
+  services:
+    n8n:
+      image: docker.io/n8nio/n8n:1
+      environment:
+        - SERVICE_URL_N8N_5678
+        - N8N_HOST=${SERVICE_FQDN_N8N}
+        - N8N_PROTOCOL=https
+        - N8N_EDITOR_BASE_URL=${SERVICE_URL_N8N}
+        - WEBHOOK_URL=${SERVICE_URL_N8N}
+        - N8N_ENCRYPTION_KEY=${SERVICE_PASSWORD_64_N8N}
+        - GENERIC_TIMEZONE=${TIMEZONE:-UTC}
+        - TZ=${TIMEZONE:-UTC}
+      volumes:
+        - n8n-data:/home/node/.n8n
