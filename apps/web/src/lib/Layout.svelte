@@ -17,6 +17,8 @@
         return 'notifications'
       case 'api-tokens':
         return 'api-tokens'
+      case 'account':
+        return 'account'
       case 'servers':
       case 'server':
         return 'servers'
@@ -45,7 +47,8 @@
   </aside>
   <div class="main">
     <header>
-      <span class="muted">{session.member?.name} · {session.member?.email} · {session.member?.role}</span>
+      <span class="muted">{session.member?.email} · {session.member?.role}</span>
+      <a href={href('/account')} aria-current={section === 'account' ? 'page' : undefined} title="Your account">{session.member?.name}</a>
       <a href={href('/api-tokens')} aria-current={section === 'api-tokens' ? 'page' : undefined}>API tokens</a>
       <button onclick={() => session.logout()}>Log out</button>
     </header>

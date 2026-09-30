@@ -7,6 +7,7 @@
   import Invite from './pages/Invite.svelte'
   import Members from './pages/Members.svelte'
   import ApiTokens from './pages/ApiTokens.svelte'
+  import Account from './pages/Account.svelte'
   import NotFound from './pages/NotFound.svelte'
   import Application from './pages/Application.svelte'
   import Database from './pages/Database.svelte'
@@ -60,6 +61,8 @@
       <Notifications />
     {:else if router.route.name === 'api-tokens'}
       <ApiTokens />
+    {:else if router.route.name === 'account'}
+      <Account />
     {:else}
       <NotFound />
     {/if}

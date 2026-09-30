@@ -1,4 +1,4 @@
-// Hash router: #/projects, #/projects/{id}, #/applications/{id}, #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/settings, #/members, #/notifications, #/api-tokens, #/invite/{token}, #/login.
+// Hash router: #/projects, #/projects/{id}, #/applications/{id}, #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/settings, #/members, #/notifications, #/api-tokens, #/account, #/invite/{token}, #/login.
 export type Route =
   | { name: 'projects' }
   | { name: 'project'; id: number }
@@ -11,6 +11,7 @@ export type Route =
   | { name: 'members' }
   | { name: 'notifications' }
   | { name: 'api-tokens' }
+  | { name: 'account' }
   | { name: 'invite'; token: string }
   | { name: 'login' }
   | { name: 'notfound' }
@@ -23,6 +24,7 @@ function parse(hash: string): Route {
   if (parts[0] === 'members' && parts.length === 1) return { name: 'members' }
   if (parts[0] === 'notifications' && parts.length === 1) return { name: 'notifications' }
   if (parts[0] === 'api-tokens' && parts.length === 1) return { name: 'api-tokens' }
+  if (parts[0] === 'account' && parts.length === 1) return { name: 'account' }
   if (parts[0] === 'invite' && parts.length === 2) return { name: 'invite', token: parts[1] }
   if (parts[0] === 'servers') {
     if (parts.length === 1) return { name: 'servers' }
