@@ -98,7 +98,7 @@ func setup(t *testing.T) (*Service, *fakeStore, *fakeSender, *time.Time) {
 		_, _ = store.CreateChannel(context.Background(), c)
 	}
 	sender := &fakeSender{failing: map[uint64]int{}, sent: map[uint64]int{}}
-	s := NewService(store, sender)
+	s := NewService(store, sender, nil)
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	s.Now = func() time.Time { return now }
 	return s, store, sender, &now

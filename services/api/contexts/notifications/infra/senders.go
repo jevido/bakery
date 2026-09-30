@@ -234,12 +234,24 @@ func emailMessage(st domain.Settings, to []string, subject, body string, now tim
 
 func sendEmail(ctx context.Context, st domain.Settings, n domain.Notification) error {
 	msg := emailMessage(st, st.To, "[Bakery] "+n.Title, lines(n.Body, n.Link), time.Now())
-	return SendMail(ctx, st, st.To, msg)
+	return sendMail(ctx, st, st.To, msg)
 }
 
-// SendMail sends msg to the recipients through the email channel's SMTP
+// Mail sends one email through the email channel c to the recipients
+// given, not the channel's own.
+func (s Senders) Mail(ctx context.Context, c domain.Channel, to []string, subject, body string) error {
+	if c.Kind != domain.Email {
+		return fmt.Errorf("channel %q is not an email channel", c.Name)
+	}
+	if err := sendMail(ctx, c.Settings, to, emailMessage(c.Settings, to, subject, body, time.Now())); err != nil {
+		return errors.New(scrub(err.Error(), c))
+	}
+	return nil
+}
+
+// sendMail sends msg to the recipients through the email channel's SMTP
 // server.
-func SendMail(ctx context.Context, st domain.Settings, to []string, msg []byte) error {
+func sendMail(ctx context.Context, st domain.Settings, to []string, msg []byte) error {
 	addr := net.JoinHostPort(st.Host, strconv.Itoa(st.Port))
 	d := net.Dialer{}
 	var conn net.Conn

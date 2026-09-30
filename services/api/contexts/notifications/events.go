@@ -8,6 +8,8 @@ import (
 
 	"github.com/jevido/bakery/services/api/contexts/databases"
 	"github.com/jevido/bakery/services/api/contexts/deployments"
+	"github.com/jevido/bakery/services/api/contexts/identity"
+	"github.com/jevido/bakery/services/api/contexts/notifications/app"
 	"github.com/jevido/bakery/services/api/contexts/notifications/domain"
 	"github.com/jevido/bakery/services/api/contexts/servers"
 )
@@ -20,6 +22,9 @@ func subscribe() {
 	})
 	databases.OnBackupFinished(func(ctx context.Context, e databases.BackupFinished) {
 		svc().Notify(ctx, backupNotification(e, DashboardURL()))
+	})
+	identity.OnInvitationCreated(func(ctx context.Context, e identity.InvitationCreated) (bool, error) {
+		return svc().SendInvitation(ctx, app.Invitation(e))
 	})
 	servers.OnServerHealthChanged(func(ctx context.Context, e servers.ServerHealthChanged) {
 		if n, ok := serverNotification(e, DashboardURL(), time.Now()); ok {

@@ -23,7 +23,7 @@
   let errors = $state<Record<string, string>>({})
   let busy = $state(false)
   // The link of the Invitation just made; the API never shows it again.
-  let invited = $state.raw<{ email: string; link: string } | null>(null)
+  let invited = $state.raw<{ email: string; link: string; emailed: boolean; emailError?: string } | null>(null)
 
   async function load() {
     const [m, i] = await Promise.all([
@@ -45,8 +45,17 @@
     busy = true
     errors = {}
     try {
-      const r = await api<{ invitation: Invitation; path: string; link?: string }>('POST', '/invitations', { email, role })
-      invited = { email: r.invitation.email, link: r.link ?? location.origin + r.path }
+      const r = await api<{ invitation: Invitation; path: string; link?: string; emailed: boolean; email_error?: string }>(
+        'POST',
+        '/invitations',
+        { email, role },
+      )
+      invited = {
+        email: r.invitation.email,
+        link: r.link ?? location.origin + r.path,
+        emailed: r.emailed,
+        emailError: r.email_error,
+      }
       email = ''
       await load()
     } catch (err) {
@@ -107,7 +116,14 @@
   </div>
   {#if invited}
     <div class="invited" data-testid="invitation-link">
-      <p>Send this link to <strong>{invited.email}</strong>. It works once, for 7 days.</p>
+      {#if invited.emailed}
+        <p>Emailed the link to <strong>{invited.email}</strong>. It works once, for 7 days; you can also send it yourself.</p>
+      {:else}
+        {#if invited.emailError}
+          <p class="error small">Emailing the link failed: {invited.emailError}</p>
+        {/if}
+        <p>Send this link to <strong>{invited.email}</strong>. It works once, for 7 days.</p>
+      {/if}
       <div class="link">
         <input readonly value={invited.link} aria-label="Invitation link" />
         <CopyButton text={invited.link} />

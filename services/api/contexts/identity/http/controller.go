@@ -3,6 +3,7 @@
 package http
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"strings"
@@ -32,6 +33,9 @@ type principal struct {
 
 type Controller struct {
 	service *app.Service
+	// Invited, when set, hears of each new Invitation with its link and the
+	// inviting Member's name, and answers whether it emailed the link.
+	Invited func(ctx context.Context, inv domain.Invitation, invitedBy, link string) (emailed bool, err error)
 }
 
 func NewController(service *app.Service) *Controller {

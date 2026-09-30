@@ -3,6 +3,7 @@ package http
 import (
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -134,16 +135,38 @@ func (c *Controller) Invite(ctx contractshttp.Context) contractshttp.Response {
 	// The dashboard routes by hash.
 	path := "/#/invite/" + token
 	out := contractshttp.Json{"invitation": invitationToJSON(inv), "path": path}
-	if origin := dashboardOrigin(ctx); origin != "" {
+	origin := dashboardOrigin(ctx)
+	if origin != "" {
 		out["link"] = origin + path
+	}
+	out["emailed"] = false
+	if c.Invited != nil {
+		if origin == "" {
+			origin = "http://localhost:4930"
+		}
+		name := ""
+		if m, err := c.service.CurrentMember(ctx.Context(), actor); err == nil {
+			name = m.Name
+		}
+		emailed, err := c.Invited(ctx.Context(), inv, name, origin+path)
+		out["emailed"] = emailed
+		if err != nil {
+			// The Invitation stands; its link can still be copied.
+			out["email_error"] = err.Error()
+		}
 	}
 	return ctx.Response().Json(contractshttp.StatusCreated, out)
 }
 
-// dashboardOrigin is where the dashboard is served: its own domain on a
-// server, else the origin the request came from (the Vite dev server).
+// dashboardOrigin is where the dashboard is served: bakery.dashboard.url,
+// else its own domain on a server, else the origin the request came from
+// (the Vite dev server).
 func dashboardOrigin(ctx contractshttp.Context) string {
-	if d := facades.Config().GetString("bakery.dashboard.domain"); d != "" {
+	cfg := facades.Config()
+	if u := strings.TrimRight(cfg.GetString("bakery.dashboard.url"), "/"); u != "" {
+		return u
+	}
+	if d := cfg.GetString("bakery.dashboard.domain"); d != "" {
 		return "https://" + d
 	}
 	return ctx.Request().Header("Origin")

@@ -26,7 +26,8 @@ var (
 func svc() *app.Service {
 	once.Do(func() {
 		cfg := facades.Config()
-		service = app.NewService(infra.Store{}, infra.Senders{TelegramAPI: cfg.GetString("bakery.notifications.telegram_api")})
+		senders := infra.Senders{TelegramAPI: cfg.GetString("bakery.notifications.telegram_api")}
+		service = app.NewService(infra.Store{}, senders, senders)
 		service.DashboardURL = DashboardURL()
 		service.Log = facades.Log().Errorf
 	})

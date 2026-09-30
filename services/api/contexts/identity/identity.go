@@ -1,14 +1,19 @@
 // Package identity is what other contexts and the router may use from the
-// identity context: its routes, the Auth, Admin and Secrets middlewares and
-// CanSeeSecrets. Nothing else in
+// identity context: its routes, the Auth, Admin and Secrets middlewares,
+// CanSeeSecrets and the InvitationCreated event. Nothing else in
 // contexts/identity is for outside use.
 package identity
 
 import (
+	"context"
+	"sync"
+	"time"
+
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/route"
 
 	"github.com/jevido/bakery/services/api/contexts/identity/app"
+	"github.com/jevido/bakery/services/api/contexts/identity/domain"
 	identityhttp "github.com/jevido/bakery/services/api/contexts/identity/http"
 	"github.com/jevido/bakery/services/api/contexts/identity/infra"
 )
@@ -38,6 +43,7 @@ func CanSeeSecrets(ctx contractshttp.Context) bool {
 // managing Members an admin.
 func Routes(r route.Router) {
 	c := identityhttp.NewController(service)
+	c.Invited = publishInvitation
 	r.Get("/api/setup", c.SetupStatus)
 	r.Post("/api/setup", c.Setup)
 	r.Post("/api/login", c.Login)
@@ -59,4 +65,39 @@ func Routes(r route.Router) {
 		r.Post("/api/invitations", c.Invite)
 		r.Delete("/api/invitations/{id}", c.RevokeInvitation)
 	})
+}
+
+// InvitationCreated is an Invitation just made, with its link: the only
+// moment the link is known.
+type InvitationCreated struct {
+	Email string
+	// Role is "admin", "member" or "viewer".
+	Role      string
+	InvitedBy string
+	Link      string
+	ExpiresAt time.Time
+}
+
+var (
+	invitedMu sync.Mutex
+	onInvited func(ctx context.Context, e InvitationCreated) (emailed bool, err error)
+)
+
+// OnInvitationCreated registers the one subscriber of InvitationCreated.
+// It is called while the invite request waits, and answers whether it
+// emailed the link (false without an error: there is no way to email).
+func OnInvitationCreated(f func(ctx context.Context, e InvitationCreated) (emailed bool, err error)) {
+	invitedMu.Lock()
+	defer invitedMu.Unlock()
+	onInvited = f
+}
+
+func publishInvitation(ctx context.Context, inv domain.Invitation, invitedBy, link string) (bool, error) {
+	invitedMu.Lock()
+	f := onInvited
+	invitedMu.Unlock()
+	if f == nil {
+		return false, nil
+	}
+	return f(ctx, InvitationCreated{Email: inv.Email, Role: string(inv.Role), InvitedBy: invitedBy, Link: link, ExpiresAt: inv.ExpiresAt})
 }

@@ -34,6 +34,7 @@ type Store interface {
 type Service struct {
 	store  Store
 	sender Sender
+	mailer Mailer
 	// DashboardURL is where links in Notifications point, without a
 	// trailing slash.
 	DashboardURL string
@@ -45,8 +46,8 @@ type Service struct {
 	wake chan struct{}
 }
 
-func NewService(store Store, sender Sender) *Service {
-	return &Service{store: store, sender: sender, Log: func(string, ...any) {}, Now: time.Now, Poll: 5 * time.Second, wake: make(chan struct{}, 1)}
+func NewService(store Store, sender Sender, mailer Mailer) *Service {
+	return &Service{store: store, sender: sender, mailer: mailer, Log: func(string, ...any) {}, Now: time.Now, Poll: 5 * time.Second, wake: make(chan struct{}, 1)}
 }
 
 func (s *Service) Channels(ctx context.Context) ([]domain.Channel, error) {
