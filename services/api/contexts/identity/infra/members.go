@@ -5,6 +5,7 @@ package infra
 import (
 	"context"
 	"errors"
+	"strings"
 
 	contractsorm "github.com/goravel/framework/contracts/database/orm"
 	"github.com/goravel/framework/database/orm"
@@ -87,3 +88,36 @@ type Hasher struct{}
 
 func (Hasher) Make(password string) (string, error) { return facades.Hash().Make(password) }
 func (Hasher) Check(password, hash string) bool     { return facades.Hash().Check(password, hash) }
+
+func (o Members) All(ctx context.Context) ([]domain.Member, error) {
+	var recs []userRecord
+	// The Owner first, then by name.
+	if err := o.query(ctx).OrderByRaw("role = 'owner' DESC, lower(name), id").Find(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]domain.Member, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+	}
+	return out, nil
+}
+
+func (o Members) SetRole(ctx context.Context, id uint64, role domain.Role) error {
+	_, err := o.query(ctx).Model(&userRecord{}).Where("id", id).Update("role", string(role))
+	return err
+}
+
+func (o Members) Remove(ctx context.Context, id uint64) error {
+	_, err := o.query(ctx).Where("id", id).Delete(&userRecord{})
+	return err
+}
+
+// isUniqueViolation reports whether err is Postgres refusing a duplicate
+// in a unique index.
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "23505") || strings.Contains(msg, "duplicate key")
+}

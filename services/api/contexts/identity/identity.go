@@ -13,7 +13,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/identity/infra"
 )
 
-var service = app.NewService(infra.Members{}, infra.Hasher{})
+var service = app.NewService(infra.Members{}, infra.Invitations{}, infra.Hasher{})
 
 // Auth refuses requests that come from no Member (401), and anything but
 // reading from a viewer (403).
@@ -32,8 +32,9 @@ func CanSeeSecrets(ctx contractshttp.Context) bool {
 	return identityhttp.RoleOf(ctx).CanSeeSecrets()
 }
 
-// Routes registers setup, login, logout and me. Setup and login are open;
-// the rest needs a Session.
+// Routes registers setup, login, logout, me, Members and Invitations.
+// Setup, login and an Invitation link are open; the rest needs a Member, and
+// managing Members an admin.
 func Routes(r route.Router) {
 	c := identityhttp.NewController(service)
 	r.Get("/api/setup", c.SetupStatus)
@@ -41,4 +42,14 @@ func Routes(r route.Router) {
 	r.Post("/api/login", c.Login)
 	r.Post("/api/logout", c.Logout)
 	r.Middleware(Auth).Get("/api/me", c.Me)
+	r.Get("/api/invitations/by-token/{token}", c.InvitationByToken)
+	r.Post("/api/invitations/by-token/{token}/accept", c.AcceptInvitation)
+	r.Middleware(Auth, Admin).Group(func(r route.Router) {
+		r.Get("/api/members", c.Members)
+		r.Patch("/api/members/{id}", c.ChangeRole)
+		r.Delete("/api/members/{id}", c.RemoveMember)
+		r.Get("/api/invitations", c.Invitations)
+		r.Post("/api/invitations", c.Invite)
+		r.Delete("/api/invitations/{id}", c.RevokeInvitation)
+	})
 }

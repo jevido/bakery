@@ -89,3 +89,36 @@ func ValidateEmail(email string) error {
 func NormalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
+
+var (
+	ErrNotAdmin     = errors.New("only admins can do this")
+	ErrOwnerIsFixed = errors.New("the owner's role cannot change and the owner cannot be removed")
+	ErrSelf         = errors.New("you cannot change your own role or remove yourself")
+	ErrGrantOwner   = errors.New("nobody can be made owner")
+)
+
+// CanManage says whether actor may change target's Role or remove target:
+// only admins, never the Owner, never themselves.
+func CanManage(actor, target Member) error {
+	switch {
+	case !actor.Role.IsAdmin():
+		return ErrNotAdmin
+	case target.Role == RoleOwner:
+		return ErrOwnerIsFixed
+	case actor.ID == target.ID:
+		return ErrSelf
+	}
+	return nil
+}
+
+// CanGrant says whether actor may give someone role.
+func CanGrant(actor Member, role Role) error {
+	if !actor.Role.IsAdmin() {
+		return ErrNotAdmin
+	}
+	if role == RoleOwner {
+		return ErrGrantOwner
+	}
+	_, err := ParseRole(string(role))
+	return err
+}

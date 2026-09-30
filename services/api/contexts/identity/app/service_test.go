@@ -59,6 +59,40 @@ func (m *memMembers) ByID(_ context.Context, id uint64) (domain.Member, bool, er
 	return m.find(func(x domain.Member) bool { return x.ID == id })
 }
 
+func (m *memMembers) All(context.Context) ([]domain.Member, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]domain.Member(nil), m.members...), nil
+}
+
+func (m *memMembers) SetRole(_ context.Context, id uint64, role domain.Role) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.members {
+		if m.members[i].ID == id {
+			m.members[i].Role = role
+		}
+	}
+	return nil
+}
+
+func (m *memMembers) Remove(_ context.Context, id uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.members {
+		if m.members[i].ID == id {
+			m.members = append(m.members[:i], m.members[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
+func newTestService() *Service {
+	members := &memMembers{}
+	return NewService(members, &memInvitations{members: members}, plainHasher{})
+}
+
 type plainHasher struct{}
 
 func (plainHasher) Make(p string) (string, error) { return "h:" + p, nil }
@@ -66,7 +100,7 @@ func (plainHasher) Check(p, h string) bool        { return h == "h:"+p }
 
 func TestSetupOnlyOnce(t *testing.T) {
 	ctx := context.Background()
-	s := NewService(&memMembers{}, plainHasher{})
+	s := newTestService()
 
 	if needed, _ := s.SetupNeeded(ctx); !needed {
 		t.Fatal("setup should be needed on a fresh install")
@@ -84,7 +118,7 @@ func TestSetupOnlyOnce(t *testing.T) {
 
 func TestLogin(t *testing.T) {
 	ctx := context.Background()
-	s := NewService(&memMembers{}, plainHasher{})
+	s := newTestService()
 	if _, err := s.SetupOwner(ctx, "Ada", "ada@example.com", "correct horse"); err != nil {
 		t.Fatal(err)
 	}

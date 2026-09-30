@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/identity/domain"
 )
@@ -25,6 +26,11 @@ type Members interface {
 	AddOwnerIfNone(ctx context.Context, owner domain.Member) (domain.Member, error)
 	ByEmail(ctx context.Context, email string) (domain.Member, bool, error)
 	ByID(ctx context.Context, id uint64) (domain.Member, bool, error)
+	// All lists every Member, the Owner first, then by name.
+	All(ctx context.Context) ([]domain.Member, error)
+	SetRole(ctx context.Context, id uint64, role domain.Role) error
+	// Remove deletes the Member, and with them their API tokens.
+	Remove(ctx context.Context, id uint64) error
 }
 
 // Hasher hashes and checks passwords.
@@ -34,13 +40,18 @@ type Hasher interface {
 }
 
 type Service struct {
-	members Members
-	hasher  Hasher
+	members     Members
+	invitations Invitations
+	hasher      Hasher
+	// Now is the clock; time.Now unless a test sets it.
+	Now func() time.Time
 }
 
-func NewService(members Members, hasher Hasher) *Service {
-	return &Service{members: members, hasher: hasher}
+func NewService(members Members, invitations Invitations, hasher Hasher) *Service {
+	return &Service{members: members, invitations: invitations, hasher: hasher, Now: time.Now}
 }
+
+func (s *Service) now() time.Time { return s.Now() }
 
 // SetupNeeded reports whether no Owner exists yet.
 func (s *Service) SetupNeeded(ctx context.Context) (bool, error) {
