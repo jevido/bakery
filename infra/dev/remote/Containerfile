@@ -15,8 +15,9 @@ COPY entrypoint.sh /usr/local/bin/bakery-entrypoint
 # Linger needs logind, which a container does not have. The shim answers
 # like `loginctl show-user` does and says Linger=no once
 # /etc/bakery-stand-in/no-linger exists, so a test can turn linger off.
-COPY loginctl /usr/local/bin/loginctl
-RUN chmod 755 /usr/local/bin/bakery-entrypoint /usr/local/bin/loginctl \
+# It replaces the real loginctl, which sshd sessions find first on PATH.
+COPY loginctl /usr/bin/loginctl
+RUN chmod 755 /usr/local/bin/bakery-entrypoint /usr/bin/loginctl \
  && install -d -m 777 /etc/bakery-stand-in
 
 EXPOSE 22

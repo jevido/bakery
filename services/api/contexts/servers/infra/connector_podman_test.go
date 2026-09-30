@@ -1,0 +1,120 @@
+//go:build podman
+
+package infra
+
+import (
+	"context"
+	"net"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/jevido/bakery/services/api/app/podman"
+	"github.com/jevido/bakery/services/api/contexts/servers/app"
+	"github.com/jevido/bakery/services/api/contexts/servers/domain"
+)
+
+// Runs against the Remote server stand-in (task remote:up):
+// go test -tags podman ./contexts/servers/infra/
+
+const standIn = "bakery-dev-remote-1"
+
+// oneServer is a Store holding the Servers the test adds.
+type oneServer struct{ servers map[uint64]domain.Server }
+
+func (o *oneServer) Create(_ context.Context, s domain.Server) (domain.Server, error) {
+	s.ID = uint64(len(o.servers) + 1)
+	o.servers[s.ID] = s
+	return s, nil
+}
+func (o *oneServer) Get(_ context.Context, id uint64) (domain.Server, bool, error) {
+	s, ok := o.servers[id]
+	return s, ok, nil
+}
+func (o *oneServer) List(context.Context) ([]domain.Server, error) { return nil, nil }
+func (o *oneServer) Save(_ context.Context, s domain.Server) error {
+	o.servers[s.ID] = s
+	return nil
+}
+func (o *oneServer) Delete(context.Context, uint64) error { return nil }
+func (o *oneServer) NameTaken(context.Context, string, uint64) (bool, error) {
+	return false, nil
+}
+func (o *oneServer) AddressTaken(context.Context, string, int, string, uint64) (bool, error) {
+	return false, nil
+}
+func (o *oneServer) Local(context.Context) (domain.Server, bool, error) {
+	return domain.Server{}, false, nil
+}
+
+func standInExec(t *testing.T, c *podman.Client, script string) {
+	t.Helper()
+	code, out, err := c.Exec(context.Background(), standIn, []string{"sh", "-c", script})
+	if err != nil || code != 0 {
+		t.Fatalf("%s: %d %s %v", script, code, out, err)
+	}
+}
+
+func TestValidateStandIn(t *testing.T) {
+	if c, err := net.DialTimeout("tcp", "127.0.0.1:4972", time.Second); err != nil {
+		t.Skip("remote stand-in not running (task remote:up)")
+	} else {
+		c.Close()
+	}
+	local := podman.New(podman.DefaultSocket())
+	ctx := context.Background()
+	s := app.NewService(&oneServer{servers: map[uint64]domain.Server{}}, NewServerKey, Connector{Local: local, LocalSocket: podman.DefaultSocket()})
+	srv, err := s.Add(ctx, domain.Input{Name: "stand-in", Host: "127.0.0.1", Port: 4972, User: "podman"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	standInExec(t, local, "rm -f /etc/bakery-stand-in/no-linger; echo '"+srv.Key.Public+"' >> /home/podman/.ssh/authorized_keys")
+	t.Cleanup(func() { standInExec(t, local, "rm -f /etc/bakery-stand-in/no-linger") })
+
+	srv, err = s.Validate(ctx, srv.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.Status != domain.Reachable || srv.HostKey == "" {
+		t.Fatalf("%s %+v", srv.Status, srv.Validation)
+	}
+	for _, c := range srv.Validation.Checks {
+		t.Logf("%s ok=%v required=%v: %s", c.Name, c.OK, c.Required, c.Detail)
+	}
+
+	standInExec(t, local, "touch /etc/bakery-stand-in/no-linger")
+	srv, err = s.Validate(ctx, srv.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.Status != domain.Unreachable {
+		t.Fatalf("no linger: %s %+v", srv.Status, srv.Validation)
+	}
+
+	// A different pinned key is refused.
+	srv.HostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+	if _, err := (Connector{}).Connect(ctx, srv); err == nil || !strings.Contains(err.Error(), "host key changed") {
+		t.Fatalf("mismatch: %v", err)
+	}
+}
+
+func TestValidateLocal(t *testing.T) {
+	if _, err := os.Stat(podman.DefaultSocket()); err != nil {
+		t.Skip("no podman socket")
+	}
+	local := podman.New(podman.DefaultSocket())
+	store := &oneServer{servers: map[uint64]domain.Server{}}
+	s := app.NewService(store, NewServerKey, Connector{Local: local, LocalSocket: podman.DefaultSocket()})
+	srv, _ := s.EnsureLocal(context.Background())
+	srv, err := s.Validate(context.Background(), srv.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range srv.Validation.Checks {
+		t.Logf("%s ok=%v required=%v: %s", c.Name, c.OK, c.Required, c.Detail)
+	}
+	if srv.Status != domain.Reachable {
+		t.Fatalf("%+v", srv)
+	}
+}

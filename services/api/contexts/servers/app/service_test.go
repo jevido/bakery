@@ -81,7 +81,7 @@ func fakeKey(comment string) (domain.ServerKey, error) {
 }
 
 func TestEnsureLocalOnce(t *testing.T) {
-	s := NewService(newMemStore(), fakeKey)
+	s := NewService(newMemStore(), fakeKey, nil)
 	ctx := context.Background()
 	a, err := s.EnsureLocal(ctx)
 	if err != nil {
@@ -97,7 +97,7 @@ func TestEnsureLocalOnce(t *testing.T) {
 }
 
 func TestAddUnique(t *testing.T) {
-	s := NewService(newMemStore(), fakeKey)
+	s := NewService(newMemStore(), fakeKey, nil)
 	ctx := context.Background()
 	srv, err := s.Add(ctx, domain.Input{Name: "web", Host: "10.0.0.1", User: "bakery"})
 	if err != nil {

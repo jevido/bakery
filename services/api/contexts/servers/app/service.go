@@ -4,6 +4,7 @@ package app
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/servers/domain"
 )
@@ -28,11 +29,13 @@ type Store interface {
 type Service struct {
 	store Store
 	// newKey generates a Server key with the comment.
-	newKey func(comment string) (domain.ServerKey, error)
+	newKey    func(comment string) (domain.ServerKey, error)
+	connector Connector
+	now       func() time.Time
 }
 
-func NewService(store Store, newKey func(comment string) (domain.ServerKey, error)) *Service {
-	return &Service{store: store, newKey: newKey}
+func NewService(store Store, newKey func(comment string) (domain.ServerKey, error), connector Connector) *Service {
+	return &Service{store: store, newKey: newKey, connector: connector, now: func() time.Time { return time.Now().UTC() }}
 }
 
 // EnsureLocal creates the Local server unless it exists, and returns it.

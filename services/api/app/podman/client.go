@@ -171,6 +171,17 @@ func (c *Client) Ping(ctx context.Context) error {
 	return c.call(ctx, http.MethodGet, "/_ping", nil, nil, nil)
 }
 
+// Version is the version of the Podman service answering, e.g. 5.8.7.
+func (c *Client) Version(ctx context.Context) (string, error) {
+	var out struct {
+		Version string `json:"Version"`
+	}
+	if err := c.call(ctx, http.MethodGet, "/version", nil, nil, &out); err != nil {
+		return "", err
+	}
+	return out.Version, nil
+}
+
 // EnsureNetwork creates the network with DNS enabled (so containers find
 // each other by name) unless it exists.
 func (c *Client) EnsureNetwork(ctx context.Context, name string) error {
