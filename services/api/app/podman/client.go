@@ -46,9 +46,17 @@ type Client struct {
 // New returns a client for the unix socket at path.
 func New(socket string) *Client {
 	dialer := &net.Dialer{}
+	return NewDialer(func(ctx context.Context) (net.Conn, error) {
+		return dialer.DialContext(ctx, "unix", socket)
+	})
+}
+
+// NewDialer returns a client that reaches the API through dial, e.g. a
+// socket tunnelled over SSH (see SSHConn.Podman).
+func NewDialer(dial func(ctx context.Context) (net.Conn, error)) *Client {
 	return &Client{http: &http.Client{Transport: &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return dialer.DialContext(ctx, "unix", socket)
+			return dial(ctx)
 		},
 	}}}
 }
