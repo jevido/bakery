@@ -1,5 +1,6 @@
 // Package routing is what other contexts and the boot code may use from the
-// routing context: EnsureProxy at start, SwitchRoute for deployments.
+// routing context: EnsureProxy at start, SwitchRoute for deployments, and its
+// routes (the Route settings API).
 // Nothing else in contexts/routing is for outside use.
 package routing
 
@@ -7,11 +8,15 @@ import (
 	"context"
 	"sync"
 
+	"github.com/goravel/framework/contracts/route"
 	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/app/podman"
+
+	"github.com/jevido/bakery/services/api/contexts/identity"
 	"github.com/jevido/bakery/services/api/contexts/projects"
 	"github.com/jevido/bakery/services/api/contexts/routing/app"
 	"github.com/jevido/bakery/services/api/contexts/routing/domain"
+	routinghttp "github.com/jevido/bakery/services/api/contexts/routing/http"
 	"github.com/jevido/bakery/services/api/contexts/routing/infra"
 )
 
@@ -47,7 +52,7 @@ func svc() *app.Service {
 			ACMERoot:     cfg.GetString("bakery.acme.ca_root"),
 			VolumePrefix: "bakery-proxy",
 		})
-		service = app.NewService(infra.Routes{}, proxy)
+		service = app.NewService(infra.Routes{}, infra.Settings{}, proxy)
 		projects.OnApplicationDomainsChanged(func(ctx context.Context, applicationID uint64, domains []string) {
 			if err := service.ChangeDomains(ctx, applicationID, domains); err != nil {
 				facades.Log().Errorf("routing: moving the route of application %d to %v: %v", applicationID, domains, err)
@@ -60,6 +65,15 @@ func svc() *app.Service {
 		})
 	})
 	return service
+}
+
+// Routes registers the Route settings API, behind identity.Auth.
+func Routes(r route.Router) {
+	c := routinghttp.NewController(svc(), projects.ApplicationExists)
+	r.Middleware(identity.Auth).Group(func(r route.Router) {
+		r.Get("/api/applications/{id}/routing", c.ShowSettings)
+		r.Put("/api/applications/{id}/routing", c.ReplaceSettings)
+	})
 }
 
 // Init wires routing's event handlers. Call once at start.

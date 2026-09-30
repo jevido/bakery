@@ -314,3 +314,53 @@ func TestRenderSeveralDomains(t *testing.T) {
 		t.Fatalf("subjects %s", got)
 	}
 }
+
+func TestRenderWwwRedirect(t *testing.T) {
+	raw, err := Render([]domain.Route{
+		{ApplicationID: 1, Domains: []string{"example.com"}, Container: "bakery-app-1-4", Port: 80,
+			Settings: domain.RouteSettings{WwwRedirect: domain.ToApex}},
+		// Another Application owns www.other.com explicitly: no counterpart.
+		{ApplicationID: 2, Domains: []string{"other.com"}, Container: "bakery-app-2-1", Port: 80,
+			Settings: domain.RouteSettings{WwwRedirect: domain.ToApex}},
+		{ApplicationID: 3, Domains: []string{"www.other.com"}, Container: "bakery-app-3-1", Port: 80},
+	}, RenderOptions{InternalTLS: true, HTTPSPort: 4943})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Apps struct {
+			HTTP struct {
+				Servers map[string]struct {
+					Routes []struct {
+						Match  []struct{ Host []string } `json:"match"`
+						Handle []struct {
+							Handler    string              `json:"handler"`
+							StatusCode int                 `json:"status_code"`
+							Headers    map[string][]string `json:"headers"`
+						} `json:"handle"`
+					} `json:"routes"`
+				} `json:"servers"`
+			} `json:"http"`
+			TLS struct {
+				Automation struct {
+					Policies []struct{ Subjects []string }
+				}
+			} `json:"tls"`
+		} `json:"apps"`
+	}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	routes := cfg.Apps.HTTP.Servers["https"].Routes
+	if len(routes) != 4 {
+		t.Fatalf("want three routes and one redirect: %s", raw)
+	}
+	r := routes[3]
+	if r.Match[0].Host[0] != "www.example.com" || r.Handle[0].Handler != "static_response" || r.Handle[0].StatusCode != 308 ||
+		r.Handle[0].Headers["Location"][0] != "https://example.com:4943{http.request.uri}" {
+		t.Fatalf("redirect route wrong: %+v", r)
+	}
+	if got := strings.Join(cfg.Apps.TLS.Automation.Policies[0].Subjects, ","); got != "example.com,other.com,www.other.com,www.example.com" {
+		t.Fatalf("subjects %s", got)
+	}
+}

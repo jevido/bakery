@@ -154,6 +154,7 @@ func (p *Proxy) Apply(ctx context.Context, routes []domain.Route) error {
 		InternalTLS: p.cfg.InternalTLS,
 		Dashboard:   p.cfg.Dashboard,
 		ACME:        ACME{CA: p.cfg.ACMECA, Email: p.cfg.ACMEEmail},
+		HTTPSPort:   int(p.cfg.HTTPSPort),
 	}
 	if p.cfg.ACMERoot != "" {
 		opts.ACME.TrustedRootsFile = acmeRootInProxy

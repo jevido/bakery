@@ -6,6 +6,7 @@ package projects
 
 import (
 	"context"
+	"errors"
 
 	"github.com/goravel/framework/contracts/route"
 
@@ -89,6 +90,16 @@ type HealthCheck struct {
 	Timeout     int
 	Retries     int
 	StartPeriod int
+}
+
+// ApplicationExists reports whether the Application exists, for contexts
+// that keep something of their own per Application.
+func ApplicationExists(ctx context.Context, id uint64) (bool, error) {
+	_, err := svc().Application(ctx, id)
+	if errors.Is(err, app.ErrNotFound) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // ApplicationForDeploy returns the snapshot, or ErrNotFound.

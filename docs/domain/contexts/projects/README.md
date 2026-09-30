@@ -60,6 +60,8 @@ reaches an Application (routing).
   `BuildEnv` and `RuntimeEnv`, Deploy key). The two variable sets are
   already merged (Application > Environment > Project) and split by scope.
   Changing its fields is a breaking change for deployments.
+  `ApplicationExists(id)` for routing, which keeps Route settings per
+  Application and refuses them for one that does not exist.
 - **Consumes:** the Owner's Session (identity middleware).
 
 ## Why it's shaped this way

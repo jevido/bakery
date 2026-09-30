@@ -11,6 +11,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/deployments"
 	"github.com/jevido/bakery/services/api/contexts/identity"
 	"github.com/jevido/bakery/services/api/contexts/projects"
+	"github.com/jevido/bakery/services/api/contexts/routing"
 )
 
 // requestTimeout bounds every route except the live log streams (see
@@ -23,6 +24,7 @@ func Api() {
 		identity.Routes(r)
 		projects.Routes(r)
 		deployments.Routes(r)
+		routing.Routes(r)
 	})
 	deployments.StreamRoutes(facades.Route())
 }

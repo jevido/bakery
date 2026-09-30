@@ -29,6 +29,9 @@ type RenderOptions struct {
 	Dashboard *domain.DashboardRoute
 	// ACME configures the certificate issuer when InternalTLS is off.
 	ACME ACME
+	// HTTPSPort is the Proxy's public HTTPS port, put in redirects when it
+	// is not 443 (development).
+	HTTPSPort int
 }
 
 // ACME says where certificates come from on a Server. All fields empty means
@@ -65,6 +68,17 @@ func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
 		domains = append(domains, d.Domain)
 		caddyRoutes = append(caddyRoutes, dashboardRoute(*d))
 	}
+	explicit := map[string]bool{}
+	for _, d := range domains {
+		explicit[d] = true
+	}
+	for _, r := range sorted {
+		for _, d := range r.Domains {
+			explicit[d] = true
+		}
+	}
+	var redirects []string
+	redirectTo := map[string]string{}
 	for _, r := range sorted {
 		domains = append(domains, r.Domains...)
 		caddyRoutes = append(caddyRoutes, obj{
@@ -75,6 +89,18 @@ func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
 			}},
 			"terminal": true,
 		})
+		// An explicit Domain of any Route wins over a counterpart.
+		for counterpart, target := range domain.Counterparts(r.Domains, r.Settings.WwwRedirect) {
+			if !explicit[counterpart] {
+				redirects = append(redirects, counterpart)
+				redirectTo[counterpart] = target
+			}
+		}
+	}
+	sort.Strings(redirects)
+	for _, host := range redirects {
+		domains = append(domains, host)
+		caddyRoutes = append(caddyRoutes, redirectRoute(host, redirectTo[host], opts.HTTPSPort))
 	}
 
 	https := obj{"listen": []string{":443"}, "routes": caddyRoutes}
@@ -111,6 +137,23 @@ func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
 		"admin": obj{"listen": CaddyAdminListen},
 		"apps":  apps,
 	}, "", "  ")
+}
+
+// redirectRoute answers every request for host with a permanent redirect to
+// the same path and query on target, over HTTPS.
+func redirectRoute(host, target string, httpsPort int) obj {
+	if httpsPort != 0 && httpsPort != 443 {
+		target += ":" + strconv.Itoa(httpsPort)
+	}
+	return obj{
+		"match": []obj{{"host": []string{host}}},
+		"handle": []obj{{
+			"handler":     "static_response",
+			"status_code": 308,
+			"headers":     obj{"Location": []string{"https://" + target + "{http.request.uri}"}},
+		}},
+		"terminal": true,
+	}
 }
 
 // acmeIssuer is the ACME issuer for a, or nil when nothing is configured and

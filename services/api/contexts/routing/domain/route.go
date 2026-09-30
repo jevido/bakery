@@ -9,6 +9,9 @@ type Route struct {
 	Domains   []string
 	Container string
 	Port      int
+	// Settings are the Application's Route settings, stored on their own
+	// and attached for rendering.
+	Settings RouteSettings
 }
 
 // DashboardRoute serves Bakery's own dashboard on its Domain: /api/* goes to

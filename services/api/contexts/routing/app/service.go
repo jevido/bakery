@@ -19,6 +19,14 @@ type Routes interface {
 	Delete(ctx context.Context, applicationID uint64) error
 }
 
+// Settings stores Route settings, one per Application.
+type Settings interface {
+	All(ctx context.Context) (map[uint64]domain.RouteSettings, error)
+	Get(ctx context.Context, applicationID uint64) (s domain.RouteSettings, found bool, err error)
+	Put(ctx context.Context, s domain.RouteSettings) error
+	Delete(ctx context.Context, applicationID uint64) error
+}
+
 // Proxy is the Caddy container.
 type Proxy interface {
 	// Ensure creates or starts the Proxy container.
@@ -28,15 +36,38 @@ type Proxy interface {
 }
 
 type Service struct {
-	routes Routes
-	proxy  Proxy
+	routes   Routes
+	settings Settings
+	proxy    Proxy
 	// mu makes read-all-then-Apply one step, so two changes at once cannot
 	// Apply out of order and leave the older set loaded.
 	mu sync.Mutex
 }
 
-func NewService(routes Routes, proxy Proxy) *Service {
-	return &Service{routes: routes, proxy: proxy}
+func NewService(routes Routes, settings Settings, proxy Proxy) *Service {
+	return &Service{routes: routes, settings: settings, proxy: proxy}
+}
+
+// RouteSettings returns the Application's Route settings, the defaults when
+// none are stored.
+func (s *Service) RouteSettings(ctx context.Context, applicationID uint64) (domain.RouteSettings, error) {
+	rs, found, err := s.settings.Get(ctx, applicationID)
+	if err != nil || !found {
+		return domain.DefaultRouteSettings(applicationID), err
+	}
+	return rs, nil
+}
+
+// ChangeRouteSettings checks and stores the settings, then Applies.
+func (s *Service) ChangeRouteSettings(ctx context.Context, rs domain.RouteSettings) (domain.RouteSettings, error) {
+	rs, err := rs.Check()
+	if err != nil {
+		return rs, err
+	}
+	if err := s.settings.Put(ctx, rs); err != nil {
+		return rs, err
+	}
+	return rs, s.apply(ctx)
 }
 
 // EnsureProxy makes sure the Proxy runs and serves every stored Route.
@@ -67,9 +98,13 @@ func (s *Service) SwitchRoute(ctx context.Context, r domain.Route) error {
 	return s.apply(ctx)
 }
 
-// DropRoute removes the Application's Route, then Applies.
+// DropRoute removes the Application's Route and Route settings, then
+// Applies.
 func (s *Service) DropRoute(ctx context.Context, applicationID uint64) error {
 	if err := s.routes.Delete(ctx, applicationID); err != nil {
+		return err
+	}
+	if err := s.settings.Delete(ctx, applicationID); err != nil {
 		return err
 	}
 	return s.apply(ctx)
@@ -81,6 +116,17 @@ func (s *Service) apply(ctx context.Context) error {
 	all, err := s.routes.All(ctx)
 	if err != nil {
 		return err
+	}
+	settings, err := s.settings.All(ctx)
+	if err != nil {
+		return err
+	}
+	for i, r := range all {
+		if rs, ok := settings[r.ApplicationID]; ok {
+			all[i].Settings = rs
+		} else {
+			all[i].Settings = domain.DefaultRouteSettings(r.ApplicationID)
+		}
 	}
 	return s.proxy.Apply(ctx, all)
 }

@@ -26,6 +26,7 @@ adapt to.
 | -------- | ---------- | ------- | ------- |
 | identity | projects, deployments, routing | open host service | The `auth` HTTP middleware; the others only learn "an Owner is signed in" |
 | projects | deployments | customer/supplier | `projects.ApplicationForDeploy(id)` returns an `ApplicationSnapshot` (Source, Dockerfile path, port, Domains, Persistent storage, Resource limits, decrypted Env vars and Deploy key) |
+| projects | routing | customer/supplier | `projects.ApplicationExists(id)`, so the Route settings API answers 404 for an unknown Application without reading projects' tables |
 | routing | deployments | customer/supplier | `routing.SwitchRoute(applicationID, domains, container, port)`, called synchronously in a Deployment's route step, so the old Container is removed only after traffic has moved |
 | projects | routing, deployments | published language | `ApplicationDeleted` event: routing drops the Application's Route and Route settings; deployments removes its Containers, volumes, Deployments and Webhook |
 | projects | routing | published language | `ApplicationDomainsChanged { applicationID, domains }` event: routing moves the Application's Route to the new Domains at once |

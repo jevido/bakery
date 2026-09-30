@@ -81,6 +81,17 @@ func TestProxyRoutesToContainer(t *testing.T) {
 			return res != nil && res.StatusCode == 200 && strings.Contains(res.Body, "Hostname:")
 		}, "whoami answering on "+host)
 	}
+
+	// Www redirect: www.test.localhost answers 308 to test.localhost.
+	route := domain.Route{ApplicationID: 1, Domains: []string{"test.localhost"}, Container: "bakery-test-whoami", Port: 80,
+		Settings: domain.RouteSettings{WwwRedirect: domain.ToApex}}
+	if err := proxy.Apply(ctx, []domain.Route{route}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	waitFor(t, func() bool {
+		res := get("www.test.localhost", "/path?q=1", nil)
+		return res != nil && res.StatusCode == 308 && res.Header.Get("Location") == "https://test.localhost:4945/path?q=1"
+	}, "www.test.localhost redirecting")
 }
 
 // response is what get saw.
