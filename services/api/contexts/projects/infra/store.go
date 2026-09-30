@@ -60,10 +60,20 @@ type applicationRecord struct {
 	// MemoryMB and CPUs are the Resource limits; 0 is unlimited.
 	MemoryMB int     `gorm:"column:memory_mb"`
 	CPUs     float64 `gorm:"column:cpus"`
+	// ServerID is the Target server; NULL is the Local server.
+	ServerID *uint64 `gorm:"column:server_id"`
 	orm.Timestamps
 }
 
 func (applicationRecord) TableName() string { return "applications" }
+
+// serverColumn stores the Local server (0) as NULL.
+func serverColumn(id uint64) *uint64 {
+	if id == 0 {
+		return nil
+	}
+	return &id
+}
 
 type domainRecord struct {
 	ID            uint64 `gorm:"primaryKey"`
@@ -191,6 +201,7 @@ func (r applicationRecord) toDomain(projectID uint64) domain.Application {
 		DeployKey:           domain.DeployKey{Public: r.DeployKeyPublic},
 		ResourceLimits:      domain.ResourceLimits{MemoryMB: r.MemoryMB, CPUs: r.CPUs},
 		RegistryCredentials: domain.RegistryCredentials{Username: r.RegistryUsername},
+		ServerID:            deref(r.ServerID),
 		HealthCheck: domain.HealthCheck{
 			Enabled: r.HealthCheckEnabled, Path: r.HealthCheckPath, Interval: r.HealthCheckInterval,
 			Timeout: r.HealthCheckTimeout, Retries: r.HealthCheckRetries, StartPeriod: r.HealthCheckStartPeriod,
@@ -383,6 +394,7 @@ func (s Store) CreateApplication(ctx context.Context, a domain.Application) (dom
 		HealthCheckInterval: a.HealthCheck.Interval, HealthCheckTimeout: a.HealthCheck.Timeout,
 		HealthCheckRetries: a.HealthCheck.Retries, HealthCheckStartPeriod: a.HealthCheck.StartPeriod,
 		MemoryMB: a.ResourceLimits.MemoryMB, CPUs: a.ResourceLimits.CPUs,
+		ServerID: serverColumn(a.ServerID),
 	}
 	err = facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		if err := tx.Create(&rec); err != nil {
@@ -542,4 +554,20 @@ func uniqueViolation(err error) error {
 		return &domain.FieldError{Field: "domains", Message: "a domain is already used by another application"}
 	}
 	return &domain.FieldError{Field: "name", Message: "an application with this name was just created; try again"}
+}
+
+func deref(p *uint64) uint64 {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+// ServerInUse reports whether any Application targets the Server (never
+// the Local server, 0, which cannot be deleted anyway).
+func (s Store) ServerInUse(ctx context.Context, serverID uint64) (bool, error) {
+	if serverID == 0 {
+		return false, nil
+	}
+	return s.query(ctx).Model(&applicationRecord{}).Where("server_id", serverID).Exists()
 }

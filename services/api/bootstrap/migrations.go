@@ -39,5 +39,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000024CreateServiceVariablesTable{},
 		&migrations.M20260930000025CreateServiceRoutesTable{},
 		&migrations.M20260930000026CreateServersTable{},
+		&migrations.M20260930000027AddApplicationServer{},
 	}
 }

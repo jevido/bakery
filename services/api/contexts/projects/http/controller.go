@@ -16,10 +16,23 @@ import (
 
 type Controller struct {
 	service *app.Service
+	// localServer is the Local server's id, shown where an Application's
+	// Target server is 0.
+	localServer func(ctx context.Context) (uint64, error)
 }
 
-func NewController(service *app.Service) *Controller {
-	return &Controller{service: service}
+func NewController(service *app.Service, localServer func(ctx context.Context) (uint64, error)) *Controller {
+	return &Controller{service: service, localServer: localServer}
+}
+
+// localID is the Local server's id, 0 when it cannot be read (the
+// dashboard then shows no Server rather than failing the page).
+func (c *Controller) localID(ctx contractshttp.Context) uint64 {
+	id, err := c.localServer(ctx.Context())
+	if err != nil {
+		facades.Log().Errorf("projects: reading the local server: %v", err)
+	}
+	return id
 }
 
 type applicationJSON struct {
@@ -49,6 +62,8 @@ type applicationJSON struct {
 	HealthCheck    healthCheckJSON    `json:"health_check"`
 	Storages       []storageJSON      `json:"storages"`
 	ResourceLimits resourceLimitsJSON `json:"resource_limits"`
+	// ServerID is the Target server's id, the Local server's included.
+	ServerID uint64 `json:"server_id"`
 }
 
 // resourceLimitsJSON uses null for unlimited.
@@ -105,9 +120,14 @@ func (h healthCheckJSON) domain() domain.HealthCheck {
 	return domain.HealthCheck{Enabled: h.Enabled, Path: h.Path, Interval: h.Interval, Timeout: h.Timeout, Retries: h.Retries, StartPeriod: h.StartPeriod}
 }
 
-func applicationToJSON(a domain.Application) applicationJSON {
+func applicationToJSON(a domain.Application, localServer uint64) applicationJSON {
+	server := a.ServerID
+	if server == 0 {
+		server = localServer
+	}
 	return applicationJSON{
-		ID: a.ID, ProjectID: a.ProjectID, EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug,
+		ServerID: server,
+		ID:       a.ID, ProjectID: a.ProjectID, EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug,
 		BuildPack: string(a.BuildPack), ImageReference: a.ImageReference, PublishDirectory: a.PublishDirectory,
 		GitURL: a.GitURL, GitBranch: a.GitBranch, DockerfilePath: a.DockerfilePath, Port: a.Port, Domains: a.Domains,
 		DeployKeyPublic: a.DeployKey.Public, PublicURL: publicURL(a.PrimaryDomain()), PublicURLs: publicURLs(a.Domains),
@@ -149,12 +169,12 @@ type projectJSON struct {
 	Environments []environmentJSON `json:"environments,omitempty"`
 }
 
-func projectToJSON(p domain.Project) projectJSON {
+func projectToJSON(p domain.Project, localServer uint64) projectJSON {
 	out := projectJSON{ID: p.ID, Name: p.Name, Description: p.Description}
 	for _, e := range p.Environments {
 		ej := environmentJSON{ID: e.ID, Name: e.Name, Applications: []applicationJSON{}}
 		for _, a := range e.Applications {
-			ej.Applications = append(ej.Applications, applicationToJSON(a))
+			ej.Applications = append(ej.Applications, applicationToJSON(a, localServer))
 		}
 		out.Environments = append(out.Environments, ej)
 	}
@@ -196,7 +216,7 @@ func (c *Controller) ListProjects(ctx contractshttp.Context) contractshttp.Respo
 	}
 	out := make([]projectJSON, len(ps))
 	for i, p := range ps {
-		out[i] = projectToJSON(p)
+		out[i] = projectToJSON(p, c.localID(ctx))
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"projects": out})
 }
@@ -210,7 +230,7 @@ func (c *Controller) CreateProject(ctx contractshttp.Context) contractshttp.Resp
 	if err != nil {
 		return fail(ctx, err)
 	}
-	return ctx.Response().Json(contractshttp.StatusCreated, contractshttp.Json{"project": projectToJSON(p)})
+	return ctx.Response().Json(contractshttp.StatusCreated, contractshttp.Json{"project": projectToJSON(p, c.localID(ctx))})
 }
 
 func (c *Controller) ShowProject(ctx contractshttp.Context) contractshttp.Response {
@@ -222,7 +242,7 @@ func (c *Controller) ShowProject(ctx contractshttp.Context) contractshttp.Respon
 	if err != nil {
 		return fail(ctx, err)
 	}
-	return ctx.Response().Success().Json(contractshttp.Json{"project": projectToJSON(p)})
+	return ctx.Response().Success().Json(contractshttp.Json{"project": projectToJSON(p, c.localID(ctx))})
 }
 
 func (c *Controller) UpdateProject(ctx contractshttp.Context) contractshttp.Response {
@@ -238,7 +258,7 @@ func (c *Controller) UpdateProject(ctx contractshttp.Context) contractshttp.Resp
 	if err != nil {
 		return fail(ctx, err)
 	}
-	return ctx.Response().Success().Json(contractshttp.Json{"project": projectToJSON(p)})
+	return ctx.Response().Success().Json(contractshttp.Json{"project": projectToJSON(p, c.localID(ctx))})
 }
 
 func (c *Controller) DeleteProject(ctx contractshttp.Context) contractshttp.Response {
@@ -273,6 +293,9 @@ type applicationRequest struct {
 	Storages *[]storageJSON `json:"storages"`
 	// ResourceLimits omitted keeps the current ones.
 	ResourceLimits *resourceLimitsJSON `json:"resource_limits"`
+	// ServerID is the Target server; only read when the Application is
+	// created. Omitted or 0 is the Local server.
+	ServerID uint64 `json:"server_id"`
 }
 
 type registryCredentialsJSON struct {
@@ -284,7 +307,7 @@ func (r applicationRequest) input() domain.ApplicationInput {
 	in := domain.ApplicationInput{
 		Name: r.Name, GitURL: r.GitURL, GitBranch: r.GitBranch,
 		BuildPack: domain.BuildPack(r.BuildPack), ImageReference: r.ImageReference, PublishDirectory: r.PublishDirectory,
-		DockerfilePath: r.DockerfilePath, Port: r.Port, Domains: r.Domains,
+		DockerfilePath: r.DockerfilePath, Port: r.Port, Domains: r.Domains, ServerID: r.ServerID,
 	}
 	if r.HealthCheck != nil {
 		h := r.HealthCheck.domain()
@@ -320,7 +343,7 @@ func (c *Controller) CreateApplication(ctx contractshttp.Context) contractshttp.
 	if err != nil {
 		return fail(ctx, err)
 	}
-	return ctx.Response().Json(contractshttp.StatusCreated, contractshttp.Json{"application": applicationToJSON(a)})
+	return ctx.Response().Json(contractshttp.StatusCreated, contractshttp.Json{"application": applicationToJSON(a, c.localID(ctx))})
 }
 
 func (c *Controller) ShowApplication(ctx contractshttp.Context) contractshttp.Response {
@@ -332,7 +355,7 @@ func (c *Controller) ShowApplication(ctx contractshttp.Context) contractshttp.Re
 	if err != nil {
 		return fail(ctx, err)
 	}
-	return ctx.Response().Success().Json(contractshttp.Json{"application": applicationToJSON(a)})
+	return ctx.Response().Success().Json(contractshttp.Json{"application": applicationToJSON(a, c.localID(ctx))})
 }
 
 func (c *Controller) UpdateApplication(ctx contractshttp.Context) contractshttp.Response {
@@ -348,7 +371,7 @@ func (c *Controller) UpdateApplication(ctx contractshttp.Context) contractshttp.
 	if err != nil {
 		return fail(ctx, err)
 	}
-	return ctx.Response().Success().Json(contractshttp.Json{"application": applicationToJSON(a)})
+	return ctx.Response().Success().Json(contractshttp.Json{"application": applicationToJSON(a, c.localID(ctx))})
 }
 
 // RegenerateDeployKey answers with the Application and its new public key.
@@ -361,7 +384,7 @@ func (c *Controller) RegenerateDeployKey(ctx contractshttp.Context) contractshtt
 	if err != nil {
 		return fail(ctx, err)
 	}
-	return ctx.Response().Success().Json(contractshttp.Json{"application": applicationToJSON(a)})
+	return ctx.Response().Success().Json(contractshttp.Json{"application": applicationToJSON(a, c.localID(ctx))})
 }
 
 func (c *Controller) DeleteApplication(ctx contractshttp.Context) contractshttp.Response {

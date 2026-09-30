@@ -104,6 +104,9 @@ type Application struct {
 	// Storages are the Application's Persistent storages.
 	Storages       []Storage
 	ResourceLimits ResourceLimits
+	// ServerID is the Target server, 0 for the Local server. Set when the
+	// Application is created and never changed.
+	ServerID uint64
 }
 
 // ResourceLimits cap what each Container of an Application may use. Zero
@@ -258,6 +261,9 @@ type ApplicationInput struct {
 	// removes them; a Username with an empty Password keeps the stored
 	// password (the service fills it in before Normalize).
 	RegistryCredentials *RegistryCredentials
+	// ServerID is the Target server (0 the Local server). Only read when
+	// the Application is created; an update never changes it.
+	ServerID uint64
 }
 
 var (

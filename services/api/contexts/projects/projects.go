@@ -1,5 +1,6 @@
 // Package projects is what other contexts and the router may use from the
-// projects context: its routes, ApplicationForDeploy, Environment, the
+// projects context: its routes, ApplicationForDeploy (with the Target
+// server), Environment, the
 // ApplicationDeleted and ApplicationDomainsChanged events and the
 // OnProjectDeleting check. Nothing else in contexts/projects is for outside
 // use.
@@ -16,6 +17,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/projects/app"
 	projectshttp "github.com/jevido/bakery/services/api/contexts/projects/http"
 	"github.com/jevido/bakery/services/api/contexts/projects/infra"
+	"github.com/jevido/bakery/services/api/contexts/servers"
 )
 
 var service *app.Service
@@ -24,6 +26,9 @@ func svc() *app.Service {
 	if service == nil {
 		cfg := facades.Config()
 		service = app.NewService(infra.Store{}, infra.NewDeployKey, cfg.GetString("bakery.domain_suffix", "localhost"), cfg.GetString("bakery.dashboard.domain"))
+		service.ServerExists = servers.Exists
+		service.LocalServer = servers.LocalID
+		servers.OnServerDeleting(infra.Store{}.ServerInUse)
 	}
 	return service
 }
@@ -33,7 +38,7 @@ var ErrNotFound = app.ErrNotFound
 
 // Routes registers the projects API, all behind identity.Auth.
 func Routes(r route.Router) {
-	c := projectshttp.NewController(svc())
+	c := projectshttp.NewController(svc(), servers.LocalID)
 	r.Middleware(identity.Auth).Group(func(r route.Router) {
 		r.Get("/api/projects", c.ListProjects)
 		r.Post("/api/projects", c.CreateProject)
@@ -85,6 +90,8 @@ type ApplicationSnapshot struct {
 	// MemoryMB and CPUs are the Resource limits; 0 is unlimited.
 	MemoryMB int
 	CPUs     float64
+	// ServerID is the Target server, 0 for the Local server.
+	ServerID uint64
 }
 
 // Storage is a Persistent storage: the volume Name, mounted at MountPath.
@@ -134,6 +141,7 @@ func ApplicationForDeploy(ctx context.Context, id uint64) (ApplicationSnapshot, 
 		DockerfilePath: a.DockerfilePath, Port: a.Port, Domains: a.Domains, BuildEnv: build, RuntimeEnv: runtime, DeployKey: a.DeployKey.Private,
 		HealthCheck: HealthCheck(a.HealthCheck), Storages: storages,
 		MemoryMB: a.ResourceLimits.MemoryMB, CPUs: a.ResourceLimits.CPUs,
+		ServerID: a.ServerID,
 	}, nil
 }
 

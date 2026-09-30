@@ -215,3 +215,37 @@ func TestDomainChecks(t *testing.T) {
 		}
 	}
 }
+
+func TestTargetServer(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStore{}
+	s := NewService(store, fakeKey, "example.com", "")
+	s.LocalServer = func(context.Context) (uint64, error) { return 1, nil }
+	s.ServerExists = func(_ context.Context, id uint64) (bool, error) { return id == 1 || id == 7, nil }
+	in := domain.ApplicationInput{Name: "web", GitURL: "https://example.com/r.git", Port: 80}
+
+	if a, err := s.CreateApplication(ctx, 1, in); err != nil || a.ServerID != 0 {
+		t.Fatalf("none chosen: %v, server %d", err, a.ServerID)
+	}
+	in.ServerID = 1
+	if a, err := s.CreateApplication(ctx, 1, in); err != nil || a.ServerID != 0 {
+		t.Fatalf("the Local server by id must be stored as 0: %v, server %d", err, a.ServerID)
+	}
+	in.ServerID = 99
+	var fe *domain.FieldError
+	if _, err := s.CreateApplication(ctx, 1, in); !errors.As(err, &fe) || fe.Field != "server_id" {
+		t.Fatalf("unknown server: %v", err)
+	}
+	in.ServerID = 7
+	a, err := s.CreateApplication(ctx, 1, in)
+	if err != nil || a.ServerID != 7 {
+		t.Fatalf("remote server: %v, server %d", err, a.ServerID)
+	}
+
+	// An update never moves the Application, whatever it sends.
+	in.ServerID = 1
+	in.Port = 8080
+	if a, err = s.UpdateApplication(ctx, a.ID, in); err != nil || a.ServerID != 7 || a.Port != 8080 {
+		t.Fatalf("update: %v, server %d", err, a.ServerID)
+	}
+}

@@ -61,6 +61,39 @@ type Service struct {
 	onDomainsChanged []func(ctx context.Context, applicationID uint64, domains []string)
 	onDeleting       []func(ctx context.Context, projectID uint64) (bool, error)
 	onDomainCheck    []func(ctx context.Context, domain string) (bool, error)
+	// ServerExists and LocalServer are servers' Exists and LocalID, asked
+	// when an Application is created with a Target server; nil allows only
+	// the Local server.
+	ServerExists func(ctx context.Context, id uint64) (bool, error)
+	LocalServer  func(ctx context.Context) (uint64, error)
+}
+
+// targetServer checks the Target server an Application is created with and
+// returns it as stored: the Local server, by its id or as 0, is 0.
+func (s *Service) targetServer(ctx context.Context, id uint64) (uint64, error) {
+	if id == 0 {
+		return 0, nil
+	}
+	if s.LocalServer != nil {
+		local, err := s.LocalServer(ctx)
+		if err != nil {
+			return 0, err
+		}
+		if id == local {
+			return 0, nil
+		}
+	}
+	if s.ServerExists == nil {
+		return 0, &domain.FieldError{Field: "server_id", Message: "no such server"}
+	}
+	ok, err := s.ServerExists(ctx, id)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, &domain.FieldError{Field: "server_id", Message: "no such server"}
+	}
+	return id, nil
 }
 
 // NewService takes the suffix default Domains get (`<slug>.<suffix>`) and
@@ -187,11 +220,16 @@ func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, i
 	if err != nil {
 		return domain.Application{}, err
 	}
+	server, err := s.targetServer(ctx, in.ServerID)
+	if err != nil {
+		return domain.Application{}, err
+	}
 	slug, err := s.freeSlug(ctx, domain.Slugify(in.Name))
 	if err != nil {
 		return domain.Application{}, err
 	}
 	a := domain.Application{
+		ServerID:         server,
 		EnvironmentID:    env.ID,
 		ProjectID:        env.ProjectID,
 		Name:             in.Name,
