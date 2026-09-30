@@ -3,6 +3,7 @@
 package podman
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net"
@@ -178,6 +179,27 @@ func TestExec(t *testing.T) {
 	if code, _, err := c.Exec(ctx, id, []string{"true"}); err != nil || code != 0 {
 		t.Fatalf("Exec true: %d %v", code, err)
 	}
+	// Binary output survives ExecStream byte for byte, and so does a file
+	// streamed in with CopyFileInto.
+	payload := make([]byte, 1<<20)
+	for i := range payload {
+		payload[i] = byte(i * 7 % 251)
+	}
+	if err := c.CopyFileInto(ctx, id, "/tmp", "payload.bin", int64(len(payload)), bytes.NewReader(payload)); err != nil {
+		t.Fatalf("CopyFileInto: %v", err)
+	}
+	var got bytes.Buffer
+	if code, stderr, err := c.ExecStream(ctx, id, []string{"cat", "/tmp/payload.bin"}, &got); err != nil || code != 0 {
+		t.Fatalf("ExecStream cat: %d %q %v", code, stderr, err)
+	}
+	if !bytes.Equal(got.Bytes(), payload) {
+		t.Fatalf("ExecStream: got %d bytes, want %d identical", got.Len(), len(payload))
+	}
+	got.Reset()
+	code, stderr, err := c.ExecStream(ctx, id, []string{"sh", "-c", "echo out; echo broken >&2; exit 3"}, &got)
+	if err != nil || code != 3 || stderr != "broken" || got.String() != "out\n" {
+		t.Fatalf("ExecStream: code %d, stderr %q, stdout %q, %v", code, stderr, got.String(), err)
+	}
 	// A command the image does not have fails, not hangs.
 	if code, _, err := c.Exec(ctx, id, []string{"no-such-command"}); err == nil && code == 0 {
 		t.Fatalf("Exec of a missing command succeeded")
@@ -262,12 +284,9 @@ func TestVolumesAndLimits(t *testing.T) {
 		t.Fatalf("ListVolumes: %+v %v", list, err)
 	}
 
-	if err := c.PullImage(ctx, "docker.io/library/busybox", func(string) {}); err != nil {
-		t.Fatal(err)
-	}
 	name := vol + "-ctr"
 	_, err = c.CreateContainer(ctx, ContainerSpec{
-		Name: name, Image: "docker.io/library/busybox", Command: []string{"sleep", "60"},
+		Name: name, Image: busybox(t, ctx, c), Command: []string{"sleep", "60"},
 		Labels:         map[string]string{"bakery.managed": "true"},
 		Volumes:        []NamedVolume{{Name: vol, Dest: "/data"}},
 		ResourceLimits: Limits(64, 0.5),

@@ -481,6 +481,31 @@ func (c *Client) CopyInto(ctx context.Context, container, destDir string, files 
 	return res.Body.Close()
 }
 
+// CopyFileInto streams one file of size bytes, read from r, into destDir
+// (which must exist in the container) as name, mode 0644, without holding
+// it in memory.
+func (c *Client) CopyFileInto(ctx context.Context, container, destDir, name string, size int64, r io.Reader) error {
+	pr, pw := io.Pipe()
+	go func() {
+		tw := tar.NewWriter(pw)
+		err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: size, Typeflag: tar.TypeReg})
+		if err == nil {
+			_, err = io.CopyN(tw, r, size)
+		}
+		if err == nil {
+			err = tw.Close()
+		}
+		pw.CloseWithError(err)
+	}()
+	res, err := c.do(ctx, http.MethodPut, "/containers/"+url.PathEscape(container)+"/archive", url.Values{"path": {destDir}}, pr, "application/x-tar")
+	// Unblocks the writer if the request ended before reading everything.
+	pr.CloseWithError(errors.New("podman: copy ended"))
+	if err != nil {
+		return err
+	}
+	return res.Body.Close()
+}
+
 // ReadFile returns one regular file from the container.
 func (c *Client) ReadFile(ctx context.Context, container, file string) ([]byte, error) {
 	res, err := c.do(ctx, http.MethodGet, "/containers/"+url.PathEscape(container)+"/archive", url.Values{"path": {file}}, nil, "")
@@ -606,41 +631,80 @@ const maxExecOutput = 4 << 10
 // Exec runs cmd inside a running container and returns its exit code and up
 // to 4 KiB of its combined stdout and stderr. ctx bounds the whole run.
 func (c *Client) Exec(ctx context.Context, container string, cmd []string) (int, string, error) {
+	var output strings.Builder
+	code, err := c.exec(ctx, container, cmd, func(body io.Reader) error {
+		return demux(body, func(_, line string) {
+			if output.Len()+len(line) < maxExecOutput {
+				output.WriteString(line)
+				output.WriteByte('\n')
+			}
+		})
+	})
+	if err != nil {
+		return 0, "", err
+	}
+	return code, strings.TrimRight(output.String(), "\n"), nil
+}
+
+// ExecStream runs cmd inside a running container, writing its stdout
+// unchanged into stdout (binary safe, no size limit) and returning its exit
+// code and up to 4 KiB of its stderr. ctx bounds the whole run.
+func (c *Client) ExecStream(ctx context.Context, container string, cmd []string, stdout io.Writer) (int, string, error) {
+	stderr := &capped{max: maxExecOutput}
+	code, err := c.exec(ctx, container, cmd, func(body io.Reader) error {
+		return demuxTo(body, stdout, stderr)
+	})
+	if err != nil {
+		return 0, "", err
+	}
+	return code, strings.TrimRight(stderr.String(), "\n"), nil
+}
+
+// exec creates and starts an exec session, hands its multiplexed output to
+// read and returns the exit code once read is done.
+func (c *Client) exec(ctx context.Context, container string, cmd []string, read func(io.Reader) error) (int, error) {
 	var created struct {
 		ID string `json:"Id"`
 	}
 	if err := c.call(ctx, http.MethodPost, "/containers/"+url.PathEscape(container)+"/exec", nil, map[string]any{
 		"Cmd": cmd, "AttachStdout": true, "AttachStderr": true,
 	}, &created); err != nil {
-		return 0, "", err
+		return 0, err
 	}
 	raw, _ := json.Marshal(map[string]any{"Detach": false, "Tty": false})
 	res, err := c.do(ctx, http.MethodPost, "/exec/"+url.PathEscape(created.ID)+"/start", nil, bytes.NewReader(raw), "application/json")
 	if err != nil {
-		return 0, "", err
+		return 0, err
 	}
-	var output strings.Builder
-	err = demux(res.Body, func(_, line string) {
-		if output.Len()+len(line) < maxExecOutput {
-			output.WriteString(line)
-			output.WriteByte('\n')
-		}
-	})
+	err = read(res.Body)
 	res.Body.Close()
-	if err != nil {
-		return 0, "", fmt.Errorf("podman: reading exec output: %w", err)
-	}
 	if ctx.Err() != nil {
-		return 0, "", ctx.Err()
+		return 0, ctx.Err()
+	}
+	if err != nil {
+		return 0, fmt.Errorf("podman: reading exec output: %w", err)
 	}
 	var info struct {
 		ExitCode int  `json:"ExitCode"`
 		Running  bool `json:"Running"`
 	}
 	if err := c.call(ctx, http.MethodGet, "/exec/"+url.PathEscape(created.ID)+"/json", nil, nil, &info); err != nil {
-		return 0, "", err
+		return 0, err
 	}
-	return info.ExitCode, strings.TrimRight(output.String(), "\n"), nil
+	return info.ExitCode, nil
+}
+
+// capped keeps the first max bytes written to it and drops the rest.
+type capped struct {
+	strings.Builder
+	max int
+}
+
+func (w *capped) Write(p []byte) (int, error) {
+	if room := w.max - w.Len(); room > 0 {
+		w.Builder.Write(p[:min(room, len(p))])
+	}
+	return len(p), nil
 }
 
 // Logs hands a container's output to out line by line ("stdout" or

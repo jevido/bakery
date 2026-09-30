@@ -49,3 +49,25 @@ func demux(r io.Reader, out func(stream, line string)) error {
 		pending[stream] = lines[len(lines)-1]
 	}
 }
+
+// demuxTo copies the frames of a multiplexed stream unchanged to stdout or
+// stderr, for binary output such as a database dump.
+func demuxTo(r io.Reader, stdout, stderr io.Writer) error {
+	br := bufio.NewReaderSize(r, 64<<10)
+	var header [8]byte
+	for {
+		if _, err := io.ReadFull(br, header[:]); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+		w := stdout
+		if header[0] == 2 {
+			w = stderr
+		}
+		if _, err := io.CopyN(w, br, int64(binary.BigEndian.Uint32(header[4:]))); err != nil {
+			return err
+		}
+	}
+}
