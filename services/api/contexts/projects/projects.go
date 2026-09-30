@@ -81,6 +81,9 @@ type ApplicationSnapshot struct {
 	DeployKey   string
 	HealthCheck HealthCheck
 	Storages    []Storage
+	// MemoryMB and CPUs are the Resource limits; 0 is unlimited.
+	MemoryMB int
+	CPUs     float64
 }
 
 // Storage is a Persistent storage: the volume Name, mounted at MountPath.
@@ -129,6 +132,7 @@ func ApplicationForDeploy(ctx context.Context, id uint64) (ApplicationSnapshot, 
 		GitURL: a.GitURL, GitBranch: a.GitBranch,
 		DockerfilePath: a.DockerfilePath, Port: a.Port, Domains: a.Domains, BuildEnv: build, RuntimeEnv: runtime, DeployKey: a.DeployKey.Private,
 		HealthCheck: HealthCheck(a.HealthCheck), Storages: storages,
+		MemoryMB: a.ResourceLimits.MemoryMB, CPUs: a.ResourceLimits.CPUs,
 	}, nil
 }
 

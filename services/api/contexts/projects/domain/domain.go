@@ -4,6 +4,7 @@ package domain
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"path"
 	"regexp"
@@ -101,7 +102,29 @@ type Application struct {
 	RegistryCredentials RegistryCredentials
 	HealthCheck         HealthCheck
 	// Storages are the Application's Persistent storages.
-	Storages []Storage
+	Storages       []Storage
+	ResourceLimits ResourceLimits
+}
+
+// ResourceLimits cap what each Container of an Application may use. Zero
+// means unlimited.
+type ResourceLimits struct {
+	MemoryMB int
+	CPUs     float64
+}
+
+// Check validates the ranges: memory 16–65536 MB, CPU 0.1–64 cores with at
+// most two decimals.
+func (l ResourceLimits) Check() error {
+	switch {
+	case l.MemoryMB != 0 && (l.MemoryMB < 16 || l.MemoryMB > 65536):
+		return invalid("resource_limits.memory_mb", "memory must be between 16 and 65536 MB")
+	case l.CPUs != 0 && (l.CPUs < 0.1 || l.CPUs > 64):
+		return invalid("resource_limits.cpus", "CPU must be between 0.1 and 64 cores")
+	case math.Abs(l.CPUs*100-math.Round(l.CPUs*100)) > 1e-6:
+		return invalid("resource_limits.cpus", "CPU has at most two decimals")
+	}
+	return nil
 }
 
 // Storage is a Persistent storage: the volume of this name is mounted at
@@ -228,6 +251,9 @@ type ApplicationInput struct {
 	HealthCheck *HealthCheck
 	// Storages nil keeps the current ones (none for a new Application).
 	Storages *[]Storage
+	// ResourceLimits nil keeps the current ones (none for a new
+	// Application).
+	ResourceLimits *ResourceLimits
 	// RegistryCredentials nil keeps the current ones; an empty Username
 	// removes them; a Username with an empty Password keeps the stored
 	// password (the service fills it in before Normalize).
@@ -333,6 +359,11 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 		return in, err
 	}
 	in.Domains = domains
+	if l := in.ResourceLimits; l != nil {
+		if err := l.Check(); err != nil {
+			return in, err
+		}
+	}
 	if in.Storages != nil {
 		storages, err := checkStorages(*in.Storages)
 		if err != nil {

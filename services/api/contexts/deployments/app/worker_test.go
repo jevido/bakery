@@ -704,3 +704,19 @@ func TestDeployMountsPersistentStorage(t *testing.T) {
 		t.Fatalf("log:\n%s", s.logs.text())
 	}
 }
+
+func TestDeployAppliesResourceLimits(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	s.app = func(a *Application) { a.MemoryMB, a.CPUs = 256, 0.5 }
+	if _, err := s.service.Deploy(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	s.worker.RunOnce(ctx)
+	if sp := s.runtime.specs[0]; sp.MemoryMB != 256 || sp.CPUs != 0.5 {
+		t.Fatalf("spec %+v", sp)
+	}
+	if !strings.Contains(s.logs.text(), "Limits: 256 MB memory, 0.5 CPU") {
+		t.Fatalf("log:\n%s", s.logs.text())
+	}
+}

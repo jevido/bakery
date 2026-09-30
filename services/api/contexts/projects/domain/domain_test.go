@@ -297,3 +297,22 @@ func TestStorages(t *testing.T) {
 		}
 	}
 }
+
+func TestResourceLimits(t *testing.T) {
+	for _, ok := range []ResourceLimits{{}, {MemoryMB: 16}, {CPUs: 0.1}, {MemoryMB: 65536, CPUs: 64}, {CPUs: 1.25}} {
+		if err := ok.Check(); err != nil {
+			t.Errorf("%+v: %v", ok, err)
+		}
+	}
+	for l, f := range map[ResourceLimits]string{
+		{MemoryMB: 8}:     "resource_limits.memory_mb",
+		{MemoryMB: 70000}: "resource_limits.memory_mb",
+		{CPUs: 0.05}:      "resource_limits.cpus",
+		{CPUs: 65}:        "resource_limits.cpus",
+		{CPUs: 1.255}:     "resource_limits.cpus",
+	} {
+		if field(l.Check()) != f {
+			t.Errorf("%+v: want %s", l, f)
+		}
+	}
+}

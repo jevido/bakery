@@ -126,6 +126,31 @@ create_user() {
 	die "the systemd user instance of $BAKERY_USER did not start"
 }
 
+# Resource limits of Application containers need the cpu and memory cgroup
+# controllers delegated to the bakery user's systemd (newer systemd does so
+# by default; older ones only delegate memory and pids).
+delegate_controllers() {
+	local controllers=/sys/fs/cgroup/user.slice/user-$BAKERY_UID.slice/user@$BAKERY_UID.service/cgroup.controllers
+	if [ -f "$controllers" ] && grep -qw cpu "$controllers" && grep -qw memory "$controllers"; then
+		return
+	fi
+	log "Delegating the cpu and memory cgroup controllers to $BAKERY_USER"
+	mkdir -p /etc/systemd/system/user@.service.d
+	printf '[Service]\nDelegate=cpu cpuset io memory pids\n' >/etc/systemd/system/user@.service.d/90-bakery-delegate.conf
+	systemctl daemon-reload
+	if runuser -u "$BAKERY_USER" -- env XDG_RUNTIME_DIR="$RUNTIME_DIR" podman container exists bakery-api 2>/dev/null; then
+		log "Bakery is running: the new delegation applies after the next reboot"
+		return
+	fi
+	# Nothing of Bakery's runs yet, so the user manager can restart now.
+	systemctl restart "user@$BAKERY_UID.service"
+	for _ in $(seq 60); do
+		[ -S "$RUNTIME_DIR/bus" ] && return
+		sleep 1
+	done
+	die "the systemd user instance of $BAKERY_USER did not come back"
+}
+
 # as_bakery runs a command as the bakery user with its systemd session.
 as_bakery() {
 	(cd "$BAKERY_HOME" && runuser -u "$BAKERY_USER" -- env \
@@ -266,6 +291,7 @@ main() {
 	install_podman
 	allow_low_ports
 	create_user
+	delegate_controllers
 	enable_user_units
 	write_secrets
 	prepare_images

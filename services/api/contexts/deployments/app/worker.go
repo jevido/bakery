@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -281,6 +282,14 @@ func (w *Worker) pull(ctx context.Context, d *domain.Deployment, app Application
 	return w.goLive(ctx, d, app, info)
 }
 
+// limit is what, or "unlimited" when not set.
+func limit(set bool, what string) string {
+	if !set {
+		return "unlimited"
+	}
+	return what
+}
+
 // goLive starts the Deployment's Image, waits for it to be healthy, moves
 // the Route to it and removes the Containers it replaces.
 func (w *Worker) goLive(ctx context.Context, d *domain.Deployment, app Application, info func(string, ...any)) error {
@@ -294,10 +303,13 @@ func (w *Worker) goLive(ctx context.Context, d *domain.Deployment, app Applicati
 		mounts[i] = Mount{Volume: domain.VolumeName(app.ID, s.Name), Path: s.MountPath}
 		info("Mounting persistent storage %s at %s", s.Name, s.MountPath)
 	}
+	if app.MemoryMB != 0 || app.CPUs != 0 {
+		info("Limits: %s memory, %s CPU", limit(app.MemoryMB != 0, fmt.Sprintf("%d MB", app.MemoryMB)), limit(app.CPUs != 0, strconv.FormatFloat(app.CPUs, 'f', -1, 64)))
+	}
 	info("Starting container %s", d.Container)
 	if err := w.runtime.Start(ctx, ContainerSpec{
 		Name: d.Container, Image: d.Image, ApplicationID: app.ID, DeploymentID: d.ID, Env: app.RuntimeEnv,
-		Mounts: mounts, Settle: !app.HealthCheck.Enabled,
+		Mounts: mounts, MemoryMB: app.MemoryMB, CPUs: app.CPUs, Settle: !app.HealthCheck.Enabled,
 	}); err != nil {
 		return fmt.Errorf("container did not start: %w", err)
 	}

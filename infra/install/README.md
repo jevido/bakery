@@ -17,6 +17,10 @@ proxy gets its certificate over ACME (HTTP-01).
    (`/etc/sysctl.d/90-bakery.conf`) so rootless containers can bind 80/443.
 3. Creates the system user `bakery` (home `/var/lib/bakery`) with subuid and
    subgid ranges, and enables linger so its containers run without a login.
+   If that user's systemd does not get the `cpu` and `memory` cgroup
+   controllers (older systemd), writes
+   `/etc/systemd/system/user@.service.d/90-bakery-delegate.conf` so an
+   Application's resource limits work.
 4. Enables `podman.socket` and `podman-restart.service` for that user; the
    latter starts every `--restart=always` container at boot.
 5. Generates `APP_KEY`, `JWT_SECRET` and the database password once into

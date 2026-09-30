@@ -57,6 +57,9 @@ type applicationRecord struct {
 	HealthCheckTimeout        int
 	HealthCheckRetries        int
 	HealthCheckStartPeriod    int
+	// MemoryMB and CPUs are the Resource limits; 0 is unlimited.
+	MemoryMB int     `gorm:"column:memory_mb"`
+	CPUs     float64 `gorm:"column:cpus"`
 	orm.Timestamps
 }
 
@@ -186,6 +189,7 @@ func (r applicationRecord) toDomain(projectID uint64) domain.Application {
 		BuildPack: domain.BuildPack(r.BuildPack), ImageReference: r.ImageReference, PublishDirectory: r.PublishDirectory,
 		GitURL: r.GitURL, GitBranch: r.GitBranch, DockerfilePath: r.DockerfilePath, Port: r.Port,
 		DeployKey:           domain.DeployKey{Public: r.DeployKeyPublic},
+		ResourceLimits:      domain.ResourceLimits{MemoryMB: r.MemoryMB, CPUs: r.CPUs},
 		RegistryCredentials: domain.RegistryCredentials{Username: r.RegistryUsername},
 		HealthCheck: domain.HealthCheck{
 			Enabled: r.HealthCheckEnabled, Path: r.HealthCheckPath, Interval: r.HealthCheckInterval,
@@ -378,6 +382,7 @@ func (s Store) CreateApplication(ctx context.Context, a domain.Application) (dom
 		HealthCheckEnabled: a.HealthCheck.Enabled, HealthCheckPath: a.HealthCheck.Path,
 		HealthCheckInterval: a.HealthCheck.Interval, HealthCheckTimeout: a.HealthCheck.Timeout,
 		HealthCheckRetries: a.HealthCheck.Retries, HealthCheckStartPeriod: a.HealthCheck.StartPeriod,
+		MemoryMB: a.ResourceLimits.MemoryMB, CPUs: a.ResourceLimits.CPUs,
 	}
 	err = facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		if err := tx.Create(&rec); err != nil {
@@ -449,6 +454,7 @@ func (s Store) UpdateApplication(ctx context.Context, a domain.Application) erro
 		"dockerfile_path": a.DockerfilePath, "port": a.Port,
 		"deploy_key_public": a.DeployKey.Public, "deploy_key_private_encrypted": private,
 		"registry_username": a.RegistryCredentials.Username, "registry_password_encrypted": password,
+		"memory_mb": a.ResourceLimits.MemoryMB, "cpus": a.ResourceLimits.CPUs,
 	}
 	for k, v := range healthCheckColumns(a.HealthCheck) {
 		columns[k] = v

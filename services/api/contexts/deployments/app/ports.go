@@ -87,6 +87,9 @@ type Application struct {
 	HealthCheck HealthCheck
 	// Storages are the Persistent storages every Container mounts.
 	Storages []Storage
+	// MemoryMB and CPUs are the Resource limits; 0 is unlimited.
+	MemoryMB int
+	CPUs     float64
 }
 
 // Storage is a Persistent storage of the Application.
@@ -208,6 +211,9 @@ type ContainerSpec struct {
 	Env           map[string]string
 	// Mounts are the Volumes to create (if missing) and mount.
 	Mounts []Mount
+	// MemoryMB and CPUs limit the Container; 0 is unlimited.
+	MemoryMB int
+	CPUs     float64
 	// Settle makes Start wait until the Container has stayed running for a
 	// moment; used when there is no Health check to wait for instead.
 	Settle bool

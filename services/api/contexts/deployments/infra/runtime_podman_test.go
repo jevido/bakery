@@ -160,8 +160,11 @@ func TestPersistentStorage(t *testing.T) {
 	defer r.RemoveAll(context.Background(), appID)
 
 	mounts := []app.Mount{{Volume: "bakery-app-990002-data", Path: "/data"}}
-	if err := r.Start(ctx, app.ContainerSpec{Name: "bakery-test-storage-1", Image: "localhost/bakery-test/storage:1", ApplicationID: appID, DeploymentID: 1, Mounts: mounts}); err != nil {
+	if err := r.Start(ctx, app.ContainerSpec{Name: "bakery-test-storage-1", Image: "localhost/bakery-test/storage:1", ApplicationID: appID, DeploymentID: 1, Mounts: mounts, MemoryMB: 128, CPUs: 0.5}); err != nil {
 		t.Fatal(err)
+	}
+	if info, err := c.InspectContainer(ctx, "bakery-test-storage-1"); err != nil || info.HostConfig.Memory != 128<<20 || info.HostConfig.CPUQuota != 50000 {
+		t.Fatalf("limits: %+v %v", info.HostConfig, err)
 	}
 	if code, out, err := c.Exec(ctx, "bakery-test-storage-1", []string{"sh", "-c", "echo kept > /data/file"}); err != nil || code != 0 {
 		t.Fatalf("write: %d %s %v", code, out, err)

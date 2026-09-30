@@ -73,9 +73,10 @@ func (r Runtime) Start(ctx context.Context, spec app.ContainerSpec) error {
 			"bakery.application": application,
 			"bakery.deployment":  strconv.FormatUint(spec.DeploymentID, 10),
 		},
-		Networks:      podman.OnNetwork(r.Network),
-		RestartPolicy: "always",
-		Volumes:       volumes,
+		Networks:       podman.OnNetwork(r.Network),
+		RestartPolicy:  "always",
+		Volumes:        volumes,
+		ResourceLimits: podman.Limits(spec.MemoryMB, spec.CPUs),
 	})
 	if err != nil {
 		return err

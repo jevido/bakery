@@ -49,6 +49,15 @@ wait_for() { # wait_for SECONDS CMD...
 	done
 }
 
+check_controllers() {
+	local uid
+	uid=$(id -u bakery)
+	local have
+	have=$(cat "/sys/fs/cgroup/user.slice/user-$uid.slice/user@$uid.service/cgroup.controllers")
+	expect "cpu controller delegated to bakery ($have)" contains "$have" cpu
+	expect "memory controller delegated to bakery" contains "$have" memory
+}
+
 check_running() {
 	local want=(bakery-postgres bakery-api bakery-web bakery-proxy)
 	[ "${1:-}" = with-app ] && want+=(bakery-app-)
@@ -94,7 +103,7 @@ deploy_whoami() {
 	local project env app deployment status=
 	project=$(api -f -d '{"name":"Server test"}' "https://$DOMAIN/api/projects" | jq -r .project.id)
 	env=$(api -f "https://$DOMAIN/api/projects/$project" | jq -r '.project.environments[0].id')
-	app=$(api -f -d "{\"name\":\"whoami\",\"git_url\":\"https://github.com/traefik/whoami\",\"git_branch\":\"master\",\"port\":80,\"domains\":[\"$APP_DOMAIN\"]}" \
+	app=$(api -f -d "{\"name\":\"whoami\",\"git_url\":\"https://github.com/traefik/whoami\",\"git_branch\":\"master\",\"port\":80,\"domains\":[\"$APP_DOMAIN\"],\"resource_limits\":{\"memory_mb\":128,\"cpus\":0.5}}" \
 		"https://$DOMAIN/api/environments/$env/applications" | jq -r .application.id)
 	api -f -o /dev/null -X PUT -d '{"env":[{"name":"HELLO","value":"from-bakery"}]}' "https://$DOMAIN/api/applications/$app/env"
 	deployment=$(api -f -X POST "https://$DOMAIN/api/applications/$app/deploy" | jq -r .deployment.id)
@@ -109,6 +118,9 @@ deploy_whoami() {
 		return
 	fi
 	pass "whoami deployed"
+	local limits
+	limits=$(as_bakery podman inspect "$(api -f "https://$DOMAIN/api/deployments/$deployment" | jq -r .deployment.container)" --format '{{.HostConfig.Memory}} {{.HostConfig.CpuQuota}}')
+	expect "whoami runs with its resource limits ($limits)" [ "$limits" = "134217728 50000" ]
 	check_app
 }
 
@@ -128,6 +140,7 @@ check_app_listed() {
 
 case ${1:-} in
 fresh)
+	check_controllers
 	check_running
 	check_platform
 	setup_owner
@@ -135,6 +148,7 @@ fresh)
 	;;
 again)
 	check_platform
+	check_controllers
 	check_running with-app
 	login
 	check_app_listed

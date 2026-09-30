@@ -44,10 +44,39 @@ type applicationJSON struct {
 	// PublicURL is where the Application is reached through the Proxy on
 	// its primary Domain, with the Proxy's HTTPS port when it is not 443
 	// (development); PublicURLs the same for every Domain.
-	PublicURL   string          `json:"public_url"`
-	PublicURLs  []string        `json:"public_urls"`
-	HealthCheck healthCheckJSON `json:"health_check"`
-	Storages    []storageJSON   `json:"storages"`
+	PublicURL      string             `json:"public_url"`
+	PublicURLs     []string           `json:"public_urls"`
+	HealthCheck    healthCheckJSON    `json:"health_check"`
+	Storages       []storageJSON      `json:"storages"`
+	ResourceLimits resourceLimitsJSON `json:"resource_limits"`
+}
+
+// resourceLimitsJSON uses null for unlimited.
+type resourceLimitsJSON struct {
+	MemoryMB *int     `json:"memory_mb"`
+	CPUs     *float64 `json:"cpus"`
+}
+
+func resourceLimitsToJSON(l domain.ResourceLimits) resourceLimitsJSON {
+	var out resourceLimitsJSON
+	if l.MemoryMB != 0 {
+		out.MemoryMB = &l.MemoryMB
+	}
+	if l.CPUs != 0 {
+		out.CPUs = &l.CPUs
+	}
+	return out
+}
+
+func (r resourceLimitsJSON) domain() domain.ResourceLimits {
+	var l domain.ResourceLimits
+	if r.MemoryMB != nil {
+		l.MemoryMB = *r.MemoryMB
+	}
+	if r.CPUs != nil {
+		l.CPUs = *r.CPUs
+	}
+	return l
 }
 
 type storageJSON struct {
@@ -83,7 +112,7 @@ func applicationToJSON(a domain.Application) applicationJSON {
 		GitURL: a.GitURL, GitBranch: a.GitBranch, DockerfilePath: a.DockerfilePath, Port: a.Port, Domains: a.Domains,
 		DeployKeyPublic: a.DeployKey.Public, PublicURL: publicURL(a.PrimaryDomain()), PublicURLs: publicURLs(a.Domains),
 		RegistryUsername: a.RegistryCredentials.Username, HasRegistryPassword: a.RegistryCredentials.Username != "", // both or neither
-		Storages: storagesToJSON(a.Storages),
+		Storages: storagesToJSON(a.Storages), ResourceLimits: resourceLimitsToJSON(a.ResourceLimits),
 		HealthCheck: healthCheckJSON{
 			Enabled: a.HealthCheck.Enabled, Path: a.HealthCheck.Path, Interval: a.HealthCheck.Interval,
 			Timeout: a.HealthCheck.Timeout, Retries: a.HealthCheck.Retries, StartPeriod: a.HealthCheck.StartPeriod,
@@ -242,6 +271,8 @@ type applicationRequest struct {
 	RegistryCredentials *registryCredentialsJSON `json:"registry_credentials"`
 	// Storages omitted keeps the current ones.
 	Storages *[]storageJSON `json:"storages"`
+	// ResourceLimits omitted keeps the current ones.
+	ResourceLimits *resourceLimitsJSON `json:"resource_limits"`
 }
 
 type registryCredentialsJSON struct {
@@ -258,6 +289,10 @@ func (r applicationRequest) input() domain.ApplicationInput {
 	if r.HealthCheck != nil {
 		h := r.HealthCheck.domain()
 		in.HealthCheck = &h
+	}
+	if r.ResourceLimits != nil {
+		l := r.ResourceLimits.domain()
+		in.ResourceLimits = &l
 	}
 	if r.Storages != nil {
 		storages := make([]domain.Storage, len(*r.Storages))

@@ -47,6 +47,7 @@ func applications(ctx context.Context, id uint64) (app.Application, error) {
 		GitURL: s.GitURL, GitBranch: s.GitBranch,
 		DockerfilePath: s.DockerfilePath, Port: s.Port, Domains: s.Domains, BuildEnv: s.BuildEnv, RuntimeEnv: s.RuntimeEnv, DeployKey: s.DeployKey,
 		HealthCheck: app.HealthCheck(s.HealthCheck), Storages: storages,
+		MemoryMB: s.MemoryMB, CPUs: s.CPUs,
 	}, nil
 }
 

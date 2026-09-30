@@ -179,6 +179,9 @@ func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, i
 	if in.Storages != nil {
 		a.Storages = *in.Storages
 	}
+	if in.ResourceLimits != nil {
+		a.ResourceLimits = *in.ResourceLimits
+	}
 	if len(a.Domains) == 0 {
 		a.Domains = []string{domain.DefaultDomain(slug, s.domainSuffix)}
 	}
@@ -266,6 +269,9 @@ func (s *Service) UpdateApplication(ctx context.Context, id uint64, in domain.Ap
 	}
 	if in.Storages != nil {
 		a.Storages = *in.Storages
+	}
+	if in.ResourceLimits != nil {
+		a.ResourceLimits = *in.ResourceLimits
 	}
 	if len(a.Domains) == 0 {
 		a.Domains = []string{domain.DefaultDomain(a.Slug, s.domainSuffix)}
