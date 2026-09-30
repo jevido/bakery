@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	contractsorm "github.com/goravel/framework/contracts/database/orm"
 	"github.com/goravel/framework/database/orm"
 
 	"github.com/jevido/bakery/services/api/app/facades"
@@ -72,5 +73,60 @@ func (Routes) ChangeDomains(ctx context.Context, applicationID uint64, domains [
 
 func (Routes) Delete(ctx context.Context, applicationID uint64) error {
 	_, err := facades.Orm().WithContext(ctx).Query().Where("application_id", applicationID).Delete(&routeRecord{})
+	return err
+}
+
+type serviceRouteRecord struct {
+	ID            uint64 `gorm:"primaryKey"`
+	ServiceID     uint64
+	Component     string
+	Domains       string // JSON array, primary first
+	ContainerName string
+	ContainerPort int
+	orm.Timestamps
+}
+
+func (serviceRouteRecord) TableName() string { return "service_routes" }
+
+// ServiceRoutes stores Service routes, replaced per Service as a set.
+type ServiceRoutes struct{}
+
+func (ServiceRoutes) All(ctx context.Context) ([]domain.ServiceRoute, error) {
+	var recs []serviceRouteRecord
+	if err := facades.Orm().WithContext(ctx).Query().OrderBy("service_id").OrderBy("component").Find(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]domain.ServiceRoute, len(recs))
+	for i, r := range recs {
+		out[i] = domain.ServiceRoute{ServiceID: r.ServiceID, Component: r.Component, Container: r.ContainerName, Port: r.ContainerPort}
+		if err := json.Unmarshal([]byte(r.Domains), &out[i].Domains); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// Replace makes routes the Service's whole set, in one transaction.
+func (ServiceRoutes) Replace(ctx context.Context, serviceID uint64, routes []domain.ServiceRoute) error {
+	return facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		if _, err := tx.Where("service_id", serviceID).Delete(&serviceRouteRecord{}); err != nil {
+			return err
+		}
+		for _, r := range routes {
+			domains, err := json.Marshal(r.Domains)
+			if err != nil {
+				return err
+			}
+			rec := serviceRouteRecord{ServiceID: serviceID, Component: r.Component, Domains: string(domains), ContainerName: r.Container, ContainerPort: r.Port}
+			if err := tx.Create(&rec); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (ServiceRoutes) Delete(ctx context.Context, serviceID uint64) error {
+	_, err := facades.Orm().WithContext(ctx).Query().Where("service_id", serviceID).Delete(&serviceRouteRecord{})
 	return err
 }

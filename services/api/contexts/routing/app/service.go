@@ -21,6 +21,13 @@ type Routes interface {
 	Delete(ctx context.Context, applicationID uint64) error
 }
 
+// ServiceRoutes stores Service routes, replaced per Service as a set.
+type ServiceRoutes interface {
+	All(ctx context.Context) ([]domain.ServiceRoute, error)
+	Replace(ctx context.Context, serviceID uint64, routes []domain.ServiceRoute) error
+	Delete(ctx context.Context, serviceID uint64) error
+}
+
 // Settings stores Route settings, one per Application.
 type Settings interface {
 	All(ctx context.Context) (map[uint64]domain.RouteSettings, error)
@@ -38,16 +45,17 @@ type Proxy interface {
 }
 
 type Service struct {
-	routes   Routes
-	settings Settings
-	proxy    Proxy
+	routes        Routes
+	serviceRoutes ServiceRoutes
+	settings      Settings
+	proxy         Proxy
 	// mu makes read-all-then-Apply one step, so two changes at once cannot
 	// Apply out of order and leave the older set loaded.
 	mu sync.Mutex
 }
 
-func NewService(routes Routes, settings Settings, proxy Proxy) *Service {
-	return &Service{routes: routes, settings: settings, proxy: proxy}
+func NewService(routes Routes, serviceRoutes ServiceRoutes, settings Settings, proxy Proxy) *Service {
+	return &Service{routes: routes, serviceRoutes: serviceRoutes, settings: settings, proxy: proxy}
 }
 
 // RouteSettings returns the Application's Route settings, the defaults when
@@ -131,6 +139,23 @@ func (s *Service) DropRoute(ctx context.Context, applicationID uint64) error {
 	return s.apply(ctx)
 }
 
+// SetServiceRoutes makes routes the Service's whole set of Service routes,
+// then Applies.
+func (s *Service) SetServiceRoutes(ctx context.Context, serviceID uint64, routes []domain.ServiceRoute) error {
+	if err := s.serviceRoutes.Replace(ctx, serviceID, routes); err != nil {
+		return err
+	}
+	return s.apply(ctx)
+}
+
+// DropServiceRoutes removes the Service's Service routes, then Applies.
+func (s *Service) DropServiceRoutes(ctx context.Context, serviceID uint64) error {
+	if err := s.serviceRoutes.Delete(ctx, serviceID); err != nil {
+		return err
+	}
+	return s.apply(ctx)
+}
+
 func (s *Service) apply(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -148,6 +173,15 @@ func (s *Service) apply(ctx context.Context) error {
 		} else {
 			all[i].Settings = domain.DefaultRouteSettings(r.ApplicationID)
 		}
+	}
+	// Service routes carry their own default settings; they are appended
+	// after the lookup above so no Application's settings reach them.
+	serviceRoutes, err := s.serviceRoutes.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, r := range serviceRoutes {
+		all = append(all, r.Route())
 	}
 	return s.proxy.Apply(ctx, all)
 }

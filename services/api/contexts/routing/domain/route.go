@@ -22,3 +22,19 @@ type DashboardRoute struct {
 	API    string // dial address, e.g. bakery-api:4910
 	Web    string // dial address, e.g. bakery-web:80
 }
+
+// ServiceRoute is where a Public Component of a Service is served from.
+// One per (Service, Component).
+type ServiceRoute struct {
+	ServiceID uint64
+	Component string
+	Domains   []string
+	Container string
+	Port      int
+}
+
+// Route is the Service route in the shape Render takes, with default Route
+// settings (Services have none of their own yet).
+func (r ServiceRoute) Route() Route {
+	return Route{Domains: r.Domains, Container: r.Container, Port: r.Port, Settings: DefaultRouteSettings(0)}
+}

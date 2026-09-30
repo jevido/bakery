@@ -1,6 +1,7 @@
 // Package routing is what other contexts and the boot code may use from the
-// routing context: EnsureProxy at start, SwitchRoute for deployments, and its
-// routes (the Route settings API).
+// routing context: EnsureProxy at start, SwitchRoute for deployments,
+// SetServiceRoutes and DropServiceRoutes for services, and its routes (the
+// Route settings API).
 // Nothing else in contexts/routing is for outside use.
 package routing
 
@@ -52,7 +53,7 @@ func svc() *app.Service {
 			ACMERoot:     cfg.GetString("bakery.acme.ca_root"),
 			VolumePrefix: "bakery-proxy",
 		})
-		service = app.NewService(infra.Routes{}, infra.Settings{}, proxy)
+		service = app.NewService(infra.Routes{}, infra.ServiceRoutes{}, infra.Settings{}, proxy)
 		projects.OnApplicationDomainsChanged(func(ctx context.Context, applicationID uint64, domains []string) {
 			if err := service.ChangeDomains(ctx, applicationID, domains); err != nil {
 				facades.Log().Errorf("routing: moving the route of application %d to %v: %v", applicationID, domains, err)
@@ -89,4 +90,28 @@ func EnsureProxy(ctx context.Context) error {
 // Applies. When it returns nil, Caddy is serving the new Container.
 func SwitchRoute(ctx context.Context, applicationID uint64, domains []string, container string, port int) error {
 	return svc().SwitchRoute(ctx, domain.Route{ApplicationID: applicationID, Domains: domains, Container: container, Port: port})
+}
+
+// ServiceRoute is a Public Component's Domains, primary first, served from
+// its Container and port.
+type ServiceRoute struct {
+	Component string
+	Domains   []string
+	Container string
+	Port      int
+}
+
+// SetServiceRoutes makes routes the Service's whole set of Service routes
+// and Applies. When it returns nil, Caddy serves them.
+func SetServiceRoutes(ctx context.Context, serviceID uint64, routes []ServiceRoute) error {
+	out := make([]domain.ServiceRoute, len(routes))
+	for i, r := range routes {
+		out[i] = domain.ServiceRoute{ServiceID: serviceID, Component: r.Component, Domains: r.Domains, Container: r.Container, Port: r.Port}
+	}
+	return svc().SetServiceRoutes(ctx, serviceID, out)
+}
+
+// DropServiceRoutes removes every Service route of the Service and Applies.
+func DropServiceRoutes(ctx context.Context, serviceID uint64) error {
+	return svc().DropServiceRoutes(ctx, serviceID)
 }

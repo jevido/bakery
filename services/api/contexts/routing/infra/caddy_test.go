@@ -364,3 +364,44 @@ func TestRenderWwwRedirect(t *testing.T) {
 		t.Fatalf("subjects %s", got)
 	}
 }
+
+func TestRenderServiceRoute(t *testing.T) {
+	svc := domain.ServiceRoute{ServiceID: 3, Component: "web", Domains: []string{"shop.localhost"}, Container: "bakery-svc-3-web", Port: 80}
+	raw, err := Render([]domain.Route{
+		{ApplicationID: 1, Domains: []string{"app.localhost"}, Container: "bakery-app-1-4", Port: 8080, Settings: domain.DefaultRouteSettings(1)},
+		svc.Route(),
+	}, RenderOptions{InternalTLS: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Apps struct {
+			HTTP struct {
+				Servers map[string]struct {
+					Routes []struct {
+						Match  []struct{ Host []string }
+						Handle []struct {
+							Handler   string
+							Upstreams []struct{ Dial string }
+						}
+					}
+				}
+			}
+		}
+	}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	routes := cfg.Apps.HTTP.Servers["https"].Routes
+	if len(routes) != 2 {
+		t.Fatalf("%d routes:\n%s", len(routes), raw)
+	}
+	got := map[string]string{}
+	for _, r := range routes {
+		h := r.Handle[len(r.Handle)-1]
+		got[r.Match[0].Host[0]] = h.Upstreams[0].Dial
+	}
+	if got["app.localhost"] != "bakery-app-1-4:8080" || got["shop.localhost"] != "bakery-svc-3-web:80" {
+		t.Errorf("routes %v", got)
+	}
+}
