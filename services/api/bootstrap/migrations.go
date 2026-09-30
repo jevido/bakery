@@ -44,5 +44,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000029AddDeploymentServer{},
 		&migrations.M20260930000030AddUserRole{},
 		&migrations.M20260930000031CreateInvitationsTable{},
+		&migrations.M20260930000032CreateAPITokensTable{},
 	}
 }

@@ -5,6 +5,7 @@ package http
 import (
 	"errors"
 	"strconv"
+	"strings"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
@@ -24,6 +25,9 @@ type principalKey struct{}
 type principal struct {
 	memberID uint64
 	role     domain.Role
+	// viaAPIToken is set when an API token, not a Session, authenticated
+	// the request.
+	viaAPIToken bool
 }
 
 type Controller struct {
@@ -142,12 +146,17 @@ func sessionCookie(value string, maxAge int) contractshttp.Cookie {
 	}
 }
 
-// Auth lets a request through only from a Member, and puts the principal
-// on the context for MemberID, RoleOf and the other middlewares. The Member
-// is read on every request, so a changed Role or a removed Member counts at
-// once. A viewer is refused anything but reading.
+// Auth lets a request through only from a Member, by Session cookie or by
+// an API token in the Authorization header, and puts the principal on the
+// context for MemberID, RoleOf and the other middlewares. The Member is read
+// on every request, so a changed Role or a removed Member counts at once. A
+// viewer is refused anything but reading.
 type Auth struct {
 	Service *app.Service
+	// SelfService is for the routes where a Member manages their own API
+	// tokens: every Role may change those, but only with a Session, so a
+	// leaked token cannot mint more.
+	SelfService bool
 }
 
 func (Auth) Signature() string { return "identity.auth" }
@@ -157,7 +166,12 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 	if !ok {
 		return
 	}
-	if reason := refusal(ctx.Request().Method(), p.role); reason != "" {
+	if a.SelfService {
+		if p.viaAPIToken {
+			_ = respond.Error(ctx, contractshttp.StatusForbidden, "API tokens are managed with a signed-in session, not with an API token").Abort()
+			return
+		}
+	} else if reason := refusal(ctx.Request().Method(), p.role); reason != "" {
 		_ = respond.Error(ctx, contractshttp.StatusForbidden, reason).Abort()
 		return
 	}
@@ -170,6 +184,23 @@ func (a Auth) principal(ctx contractshttp.Context) (principal, bool) {
 	unauthorized := func() (principal, bool) {
 		_ = respond.Error(ctx, contractshttp.StatusUnauthorized, "not signed in").Abort()
 		return principal{}, false
+	}
+	if header := ctx.Request().Header("Authorization"); header != "" {
+		value, ok := strings.CutPrefix(header, "Bearer ")
+		if !ok {
+			_ = respond.Error(ctx, contractshttp.StatusUnauthorized, "invalid API token").Abort()
+			return principal{}, false
+		}
+		m, role, err := a.Service.Authenticate(ctx.Context(), strings.TrimSpace(value))
+		if errors.Is(err, app.ErrInvalidAPIToken) {
+			_ = respond.Error(ctx, contractshttp.StatusUnauthorized, "invalid API token").Abort()
+			return principal{}, false
+		}
+		if err != nil {
+			_ = respond.ServerError(ctx, err).Abort()
+			return principal{}, false
+		}
+		return principal{memberID: m.ID, role: role, viaAPIToken: true}, true
 	}
 	token := ctx.Request().Cookie(SessionCookie)
 	if token == "" {

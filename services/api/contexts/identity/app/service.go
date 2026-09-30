@@ -42,13 +42,14 @@ type Hasher interface {
 type Service struct {
 	members     Members
 	invitations Invitations
+	apiTokens   APITokens
 	hasher      Hasher
 	// Now is the clock; time.Now unless a test sets it.
 	Now func() time.Time
 }
 
-func NewService(members Members, invitations Invitations, hasher Hasher) *Service {
-	return &Service{members: members, invitations: invitations, hasher: hasher, Now: time.Now}
+func NewService(members Members, invitations Invitations, apiTokens APITokens, hasher Hasher) *Service {
+	return &Service{members: members, invitations: invitations, apiTokens: apiTokens, hasher: hasher, Now: time.Now}
 }
 
 func (s *Service) now() time.Time { return s.Now() }

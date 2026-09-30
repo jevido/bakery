@@ -90,7 +90,7 @@ func (m *memMembers) Remove(_ context.Context, id uint64) error {
 
 func newTestService() *Service {
 	members := &memMembers{}
-	return NewService(members, &memInvitations{members: members}, plainHasher{})
+	return NewService(members, &memInvitations{members: members}, &memAPITokens{}, plainHasher{})
 }
 
 type plainHasher struct{}

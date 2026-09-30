@@ -13,10 +13,11 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/identity/infra"
 )
 
-var service = app.NewService(infra.Members{}, infra.Invitations{}, infra.Hasher{})
+var service = app.NewService(infra.Members{}, infra.Invitations{}, infra.APITokens{}, infra.Hasher{})
 
-// Auth refuses requests that come from no Member (401), and anything but
-// reading from a viewer (403).
+// Auth refuses requests that come from no Member (401), by Session cookie
+// or `Authorization: Bearer <API token>`, and anything but reading from a
+// viewer (403).
 var Auth contractshttp.Middleware = identityhttp.Auth{Service: service}
 
 // Admin, after Auth, lets only admins and the Owner through (403).
@@ -44,6 +45,12 @@ func Routes(r route.Router) {
 	r.Middleware(Auth).Get("/api/me", c.Me)
 	r.Get("/api/invitations/by-token/{token}", c.InvitationByToken)
 	r.Post("/api/invitations/by-token/{token}/accept", c.AcceptInvitation)
+	// Every Role manages its own API tokens, with a Session only.
+	r.Middleware(identityhttp.Auth{Service: service, SelfService: true}).Group(func(r route.Router) {
+		r.Get("/api/api-tokens", c.APITokens)
+		r.Post("/api/api-tokens", c.CreateAPIToken)
+		r.Delete("/api/api-tokens/{id}", c.RevokeAPIToken)
+	})
 	r.Middleware(Auth, Admin).Group(func(r route.Router) {
 		r.Get("/api/members", c.Members)
 		r.Patch("/api/members/{id}", c.ChangeRole)
