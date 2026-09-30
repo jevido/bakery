@@ -99,7 +99,11 @@ func (l *memLogs) After(context.Context, uint64, uint64, int) ([]domain.LogLine,
 }
 func (l *memLogs) text() string { return strings.Join(l.lines, "\n") }
 
-type fakeSource struct{ noDockerfile, fail bool }
+type fakeSource struct {
+	noDockerfile, fail bool
+	// files are written into the clone, by slash path.
+	files map[string]string
+}
 
 func (f fakeSource) Clone(_ context.Context, req CloneRequest, out func(string, string)) (Commit, error) {
 	dir := req.Dir
@@ -112,6 +116,11 @@ func (f fakeSource) Clone(_ context.Context, req CloneRequest, out func(string, 
 	}
 	if !f.noDockerfile {
 		os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte("FROM scratch"), 0o600)
+	}
+	for name, body := range f.files {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		os.MkdirAll(filepath.Dir(p), 0o700)
+		os.WriteFile(p, []byte(body), 0o600)
 	}
 	return Commit{SHA: "0123456789abcdef0123456789abcdef01234567", Subject: "Fix the login", Author: "Jane Doe"}, nil
 }
@@ -596,5 +605,43 @@ func TestImageBuildPackPullFailure(t *testing.T) {
 	}
 	if len(s.runtime.specs) != 0 {
 		t.Errorf("started %+v", s.runtime.specs)
+	}
+}
+
+func TestStaticBuildPack(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{noDockerfile: true, files: map[string]string{"public/index.html": "<h1>hi</h1>"}})
+	var generated string
+	s.app = func(a *Application) { a.BuildPack, a.PublishDirectory, a.Port = BuildPackStatic, "public", 80 }
+	d, _ := s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	got, _ := s.service.Deployment(ctx, d.ID)
+	if got.Status != domain.Finished {
+		t.Fatalf("deployment: %+v\n%s", got, s.logs.text())
+	}
+	b := s.runtime.builds[0]
+	if b.Dockerfile != ".bakery-static-1.Containerfile" || len(b.BuildArgs) != 0 {
+		t.Errorf("build request %+v", b)
+	}
+	generated = StaticContainerfile("public", b.Dockerfile)
+	if !strings.Contains(generated, `COPY ["public/","/srv/"]`) || strings.Contains(generated, "rm -f") {
+		t.Errorf("containerfile:\n%s", generated)
+	}
+	if !strings.Contains(StaticContainerfile(".", "x.Containerfile"), "RUN rm -f /srv/x.Containerfile") {
+		t.Error("publishing the whole repository must not serve the Containerfile")
+	}
+	for _, w := range []string{"Serving public as a static site", "Build variables are not used"} {
+		if !strings.Contains(s.logs.text(), w) {
+			t.Errorf("log lacks %q:\n%s", w, s.logs.text())
+		}
+	}
+
+	// A missing directory fails before building.
+	s.app = func(a *Application) { a.BuildPack, a.PublishDirectory = BuildPackStatic, "dist" }
+	d, _ = s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	got, _ = s.service.Deployment(ctx, d.ID)
+	if got.Status != domain.Failed || !strings.HasPrefix(got.Error, "no directory dist in the repository at 0123456789ab") || s.runtime.built != 1 {
+		t.Fatalf("missing dir: %+v, built %d", got, s.runtime.built)
 	}
 }

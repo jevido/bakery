@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -145,7 +147,11 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 	}
 
 	if d.RollbackOf != nil {
-		info("Rolling back to deployment %d (image %s, commit %s)", *d.RollbackOf, d.Image, shortSHA(d.CommitSHA))
+		from := "commit " + shortSHA(d.CommitSHA)
+		if d.SourceImage != "" {
+			from = "pulled " + d.SourceImage
+		}
+		info("Rolling back to deployment %d (image %s, %s)", *d.RollbackOf, d.Image, from)
 		ok, err := w.runtime.ImageExists(ctx, d.Image)
 		if err != nil {
 			return err
@@ -158,9 +164,6 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 
 	if app.BuildPack == BuildPackImage {
 		return w.pull(ctx, d, app, log, info)
-	}
-	if app.BuildPack != "" && app.BuildPack != BuildPackDockerfile {
-		return fmt.Errorf("build pack %s is not supported yet", app.BuildPack)
 	}
 
 	// Clone.
@@ -187,20 +190,61 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 	if err := w.advance(ctx, d, domain.Building); err != nil {
 		return err
 	}
-	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(app.DockerfilePath))); err != nil {
-		return fmt.Errorf("no %s in the repository at %s", app.DockerfilePath, shortSHA(commit.SHA))
+	dockerfile, buildArgs, err := w.dockerfile(d, app, dir, commit, info)
+	if err != nil {
+		return err
 	}
 	d.Image = domain.ImageTag(app.Slug, d.ID)
-	info("Building image %s from %s", d.Image, app.DockerfilePath)
+	info("Building image %s from %s", d.Image, dockerfile)
 	labels := map[string]string{"bakery.managed": "true", "bakery.application": fmt.Sprint(app.ID), "bakery.deployment": fmt.Sprint(d.ID)}
-	if len(app.BuildEnv) > 0 {
-		info("Build args: %s", strings.Join(slices.Sorted(maps.Keys(app.BuildEnv)), ", "))
+	if len(buildArgs) > 0 {
+		info("Build args: %s", strings.Join(slices.Sorted(maps.Keys(buildArgs)), ", "))
 	}
-	req := BuildRequest{Dir: dir, Dockerfile: app.DockerfilePath, Tag: d.Image, Labels: labels, BuildArgs: app.BuildEnv}
+	req := BuildRequest{Dir: dir, Dockerfile: dockerfile, Tag: d.Image, Labels: labels, BuildArgs: buildArgs}
 	if err := w.runtime.Build(ctx, req, func(line string) { log.Line(domain.StreamOut, line) }); err != nil {
 		return fmt.Errorf("build failed: %w", err)
 	}
 	return w.goLive(ctx, d, app, info)
+}
+
+// dockerfile returns the Dockerfile to build from the clone in dir, and the
+// build args it gets, by Build pack.
+func (w *Worker) dockerfile(d *domain.Deployment, app Application, dir string, commit Commit, info func(string, ...any)) (string, map[string]string, error) {
+	switch app.BuildPack {
+	case BuildPackStatic:
+		publish := path.Clean(app.PublishDirectory)
+		if st, err := os.Stat(filepath.Join(dir, filepath.FromSlash(publish))); err != nil || !st.IsDir() {
+			return "", nil, fmt.Errorf("no directory %s in the repository at %s", publish, shortSHA(commit.SHA))
+		}
+		name := fmt.Sprintf(".bakery-static-%d.Containerfile", d.ID)
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(StaticContainerfile(publish, name)), 0o600); err != nil {
+			return "", nil, err
+		}
+		info("Serving %s as a static site", publish)
+		if len(app.BuildEnv) > 0 {
+			info("Build variables are not used by the static build pack")
+		}
+		return name, nil, nil
+	case "", BuildPackDockerfile:
+		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(app.DockerfilePath))); err != nil {
+			return "", nil, fmt.Errorf("no %s in the repository at %s", app.DockerfilePath, shortSHA(commit.SHA))
+		}
+		return app.DockerfilePath, app.BuildEnv, nil
+	}
+	return "", nil, fmt.Errorf("build pack %s is not supported yet", app.BuildPack)
+}
+
+// StaticContainerfile serves the publish directory of the build context
+// with Caddy (the proxy's image, so usually already pulled) on port 80.
+// self is the Containerfile's own name, removed again when the whole
+// repository is published.
+func StaticContainerfile(publish, self string) string {
+	src, _ := json.Marshal([]string{strings.TrimSuffix(publish, "/") + "/", "/srv/"})
+	file := "FROM docker.io/library/caddy:2\nCOPY " + string(src) + "\n"
+	if publish == "." {
+		file += "RUN rm -f /srv/" + self + "\n"
+	}
+	return file + "EXPOSE 80\n" + `CMD ["caddy", "file-server", "--root", "/srv", "--listen", ":80"]` + "\n"
 }
 
 // pull gets an image Application's Image reference from its registry and

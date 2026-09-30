@@ -109,16 +109,17 @@ push() {
 	git -C "$REPO" push -q "http://$FORGEJO_USER:$PASSWORD@127.0.0.1:4950/$FORGEJO_USER/$RUN.git" main
 }
 
-# create_app PORT creates a Project and an Application with the
-# repository's SSH URL, and adds its Deploy key to the repository. Sets
-# PROJECT_ID, ENV_ID, APP_ID, APP_SLUG, DOMAIN and PUBLIC_URL.
+# create_app PORT [FIELDS] creates a Project and an Application with the
+# repository's SSH URL, and adds its Deploy key to the repository. FIELDS
+# are more JSON members for the Application, e.g. ,"build_pack":"static".
+# Sets PROJECT_ID, ENV_ID, APP_ID, APP_SLUG, DOMAIN and PUBLIC_URL.
 create_app() {
 	say "Bakery application with the SSH URL"
 	PROJECT_ID=$(bakery POST /api/projects "{\"name\":\"$RUN\"}" | json "d['project']['id']")
 	ENV_ID=$(bakery GET "/api/projects/$PROJECT_ID" | json "d['project']['environments'][0]['id']")
 	local app key
 	app=$(bakery POST "/api/environments/$ENV_ID/applications" \
-		"{\"name\":\"$RUN\",\"git_url\":\"ssh://git@127.0.0.1:4952/$FORGEJO_USER/$RUN.git\",\"git_branch\":\"main\",\"port\":$1}")
+		"{\"name\":\"$RUN\",\"git_url\":\"ssh://git@127.0.0.1:4952/$FORGEJO_USER/$RUN.git\",\"git_branch\":\"main\",\"port\":$1${2:-}}")
 	APP_ID=$(echo "$app" | json "d['application']['id']")
 	APP_SLUG=$(echo "$app" | json "d['application']['slug']")
 	DOMAIN=$(echo "$app" | json "d['application']['domain']")
