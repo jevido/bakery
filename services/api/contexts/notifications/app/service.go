@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/notifications/domain"
 )
@@ -23,12 +24,17 @@ type Store interface {
 }
 
 type Service struct {
-	store Store
-	Log   func(format string, args ...any)
+	store  Store
+	sender Sender
+	// DashboardURL is where links in Notifications point, without a
+	// trailing slash.
+	DashboardURL string
+	Log          func(format string, args ...any)
+	Now          func() time.Time
 }
 
-func NewService(store Store) *Service {
-	return &Service{store: store, Log: func(string, ...any) {}}
+func NewService(store Store, sender Sender) *Service {
+	return &Service{store: store, sender: sender, Log: func(string, ...any) {}, Now: time.Now}
 }
 
 func (s *Service) Channels(ctx context.Context) ([]domain.Channel, error) {
@@ -85,4 +91,26 @@ func (s *Service) DeleteChannel(ctx context.Context, id uint64) error {
 		return err
 	}
 	return s.store.DeleteChannel(ctx, id)
+}
+
+// testTimeout bounds a Test notification, which the admin waits for.
+const testTimeout = 15 * time.Second
+
+// TestChannel sends a Test notification to the channel at once. sendErr is
+// the channel's answer; err is anything else that went wrong.
+func (s *Service) TestChannel(ctx context.Context, id uint64) (sendErr error, err error) {
+	c, err := s.Channel(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	n := domain.Notification{
+		Kind:  c.EventKinds[0],
+		Title: "Test notification from Bakery",
+		Body:  "This is a test of the notification channel \"" + c.Name + "\". If you can read it, it works.",
+		Link:  s.DashboardURL,
+		At:    s.Now(),
+	}
+	sctx, cancel := context.WithTimeout(ctx, testTimeout)
+	defer cancel()
+	return s.sender.Send(sctx, c, n), nil
 }

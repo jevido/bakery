@@ -27,7 +27,10 @@ func init() {
 		// through the proxy (empty in development, where Vite serves it), and
 		// the containers it sends /api/* and everything else to.
 		"dashboard": map[string]any{
-			"domain":       config.Env("BAKERY_DASHBOARD_DOMAIN", ""),
+			"domain": config.Env("BAKERY_DASHBOARD_DOMAIN", ""),
+			// Where links in Notifications and Invitation emails point; empty
+			// means https://<domain>, or the Vite dev server without one.
+			"url":          config.Env("BAKERY_DASHBOARD_URL", ""),
 			"api_upstream": config.Env("BAKERY_DASHBOARD_API_UPSTREAM", "bakery-api:4910"),
 			"web_upstream": config.Env("BAKERY_DASHBOARD_WEB_UPSTREAM", "bakery-web:80"),
 		},
@@ -51,6 +54,10 @@ func init() {
 		// server: /var/lib/bakery/backups on the bakery-backups volume.
 		"backups": map[string]any{
 			"dir": config.Env("BAKERY_BACKUPS_DIR", "storage/backups"),
+		},
+		// Telegram's Bot API; only tests point it elsewhere.
+		"notifications": map[string]any{
+			"telegram_api": config.Env("BAKERY_TELEGRAM_API_URL", "https://api.telegram.org"),
 		},
 		"proxy": map[string]any{
 			"image": config.Env("BAKERY_PROXY_IMAGE", "docker.io/library/caddy:2"),

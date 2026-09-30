@@ -4,6 +4,7 @@
 package notifications
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/goravel/framework/contracts/route"
@@ -22,7 +23,9 @@ var (
 
 func svc() *app.Service {
 	once.Do(func() {
-		service = app.NewService(infra.Store{})
+		cfg := facades.Config()
+		service = app.NewService(infra.Store{}, infra.Senders{TelegramAPI: cfg.GetString("bakery.notifications.telegram_api")})
+		service.DashboardURL = DashboardURL()
 		service.Log = facades.Log().Errorf
 	})
 	return service
@@ -39,5 +42,20 @@ func Routes(r route.Router) {
 		r.Get("/api/notification-channels/{id}", c.Show)
 		r.Patch("/api/notification-channels/{id}", c.Update)
 		r.Delete("/api/notification-channels/{id}", c.Delete)
+		r.Post("/api/notification-channels/{id}/test", c.Test)
 	})
+}
+
+// DashboardURL is where the dashboard is reached, without a trailing slash:
+// bakery.dashboard.url, else https://<bakery.dashboard.domain>, else the
+// Vite dev server.
+func DashboardURL() string {
+	cfg := facades.Config()
+	if u := strings.TrimRight(cfg.GetString("bakery.dashboard.url"), "/"); u != "" {
+		return u
+	}
+	if d := cfg.GetString("bakery.dashboard.domain"); d != "" {
+		return "https://" + d
+	}
+	return "http://localhost:4930"
 }

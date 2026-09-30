@@ -215,3 +215,18 @@ func (c *Controller) Delete(ctx contractshttp.Context) contractshttp.Response {
 	}
 	return ctx.Response().NoContent()
 }
+
+func (c *Controller) Test(ctx contractshttp.Context) contractshttp.Response {
+	cid, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	sendErr, err := c.service.TestChannel(ctx.Context(), cid)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	if sendErr != nil {
+		return ctx.Response().Json(contractshttp.StatusUnprocessableEntity, contractshttp.Json{"ok": false, "error": sendErr.Error()})
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"ok": true})
+}
