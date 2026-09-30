@@ -31,6 +31,31 @@ type Members interface {
 	SetRole(ctx context.Context, id uint64, role domain.Role) error
 	// Remove deletes the Member, and with them their API tokens.
 	Remove(ctx context.Context, id uint64) error
+
+	SetName(ctx context.Context, id uint64, name string) error
+	// SetPassword stores a new password hash and ends every Session issued
+	// before sessionsValidFrom, in one step.
+	SetPassword(ctx context.Context, id uint64, hash string, sessionsValidFrom time.Time) error
+	SetSessionsValidFrom(ctx context.Context, id uint64, t time.Time) error
+
+	// SetPendingTwoFactor stores a new, unconfirmed secret.
+	SetPendingTwoFactor(ctx context.Context, id uint64, secret []byte) error
+	// EnableTwoFactor switches the pending secret on, remembering step as
+	// used and replacing the Recovery codes, in one transaction.
+	EnableTwoFactor(ctx context.Context, id uint64, step int64, at time.Time, recoveryCodeHashes []string) error
+	// ClearTwoFactor switches two-factor off and drops the secret and the
+	// Recovery codes; with sessionsValidFrom set it also ends the Sessions
+	// issued before it.
+	ClearTwoFactor(ctx context.Context, id uint64, sessionsValidFrom *time.Time) error
+	// AdvanceTwoFactorStep remembers step as the last accepted one, only if
+	// it is later than the stored one, and reports whether it was: two
+	// sign-ins racing with one code cannot both win.
+	AdvanceTwoFactorStep(ctx context.Context, id uint64, step int64) (bool, error)
+	ReplaceRecoveryCodes(ctx context.Context, id uint64, hashes []string) error
+	// UseRecoveryCode deletes the Member's Recovery code with this hash and
+	// reports whether there was one.
+	UseRecoveryCode(ctx context.Context, id uint64, hash string) (bool, error)
+	RecoveryCodesLeft(ctx context.Context, id uint64) (int, error)
 }
 
 // Hasher hashes and checks passwords.

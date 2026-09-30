@@ -5,13 +5,15 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/identity/domain"
 )
 
 type memMembers struct {
-	mu      sync.Mutex
-	members []domain.Member
+	mu            sync.Mutex
+	members       []domain.Member
+	recoveryCodes map[uint64]map[string]bool
 }
 
 func (m *memMembers) OwnerExists(context.Context) (bool, error) {
@@ -131,4 +133,100 @@ func TestLogin(t *testing.T) {
 	if _, err := s.Login(ctx, "nobody@example.com", "correct horse"); !errors.Is(err, ErrBadCredentials) {
 		t.Fatalf("unknown email: err = %v", err)
 	}
+}
+
+func (m *memMembers) change(id uint64, f func(*domain.Member)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.members {
+		if m.members[i].ID == id {
+			f(&m.members[i])
+		}
+	}
+}
+
+func (m *memMembers) SetName(_ context.Context, id uint64, name string) error {
+	m.change(id, func(x *domain.Member) { x.Name = name })
+	return nil
+}
+
+func (m *memMembers) SetPassword(_ context.Context, id uint64, hash string, from time.Time) error {
+	m.change(id, func(x *domain.Member) { x.PasswordHash, x.SessionsValidFrom = hash, from })
+	return nil
+}
+
+func (m *memMembers) SetSessionsValidFrom(_ context.Context, id uint64, t time.Time) error {
+	m.change(id, func(x *domain.Member) { x.SessionsValidFrom = t })
+	return nil
+}
+
+func (m *memMembers) SetPendingTwoFactor(_ context.Context, id uint64, secret []byte) error {
+	m.change(id, func(x *domain.Member) {
+		x.TwoFactor.Secret, x.TwoFactor.State = secret, domain.TwoFactorPending
+	})
+	return nil
+}
+
+func (m *memMembers) EnableTwoFactor(_ context.Context, id uint64, step int64, _ time.Time, hashes []string) error {
+	m.change(id, func(x *domain.Member) { x.TwoFactor.State, x.TwoFactor.LastStep = domain.TwoFactorOn, step })
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.setCodes(id, hashes)
+	return nil
+}
+
+func (m *memMembers) setCodes(id uint64, hashes []string) {
+	if m.recoveryCodes == nil {
+		m.recoveryCodes = map[uint64]map[string]bool{}
+	}
+	m.recoveryCodes[id] = map[string]bool{}
+	for _, h := range hashes {
+		m.recoveryCodes[id][h] = true
+	}
+}
+
+func (m *memMembers) ClearTwoFactor(_ context.Context, id uint64, from *time.Time) error {
+	m.change(id, func(x *domain.Member) {
+		x.TwoFactor = domain.TwoFactor{State: domain.TwoFactorOff}
+		if from != nil {
+			x.SessionsValidFrom = *from
+		}
+	})
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.recoveryCodes, id)
+	return nil
+}
+
+func (m *memMembers) AdvanceTwoFactorStep(_ context.Context, id uint64, step int64) (bool, error) {
+	advanced := false
+	m.change(id, func(x *domain.Member) {
+		if x.TwoFactor.LastStep < step {
+			x.TwoFactor.LastStep, advanced = step, true
+		}
+	})
+	return advanced, nil
+}
+
+func (m *memMembers) ReplaceRecoveryCodes(_ context.Context, id uint64, hashes []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.setCodes(id, hashes)
+	return nil
+}
+
+func (m *memMembers) UseRecoveryCode(_ context.Context, id uint64, hash string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.recoveryCodes[id][hash] {
+		delete(m.recoveryCodes[id], hash)
+		return true, nil
+	}
+	return false, nil
+}
+
+func (m *memMembers) RecoveryCodesLeft(_ context.Context, id uint64) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.recoveryCodes[id]), nil
 }

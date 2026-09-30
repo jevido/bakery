@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/mail"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -55,6 +56,10 @@ type Member struct {
 	Email        string
 	PasswordHash string
 	Role         Role
+	TwoFactor    TwoFactor
+	// SessionsValidFrom is the moment before which the Member's Sessions
+	// no longer count; zero when every Session counts.
+	SessionsValidFrom time.Time
 }
 
 // NewMember validates a new Member and returns it without an ID or password
