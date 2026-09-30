@@ -270,3 +270,16 @@ func (st Store) DomainTaken(ctx context.Context, d string, exceptServiceID uint6
 		Where("service_id <> ?", exceptServiceID).Count()
 	return n > 0, err
 }
+
+// SetLastError stores why the Service's last action failed ("" when it
+// did not), without touching the rest of the aggregate.
+func (st Store) SetLastError(ctx context.Context, id uint64, msg string) error {
+	_, err := st.query(ctx).Model(&serviceRecord{}).Where("id", id).Update("last_error", msg)
+	return err
+}
+
+// SetDesiredState stores what the Owner asked the Service to be.
+func (st Store) SetDesiredState(ctx context.Context, id uint64, state domain.DesiredState) error {
+	_, err := st.query(ctx).Model(&serviceRecord{}).Where("id", id).Update("desired_state", string(state))
+	return err
+}
