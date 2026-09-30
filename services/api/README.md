@@ -22,7 +22,14 @@ A Database's Public port is published on `BAKERY_DATABASES_PUBLIC_BIND`
 Public URL names `BAKERY_DATABASES_PUBLIC_HOST` (empty: the dashboard domain,
 else `localhost`).
 
-Other tasks: `task api:check` (gofmt, go vet, go test), `task api:migrate`.
+Backups of Databases are written to `BAKERY_BACKUPS_DIR` (`storage/backups`
+here); S3 storages are tested against the Garage stand-in on
+`127.0.0.1:4960` (`task s3:up` from the repo root writes its key to
+`.claude/ralph/state/garage.env`).
+
+Other tasks: `task api:check` (gofmt, go vet, go test), `task api:migrate`,
+`task api:test:podman` (against the rootless Podman socket),
+`task api:test:s3` (the S3 client against Garage).
 Artisan runs as `go run . artisan ...`.
 
 ## Layout

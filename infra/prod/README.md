@@ -73,7 +73,27 @@ sudo -u bakery XDG_RUNTIME_DIR=/run/user/$(id -u bakery) podman logs -f bakery-a
 
 ## Backups
 
-Nothing is backed up automatically yet. By hand:
+**Databases** (the one-click ones on the dashboard) are backed up from
+their page: on a schedule or with Back up now. Every Backup is written to
+the `bakery-backups` volume, mounted on `bakery-api` at
+`/var/lib/bakery/backups`, as `<database id>/<UTC timestamp>.<ext>`, and
+uploaded to an S3 storage (added under Settings) when the Database's
+schedule names one. Retention prunes both. Deleting a Database removes its
+Backups from the volume; copies in S3 storage stay, on purpose.
+
+A copy on the same server does not survive losing the server: name an S3
+storage in the schedule, or copy the files off yourself. They can be
+downloaded from the dashboard, or read from the volume:
+
+```sh
+sudo -u bakery XDG_RUNTIME_DIR=/run/user/$(id -u bakery) \
+  podman volume inspect bakery-backups --format '{{.Mountpoint}}'
+```
+
+Redis and Valkey are not backed up.
+
+**Bakery's own database** (`bakery-postgres`) is not backed up
+automatically yet. By hand:
 
 ```sh
 sudo -u bakery XDG_RUNTIME_DIR=/run/user/$(id -u bakery) \
@@ -82,4 +102,5 @@ sudo -u bakery XDG_RUNTIME_DIR=/run/user/$(id -u bakery) \
 
 Restore into a fresh database with `psql -U bakery bakery < dump.sql` inside
 `bakery-postgres`. Keep a copy of `/var/lib/bakery/bakery.env` too: without
-`APP_KEY` the encrypted env vars in the dump cannot be read.
+`APP_KEY` the encrypted env vars, database passwords and S3 secret keys in
+the dump cannot be read.

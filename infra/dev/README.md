@@ -14,6 +14,12 @@ Local development stack.
   `git` profile: `task git:up` starts it on `127.0.0.1:4950` (HTTP) and
   `127.0.0.1:4952` (SSH) with host networking, so its webhooks reach the dev
   API on `127.0.0.1:4910`; `task git:down` removes it and its volumes.
+- `compose.yml` also holds **Garage**, the S3 stand-in, under the `s3`
+  profile (`garage/garage.toml`, dev-only secrets): `task s3:up` starts it on
+  `127.0.0.1:4960` and runs `garage/setup.sh`, which gives the node a
+  layout and creates the bucket `bakery-backups` and a key for it, written to
+  `.claude/ralph/state/garage.env`. `task s3:down` removes it, its volumes
+  and that file.
 - `git/test.sh` (`task git:test`, with `task dev` running) creates a private
   repository in Forgejo, deploys it through Bakery with the Application's
   Deploy key, adds Bakery's Webhook to it, pushes and waits for the push to
@@ -40,4 +46,11 @@ Local development stack.
   URL from the host, checks a Project with Databases cannot be deleted, and
   deletes everything with its volumes. `RESTART_API=1` also removes one
   Database's Container, restarts `task dev` detached and waits for the API
-  to start it again. Every script shares `lib/e2e.sh`.
+  to start it again.
+- `backups/test.sh` (`task backups:test`, needs `task dev` and `task s3:up`)
+  backs up a row of a PostgreSQL, MySQL, MariaDB and MongoDB Database to
+  local disk and Garage, drops it and restores it; restores from Garage
+  after removing the local file; checks Retention 2 leaves two files and two
+  objects; waits for an every-minute schedule to back up by itself; checks
+  Redis refuses; and deletes the Databases, whose local Backups go while
+  the S3 copies stay. Every script shares `lib/e2e.sh`.

@@ -126,6 +126,18 @@ page, for the whole project or one environment, reach every application in
 it; an application's own variable wins over its environment's, which wins
 over the project's.
 
+### Databases and backups
+
+**New → Database** in an environment runs PostgreSQL, MySQL, MariaDB,
+Redis, Valkey or MongoDB with generated credentials; applications reach it
+on its internal URL, and a public port opens it from outside the server.
+Its **Backups** tab backs up PostgreSQL, MySQL, MariaDB and MongoDB on a
+schedule or with **Back up now**, to the server's disk and to an S3 storage
+added under **Settings → S3 storages**, keeping the newest few. Any backup
+can be downloaded or restored (from S3 when the local file is gone).
+`task databases:test` and `task backups:test` (with `task s3:up`, the
+Garage S3 stand-in) run all of this end to end.
+
 ## Install on a server
 
 On a fresh Linux server with systemd, ports 80/443 open and DNS for your
