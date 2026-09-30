@@ -378,3 +378,66 @@ func TestPublishedPort(t *testing.T) {
 		t.Fatalf("published port answered %q", body)
 	}
 }
+
+func TestNetworkAliasesAndSpec(t *testing.T) {
+	c := client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	const network = "bakery-test-aliases"
+	labels := map[string]string{"bakery.test": "aliases"}
+	names := []string{"bakery-test-aliases-db", "bakery-test-aliases-app"}
+	cleanup := func() {
+		for _, n := range names {
+			c.RemoveContainer(context.Background(), n)
+		}
+		c.RemoveNetwork(context.Background(), network)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	if err := c.EnsureNetworkLabeled(ctx, network, labels); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := c.ListNetworks(ctx, map[string]string{"bakery.test": "aliases", "bakery.managed": "true"}); err != nil || len(got) != 1 || got[0] != network {
+		t.Fatalf("ListNetworks: %v %v", got, err)
+	}
+	if err := c.PullImage(ctx, "docker.io/library/busybox", func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+	for i, n := range names {
+		net, opts := NetworkWithAliases(network, []string{"db", "app"}[i])
+		id, err := c.CreateContainer(ctx, ContainerSpec{
+			Name: n, Image: "docker.io/library/busybox",
+			Entrypoint: []string{"sh", "-c"}, Command: []string{"sleep 300"},
+			WorkDir: "/tmp", User: "65534", Labels: labels,
+			Networks: map[string]map[string]any{net: opts},
+		})
+		if err != nil {
+			t.Fatalf("CreateContainer %s: %v", n, err)
+		}
+		if err := c.StartContainer(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// busybox's nslookup trips over Podman's DNS server; ping prints the
+	// address it resolved even where rootless ping itself is not allowed.
+	code, out, err := c.Exec(ctx, names[1], []string{"sh", "-c", "pwd; id -u; ping -c1 -W1 db 2>&1 | head -1"})
+	if err != nil || code != 0 {
+		t.Fatalf("exec: %d %v\n%s", code, err, out)
+	}
+	if !strings.HasPrefix(out, "/tmp\n65534\n") || !strings.Contains(out, "PING db (") {
+		t.Errorf("exec output:\n%s", out)
+	}
+	for _, n := range names {
+		if err := c.RemoveContainer(ctx, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.RemoveNetwork(ctx, network); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.RemoveNetwork(ctx, network); err != nil {
+		t.Errorf("removing a missing network: %v", err)
+	}
+}

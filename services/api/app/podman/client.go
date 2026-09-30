@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -165,20 +166,54 @@ func (c *Client) Ping(ctx context.Context) error {
 // EnsureNetwork creates the network with DNS enabled (so containers find
 // each other by name) unless it exists.
 func (c *Client) EnsureNetwork(ctx context.Context, name string) error {
+	return c.EnsureNetworkLabeled(ctx, name, nil)
+}
+
+// EnsureNetworkLabeled is EnsureNetwork with labels on a network it
+// creates; bakery.managed=true is always one of them.
+func (c *Client) EnsureNetworkLabeled(ctx context.Context, name string, labels map[string]string) error {
 	ok, err := c.exists(ctx, "/networks/"+url.PathEscape(name)+"/exists")
 	if err != nil || ok {
 		return err
 	}
+	all := map[string]string{"bakery.managed": "true"}
+	maps.Copy(all, labels)
 	err = c.call(ctx, http.MethodPost, "/networks/create", nil, map[string]any{
 		"name":        name,
 		"driver":      "bridge",
 		"dns_enabled": true,
+		"labels":      all,
 	}, nil)
 	var e *Error
 	if errors.As(err, &e) && e.Status == http.StatusConflict {
 		return nil // created by someone else in the meantime
 	}
 	return err
+}
+
+// RemoveNetwork removes a network; a missing one is not an error.
+func (c *Client) RemoveNetwork(ctx context.Context, name string) error {
+	err := c.call(ctx, http.MethodDelete, "/networks/"+url.PathEscape(name), url.Values{"force": {"true"}}, nil, nil)
+	if IsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
+// ListNetworks returns the names of the networks carrying every one of the
+// labels.
+func (c *Client) ListNetworks(ctx context.Context, labels map[string]string) ([]string, error) {
+	var out []struct {
+		Name string `json:"name"`
+	}
+	if err := c.call(ctx, http.MethodGet, "/networks/json", url.Values{"filters": {labelFilters(labels)}}, nil, &out); err != nil {
+		return nil, err
+	}
+	names := make([]string, len(out))
+	for i, n := range out {
+		names[i] = n.Name
+	}
+	return names, nil
 }
 
 func (c *Client) ImageExists(ctx context.Context, ref string) (bool, error) {
@@ -369,13 +404,20 @@ type PortMapping struct {
 type NamedVolume struct {
 	Name string `json:"Name"`
 	Dest string `json:"Dest"`
+	// Options are mount options, e.g. "ro".
+	Options []string `json:"Options,omitempty"`
 }
 
 // ContainerSpec is the part of libpod's SpecGenerator Bakery sets.
 type ContainerSpec struct {
-	Name          string                    `json:"name"`
-	Image         string                    `json:"image"`
-	Command       []string                  `json:"command,omitempty"`
+	Name       string   `json:"name"`
+	Image      string   `json:"image"`
+	Command    []string `json:"command,omitempty"`
+	Entrypoint []string `json:"entrypoint,omitempty"`
+	WorkDir    string   `json:"work_dir,omitempty"`
+	User       string   `json:"user,omitempty"`
+	// Expose lists ports the container listens on, protocol by port.
+	Expose        map[uint16]string         `json:"expose,omitempty"`
 	Env           map[string]string         `json:"env,omitempty"`
 	Labels        map[string]string         `json:"labels,omitempty"`
 	Networks      map[string]map[string]any `json:"networks,omitempty"`
@@ -435,6 +477,12 @@ func OnNetwork(names ...string) map[string]map[string]any {
 		out[n] = map[string]any{}
 	}
 	return out
+}
+
+// NetworkWithAliases is a Networks entry joining name, where other
+// containers on it also find this one by each alias.
+func NetworkWithAliases(name string, aliases ...string) (string, map[string]any) {
+	return name, map[string]any{"aliases": aliases}
 }
 
 // CreateContainer creates (not starts) a container and returns its id.
