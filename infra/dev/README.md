@@ -21,3 +21,9 @@ Local development stack.
   nothing. It signs in as the Owner from `BAKERY_OWNER_EMAIL` /
   `BAKERY_OWNER_PASSWORD` (or `.claude/ralph/state/owner.env`) and removes
   everything it created, Forgejo included (`KEEP_FORGEJO=1` keeps it).
+- `deploy/test.sh` (`task deploy:test`, same requirements) deploys a repository
+  from Forgejo with a Health check, a build-only variable and Shared
+  variables; redeploys while polling it (no request may fail); checks a
+  commit whose health check fails keeps the old version; cancels a slow
+  build; and rolls back to the first deployment. Both scripts share
+  `lib/e2e.sh`.

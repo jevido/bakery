@@ -87,6 +87,26 @@ deployment, marked `webhook` in the list next to its commit. The git host
 must be able to reach the URL, so this works on a server, or locally with
 the Forgejo stand-in (`task git:test` runs the whole flow against it).
 
+### Health checks, cancel and rollback
+
+Under **General → Health check**, give the path your app answers on when it
+is ready (e.g. `/health`). Bakery then requests it inside the new container
+(with `curl` or `wget`, so the image needs one of them) and only moves
+traffic once it answers 2xx or 3xx; a redeploy then serves every request. A
+check that never passes fails the deployment and the running version stays.
+An active deployment has a **Cancel** button, and every earlier finished one
+a **Roll back** button that starts its image again without cloning or
+building (`task deploy:test` runs all of this against the Forgejo stand-in).
+
+### Variables
+
+**Environment variables** are runtime only by default; tick **Build** to
+hand one to the Dockerfile's `ARG` too (it then ends up in the image's
+history, so keep secrets runtime only). **Shared variables** on the project
+page, for the whole project or one environment, reach every application in
+it; an application's own variable wins over its environment's, which wins
+over the project's.
+
 ## Install on a server
 
 On a fresh Linux server with systemd, ports 80/443 open and DNS for your
