@@ -89,6 +89,11 @@ tasks:
     cmds:
       - ./infra/dev/settings/test.sh
 
+  databases:test:
+    desc: Every database engine, internal and public URLs, stop/start and deletion end to end (needs task dev; RESTART_API=1 also restarts it)
+    cmds:
+      - ./infra/dev/databases/test.sh
+
   images:
     desc: Build every image (localhost/bakery-*:dev) from infra/images
     cmds:
@@ -109,8 +114,8 @@ tasks:
     desc: shellcheck the install script
     cmds:
       - |
-        if command -v shellcheck >/dev/null; then shellcheck -x infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/server/checks.sh
-        else podman run --rm -v .:/mnt:ro,Z -w /mnt docker.io/koalaman/shellcheck-alpine shellcheck -x infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/server/checks.sh
+        if command -v shellcheck >/dev/null; then shellcheck -x infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/databases/test.sh infra/dev/server/checks.sh
+        else podman run --rm -v .:/mnt:ro,Z -w /mnt docker.io/koalaman/shellcheck-alpine shellcheck -x infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/databases/test.sh infra/dev/server/checks.sh
         fi
 
   check:

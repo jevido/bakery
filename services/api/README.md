@@ -17,6 +17,10 @@ curl -s 127.0.0.1:4910/api/health    # {"ok":true}
 (`BAKERY_NIXPACKS=bin/nixpacks` in `.env`; the API image has it on `PATH`).
 `BAKERY_INSECURE_REGISTRIES` lists registries pulled from over plain http;
 `.env` lists the Forgejo stand-in's (`127.0.0.1:4950`).
+A Database's Public port is published on `BAKERY_DATABASES_PUBLIC_BIND`
+(`127.0.0.1` in `.env`; empty, on a server, means every interface), and its
+Public URL names `BAKERY_DATABASES_PUBLIC_HOST` (empty: the dashboard domain,
+else `localhost`).
 
 Other tasks: `task api:check` (gofmt, go vet, go test), `task api:migrate`.
 Artisan runs as `go run . artisan ...`.

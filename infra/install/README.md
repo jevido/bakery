@@ -8,7 +8,9 @@ sudo bash install.sh --domain bakery.example.com --email me@example.com
 ```
 
 Point the domain's DNS at the server and open ports 80 and 443 first: the
-proxy gets its certificate over ACME (HTTP-01).
+proxy gets its certificate over ACME (HTTP-01). A Database given a Public
+port in the dashboard is published on that port on every interface; Bakery
+does not manage a firewall, so open (or keep closed) such ports yourself.
 
 ## What it does
 
@@ -28,7 +30,8 @@ proxy gets its certificate over ACME (HTTP-01).
 6. As `bakery`: creates the `bakery` network and runs `bakery-postgres`
    (volume `bakery-postgres`), `bakery-web` and `bakery-api`. The API
    creates `bakery-proxy` on 80/443 itself and serves the dashboard on
-   `--domain` through it. Nothing but the proxy publishes a host port.
+   `--domain` through it. Nothing but the proxy, and Databases the Owner
+   gives a Public port, publishes a host port.
 7. Waits until `https://<domain>/api/health` answers.
 
 ## Options

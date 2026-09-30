@@ -32,4 +32,12 @@ Local development stack.
   two Domains, removing one without a deploy, the Www redirect, a Response
   header, Basic auth, a file in Persistent storage surviving a redeploy and
   a rollback, Resource limits on the Container, and the volume going with
-  the Application. Every script shares `lib/e2e.sh`.
+  the Application.
+- `databases/test.sh` (`task databases:test`, needs `task dev` but not
+  Forgejo) creates a Database of every Engine and queries each on its
+  Internal URL from a container on the `bakery` network, keeps a Postgres
+  row across stop/start and a Public port change, reaches it on the Public
+  URL from the host, checks a Project with Databases cannot be deleted, and
+  deletes everything with its volumes. `RESTART_API=1` also removes one
+  Database's Container, restarts `task dev` detached and waits for the API
+  to start it again. Every script shares `lib/e2e.sh`.
