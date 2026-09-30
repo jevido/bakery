@@ -15,6 +15,8 @@ import (
 
 // Runtime builds and runs Application Containers with Podman.
 type Runtime struct {
+	// Server names the Server Podman runs on.
+	Server  string
 	Podman  *podman.Client
 	Network string
 	// StartTimeout is how long a Container gets to reach running.
@@ -26,6 +28,8 @@ type Runtime struct {
 	// without TLS verification.
 	InsecureRegistries []string
 }
+
+func (r Runtime) ServerName() string { return r.Server }
 
 func (r Runtime) Build(ctx context.Context, req app.BuildRequest, out func(string)) error {
 	tar := podman.TarDir(req.Dir)

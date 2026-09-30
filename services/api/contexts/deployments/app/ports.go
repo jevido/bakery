@@ -42,6 +42,8 @@ type Store interface {
 	ByApplication(ctx context.Context, applicationID uint64, limit int) ([]domain.Deployment, error)
 	// ApplicationIDs lists every Application that has Deployments.
 	ApplicationIDs(ctx context.Context) ([]uint64, error)
+	// ServerIDs lists every Server the Application's Deployments ran on.
+	ServerIDs(ctx context.Context, applicationID uint64) ([]uint64, error)
 	// Active returns the Application's active Deployment, if any.
 	Active(ctx context.Context, applicationID uint64) (domain.Deployment, bool, error)
 	DeleteForApplication(ctx context.Context, applicationID uint64) error
@@ -92,6 +94,8 @@ type Application struct {
 	// MemoryMB and CPUs are the Resource limits; 0 is unlimited.
 	MemoryMB int
 	CPUs     float64
+	// ServerID is the Target server, 0 for the Local server.
+	ServerID uint64
 }
 
 // Storage is a Persistent storage of the Application.
@@ -163,8 +167,14 @@ type Planner interface {
 	Plan(ctx context.Context, dir string, buildEnv map[string]string, out func(stream, line string)) (dockerfile string, buildArgs map[string]string, err error)
 }
 
-// Runtime builds and runs Containers.
+// Runtimes returns the Runtime of a Server (0 is the Local server), or why
+// the Server cannot be reached.
+type Runtimes func(ctx context.Context, serverID uint64) (Runtime, error)
+
+// Runtime builds and runs Containers on one Server.
 type Runtime interface {
+	// ServerName names the Server this Runtime runs on, for the log.
+	ServerName() string
 	Build(ctx context.Context, req BuildRequest, out func(line string)) error
 	// Pull pulls req.Reference, tags it req.Tag and returns the pulled
 	// reference with its digest.

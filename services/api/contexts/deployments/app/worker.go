@@ -19,10 +19,10 @@ import (
 
 // Worker claims queued Deployments one at a time and runs them.
 type Worker struct {
-	service *Service
-	source  Source
-	runtime Runtime
-	router  Router
+	service  *Service
+	source   Source
+	runtimes Runtimes
+	router   Router
 	// Planner writes the Dockerfile of nixpacks Applications; nil fails them.
 	Planner Planner
 	// WorkDir holds the clones while they are built.
@@ -50,12 +50,11 @@ func sleep(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func NewWorker(service *Service, source Source, runtime Runtime, router Router, workDir string) *Worker {
-	// Rollbacks check with the same Runtime that the Image is still there.
-	service.images = runtime.ImageExists
-	service.removeImage = runtime.RemoveImage
+func NewWorker(service *Service, source Source, runtimes Runtimes, router Router, workDir string) *Worker {
+	// Rollbacks and Image retention reach the Servers the same way.
+	service.runtimes = runtimes
 	return &Worker{
-		service: service, source: source, runtime: runtime, router: router, WorkDir: workDir,
+		service: service, source: source, runtimes: runtimes, router: router, WorkDir: workDir,
 		Timeout: 30 * time.Minute, Poll: 2 * time.Second, Log: func(string, ...any) {}, now: time.Now, sleep: sleep,
 	}
 }
@@ -150,24 +149,33 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 		return fmt.Errorf("reading the application: %w", err)
 	}
 
+	// Every step runs on the Target server. Saved with the next step, or
+	// with the failure when the Server cannot be reached.
+	d.ServerID = app.ServerID
+	rt, err := w.runtimes(ctx, app.ServerID)
+	if err != nil {
+		return err
+	}
+	info("Deploying on server %s", rt.ServerName())
+
 	if d.RollbackOf != nil {
 		from := "commit " + shortSHA(d.CommitSHA)
 		if d.SourceImage != "" {
 			from = "pulled " + d.SourceImage
 		}
 		info("Rolling back to deployment %d (image %s, %s)", *d.RollbackOf, d.Image, from)
-		ok, err := w.runtime.ImageExists(ctx, d.Image)
+		ok, err := rt.ImageExists(ctx, d.Image)
 		if err != nil {
 			return err
 		}
 		if !ok {
 			return fmt.Errorf("%w (%s)", ErrImageGone, d.Image)
 		}
-		return w.goLive(ctx, d, app, info)
+		return w.goLive(ctx, rt, d, app, info)
 	}
 
 	if app.BuildPack == BuildPackImage {
-		return w.pull(ctx, d, app, log, info)
+		return w.pull(ctx, rt, d, app, log, info)
 	}
 
 	// Clone.
@@ -205,10 +213,10 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, log LogWriter,
 		info("Build args: %s", strings.Join(slices.Sorted(maps.Keys(buildArgs)), ", "))
 	}
 	req := BuildRequest{Dir: dir, Dockerfile: dockerfile, Tag: d.Image, Labels: labels, BuildArgs: buildArgs}
-	if err := w.runtime.Build(ctx, req, func(line string) { log.Line(domain.StreamOut, line) }); err != nil {
+	if err := rt.Build(ctx, req, func(line string) { log.Line(domain.StreamOut, line) }); err != nil {
 		return fmt.Errorf("build failed: %w", err)
 	}
-	return w.goLive(ctx, d, app, info)
+	return w.goLive(ctx, rt, d, app, info)
 }
 
 // dockerfile returns the Dockerfile to build from the clone in dir, and the
@@ -259,7 +267,7 @@ func StaticContainerfile(publish, self string) string {
 
 // pull gets an image Application's Image reference from its registry and
 // tags it as the Deployment's Image; there is nothing to clone or build.
-func (w *Worker) pull(ctx context.Context, d *domain.Deployment, app Application, log LogWriter, info func(string, ...any)) error {
+func (w *Worker) pull(ctx context.Context, rt Runtime, d *domain.Deployment, app Application, log LogWriter, info func(string, ...any)) error {
 	if err := w.advance(ctx, d, domain.Building); err != nil {
 		return err
 	}
@@ -269,7 +277,7 @@ func (w *Worker) pull(ctx context.Context, d *domain.Deployment, app Application
 	} else {
 		info("Pulling %s", app.ImageReference)
 	}
-	digest, err := w.runtime.Pull(ctx, PullRequest{
+	digest, err := rt.Pull(ctx, PullRequest{
 		Reference: app.ImageReference, Tag: d.Image, Username: app.RegistryUsername, Password: app.RegistryPassword,
 	}, func(line string) { log.Line(domain.StreamOut, line) })
 	if err != nil {
@@ -280,7 +288,7 @@ func (w *Worker) pull(ctx context.Context, d *domain.Deployment, app Application
 	if err := w.service.store.Save(ctx, *d); err != nil {
 		return err
 	}
-	return w.goLive(ctx, d, app, info)
+	return w.goLive(ctx, rt, d, app, info)
 }
 
 // limit is what, or "unlimited" when not set.
@@ -293,7 +301,7 @@ func limit(set bool, what string) string {
 
 // goLive starts the Deployment's Image, waits for it to be healthy, moves
 // the Route to it and removes the Containers it replaces.
-func (w *Worker) goLive(ctx context.Context, d *domain.Deployment, app Application, info func(string, ...any)) error {
+func (w *Worker) goLive(ctx context.Context, rt Runtime, d *domain.Deployment, app Application, info func(string, ...any)) error {
 	// Start.
 	if err := w.advance(ctx, d, domain.Starting); err != nil {
 		return err
@@ -308,16 +316,16 @@ func (w *Worker) goLive(ctx context.Context, d *domain.Deployment, app Applicati
 		info("Limits: %s memory, %s CPU", limit(app.MemoryMB != 0, fmt.Sprintf("%d MB", app.MemoryMB)), limit(app.CPUs != 0, strconv.FormatFloat(app.CPUs, 'f', -1, 64)))
 	}
 	info("Starting container %s", d.Container)
-	if err := w.runtime.Start(ctx, ContainerSpec{
+	if err := rt.Start(ctx, ContainerSpec{
 		Name: d.Container, Image: d.Image, ApplicationID: app.ID, DeploymentID: d.ID, Env: app.RuntimeEnv,
 		Mounts: mounts, MemoryMB: app.MemoryMB, CPUs: app.CPUs, Settle: !app.HealthCheck.Enabled,
 	}); err != nil {
 		return fmt.Errorf("container did not start: %w", err)
 	}
 	if app.HealthCheck.Enabled {
-		if err := w.waitHealthy(ctx, d.Container, app.Port, app.HealthCheck, info); err != nil {
+		if err := w.waitHealthy(ctx, rt, d.Container, app.Port, app.HealthCheck, info); err != nil {
 			// The old Container still serves; only the new one goes.
-			_ = w.runtime.Remove(context.WithoutCancel(ctx), d.Container)
+			_ = rt.Remove(context.WithoutCancel(ctx), d.Container)
 			return err
 		}
 	}
@@ -326,7 +334,7 @@ func (w *Worker) goLive(ctx context.Context, d *domain.Deployment, app Applicati
 	// moves and the old Container goes, whatever happens to ctx.
 	w.service.release(d.ID)
 	if ctx.Err() != nil {
-		_ = w.runtime.Remove(context.WithoutCancel(ctx), d.Container)
+		_ = rt.Remove(context.WithoutCancel(ctx), d.Container)
 		return ctx.Err()
 	}
 	ctx = context.WithoutCancel(ctx)
@@ -334,14 +342,14 @@ func (w *Worker) goLive(ctx context.Context, d *domain.Deployment, app Applicati
 	// Route, before the old Container goes, so traffic never points at
 	// nothing.
 	info("Routing %s to %s:%d", strings.Join(app.Domains, ", "), d.Container, app.Port)
-	if err := w.router(ctx, 0, app.ID, app.Domains, d.Container, app.Port); err != nil {
+	if err := w.router(ctx, app.ServerID, app.ID, app.Domains, d.Container, app.Port); err != nil {
 		// The old Container still serves; only the new one goes.
-		_ = w.runtime.Remove(context.WithoutCancel(ctx), d.Container)
+		_ = rt.Remove(context.WithoutCancel(ctx), d.Container)
 		return fmt.Errorf("routing failed: %w", err)
 	}
 
 	// Clean up.
-	removed, err := w.runtime.RemoveOthers(ctx, app.ID, d.Container)
+	removed, err := rt.RemoveOthers(ctx, app.ID, d.Container)
 	for _, name := range removed {
 		info("Removed previous container %s", name)
 	}
@@ -353,7 +361,7 @@ func (w *Worker) goLive(ctx context.Context, d *domain.Deployment, app Applicati
 
 // waitHealthy probes the new Container until its Health check passes, the
 // retries run out, or probing cannot work at all.
-func (w *Worker) waitHealthy(ctx context.Context, container string, port int, h HealthCheck, info func(string, ...any)) error {
+func (w *Worker) waitHealthy(ctx context.Context, rt Runtime, container string, port int, h HealthCheck, info func(string, ...any)) error {
 	if h.StartPeriod > 0 {
 		info("Waiting %ds before the first health check", h.StartPeriod)
 		if err := w.sleep(ctx, time.Duration(h.StartPeriod)*time.Second); err != nil {
@@ -369,7 +377,7 @@ func (w *Worker) waitHealthy(ctx context.Context, container string, port int, h 
 			}
 		}
 		info("Waiting for %s (attempt %d/%d)", h.Path, attempt, h.Retries)
-		ok, d, err := w.runtime.Probe(ctx, container, url, time.Duration(h.Timeout)*time.Second)
+		ok, d, err := rt.Probe(ctx, container, url, time.Duration(h.Timeout)*time.Second)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()

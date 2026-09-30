@@ -23,9 +23,14 @@ func NewController(service *app.Service, isNotFound func(error) bool) *Controlle
 	return &Controller{service: service, isNotFound: isNotFound}
 }
 
+// LocalServer returns the Local server's id, shown where a Deployment's
+// Server is 0; nil or failing shows 0.
+var LocalServer func() uint64
+
 type deploymentJSON struct {
 	ID            uint64     `json:"id"`
 	ApplicationID uint64     `json:"application_id"`
+	ServerID      uint64     `json:"server_id"`
 	Status        string     `json:"status"`
 	Active        bool       `json:"active"`
 	Trigger       string     `json:"trigger"`
@@ -44,8 +49,12 @@ type deploymentJSON struct {
 }
 
 func ToJSON(d domain.Deployment) deploymentJSON {
+	server := d.ServerID
+	if server == 0 && LocalServer != nil {
+		server = LocalServer()
+	}
 	return deploymentJSON{
-		ID: d.ID, ApplicationID: d.ApplicationID, Status: string(d.Status), Active: d.Status.Active(),
+		ID: d.ID, ApplicationID: d.ApplicationID, ServerID: server, Status: string(d.Status), Active: d.Status.Active(),
 		Trigger: string(d.Trigger), Branch: d.Branch, CommitSHA: d.CommitSHA,
 		CommitMessage: d.CommitMessage, CommitAuthor: d.CommitAuthor, SourceImage: d.SourceImage, Image: d.Image, Container: d.Container, RollbackOf: d.RollbackOf, Error: d.Error,
 		CreatedAt: d.CreatedAt, StartedAt: d.StartedAt, FinishedAt: d.FinishedAt,

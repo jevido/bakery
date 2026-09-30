@@ -16,10 +16,9 @@ type Service struct {
 	applications Applications
 	knownHosts   KnownHosts
 	wake         chan struct{}
-	// images reports whether an Image exists; set by the Worker's Runtime.
-	images func(ctx context.Context, image string) (bool, error)
-	// removeImage removes an Image unless it is in use; set by the Worker.
-	removeImage func(ctx context.Context, image string) (int64, error)
+	// runtimes reach each Server's Podman, for Rollback's Image check and
+	// Image retention; set by the Worker.
+	runtimes Runtimes
 
 	mu sync.Mutex
 	// running holds the cancel function of each Deployment the Worker is
@@ -63,10 +62,14 @@ func (s *Service) Rollback(ctx context.Context, id uint64) (domain.Deployment, e
 	if err != nil {
 		return d, err
 	}
-	if s.images == nil {
+	if s.runtimes == nil {
 		return domain.Deployment{}, errors.New("no runtime to check images with")
 	}
-	ok, err := s.images(ctx, d.Image)
+	rt, err := s.runtimes(ctx, d.ServerID)
+	if err != nil {
+		return domain.Deployment{}, err
+	}
+	ok, err := rt.ImageExists(ctx, d.Image)
 	if err != nil {
 		return domain.Deployment{}, err
 	}

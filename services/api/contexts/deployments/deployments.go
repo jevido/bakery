@@ -15,7 +15,6 @@ import (
 	"github.com/goravel/framework/contracts/route"
 
 	"github.com/jevido/bakery/services/api/app/facades"
-	"github.com/jevido/bakery/services/api/app/podman"
 	"github.com/jevido/bakery/services/api/contexts/deployments/app"
 	deploymentshttp "github.com/jevido/bakery/services/api/contexts/deployments/http"
 	"github.com/jevido/bakery/services/api/contexts/deployments/infra"
@@ -29,8 +28,44 @@ var (
 	once     sync.Once
 	service  *app.Service
 	webhooks *app.Webhooks
-	runtime  infra.Runtime
+	// runtime is the Runtime config every Server's Runtime starts from.
+	runtime infra.Runtime
 )
+
+var (
+	localMu sync.Mutex
+	localID uint64
+)
+
+// localServer is the Local server's id, read once it can be.
+func localServer() uint64 {
+	localMu.Lock()
+	defer localMu.Unlock()
+	if localID == 0 {
+		id, err := servers.LocalID(context.Background())
+		if err != nil {
+			facades.Log().Errorf("deployments: reading the local server: %v", err)
+		}
+		localID = id
+	}
+	return localID
+}
+
+// runtimeOn is the Runtime of a Server (0 the Local server), through
+// servers' pooled Server connection.
+func runtimeOn(ctx context.Context, serverID uint64) (infra.Runtime, error) {
+	conn, err := servers.Connect(ctx, serverID)
+	if err != nil {
+		return infra.Runtime{}, err
+	}
+	r := runtime
+	r.Server, r.Podman = conn.Name, conn.Podman
+	return r, nil
+}
+
+func runtimes(ctx context.Context, serverID uint64) (app.Runtime, error) {
+	return runtimeOn(ctx, serverID)
+}
 
 // applications translates projects' snapshot into this context's language.
 func applications(ctx context.Context, id uint64) (app.Application, error) {
@@ -46,7 +81,7 @@ func applications(ctx context.Context, id uint64) (app.Application, error) {
 		ID: s.ID, Slug: s.Slug, BuildPack: s.BuildPack, ImageReference: s.ImageReference, PublishDirectory: s.PublishDirectory,
 		RegistryUsername: s.RegistryUsername, RegistryPassword: s.RegistryPassword,
 		GitURL: s.GitURL, GitBranch: s.GitBranch,
-		DockerfilePath: s.DockerfilePath, Port: s.Port, Domains: s.Domains, BuildEnv: s.BuildEnv, RuntimeEnv: s.RuntimeEnv, DeployKey: s.DeployKey,
+		ServerID: s.ServerID, DockerfilePath: s.DockerfilePath, Port: s.Port, Domains: s.Domains, BuildEnv: s.BuildEnv, RuntimeEnv: s.RuntimeEnv, DeployKey: s.DeployKey,
 		HealthCheck: app.HealthCheck(s.HealthCheck), Storages: storages,
 		MemoryMB: s.MemoryMB, CPUs: s.CPUs,
 	}, nil
@@ -54,30 +89,37 @@ func applications(ctx context.Context, id uint64) (app.Application, error) {
 
 func svc() *app.Service {
 	once.Do(func() {
+		deploymentshttp.LocalServer = localServer
 		service = app.NewService(infra.Store{}, infra.Logs{}, applications, infra.KnownHosts{})
 		webhooks = app.NewWebhooks(service, infra.Webhooks{})
 		runtime = infra.Runtime{
-			Podman:             podman.Default(),
 			Network:            facades.Config().GetString("bakery.network"),
 			StartTimeout:       30 * time.Second,
 			Settle:             2 * time.Second,
 			InsecureRegistries: splitList(facades.Config().GetString("bakery.insecure_registries")),
 		}
-		// Image retention during Cleanup: the Images of all but the newest
-		// five finished Deployments go, unless a Container still uses one.
-		// Only the Local server has Deployments until they run on their
-		// Target server. It works once StartWorker ran.
-		servers.OnCleanup(func(ctx context.Context, serverID uint64) (int64, error) {
-			if serverID != 0 {
-				return 0, nil
-			}
-			return service.PruneImages(ctx)
-		})
+		// Image retention during Cleanup of a Server: the Images of all but
+		// the newest five finished Deployments there go, unless a Container
+		// still uses one. It works once StartWorker ran.
+		servers.OnCleanup(service.PruneImages)
 		projects.OnApplicationDeleted(func(ctx context.Context, applicationID uint64) {
-			if err := runtime.RemoveAll(ctx, applicationID); err != nil {
-				facades.Log().Errorf("deployments: removing containers of application %d: %v", applicationID, err)
-			} else if err := runtime.RemoveVolumes(ctx, applicationID); err != nil {
-				facades.Log().Errorf("deployments: removing volumes of application %d: %v", applicationID, err)
+			// Every Server its Deployments ran on; a Server that cannot be
+			// reached keeps what is there, which its Cleanup leaves alone.
+			ids, err := (infra.Store{}).ServerIDs(ctx, applicationID)
+			if err != nil {
+				facades.Log().Errorf("deployments: servers of application %d: %v", applicationID, err)
+			}
+			for _, id := range ids {
+				rt, err := runtimeOn(ctx, id)
+				if err != nil {
+					facades.Log().Errorf("deployments: removing application %d: %v", applicationID, err)
+					continue
+				}
+				if err := rt.RemoveAll(ctx, applicationID); err != nil {
+					facades.Log().Errorf("deployments: removing containers of application %d on %s: %v", applicationID, rt.Server, err)
+				} else if err := rt.RemoveVolumes(ctx, applicationID); err != nil {
+					facades.Log().Errorf("deployments: removing volumes of application %d on %s: %v", applicationID, rt.Server, err)
+				}
 			}
 			if err := (infra.Store{}).DeleteForApplication(ctx, applicationID); err != nil {
 				facades.Log().Errorf("deployments: deleting deployments of application %d: %v", applicationID, err)
@@ -126,13 +168,22 @@ func StreamRoutes(r route.Router) {
 	})
 }
 
-// followContainer follows the Application's running Container.
+// followContainer follows the Application's running Container on its
+// Target server.
 func followContainer(ctx context.Context, applicationID uint64, tail int, out func(stream, line string)) (bool, error) {
-	name, found, err := runtime.Running(ctx, applicationID)
+	a, err := projects.ApplicationForDeploy(ctx, applicationID)
+	if err != nil {
+		return false, err
+	}
+	rt, err := runtimeOn(ctx, a.ServerID)
+	if err != nil {
+		return false, err
+	}
+	name, found, err := rt.Running(ctx, applicationID)
 	if err != nil || !found {
 		return false, err
 	}
-	return true, runtime.Podman.Logs(ctx, name, true, tail, func(stream, line string) {
+	return true, rt.Podman.Logs(ctx, name, true, tail, func(stream, line string) {
 		if stream == "stderr" {
 			out("err", line)
 		} else {
@@ -145,7 +196,7 @@ func followContainer(ctx context.Context, applicationID uint64, tail int, out fu
 // runs the Worker until ctx ends.
 func StartWorker(ctx context.Context) {
 	workDir := filepath.Join(os.TempDir(), "bakery-builds")
-	w := app.NewWorker(svc(), infra.Git{KnownHosts: infra.KnownHosts{}}, runtime, routing.SwitchRoute, workDir)
+	w := app.NewWorker(svc(), infra.Git{KnownHosts: infra.KnownHosts{}}, runtimes, routing.SwitchRoute, workDir)
 	w.Planner = infra.Nixpacks{Binary: facades.Config().GetString("bakery.nixpacks")}
 	w.Log = facades.Log().Errorf
 	go func() {

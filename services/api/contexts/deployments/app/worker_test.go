@@ -80,7 +80,8 @@ func (m *memStore) ByApplication(context.Context, uint64, int) ([]domain.Deploym
 func (m *memStore) Active(context.Context, uint64) (domain.Deployment, bool, error) {
 	return domain.Deployment{}, false, nil
 }
-func (m *memStore) DeleteForApplication(context.Context, uint64) error { return nil }
+func (m *memStore) DeleteForApplication(context.Context, uint64) error  { return nil }
+func (m *memStore) ServerIDs(context.Context, uint64) ([]uint64, error) { return nil, nil }
 func (m *memStore) ApplicationIDs(context.Context) ([]uint64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -137,6 +138,8 @@ func (f fakeSource) Clone(_ context.Context, req CloneRequest, out func(string, 
 	}
 	return Commit{SHA: "0123456789abcdef0123456789abcdef01234567", Subject: "Fix the login", Author: "Jane Doe"}, nil
 }
+
+func (r *fakeRuntime) ServerName() string { return "fake" }
 
 type fakeRuntime struct {
 	buildErr, startErr error
@@ -231,14 +234,19 @@ type setup struct {
 	logs    *memLogs
 	runtime *fakeRuntime
 	routes  map[string]string
-	service *Service
-	worker  *Worker
+	// servers are the reachable Servers' Runtimes, the Local one (0) is
+	// runtime; routedOn is the Server each Domain was routed on.
+	servers  map[uint64]*fakeRuntime
+	routedOn map[string]uint64
+	service  *Service
+	worker   *Worker
 	// app, when set, changes the Application every Deployment reads.
 	app func(*Application)
 }
 
 func newSetup(t *testing.T, src fakeSource, check ...HealthCheck) *setup {
-	s := &setup{store: &memStore{}, logs: &memLogs{}, runtime: &fakeRuntime{running: map[string]bool{}}, routes: map[string]string{}}
+	s := &setup{store: &memStore{}, logs: &memLogs{}, runtime: &fakeRuntime{running: map[string]bool{}}, routes: map[string]string{}, servers: map[uint64]*fakeRuntime{}, routedOn: map[string]uint64{}}
+	s.servers[0] = s.runtime
 	apps := func(_ context.Context, id uint64) (Application, error) {
 		a := Application{ID: id, Slug: "whoami", GitURL: "https://example.com/r", GitBranch: "main", DockerfilePath: "Dockerfile", Port: 80, Domains: []string{"whoami.localhost"}, RuntimeEnv: map[string]string{"HELLO": "world"}, BuildEnv: map[string]string{"VITE_API": "https://api", "B": "1"}}
 		if len(check) > 0 {
@@ -250,13 +258,21 @@ func newSetup(t *testing.T, src fakeSource, check ...HealthCheck) *setup {
 		return a, nil
 	}
 	s.service = NewService(s.store, s.logs, apps, nil)
-	router := func(_ context.Context, _, _ uint64, domains []string, container string, _ int) error {
+	router := func(_ context.Context, serverID, _ uint64, domains []string, container string, _ int) error {
 		for _, d := range domains {
 			s.routes[d] = container
+			s.routedOn[d] = serverID
 		}
 		return nil
 	}
-	s.worker = NewWorker(s.service, src, s.runtime, router, t.TempDir())
+	runtimes := func(_ context.Context, serverID uint64) (Runtime, error) {
+		rt, ok := s.servers[serverID]
+		if !ok {
+			return nil, errors.New("server web is not reachable: connection refused")
+		}
+		return rt, nil
+	}
+	s.worker = NewWorker(s.service, src, runtimes, router, t.TempDir())
 	s.worker.sleep = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
 	return s
 }
@@ -739,5 +755,46 @@ func TestDeployAppliesResourceLimits(t *testing.T) {
 	}
 	if !strings.Contains(s.logs.text(), "Limits: 256 MB memory, 0.5 CPU") {
 		t.Fatalf("log:\n%s", s.logs.text())
+	}
+}
+
+func TestDeployOnTargetServer(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	remote := &fakeRuntime{running: map[string]bool{}}
+	s.servers[7] = remote
+	s.app = func(a *Application) { a.ServerID = 7 }
+
+	d, err := s.service.Deploy(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.worker.RunOnce(ctx)
+	got, _ := s.service.Deployment(ctx, d.ID)
+	if got.Status != domain.Finished || got.ServerID != 7 {
+		t.Fatalf("%s on %d: %s", got.Status, got.ServerID, got.Error)
+	}
+	if len(remote.builds) != 1 || len(remote.specs) != 1 || len(s.runtime.builds) != 0 || len(s.runtime.specs) != 0 {
+		t.Fatalf("remote built %d started %d, local built %d started %d", len(remote.builds), len(remote.specs), len(s.runtime.builds), len(s.runtime.specs))
+	}
+	if s.routedOn["whoami.localhost"] != 7 {
+		t.Fatalf("routed on %d", s.routedOn["whoami.localhost"])
+	}
+
+	// A Server that cannot be reached fails the Deployment before anything
+	// runs or moves.
+	s.app = func(a *Application) { a.ServerID = 9 }
+	delete(s.routes, "whoami.localhost")
+	d, err = s.service.Deploy(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.worker.RunOnce(ctx)
+	got, _ = s.service.Deployment(ctx, d.ID)
+	if got.Status != domain.Failed || got.ServerID != 9 || !strings.Contains(got.Error, "not reachable") {
+		t.Fatalf("%s on %d: %q", got.Status, got.ServerID, got.Error)
+	}
+	if len(s.routes) != 0 || len(remote.builds) != 1 {
+		t.Fatalf("routes %v, remote builds %d", s.routes, len(remote.builds))
 	}
 }

@@ -59,6 +59,9 @@ var (
 type Deployment struct {
 	ID            uint64
 	ApplicationID uint64
+	// ServerID is the Server it runs on, the Application's Target server
+	// when it started; 0 is the Local server.
+	ServerID      uint64
 	Status        Status
 	Trigger       Trigger
 	Branch        string
@@ -116,7 +119,7 @@ func NewRollback(of Deployment) (Deployment, error) {
 	}
 	id := of.ID
 	d := NewDeployment(of.ApplicationID, TriggerRollback)
-	d.RollbackOf, d.Image = &id, of.Image
+	d.RollbackOf, d.Image, d.ServerID = &id, of.Image, of.ServerID
 	d.Branch, d.CommitSHA, d.CommitMessage, d.CommitAuthor = of.Branch, of.CommitSHA, of.CommitMessage, of.CommitAuthor
 	d.SourceImage = of.SourceImage
 	return d, nil
