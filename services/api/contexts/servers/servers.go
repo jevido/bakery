@@ -4,6 +4,9 @@ package servers
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -11,7 +14,6 @@ import (
 
 	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/app/podman"
-	"github.com/jevido/bakery/services/api/contexts/deployments"
 	"github.com/jevido/bakery/services/api/contexts/identity"
 	"github.com/jevido/bakery/services/api/contexts/servers/app"
 	servershttp "github.com/jevido/bakery/services/api/contexts/servers/http"
@@ -21,6 +23,7 @@ import (
 var (
 	once    sync.Once
 	service *app.Service
+	pool    *infra.Pool
 )
 
 func svc() *app.Service {
@@ -30,10 +33,93 @@ func svc() *app.Service {
 			sock = podman.DefaultSocket()
 		}
 		service = app.NewService(infra.Store{}, infra.NewServerKey, infra.Connector{Local: podman.Default(), LocalSocket: sock})
-		service.Retention = deployments.PruneImages
+		pool = &infra.Pool{Local: podman.Default()}
+		service.Forget = pool.Forget
 		service.Log = facades.Log().Errorf
 	})
 	return service
+}
+
+var (
+	// ErrNotFound is a Server that does not exist.
+	ErrNotFound = app.ErrNotFound
+	// ErrHostKeyChanged is a Remote server presenting another host key than
+	// the pinned one; nothing is sent to it until the Owner forgets it.
+	ErrHostKeyChanged = errors.New("the server's host key changed")
+	// ErrNotValidated is a Remote server that was never validated, so its
+	// host key is not known yet.
+	ErrNotValidated = app.ErrNotValidated
+)
+
+// Connection reaches one Server for another context. It is pooled: do not
+// close anything it hands out, except the net.Conns DialUnix returns.
+type Connection struct {
+	// ServerID is 0 for the Local server.
+	ServerID uint64
+	Local    bool
+	Name     string
+	// Host is the address the Server is reached on (localhost for the
+	// Local server), where its Domains' DNS must point.
+	Host     string
+	Podman   *podman.Client
+	DialUnix func(ctx context.Context, path string) (net.Conn, error)
+}
+
+// Connect returns a Server connection; serverID 0 is the Local server. A
+// Remote server must have been validated (its host key pinned), and one
+// that presents another host key is refused with ErrHostKeyChanged.
+func Connect(ctx context.Context, serverID uint64) (Connection, error) {
+	srv, err := svc().Reach(ctx, serverID)
+	if err != nil {
+		if errors.Is(err, app.ErrNotValidated) {
+			return Connection{}, fmt.Errorf("server %s: %w", srv.Name, err)
+		}
+		return Connection{}, err
+	}
+	r, err := pool.Reach(ctx, srv)
+	var changed *app.HostKeyChangedError
+	if errors.As(err, &changed) {
+		return Connection{}, fmt.Errorf("server %s: %w: %s", srv.Name, ErrHostKeyChanged, changed.Detail)
+	}
+	if err != nil {
+		return Connection{}, fmt.Errorf("server %s (%s:%d) is not reachable: %w", srv.Name, srv.Host, srv.Port, err)
+	}
+	return Connection{
+		ServerID: srv.RefID(), Local: srv.RefID() == 0, Name: srv.Name, Host: srv.Host,
+		Podman: r.Podman, DialUnix: r.DialUnix,
+	}, nil
+}
+
+// LocalID is the Local server's id, for showing it; every other context
+// names the Local server 0.
+func LocalID(ctx context.Context) (uint64, error) {
+	srv, err := svc().EnsureLocal(ctx)
+	return srv.ID, err
+}
+
+// Exists reports whether the Server exists; 0 (the Local server) always
+// does.
+func Exists(ctx context.Context, id uint64) (bool, error) {
+	if id == 0 {
+		return true, nil
+	}
+	_, err := svc().Get(ctx, id)
+	if errors.Is(err, app.ErrNotFound) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// OnServerDeleting registers a check asked before a Server is deleted: while
+// it reports true the Server stays. The Local server is never deleted.
+func OnServerDeleting(inUse func(ctx context.Context, serverID uint64) (bool, error)) {
+	svc().OnDeleting(inUse)
+}
+
+// OnCleanup registers the Image retention run during every Cleanup, with
+// the Server's id (0 for the Local server); it returns the bytes freed.
+func OnCleanup(retention func(ctx context.Context, serverID uint64) (int64, error)) {
+	svc().Retention = retention
 }
 
 // Routes registers the servers API, all behind identity.Auth.

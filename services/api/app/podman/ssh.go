@@ -177,12 +177,34 @@ func (c *SSHConn) Podman() *Client {
 		if err != nil {
 			return nil, err
 		}
-		conn, err := c.client.DialContext(ctx, "unix", sock)
-		if err != nil {
-			return nil, fmt.Errorf("ssh: %s: %w", sock, err)
-		}
-		return conn, nil
+		return c.DialUnix(ctx, sock)
 	})
+}
+
+// DialUnix opens a direct-streamlocal channel to the unix socket at path on
+// the Server.
+func (c *SSHConn) DialUnix(ctx context.Context, path string) (net.Conn, error) {
+	conn, err := c.client.DialContext(ctx, "unix", path)
+	if err != nil {
+		return nil, fmt.Errorf("ssh: %s: %w", path, err)
+	}
+	return conn, nil
+}
+
+// Alive reports whether the connection still answers a keepalive within
+// timeout.
+func (c *SSHConn) Alive(timeout time.Duration) bool {
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := c.client.SendRequest("keepalive@openssh.com", true, nil)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		return err == nil
+	case <-time.After(timeout):
+		return false
+	}
 }
 
 // Close ends the SSH connection and every channel on it.

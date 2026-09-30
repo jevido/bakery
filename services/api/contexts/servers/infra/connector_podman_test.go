@@ -4,6 +4,7 @@ package infra
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
 	"strings"
@@ -136,5 +137,68 @@ func TestValidateLocal(t *testing.T) {
 	}
 	if m.Server.MemTotal <= 0 || m.Server.DiskTotal <= 0 || m.Server.CPUs <= 0 || m.Server.CPUPercent <= 0 {
 		t.Fatalf("local metrics %+v", m.Server)
+	}
+}
+
+func TestPoolStandIn(t *testing.T) {
+	if c, err := net.DialTimeout("tcp", "127.0.0.1:4972", time.Second); err != nil {
+		t.Skip("remote stand-in not running (task remote:up)")
+	} else {
+		c.Close()
+	}
+	local := podman.New(podman.DefaultSocket())
+	ctx := context.Background()
+	s := app.NewService(&oneServer{servers: map[uint64]domain.Server{}}, NewServerKey, Connector{Local: local, LocalSocket: podman.DefaultSocket()})
+	srv, err := s.Add(ctx, domain.Input{Name: "stand-in", Host: "127.0.0.1", Port: 4972, User: "podman"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	standInExec(t, local, "echo '"+srv.Key.Public+"' >> /home/podman/.ssh/authorized_keys")
+	if srv, err = s.Validate(ctx, srv.ID); err != nil || srv.HostKey == "" {
+		t.Fatalf("%+v %v", srv.Validation, err)
+	}
+
+	pool := &Pool{Local: local}
+	first, err := pool.Reach(ctx, srv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Podman.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+	again, err := pool.Reach(ctx, srv)
+	if err != nil || again.Podman != first.Podman {
+		t.Fatalf("not reused: %v", err)
+	}
+
+	// A connection that died underneath is replaced.
+	pool.conns[srv.ID].ssh.Close()
+	fresh, err := pool.Reach(ctx, srv)
+	if err != nil || fresh.Podman == first.Podman {
+		t.Fatalf("not redialled: %v", err)
+	}
+	if err := fresh.Podman.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+	sock, err := pool.conns[srv.ID].ssh.Socket(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := fresh.DialUnix(ctx, sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+
+	pool.Forget(srv.ID)
+	if _, ok := pool.conns[srv.ID]; ok {
+		t.Fatal("still pooled after Forget")
+	}
+
+	// A pinned key the Server does not present is refused.
+	srv.HostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+	var changed *app.HostKeyChangedError
+	if _, err := pool.Reach(ctx, srv); !errors.As(err, &changed) {
+		t.Fatalf("mismatch: %v", err)
 	}
 }

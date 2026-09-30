@@ -123,3 +123,51 @@ func TestAddUnique(t *testing.T) {
 		t.Fatalf("get deleted: %v", err)
 	}
 }
+
+func TestReachAndDeleteInUse(t *testing.T) {
+	ctx := context.Background()
+	s := NewService(newMemStore(), fakeKey, fakeConnector{conn: healthy()})
+	var forgotten []uint64
+	s.Forget = func(id uint64) { forgotten = append(forgotten, id) }
+
+	local, err := s.Reach(ctx, 0)
+	if err != nil || local.Kind != domain.Local {
+		t.Fatalf("%+v %v", local, err)
+	}
+	remote, _ := s.Add(ctx, domain.Input{Name: "web", Host: "10.0.0.1", User: "bakery"})
+	if _, err := s.Reach(ctx, remote.ID); !errors.Is(err, ErrNotValidated) {
+		t.Fatalf("unvalidated: %v", err)
+	}
+	if _, err := s.Reach(ctx, 999); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown: %v", err)
+	}
+	if _, err := s.Validate(ctx, remote.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Reach(ctx, remote.ID); err != nil || got.ID != remote.ID {
+		t.Fatalf("%+v %v", got, err)
+	}
+
+	used := true
+	var asked []uint64
+	s.OnDeleting(func(_ context.Context, id uint64) (bool, error) {
+		asked = append(asked, id)
+		return used, nil
+	})
+	if err := s.Delete(ctx, remote.ID); !errors.Is(err, ErrInUse) {
+		t.Fatalf("in use: %v", err)
+	}
+	if _, err := s.ForgetHostKey(ctx, remote.ID); err != nil {
+		t.Fatal(err)
+	}
+	used = false
+	if err := s.Delete(ctx, remote.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(asked) != 2 || asked[0] != remote.ID {
+		t.Fatalf("asked %v", asked)
+	}
+	if len(forgotten) != 2 || forgotten[0] != remote.ID || forgotten[1] != remote.ID {
+		t.Fatalf("forgotten %v", forgotten)
+	}
+}

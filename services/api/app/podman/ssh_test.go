@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -217,5 +218,47 @@ func TestSSHWrongClientKey(t *testing.T) {
 	_, other := newKey(t)
 	if _, err := DialSSH(context.Background(), target(t, s, other, "", "")); err == nil {
 		t.Fatal("dial with an unknown key succeeded")
+	}
+}
+
+func TestSSHDialUnixAndAlive(t *testing.T) {
+	signer, key := newKey(t)
+	s := startSSHStandIn(t, signer.PublicKey())
+	sock := filepath.Join(t.TempDir(), "echo.sock")
+	l, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	go func() {
+		c, err := l.Accept()
+		if err != nil {
+			return
+		}
+		io.WriteString(c, "hello")
+		c.Close()
+	}()
+	conn, err := DialSSH(context.Background(), target(t, s, key, "", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !conn.Alive(time.Second) {
+		t.Fatal("a fresh connection is not alive")
+	}
+	c, err := conn.DialUnix(context.Background(), sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(c)
+	c.Close()
+	if string(got) != "hello" {
+		t.Fatalf("read %q", got)
+	}
+	if _, err := conn.DialUnix(context.Background(), filepath.Join(t.TempDir(), "none.sock")); err == nil {
+		t.Fatal("dialled a socket that does not exist")
+	}
+	conn.Close()
+	if conn.Alive(time.Second) {
+		t.Fatal("a closed connection is alive")
 	}
 }

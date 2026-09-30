@@ -12,9 +12,9 @@ func TestCleanUp(t *testing.T) {
 	ctx := context.Background()
 	conn := healthy()
 	s := NewService(newMemStore(), fakeKey, fakeConnector{conn: conn})
-	retained := 0
-	s.Retention = func(context.Context) (int64, error) {
-		retained++
+	var retainedOn []uint64
+	s.Retention = func(_ context.Context, serverID uint64) (int64, error) {
+		retainedOn = append(retainedOn, serverID)
 		return 90, errors.New("one image failed")
 	}
 	local, _ := s.EnsureLocal(ctx)
@@ -27,12 +27,13 @@ func TestCleanUp(t *testing.T) {
 	if got, _ := s.Get(ctx, local.ID); got.LastCleanup != c {
 		t.Fatalf("not recorded: %+v", got.LastCleanup)
 	}
-	// Remote servers have no Deployments yet: only the dangling prune.
-	if c, err := s.CleanUp(ctx, remote.ID); err != nil || c.Reclaimed != 10 {
+	// Retention runs on Remote servers too, named by their id; the Local
+	// server is 0.
+	if c, err := s.CleanUp(ctx, remote.ID); err != nil || c.Reclaimed != 100 {
 		t.Fatalf("%+v %v", c, err)
 	}
-	if retained != 1 || conn.pruned != 2 {
-		t.Fatalf("retained %d pruned %d", retained, conn.pruned)
+	if len(retainedOn) != 2 || retainedOn[0] != 0 || retainedOn[1] != remote.ID || conn.pruned != 2 {
+		t.Fatalf("retained on %v pruned %d", retainedOn, conn.pruned)
 	}
 
 	// CleanUpAll skips Servers that are not Reachable.

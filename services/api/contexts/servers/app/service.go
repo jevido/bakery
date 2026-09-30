@@ -9,8 +9,19 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/servers/domain"
 )
 
-// ErrNotFound is returned for a Server that does not exist.
-var ErrNotFound = errors.New("server not found")
+var (
+	// ErrNotFound is returned for a Server that does not exist.
+	ErrNotFound = errors.New("server not found")
+	// ErrInUse is a Delete of a Server something still runs on.
+	ErrInUse = errors.New("the server still runs applications; delete them first")
+	// ErrNotValidated is a connection to a Remote server whose Host key was
+	// never pinned: without a Validation there is no identity to check.
+	ErrNotValidated = errors.New("the server has not been validated yet")
+)
+
+// InUse reports whether something still runs on the Server (named as
+// RefID names it).
+type InUse func(ctx context.Context, serverID uint64) (bool, error)
 
 // Store keeps Servers.
 type Store interface {
@@ -36,6 +47,35 @@ type Service struct {
 	Retention ImageRetention
 	// Log reports failures that do not fail the use case.
 	Log func(format string, args ...any)
+	// Forget drops what is cached about reaching the Server (its pooled
+	// connection) after it changed or went; nil does nothing.
+	Forget func(id uint64)
+	inUse  []InUse
+}
+
+// OnDeleting registers a check asked before a Server is deleted.
+func (s *Service) OnDeleting(check InUse) { s.inUse = append(s.inUse, check) }
+
+func (s *Service) forget(id uint64) {
+	if s.Forget != nil {
+		s.Forget(id)
+	}
+}
+
+// Reach returns the Server another context wants to run things on: 0 is the
+// Local server. A Remote server must have a pinned Host key.
+func (s *Service) Reach(ctx context.Context, id uint64) (domain.Server, error) {
+	if id == 0 {
+		return s.EnsureLocal(ctx)
+	}
+	srv, err := s.Get(ctx, id)
+	if err != nil {
+		return srv, err
+	}
+	if srv.Kind == domain.Remote && srv.HostKey == "" {
+		return srv, ErrNotValidated
+	}
+	return srv, nil
 }
 
 func (s *Service) log(format string, args ...any) {
@@ -119,7 +159,11 @@ func (s *Service) Edit(ctx context.Context, id uint64, in domain.Input) (domain.
 	if err := s.checkUnique(ctx, srv); err != nil {
 		return srv, err
 	}
-	return srv, s.store.Save(ctx, srv)
+	if err := s.store.Save(ctx, srv); err != nil {
+		return srv, err
+	}
+	s.forget(id)
+	return srv, nil
 }
 
 // Delete removes a Remote server.
@@ -131,7 +175,20 @@ func (s *Service) Delete(ctx context.Context, id uint64) error {
 	if err := srv.CanDelete(); err != nil {
 		return err
 	}
-	return s.store.Delete(ctx, id)
+	for _, inUse := range s.inUse {
+		used, err := inUse(ctx, srv.RefID())
+		if err != nil {
+			return err
+		}
+		if used {
+			return ErrInUse
+		}
+	}
+	if err := s.store.Delete(ctx, id); err != nil {
+		return err
+	}
+	s.forget(id)
+	return nil
 }
 
 // ForgetHostKey drops a Remote server's pinned Host key.
@@ -143,5 +200,9 @@ func (s *Service) ForgetHostKey(ctx context.Context, id uint64) (domain.Server, 
 	if err := srv.ForgetHostKey(); err != nil {
 		return srv, err
 	}
-	return srv, s.store.Save(ctx, srv)
+	if err := s.store.Save(ctx, srv); err != nil {
+		return srv, err
+	}
+	s.forget(id)
+	return srv, nil
 }

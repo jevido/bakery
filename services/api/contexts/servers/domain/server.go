@@ -197,6 +197,15 @@ func (s *Server) Edit(in Input) error {
 	return nil
 }
 
+// RefID is how other contexts name the Server: 0 for the Local server, so
+// "local" has one representation outside this context, else its id.
+func (s Server) RefID() uint64 {
+	if s.Kind == Local {
+		return 0
+	}
+	return s.ID
+}
+
 // CanDelete refuses the Local server.
 func (s Server) CanDelete() error {
 	if s.Kind == Local {

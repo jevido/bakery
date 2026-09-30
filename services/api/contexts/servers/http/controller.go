@@ -124,7 +124,7 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 		return respond.Invalid(ctx, fe.Field, fe.Message)
 	case errors.Is(err, app.ErrNotFound):
 		return notFound(ctx)
-	case errors.Is(err, domain.ErrLocalServer):
+	case errors.Is(err, domain.ErrLocalServer), errors.Is(err, app.ErrInUse):
 		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
 	case errors.As(err, &unreachable):
 		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())

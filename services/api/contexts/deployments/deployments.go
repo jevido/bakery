@@ -22,6 +22,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/identity"
 	"github.com/jevido/bakery/services/api/contexts/projects"
 	"github.com/jevido/bakery/services/api/contexts/routing"
+	"github.com/jevido/bakery/services/api/contexts/servers"
 )
 
 var (
@@ -62,6 +63,16 @@ func svc() *app.Service {
 			Settle:             2 * time.Second,
 			InsecureRegistries: splitList(facades.Config().GetString("bakery.insecure_registries")),
 		}
+		// Image retention during Cleanup: the Images of all but the newest
+		// five finished Deployments go, unless a Container still uses one.
+		// Only the Local server has Deployments until they run on their
+		// Target server. It works once StartWorker ran.
+		servers.OnCleanup(func(ctx context.Context, serverID uint64) (int64, error) {
+			if serverID != 0 {
+				return 0, nil
+			}
+			return service.PruneImages(ctx)
+		})
 		projects.OnApplicationDeleted(func(ctx context.Context, applicationID uint64) {
 			if err := runtime.RemoveAll(ctx, applicationID); err != nil {
 				facades.Log().Errorf("deployments: removing containers of application %d: %v", applicationID, err)
@@ -77,14 +88,6 @@ func svc() *app.Service {
 		})
 	})
 	return service
-}
-
-// PruneImages applies Image retention to every Application and returns the
-// bytes freed: the Images of all but the newest five finished Deployments
-// go, unless a Container still uses one. The servers context calls it
-// during Cleanup of the Local server; it works once StartWorker ran.
-func PruneImages(ctx context.Context) (int64, error) {
-	return svc().PruneImages(ctx)
 }
 
 func isApplicationNotFound(err error) bool { return errors.Is(err, projects.ErrNotFound) }
