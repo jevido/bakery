@@ -136,6 +136,12 @@ func ContainerName(applicationID, deploymentID uint64) string {
 	return "bakery-app-" + strconv.FormatUint(applicationID, 10) + "-" + strconv.FormatUint(deploymentID, 10)
 }
 
+// VolumeName names the Volume behind an Application's Persistent storage.
+// It holds no Deployment id: every Deployment mounts the same Volume.
+func VolumeName(applicationID uint64, storage string) string {
+	return "bakery-app-" + strconv.FormatUint(applicationID, 10) + "-" + storage
+}
+
 // ImageTag names the Image a Deployment builds.
 func ImageTag(slug string, deploymentID uint64) string {
 	return "localhost/bakery/" + slug + ":" + strconv.FormatUint(deploymentID, 10)

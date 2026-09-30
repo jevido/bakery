@@ -54,17 +54,28 @@ func RegistryHost(ref string) string {
 }
 
 func (r Runtime) Start(ctx context.Context, spec app.ContainerSpec) error {
+	application := strconv.FormatUint(spec.ApplicationID, 10)
+	volumes := make([]podman.NamedVolume, len(spec.Mounts))
+	for i, m := range spec.Mounts {
+		// Created here, with Bakery's labels, rather than implicitly by
+		// Podman, so RemoveVolumes finds exactly the volumes Bakery made.
+		if err := r.Podman.CreateVolume(ctx, m.Volume, map[string]string{"bakery.managed": "true", "bakery.application": application}); err != nil {
+			return fmt.Errorf("creating volume %s: %w", m.Volume, err)
+		}
+		volumes[i] = podman.NamedVolume{Name: m.Volume, Dest: m.Path}
+	}
 	_, err := r.Podman.CreateContainer(ctx, podman.ContainerSpec{
 		Name:  spec.Name,
 		Image: spec.Image,
 		Env:   spec.Env,
 		Labels: map[string]string{
 			"bakery.managed":     "true",
-			"bakery.application": strconv.FormatUint(spec.ApplicationID, 10),
+			"bakery.application": application,
 			"bakery.deployment":  strconv.FormatUint(spec.DeploymentID, 10),
 		},
 		Networks:      podman.OnNetwork(r.Network),
 		RestartPolicy: "always",
+		Volumes:       volumes,
 	})
 	if err != nil {
 		return err
@@ -211,6 +222,24 @@ func (r Runtime) RemoveOthers(ctx context.Context, applicationID uint64, keep st
 		removed = append(removed, name)
 	}
 	return removed, nil
+}
+
+// RemoveVolumes removes every Volume of the Application; call it after its
+// Containers are gone.
+func (r Runtime) RemoveVolumes(ctx context.Context, applicationID uint64) error {
+	list, err := r.Podman.ListVolumes(ctx, map[string]string{
+		"bakery.managed":     "true",
+		"bakery.application": strconv.FormatUint(applicationID, 10),
+	})
+	if err != nil {
+		return err
+	}
+	for _, v := range list {
+		if err := r.Podman.RemoveVolume(ctx, v.Name); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r Runtime) RemoveAll(ctx context.Context, applicationID uint64) error {

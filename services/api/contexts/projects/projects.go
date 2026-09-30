@@ -80,6 +80,13 @@ type ApplicationSnapshot struct {
 	// an https Source.
 	DeployKey   string
 	HealthCheck HealthCheck
+	Storages    []Storage
+}
+
+// Storage is a Persistent storage: the volume Name, mounted at MountPath.
+type Storage struct {
+	Name      string
+	MountPath string
 }
 
 // HealthCheck is the Application's Health check; times in seconds.
@@ -112,12 +119,16 @@ func ApplicationForDeploy(ctx context.Context, id uint64) (ApplicationSnapshot, 
 	if err != nil {
 		return ApplicationSnapshot{}, err
 	}
+	storages := make([]Storage, len(a.Storages))
+	for i, s := range a.Storages {
+		storages[i] = Storage(s)
+	}
 	return ApplicationSnapshot{
 		ID: a.ID, Slug: a.Slug, BuildPack: string(a.BuildPack), ImageReference: a.ImageReference, PublishDirectory: a.PublishDirectory,
 		RegistryUsername: a.RegistryCredentials.Username, RegistryPassword: a.RegistryCredentials.Password,
 		GitURL: a.GitURL, GitBranch: a.GitBranch,
 		DockerfilePath: a.DockerfilePath, Port: a.Port, Domains: a.Domains, BuildEnv: build, RuntimeEnv: runtime, DeployKey: a.DeployKey.Private,
-		HealthCheck: HealthCheck(a.HealthCheck),
+		HealthCheck: HealthCheck(a.HealthCheck), Storages: storages,
 	}, nil
 }
 

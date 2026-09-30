@@ -269,3 +269,31 @@ func TestRegistryCredentials(t *testing.T) {
 		t.Errorf("git pack keeps credentials: %+v, %v", in.RegistryCredentials, err)
 	}
 }
+
+func TestStorages(t *testing.T) {
+	base := ApplicationInput{Name: "web", GitURL: "https://example.com/r.git", Port: 80}
+	ok := []Storage{{" data ", "/data"}, {"cache", "/var/cache/app"}}
+	in := base
+	in.Storages = &ok
+	out, err := in.Normalize()
+	if err != nil || (*out.Storages)[0].Name != "data" {
+		t.Fatalf("valid: %v %+v", err, out.Storages)
+	}
+	for i, bad := range [][]Storage{
+		{{"Data", "/data"}},
+		{{"data", "data"}},
+		{{"data", "/data/"}},
+		{{"data", "/data/../etc"}},
+		{{"data", "/"}},
+		{{"data", "/a:b"}},
+		{{"data", "/a"}, {"data", "/b"}},
+		{{"a", "/data"}, {"b", "/data"}},
+		{{"a", "/1"}, {"b", "/2"}, {"c", "/3"}, {"d", "/4"}, {"e", "/5"}, {"f", "/6"}, {"g", "/7"}, {"h", "/8"}, {"i", "/9"}, {"j", "/10"}, {"k", "/11"}},
+	} {
+		in := base
+		in.Storages = &bad
+		if _, err := in.Normalize(); field(err) != "storages" {
+			t.Errorf("case %d: %v", i, err)
+		}
+	}
+}

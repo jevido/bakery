@@ -289,10 +289,15 @@ func (w *Worker) goLive(ctx context.Context, d *domain.Deployment, app Applicati
 		return err
 	}
 	d.Container = domain.ContainerName(app.ID, d.ID)
+	mounts := make([]Mount, len(app.Storages))
+	for i, s := range app.Storages {
+		mounts[i] = Mount{Volume: domain.VolumeName(app.ID, s.Name), Path: s.MountPath}
+		info("Mounting persistent storage %s at %s", s.Name, s.MountPath)
+	}
 	info("Starting container %s", d.Container)
 	if err := w.runtime.Start(ctx, ContainerSpec{
 		Name: d.Container, Image: d.Image, ApplicationID: app.ID, DeploymentID: d.ID, Env: app.RuntimeEnv,
-		Settle: !app.HealthCheck.Enabled,
+		Mounts: mounts, Settle: !app.HealthCheck.Enabled,
 	}); err != nil {
 		return fmt.Errorf("container did not start: %w", err)
 	}

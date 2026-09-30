@@ -688,3 +688,19 @@ func TestNixpacksBuildPack(t *testing.T) {
 		}
 	}
 }
+
+func TestDeployMountsPersistentStorage(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	s.app = func(a *Application) { a.Storages = []Storage{{Name: "data", MountPath: "/data"}} }
+	if _, err := s.service.Deploy(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	s.worker.RunOnce(ctx)
+	if m := s.runtime.specs[0].Mounts; len(m) != 1 || m[0] != (Mount{Volume: "bakery-app-1-data", Path: "/data"}) {
+		t.Fatalf("mounts %+v", m)
+	}
+	if !strings.Contains(s.logs.text(), "Mounting persistent storage data at /data") {
+		t.Fatalf("log:\n%s", s.logs.text())
+	}
+}

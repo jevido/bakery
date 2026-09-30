@@ -37,12 +37,16 @@ func applications(ctx context.Context, id uint64) (app.Application, error) {
 	if err != nil {
 		return app.Application{}, err
 	}
+	storages := make([]app.Storage, len(s.Storages))
+	for i, st := range s.Storages {
+		storages[i] = app.Storage(st)
+	}
 	return app.Application{
 		ID: s.ID, Slug: s.Slug, BuildPack: s.BuildPack, ImageReference: s.ImageReference, PublishDirectory: s.PublishDirectory,
 		RegistryUsername: s.RegistryUsername, RegistryPassword: s.RegistryPassword,
 		GitURL: s.GitURL, GitBranch: s.GitBranch,
 		DockerfilePath: s.DockerfilePath, Port: s.Port, Domains: s.Domains, BuildEnv: s.BuildEnv, RuntimeEnv: s.RuntimeEnv, DeployKey: s.DeployKey,
-		HealthCheck: app.HealthCheck(s.HealthCheck),
+		HealthCheck: app.HealthCheck(s.HealthCheck), Storages: storages,
 	}, nil
 }
 
@@ -60,6 +64,8 @@ func svc() *app.Service {
 		projects.OnApplicationDeleted(func(ctx context.Context, applicationID uint64) {
 			if err := runtime.RemoveAll(ctx, applicationID); err != nil {
 				facades.Log().Errorf("deployments: removing containers of application %d: %v", applicationID, err)
+			} else if err := runtime.RemoveVolumes(ctx, applicationID); err != nil {
+				facades.Log().Errorf("deployments: removing volumes of application %d: %v", applicationID, err)
 			}
 			if err := (infra.Store{}).DeleteForApplication(ctx, applicationID); err != nil {
 				facades.Log().Errorf("deployments: deleting deployments of application %d: %v", applicationID, err)

@@ -140,3 +140,46 @@ func TestNixpacksBuild(t *testing.T) {
 		t.Fatalf("build: %v\n%s", err, strings.Join(tail[max(0, len(tail)-20):], "\n"))
 	}
 }
+
+// Two Containers of one Application share a Persistent storage, and
+// RemoveVolumes removes only that Application's Volumes.
+func TestPersistentStorage(t *testing.T) {
+	c := podman.New(podman.DefaultSocket())
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	if err := c.Ping(ctx); err != nil {
+		t.Skipf("no podman: %v", err)
+	}
+	if err := c.EnsureNetwork(ctx, "bakery-test"); err != nil {
+		t.Fatal(err)
+	}
+	r := Runtime{Podman: c, Network: "bakery-test", StartTimeout: 20 * time.Second}
+	buildTestImage(t, ctx, c, "localhost/bakery-test/storage:1", false)
+	const appID = 990002
+	defer r.RemoveVolumes(context.Background(), appID)
+	defer r.RemoveAll(context.Background(), appID)
+
+	mounts := []app.Mount{{Volume: "bakery-app-990002-data", Path: "/data"}}
+	if err := r.Start(ctx, app.ContainerSpec{Name: "bakery-test-storage-1", Image: "localhost/bakery-test/storage:1", ApplicationID: appID, DeploymentID: 1, Mounts: mounts}); err != nil {
+		t.Fatal(err)
+	}
+	if code, out, err := c.Exec(ctx, "bakery-test-storage-1", []string{"sh", "-c", "echo kept > /data/file"}); err != nil || code != 0 {
+		t.Fatalf("write: %d %s %v", code, out, err)
+	}
+	if err := r.Start(ctx, app.ContainerSpec{Name: "bakery-test-storage-2", Image: "localhost/bakery-test/storage:1", ApplicationID: appID, DeploymentID: 2, Mounts: mounts}); err != nil {
+		t.Fatal(err)
+	}
+	if code, out, err := c.Exec(ctx, "bakery-test-storage-2", []string{"cat", "/data/file"}); err != nil || code != 0 || strings.TrimSpace(out) != "kept" {
+		t.Fatalf("read in the second container: %d %q %v", code, out, err)
+	}
+
+	if err := r.RemoveAll(ctx, appID); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RemoveVolumes(ctx, appID); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := c.ListVolumes(ctx, map[string]string{"bakery.application": "990002"}); len(list) != 0 {
+		t.Fatalf("volumes left: %+v", list)
+	}
+}

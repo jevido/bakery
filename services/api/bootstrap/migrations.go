@@ -28,5 +28,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000013AddRouteDomains{},
 		&migrations.M20260930000014CreateRouteSettingsTable{},
 		&migrations.M20260930000015AddRouteHeadersAndBasicAuth{},
+		&migrations.M20260930000016CreateApplicationStoragesTable{},
 	}
 }

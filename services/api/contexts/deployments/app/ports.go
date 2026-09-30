@@ -85,6 +85,14 @@ type Application struct {
 	// https.
 	DeployKey   string
 	HealthCheck HealthCheck
+	// Storages are the Persistent storages every Container mounts.
+	Storages []Storage
+}
+
+// Storage is a Persistent storage of the Application.
+type Storage struct {
+	Name      string
+	MountPath string
 }
 
 // Build packs, as projects names them.
@@ -198,9 +206,17 @@ type ContainerSpec struct {
 	ApplicationID uint64
 	DeploymentID  uint64
 	Env           map[string]string
+	// Mounts are the Volumes to create (if missing) and mount.
+	Mounts []Mount
 	// Settle makes Start wait until the Container has stayed running for a
 	// moment; used when there is no Health check to wait for instead.
 	Settle bool
+}
+
+// Mount is a Volume mounted at a path in the Container.
+type Mount struct {
+	Volume string
+	Path   string
 }
 
 // Router is routing's SwitchRoute.

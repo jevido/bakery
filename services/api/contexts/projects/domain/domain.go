@@ -100,6 +100,50 @@ type Application struct {
 	// empty unless the Application was read for a Deployment.
 	RegistryCredentials RegistryCredentials
 	HealthCheck         HealthCheck
+	// Storages are the Application's Persistent storages.
+	Storages []Storage
+}
+
+// Storage is a Persistent storage: the volume of this name is mounted at
+// MountPath in every Container of the Application.
+type Storage struct {
+	Name      string
+	MountPath string
+}
+
+// MaxStorages is how many Persistent storages one Application may have.
+const MaxStorages = 10
+
+var storageName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+
+// checkStorages validates a whole set: names and mount paths valid and
+// each used once.
+func checkStorages(storages []Storage) ([]Storage, error) {
+	if len(storages) > MaxStorages {
+		return nil, invalid("storages", "an application has at most %d persistent storages", MaxStorages)
+	}
+	out := make([]Storage, len(storages))
+	names, paths := map[string]bool{}, map[string]bool{}
+	for i, s := range storages {
+		s.Name, s.MountPath = strings.TrimSpace(s.Name), strings.TrimSpace(s.MountPath)
+		switch {
+		case !storageName.MatchString(s.Name):
+			return nil, invalid("storages", "%q is not a valid storage name (lowercase letters, digits and -, at most 40)", s.Name)
+		case names[s.Name]:
+			return nil, invalid("storages", "storage %s is listed twice", s.Name)
+		case !strings.HasPrefix(s.MountPath, "/") || path.Clean(s.MountPath) != s.MountPath:
+			return nil, invalid("storages", "mount path of %s must be an absolute, clean path like /data", s.Name)
+		case s.MountPath == "/":
+			return nil, invalid("storages", "mount path of %s cannot be /", s.Name)
+		case strings.ContainsAny(s.MountPath, ":,\n\r\x00") || len(s.MountPath) > 200:
+			return nil, invalid("storages", "mount path of %s must be at most 200 characters, without : or ,", s.Name)
+		case paths[s.MountPath]:
+			return nil, invalid("storages", "%s is mounted twice", s.MountPath)
+		}
+		names[s.Name], paths[s.MountPath] = true, true
+		out[i] = s
+	}
+	return out, nil
 }
 
 // HealthCheck is how a new Container is probed before it takes traffic:
@@ -182,6 +226,8 @@ type ApplicationInput struct {
 	// HealthCheck nil keeps the Application's current one (the default
 	// for a new Application).
 	HealthCheck *HealthCheck
+	// Storages nil keeps the current ones (none for a new Application).
+	Storages *[]Storage
 	// RegistryCredentials nil keeps the current ones; an empty Username
 	// removes them; a Username with an empty Password keeps the stored
 	// password (the service fills it in before Normalize).
@@ -287,6 +333,13 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 		return in, err
 	}
 	in.Domains = domains
+	if in.Storages != nil {
+		storages, err := checkStorages(*in.Storages)
+		if err != nil {
+			return in, err
+		}
+		in.Storages = &storages
+	}
 	if in.HealthCheck != nil {
 		h, err := in.HealthCheck.Normalize()
 		if err != nil {

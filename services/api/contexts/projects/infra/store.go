@@ -92,6 +92,77 @@ func (s Store) domainsOf(ctx context.Context, ids ...uint64) (map[uint64][]strin
 	return out, nil
 }
 
+type storageRecord struct {
+	ID            uint64 `gorm:"primaryKey"`
+	ApplicationID uint64
+	Name          string
+	MountPath     string
+	Position      int
+	orm.Timestamps
+}
+
+func (storageRecord) TableName() string { return "application_storages" }
+
+// storagesOf returns the Persistent storages of each of the Applications.
+func (s Store) storagesOf(ctx context.Context, ids ...uint64) (map[uint64][]domain.Storage, error) {
+	out := make(map[uint64][]domain.Storage, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	in := make([]any, len(ids))
+	for i, id := range ids {
+		in[i] = id
+	}
+	var recs []storageRecord
+	if err := s.query(ctx).WhereIn("application_id", in).OrderBy("application_id").OrderBy("position").Find(&recs); err != nil {
+		return nil, err
+	}
+	for _, r := range recs {
+		out[r.ApplicationID] = append(out[r.ApplicationID], domain.Storage{Name: r.Name, MountPath: r.MountPath})
+	}
+	return out, nil
+}
+
+// withLists fills in the Domains and Persistent storages of the
+// Applications.
+func (s Store) withLists(ctx context.Context, apps []domain.Application) error {
+	ids := make([]uint64, len(apps))
+	for i, a := range apps {
+		ids[i] = a.ID
+	}
+	domains, err := s.domainsOf(ctx, ids...)
+	if err != nil {
+		return err
+	}
+	storages, err := s.storagesOf(ctx, ids...)
+	if err != nil {
+		return err
+	}
+	for i := range apps {
+		apps[i].Domains = domains[apps[i].ID]
+		apps[i].Storages = storages[apps[i].ID]
+		if apps[i].Storages == nil {
+			apps[i].Storages = []domain.Storage{}
+		}
+	}
+	return nil
+}
+
+// writeStorages replaces the Application's Persistent storages inside tx.
+func writeStorages(tx contractsorm.Query, applicationID uint64, storages []domain.Storage) error {
+	if _, err := tx.Where("application_id", applicationID).Delete(&storageRecord{}); err != nil {
+		return err
+	}
+	if len(storages) == 0 {
+		return nil
+	}
+	recs := make([]storageRecord, len(storages))
+	for i, st := range storages {
+		recs[i] = storageRecord{ApplicationID: applicationID, Name: st.Name, MountPath: st.MountPath, Position: i}
+	}
+	return tx.Create(&recs)
+}
+
 // writeDomains replaces the Application's Domains inside tx.
 func writeDomains(tx contractsorm.Query, applicationID uint64, domains []string) error {
 	if _, err := tx.Where("application_id", applicationID).Delete(&domainRecord{}); err != nil {
@@ -220,21 +291,18 @@ func (s Store) Project(ctx context.Context, id uint64) (domain.Project, bool, er
 			return domain.Project{}, false, err
 		}
 	}
-	appIDs := make([]uint64, len(apps))
+	all := make([]domain.Application, len(apps))
 	for i, a := range apps {
-		appIDs[i] = a.ID
+		all[i] = a.toDomain(id)
 	}
-	domains, err := s.domainsOf(ctx, appIDs...)
-	if err != nil {
+	if err := s.withLists(ctx, all); err != nil {
 		return domain.Project{}, false, err
 	}
 	for _, e := range envs {
 		env := domain.Environment{ID: e.ID, ProjectID: id, Name: e.Name, Applications: []domain.Application{}}
-		for _, a := range apps {
+		for _, a := range all {
 			if a.EnvironmentID == e.ID {
-				app := a.toDomain(id)
-				app.Domains = domains[a.ID]
-				env.Applications = append(env.Applications, app)
+				env.Applications = append(env.Applications, a)
 			}
 		}
 		p.Environments = append(p.Environments, env)
@@ -315,13 +383,19 @@ func (s Store) CreateApplication(ctx context.Context, a domain.Application) (dom
 		if err := tx.Create(&rec); err != nil {
 			return err
 		}
-		return writeDomains(tx, rec.ID, a.Domains)
+		if err := writeDomains(tx, rec.ID, a.Domains); err != nil {
+			return err
+		}
+		return writeStorages(tx, rec.ID, a.Storages)
 	})
 	if err != nil {
 		return domain.Application{}, uniqueViolation(err)
 	}
 	created := rec.toDomain(a.ProjectID)
-	created.Domains = a.Domains
+	created.Domains, created.Storages = a.Domains, a.Storages
+	if created.Storages == nil {
+		created.Storages = []domain.Storage{}
+	}
 	return created, nil
 }
 
@@ -335,11 +409,11 @@ func (s Store) Application(ctx context.Context, id uint64) (domain.Application, 
 		return domain.Application{}, false, err
 	}
 	a := rec.toDomain(env.ProjectID)
-	domains, err := s.domainsOf(ctx, rec.ID)
-	if err != nil {
+	lists := []domain.Application{a}
+	if err := s.withLists(ctx, lists); err != nil {
 		return domain.Application{}, false, err
 	}
-	a.Domains = domains[rec.ID]
+	a = lists[0]
 	if rec.DeployKeyPrivateEncrypted != "" {
 		private, err := facades.Crypt().DecryptString(rec.DeployKeyPrivateEncrypted)
 		if err != nil {
@@ -383,7 +457,10 @@ func (s Store) UpdateApplication(ctx context.Context, a domain.Application) erro
 		if _, err := tx.Model(&applicationRecord{}).Where("id", a.ID).Update(columns); err != nil {
 			return err
 		}
-		return writeDomains(tx, a.ID, a.Domains)
+		if err := writeDomains(tx, a.ID, a.Domains); err != nil {
+			return err
+		}
+		return writeStorages(tx, a.ID, a.Storages)
 	})
 	return uniqueViolation(err)
 }
