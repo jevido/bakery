@@ -81,6 +81,19 @@ func (m *memStore) Active(context.Context, uint64) (domain.Deployment, bool, err
 	return domain.Deployment{}, false, nil
 }
 func (m *memStore) DeleteForApplication(context.Context, uint64) error { return nil }
+func (m *memStore) ApplicationIDs(context.Context) ([]uint64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	seen := map[uint64]bool{}
+	var ids []uint64
+	for _, d := range m.items {
+		if !seen[d.ApplicationID] {
+			seen[d.ApplicationID] = true
+			ids = append(ids, d.ApplicationID)
+		}
+	}
+	return ids, nil
+}
 
 type memLogs struct {
 	mu    sync.Mutex
@@ -155,6 +168,14 @@ func (r *fakeRuntime) Pull(_ context.Context, req PullRequest, out func(string))
 
 func (r *fakeRuntime) ImageExists(_ context.Context, image string) (bool, error) {
 	return !r.gone[image], nil
+}
+
+func (r *fakeRuntime) RemoveImage(_ context.Context, image string) (int64, error) {
+	if r.gone == nil {
+		r.gone = map[string]bool{}
+	}
+	r.gone[image] = true
+	return 100, nil
 }
 
 type probe struct {

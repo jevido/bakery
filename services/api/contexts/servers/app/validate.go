@@ -26,6 +26,7 @@ type Connection interface {
 	// HostKey is the SSH host key presented (empty for the Local server).
 	HostKey() string
 	Observer
+	Pruner
 	Close() error
 }
 

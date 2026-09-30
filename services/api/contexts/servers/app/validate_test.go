@@ -17,6 +17,7 @@ type fakeConnection struct {
 	port        int
 	hostKey     string
 	cpuErr      error
+	pruned      int
 	closed      bool
 }
 
@@ -34,6 +35,10 @@ func (f *fakeConnection) UnprivilegedPortStart(context.Context) (int, bool, erro
 	return f.port, true, nil
 }
 func (f *fakeConnection) HostKey() string { return f.hostKey }
+func (f *fakeConnection) PruneDanglingImages(context.Context) (int64, error) {
+	f.pruned++
+	return 10, nil
+}
 func (f *fakeConnection) HostInfo(context.Context) (HostInfo, error) {
 	return HostInfo{CPUs: 4, MemTotal: 8 << 30, MemFree: 2 << 30, GraphRoot: "/var/lib/containers"}, nil
 }

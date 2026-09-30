@@ -79,6 +79,14 @@ func svc() *app.Service {
 	return service
 }
 
+// PruneImages applies Image retention to every Application and returns the
+// bytes freed: the Images of all but the newest five finished Deployments
+// go, unless a Container still uses one. The servers context calls it
+// during Cleanup of the Local server; it works once StartWorker ran.
+func PruneImages(ctx context.Context) (int64, error) {
+	return svc().PruneImages(ctx)
+}
+
 func isApplicationNotFound(err error) bool { return errors.Is(err, projects.ErrNotFound) }
 
 // Routes registers the deployments API behind identity.Auth, and the

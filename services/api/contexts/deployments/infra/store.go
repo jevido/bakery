@@ -153,6 +153,12 @@ func (s Store) ByApplication(ctx context.Context, applicationID uint64, limit in
 	return out, nil
 }
 
+func (s Store) ApplicationIDs(ctx context.Context) ([]uint64, error) {
+	var ids []uint64
+	err := s.query(ctx).Model(&deploymentRecord{}).Distinct("application_id").Pluck("application_id", &ids)
+	return ids, err
+}
+
 func (s Store) Active(ctx context.Context, applicationID uint64) (domain.Deployment, bool, error) {
 	var recs []deploymentRecord
 	if err := s.query(ctx).Where("application_id", applicationID).Where("status IN " + activeList).Limit(1).Find(&recs); err != nil {

@@ -91,6 +91,13 @@ None yet.
   changing how they are read.
 - **Cleanup never touches anything without `bakery.managed=true`**, and which
   Deployment images may go is decided by deployments, which alone knows what
-  a Rollback may still need.
+  a Rollback may still need. Images are removed without force, so one a
+  Container still uses stays. Removing an Image also removes the build
+  layers only it used, which is how build cache goes. Layers of a build that
+  failed before tagging carry no label and are left alone: telling them apart
+  from another project's would mean guessing.
+- **Cleanup runs daily at 03:00 server time** on every Reachable Server, and
+  on demand. What it freed is an estimate: an Image's size counts layers it
+  may share with Images that stay.
 - **Linger is required**: without it the user's Containers stop when their
   last session ends, which on a server is right after Bakery disconnects.

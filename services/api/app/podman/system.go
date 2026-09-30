@@ -2,8 +2,12 @@ package podman
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"maps"
 	"net/http"
 	"net/url"
+	"sort"
 )
 
 // Info is what Bakery reads from the service's /info: the host's CPUs and
@@ -111,4 +115,62 @@ func (c *Client) Stats(ctx context.Context, ids []string) ([]ContainerStats, err
 		stats[i] = ContainerStats{ID: s.ContainerID, Name: s.Name, CPU: s.CPU, MemUsage: s.MemUsage, MemLimit: s.MemLimit}
 	}
 	return stats, nil
+}
+
+// RemoveUnusedImage removes (or, when it has other tags, untags) the image
+// ref, never forcing: an image a container uses is left alone and removed
+// is false. reclaimed is the image's size when it was actually deleted.
+func (c *Client) RemoveUnusedImage(ctx context.Context, ref string) (reclaimed int64, removed bool, err error) {
+	var img struct {
+		Size int64 `json:"Size"`
+	}
+	if err := c.call(ctx, http.MethodGet, "/images/"+url.PathEscape(ref)+"/json", nil, nil, &img); err != nil {
+		if IsNotFound(err) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	var out struct {
+		Deleted []string `json:"Deleted"`
+	}
+	err = c.call(ctx, http.MethodDelete, "/images/"+url.PathEscape(ref), nil, nil, &out)
+	var e *Error
+	switch {
+	case IsNotFound(err):
+		return 0, false, nil
+	case errors.As(err, &e) && e.Status == http.StatusConflict:
+		return 0, false, nil
+	case err != nil:
+		return 0, false, err
+	}
+	if len(out.Deleted) > 0 {
+		reclaimed = img.Size
+	}
+	return reclaimed, true, nil
+}
+
+// PruneDanglingImages removes dangling images carrying every one of the
+// labels (bakery.managed=true is always one of them) and returns the bytes
+// freed.
+func (c *Client) PruneDanglingImages(ctx context.Context, labels map[string]string) (int64, error) {
+	all := map[string]string{"bakery.managed": "true"}
+	maps.Copy(all, labels)
+	var filter []string
+	for k, v := range all {
+		filter = append(filter, k+"="+v)
+	}
+	sort.Strings(filter)
+	raw, _ := json.Marshal(map[string][]string{"dangling": {"true"}, "label": filter})
+	var reports []struct {
+		Size int64  `json:"Size"`
+		Err  string `json:"Err"`
+	}
+	if err := c.call(ctx, http.MethodPost, "/images/prune", url.Values{"filters": {string(raw)}}, nil, &reports); err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, r := range reports {
+		total += r.Size
+	}
+	return total, nil
 }

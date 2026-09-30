@@ -90,6 +90,10 @@ func (o observer) PodmanDiskUsage(ctx context.Context) (app.PodmanDiskUsage, err
 	return app.PodmanDiskUsage{Images: du.Images, Containers: du.Containers, Volumes: du.Volumes}, err
 }
 
+func (o observer) PruneDanglingImages(ctx context.Context) (int64, error) {
+	return o.client.PruneDanglingImages(ctx, nil)
+}
+
 func (o observer) Containers(ctx context.Context) ([]app.ContainerSample, error) {
 	list, err := o.client.ListContainers(ctx, map[string]string{"bakery.managed": "true"})
 	if err != nil {

@@ -32,6 +32,8 @@ type Service struct {
 	newKey    func(comment string) (domain.ServerKey, error)
 	connector Connector
 	now       func() time.Time
+	// Retention applies Image retention on the Local server; nil skips it.
+	Retention ImageRetention
 	// Log reports failures that do not fail the use case.
 	Log func(format string, args ...any)
 }

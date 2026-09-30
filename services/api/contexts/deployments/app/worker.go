@@ -53,6 +53,7 @@ func sleep(ctx context.Context, d time.Duration) error {
 func NewWorker(service *Service, source Source, runtime Runtime, router Router, workDir string) *Worker {
 	// Rollbacks check with the same Runtime that the Image is still there.
 	service.images = runtime.ImageExists
+	service.removeImage = runtime.RemoveImage
 	return &Worker{
 		service: service, source: source, runtime: runtime, router: router, WorkDir: workDir,
 		Timeout: 30 * time.Minute, Poll: 2 * time.Second, Log: func(string, ...any) {}, now: time.Now, sleep: sleep,

@@ -40,6 +40,8 @@ type Store interface {
 	FailInterrupted(ctx context.Context, reason string) (int, error)
 	ByID(ctx context.Context, id uint64) (domain.Deployment, bool, error)
 	ByApplication(ctx context.Context, applicationID uint64, limit int) ([]domain.Deployment, error)
+	// ApplicationIDs lists every Application that has Deployments.
+	ApplicationIDs(ctx context.Context) ([]uint64, error)
 	// Active returns the Application's active Deployment, if any.
 	Active(ctx context.Context, applicationID uint64) (domain.Deployment, bool, error)
 	DeleteForApplication(ctx context.Context, applicationID uint64) error
@@ -181,6 +183,9 @@ type Runtime interface {
 	RemoveOthers(ctx context.Context, applicationID uint64, keep string) ([]string, error)
 	// ImageExists reports whether the Image is still there.
 	ImageExists(ctx context.Context, image string) (bool, error)
+	// RemoveImage removes the Image unless a Container uses it, returning
+	// the bytes freed (0 when it was only untagged or kept).
+	RemoveImage(ctx context.Context, image string) (int64, error)
 	// Remove removes one Container.
 	Remove(ctx context.Context, name string) error
 	// RemoveAll removes every Container of the Application.

@@ -18,6 +18,8 @@ type Service struct {
 	wake         chan struct{}
 	// images reports whether an Image exists; set by the Worker's Runtime.
 	images func(ctx context.Context, image string) (bool, error)
+	// removeImage removes an Image unless it is in use; set by the Worker.
+	removeImage func(ctx context.Context, image string) (int64, error)
 
 	mu sync.Mutex
 	// running holds the cancel function of each Deployment the Worker is
