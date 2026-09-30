@@ -50,7 +50,9 @@ type Service struct {
 	// Forget drops what is cached about reaching the Server (its pooled
 	// connection) after it changed or went; nil does nothing.
 	Forget func(id uint64)
-	inUse  []InUse
+	// OnHealthChanged, when set, hears what a Server probe found changed.
+	OnHealthChanged func(ctx context.Context, e HealthChanged)
+	inUse           []InUse
 }
 
 // OnDeleting registers a check asked before a Server is deleted.

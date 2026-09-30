@@ -7,6 +7,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/databases"
 	"github.com/jevido/bakery/services/api/contexts/deployments"
 	"github.com/jevido/bakery/services/api/contexts/notifications/domain"
+	"github.com/jevido/bakery/services/api/contexts/servers"
 )
 
 func TestDeploymentNotification(t *testing.T) {
@@ -40,5 +41,20 @@ func TestBackupNotification(t *testing.T) {
 	n = backupNotification(databases.BackupFinished{DatabaseName: "main", Engine: "mysql", Succeeded: true, Trigger: "manual", SizeBytes: 1_400_000, OffSite: true}, "x")
 	if n.Kind != domain.BackupSucceeded || n.Body != "A backup started by hand of mysql: 1.4 MB, kept on the server's disk and uploaded to S3." {
 		t.Fatalf("got %+v", n)
+	}
+}
+
+func TestServerNotification(t *testing.T) {
+	now := time.Now()
+	n, ok := serverNotification(servers.ServerHealthChanged{ServerID: 2, ServerName: "edge-1", Change: "unreachable", Reason: "dial tcp: i/o timeout"}, "x", now)
+	if !ok || n.Kind != domain.ServerUnreachable || n.Title != "Server edge-1 is unreachable" || n.Link != "x/#/servers/2" {
+		t.Fatalf("got %+v", n)
+	}
+	n, _ = serverNotification(servers.ServerHealthChanged{ServerName: "edge-1", Change: "disk_almost_full", DiskUsed: 93_000_000_000, DiskTotal: 100_000_000_000}, "x", now)
+	if n.Kind != domain.DiskAlmostFull || n.Body != "93.0 GB of 100.0 GB used (93 %). Clean up on its Server page removes images nothing needs any more." {
+		t.Fatalf("got %+v", n)
+	}
+	if _, ok := serverNotification(servers.ServerHealthChanged{Change: "rebooted"}, "x", now); ok {
+		t.Fatal("unknown change notified")
 	}
 }

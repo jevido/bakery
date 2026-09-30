@@ -55,6 +55,10 @@ func init() {
 		"backups": map[string]any{
 			"dir": config.Env("BAKERY_BACKUPS_DIR", "storage/backups"),
 		},
+		// How often every validated Server is probed (a Go duration).
+		"servers": map[string]any{
+			"probe_interval": config.Env("BAKERY_SERVER_PROBE_INTERVAL", "5m"),
+		},
 		// Telegram's Bot API; only tests point it elsewhere.
 		"notifications": map[string]any{
 			"telegram_api": config.Env("BAKERY_TELEGRAM_API_URL", "https://api.telegram.org"),

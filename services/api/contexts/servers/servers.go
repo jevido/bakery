@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"sync"
 	"time"
 
@@ -36,6 +37,7 @@ func svc() *app.Service {
 		pool = &infra.Pool{Local: podman.Default()}
 		service.Forget = pool.Forget
 		service.Log = facades.Log().Errorf
+		service.OnHealthChanged = publishHealthChanged
 	})
 	return service
 }
@@ -153,7 +155,7 @@ func LongRoutes(r route.Router) {
 
 // Start makes sure the Local server exists and validates it, retrying in
 // the background while the database is unreachable, then runs the daily
-// Cleanup.
+// Cleanup and the Server probe.
 func Start(ctx context.Context) {
 	s := svc()
 	go func() {
@@ -164,6 +166,7 @@ func Start(ctx context.Context) {
 			}
 			if err == nil {
 				go daily(ctx, s)
+				go probe(ctx, s)
 				return
 			}
 			facades.Log().Errorf("servers: local server (attempt %d): %v", attempt, err)
@@ -196,5 +199,77 @@ func daily(ctx context.Context, s *app.Service) {
 		if err := s.CleanUpAll(ctx); err != nil && ctx.Err() == nil {
 			facades.Log().Errorf("servers: daily cleanup: %v", err)
 		}
+	}
+}
+
+// probeInterval is how often every Server is probed.
+func probeInterval() time.Duration {
+	d, err := time.ParseDuration(facades.Config().GetString("bakery.servers.probe_interval"))
+	if err != nil || d < time.Second {
+		return 5 * time.Minute
+	}
+	return d
+}
+
+// probe runs the Server probe every probeInterval until ctx ends.
+func probe(ctx context.Context, s *app.Service) {
+	every := probeInterval()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(every):
+		}
+		if err := s.ProbeAll(ctx); err != nil && ctx.Err() == nil {
+			facades.Log().Errorf("servers: probe: %v", err)
+		}
+	}
+}
+
+// ServerHealthChanged is what a Server probe found changed about a Server.
+type ServerHealthChanged struct {
+	ServerID   uint64
+	ServerName string
+	// Change is "unreachable", "reachable" or "disk_almost_full".
+	Change string
+	// Reason is why an unreachable Server could not be reached.
+	Reason    string
+	DiskUsed  int64
+	DiskTotal int64
+}
+
+var (
+	healthMu        sync.Mutex
+	onHealthChanged []func(ctx context.Context, e ServerHealthChanged)
+)
+
+// OnServerHealthChanged registers f to hear of every ServerHealthChanged.
+// It runs in its own goroutine, so it can neither hold up nor break the
+// probe.
+func OnServerHealthChanged(f func(ctx context.Context, e ServerHealthChanged)) {
+	healthMu.Lock()
+	defer healthMu.Unlock()
+	onHealthChanged = append(onHealthChanged, f)
+}
+
+func publishHealthChanged(_ context.Context, h app.HealthChanged) {
+	e := ServerHealthChanged{
+		ServerID: h.Server.ID, ServerName: h.Server.Name, Change: string(h.Change),
+		Reason: h.Reason, DiskUsed: h.DiskUsed, DiskTotal: h.DiskTotal,
+	}
+	healthMu.Lock()
+	subscribers := slices.Clone(onHealthChanged)
+	healthMu.Unlock()
+	for _, f := range subscribers {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					facades.Log().Errorf("servers: a ServerHealthChanged subscriber panicked: %v", r)
+				}
+			}()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			f(ctx, e)
+		}()
 	}
 }

@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/databases"
 	"github.com/jevido/bakery/services/api/contexts/deployments"
 	"github.com/jevido/bakery/services/api/contexts/notifications/domain"
+	"github.com/jevido/bakery/services/api/contexts/servers"
 )
 
 // subscribe registers the translations of what other contexts announce
@@ -18,6 +20,11 @@ func subscribe() {
 	})
 	databases.OnBackupFinished(func(ctx context.Context, e databases.BackupFinished) {
 		svc().Notify(ctx, backupNotification(e, DashboardURL()))
+	})
+	servers.OnServerHealthChanged(func(ctx context.Context, e servers.ServerHealthChanged) {
+		if n, ok := serverNotification(e, DashboardURL(), time.Now()); ok {
+			svc().Notify(ctx, n)
+		}
 	})
 }
 
@@ -99,4 +106,29 @@ func backupNotification(e databases.BackupFinished, dashboard string) domain.Not
 	n.Title = "Backup of " + e.DatabaseName + " failed"
 	n.Body = e.Reason + "\n" + trigger + " of " + e.Engine + "."
 	return n
+}
+
+func serverNotification(e servers.ServerHealthChanged, dashboard string, now time.Time) (domain.Notification, bool) {
+	n := domain.Notification{Link: fmt.Sprintf("%s/#/servers/%d", dashboard, e.ServerID), At: now}
+	switch e.Change {
+	case "unreachable":
+		n.Kind = domain.ServerUnreachable
+		n.Title = "Server " + e.ServerName + " is unreachable"
+		n.Body = "Bakery could not reach it twice in a row: " + e.Reason + "\nApplications on it may be down, and deployments to it fail until it is back."
+	case "reachable":
+		n.Kind = domain.ServerReachable
+		n.Title = "Server " + e.ServerName + " is reachable again"
+		n.Body = "Bakery reaches it again."
+	case "disk_almost_full":
+		n.Kind = domain.DiskAlmostFull
+		n.Title = "Disk of " + e.ServerName + " is almost full"
+		percent := int64(0)
+		if e.DiskTotal > 0 {
+			percent = e.DiskUsed * 100 / e.DiskTotal
+		}
+		n.Body = fmt.Sprintf("%s of %s used (%d %%). Clean up on its Server page removes images nothing needs any more.", size(e.DiskUsed), size(e.DiskTotal), percent)
+	default:
+		return n, false
+	}
+	return n, true
 }

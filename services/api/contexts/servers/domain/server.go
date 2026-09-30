@@ -114,7 +114,11 @@ type Server struct {
 	Status      Status
 	Validation  Validation
 	LastCleanup Cleanup
-	CreatedAt   time.Time
+	// FailedProbes counts the Server probes in a row that could not reach
+	// it; DiskAlmostFull is set by a probe that found its disk almost full.
+	FailedProbes   int
+	DiskAlmostFull bool
+	CreatedAt      time.Time
 }
 
 // Input is what the Owner types for a Remote server.
@@ -192,6 +196,7 @@ func (s *Server) Edit(in Input) error {
 		s.HostKey = ""
 		s.Status = Unvalidated
 		s.Validation = Validation{}
+		s.FailedProbes, s.DiskAlmostFull = 0, false
 	}
 	s.Name, s.Host, s.Port, s.User = in.Name, in.Host, in.Port, in.User
 	return nil
@@ -229,6 +234,7 @@ func (s *Server) ForgetHostKey() error {
 // presented on a connection that got through) if none is pinned yet.
 func (s *Server) RecordValidation(v Validation, hostKey string) {
 	s.Validation = v
+	s.FailedProbes = 0
 	if v.Passed() {
 		s.Status = Reachable
 	} else {

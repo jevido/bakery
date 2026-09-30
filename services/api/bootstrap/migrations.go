@@ -46,5 +46,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000031CreateInvitationsTable{},
 		&migrations.M20260930000032CreateAPITokensTable{},
 		&migrations.M20260930000033CreateNotificationTables{},
+		&migrations.M20260930000034AddServerProbe{},
 	}
 }

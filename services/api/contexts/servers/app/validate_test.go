@@ -19,6 +19,8 @@ type fakeConnection struct {
 	cpuErr      error
 	pruned      int
 	closed      bool
+	// free is the free disk space; 0 means 40 GiB of 100.
+	free int64
 }
 
 func (f *fakeConnection) Socket(context.Context) (string, error) {
@@ -49,6 +51,9 @@ func (f *fakeConnection) CPUPercent(context.Context) (float64, error) {
 	return 25, nil
 }
 func (f *fakeConnection) Filesystem(context.Context, string) (int64, int64, error) {
+	if f.free != 0 {
+		return 100 << 30, f.free, nil
+	}
 	return 100 << 30, 40 << 30, nil
 }
 func (f *fakeConnection) PodmanDiskUsage(context.Context) (PodmanDiskUsage, error) {
