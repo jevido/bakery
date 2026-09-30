@@ -4,6 +4,7 @@
   import CopyButton from '../lib/CopyButton.svelte'
   import Field from '../lib/Field.svelte'
   import { go, href } from '../lib/router.svelte'
+  import { session } from '../lib/session.svelte'
   import StatusBadge from '../lib/StatusBadge.svelte'
   import type { Service } from '../lib/types'
 
@@ -165,7 +166,7 @@
         {service.components.length === 1 ? 'component' : 'components'}{service.template ? ` · from the ${service.template} template` : ''}
       </p>
     </div>
-    <div class="buttons">
+    {#if session.canWrite}<div class="buttons">
       {#if service.desired_state === 'stopped'}
         <button class="primary" disabled={acting || service.busy} onclick={() => act('start')}>Start</button>
       {:else}
@@ -173,7 +174,7 @@
         <button disabled={acting} onclick={() => act('stop')}>Stop</button>
       {/if}
       <button class={[pending && 'primary']} disabled={acting || service.busy} onclick={() => act('redeploy')}>Redeploy</button>
-    </div>
+    </div>{/if}
   </div>
   {#if actionError}<p class="error">{actionError}</p>{/if}
   {#if service.last_error}<p class="error">{service.last_error}</p>{/if}
@@ -207,16 +208,17 @@
             <label class="domains">
               <span class="muted">Domains, one per line (the first is the primary one)</span>
               <textarea
+                readonly={!session.canWrite}
                 rows={Math.max(2, c.domains.length + 1)}
                 value={draft(c.name, c.domains)}
                 oninput={(e) => (domainDrafts[c.name] = e.currentTarget.value)}
               ></textarea>
             </label>
             {#if domainErrors[c.name]}<p class="error">{domainErrors[c.name]}</p>{/if}
-            <div class="actions">
+            {#if session.canWrite}<div class="actions">
               {#if domainSaved === c.name}<span class="ok">Saved.</span>{/if}
               <button disabled={domainDrafts[c.name] === undefined} onclick={() => saveDomains(c.name)}>Save domains</button>
-            </div>
+            </div>{/if}
           {:else}
             <p class="muted">Only reachable by the other components of this service, as <span class="mono">{c.name}</span>.</p>
           {/if}
@@ -234,7 +236,10 @@
           {#each vars as v (v.name)}
             <tr>
               <td class="mono">{v.name}</td>
-              {#if v.magic}
+              {#if v.hidden}
+                <td class="mono muted">••••••••</td>
+                <td class="muted small">hidden for viewers</td>
+              {:else if v.magic}
                 <td class="mono">{revealed[v.name] ? v.value : '••••••••'}</td>
                 <td class="cell-actions">
                   <button onclick={() => (revealed[v.name] = !revealed[v.name])}>{revealed[v.name] ? 'Hide' : 'Reveal'}</button>
@@ -246,6 +251,7 @@
                   <input
                     class="mono"
                     aria-label={v.name}
+                    readonly={!session.canWrite}
                     value={variableDrafts[v.name] ?? v.value}
                     placeholder={v.default ?? ''}
                     oninput={(e) => (variableDrafts[v.name] = e.currentTarget.value)}
@@ -258,9 +264,11 @@
         </tbody>
       </table>
       {#if variablesError}<p class="error">{variablesError}</p>{/if}
-      <div class="actions">
-        <button class="primary" disabled={Object.keys(variableDrafts).length === 0} onclick={saveVariables}>Save variables</button>
-      </div>
+      {#if session.canWrite}
+        <div class="actions">
+          <button class="primary" disabled={Object.keys(variableDrafts).length === 0} onclick={saveVariables}>Save variables</button>
+        </div>
+      {/if}
     {/if}
   {:else if tab === 'compose'}
     <textarea
@@ -268,6 +276,7 @@
       rows="20"
       spellcheck="false"
       aria-label="Compose file"
+      readonly={!session.canWrite}
       value={composeDraft ?? service.compose ?? ''}
       oninput={(e) => (composeDraft = e.currentTarget.value)}
     ></textarea>
@@ -276,9 +285,11 @@
         {#each composeErrors as line, i (i)}<li>{line}</li>{/each}
       </ul>
     {/if}
-    <div class="actions">
-      <button class="primary" disabled={composeDraft === null} onclick={saveCompose}>Save compose file</button>
-    </div>
+    {#if session.canWrite}
+      <div class="actions">
+        <button class="primary" disabled={composeDraft === null} onclick={saveCompose}>Save compose file</button>
+      </div>
+    {/if}
   {:else if tab === 'logs'}
     <div class="row">
       <label>
@@ -297,17 +308,21 @@
     {/key}
   {:else if tab === 'settings'}
     <form class="form" onsubmit={rename}>
+      <fieldset class="contents" disabled={!session.canWrite}>
       <Field
         label="Name"
         bind:value={() => nameDraft ?? service?.name ?? '', (v) => (nameDraft = v)}
         error={nameError}
         required
       />
-      <div class="actions"><button class="primary" disabled={nameDraft === null}>Save</button></div>
+      </fieldset>
+      {#if session.canWrite}<div class="actions"><button class="primary" disabled={nameDraft === null}>Save</button></div>{/if}
     </form>
-    <h2>Danger zone</h2>
-    <p class="muted">Deleting removes the containers, the network and every volume of this service with its data.</p>
-    <button class="danger" onclick={remove}>Delete service</button>
+    {#if session.canWrite}
+      <h2>Danger zone</h2>
+      <p class="muted">Deleting removes the containers, the network and every volume of this service with its data.</p>
+      <button class="danger" onclick={remove}>Delete service</button>
+    {/if}
   {/if}
 {/if}
 

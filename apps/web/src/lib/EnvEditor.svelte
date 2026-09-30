@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, ApiError } from './api'
+  import { session } from './session.svelte'
   import type { EnvVar, InheritedVariable } from './types'
 
   let {
@@ -37,6 +38,8 @@
 
   $effect(() => {
     loaded = false
+    // Variable values are Secrets; a viewer's request would be refused.
+    if (!session.canSeeSecrets) return
     load().catch((e) => (error = e.message))
   })
 
@@ -76,7 +79,9 @@
   }
 </script>
 
-{#if !loaded && !error}
+{#if !session.canSeeSecrets}
+  <p class="muted">Variables are hidden for viewers.</p>
+{:else if !loaded && !error}
   <p class="muted">Loading…</p>
 {:else}
   <form onsubmit={save}>

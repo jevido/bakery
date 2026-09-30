@@ -6,6 +6,7 @@
   import DatabaseForm from '../lib/DatabaseForm.svelte'
   import { engineLabel } from '../lib/engines'
   import { go, href } from '../lib/router.svelte'
+  import { session } from '../lib/session.svelte'
   import StatusBadge from '../lib/StatusBadge.svelte'
   import type { Database, DatabaseInput } from '../lib/types'
 
@@ -96,14 +97,14 @@
       <StatusBadge status={database.status} />
       <p class="muted">{engineLabel(database.engine)} {database.version}</p>
     </div>
-    <div class="buttons">
+    {#if session.canWrite}<div class="buttons">
       {#if database.desired_state === 'stopped'}
         <button class="primary" disabled={busy} onclick={() => act('start')}>Start</button>
       {:else}
         <button disabled={busy} onclick={() => act('restart')}>Restart</button>
         <button disabled={busy} onclick={() => act('stop')}>Stop</button>
       {/if}
-    </div>
+    </div>{/if}
   </div>
   {#if actionError}<p class="error">{actionError}</p>{/if}
   {#if database.error}<p class="error">{database.error}</p>{/if}
@@ -115,7 +116,9 @@
     <button role="tab" aria-selected={tab === 'settings'} onclick={() => (tab = 'settings')}>Settings</button>
   </div>
 
-  {#if tab === 'connect' && creds}
+  {#if tab === 'connect' && database.secrets_hidden}
+    <p class="muted">The credentials and connection URLs are hidden for viewers.</p>
+  {:else if tab === 'connect' && creds}
     <dl class="connect">
       <dt>Internal URL</dt>
       <dd>
@@ -168,9 +171,11 @@
       <DatabaseForm database={database} submitLabel="Save" onsubmit={update} />
     {/key}
     {#if saved}<p class="ok">Saved.</p>{/if}
-    <h2>Danger zone</h2>
-    <p class="muted">Deleting removes the container, the data volume and the backups on this server. Copies in S3 storage stay.</p>
-    <button class="danger" onclick={remove}>Delete database</button>
+    {#if session.canWrite}
+      <h2>Danger zone</h2>
+      <p class="muted">Deleting removes the container, the data volume and the backups on this server. Copies in S3 storage stay.</p>
+      <button class="danger" onclick={remove}>Delete database</button>
+    {/if}
   {/if}
 {/if}
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { session } from './session.svelte'
   import { untrack } from 'svelte'
   import { api, ApiError } from './api'
   import Field from './Field.svelte'
@@ -132,6 +133,8 @@
 </script>
 
 <form class="form" onsubmit={submit}>
+  <!-- A viewer sees the values and cannot change them. -->
+  <fieldset class="contents" disabled={!session.canWrite}>
   <Field label="Name" bind:value={name} error={errors.name} required />
   <fieldset class="packs">
     <legend>Build pack</legend>
@@ -293,10 +296,13 @@
     </div>
   </fieldset>
   {#if message}<p class="error">{message}</p>{/if}
+  </fieldset>
+  {#if session.canWrite}
   <div class="actions">
     {#if oncancel}<button type="button" onclick={oncancel}>Cancel</button>{/if}
     <button class="primary" disabled={busy}>{submitLabel}</button>
   </div>
+  {/if}
 </form>
 
 <style>
@@ -318,7 +324,7 @@
     grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
     gap: 0.8rem;
   }
-  fieldset {
+  fieldset:not(.contents) {
     display: grid;
     gap: 0.8rem;
     border: 1px solid var(--border, #8884);
@@ -326,7 +332,7 @@
     padding: 0.8rem;
     margin: 0;
   }
-  fieldset p {
+  fieldset:not(.contents) p {
     margin: 0;
   }
   .choices {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { session } from './session.svelte'
   import { api, ApiError } from './api'
   import Field from './Field.svelte'
   import type { ServiceInput, ServiceTemplate } from './types'
@@ -62,6 +63,8 @@
 </script>
 
 <form class="form" onsubmit={submit}>
+  <!-- A viewer sees the values and cannot change them. -->
+  <fieldset class="contents" disabled={!session.canWrite}>
   <div class="tabs" role="tablist">
     <button type="button" role="tab" aria-selected={mode === 'template'} class={[mode === 'template' && 'selected']} onclick={() => (mode = 'template')}>
       From a template
@@ -119,10 +122,13 @@
   {#if errors.domains}<p class="error">{errors.domains}</p>{/if}
   {#if errors.template}<p class="error">{errors.template}</p>{/if}
   {#if message}<p class="error">{message}</p>{/if}
+  </fieldset>
+  {#if session.canWrite}
   <div class="actions">
     {#if oncancel}<button type="button" onclick={oncancel}>Cancel</button>{/if}
     <button class="primary" disabled={busy}>Create service</button>
   </div>
+  {/if}
 </form>
 
 <style>

@@ -5,6 +5,7 @@
   import { percent, size } from '../lib/format'
   import { go, href } from '../lib/router.svelte'
   import ServerMeters from '../lib/ServerMeters.svelte'
+  import { session } from '../lib/session.svelte'
   import StatusBadge from '../lib/StatusBadge.svelte'
   import type { ContainerMetrics, Metrics, Server } from '../lib/types'
 
@@ -163,16 +164,16 @@
       <StatusBadge status={server.status} />
       <p class="muted mono">{server.kind === 'local' ? 'The machine Bakery runs on' : `${server.user}@${server.host}:${server.port}`}</p>
     </div>
-    <div class="buttons">
+    {#if session.isAdmin}<div class="buttons">
       <button class="primary" disabled={!!busy} onclick={validate}>{busy === 'validate' ? 'Validating…' : 'Validate'}</button>
       {#if server.status === 'reachable'}
         <button disabled={!!busy} onclick={cleanUp}>{busy === 'cleanup' ? 'Cleaning up…' : 'Clean up now'}</button>
       {/if}
-    </div>
+    </div>{/if}
   </div>
   {#if actionError}<p class="error">{actionError}</p>{/if}
 
-  {#if server.kind === 'remote' && server.public_key}
+  {#if server.kind === 'remote' && server.public_key && session.isAdmin}
     <section class="card">
       <h2>Server key</h2>
       <p class="muted">
@@ -273,7 +274,7 @@
     </section>
   {/if}
 
-  {#if server.kind === 'remote'}
+  {#if server.kind === 'remote' && session.isAdmin}
     <section>
       <h2>Settings</h2>
       {#if editing}

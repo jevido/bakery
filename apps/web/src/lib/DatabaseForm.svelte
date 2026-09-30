@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { session } from './session.svelte'
   import { untrack } from 'svelte'
   import { ApiError } from './api'
   import { engines } from './engines'
@@ -61,6 +62,8 @@
 </script>
 
 <form class="form" onsubmit={submit}>
+  <!-- A viewer sees the values and cannot change them. -->
+  <fieldset class="contents" disabled={!session.canWrite}>
   <Field label="Name" bind:value={name} error={errors.name} required />
   {#if !start}
     <fieldset>
@@ -92,10 +95,13 @@
     <p class="muted">Changing the version, public port or limits restarts the database; its data stays.</p>
   {/if}
   {#if message}<p class="error">{message}</p>{/if}
+  </fieldset>
+  {#if session.canWrite}
   <div class="actions">
     {#if oncancel}<button type="button" onclick={oncancel}>Cancel</button>{/if}
     <button class="primary" disabled={busy}>{submitLabel}</button>
   </div>
+  {/if}
 </form>
 
 <style>
@@ -109,7 +115,7 @@
     grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
     gap: 0.8rem;
   }
-  fieldset {
+  fieldset:not(.contents) {
     display: grid;
     gap: 0.8rem;
     border: 1px solid var(--border, #8884);

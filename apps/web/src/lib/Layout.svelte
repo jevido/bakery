@@ -33,8 +33,9 @@
     <nav>
       <a href={href('/projects')} aria-current={section === 'projects' ? 'page' : undefined}>Projects</a>
       <a href={href('/servers')} aria-current={section === 'servers' ? 'page' : undefined}>Servers</a>
-      <a href={href('/settings')} aria-current={section === 'settings' ? 'page' : undefined}>Settings</a>
+      <!-- Settings holds only admin areas (Known hosts, S3 storages). -->
       {#if session.isAdmin}
+        <a href={href('/settings')} aria-current={section === 'settings' ? 'page' : undefined}>Settings</a>
         <a href={href('/members')} aria-current={section === 'members' ? 'page' : undefined}>Members</a>
       {/if}
     </nav>

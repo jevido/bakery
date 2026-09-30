@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { session } from './session.svelte'
   import { api } from './api'
   import CopyButton from './CopyButton.svelte'
   import type { Webhook } from './types'
@@ -17,6 +18,8 @@
   $effect(() => {
     webhook = null
     error = ''
+    // The Webhook comes with its secret, which a viewer may not read.
+    if (!session.canSeeSecrets) return
     api<{ webhook: Webhook }>('GET', `/applications/${applicationId}/webhook`)
       .then((r) => (webhook = r.webhook))
       .catch((e) => (error = e.message))
@@ -44,7 +47,9 @@
 <section class="webhook">
   <h3>Webhook</h3>
   {#if error}<p class="error">{error}</p>{/if}
-  {#if webhook}
+  {#if !session.canSeeSecrets}
+    <p class="muted">The webhook and its secret are hidden for viewers.</p>
+  {:else if webhook}
     <label class="toggle">
       <input
         type="checkbox"

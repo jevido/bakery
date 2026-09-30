@@ -2,6 +2,7 @@
   import { api, ApiError } from '../lib/api'
   import Field from '../lib/Field.svelte'
   import { go, href } from '../lib/router.svelte'
+  import { session } from '../lib/session.svelte'
   import type { Project } from '../lib/types'
 
   let projects = $state.raw<Project[] | null>(null)
@@ -34,7 +35,7 @@
 
 <div class="head">
   <h1>Projects</h1>
-  {#if !creating}
+  {#if !creating && session.canWrite}
     <button class="primary" onclick={() => (creating = true)}>New project</button>
   {/if}
 </div>

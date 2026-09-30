@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { session } from './session.svelte'
   import { size } from './format'
   import { untrack } from 'svelte'
   import { api, ApiError } from './api'
@@ -39,9 +40,11 @@
     backups = r.backups
   }
   loadBackups().catch((e) => (error = e.message))
-  api<{ s3_storages: S3Storage[] }>('GET', '/s3-storages')
-    .then((r) => (storages = r.s3_storages))
-    .catch(() => (storages = []))
+  if (session.canSeeSecrets) {
+    api<{ s3_storages: S3Storage[] }>('GET', '/s3-storages')
+      .then((r) => (storages = r.s3_storages))
+      .catch(() => (storages = []))
+  }
 
   // Poll while a Backup or a Restore runs.
   let active = $derived(database.restoring || (backups ?? []).some((b) => b.status === 'running'))
@@ -122,6 +125,8 @@
   </p>
 {:else}
   <form class="form" onsubmit={saveSchedule}>
+    <!-- A viewer sees the values and cannot change them. -->
+    <fieldset class="contents" disabled={!session.canWrite}>
     <h2>Schedule</h2>
     <label class="check"><input type="checkbox" bind:checked={enabled} /> Back up on a schedule</label>
     <div class="row">
@@ -154,9 +159,11 @@
     </div>
     {#each Object.entries(errors) as [field, msg] (field)}<p class="error">{msg}</p>{/each}
     {#if scheduleMessage}<p class="error">{scheduleMessage}</p>{/if}
-    {#if storages?.length === 0}
+    {#if storages?.length === 0 && session.isAdmin}
       <p class="muted">To keep copies off this server, add an S3 storage under <a href={href('/settings')}>Settings</a>.</p>
     {/if}
+    </fieldset>
+    {#if session.canWrite}
     <div class="actions">
       {#if database.next_backup_at}
         <span class="muted" data-testid="next-backup">Next backup: {utc.format(new Date(database.next_backup_at))} UTC</span>
@@ -165,11 +172,12 @@
       <span class="spacer"></span>
       <button class="primary">Save schedule</button>
     </div>
+    {/if}
   </form>
 
   <div class="head">
     <h2>Backups</h2>
-    <button disabled={busy || active || database.status !== 'running'} onclick={backUp}>Back up now</button>
+    {#if session.canWrite}<button disabled={busy || active || database.status !== 'running'} onclick={backUp}>Back up now</button>{/if}
   </div>
   {#if database.status !== 'running'}<p class="muted">Start the database to back it up or restore it.</p>{/if}
   {#if database.restoring}<p class="muted" role="status">Restoring…</p>{/if}
@@ -201,11 +209,13 @@
             <td>{where(b)}</td>
             <td>
               <div class="buttons">
-                {#if b.status === 'succeeded'}
+                {#if !session.canWrite}
+                  <!-- A Backup's contents are Secrets; a viewer neither downloads nor restores it. -->
+                {:else if b.status === 'succeeded'}
                   <a class="button" href={`/api/backups/${b.id}/download`} download={b.file_name}>Download</a>
                   <button disabled={busy || active || database.status !== 'running'} onclick={() => restore(b)}>Restore</button>
                 {/if}
-                {#if b.status !== 'running'}
+                {#if b.status !== 'running' && session.canWrite}
                   <button class="danger" disabled={busy} onclick={() => remove(b)}>Delete</button>
                 {/if}
               </div>

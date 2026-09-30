@@ -3,6 +3,7 @@
   import Field from '../lib/Field.svelte'
   import { go, href } from '../lib/router.svelte'
   import ServerMeters from '../lib/ServerMeters.svelte'
+  import { session } from '../lib/session.svelte'
   import StatusBadge from '../lib/StatusBadge.svelte'
   import type { Metrics, Server } from '../lib/types'
 
@@ -53,7 +54,7 @@
 
 <div class="head">
   <h1>Servers</h1>
-  {#if !adding}
+  {#if !adding && session.isAdmin}
     <button class="primary" onclick={() => (adding = true)}>Add server</button>
   {/if}
 </div>

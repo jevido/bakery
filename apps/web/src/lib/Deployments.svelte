@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { session } from './session.svelte'
   import { api, ApiError } from './api'
   import LogView from './LogView.svelte'
   import StatusBadge from './StatusBadge.svelte'
@@ -77,7 +78,7 @@
     {#if current.commit_message}<span class="subject" title={current.commit_message}>{current.commit_message}</span>{/if}
     {#if current.source_image}<span class="mono muted" title={current.source_image}>{shortImage(current.source_image)}</span>{/if}
     {#if current.server_id}<span class="muted">on {serverNames[current.server_id] ?? `server ${current.server_id}`}</span>{/if}
-    {#if current.active}<button class="danger" disabled={busy} onclick={() => cancel(current)}>Cancel</button>{/if}
+    {#if current.active && session.canWrite}<button class="danger" disabled={busy} onclick={() => cancel(current)}>Cancel</button>{/if}
   </div>
   {#if actionError}<p class="error">{actionError}</p>{/if}
   {#if current.error}<p class="error">{current.error}</p>{/if}
@@ -112,7 +113,9 @@
           <td class="muted">{when.format(new Date(d.started_at ?? d.created_at))}</td>
           <td class="muted">{duration(d)}</td>
           <td class="actions">
-            {#if d.active}
+            {#if !session.canWrite}
+              <!-- A viewer cannot cancel or roll back. -->
+            {:else if d.active}
               <button disabled={busy} onclick={() => cancel(d)}>Cancel</button>
             {:else if d.status === 'finished' && d.id !== live?.id}
               <button disabled={busy} onclick={() => rollback(d)}>Roll back</button>

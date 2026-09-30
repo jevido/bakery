@@ -65,7 +65,8 @@ None yet.
     least `member` to change anything.
   - `identity.Admin`: only admin and owner; wraps Servers, S3 storages,
     Known hosts, Members and Invitations.
-  - `identity.Secrets`: member or higher, for GETs that return Secrets.
+  - `identity.Secrets`: member or higher, for GETs that return Secrets (and
+    the list of S3 storages, which members pick for a Backup schedule).
   - `identity.CanSeeSecrets(ctx)`: for a response that mixes Secrets with
     fields a viewer may see; the controller leaves the Secrets out.
   Other contexts learn nothing else about Members.

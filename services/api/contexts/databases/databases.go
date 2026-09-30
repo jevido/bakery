@@ -67,8 +67,8 @@ func svc() *app.Service {
 	return service
 }
 
-// Routes registers the databases API behind identity.Auth; S3 storages
-// also need identity.Admin.
+// Routes registers the databases API behind identity.Auth; listing S3
+// storages also needs identity.Secrets, changing them identity.Admin.
 func Routes(r route.Router) {
 	c := databaseshttp.NewController(svc())
 	r.Middleware(identity.Auth).Group(func(r route.Router) {
@@ -86,8 +86,12 @@ func Routes(r route.Router) {
 		r.Post("/api/backups/{id}/restore", c.Restore)
 		r.Delete("/api/backups/{id}", c.DeleteBackup)
 	})
-	r.Middleware(identity.Auth, identity.Admin).Group(func(r route.Router) {
+	// Members pick an S3 storage for a Backup schedule, so they may list
+	// them (no secret keys are shown); only admins change them.
+	r.Middleware(identity.Auth, identity.Secrets).Group(func(r route.Router) {
 		r.Get("/api/s3-storages", c.S3Storages)
+	})
+	r.Middleware(identity.Auth, identity.Admin).Group(func(r route.Router) {
 		r.Post("/api/s3-storages", c.CreateS3Storage)
 		r.Post("/api/s3-storages/check", c.CheckS3Storage)
 		r.Patch("/api/s3-storages/{id}", c.UpdateS3Storage)

@@ -177,3 +177,9 @@ th {
 .auth p {
   margin: 0;
 }
+
+/* A fieldset that only groups a form's fields, so disabling it makes the
+   whole form read-only without changing its layout. */
+fieldset.contents {
+  display: contents;
+}

@@ -7,6 +7,7 @@
   import EnvEditor from '../lib/EnvEditor.svelte'
   import ServiceForm from '../lib/ServiceForm.svelte'
   import { go, href } from '../lib/router.svelte'
+  import { session } from '../lib/session.svelte'
   import StatusBadge from '../lib/StatusBadge.svelte'
   import type { Application, ApplicationInput, Database, DatabaseInput, Project, Service, ServiceInput } from '../lib/types'
 
@@ -83,7 +84,7 @@
       <h1>{project.name}</h1>
       {#if project.description}<p class="muted">{project.description}</p>{/if}
     </div>
-    <button class="danger" onclick={remove}>Delete project</button>
+    {#if session.canWrite}<button class="danger" onclick={remove}>Delete project</button>{/if}
   </div>
   {#if deleteError}<p class="error">{deleteError}</p>{/if}
 
@@ -101,7 +102,7 @@
     <section>
       <div class="head">
         <h2>{env.name}</h2>
-        <div class="buttons">
+        {#if session.canWrite}<div class="buttons">
           {#if addingServiceTo !== env.id}
             <button onclick={() => (addingServiceTo = env.id)}>New service</button>
           {/if}
@@ -111,7 +112,7 @@
           {#if addingTo !== env.id}
             <button class="primary" onclick={() => (addingTo = env.id)}>New application</button>
           {/if}
-        </div>
+        </div>{/if}
       </div>
       <details>
         <summary>Shared variables of {env.name}</summary>

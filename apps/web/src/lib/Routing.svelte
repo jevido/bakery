@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { session } from './session.svelte'
   import { api, ApiError } from './api'
   import type { RouteSettings, WwwRedirect } from './types'
 
@@ -83,6 +84,8 @@
   <p class="muted">Loading…</p>
 {:else}
   <form class="form" onsubmit={save}>
+    <!-- A viewer sees the values and cannot change them. -->
+    <fieldset class="contents" disabled={!session.canWrite}>
     <p class="muted">How the proxy treats this application's traffic. Saving applies it at once, without a deploy.</p>
     <fieldset>
       <legend>Www redirect</legend>
@@ -144,10 +147,13 @@
       {/if}
     </fieldset>
     {#if message}<p class="error">{message}</p>{/if}
+    </fieldset>
+    {#if session.canWrite}
     <div class="actions">
       {#if applied}<span class="ok">Applied.</span>{/if}
       <button class="primary" disabled={busy}>Save</button>
     </div>
+    {/if}
   </form>
 {/if}
 
@@ -157,10 +163,10 @@
     gap: 0.8rem;
     max-width: 40rem;
   }
-  .form > p {
+  .form > .contents > p {
     margin: 0;
   }
-  fieldset {
+  fieldset:not(.contents) {
     display: grid;
     gap: 0.8rem;
     border: 1px solid var(--border, #8884);
@@ -168,7 +174,7 @@
     padding: 0.8rem;
     margin: 0;
   }
-  fieldset p {
+  fieldset:not(.contents) p {
     margin: 0;
   }
   .preview {

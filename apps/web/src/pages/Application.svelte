@@ -8,6 +8,7 @@
   import EnvEditor from '../lib/EnvEditor.svelte'
   import Routing from '../lib/Routing.svelte'
   import { go, href } from '../lib/router.svelte'
+  import { session } from '../lib/session.svelte'
   import StatusBadge from '../lib/StatusBadge.svelte'
   import Webhook from '../lib/Webhook.svelte'
   import type { Application, ApplicationInput, Deployment, Server } from '../lib/types'
@@ -128,9 +129,11 @@
         </p>
       {/if}
     </div>
-    <button class="primary" onclick={deploy} disabled={deploying || queued}>
-      {queued ? 'Queued…' : active ? 'Deploy again' : 'Deploy'}
-    </button>
+    {#if session.canWrite}
+      <button class="primary" onclick={deploy} disabled={deploying || queued}>
+        {queued ? 'Queued…' : active ? 'Deploy again' : 'Deploy'}
+      </button>
+    {/if}
   </div>
   {#if deployError}<p class="error">{deployError}</p>{/if}
   {#if application.deploy_key_public && deployments.length === 0}
@@ -195,8 +198,10 @@
       />
     {/key}
     {#if saved}<p class="ok">Saved. Domains apply at once; everything else on the next deploy.</p>{/if}
-    <h2>Danger zone</h2>
-    <button class="danger" onclick={remove}>Delete application</button>
+    {#if session.canWrite}
+      <h2>Danger zone</h2>
+      <button class="danger" onclick={remove}>Delete application</button>
+    {/if}
   {:else if tab === 'routing'}
     <Routing applicationId={application.id} domains={application.domains} />
   {:else}

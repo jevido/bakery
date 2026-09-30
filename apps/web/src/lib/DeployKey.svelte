@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { session } from './session.svelte'
   import { api } from './api'
   import CopyButton from './CopyButton.svelte'
   import type { Application } from './types'
@@ -39,7 +40,7 @@
   <pre class="mono key" data-testid="deploy-key">{application.deploy_key_public}</pre>
   <div class="actions">
     <CopyButton text={application.deploy_key_public} label="Copy public key" />
-    <button type="button" onclick={regenerate} disabled={busy}>Regenerate</button>
+    {#if session.canWrite}<button type="button" onclick={regenerate} disabled={busy}>Regenerate</button>{/if}
   </div>
   {#if error}<p class="error">{error}</p>{/if}
 </section>
