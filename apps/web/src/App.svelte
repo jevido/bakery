@@ -6,6 +6,7 @@
   import Login from './pages/Login.svelte'
   import NotFound from './pages/NotFound.svelte'
   import Application from './pages/Application.svelte'
+  import Database from './pages/Database.svelte'
   import Project from './pages/Project.svelte'
   import Projects from './pages/Projects.svelte'
   import Settings from './pages/Settings.svelte'
@@ -33,6 +34,8 @@
       <Project id={router.route.id} />
     {:else if router.route.name === 'application'}
       <Application id={router.route.id} />
+    {:else if router.route.name === 'database'}
+      <Database id={router.route.id} />
     {:else if router.route.name === 'settings'}
       <Settings />
     {:else}

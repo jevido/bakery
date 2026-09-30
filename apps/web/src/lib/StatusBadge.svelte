@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { DeploymentStatus } from './types'
+  import type { DatabaseStatus, DeploymentStatus } from './types'
 
-  let { status }: { status: DeploymentStatus } = $props()
+  let { status }: { status: DeploymentStatus | DatabaseStatus } = $props()
 </script>
 
 <span class={['badge', status]}>{status}</span>
@@ -17,13 +17,17 @@
     color: var(--warn);
     white-space: nowrap;
   }
-  .finished {
+  .finished,
+  .running {
     color: var(--ok);
   }
-  .failed {
+  .failed,
+  .exited {
     color: var(--danger);
   }
-  .cancelled {
+  .cancelled,
+  .stopped,
+  .missing {
     color: var(--muted, gray);
   }
 </style>

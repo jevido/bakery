@@ -1,23 +1,35 @@
 <script lang="ts">
   import { api, ApiError } from '../lib/api'
   import ApplicationForm from '../lib/ApplicationForm.svelte'
+  import DatabaseForm from '../lib/DatabaseForm.svelte'
+  import { engineLabel } from '../lib/engines'
   import { sourceLine } from '../lib/buildPacks'
   import EnvEditor from '../lib/EnvEditor.svelte'
   import { go, href } from '../lib/router.svelte'
-  import type { Application, ApplicationInput, Project } from '../lib/types'
+  import StatusBadge from '../lib/StatusBadge.svelte'
+  import type { Application, ApplicationInput, Database, DatabaseInput, Project } from '../lib/types'
 
   let { id }: { id: number } = $props()
 
   let project = $state.raw<Project | null>(null)
   let loadError = $state('')
+  let databases = $state.raw<Database[]>([])
   let addingTo = $state<number | null>(null)
+  let addingDatabaseTo = $state<number | null>(null)
   let deleteError = $state('')
 
   $effect(() => {
     project = null
     loadError = ''
-    api<{ project: Project }>('GET', `/projects/${id}`)
-      .then((r) => (project = r.project))
+    databases = []
+    Promise.all([
+      api<{ project: Project }>('GET', `/projects/${id}`),
+      api<{ databases: Database[] }>('GET', `/projects/${id}/databases`),
+    ])
+      .then(([p, d]) => {
+        databases = d.databases
+        project = p.project
+      })
       .catch((e) => (loadError = e.message))
   })
 
@@ -28,6 +40,11 @@
       input,
     )
     go(`/applications/${application.id}`)
+  }
+
+  async function addDatabase(environmentId: number, input: DatabaseInput) {
+    const { database } = await api<{ database: Database }>('POST', `/environments/${environmentId}/databases`, input)
+    go(`/databases/${database.id}`)
   }
 
   async function remove() {
@@ -68,12 +85,18 @@
   </details>
 
   {#each project.environments ?? [] as env (env.id)}
+    {@const envDatabases = databases.filter((d) => d.environment_id === env.id)}
     <section>
       <div class="head">
         <h2>{env.name}</h2>
-        {#if addingTo !== env.id}
-          <button class="primary" onclick={() => (addingTo = env.id)}>New application</button>
-        {/if}
+        <div class="buttons">
+          {#if addingDatabaseTo !== env.id}
+            <button onclick={() => (addingDatabaseTo = env.id)}>New database</button>
+          {/if}
+          {#if addingTo !== env.id}
+            <button class="primary" onclick={() => (addingTo = env.id)}>New application</button>
+          {/if}
+        </div>
       </div>
       <details>
         <summary>Shared variables of {env.name}</summary>
@@ -91,6 +114,15 @@
           />
         </div>
       {/if}
+      {#if addingDatabaseTo === env.id}
+        <div class="card">
+          <DatabaseForm
+            submitLabel="Create database"
+            onsubmit={(input) => addDatabase(env.id, input)}
+            oncancel={() => (addingDatabaseTo = null)}
+          />
+        </div>
+      {/if}
       {#if env.applications.length === 0}
         <p class="muted">No applications in {env.name} yet.</p>
       {:else}
@@ -102,6 +134,20 @@
                 <td><a href={href(`/applications/${a.id}`)}>{a.name}</a></td>
                 <td class="mono muted">{sourceLine(a)}</td>
                 <td class="mono">{a.domains[0]}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/if}
+      {#if envDatabases.length > 0}
+        <table>
+          <thead><tr><th>Database</th><th>Engine</th><th>Status</th></tr></thead>
+          <tbody>
+            {#each envDatabases as d (d.id)}
+              <tr>
+                <td><a href={href(`/databases/${d.id}`)}>{d.name}</a></td>
+                <td class="muted">{engineLabel(d.engine)} {d.version}</td>
+                <td><StatusBadge status={d.status} /></td>
               </tr>
             {/each}
           </tbody>
@@ -135,6 +181,10 @@
   }
   section .head {
     margin: 0;
+  }
+  .buttons {
+    display: flex;
+    gap: 0.5rem;
   }
   h2 {
     text-transform: capitalize;

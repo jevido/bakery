@@ -115,3 +115,37 @@ export type Deployment = {
 }
 
 export type LogLine = { stream: 'info' | 'out' | 'err'; line: string }
+
+export type Engine = 'postgresql' | 'mysql' | 'mariadb' | 'redis' | 'valkey' | 'mongodb'
+
+/** Read from Podman: starting until it answers its engine's readiness probe. */
+export type DatabaseStatus = 'starting' | 'running' | 'stopped' | 'exited' | 'missing'
+
+export type Database = {
+  id: number
+  environment_id: number
+  project_id: number
+  name: string
+  slug: string
+  engine: Engine
+  version: string
+  status: DatabaseStatus
+  desired_state: 'running' | 'stopped'
+  /** Why the last start failed, or how the container exited. */
+  error?: string
+  /** null: not published. */
+  public_port: number | null
+  resource_limits: ResourceLimits
+  /** Only on a single database, not in lists. */
+  credentials?: { username: string; password: string; root_password?: string; database_name: string }
+  internal_url?: string
+  public_url?: string | null
+}
+
+export type DatabaseInput = {
+  name: string
+  engine?: Engine
+  version: string
+  public_port: number | null
+  resource_limits: ResourceLimits
+}

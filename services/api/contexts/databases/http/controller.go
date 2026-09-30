@@ -20,9 +20,32 @@ func NewController(service *app.Service) *Controller {
 	return &Controller{service: service}
 }
 
+// limitsJSON is null for unlimited, like an Application's.
 type limitsJSON struct {
-	MemoryMB int     `json:"memory_mb"`
-	CPUs     float64 `json:"cpus"`
+	MemoryMB *int     `json:"memory_mb"`
+	CPUs     *float64 `json:"cpus"`
+}
+
+func limitsToJSON(l domain.ResourceLimits) limitsJSON {
+	var out limitsJSON
+	if l.MemoryMB != 0 {
+		out.MemoryMB = &l.MemoryMB
+	}
+	if l.CPUs != 0 {
+		out.CPUs = &l.CPUs
+	}
+	return out
+}
+
+func (r limitsJSON) limits() domain.ResourceLimits {
+	var l domain.ResourceLimits
+	if r.MemoryMB != nil {
+		l.MemoryMB = *r.MemoryMB
+	}
+	if r.CPUs != nil {
+		l.CPUs = *r.CPUs
+	}
+	return l
 }
 
 type credentialsJSON struct {
@@ -56,7 +79,7 @@ func toJSON(v app.View, full bool) databaseJSON {
 		ID: v.ID, EnvironmentID: v.EnvironmentID, ProjectID: v.ProjectID,
 		Name: v.Name, Slug: v.Slug, Engine: string(v.Engine), Version: v.Version,
 		Status: string(v.Status), DesiredState: string(v.DesiredState), Error: v.Error,
-		ResourceLimits: limitsJSON(v.ResourceLimits),
+		ResourceLimits: limitsToJSON(v.ResourceLimits),
 	}
 	if v.PublicPort != 0 {
 		port := v.PublicPort
@@ -86,7 +109,7 @@ type databaseRequest struct {
 }
 
 func (r databaseRequest) input() domain.Input {
-	in := domain.Input{Name: r.Name, Engine: domain.Engine(r.Engine), Version: r.Version, ResourceLimits: domain.ResourceLimits(r.ResourceLimits)}
+	in := domain.Input{Name: r.Name, Engine: domain.Engine(r.Engine), Version: r.Version, ResourceLimits: r.ResourceLimits.limits()}
 	if r.PublicPort != nil {
 		in.PublicPort = *r.PublicPort
 	}

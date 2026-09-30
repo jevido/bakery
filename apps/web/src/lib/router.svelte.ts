@@ -1,8 +1,9 @@
-// Hash router: #/projects, #/projects/{id}, #/applications/{id}, #/settings, #/login.
+// Hash router: #/projects, #/projects/{id}, #/applications/{id}, #/databases/{id}, #/settings, #/login.
 export type Route =
   | { name: 'projects' }
   | { name: 'project'; id: number }
   | { name: 'application'; id: number }
+  | { name: 'database'; id: number }
   | { name: 'settings' }
   | { name: 'login' }
   | { name: 'notfound' }
@@ -20,6 +21,10 @@ function parse(hash: string): Route {
   if (parts[0] === 'applications' && parts.length === 2) {
     const id = Number(parts[1])
     if (Number.isInteger(id)) return { name: 'application', id }
+  }
+  if (parts[0] === 'databases' && parts.length === 2) {
+    const id = Number(parts[1])
+    if (Number.isInteger(id)) return { name: 'database', id }
   }
   return { name: 'notfound' }
 }
