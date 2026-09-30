@@ -28,7 +28,7 @@ func (r *M20260930000012CreateApplicationDomainsTable) Up() error {
 	}); err != nil {
 		return err
 	}
-	if _, err := facades.Orm().Query().Exec(`
+	if _, err := facades.Schema().Orm().Query().Exec(`
 		INSERT INTO application_domains (application_id, domain, position, created_at, updated_at)
 		SELECT id, domain, 0, now(), now() FROM applications`); err != nil {
 		return err
@@ -42,7 +42,7 @@ func (r *M20260930000012CreateApplicationDomainsTable) Down() error {
 	}); err != nil {
 		return err
 	}
-	if _, err := facades.Orm().Query().Exec(`
+	if _, err := facades.Schema().Orm().Query().Exec(`
 		UPDATE applications a SET domain = d.domain
 		FROM application_domains d WHERE d.application_id = a.id AND d.position = 0`); err != nil {
 		return err

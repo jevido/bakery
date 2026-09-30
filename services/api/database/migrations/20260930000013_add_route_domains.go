@@ -21,7 +21,7 @@ func (r *M20260930000013AddRouteDomains) Up() error {
 	}); err != nil {
 		return err
 	}
-	if _, err := facades.Orm().Query().Exec(`UPDATE routes SET domains = json_build_array(domain)::text`); err != nil {
+	if _, err := facades.Schema().Orm().Query().Exec(`UPDATE routes SET domains = json_build_array(domain)::text`); err != nil {
 		return err
 	}
 	// Dropping the column drops its unique index with it.
@@ -34,7 +34,7 @@ func (r *M20260930000013AddRouteDomains) Down() error {
 	}); err != nil {
 		return err
 	}
-	if _, err := facades.Orm().Query().Exec(`UPDATE routes SET domain = domains::json->>0`); err != nil {
+	if _, err := facades.Schema().Orm().Query().Exec(`UPDATE routes SET domain = domains::json->>0`); err != nil {
 		return err
 	}
 	return facades.Schema().DropColumns("routes", []string{"domains"})
