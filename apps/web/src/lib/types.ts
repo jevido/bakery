@@ -28,6 +28,8 @@ export type Application = {
   has_registry_password: boolean
   storages: Storage[]
   resource_limits: ResourceLimits
+  /** The Target server: where it is built and runs. Fixed once the application exists. */
+  server_id: number
 }
 
 /** A persistent storage: the volume `name`, mounted at `mount_path` in every container. */
@@ -88,6 +90,8 @@ export type ApplicationInput = Pick<
   storages?: Storage[]
   /** Omitted keeps the current ones. */
   resource_limits?: ResourceLimits
+  /** Only read when the application is created; omitted is the local server. */
+  server_id?: number
 }
 
 export type DeploymentStatus = 'queued' | 'cloning' | 'building' | 'starting' | 'finished' | 'failed' | 'cancelled'
@@ -95,6 +99,8 @@ export type DeploymentStatus = 'queued' | 'cloning' | 'building' | 'starting' | 
 export type Deployment = {
   id: number
   application_id: number
+  /** The server it ran on. */
+  server_id: number
   status: DeploymentStatus
   active: boolean
   trigger: 'manual' | 'webhook' | 'rollback'

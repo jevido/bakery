@@ -7,10 +7,13 @@
   let {
     deployments,
     selected = $bindable(null),
+    serverNames = {},
     onchange,
   }: {
     deployments: Deployment[]
     selected?: number | null
+    /** Server names by id, for the server a deployment ran on. */
+    serverNames?: Record<number, string>
     /** Called when the open deployment's status changes. */
     onchange: () => void
   } = $props()
@@ -73,6 +76,7 @@
     {#if current.commit_sha}<span class="mono muted">{current.commit_sha.slice(0, 12)}</span>{/if}
     {#if current.commit_message}<span class="subject" title={current.commit_message}>{current.commit_message}</span>{/if}
     {#if current.source_image}<span class="mono muted" title={current.source_image}>{shortImage(current.source_image)}</span>{/if}
+    {#if current.server_id}<span class="muted">on {serverNames[current.server_id] ?? `server ${current.server_id}`}</span>{/if}
     {#if current.active}<button class="danger" disabled={busy} onclick={() => cancel(current)}>Cancel</button>{/if}
   </div>
   {#if actionError}<p class="error">{actionError}</p>{/if}

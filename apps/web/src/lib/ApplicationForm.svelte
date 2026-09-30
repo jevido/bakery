@@ -1,8 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte'
-  import { ApiError } from './api'
+  import { api, ApiError } from './api'
   import Field from './Field.svelte'
-  import type { ApplicationInput, BuildPack, HealthCheck, ResourceLimits, Storage } from './types'
+  import type { ApplicationInput, BuildPack, HealthCheck, ResourceLimits, Server, Storage } from './types'
 
   let {
     initial,
@@ -11,7 +11,7 @@
     onsubmit,
     oncancel,
   }: {
-    initial?: ApplicationInput & { registry_username?: string; has_registry_password?: boolean }
+    initial?: ApplicationInput & { registry_username?: string; has_registry_password?: boolean; server_id?: number }
     submitLabel: string
     domainPlaceholder?: string
     onsubmit: (input: ApplicationInput) => Promise<void>
@@ -55,6 +55,17 @@
   let domains = $state(startDomains.map((value) => ({ key: nextKey++, value })))
   let storages = $state((start.storages ?? []).map((s: Storage) => ({ key: nextKey++, ...s })))
   const limits: ResourceLimits = start.resource_limits ?? { memory_mb: null, cpus: null }
+  // The Target server is chosen once, when the application is created.
+  const creating = untrack(() => initial) === undefined
+  let servers = $state.raw<Server[]>([])
+  let server_id = $state(untrack(() => initial?.server_id) ?? 0)
+  const currentServer = $derived(servers.find((s) => s.id === server_id))
+  api<{ servers: Server[] }>('GET', '/servers')
+    .then((r) => {
+      servers = r.servers
+      if (server_id === 0) server_id = r.servers.find((s) => s.kind === 'local')?.id ?? 0
+    })
+    .catch(() => {})
   let memoryMB = $state(limits.memory_mb == null ? '' : String(limits.memory_mb))
   let cpus = $state(limits.cpus == null ? '' : String(limits.cpus))
 
@@ -106,6 +117,7 @@
           cpus: cpus.trim() === '' ? null : Number(cpus),
         },
       }
+      if (creating && server_id !== 0) input.server_id = server_id
       if (build_pack === 'image') input.registry_credentials = { username: registryUsername, password: registryPassword }
       await onsubmit(input)
       registryPassword = ''
@@ -134,6 +146,33 @@
     <p class="muted">{packs.find((p) => p.value === build_pack)?.hint}</p>
     {#if errors.build_pack}<small class="error">{errors.build_pack}</small>{/if}
   </fieldset>
+  {#if servers.length > 1 || !creating}
+    <fieldset>
+      <legend>Server</legend>
+      {#if creating}
+        <label class="field">
+          <span>Where it is built and runs</span>
+          <select bind:value={server_id} aria-invalid={errors.server_id ? 'true' : undefined}>
+            {#each servers as s (s.id)}
+              <option value={s.id}>
+                {s.name}{s.kind === 'remote' ? ` (${s.host})` : ''}{s.status !== 'reachable' ? ` · ${s.status}` : ''}
+              </option>
+            {/each}
+          </select>
+        </label>
+        {#if currentServer && currentServer.status !== 'reachable'}
+          <p class="muted">This server is {currentServer.status}; validate it on its page, or the deploy will fail.</p>
+        {/if}
+        <p class="muted">The server cannot be changed once the application exists.</p>
+      {:else}
+        <p>
+          {currentServer?.name ?? `server ${server_id}`}{currentServer?.kind === 'remote' ? ` (${currentServer.host})` : ''}
+          <span class="muted">· cannot be changed</span>
+        </p>
+      {/if}
+      {#if errors.server_id}<small class="error">{errors.server_id}</small>{/if}
+    </fieldset>
+  {/if}
   {#if fromGit}
     <Field
       label="Git repository (https:// for public, SSH for private)"
@@ -261,6 +300,14 @@
 </form>
 
 <style>
+  .field {
+    display: grid;
+    gap: 0.3rem;
+  }
+  .field span {
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
   .form {
     display: grid;
     gap: 0.8rem;

@@ -114,10 +114,18 @@
     }
   }
 
+  let removeError = $state('')
+
   async function remove() {
     if (!server || !confirm(`Remove ${server.name} from Bakery? Nothing on the server itself is touched.`)) return
-    await api('DELETE', `/servers/${id}`)
-    go('/servers')
+    removeError = ''
+    try {
+      await api('DELETE', `/servers/${id}`)
+      go('/servers')
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err
+      removeError = err.message
+    }
   }
 
   function ownerHref(c: ContainerMetrics): string | null {
@@ -253,8 +261,8 @@
     <section>
       <h2>Cleanup</h2>
       <p class="muted">
-        Every night at 03:00 Bakery removes images nothing needs any more: dangling Bakery images, and on the local server the images of
-        deployments older than the five newest per application.
+        Every night at 03:00 Bakery removes images nothing needs any more: dangling Bakery images, and the images of
+        deployments older than the five newest of each application that runs here.
       </p>
       {#if cleaned}<p data-testid="cleaned">{cleaned}</p>{/if}
       {#if server.last_cleanup.at}
@@ -287,6 +295,7 @@
           <button onclick={() => server && startEditing(server)}>Edit</button>
           <button class="danger" onclick={remove}>Remove server</button>
         </div>
+        {#if removeError}<p class="error" data-testid="remove-error">{removeError}</p>{/if}
       {/if}
     </section>
   {/if}

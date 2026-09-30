@@ -130,7 +130,7 @@ func applicationToJSON(a domain.Application, localServer uint64) applicationJSON
 		ID:       a.ID, ProjectID: a.ProjectID, EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug,
 		BuildPack: string(a.BuildPack), ImageReference: a.ImageReference, PublishDirectory: a.PublishDirectory,
 		GitURL: a.GitURL, GitBranch: a.GitBranch, DockerfilePath: a.DockerfilePath, Port: a.Port, Domains: a.Domains,
-		DeployKeyPublic: a.DeployKey.Public, PublicURL: publicURL(a.PrimaryDomain()), PublicURLs: publicURLs(a.Domains),
+		DeployKeyPublic: a.DeployKey.Public, PublicURL: publicURL(a.PrimaryDomain(), a.ServerID), PublicURLs: publicURLs(a.Domains, a.ServerID),
 		RegistryUsername: a.RegistryCredentials.Username, HasRegistryPassword: a.RegistryCredentials.Username != "", // both or neither
 		Storages: storagesToJSON(a.Storages), ResourceLimits: resourceLimitsToJSON(a.ResourceLimits),
 		HealthCheck: healthCheckJSON{
@@ -140,17 +140,19 @@ func applicationToJSON(a domain.Application, localServer uint64) applicationJSON
 	}
 }
 
-func publicURLs(domains []string) []string {
+func publicURLs(domains []string, server uint64) []string {
 	out := make([]string, len(domains))
 	for i, d := range domains {
-		out[i] = publicURL(d)
+		out[i] = publicURL(d, server)
 	}
 	return out
 }
 
-func publicURL(d string) string {
+// publicURL is where a Domain is served: the Local server's Proxy on its
+// configured HTTPS port, a Remote server's always on 443.
+func publicURL(d string, server uint64) string {
 	port := facades.Config().GetInt("bakery.proxy.https_port", 443)
-	if port == 443 {
+	if port == 443 || server != 0 {
 		return "https://" + d
 	}
 	return "https://" + d + ":" + strconv.Itoa(port)

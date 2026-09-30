@@ -10,7 +10,7 @@
   import { go, href } from '../lib/router.svelte'
   import StatusBadge from '../lib/StatusBadge.svelte'
   import Webhook from '../lib/Webhook.svelte'
-  import type { Application, ApplicationInput, Deployment } from '../lib/types'
+  import type { Application, ApplicationInput, Deployment, Server } from '../lib/types'
 
   let { id }: { id: number } = $props()
 
@@ -25,6 +25,10 @@
   let deployError = $state('')
   let deploying = $state(false)
 
+  // The Target server, for its name and, on a Remote server, where DNS
+  // must point.
+  let server = $state.raw<Server | null>(null)
+
   let latest = $derived(deployments[0] ?? null)
   let active = $derived(deployments.some((d) => d.active))
   // One Deployment can wait behind the running one; a second cannot.
@@ -37,11 +41,17 @@
 
   $effect(() => {
     application = null
+    server = null
     deployments = []
     loadError = ''
     selected = null
     api<{ application: Application }>('GET', `/applications/${id}`)
-      .then((r) => (application = r.application))
+      .then((r) => {
+        application = r.application
+        api<{ server: Server }>('GET', `/servers/${r.application.server_id}`)
+          .then((s) => (server = s.server))
+          .catch(() => {})
+      })
       .then(loadDeployments)
       .catch((e) => (loadError = e.message))
   })
@@ -103,7 +113,13 @@
           {#if i > 0}<span class="muted">{' · '}</span>{/if}
           <a class="mono" href={url} target="_blank" rel="noreferrer">{url}</a>
         {/each}
+        {#if server}
+          <span class="muted">{' · on '}</span><a href={href(`/servers/${server.id}`)}>{server.name}</a>
+        {/if}
       </p>
+      {#if server?.kind === 'remote'}
+        <p class="muted">Its domains must point at {server.host}, where this server's proxy serves them.</p>
+      {/if}
       {#if application.storages.length > 0 || application.resource_limits.memory_mb || application.resource_limits.cpus}
         <p class="muted settings">
           {#each application.storages as s (s.name)}<span>storage <span class="mono">{s.name}</span> at <span class="mono">{s.mount_path}</span></span>{/each}
@@ -134,7 +150,7 @@
   </div>
 
   {#if tab === 'deployments'}
-    <Deployments {deployments} bind:selected onchange={() => loadDeployments().catch(() => {})} />
+    <Deployments {deployments} bind:selected serverNames={server ? { [server.id]: server.name } : {}} onchange={() => loadDeployments().catch(() => {})} />
   {:else if tab === 'logs'}
     <ContainerLogs
       url={`/api/applications/${application.id}/logs`}
