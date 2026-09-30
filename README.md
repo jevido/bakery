@@ -68,6 +68,25 @@ podman exec bakery-proxy cat /data/caddy/pki/authorities/local/root.crt > bakery
 # then import bakery-root.crt into your browser or system trust store
 ```
 
+### Build packs
+
+Each application picks how it becomes an image:
+
+- **Dockerfile**: builds the Dockerfile at a path in the repository.
+- **Nixpacks**: no Dockerfile needed; [Nixpacks](https://nixpacks.com)
+  detects the language (Node, Go, Python, PHP, Ruby, Rust, …) and Bakery
+  builds the plan it writes. `task api:dev` downloads the pinned `nixpacks`
+  binary into `services/api/bin/`.
+- **Static site**: serves a directory of the repository (the publish
+  directory, `.` by default) as files on port 80.
+- **Image**: runs a prebuilt image from a registry, e.g.
+  `ghcr.io/traefik/whoami:v1.10`, optionally with a registry username and
+  token for private images. Every deploy pulls it again; a rollback starts
+  the exact image pulled then.
+
+`task buildpack:test` runs every build pack against the Forgejo stand-in and
+its container registry.
+
 ### Private repositories
 
 Use the repository's SSH URL, for example `git@github.com:you/app.git` or
