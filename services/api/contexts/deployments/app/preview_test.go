@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -221,5 +222,96 @@ func TestClosePreviewRemovesWhatItRan(t *testing.T) {
 	}
 	if err := s.service.ClosePreview(ctx, 1, 99); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown preview: %v", err)
+	}
+}
+
+type fakeComments struct {
+	posts, edits []string
+	gone, fail   bool
+}
+
+func (f *fakeComments) Post(_ context.Context, t CommentTarget, token, body string) (string, error) {
+	if f.fail {
+		return "", errors.New("forgejo answered 401: token is required")
+	}
+	f.posts = append(f.posts, fmt.Sprintf("%s %d %s: %s", t.API, t.Number, token, body))
+	return fmt.Sprint(len(f.posts)), nil
+}
+
+func (f *fakeComments) Edit(_ context.Context, t CommentTarget, token, id, body string) error {
+	if f.gone {
+		f.gone = false
+		return ErrCommentGone
+	}
+	f.edits = append(f.edits, id+": "+body)
+	return nil
+}
+
+func TestPreviewComment(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	hooks := memWebhooks{1: {ApplicationID: 1, Secret: "s", Previews: true, GitHostToken: "tok"}}
+	comments := &fakeComments{}
+	s.service.Comments = NewCommenter(hooks, s.previews, comments)
+	s.previews.Save(ctx, domain.Preview{ApplicationID: 1, Number: 7, Branch: "f", State: domain.PreviewOpen, Provider: domain.Forgejo, API: "http://git/api/v1/repos/u/r"})
+
+	s.service.DeployPreview(ctx, 1, 7, domain.TriggerWebhook)
+	s.worker.RunOnce(ctx)
+	if len(comments.posts) != 1 || !strings.Contains(comments.posts[0], "http://git/api/v1/repos/u/r 7 tok: **Bakery preview**") ||
+		!strings.Contains(comments.posts[0], "✅ Deployed: https://pr-7.whoami.localhost") || !strings.Contains(comments.posts[0], "`0123456789ab Fix the login`") {
+		t.Fatalf("posts %q", comments.posts)
+	}
+	if p, _, _ := s.previews.ByNumber(ctx, 1, 7); p.CommentID != "1" {
+		t.Fatalf("comment id %q", p.CommentID)
+	}
+	if !strings.Contains(s.logs.text(), "Commented on pull request #7") {
+		t.Errorf("log:\n%s", s.logs.text())
+	}
+
+	// The next deploy fails: the same comment is edited.
+	s.runtime.buildErr = errors.New("exit status 1")
+	s.service.DeployPreview(ctx, 1, 7, domain.TriggerWebhook)
+	s.worker.RunOnce(ctx)
+	if len(comments.posts) != 1 || len(comments.edits) != 1 || !strings.Contains(comments.edits[0], "1: **Bakery preview**\n\n❌ Deployment failed: build failed: exit status 1") {
+		t.Fatalf("edits %q", comments.edits)
+	}
+
+	// Someone deleted the comment: a new one is posted.
+	s.runtime.buildErr = nil
+	comments.gone = true
+	s.service.DeployPreview(ctx, 1, 7, domain.TriggerWebhook)
+	s.worker.RunOnce(ctx)
+	if len(comments.posts) != 2 {
+		t.Fatalf("posts after the comment was deleted: %q", comments.posts)
+	}
+
+	// Closing says it was removed.
+	s.service.ClosePreview(ctx, 1, 7)
+	if last := comments.edits[len(comments.edits)-1]; !strings.Contains(last, "2: **Bakery preview**\n\n🗑️ Removed") {
+		t.Fatalf("after close %q", comments.edits)
+	}
+}
+
+func TestPreviewCommentFailureKeepsTheDeployment(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	s.service.Comments = NewCommenter(memWebhooks{1: {ApplicationID: 1, Secret: "s", GitHostToken: "tok"}}, s.previews, &fakeComments{fail: true})
+	s.previews.Save(ctx, domain.Preview{ApplicationID: 1, Number: 7, Branch: "f", State: domain.PreviewOpen, Provider: domain.Forgejo, API: "http://git"})
+	d, _ := s.service.DeployPreview(ctx, 1, 7, domain.TriggerWebhook)
+	s.worker.RunOnce(ctx)
+	got, _ := s.service.Deployment(ctx, d.ID)
+	if got.Status != domain.Finished || !strings.Contains(s.logs.text(), "Could not comment on pull request #7: forgejo answered 401") {
+		t.Fatalf("%s\n%s", got.Status, s.logs.text())
+	}
+
+	// Without a Git host token nothing is posted or logged.
+	s2 := newSetup(t, fakeSource{})
+	comments := &fakeComments{}
+	s2.service.Comments = NewCommenter(memWebhooks{1: {ApplicationID: 1, Secret: "s"}}, s2.previews, comments)
+	s2.previews.Save(ctx, domain.Preview{ApplicationID: 1, Number: 7, Branch: "f", State: domain.PreviewOpen, API: "http://git"})
+	s2.service.DeployPreview(ctx, 1, 7, domain.TriggerWebhook)
+	s2.worker.RunOnce(ctx)
+	if len(comments.posts) != 0 || strings.Contains(s2.logs.text(), "comment") {
+		t.Fatalf("posted without a token: %q\n%s", comments.posts, s2.logs.text())
 	}
 }

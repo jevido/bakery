@@ -148,6 +148,9 @@ func (w *Worker) run(parent context.Context, d domain.Deployment) {
 	if serr := w.service.store.Save(saveCtx, d); serr != nil {
 		w.Log("deployments: saving %d: %v", d.ID, serr)
 	}
+	if d.Preview != 0 && (d.Status == domain.Finished || d.Status == domain.Failed) {
+		w.commentPreview(saveCtx, d, info)
+	}
 	if w.Finished != nil && (d.Status == domain.Finished || d.Status == domain.Failed) {
 		w.Finished(saveCtx, d, slug)
 	}
@@ -420,6 +423,26 @@ func (w *Worker) goLive(ctx context.Context, rt Runtime, d *domain.Deployment, a
 		info("Could not remove every previous container: %v", err)
 	}
 	return w.advance(ctx, d, domain.Finished)
+}
+
+// commentPreview writes the Preview comment for a Preview Deployment that
+// ended. A failure goes to the Deployment log; the Deployment stands.
+func (w *Worker) commentPreview(ctx context.Context, d domain.Deployment, info func(string, ...any)) {
+	c := w.service.Comments
+	if c == nil {
+		return
+	}
+	app, err := w.service.applications(ctx, d.ApplicationID)
+	if err != nil || len(app.Domains) == 0 {
+		return
+	}
+	posted, err := c.Comment(ctx, d.ApplicationID, d.Preview, c.DeployedBody(d, domain.PreviewDomain(d.Preview, app.Domains[0])))
+	switch {
+	case err != nil:
+		info("Could not comment on pull request #%d: %v", d.Preview, err)
+	case posted:
+		info("Commented on pull request #%d", d.Preview)
+	}
 }
 
 // waitHealthy probes the new Container until its Health check passes, the

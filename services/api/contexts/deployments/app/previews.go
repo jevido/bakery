@@ -78,6 +78,11 @@ func (s *Service) ClosePreview(ctx context.Context, applicationID uint64, number
 		}
 	}
 	s.removePreview(context.WithoutCancel(ctx), applicationID, number, ds)
+	if s.Comments != nil && p.CommentID != "" {
+		if _, err := s.Comments.Comment(context.WithoutCancel(ctx), applicationID, number, s.Comments.RemovedBody()); err != nil {
+			s.Log("deployments: commenting on pull request #%d of application %d: %v", number, applicationID, err)
+		}
+	}
 	return nil
 }
 

@@ -45,6 +45,9 @@ func deploymentNotification(e deployments.DeploymentFinished, dashboard string) 
 	if name == "" {
 		name = fmt.Sprintf("application %d", e.ApplicationID)
 	}
+	if e.Preview != 0 {
+		name += fmt.Sprintf(" (preview of pull request #%d)", e.Preview)
+	}
 	n := domain.Notification{
 		Kind:  domain.DeploymentSucceeded,
 		Title: "Deployment of " + name + " succeeded",
@@ -67,7 +70,10 @@ func deploymentNotification(e deployments.DeploymentFinished, dashboard string) 
 		}
 		body = append(body, line)
 	}
-	if e.Trigger == "webhook" {
+	switch {
+	case e.Trigger == "webhook" && e.Preview != 0:
+		body = append(body, "Started by the pull request.")
+	case e.Trigger == "webhook":
 		body = append(body, "Started by a push.")
 	}
 	n.Body = strings.Join(body, "\n")

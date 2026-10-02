@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -95,6 +96,9 @@ func svc() *app.Service {
 		service = app.NewService(infra.Store{}, infra.Logs{}, applications, infra.KnownHosts{}, infra.Previews{})
 		webhooks = app.NewWebhooks(service, infra.Webhooks{})
 		service.DropPreviewRoute = routing.DropPreviewRoute
+		service.Comments = app.NewCommenter(infra.Webhooks{}, infra.Previews{}, infra.GitHosts{})
+		service.Comments.URL = publicURL
+		deploymentshttp.PublicURL = publicURL
 		service.Log = facades.Log().Errorf
 		runtime = infra.Runtime{
 			Network:            facades.Config().GetString("bakery.network"),
@@ -137,6 +141,17 @@ func svc() *app.Service {
 		})
 	})
 	return service
+}
+
+// publicURL is where a Domain is served: the Local server's Proxy on its
+// configured HTTPS port, a Remote server's always on 443 (as projects
+// shows an Application's).
+func publicURL(d string, serverID uint64) string {
+	port := facades.Config().GetInt("bakery.proxy.https_port", 443)
+	if port == 443 || serverID != 0 {
+		return "https://" + d
+	}
+	return "https://" + d + ":" + strconv.Itoa(port)
 }
 
 func isApplicationNotFound(err error) bool { return errors.Is(err, projects.ErrNotFound) }
@@ -257,7 +272,9 @@ type DeploymentFinished struct {
 	DeploymentID    uint64
 	ApplicationID   uint64
 	ApplicationSlug string
-	Succeeded       bool
+	// Preview is the Preview number of a Preview Deployment, else 0.
+	Preview   int
+	Succeeded bool
 	// Reason is why it failed.
 	Reason        string
 	Branch        string
@@ -285,7 +302,7 @@ func OnDeploymentFinished(f func(ctx context.Context, e DeploymentFinished)) {
 
 func publishFinished(_ context.Context, d domain.Deployment, slug string) {
 	e := DeploymentFinished{
-		DeploymentID: d.ID, ApplicationID: d.ApplicationID, ApplicationSlug: slug,
+		DeploymentID: d.ID, ApplicationID: d.ApplicationID, ApplicationSlug: slug, Preview: d.Preview,
 		Succeeded: d.Status == domain.Finished, Reason: d.Error, Branch: d.Branch,
 		CommitSHA: d.CommitSHA, CommitMessage: d.CommitMessage, Trigger: string(d.Trigger),
 		Rollback: d.RollbackOf != nil, FinishedAt: time.Now(),

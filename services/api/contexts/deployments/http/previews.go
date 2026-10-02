@@ -19,6 +19,7 @@ type previewJSON struct {
 	Provider  string          `json:"provider"`
 	State     string          `json:"state"`
 	Domain    string          `json:"domain"`
+	PublicURL string          `json:"public_url"`
 	Commented bool            `json:"commented"`
 	Latest    *deploymentJSON `json:"latest_deployment"`
 	CreatedAt time.Time       `json:"created_at"`
@@ -33,6 +34,13 @@ func previewToJSON(p app.PreviewView) previewJSON {
 	if p.Latest != nil {
 		d := ToJSON(*p.Latest)
 		out.Latest = &d
+	}
+	if p.Domain != "" && PublicURL != nil {
+		var server uint64
+		if p.Latest != nil {
+			server = p.Latest.ServerID
+		}
+		out.PublicURL = PublicURL(p.Domain, server)
 	}
 	return out
 }

@@ -63,6 +63,29 @@ wait_for 30 "version feature on $PREVIEW_DOMAIN" preview_serves "version feature
 serves "version main" || fail "production changed: $(fetch /)"
 echo "ok: pull request #$PR serves version feature on $PREVIEW_DOMAIN, production still main"
 
+say "The preview comment"
+comments() { forgejo GET "/repos/$FORGEJO_USER/$RUN/issues/$PR/comments"; }
+bakery_comments() { comments | json "len([c for c in d if c['body'].startswith('**Bakery preview**')])"; }
+comment_says() { comments | json "next((c['body'] for c in d if c['body'].startswith('**Bakery preview**')), '')" | grep -qF "$1"; }
+PREVIEW_URL=$(preview "['public_url']")
+wait_for 30 "a comment with $PREVIEW_URL" comment_says "Deployed: $PREVIEW_URL"
+[ "$(bakery_comments)" = 1 ] || fail "$(bakery_comments) bakery comments"
+echo "ok: pull request #$PR has one comment with $PREVIEW_URL"
+
+say "A push to the pull request redeploys the preview"
+BEFORE=$(preview "['latest_deployment']['id']")
+echo "version feature 2" >"$REPO/index.html"
+git -C "$REPO" -c user.name="E2E Tester" -c user.email=e2e@example.test commit -qam "Version feature 2"
+git -C "$REPO" push -q "http://$FORGEJO_USER:$PASSWORD@127.0.0.1:4950/$FORGEJO_USER/$RUN.git" feature
+redeployed() { [ "$(preview "['latest_deployment']['id']")" != "$BEFORE" ]; }
+wait_for 60 "a new preview deployment" redeployed
+wait_for 300 "the preview redeployment" preview_done
+wait_for 30 "version feature 2 on $PREVIEW_DOMAIN" preview_serves "version feature 2"
+wait_for 30 "the comment to name the new commit" comment_says "Version feature 2"
+[ "$(bakery_comments)" = 1 ] || fail "$(bakery_comments) bakery comments after the push"
+serves "version main" || fail "production changed: $(fetch /)"
+echo "ok: the push redeployed the preview and edited the one comment"
+
 say "Closing pull request #$PR removes the preview"
 forgejo PATCH "/repos/$FORGEJO_USER/$RUN/pulls/$PR" '{"state":"closed"}' >/dev/null
 preview_closed() { [ "$(preview "['state']")" = closed ]; }
@@ -72,4 +95,5 @@ wait_for 60 "$PREVIEW_DOMAIN to stop answering" preview_gone
 [ -z "$(podman ps -a -q --filter "label=bakery.application=$APP_ID" --filter "label=bakery.preview=$PR")" ] || fail "preview containers left"
 [ -z "$(podman volume ls -q --filter "label=bakery.application=$APP_ID" --filter "label=bakery.preview=$PR")" ] || fail "preview volumes left"
 serves "version main" || fail "production changed: $(fetch /)"
-echo "ok: closing #$PR removed its container and route; production still serves main"
+wait_for 30 "the comment to say removed" comment_says "Removed"
+echo "ok: closing #$PR removed its container and route and said so; production still serves main"

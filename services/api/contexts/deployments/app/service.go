@@ -22,6 +22,8 @@ type Service struct {
 	runtimes Runtimes
 	// DropPreviewRoute is routing's; nil leaves Preview routes alone.
 	DropPreviewRoute func(ctx context.Context, applicationID uint64, preview int) error
+	// Comments writes Preview comments; nil writes none.
+	Comments *Commenter
 	// Log reports what removing a Preview could not do.
 	Log func(format string, args ...any)
 

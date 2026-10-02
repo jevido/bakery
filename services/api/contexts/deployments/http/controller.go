@@ -27,6 +27,9 @@ func NewController(service *app.Service, isNotFound func(error) bool) *Controlle
 // Server is 0; nil or failing shows 0.
 var LocalServer func() uint64
 
+// PublicURL is where a Domain on a Server (0 the Local server) is reached.
+var PublicURL func(domain string, serverID uint64) string
+
 type deploymentJSON struct {
 	ID            uint64     `json:"id"`
 	ApplicationID uint64     `json:"application_id"`

@@ -28,6 +28,10 @@ func TestDeploymentNotification(t *testing.T) {
 	if n.Kind != domain.DeploymentSucceeded || n.Title != "Deployment of shop succeeded" || n.Body != "A rollback to an earlier deployment." {
 		t.Fatalf("got %+v", n)
 	}
+	n = deploymentNotification(deployments.DeploymentFinished{ApplicationID: 3, ApplicationSlug: "shop", Succeeded: true, Preview: 7, Branch: "feature", CommitSHA: "abc", Trigger: "webhook"}, "x")
+	if n.Title != "Deployment of shop (preview of pull request #7) succeeded" || n.Body != "Branch feature, commit abc\nStarted by the pull request." {
+		t.Fatalf("preview: %+v", n)
+	}
 }
 
 func TestBackupNotification(t *testing.T) {
