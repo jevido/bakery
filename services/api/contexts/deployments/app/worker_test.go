@@ -77,6 +77,15 @@ func (m *memStore) ByID(_ context.Context, id uint64) (domain.Deployment, bool, 
 func (m *memStore) ByApplication(context.Context, uint64, int) ([]domain.Deployment, error) {
 	return m.items, nil
 }
+func (m *memStore) ByPreview(_ context.Context, _ uint64, number int, _ int) ([]domain.Deployment, error) {
+	var out []domain.Deployment
+	for _, d := range m.items {
+		if d.Preview == number {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
 func (m *memStore) Active(context.Context, uint64) (domain.Deployment, bool, error) {
 	return domain.Deployment{}, false, nil
 }

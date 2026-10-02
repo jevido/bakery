@@ -18,6 +18,7 @@ import (
 type deploymentRecord struct {
 	ID            uint64 `gorm:"primaryKey"`
 	ApplicationID uint64
+	Preview       int
 	ServerID      uint64
 	Status        string
 	Trigger       string
@@ -40,7 +41,7 @@ func (deploymentRecord) TableName() string { return "deployments" }
 
 func (r deploymentRecord) toDomain() domain.Deployment {
 	return domain.Deployment{
-		ID: r.ID, ApplicationID: r.ApplicationID, ServerID: r.ServerID, Status: domain.Status(r.Status), Trigger: domain.Trigger(r.Trigger),
+		ID: r.ID, ApplicationID: r.ApplicationID, Preview: r.Preview, ServerID: r.ServerID, Status: domain.Status(r.Status), Trigger: domain.Trigger(r.Trigger),
 		Branch: r.Branch, CommitSHA: r.CommitSha, CommitMessage: r.CommitMessage, CommitAuthor: r.CommitAuthor,
 		SourceImage: r.SourceImage, Image: r.Image, Container: r.ContainerName, RollbackOf: r.RollbackOf, Error: r.Error, CreatedAt: r.CreatedAt,
 		StartedAt: r.StartedAt, FinishedAt: r.FinishedAt,
@@ -61,7 +62,7 @@ func (Store) query(ctx context.Context) contractsorm.Query {
 func (s Store) Queue(ctx context.Context, d domain.Deployment) (domain.Deployment, error) {
 	now := time.Now()
 	rec := deploymentRecord{
-		ApplicationID: d.ApplicationID, ServerID: d.ServerID, Status: string(domain.Queued), Trigger: string(d.Trigger),
+		ApplicationID: d.ApplicationID, Preview: d.Preview, ServerID: d.ServerID, Status: string(domain.Queued), Trigger: string(d.Trigger),
 		Branch: d.Branch, CommitSha: d.CommitSHA, CommitMessage: d.CommitMessage, CommitAuthor: d.CommitAuthor,
 		SourceImage: d.SourceImage, Image: d.Image, RollbackOf: d.RollbackOf, CreatedAt: now, UpdatedAt: now,
 	}
@@ -145,6 +146,20 @@ func (s Store) ByID(ctx context.Context, id uint64) (domain.Deployment, bool, er
 func (s Store) ByApplication(ctx context.Context, applicationID uint64, limit int) ([]domain.Deployment, error) {
 	var recs []deploymentRecord
 	if err := s.query(ctx).Where("application_id", applicationID).OrderByDesc("id").Limit(limit).Find(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]domain.Deployment, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+	}
+	return out, nil
+}
+
+// ByPreview returns the newest Deployments of one Preview of the
+// Application, newest first.
+func (s Store) ByPreview(ctx context.Context, applicationID uint64, number int, limit int) ([]domain.Deployment, error) {
+	var recs []deploymentRecord
+	if err := s.query(ctx).Where("application_id", applicationID).Where("preview", number).OrderByDesc("id").Limit(limit).Find(&recs); err != nil {
 		return nil, err
 	}
 	out := make([]domain.Deployment, len(recs))

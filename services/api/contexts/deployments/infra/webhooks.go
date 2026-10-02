@@ -14,8 +14,11 @@ type webhookRecord struct {
 	ApplicationID   uint64
 	SecretEncrypted string
 	AutoDeploy      bool
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	Previews        bool
+	// GitHostTokenEncrypted is empty when there is no Git host token.
+	GitHostTokenEncrypted string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 func (webhookRecord) TableName() string { return "webhooks" }
@@ -35,7 +38,13 @@ func (Webhooks) ByApplication(ctx context.Context, applicationID uint64) (domain
 	if err != nil {
 		return domain.Webhook{}, false, errors.New("cannot decrypt the webhook secret (was APP_KEY changed?)")
 	}
-	return domain.Webhook{ApplicationID: applicationID, Secret: secret, AutoDeploy: recs[0].AutoDeploy}, true, nil
+	var token string
+	if recs[0].GitHostTokenEncrypted != "" {
+		if token, err = facades.Crypt().DecryptString(recs[0].GitHostTokenEncrypted); err != nil {
+			return domain.Webhook{}, false, errors.New("cannot decrypt the git host token (was APP_KEY changed?)")
+		}
+	}
+	return domain.Webhook{ApplicationID: applicationID, Secret: secret, AutoDeploy: recs[0].AutoDeploy, Previews: recs[0].Previews, GitHostToken: token}, true, nil
 }
 
 func (Webhooks) Save(ctx context.Context, w domain.Webhook) error {
@@ -43,12 +52,19 @@ func (Webhooks) Save(ctx context.Context, w domain.Webhook) error {
 	if err != nil {
 		return err
 	}
+	var token string
+	if w.GitHostToken != "" {
+		if token, err = facades.Crypt().EncryptString(w.GitHostToken); err != nil {
+			return err
+		}
+	}
 	_, err = facades.Orm().WithContext(ctx).Query().Exec(`
-		INSERT INTO webhooks (application_id, secret_encrypted, auto_deploy, created_at, updated_at)
-		VALUES (?, ?, ?, now(), now())
+		INSERT INTO webhooks (application_id, secret_encrypted, auto_deploy, previews, git_host_token_encrypted, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, now(), now())
 		ON CONFLICT (application_id) DO UPDATE
-		SET secret_encrypted = EXCLUDED.secret_encrypted, auto_deploy = EXCLUDED.auto_deploy, updated_at = now()`,
-		w.ApplicationID, enc, w.AutoDeploy)
+		SET secret_encrypted = EXCLUDED.secret_encrypted, auto_deploy = EXCLUDED.auto_deploy, previews = EXCLUDED.previews,
+		    git_host_token_encrypted = EXCLUDED.git_host_token_encrypted, updated_at = now()`,
+		w.ApplicationID, enc, w.AutoDeploy, w.Previews, token)
 	return err
 }
 

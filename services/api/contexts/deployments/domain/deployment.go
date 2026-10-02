@@ -54,11 +54,17 @@ var (
 	// ErrNotRollbackTarget is a Rollback to a Deployment that did not
 	// finish, or has no Image.
 	ErrNotRollbackTarget = errors.New("only a finished deployment can be rolled back to")
+	// ErrPreviewRollback is a Rollback to a Preview Deployment: a Preview
+	// always builds its head.
+	ErrPreviewRollback = errors.New("a preview deployment cannot be rolled back to")
 )
 
 type Deployment struct {
 	ID            uint64
 	ApplicationID uint64
+	// Preview is the Preview number it deploys, 0 for the Application
+	// itself.
+	Preview int
 	// ServerID is the Server it runs on, the Application's Target server
 	// when it started; 0 is the Local server.
 	ServerID      uint64
@@ -110,10 +116,21 @@ func NewDeployment(applicationID uint64, trigger Trigger) Deployment {
 	return Deployment{ApplicationID: applicationID, Status: Queued, Trigger: trigger}
 }
 
+// NewPreviewDeployment is a queued Deployment of the Application's
+// Preview number.
+func NewPreviewDeployment(applicationID uint64, number int, trigger Trigger) Deployment {
+	d := NewDeployment(applicationID, trigger)
+	d.Preview = number
+	return d
+}
+
 // NewRollback is a queued Deployment that starts of's Image again, showing
 // of's branch and commit. Only a finished Deployment with an Image can be
 // rolled back to.
 func NewRollback(of Deployment) (Deployment, error) {
+	if of.Preview != 0 {
+		return Deployment{}, ErrPreviewRollback
+	}
 	if of.Status != Finished || of.Image == "" {
 		return Deployment{}, ErrNotRollbackTarget
 	}
@@ -137,6 +154,26 @@ func (d *Deployment) Cancel() error {
 // ContainerName names the Container a Deployment runs.
 func ContainerName(applicationID, deploymentID uint64) string {
 	return "bakery-app-" + strconv.FormatUint(applicationID, 10) + "-" + strconv.FormatUint(deploymentID, 10)
+}
+
+// PreviewContainerName names the Container a Preview Deployment runs.
+func PreviewContainerName(applicationID uint64, number int, deploymentID uint64) string {
+	return "bakery-app-" + strconv.FormatUint(applicationID, 10) + "-pr" + strconv.Itoa(number) + "-" + strconv.FormatUint(deploymentID, 10)
+}
+
+// DeploymentContainerName names d's Container, a Preview's or the
+// Application's own.
+func DeploymentContainerName(d Deployment) string {
+	if d.Preview != 0 {
+		return PreviewContainerName(d.ApplicationID, d.Preview, d.ID)
+	}
+	return ContainerName(d.ApplicationID, d.ID)
+}
+
+// PreviewVolumeName names the Volume behind one Persistent storage in a
+// Preview; a Preview never mounts the Application's own Volumes.
+func PreviewVolumeName(applicationID uint64, number int, storage string) string {
+	return "bakery-app-" + strconv.FormatUint(applicationID, 10) + "-pr" + strconv.Itoa(number) + "-" + storage
 }
 
 // VolumeName names the Volume behind an Application's Persistent storage.

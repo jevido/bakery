@@ -40,12 +40,25 @@ type Store interface {
 	FailInterrupted(ctx context.Context, reason string) (int, error)
 	ByID(ctx context.Context, id uint64) (domain.Deployment, bool, error)
 	ByApplication(ctx context.Context, applicationID uint64, limit int) ([]domain.Deployment, error)
+	// ByPreview returns one Preview's Deployments, newest first.
+	ByPreview(ctx context.Context, applicationID uint64, number int, limit int) ([]domain.Deployment, error)
 	// ApplicationIDs lists every Application that has Deployments.
 	ApplicationIDs(ctx context.Context) ([]uint64, error)
 	// ServerIDs lists every Server the Application's Deployments ran on.
 	ServerIDs(ctx context.Context, applicationID uint64) ([]uint64, error)
 	// Active returns the Application's active Deployment, if any.
 	Active(ctx context.Context, applicationID uint64) (domain.Deployment, bool, error)
+	DeleteForApplication(ctx context.Context, applicationID uint64) error
+}
+
+// PreviewStore keeps Previews, one per Application and number.
+type PreviewStore interface {
+	// Save creates or replaces the Preview of (application, number) and
+	// returns it as stored.
+	Save(ctx context.Context, p domain.Preview) (domain.Preview, error)
+	ByNumber(ctx context.Context, applicationID uint64, number int) (domain.Preview, bool, error)
+	// ByApplication lists open Previews first, then the newest.
+	ByApplication(ctx context.Context, applicationID uint64) ([]domain.Preview, error)
 	DeleteForApplication(ctx context.Context, applicationID uint64) error
 }
 

@@ -15,6 +15,10 @@ type Webhook struct {
 	ApplicationID uint64
 	Secret        string
 	AutoDeploy    bool
+	// Previews lets Pull request events start Previews.
+	Previews bool
+	// GitHostToken writes the Preview comment; empty is no comment.
+	GitHostToken string
 }
 
 // Provider is the git host that called a Webhook, recognised by its event
