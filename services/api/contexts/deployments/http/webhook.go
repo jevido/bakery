@@ -10,6 +10,7 @@ import (
 
 	"github.com/jevido/bakery/services/api/app/respond"
 	"github.com/jevido/bakery/services/api/contexts/deployments/app"
+	"github.com/jevido/bakery/services/api/contexts/deployments/domain"
 )
 
 // maxWebhookBody bounds a push payload; GitHub caps its own at 25 MB but a
@@ -30,11 +31,15 @@ type webhookJSON struct {
 	Path       string `json:"path"`
 	Secret     string `json:"secret"`
 	AutoDeploy bool   `json:"auto_deploy"`
+	Previews   bool   `json:"previews"`
+	// HasGitHostToken says whether a Git host token is saved; the token
+	// itself is never returned.
+	HasGitHostToken bool `json:"has_git_host_token"`
 }
 
-func (c *WebhookController) answer(ctx contractshttp.Context, applicationID uint64, secret string, autoDeploy bool) contractshttp.Response {
+func (c *WebhookController) answer(ctx contractshttp.Context, w domain.Webhook) contractshttp.Response {
 	return ctx.Response().Success().Json(contractshttp.Json{"webhook": webhookJSON{
-		Path: WebhookPath(applicationID), Secret: secret, AutoDeploy: autoDeploy,
+		Path: WebhookPath(w.ApplicationID), Secret: w.Secret, AutoDeploy: w.AutoDeploy, Previews: w.Previews, HasGitHostToken: w.GitHostToken != "",
 	}})
 }
 
@@ -59,7 +64,7 @@ func (c *WebhookController) Show(ctx contractshttp.Context) contractshttp.Respon
 	if err != nil {
 		return c.fail(ctx, err)
 	}
-	return c.answer(ctx, id, w.Secret, w.AutoDeploy)
+	return c.answer(ctx, w)
 }
 
 func (c *WebhookController) RotateSecret(ctx contractshttp.Context) contractshttp.Response {
@@ -71,7 +76,7 @@ func (c *WebhookController) RotateSecret(ctx contractshttp.Context) contractshtt
 	if err != nil {
 		return c.fail(ctx, err)
 	}
-	return c.answer(ctx, id, w.Secret, w.AutoDeploy)
+	return c.answer(ctx, w)
 }
 
 func (c *WebhookController) Update(ctx contractshttp.Context) contractshttp.Response {
@@ -80,16 +85,31 @@ func (c *WebhookController) Update(ctx contractshttp.Context) contractshttp.Resp
 		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
 	}
 	var req struct {
-		AutoDeploy *bool `json:"auto_deploy"`
+		AutoDeploy   *bool   `json:"auto_deploy"`
+		Previews     *bool   `json:"previews"`
+		GitHostToken *string `json:"git_host_token"`
 	}
-	if err := ctx.Request().Bind(&req); err != nil || req.AutoDeploy == nil {
-		return respond.Invalid(ctx, "auto_deploy", "auto_deploy (true or false) is required")
+	if err := ctx.Request().Bind(&req); err != nil || (req.AutoDeploy == nil && req.Previews == nil && req.GitHostToken == nil) {
+		return respond.Invalid(ctx, "auto_deploy", "auto_deploy, previews (true or false) or git_host_token is required")
 	}
-	w, err := c.webhooks.SetAutoDeploy(ctx.Context(), id, *req.AutoDeploy)
-	if err != nil {
-		return c.fail(ctx, err)
+	if req.GitHostToken != nil && len(*req.GitHostToken) > 1000 {
+		return respond.Invalid(ctx, "git_host_token", "git_host_token is at most 1000 characters")
 	}
-	return c.answer(ctx, id, w.Secret, w.AutoDeploy)
+	var (
+		w   domain.Webhook
+		err error
+	)
+	if req.AutoDeploy != nil {
+		if w, err = c.webhooks.SetAutoDeploy(ctx.Context(), id, *req.AutoDeploy); err != nil {
+			return c.fail(ctx, err)
+		}
+	}
+	if req.Previews != nil || req.GitHostToken != nil {
+		if w, err = c.webhooks.SetPreviews(ctx.Context(), id, req.Previews, req.GitHostToken); err != nil {
+			return c.fail(ctx, err)
+		}
+	}
+	return c.answer(ctx, w)
 }
 
 // Receive is the git host's call. It carries no Session; the signature is
@@ -121,6 +141,8 @@ func (c *WebhookController) Receive(ctx contractshttp.Context) contractshttp.Res
 		return c.fail(ctx, err)
 	case out.Deployment != nil:
 		return ctx.Response().Json(contractshttp.StatusAccepted, contractshttp.Json{"deployment": ToJSON(*out.Deployment)})
+	case out.Closed != 0:
+		return ctx.Response().Success().Json(contractshttp.Json{"closed_preview": out.Closed})
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"ignored": out.Ignored})
 }

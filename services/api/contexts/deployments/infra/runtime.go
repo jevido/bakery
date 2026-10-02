@@ -229,7 +229,7 @@ func (r Runtime) containers(ctx context.Context, applicationID uint64) ([]podman
 }
 
 func (r Runtime) RemoveOthers(ctx context.Context, applicationID uint64, preview int, keep string) ([]string, error) {
-	return r.removeWhere(ctx, applicationID, func(c podman.ContainerSummary) bool {
+	return r.removeWhere(ctx, applicationID, true, func(c podman.ContainerSummary) bool {
 		return PreviewOf(c.Labels) == preview && strings.TrimPrefix(firstName(c.Names), "/") != keep
 	})
 }
@@ -241,8 +241,9 @@ func PreviewOf(labels map[string]string) int {
 	return n
 }
 
-// removeWhere stops and removes the Application's Containers that match.
-func (r Runtime) removeWhere(ctx context.Context, applicationID uint64, match func(podman.ContainerSummary) bool) ([]string, error) {
+// removeWhere removes the Application's Containers that match, stopping
+// each gracefully first when graceful.
+func (r Runtime) removeWhere(ctx context.Context, applicationID uint64, graceful bool, match func(podman.ContainerSummary) bool) ([]string, error) {
 	list, err := r.containers(ctx, applicationID)
 	if err != nil {
 		return nil, err
@@ -254,7 +255,13 @@ func (r Runtime) removeWhere(ctx context.Context, applicationID uint64, match fu
 		}
 		name := strings.TrimPrefix(firstName(c.Names), "/")
 		// Stop gracefully first so the app can finish in-flight requests.
-		_ = r.Podman.StopContainer(ctx, c.ID, 10)
+		// Otherwise kill it at once: a forced remove would still wait for
+		// the stop timeout of an app that ignores SIGTERM.
+		timeout := 0
+		if graceful {
+			timeout = 10
+		}
+		_ = r.Podman.StopContainer(ctx, c.ID, timeout)
 		if err := r.Remove(ctx, c.ID); err != nil {
 			return removed, err
 		}
@@ -282,9 +289,10 @@ func (r Runtime) RemoveVolumes(ctx context.Context, applicationID uint64) error 
 }
 
 // RemoveAll removes every Container of the Application, its Previews'
-// included.
+// included, at once: nobody is served by them any more, and a graceful stop
+// of each would hold up deleting the Application.
 func (r Runtime) RemoveAll(ctx context.Context, applicationID uint64) error {
-	_, err := r.removeWhere(ctx, applicationID, func(podman.ContainerSummary) bool { return true })
+	_, err := r.removeWhere(ctx, applicationID, false, func(podman.ContainerSummary) bool { return true })
 	return err
 }
 

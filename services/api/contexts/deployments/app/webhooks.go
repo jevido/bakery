@@ -79,15 +79,33 @@ func (w *Webhooks) SetAutoDeploy(ctx context.Context, applicationID uint64, on b
 	return hook, w.store.Save(ctx, hook)
 }
 
+// SetPreviews switches Previews on or off and, when token is not nil,
+// replaces the Git host token ("" removes it).
+func (w *Webhooks) SetPreviews(ctx context.Context, applicationID uint64, on *bool, token *string) (domain.Webhook, error) {
+	hook, err := w.Webhook(ctx, applicationID)
+	if err != nil {
+		return domain.Webhook{}, err
+	}
+	if on != nil {
+		hook.Previews = *on
+	}
+	if token != nil {
+		hook.GitHostToken = *token
+	}
+	return hook, w.store.Save(ctx, hook)
+}
+
 func (w *Webhooks) DeleteForApplication(ctx context.Context, applicationID uint64) error {
 	return w.store.DeleteForApplication(ctx, applicationID)
 }
 
-// PushOutcome is what ReceivePush did: queued a Deployment, or ignored the
-// call for Ignored's reason.
+// PushOutcome is what ReceivePush did: queued a Deployment, closed a
+// Preview, or ignored the call for Ignored's reason.
 type PushOutcome struct {
 	Deployment *domain.Deployment
-	Ignored    string
+	// Closed is the number of the Preview a closed Pull request removed.
+	Closed  int
+	Ignored string
 }
 
 // ReceivePush handles a git host's call. An unknown Application and an
@@ -110,6 +128,9 @@ func (w *Webhooks) ReceivePush(ctx context.Context, applicationID uint64, header
 	if provider == "" || !hook.Verify(provider, header, body) {
 		return PushOutcome{}, ErrBadSignature
 	}
+	if domain.IsPullRequest(provider, event) {
+		return w.receivePullRequest(ctx, hook, app, provider, body)
+	}
 	if !domain.IsPush(provider, event) {
 		return PushOutcome{Ignored: fmt.Sprintf("%s event", event)}, nil
 	}
@@ -129,6 +150,58 @@ func (w *Webhooks) ReceivePush(ctx context.Context, applicationID uint64, header
 	d, err := w.service.queue(ctx, domain.NewDeployment(applicationID, domain.TriggerWebhook))
 	if errors.Is(err, domain.ErrAlreadyQueued) {
 		return PushOutcome{Ignored: "a deployment is already queued"}, nil
+	}
+	if err != nil {
+		return PushOutcome{}, err
+	}
+	return PushOutcome{Deployment: &d}, nil
+}
+
+// receivePullRequest opens, deploys or closes a Preview for a verified
+// Pull request event.
+func (w *Webhooks) receivePullRequest(ctx context.Context, hook domain.Webhook, app Application, provider domain.Provider, body []byte) (PushOutcome, error) {
+	pr, err := domain.ParsePullRequest(provider, body)
+	if err != nil {
+		return PushOutcome{Ignored: "not a pull request"}, nil
+	}
+	switch {
+	case !hook.Previews:
+		return PushOutcome{Ignored: "previews are off"}, nil
+	case app.BuildPack == BuildPackImage:
+		return PushOutcome{Ignored: "image applications have no previews"}, nil
+	case pr.Action == "":
+		return PushOutcome{Ignored: fmt.Sprintf("nothing to do for pull request #%d", pr.Number)}, nil
+	case !pr.SameRepo:
+		return PushOutcome{Ignored: fmt.Sprintf("pull request #%d comes from a fork", pr.Number)}, nil
+	case pr.Base != app.GitBranch:
+		return PushOutcome{Ignored: fmt.Sprintf("pull request #%d merges into %s, the application deploys %s", pr.Number, pr.Base, app.GitBranch)}, nil
+	}
+	p, found, err := w.service.previews.ByNumber(ctx, app.ID, pr.Number)
+	if err != nil {
+		return PushOutcome{}, err
+	}
+	if pr.Action == domain.PullRequestClosed {
+		if !found || p.State == domain.PreviewClosed {
+			return PushOutcome{Ignored: fmt.Sprintf("pull request #%d has no open preview", pr.Number)}, nil
+		}
+		if err := w.service.ClosePreview(ctx, app.ID, pr.Number); err != nil {
+			return PushOutcome{}, err
+		}
+		return PushOutcome{Closed: pr.Number}, nil
+	}
+	if !found {
+		p = domain.Preview{ApplicationID: app.ID, Number: pr.Number, State: domain.PreviewOpen}
+	}
+	if p.State == domain.PreviewClosed {
+		p.Reopen()
+	}
+	p.Branch, p.Title, p.URL, p.Provider, p.API = pr.Branch, pr.Title, pr.URL, provider, pr.API
+	if _, err := w.service.previews.Save(ctx, p); err != nil {
+		return PushOutcome{}, err
+	}
+	d, err := w.service.DeployPreview(ctx, app.ID, pr.Number, domain.TriggerWebhook)
+	if errors.Is(err, domain.ErrAlreadyQueued) {
+		return PushOutcome{Ignored: "a deployment of this preview is already queued"}, nil
 	}
 	if err != nil {
 		return PushOutcome{}, err

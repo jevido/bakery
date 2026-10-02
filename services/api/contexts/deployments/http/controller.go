@@ -30,6 +30,7 @@ var LocalServer func() uint64
 type deploymentJSON struct {
 	ID            uint64     `json:"id"`
 	ApplicationID uint64     `json:"application_id"`
+	Preview       int        `json:"preview"`
 	ServerID      uint64     `json:"server_id"`
 	Status        string     `json:"status"`
 	Active        bool       `json:"active"`
@@ -54,7 +55,7 @@ func ToJSON(d domain.Deployment) deploymentJSON {
 		server = LocalServer()
 	}
 	return deploymentJSON{
-		ID: d.ID, ApplicationID: d.ApplicationID, ServerID: server, Status: string(d.Status), Active: d.Status.Active(),
+		ID: d.ID, ApplicationID: d.ApplicationID, Preview: d.Preview, ServerID: server, Status: string(d.Status), Active: d.Status.Active(),
 		Trigger: string(d.Trigger), Branch: d.Branch, CommitSHA: d.CommitSHA,
 		CommitMessage: d.CommitMessage, CommitAuthor: d.CommitAuthor, SourceImage: d.SourceImage, Image: d.Image, Container: d.Container, RollbackOf: d.RollbackOf, Error: d.Error,
 		CreatedAt: d.CreatedAt, StartedAt: d.StartedAt, FinishedAt: d.FinishedAt,
@@ -66,7 +67,8 @@ func (c *Controller) fail(ctx contractshttp.Context, err error) contractshttp.Re
 	case errors.Is(err, app.ErrNotFound), c.isNotFound(err):
 		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
 	case errors.Is(err, domain.ErrAlreadyQueued), errors.Is(err, app.ErrNotCancellable),
-		errors.Is(err, domain.ErrNotRollbackTarget), errors.Is(err, app.ErrImageGone):
+		errors.Is(err, domain.ErrNotRollbackTarget), errors.Is(err, app.ErrImageGone),
+		errors.Is(err, domain.ErrPreviewRollback), errors.Is(err, domain.ErrPreviewClosed), errors.Is(err, app.ErrNoPreviews):
 		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
 	}
 	return respond.ServerError(ctx, err)

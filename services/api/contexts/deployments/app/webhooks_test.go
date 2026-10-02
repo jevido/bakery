@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/jevido/bakery/services/api/contexts/deployments/domain"
@@ -97,6 +99,89 @@ func TestReceivePushIgnoresImageApplications(t *testing.T) {
 	hook, _ := hooks.Webhook(ctx, 1)
 	h, body := githubPush(hook.Secret, "refs/heads/main")
 	if out, err := hooks.ReceivePush(ctx, 1, h, body); err != nil || out.Deployment != nil || out.Ignored != "image applications are not built from git" {
+		t.Fatalf("push: %+v %v", out, err)
+	}
+}
+
+func forgejoPullRequest(secret, action string, number int, head, base string, headRepo int) (domain.Header, []byte) {
+	body := []byte(fmt.Sprintf(`{"action":%q,"number":%d,"pull_request":{"html_url":"http://git/u/r/pulls/%d","title":"T","head":{"ref":%q,"repo_id":%d},"base":{"ref":%q,"repo_id":5}},"repository":{"full_name":"u/r","html_url":"http://git/u/r"}}`,
+		action, number, number, head, headRepo, base))
+	m := hmac.New(sha256.New, []byte(secret))
+	m.Write(body)
+	h := http.Header{}
+	h.Set("X-Forgejo-Event", "pull_request")
+	h.Set("X-Forgejo-Signature", hex.EncodeToString(m.Sum(nil)))
+	return h.Get, body
+}
+
+func TestReceivePullRequest(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	hooks := NewWebhooks(s.service, memWebhooks{})
+	hook, _ := hooks.Webhook(ctx, 1)
+	call := func(action string, number int, head, base string, headRepo int) PushOutcome {
+		t.Helper()
+		h, body := forgejoPullRequest(hook.Secret, action, number, head, base, headRepo)
+		out, err := hooks.ReceivePush(ctx, 1, h, body)
+		if err != nil {
+			t.Fatalf("%s #%d: %v", action, number, err)
+		}
+		return out
+	}
+
+	if out := call("opened", 7, "feature", "main", 5); out.Ignored != "previews are off" {
+		t.Fatalf("previews off: %+v", out)
+	}
+	on, token := true, "tok"
+	if hook, _ = hooks.SetPreviews(ctx, 1, &on, &token); !hook.Previews || hook.GitHostToken != "tok" || !hook.AutoDeploy {
+		t.Fatalf("set previews: %+v", hook)
+	}
+	if out := call("opened", 8, "feature", "main", 6); !strings.Contains(out.Ignored, "fork") {
+		t.Fatalf("fork: %+v", out)
+	}
+	if out := call("opened", 9, "feature", "develop", 5); !strings.Contains(out.Ignored, "merges into develop") {
+		t.Fatalf("other base: %+v", out)
+	}
+	if out := call("edited", 7, "feature", "main", 5); !strings.Contains(out.Ignored, "nothing to do") {
+		t.Fatalf("edited: %+v", out)
+	}
+
+	out := call("opened", 7, "feature", "main", 5)
+	if out.Deployment == nil || out.Deployment.Preview != 7 || out.Deployment.Trigger != domain.TriggerWebhook {
+		t.Fatalf("opened: %+v", out)
+	}
+	p, _, _ := s.previews.ByNumber(ctx, 1, 7)
+	if p.State != domain.PreviewOpen || p.Branch != "feature" || p.API != "http://git/api/v1/repos/u/r" || p.Provider != domain.Forgejo {
+		t.Fatalf("preview: %+v", p)
+	}
+	if out := call("synchronized", 7, "feature", "main", 5); out.Ignored != "a deployment of this preview is already queued" {
+		t.Fatalf("pushed while queued: %+v", out)
+	}
+	s.worker.RunOnce(ctx)
+	if out := call("synchronized", 7, "feature", "main", 5); out.Deployment == nil {
+		t.Fatalf("pushed: %+v", out)
+	}
+	s.worker.RunOnce(ctx)
+
+	if out := call("closed", 7, "feature", "main", 5); out.Closed != 7 {
+		t.Fatalf("closed: %+v", out)
+	}
+	if p, _, _ := s.previews.ByNumber(ctx, 1, 7); p.State != domain.PreviewClosed {
+		t.Fatalf("after close: %+v", p)
+	}
+	if out := call("closed", 7, "feature", "main", 5); !strings.Contains(out.Ignored, "no open preview") {
+		t.Fatalf("closed twice: %+v", out)
+	}
+	if out := call("reopened", 7, "feature", "main", 5); out.Deployment == nil {
+		t.Fatalf("reopened: %+v", out)
+	}
+	if p, _, _ := s.previews.ByNumber(ctx, 1, 7); p.State != domain.PreviewOpen || p.ClosedAt != nil {
+		t.Fatalf("after reopen: %+v", p)
+	}
+
+	// A push still deploys the Application itself.
+	h, body := githubPush(hook.Secret, "refs/heads/main")
+	if out, err := hooks.ReceivePush(ctx, 1, h, body); err != nil || out.Deployment == nil || out.Deployment.Preview != 0 {
 		t.Fatalf("push: %+v %v", out, err)
 	}
 }
