@@ -94,6 +94,8 @@ func svc() *app.Service {
 		deploymentshttp.LocalServer = localServer
 		service = app.NewService(infra.Store{}, infra.Logs{}, applications, infra.KnownHosts{}, infra.Previews{})
 		webhooks = app.NewWebhooks(service, infra.Webhooks{})
+		service.DropPreviewRoute = routing.DropPreviewRoute
+		service.Log = facades.Log().Errorf
 		runtime = infra.Runtime{
 			Network:            facades.Config().GetString("bakery.network"),
 			StartTimeout:       30 * time.Second,
@@ -122,6 +124,9 @@ func svc() *app.Service {
 				} else if err := rt.RemoveVolumes(ctx, applicationID); err != nil {
 					facades.Log().Errorf("deployments: removing volumes of application %d on %s: %v", applicationID, rt.Server, err)
 				}
+			}
+			if err := service.DeletePreviews(ctx, applicationID); err != nil {
+				facades.Log().Errorf("deployments: deleting previews of application %d: %v", applicationID, err)
 			}
 			if err := (infra.Store{}).DeleteForApplication(ctx, applicationID); err != nil {
 				facades.Log().Errorf("deployments: deleting deployments of application %d: %v", applicationID, err)

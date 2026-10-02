@@ -169,6 +169,8 @@ type fakeRuntime struct {
 	pullErr error
 	// previewOf is the Preview number of each Container Start made.
 	previewOf map[string]int
+	// removedPreviews are the Previews RemovePreview was called for.
+	removedPreviews []int
 }
 
 func (r *fakeRuntime) Pull(_ context.Context, req PullRequest, out func(string)) (string, error) {
@@ -243,6 +245,17 @@ func (r *fakeRuntime) RemoveOthers(_ context.Context, _ uint64, preview int, kee
 	return out, nil
 }
 func (r *fakeRuntime) RemoveAll(context.Context, uint64) error { return nil }
+func (r *fakeRuntime) RemovePreview(_ context.Context, _ uint64, preview int) ([]string, error) {
+	var out []string
+	for name := range r.running {
+		if r.previewOf[name] == preview {
+			out = append(out, name)
+			delete(r.running, name)
+		}
+	}
+	r.removedPreviews = append(r.removedPreviews, preview)
+	return out, nil
+}
 
 type setup struct {
 	store   *memStore

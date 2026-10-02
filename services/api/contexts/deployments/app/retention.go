@@ -45,7 +45,16 @@ func (s *Service) PruneImages(ctx context.Context, serverID uint64) (int64, erro
 				return 0, err
 			}
 		}
-		for _, image := range domain.ImagesToPrune(ds) {
+		previews, err := s.previews.ByApplication(ctx, id)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		open := map[int]bool{}
+		for _, p := range previews {
+			open[p.Number] = p.State == domain.PreviewOpen
+		}
+		for _, image := range domain.ImagesToPrune(ds, open) {
 			n, err := rt.RemoveImage(ctx, image)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("removing %s: %w", image, err))

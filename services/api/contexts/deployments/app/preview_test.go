@@ -177,3 +177,49 @@ func TestImageApplicationsHaveNoPreviews(t *testing.T) {
 		t.Fatalf("preview of an image application: %v", err)
 	}
 }
+
+func TestClosePreviewRemovesWhatItRan(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeSource{})
+	var dropped []int
+	s.service.DropPreviewRoute = func(_ context.Context, _ uint64, n int) error {
+		dropped = append(dropped, n)
+		return nil
+	}
+	s.previews.Save(ctx, domain.Preview{ApplicationID: 1, Number: 7, Branch: "f", State: domain.PreviewOpen})
+	s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	first, _ := s.service.DeployPreview(ctx, 1, 7, domain.TriggerWebhook)
+	s.worker.RunOnce(ctx)
+	second, _ := s.service.DeployPreview(ctx, 1, 7, domain.TriggerWebhook) // left queued
+
+	if err := s.service.ClosePreview(ctx, 1, 7); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.service.Deployment(ctx, second.ID); got.Status != domain.Cancelled {
+		t.Fatalf("queued preview deployment: %s", got.Status)
+	}
+	if p, _, _ := s.previews.ByNumber(ctx, 1, 7); p.State != domain.PreviewClosed {
+		t.Fatalf("preview %+v", p)
+	}
+	if len(dropped) != 1 || dropped[0] != 7 {
+		t.Fatalf("dropped routes %v", dropped)
+	}
+	if s.runtime.running["bakery-app-1-pr7-2"] || !s.runtime.running["bakery-app-1-1"] {
+		t.Fatalf("containers %v", s.runtime.running)
+	}
+	img, _ := s.service.Deployment(ctx, first.ID)
+	if !s.runtime.gone[img.Image] {
+		t.Fatalf("image %s of the preview kept", img.Image)
+	}
+	if prod, _ := s.service.Deployment(ctx, 1); s.runtime.gone[prod.Image] {
+		t.Fatal("the application's own image was removed")
+	}
+	// Twice is harmless.
+	if err := s.service.ClosePreview(ctx, 1, 7); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.service.ClosePreview(ctx, 1, 99); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown preview: %v", err)
+	}
+}

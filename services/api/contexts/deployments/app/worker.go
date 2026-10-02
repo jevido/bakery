@@ -366,6 +366,18 @@ func (w *Worker) goLive(ctx context.Context, rt Runtime, d *domain.Deployment, a
 		}
 	}
 
+	// A Preview closed while it was building must not get its route back.
+	if d.Preview != 0 {
+		p, found, err := w.service.previews.ByNumber(ctx, d.ApplicationID, d.Preview)
+		if err == nil && (!found || p.State != domain.PreviewOpen) {
+			err = domain.ErrPreviewClosed
+		}
+		if err != nil {
+			_ = rt.Remove(context.WithoutCancel(ctx), d.Container)
+			return err
+		}
+	}
+
 	// From here on the Deployment is no longer cancellable: the Route
 	// moves and the old Container goes, whatever happens to ctx.
 	w.service.release(d.ID)

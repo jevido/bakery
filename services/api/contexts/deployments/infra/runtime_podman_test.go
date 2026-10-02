@@ -227,3 +227,49 @@ func TestPreviewContainersApart(t *testing.T) {
 		t.Fatalf("left after RemoveAll: %d", len(list))
 	}
 }
+
+func TestRemovePreview(t *testing.T) {
+	sock := podman.DefaultSocket()
+	if _, err := os.Stat(sock); err != nil {
+		t.Skipf("no podman socket at %s", sock)
+	}
+	c := podman.New(sock)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	r := Runtime{Podman: c, Network: "bakery-test", StartTimeout: 20 * time.Second, Settle: time.Second}
+	buildTestImage(t, ctx, c, "localhost/bakery-test/preview-rm:1", false)
+
+	const appID = 990004
+	defer func() {
+		r.RemoveAll(context.Background(), appID)
+		r.RemoveVolumes(context.Background(), appID)
+	}()
+	for _, spec := range []app.ContainerSpec{
+		{Name: "bakery-test-rm-prod", Image: "localhost/bakery-test/preview-rm:1", ApplicationID: appID, DeploymentID: 1,
+			Mounts: []app.Mount{{Volume: "bakery-test-rm-data", Path: "/data"}}},
+		{Name: "bakery-test-rm-pr7", Image: "localhost/bakery-test/preview-rm:1", ApplicationID: appID, DeploymentID: 2, Preview: 7,
+			Mounts: []app.Mount{{Volume: "bakery-test-rm-pr7-data", Path: "/data"}}},
+	} {
+		if err := r.Start(ctx, spec); err != nil {
+			t.Fatalf("Start %s: %v", spec.Name, err)
+		}
+	}
+	start := time.Now()
+	removed, err := r.RemovePreview(ctx, appID, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(removed, ",") != "bakery-test-rm-pr7,bakery-test-rm-pr7-data" {
+		t.Fatalf("removed %v", removed)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Errorf("removing took %s; it should not wait for a graceful stop", time.Since(start))
+	}
+	if name, found, _ := r.Running(ctx, appID); !found || name != "bakery-test-rm-prod" {
+		t.Fatalf("production container: %q %v", name, found)
+	}
+	vols, err := c.ListVolumes(ctx, map[string]string{"bakery.application": "990004"})
+	if err != nil || len(vols) != 1 || vols[0].Name != "bakery-test-rm-data" {
+		t.Fatalf("volumes left: %+v %v", vols, err)
+	}
+}

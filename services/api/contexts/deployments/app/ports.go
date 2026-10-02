@@ -217,6 +217,9 @@ type Runtime interface {
 	Remove(ctx context.Context, name string) error
 	// RemoveAll removes every Container of the Application.
 	RemoveAll(ctx context.Context, applicationID uint64) error
+	// RemovePreview removes the Containers and then the Volumes of one
+	// Preview of the Application, and returns their names.
+	RemovePreview(ctx context.Context, applicationID uint64, preview int) ([]string, error)
 }
 
 type BuildRequest struct {

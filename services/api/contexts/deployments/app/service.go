@@ -17,9 +17,13 @@ type Service struct {
 	knownHosts   KnownHosts
 	previews     PreviewStore
 	wake         chan struct{}
-	// runtimes reach each Server's Podman, for Rollback's Image check and
-	// Image retention; set by the Worker.
+	// runtimes reach each Server's Podman, for Rollback's Image check,
+	// Image retention and removing Previews; set by the Worker.
 	runtimes Runtimes
+	// DropPreviewRoute is routing's; nil leaves Preview routes alone.
+	DropPreviewRoute func(ctx context.Context, applicationID uint64, preview int) error
+	// Log reports what removing a Preview could not do.
+	Log func(format string, args ...any)
 
 	mu sync.Mutex
 	// running holds the cancel function of each Deployment the Worker is
@@ -28,7 +32,7 @@ type Service struct {
 }
 
 func NewService(store Store, logs Logs, applications Applications, knownHosts KnownHosts, previews PreviewStore) *Service {
-	return &Service{store: store, logs: logs, applications: applications, knownHosts: knownHosts, previews: previews, wake: make(chan struct{}, 1), running: map[uint64]context.CancelCauseFunc{}}
+	return &Service{store: store, logs: logs, applications: applications, knownHosts: knownHosts, previews: previews, Log: func(string, ...any) {}, wake: make(chan struct{}, 1), running: map[uint64]context.CancelCauseFunc{}}
 }
 
 func (s *Service) KnownHosts(ctx context.Context) ([]domain.KnownHost, error) {

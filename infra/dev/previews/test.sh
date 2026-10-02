@@ -62,3 +62,14 @@ preview_serves() { [ "$(fetch_preview /)" = "$1" ]; }
 wait_for 30 "version feature on $PREVIEW_DOMAIN" preview_serves "version feature"
 serves "version main" || fail "production changed: $(fetch /)"
 echo "ok: pull request #$PR serves version feature on $PREVIEW_DOMAIN, production still main"
+
+say "Closing pull request #$PR removes the preview"
+forgejo PATCH "/repos/$FORGEJO_USER/$RUN/pulls/$PR" '{"state":"closed"}' >/dev/null
+preview_closed() { [ "$(preview "['state']")" = closed ]; }
+wait_for 60 "preview #$PR closed" preview_closed
+preview_gone() { ! fetch_preview / >/dev/null 2>&1; }
+wait_for 60 "$PREVIEW_DOMAIN to stop answering" preview_gone
+[ -z "$(podman ps -a -q --filter "label=bakery.application=$APP_ID" --filter "label=bakery.preview=$PR")" ] || fail "preview containers left"
+[ -z "$(podman volume ls -q --filter "label=bakery.application=$APP_ID" --filter "label=bakery.preview=$PR")" ] || fail "preview volumes left"
+serves "version main" || fail "production changed: $(fetch /)"
+echo "ok: closing #$PR removed its container and route; production still serves main"

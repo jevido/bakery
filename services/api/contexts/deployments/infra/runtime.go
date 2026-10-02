@@ -296,6 +296,30 @@ func (r Runtime) RemoveAll(ctx context.Context, applicationID uint64) error {
 	return err
 }
 
+// RemovePreview removes the Preview's Containers at once, then its
+// Volumes.
+func (r Runtime) RemovePreview(ctx context.Context, applicationID uint64, preview int) ([]string, error) {
+	removed, err := r.removeWhere(ctx, applicationID, false, func(c podman.ContainerSummary) bool { return PreviewOf(c.Labels) == preview })
+	if err != nil {
+		return removed, err
+	}
+	list, err := r.Podman.ListVolumes(ctx, map[string]string{
+		"bakery.managed":     "true",
+		"bakery.application": strconv.FormatUint(applicationID, 10),
+		"bakery.preview":     strconv.Itoa(preview),
+	})
+	if err != nil {
+		return removed, err
+	}
+	for _, v := range list {
+		if err := r.Podman.RemoveVolume(ctx, v.Name); err != nil {
+			return removed, err
+		}
+		removed = append(removed, v.Name)
+	}
+	return removed, nil
+}
+
 // Running returns the name of the Application's own running Container (not
 // a Preview's).
 func (r Runtime) Running(ctx context.Context, applicationID uint64) (string, bool, error) {
