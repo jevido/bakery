@@ -15,6 +15,7 @@ type Service struct {
 	logs         Logs
 	applications Applications
 	knownHosts   KnownHosts
+	previews     PreviewStore
 	wake         chan struct{}
 	// runtimes reach each Server's Podman, for Rollback's Image check and
 	// Image retention; set by the Worker.
@@ -26,8 +27,8 @@ type Service struct {
 	running map[uint64]context.CancelCauseFunc
 }
 
-func NewService(store Store, logs Logs, applications Applications, knownHosts KnownHosts) *Service {
-	return &Service{store: store, logs: logs, applications: applications, knownHosts: knownHosts, wake: make(chan struct{}, 1), running: map[uint64]context.CancelCauseFunc{}}
+func NewService(store Store, logs Logs, applications Applications, knownHosts KnownHosts, previews PreviewStore) *Service {
+	return &Service{store: store, logs: logs, applications: applications, knownHosts: knownHosts, previews: previews, wake: make(chan struct{}, 1), running: map[uint64]context.CancelCauseFunc{}}
 }
 
 func (s *Service) KnownHosts(ctx context.Context) ([]domain.KnownHost, error) {
@@ -49,6 +50,29 @@ func (s *Service) Deploy(ctx context.Context, applicationID uint64) (domain.Depl
 		return domain.Deployment{}, err
 	}
 	return s.queue(ctx, domain.NewDeployment(applicationID, domain.TriggerManual))
+}
+
+// DeployPreview queues a Deployment of the Application's open Preview
+// number and wakes the Worker.
+func (s *Service) DeployPreview(ctx context.Context, applicationID uint64, number int, trigger domain.Trigger) (domain.Deployment, error) {
+	a, err := s.applications(ctx, applicationID)
+	if err != nil {
+		return domain.Deployment{}, err
+	}
+	if a.BuildPack == BuildPackImage {
+		return domain.Deployment{}, ErrNoPreviews
+	}
+	p, found, err := s.previews.ByNumber(ctx, applicationID, number)
+	if err != nil {
+		return domain.Deployment{}, err
+	}
+	if !found {
+		return domain.Deployment{}, ErrNotFound
+	}
+	if p.State != domain.PreviewOpen {
+		return domain.Deployment{}, domain.ErrPreviewClosed
+	}
+	return s.queue(ctx, domain.NewPreviewDeployment(applicationID, number, trigger))
 }
 
 // Rollback queues a Deployment that starts the given Deployment's Image

@@ -59,6 +59,10 @@ func RegistryHost(ref string) string {
 
 func (r Runtime) Start(ctx context.Context, spec app.ContainerSpec) error {
 	application := strconv.FormatUint(spec.ApplicationID, 10)
+	labels := map[string]string{"bakery.managed": "true", "bakery.application": application}
+	if spec.Preview != 0 {
+		labels["bakery.preview"] = strconv.Itoa(spec.Preview)
+	}
 	// A Server's first Container comes before its Proxy, which otherwise
 	// makes the network.
 	if err := r.Podman.EnsureNetwork(ctx, r.Network); err != nil {
@@ -68,20 +72,16 @@ func (r Runtime) Start(ctx context.Context, spec app.ContainerSpec) error {
 	for i, m := range spec.Mounts {
 		// Created here, with Bakery's labels, rather than implicitly by
 		// Podman, so RemoveVolumes finds exactly the volumes Bakery made.
-		if err := r.Podman.CreateVolume(ctx, m.Volume, map[string]string{"bakery.managed": "true", "bakery.application": application}); err != nil {
+		if err := r.Podman.CreateVolume(ctx, m.Volume, labels); err != nil {
 			return fmt.Errorf("creating volume %s: %w", m.Volume, err)
 		}
 		volumes[i] = podman.NamedVolume{Name: m.Volume, Dest: m.Path}
 	}
 	_, err := r.Podman.CreateContainer(ctx, podman.ContainerSpec{
-		Name:  spec.Name,
-		Image: spec.Image,
-		Env:   spec.Env,
-		Labels: map[string]string{
-			"bakery.managed":     "true",
-			"bakery.application": application,
-			"bakery.deployment":  strconv.FormatUint(spec.DeploymentID, 10),
-		},
+		Name:           spec.Name,
+		Image:          spec.Image,
+		Env:            spec.Env,
+		Labels:         containerLabels(labels, spec.DeploymentID),
 		Networks:       podman.OnNetwork(r.Network),
 		RestartPolicy:  "always",
 		Volumes:        volumes,
@@ -103,6 +103,16 @@ func (r Runtime) Start(ctx context.Context, spec app.ContainerSpec) error {
 		return err
 	}
 	return nil
+}
+
+// containerLabels are a Container's labels: its Volumes' plus its
+// Deployment.
+func containerLabels(labels map[string]string, deploymentID uint64) map[string]string {
+	out := map[string]string{"bakery.deployment": strconv.FormatUint(deploymentID, 10)}
+	for k, v := range labels {
+		out[k] = v
+	}
+	return out
 }
 
 func (r Runtime) waitRunning(ctx context.Context, name string, settle time.Duration) error {
@@ -218,17 +228,31 @@ func (r Runtime) containers(ctx context.Context, applicationID uint64) ([]podman
 	})
 }
 
-func (r Runtime) RemoveOthers(ctx context.Context, applicationID uint64, keep string) ([]string, error) {
+func (r Runtime) RemoveOthers(ctx context.Context, applicationID uint64, preview int, keep string) ([]string, error) {
+	return r.removeWhere(ctx, applicationID, func(c podman.ContainerSummary) bool {
+		return PreviewOf(c.Labels) == preview && strings.TrimPrefix(firstName(c.Names), "/") != keep
+	})
+}
+
+// PreviewOf is the Preview number a Container's labels name, 0 for the
+// Application's own.
+func PreviewOf(labels map[string]string) int {
+	n, _ := strconv.Atoi(labels["bakery.preview"])
+	return n
+}
+
+// removeWhere stops and removes the Application's Containers that match.
+func (r Runtime) removeWhere(ctx context.Context, applicationID uint64, match func(podman.ContainerSummary) bool) ([]string, error) {
 	list, err := r.containers(ctx, applicationID)
 	if err != nil {
 		return nil, err
 	}
 	var removed []string
 	for _, c := range list {
-		name := strings.TrimPrefix(firstName(c.Names), "/")
-		if name == keep {
+		if !match(c) {
 			continue
 		}
+		name := strings.TrimPrefix(firstName(c.Names), "/")
 		// Stop gracefully first so the app can finish in-flight requests.
 		_ = r.Podman.StopContainer(ctx, c.ID, 10)
 		if err := r.Remove(ctx, c.ID); err != nil {
@@ -257,19 +281,22 @@ func (r Runtime) RemoveVolumes(ctx context.Context, applicationID uint64) error 
 	return nil
 }
 
+// RemoveAll removes every Container of the Application, its Previews'
+// included.
 func (r Runtime) RemoveAll(ctx context.Context, applicationID uint64) error {
-	_, err := r.RemoveOthers(ctx, applicationID, "")
+	_, err := r.removeWhere(ctx, applicationID, func(podman.ContainerSummary) bool { return true })
 	return err
 }
 
-// Running returns the name of the Application's running Container.
+// Running returns the name of the Application's own running Container (not
+// a Preview's).
 func (r Runtime) Running(ctx context.Context, applicationID uint64) (string, bool, error) {
 	list, err := r.containers(ctx, applicationID)
 	if err != nil {
 		return "", false, err
 	}
 	for _, c := range list {
-		if c.State == "running" {
+		if c.State == "running" && PreviewOf(c.Labels) == 0 {
 			return strings.TrimPrefix(firstName(c.Names), "/"), true, nil
 		}
 	}

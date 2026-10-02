@@ -17,6 +17,9 @@ var (
 	ErrNotCancellable = errors.New("deployment can no longer be cancelled")
 	// ErrImageGone is a Rollback to a Deployment whose Image was removed.
 	ErrImageGone = errors.New("the image of that deployment is gone")
+	// ErrNoPreviews is a Preview of an image Application, which has no
+	// branches to preview.
+	ErrNoPreviews = errors.New("image applications have no previews")
 )
 
 // Store keeps Deployments.
@@ -201,9 +204,10 @@ type Runtime interface {
 	// err means probing cannot work at all (the Container stopped, or the
 	// image has no curl or wget), so retrying is pointless.
 	Probe(ctx context.Context, container, url string, timeout time.Duration) (ok bool, detail string, err error)
-	// RemoveOthers removes the Application's Containers except keep, and
-	// returns the names removed.
-	RemoveOthers(ctx context.Context, applicationID uint64, keep string) ([]string, error)
+	// RemoveOthers removes the Containers of the Application's Preview
+	// (0: of the Application itself) except keep, and returns the names
+	// removed. Other Previews' Containers stay.
+	RemoveOthers(ctx context.Context, applicationID uint64, preview int, keep string) ([]string, error)
 	// ImageExists reports whether the Image is still there.
 	ImageExists(ctx context.Context, image string) (bool, error)
 	// RemoveImage removes the Image unless a Container uses it, returning
@@ -236,7 +240,10 @@ type ContainerSpec struct {
 	Image         string
 	ApplicationID uint64
 	DeploymentID  uint64
-	Env           map[string]string
+	// Preview is the Preview number the Container runs, 0 for the
+	// Application itself.
+	Preview int
+	Env     map[string]string
 	// Mounts are the Volumes to create (if missing) and mount.
 	Mounts []Mount
 	// MemoryMB and CPUs limit the Container; 0 is unlimited.
@@ -255,3 +262,6 @@ type Mount struct {
 
 // Router is routing's SwitchRoute; serverID 0 is the Local server.
 type Router func(ctx context.Context, serverID, applicationID uint64, domains []string, container string, port int) error
+
+// PreviewRouter is routing's SwitchPreviewRoute.
+type PreviewRouter func(ctx context.Context, serverID, applicationID uint64, preview int, domains []string, container string, port int) error

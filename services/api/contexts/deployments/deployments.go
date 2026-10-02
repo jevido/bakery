@@ -92,7 +92,7 @@ func applications(ctx context.Context, id uint64) (app.Application, error) {
 func svc() *app.Service {
 	once.Do(func() {
 		deploymentshttp.LocalServer = localServer
-		service = app.NewService(infra.Store{}, infra.Logs{}, applications, infra.KnownHosts{})
+		service = app.NewService(infra.Store{}, infra.Logs{}, applications, infra.KnownHosts{}, infra.Previews{})
 		webhooks = app.NewWebhooks(service, infra.Webhooks{})
 		runtime = infra.Runtime{
 			Network:            facades.Config().GetString("bakery.network"),
@@ -206,6 +206,7 @@ func followContainer(ctx context.Context, applicationID uint64, tail int, out fu
 func StartWorker(ctx context.Context) {
 	workDir := filepath.Join(os.TempDir(), "bakery-builds")
 	w := app.NewWorker(svc(), infra.Git{KnownHosts: infra.KnownHosts{}}, runtimes, routing.SwitchRoute, workDir)
+	w.PreviewRouter = routing.SwitchPreviewRoute
 	w.Planner = infra.Nixpacks{Binary: facades.Config().GetString("bakery.nixpacks")}
 	w.Log = facades.Log().Errorf
 	w.Finished = publishFinished

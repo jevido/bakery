@@ -186,3 +186,44 @@ func TestPersistentStorage(t *testing.T) {
 		t.Fatalf("volumes left: %+v", list)
 	}
 }
+
+func TestPreviewContainersApart(t *testing.T) {
+	sock := podman.DefaultSocket()
+	if _, err := os.Stat(sock); err != nil {
+		t.Skipf("no podman socket at %s", sock)
+	}
+	c := podman.New(sock)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	r := Runtime{Podman: c, Network: "bakery-test", StartTimeout: 20 * time.Second, Settle: time.Second}
+	buildTestImage(t, ctx, c, "localhost/bakery-test/preview:1", false)
+
+	const appID = 990003
+	defer r.RemoveAll(context.Background(), appID)
+	for _, spec := range []app.ContainerSpec{
+		{Name: "bakery-test-prod", Image: "localhost/bakery-test/preview:1", ApplicationID: appID, DeploymentID: 1},
+		{Name: "bakery-test-pr7", Image: "localhost/bakery-test/preview:1", ApplicationID: appID, DeploymentID: 2, Preview: 7},
+		{Name: "bakery-test-pr8", Image: "localhost/bakery-test/preview:1", ApplicationID: appID, DeploymentID: 3, Preview: 8},
+	} {
+		if err := r.Start(ctx, spec); err != nil {
+			t.Fatalf("Start %s: %v", spec.Name, err)
+		}
+	}
+	if name, found, err := r.Running(ctx, appID); err != nil || !found || name != "bakery-test-prod" {
+		t.Fatalf("Running: %q %v %v", name, found, err)
+	}
+	removed, err := r.RemoveOthers(ctx, appID, 7, "")
+	if err != nil || len(removed) != 1 || removed[0] != "bakery-test-pr7" {
+		t.Fatalf("RemoveOthers of preview 7: %v %v", removed, err)
+	}
+	removed, err = r.RemoveOthers(ctx, appID, 0, "bakery-test-prod")
+	if err != nil || len(removed) != 0 {
+		t.Fatalf("RemoveOthers of production keeping the running one: %v %v", removed, err)
+	}
+	if err := r.RemoveAll(ctx, appID); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := r.containers(ctx, appID); len(list) != 0 {
+		t.Fatalf("left after RemoveAll: %d", len(list))
+	}
+}

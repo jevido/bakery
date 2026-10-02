@@ -23,7 +23,7 @@ func (m *memStore) Queue(_ context.Context, d domain.Deployment) (domain.Deploym
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, q := range m.items {
-		if q.ApplicationID == d.ApplicationID && q.Status == domain.Queued {
+		if q.ApplicationID == d.ApplicationID && q.Preview == d.Preview && q.Status == domain.Queued {
 			return domain.Deployment{}, domain.ErrAlreadyQueued
 		}
 	}
@@ -167,6 +167,8 @@ type fakeRuntime struct {
 	gone    map[string]bool
 	pulls   []PullRequest
 	pullErr error
+	// previewOf is the Preview number of each Container Start made.
+	previewOf map[string]int
 }
 
 func (r *fakeRuntime) Pull(_ context.Context, req PullRequest, out func(string)) (string, error) {
@@ -219,6 +221,10 @@ func (r *fakeRuntime) Start(_ context.Context, s ContainerSpec) error {
 		return r.startErr
 	}
 	r.running[s.Name] = true
+	if r.previewOf == nil {
+		r.previewOf = map[string]int{}
+	}
+	r.previewOf[s.Name] = s.Preview
 	return nil
 }
 func (r *fakeRuntime) Remove(_ context.Context, name string) error {
@@ -226,10 +232,10 @@ func (r *fakeRuntime) Remove(_ context.Context, name string) error {
 	r.removed = append(r.removed, name)
 	return nil
 }
-func (r *fakeRuntime) RemoveOthers(_ context.Context, _ uint64, keep string) ([]string, error) {
+func (r *fakeRuntime) RemoveOthers(_ context.Context, _ uint64, preview int, keep string) ([]string, error) {
 	var out []string
 	for name := range r.running {
-		if name != keep {
+		if name != keep && r.previewOf[name] == preview {
 			out = append(out, name)
 			delete(r.running, name)
 		}
@@ -249,11 +255,12 @@ type setup struct {
 	routedOn map[string]uint64
 	service  *Service
 	worker   *Worker
+	previews *memPreviews
 	// app, when set, changes the Application every Deployment reads.
 	app func(*Application)
 }
 
-func newSetup(t *testing.T, src fakeSource, check ...HealthCheck) *setup {
+func newSetup(t *testing.T, src Source, check ...HealthCheck) *setup {
 	s := &setup{store: &memStore{}, logs: &memLogs{}, runtime: &fakeRuntime{running: map[string]bool{}}, routes: map[string]string{}, servers: map[uint64]*fakeRuntime{}, routedOn: map[string]uint64{}}
 	s.servers[0] = s.runtime
 	apps := func(_ context.Context, id uint64) (Application, error) {
@@ -266,7 +273,8 @@ func newSetup(t *testing.T, src fakeSource, check ...HealthCheck) *setup {
 		}
 		return a, nil
 	}
-	s.service = NewService(s.store, s.logs, apps, nil)
+	s.previews = &memPreviews{}
+	s.service = NewService(s.store, s.logs, apps, nil, s.previews)
 	router := func(_ context.Context, serverID, _ uint64, domains []string, container string, _ int) error {
 		for _, d := range domains {
 			s.routes[d] = container
@@ -282,6 +290,13 @@ func newSetup(t *testing.T, src fakeSource, check ...HealthCheck) *setup {
 		return rt, nil
 	}
 	s.worker = NewWorker(s.service, src, runtimes, router, t.TempDir())
+	s.worker.PreviewRouter = func(_ context.Context, serverID, _ uint64, _ int, domains []string, container string, _ int) error {
+		for _, d := range domains {
+			s.routes[d] = container
+			s.routedOn[d] = serverID
+		}
+		return nil
+	}
 	s.worker.sleep = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
 	return s
 }

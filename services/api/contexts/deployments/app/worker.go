@@ -23,6 +23,8 @@ type Worker struct {
 	source   Source
 	runtimes Runtimes
 	router   Router
+	// PreviewRouter routes Preview Deployments; nil fails them.
+	PreviewRouter PreviewRouter
 	// Planner writes the Dockerfile of nixpacks Applications; nil fails them.
 	Planner Planner
 	// WorkDir holds the clones while they are built.
@@ -157,6 +159,20 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, slug *string, 
 		return fmt.Errorf("reading the application: %w", err)
 	}
 	*slug = app.Slug
+	branch := app.GitBranch
+	if d.Preview != 0 {
+		if app.BuildPack == BuildPackImage {
+			return ErrNoPreviews
+		}
+		p, found, err := w.service.previews.ByNumber(ctx, d.ApplicationID, d.Preview)
+		if err != nil {
+			return fmt.Errorf("reading the preview: %w", err)
+		}
+		if !found || p.State != domain.PreviewOpen {
+			return domain.ErrPreviewClosed
+		}
+		branch = p.Branch
+	}
 
 	// Every step runs on the Target server. Saved with the next step, or
 	// with the failure when the Server cannot be reached.
@@ -166,6 +182,9 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, slug *string, 
 		return err
 	}
 	info("Deploying on server %s", rt.ServerName())
+	if d.Preview != 0 {
+		info("Deploying the preview of pull request #%d (%s)", d.Preview, branch)
+	}
 
 	if d.RollbackOf != nil {
 		from := "commit " + shortSHA(d.CommitSHA)
@@ -195,12 +214,12 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, slug *string, 
 		return err
 	}
 	// Saved now, so the dashboard shows the branch while cloning.
-	d.Branch = app.GitBranch
+	d.Branch = branch
 	if err := w.service.store.Save(ctx, *d); err != nil {
 		return err
 	}
-	info("Cloning %s (branch %s)", app.GitURL, app.GitBranch)
-	commit, err := w.source.Clone(ctx, CloneRequest{URL: app.GitURL, Branch: app.GitBranch, Dir: dir, DeployKey: app.DeployKey}, log.Line)
+	info("Cloning %s (branch %s)", app.GitURL, branch)
+	commit, err := w.source.Clone(ctx, CloneRequest{URL: app.GitURL, Branch: branch, Dir: dir, DeployKey: app.DeployKey}, log.Line)
 	if err != nil {
 		return fmt.Errorf("clone failed: %w", err)
 	}
@@ -218,6 +237,9 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, slug *string, 
 	d.Image = domain.ImageTag(app.Slug, d.ID)
 	info("Building image %s from %s", d.Image, dockerfile)
 	labels := map[string]string{"bakery.managed": "true", "bakery.application": fmt.Sprint(app.ID), "bakery.deployment": fmt.Sprint(d.ID)}
+	if d.Preview != 0 {
+		labels["bakery.preview"] = fmt.Sprint(d.Preview)
+	}
 	if len(buildArgs) > 0 {
 		info("Build args: %s", strings.Join(slices.Sorted(maps.Keys(buildArgs)), ", "))
 	}
@@ -315,10 +337,15 @@ func (w *Worker) goLive(ctx context.Context, rt Runtime, d *domain.Deployment, a
 	if err := w.advance(ctx, d, domain.Starting); err != nil {
 		return err
 	}
-	d.Container = domain.ContainerName(app.ID, d.ID)
+	d.Container = domain.DeploymentContainerName(*d)
 	mounts := make([]Mount, len(app.Storages))
 	for i, s := range app.Storages {
-		mounts[i] = Mount{Volume: domain.VolumeName(app.ID, s.Name), Path: s.MountPath}
+		// A Preview never writes into the Application's own Volumes.
+		volume := domain.VolumeName(app.ID, s.Name)
+		if d.Preview != 0 {
+			volume = domain.PreviewVolumeName(app.ID, d.Preview, s.Name)
+		}
+		mounts[i] = Mount{Volume: volume, Path: s.MountPath}
 		info("Mounting persistent storage %s at %s", s.Name, s.MountPath)
 	}
 	if app.MemoryMB != 0 || app.CPUs != 0 {
@@ -326,7 +353,7 @@ func (w *Worker) goLive(ctx context.Context, rt Runtime, d *domain.Deployment, a
 	}
 	info("Starting container %s", d.Container)
 	if err := rt.Start(ctx, ContainerSpec{
-		Name: d.Container, Image: d.Image, ApplicationID: app.ID, DeploymentID: d.ID, Env: app.RuntimeEnv,
+		Name: d.Container, Image: d.Image, ApplicationID: app.ID, DeploymentID: d.ID, Preview: d.Preview, Env: app.RuntimeEnv,
 		Mounts: mounts, MemoryMB: app.MemoryMB, CPUs: app.CPUs, Settle: !app.HealthCheck.Enabled,
 	}); err != nil {
 		return fmt.Errorf("container did not start: %w", err)
@@ -350,15 +377,30 @@ func (w *Worker) goLive(ctx context.Context, rt Runtime, d *domain.Deployment, a
 
 	// Route, before the old Container goes, so traffic never points at
 	// nothing.
-	info("Routing %s to %s:%d", strings.Join(app.Domains, ", "), d.Container, app.Port)
-	if err := w.router(ctx, app.ServerID, app.ID, app.Domains, d.Container, app.Port); err != nil {
+	domains := app.Domains
+	route := func() error { return w.router(ctx, app.ServerID, app.ID, domains, d.Container, app.Port) }
+	if d.Preview != 0 {
+		if len(app.Domains) == 0 {
+			_ = rt.Remove(ctx, d.Container)
+			return errors.New("the application has no domain to put its preview under")
+		}
+		domains = []string{domain.PreviewDomain(d.Preview, app.Domains[0])}
+		route = func() error {
+			if w.PreviewRouter == nil {
+				return errors.New("previews cannot be routed here")
+			}
+			return w.PreviewRouter(ctx, app.ServerID, app.ID, d.Preview, domains, d.Container, app.Port)
+		}
+	}
+	info("Routing %s to %s:%d", strings.Join(domains, ", "), d.Container, app.Port)
+	if err := route(); err != nil {
 		// The old Container still serves; only the new one goes.
 		_ = rt.Remove(context.WithoutCancel(ctx), d.Container)
 		return fmt.Errorf("routing failed: %w", err)
 	}
 
 	// Clean up.
-	removed, err := rt.RemoveOthers(ctx, app.ID, d.Container)
+	removed, err := rt.RemoveOthers(ctx, app.ID, d.Preview, d.Container)
 	for _, name := range removed {
 		info("Removed previous container %s", name)
 	}
