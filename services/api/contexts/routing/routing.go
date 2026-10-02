@@ -66,7 +66,7 @@ func svc() *app.Service {
 				return conn.Podman, conn.DialUnix, nil
 			},
 		}
-		service = app.NewService(infra.Routes{}, infra.ServiceRoutes{}, infra.Settings{}, proxies)
+		service = app.NewService(infra.Routes{}, infra.ServiceRoutes{}, infra.PreviewRoutes{}, infra.Settings{}, proxies)
 		projects.OnApplicationDomainsChanged(func(ctx context.Context, applicationID uint64, domains []string) {
 			if err := service.ChangeDomains(ctx, applicationID, domains); err != nil {
 				facades.Log().Errorf("routing: moving the route of application %d to %v: %v", applicationID, domains, err)
@@ -133,6 +133,21 @@ func ensureRemote(ctx context.Context, serverID uint64) {
 // is serving the new Container.
 func SwitchRoute(ctx context.Context, serverID, applicationID uint64, domains []string, container string, port int) error {
 	return svc().SwitchRoute(ctx, domain.Route{ApplicationID: applicationID, ServerID: serverID, Domains: domains, Container: container, Port: port})
+}
+
+// SwitchPreviewRoute points a Preview's Domains at a Container and port on
+// the Application's Server and Applies that Server's Proxy. When it
+// returns nil, Caddy there is serving the new Container.
+func SwitchPreviewRoute(ctx context.Context, serverID, applicationID uint64, preview int, domains []string, container string, port int) error {
+	return svc().SwitchPreviewRoute(ctx, domain.PreviewRoute{
+		ApplicationID: applicationID, Preview: preview, ServerID: serverID, Domains: domains, Container: container, Port: port,
+	})
+}
+
+// DropPreviewRoute stops serving a Preview; one that has no Preview route
+// is fine.
+func DropPreviewRoute(ctx context.Context, applicationID uint64, preview int) error {
+	return svc().DropPreviewRoute(ctx, applicationID, preview)
 }
 
 // ServiceRoute is a Public Component's Domains, primary first, served from

@@ -30,6 +30,14 @@ type ServiceRoutes interface {
 	Delete(ctx context.Context, serviceID uint64) error
 }
 
+// PreviewRoutes stores Preview routes, one per (Application, Preview).
+type PreviewRoutes interface {
+	All(ctx context.Context) ([]domain.PreviewRoute, error)
+	Upsert(ctx context.Context, r domain.PreviewRoute) error
+	Delete(ctx context.Context, applicationID uint64, preview int) error
+	DeleteForApplication(ctx context.Context, applicationID uint64) error
+}
+
 // Settings stores Route settings, one per Application.
 type Settings interface {
 	All(ctx context.Context) (map[uint64]domain.RouteSettings, error)
@@ -54,6 +62,7 @@ type Proxy interface {
 type Service struct {
 	routes        Routes
 	serviceRoutes ServiceRoutes
+	previewRoutes PreviewRoutes
 	settings      Settings
 	proxies       Proxies
 	// locks make read-all-then-Apply one step per Server, so two changes at
@@ -63,8 +72,8 @@ type Service struct {
 	locks map[uint64]*sync.Mutex
 }
 
-func NewService(routes Routes, serviceRoutes ServiceRoutes, settings Settings, proxies Proxies) *Service {
-	return &Service{routes: routes, serviceRoutes: serviceRoutes, settings: settings, proxies: proxies, locks: map[uint64]*sync.Mutex{}}
+func NewService(routes Routes, serviceRoutes ServiceRoutes, previewRoutes PreviewRoutes, settings Settings, proxies Proxies) *Service {
+	return &Service{routes: routes, serviceRoutes: serviceRoutes, previewRoutes: previewRoutes, settings: settings, proxies: proxies, locks: map[uint64]*sync.Mutex{}}
 }
 
 func (s *Service) lock(serverID uint64) *sync.Mutex {
@@ -91,6 +100,29 @@ func (s *Service) serverOf(ctx context.Context, applicationID uint64) (uint64, b
 		}
 	}
 	return 0, false, nil
+}
+
+// serversOf returns every Server the Application's Route or Preview routes
+// are on.
+func (s *Service) serversOf(ctx context.Context, applicationID uint64) ([]uint64, error) {
+	var servers []uint64
+	server, found, err := s.serverOf(ctx, applicationID)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		servers = append(servers, server)
+	}
+	previews, err := s.previewRoutes.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range previews {
+		if p.ApplicationID == applicationID && !slices.Contains(servers, p.ServerID) {
+			servers = append(servers, p.ServerID)
+		}
+	}
+	return servers, nil
 }
 
 // RouteSettings returns the Application's Route settings, the defaults when
@@ -131,11 +163,17 @@ func (s *Service) ChangeRouteSettings(ctx context.Context, rs domain.RouteSettin
 	if err := s.settings.Put(ctx, rs); err != nil {
 		return rs, err
 	}
-	server, found, err := s.serverOf(ctx, rs.ApplicationID)
-	if err != nil || !found {
+	// Its Preview routes carry the settings too.
+	servers, err := s.serversOf(ctx, rs.ApplicationID)
+	if err != nil {
 		return rs, err
 	}
-	return rs, s.apply(ctx, server)
+	for _, server := range servers {
+		if err := s.apply(ctx, server); err != nil {
+			return rs, err
+		}
+	}
+	return rs, nil
 }
 
 // EnsureProxy makes sure the Local server's Proxy runs and serves every
@@ -144,7 +182,7 @@ func (s *Service) EnsureProxy(ctx context.Context) error {
 	return s.ensure(ctx, 0)
 }
 
-// RemoteServers lists the Remote servers that have Routes, whose Proxies
+// RemoteServers lists the Remote servers that have Routes or Preview routes, whose Proxies
 // EnsureRemoteProxy keeps.
 func (s *Service) RemoteServers(ctx context.Context) ([]uint64, error) {
 	all, err := s.routes.All(ctx)
@@ -153,6 +191,15 @@ func (s *Service) RemoteServers(ctx context.Context) ([]uint64, error) {
 	}
 	var out []uint64
 	for _, r := range all {
+		if r.ServerID != 0 && !slices.Contains(out, r.ServerID) {
+			out = append(out, r.ServerID)
+		}
+	}
+	previews, err := s.previewRoutes.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range previews {
 		if r.ServerID != 0 && !slices.Contains(out, r.ServerID) {
 			out = append(out, r.ServerID)
 		}
@@ -222,23 +269,80 @@ func (s *Service) SwitchRoute(ctx context.Context, r domain.Route) error {
 	return nil
 }
 
-// DropRoute removes the Application's Route and Route settings, then
-// Applies.
+// DropRoute removes the Application's Route, Preview routes and Route
+// settings, then Applies every Server they were on.
 func (s *Service) DropRoute(ctx context.Context, applicationID uint64) error {
-	server, found, err := s.serverOf(ctx, applicationID)
+	servers, err := s.serversOf(ctx, applicationID)
 	if err != nil {
 		return err
 	}
 	if err := s.routes.Delete(ctx, applicationID); err != nil {
 		return err
 	}
+	if err := s.previewRoutes.DeleteForApplication(ctx, applicationID); err != nil {
+		return err
+	}
 	if err := s.settings.Delete(ctx, applicationID); err != nil {
 		return err
 	}
-	if !found {
-		return nil
+	for _, server := range servers {
+		if err := s.apply(ctx, server); err != nil {
+			return err
+		}
 	}
-	return s.apply(ctx, server)
+	return nil
+}
+
+// SwitchPreviewRoute points a Preview's Preview domain at a new Container
+// on its Server, making sure that Server's Proxy runs, then Applies it.
+func (s *Service) SwitchPreviewRoute(ctx context.Context, r domain.PreviewRoute) error {
+	var before *uint64
+	all, err := s.previewRoutes.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, p := range all {
+		if p.ApplicationID == r.ApplicationID && p.Preview == r.Preview {
+			before = &p.ServerID
+		}
+	}
+	if r.ServerID != 0 {
+		p, err := s.proxies.For(ctx, r.ServerID)
+		if err != nil {
+			return err
+		}
+		if err := p.Ensure(ctx); err != nil {
+			return err
+		}
+	}
+	if err := s.previewRoutes.Upsert(ctx, r); err != nil {
+		return err
+	}
+	if err := s.apply(ctx, r.ServerID); err != nil {
+		return err
+	}
+	if before != nil && *before != r.ServerID {
+		return s.apply(ctx, *before)
+	}
+	return nil
+}
+
+// DropPreviewRoute removes one Preview route, then Applies its Server.
+// Dropping one that does not exist does nothing.
+func (s *Service) DropPreviewRoute(ctx context.Context, applicationID uint64, preview int) error {
+	all, err := s.previewRoutes.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, p := range all {
+		if p.ApplicationID == applicationID && p.Preview == preview {
+			if err := s.previewRoutes.Delete(ctx, applicationID, preview); err != nil {
+				return err
+			}
+			return s.apply(ctx, p.ServerID)
+		}
+	}
+	return nil
 }
 
 // SetServiceRoutes makes routes the Service's whole set of Service routes,
@@ -288,6 +392,20 @@ func (s *Service) apply(ctx context.Context, serverID uint64) error {
 		} else {
 			all[i].Settings = domain.DefaultRouteSettings(r.ApplicationID)
 		}
+	}
+	previews, err := s.previewRoutes.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, r := range previews {
+		if r.ServerID != serverID {
+			continue
+		}
+		rs, ok := settings[r.ApplicationID]
+		if !ok {
+			rs = domain.DefaultRouteSettings(r.ApplicationID)
+		}
+		all = append(all, r.Route(rs))
 	}
 	if serverID != 0 {
 		return p.Apply(ctx, all)

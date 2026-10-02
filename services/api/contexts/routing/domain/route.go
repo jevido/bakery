@@ -15,6 +15,31 @@ type Route struct {
 	// Settings are the Application's Route settings, stored on their own
 	// and attached for rendering.
 	Settings RouteSettings
+	// Derived marks Domains nobody set explicitly (a Preview domain): any
+	// of them that another Route, Service route or the Dashboard Route
+	// serves is left out.
+	Derived bool
+}
+
+// PreviewRoute is where a Preview's Preview domain is served from. One per
+// (Application, Preview number), on the Application's Server.
+type PreviewRoute struct {
+	ApplicationID uint64
+	Preview       int
+	ServerID      uint64
+	Domains       []string
+	Container     string
+	Port          int
+}
+
+// Route is the Preview route in the shape Render takes: the Application's
+// Response headers and Basic auth, never a Www redirect, and Derived.
+func (r PreviewRoute) Route(settings RouteSettings) Route {
+	settings.WwwRedirect = WwwOff
+	return Route{
+		ApplicationID: r.ApplicationID, ServerID: r.ServerID, Domains: r.Domains, Container: r.Container, Port: r.Port,
+		Settings: settings, Derived: true,
+	}
 }
 
 // DashboardRoute serves Bakery's own dashboard on its Domain: /api/* goes to

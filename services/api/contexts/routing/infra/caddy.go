@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -58,8 +59,23 @@ type obj = map[string]any
 // HTTP. With ACME there is no :80 server of ours: Caddy then runs its own
 // there, answering HTTP-01 challenges and redirecting everything to HTTPS.
 func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
+	// A Derived Domain gives way to every Domain someone set explicitly.
+	taken := map[string]bool{}
+	if d := opts.Dashboard; d != nil {
+		taken[d.Domain] = true
+	}
+	for _, r := range routes {
+		if !r.Derived {
+			for _, d := range r.Domains {
+				taken[d] = true
+			}
+		}
+	}
 	sorted := make([]domain.Route, 0, len(routes))
 	for _, r := range routes {
+		if r.Derived {
+			r.Domains = slices.DeleteFunc(slices.Clone(r.Domains), func(d string) bool { return taken[d] })
+		}
 		if len(r.Domains) > 0 {
 			sorted = append(sorted, r)
 		}

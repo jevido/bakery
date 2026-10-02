@@ -35,6 +35,25 @@ func (f *fakeServiceRoutes) Delete(_ context.Context, serviceID uint64) error {
 	return nil
 }
 
+type fakePreviewRoutes struct{ routes []domain.PreviewRoute }
+
+func (f *fakePreviewRoutes) All(context.Context) ([]domain.PreviewRoute, error) {
+	return slices.Clone(f.routes), nil
+}
+func (f *fakePreviewRoutes) Upsert(ctx context.Context, r domain.PreviewRoute) error {
+	f.Delete(ctx, r.ApplicationID, r.Preview)
+	f.routes = append(f.routes, r)
+	return nil
+}
+func (f *fakePreviewRoutes) Delete(_ context.Context, applicationID uint64, preview int) error {
+	f.routes = slices.DeleteFunc(f.routes, func(r domain.PreviewRoute) bool { return r.ApplicationID == applicationID && r.Preview == preview })
+	return nil
+}
+func (f *fakePreviewRoutes) DeleteForApplication(_ context.Context, applicationID uint64) error {
+	f.routes = slices.DeleteFunc(f.routes, func(r domain.PreviewRoute) bool { return r.ApplicationID == applicationID })
+	return nil
+}
+
 type fakeSettings struct {
 	all map[uint64]domain.RouteSettings
 }
@@ -89,7 +108,7 @@ func TestRoutesPerServer(t *testing.T) {
 	routes := &upsertRoutes{fakeRoutes{routes: []domain.Route{{ApplicationID: 1, Domains: []string{"local.localhost"}, Container: "bakery-app-1-1", Port: 80}}}}
 	svcRoutes := &fakeServiceRoutes{routes: []domain.ServiceRoute{{ServiceID: 3, Component: "web", Domains: []string{"shop.localhost"}, Container: "bakery-svc-3-web", Port: 80}}}
 	ps := proxies{}
-	s := NewService(routes, svcRoutes, &fakeSettings{}, ps)
+	s := NewService(routes, svcRoutes, &fakePreviewRoutes{}, &fakeSettings{}, ps)
 
 	if err := s.SwitchRoute(ctx, domain.Route{ApplicationID: 2, ServerID: 7, Domains: []string{"remote.localhost"}, Container: "bakery-app-2-5", Port: 8080}); err != nil {
 		t.Fatal(err)
@@ -132,7 +151,7 @@ func TestServiceRoutes(t *testing.T) {
 	// Settings for application id 0 must never reach a Service route.
 	settings := &fakeSettings{all: map[uint64]domain.RouteSettings{0: {WwwRedirect: domain.ToApex}}}
 	proxy := &fakeProxy{}
-	s := NewService(apps, svcRoutes, settings, oneProxy{proxy})
+	s := NewService(apps, svcRoutes, &fakePreviewRoutes{}, settings, oneProxy{proxy})
 
 	web := domain.ServiceRoute{ServiceID: 3, Component: "web", Domains: []string{"shop.localhost"}, Container: "bakery-svc-3-web", Port: 80}
 	admin := domain.ServiceRoute{ServiceID: 3, Component: "admin", Domains: []string{"shop-admin.localhost"}, Container: "bakery-svc-3-admin", Port: 8080}
@@ -154,5 +173,50 @@ func TestServiceRoutes(t *testing.T) {
 	}
 	if last = proxy.applied[len(proxy.applied)-1]; len(last) != 1 || last[0].ApplicationID != 1 {
 		t.Fatalf("after drop %+v", last)
+	}
+}
+
+func TestPreviewRoutes(t *testing.T) {
+	ctx := context.Background()
+	routes := &upsertRoutes{}
+	previews := &fakePreviewRoutes{}
+	settings := &fakeSettings{all: map[uint64]domain.RouteSettings{1: {
+		ApplicationID: 1, WwwRedirect: domain.ToWww,
+		BasicAuth: domain.BasicAuth{Enabled: true, Username: "u", PasswordHash: "h"},
+	}}}
+	ps := proxies{}
+	s := NewService(routes, &fakeServiceRoutes{}, previews, settings, ps)
+	if err := s.SwitchRoute(ctx, domain.Route{ApplicationID: 1, Domains: []string{"app.localhost"}, Container: "c1", Port: 80}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SwitchPreviewRoute(ctx, domain.PreviewRoute{ApplicationID: 1, Preview: 7, Domains: []string{"pr-7.app.localhost"}, Container: "c7", Port: 80}); err != nil {
+		t.Fatal(err)
+	}
+	last := ps[0].applied[len(ps[0].applied)-1]
+	if len(last) != 2 {
+		t.Fatalf("applied %+v", last)
+	}
+	p := last[1]
+	if !p.Derived || p.Container != "c7" || p.Settings.WwwRedirect != domain.WwwOff || !p.Settings.BasicAuth.Enabled {
+		t.Fatalf("preview route %+v", p)
+	}
+	if err := s.DropPreviewRoute(ctx, 1, 7); err != nil {
+		t.Fatal(err)
+	}
+	if last := ps[0].applied[len(ps[0].applied)-1]; len(last) != 1 {
+		t.Fatalf("after drop %+v", last)
+	}
+	// Dropping again does nothing.
+	n := len(ps[0].applied)
+	if err := s.DropPreviewRoute(ctx, 1, 7); err != nil || len(ps[0].applied) != n {
+		t.Fatalf("second drop: %v, %d applies", err, len(ps[0].applied)-n)
+	}
+	// Deleting the Application drops its Preview routes too.
+	_ = s.SwitchPreviewRoute(ctx, domain.PreviewRoute{ApplicationID: 1, Preview: 8, Domains: []string{"pr-8.app.localhost"}, Container: "c8", Port: 80})
+	if err := s.DropRoute(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if len(previews.routes) != 0 || len(ps[0].applied[len(ps[0].applied)-1]) != 0 {
+		t.Fatalf("after DropRoute: %+v", previews.routes)
 	}
 }

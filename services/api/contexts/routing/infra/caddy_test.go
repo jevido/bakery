@@ -2,6 +2,7 @@ package infra
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -403,5 +404,58 @@ func TestRenderServiceRoute(t *testing.T) {
 	}
 	if got["app.localhost"] != "bakery-app-1-4:8080" || got["shop.localhost"] != "bakery-svc-3-web:80" {
 		t.Errorf("routes %v", got)
+	}
+}
+
+func TestRenderPreviewRoute(t *testing.T) {
+	settings := domain.RouteSettings{
+		ApplicationID: 1, WwwRedirect: domain.ToWww,
+		ResponseHeaders: []domain.ResponseHeader{{Name: "X-Frame-Options", Value: "DENY"}},
+		BasicAuth:       domain.BasicAuth{Enabled: true, Username: "u", PasswordHash: "$2a$10$hash"},
+	}
+	preview := domain.PreviewRoute{ApplicationID: 1, Preview: 7, Domains: []string{"pr-7.app.localhost"}, Container: "bakery-app-1-pr7-9", Port: 8080}
+	// An Application that explicitly took another Preview's domain wins.
+	taken := domain.PreviewRoute{ApplicationID: 1, Preview: 8, Domains: []string{"pr-8.app.localhost"}, Container: "bakery-app-1-pr8-10", Port: 8080}
+	raw, err := Render([]domain.Route{
+		preview.Route(settings),
+		taken.Route(settings),
+		{ApplicationID: 2, Domains: []string{"pr-8.app.localhost"}, Container: "bakery-app-2-3", Port: 80, Settings: domain.DefaultRouteSettings(2)},
+	}, RenderOptions{InternalTLS: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Apps struct {
+			HTTP struct {
+				Servers map[string]struct {
+					Routes []struct {
+						Match  []struct{ Host []string }
+						Handle []struct {
+							Handler   string
+							Upstreams []struct{ Dial string }
+						}
+					}
+				}
+			}
+		}
+	}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	routes := cfg.Apps.HTTP.Servers["https"].Routes
+	if len(routes) != 2 {
+		t.Fatalf("%d routes (want the preview and the explicit one, no www redirect):\n%s", len(routes), raw)
+	}
+	got := map[string][]string{}
+	for _, r := range routes {
+		for _, h := range r.Handle {
+			got[r.Match[0].Host[0]] = append(got[r.Match[0].Host[0]], h.Handler)
+		}
+	}
+	if want := []string{"headers", "headers", "authentication", "reverse_proxy"}; !slices.Equal(got["pr-7.app.localhost"], want) {
+		t.Errorf("preview handlers %v, want %v", got["pr-7.app.localhost"], want)
+	}
+	if want := []string{"reverse_proxy"}; !slices.Equal(got["pr-8.app.localhost"], want) {
+		t.Errorf("pr-8 should be the explicit Route's: %v", got["pr-8.app.localhost"])
 	}
 }
