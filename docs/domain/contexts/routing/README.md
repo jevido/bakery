@@ -19,9 +19,9 @@ responsible for which Container is current; deployments tells it.
 | Route | An Application's Domains → container name and port on its Target server. One per Application. |
 | Preview route | A Preview's Preview domain (`pr-<n>.<primary Domain>`) → its container name and port on the Application's Server. One per Application and Preview number. |
 | Service route | A Public Component's Domains → its Container and port. One per Public Component of a Service. |
-| Route settings | How the Proxy treats an Application's traffic: Www redirect, Response headers, Basic auth. One per Application, default all off. |
-| Www redirect | `off`, `to_apex` or `to_www`. Each Domain's counterpart (`www.` added or removed) answers 308 to the Domain, keeping path and query. |
-| Counterpart | The host a Www redirect adds for one Domain. |
+| Route settings | How the Proxy treats an Application's traffic: Redirect, Response headers, Basic auth. One per Application, default all off. |
+| Redirect | `both` ("Allow www & non-www", no redirect), `non-www` ("Redirect to non-www") or `www` ("Redirect to www"). With `non-www` or `www`, each Domain's counterpart (`www.` added or removed) answers 308 to the chosen form, keeping path and query. |
+| Counterpart | The host a Redirect adds for one Domain. |
 | Response header | Name and value set on every response. |
 | Basic auth | One username + password asked for before any request is proxied. |
 | Dashboard Route | Bakery's own dashboard domain: `/api/*` to the API container, everything else to the dashboard container. From configuration, not a stored Route. |
@@ -36,9 +36,9 @@ responsible for which Container is current; deployments tells it.
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Route | One per Application, with at least one Domain, on one Server. It always points at a Container on that Server that was running when the Route was switched. (That Domains are unique is projects' rule.) |
-| Preview route | One per (Application, Preview number), on the Application's Server, pointing at a Container that was running when it was switched. Rendered with the Application's Response headers and Basic auth but never a Www redirect, and after every Route and Service route, so a Domain someone set explicitly always wins over a Preview domain. |
+| Preview route | One per (Application, Preview number), on the Application's Server, pointing at a Container that was running when it was switched. Rendered with the Application's Response headers and Basic auth but never a Redirect, and after every Route and Service route, so a Domain someone set explicitly always wins over a Preview domain. |
 | Service route | One per (Service, Component), with at least one Domain, pointing at a Container that was running when the Service's routes were set. A Service's routes are always replaced as a set. Rendered with default Route settings. |
-| Route settings | One per Application, stored even before it has a Route. Www redirect is `off`, `to_apex` or `to_www`. At most 20 Response headers, names are HTTP tokens, listed once (case-insensitively), never hop-by-hop (`Connection`, `Keep-Alive`, `Proxy-*`, `TE`, `Trailer`, `Transfer-Encoding`, `Upgrade`) or `Content-Length`; values on one line, at most 1024 characters. Basic auth, when on, has a username (1–100 characters, no `:`) and a password hash; only the bcrypt hash is kept and it is never returned. |
+| Route settings | One per Application, stored even before it has a Route. Redirect is `both` (default), `non-www` or `www`. At most 20 Response headers, names are HTTP tokens, listed once (case-insensitively), never hop-by-hop (`Connection`, `Keep-Alive`, `Proxy-*`, `TE`, `Trailer`, `Transfer-Encoding`, `Upgrade`) or `Content-Length`; values on one line, at most 1024 characters. Basic auth, when on, has a username (1–100 characters, no `:`) and a password hash; only the bcrypt hash is kept and it is never returned. |
 
 ### Commands
 
@@ -99,13 +99,13 @@ None.
   and they need no Deployment, so routing owns a small API of its own and a
   `route_settings` table keyed by application id (no foreign key, like
   `routes`). The Domains stay in projects, which checks they are unique.
-- **An explicit Domain wins over a counterpart.** When a Www redirect's
+- **An explicit Domain wins over a counterpart.** When a Redirect's
   counterpart is another Application's Domain, the counterpart is not
   rendered, so one Application's redirect setting can never take traffic
   from another.
 - **Basic auth keeps only a bcrypt hash**, which is also what Caddy's
   `http_basic` provider wants; the password is never stored or returned, and
-  Health checks are unaffected because they run inside the Container.
+  Healthchecks are unaffected because they run inside the Container.
 - **Response headers are set, not added**, so a header the app already sends
   is replaced rather than doubled.
 - **Service routes are their own table, rendered as Routes.** A Service
@@ -134,4 +134,10 @@ None.
   its Domains; a Preview route's Domain is derived, and it disappears when
   its Pull request closes. Rendering it with the Application's Route
   settings keeps an Application behind Basic auth protected in its Previews
-  too; a Www redirect makes no sense for a derived host.
+  too; a Redirect makes no sense for a derived host.
+- **Route, Route settings and Response header are Bakery's terms.**
+  Coolify has no Route: it writes proxy labels onto each container and lets
+  the person edit them as custom labels, headers included. Bakery renders
+  the whole Caddy config from the database instead, so it needs a word for
+  what it renders. The Redirect values are Coolify's (`both`, `www`,
+  `non-www`).

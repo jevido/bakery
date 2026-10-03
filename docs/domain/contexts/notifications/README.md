@@ -6,7 +6,7 @@
 ## Purpose
 
 Tell the people running Bakery when something needs their attention: a
-Deployment or a Backup failed, a Server became unreachable or came back, a
+Deployment or a Backup execution failed, a Server became unreachable or came back, a
 Server's disk is almost full. Each Notification goes to every Notification
 channel subscribed to its Event kind: an email address, a Discord or Slack
 channel, a Telegram chat, an ntfy topic or a webhook. It also emails an
@@ -23,7 +23,7 @@ each channel; an audit log is something else.
 | ---- | ------- |
 | Notification channel | A named place Notifications go to: a Channel kind, its settings (secrets encrypted) and the Event kinds it is subscribed to. |
 | Channel kind | `email` (SMTP server, from address, recipients), `discord` and `slack` (an incoming webhook URL, a secret), `telegram` (a bot token and a chat id), `ntfy` (a server URL, a topic and optionally a token) or `webhook` (any URL, kept secret, JSON signed with an optional secret). |
-| Event kind | What a Notification is about: `deployment_failed`, `deployment_succeeded`, `backup_failed`, `backup_succeeded`, `server_unreachable`, `server_reachable`, `disk_almost_full`. A new channel is subscribed to all but the two `_succeeded` ones. |
+| Event kind | What a Notification is about: `deployment_failure`, `deployment_success`, `backup_failure`, `backup_success`, `server_unreachable`, `server_reachable`, `server_disk_usage`. A new channel is subscribed to all but the two `_succeeded` ones. |
 | Notification | What a publisher hands over: an Event kind, a title, a body, an optional link into the dashboard and when it happened. Not stored on its own. |
 | Delivery | One Notification sent to one Notification channel: `pending`, `sent` or `failed`, the attempts made (at most 3) and the last error. The 50 newest per channel are kept. |
 | Test notification | A Notification sent at once from a channel's Test button, recorded as a Delivery like any other. |
@@ -61,13 +61,13 @@ None published.
   announce.
 - **Consumes**, each translated into a Notification in this context's words:
   - `deployments.OnDeploymentFinished` (succeeded or failed; not cancelled
-    ones, nor those failed by a restart) → `deployment_failed` /
-    `deployment_succeeded`; a Preview Deployment's message names the
+    ones, nor those failed by a restart) → `deployment_failure` /
+    `deployment_success`; a Preview Deployment's message names the
     Preview ("preview of pull request #n").
   - `databases.OnBackupFinished` (succeeded or failed; not those failed by a
-    restart) → `backup_failed` / `backup_succeeded`.
+    restart) → `backup_failure` / `backup_success`.
   - `servers.OnServerHealthChanged` (a Server probe changed something) →
-    `server_unreachable`, `server_reachable` or `disk_almost_full`.
+    `server_unreachable`, `server_reachable` or `server_disk_usage`.
   - `identity.OnInvitationCreated` → an email to the invited person, whose
     outcome identity reports back to the inviting admin.
   - The auth middlewares from identity.
@@ -86,7 +86,7 @@ None published.
   `On…(f)` and notifications registers in `Start`. There is one process, so a
   broker would add a moving part and no decoupling the callbacks lack. The
   publishers call them in their own goroutine with a recover, so a
-  subscriber never slows or breaks a Deployment, a Backup or a probe.
+  subscriber never slows or breaks a Deployment, a Backup execution or a probe.
 - **SMTP settings live on the email Notification channel**, not in `.env`:
   an installation is configured from the dashboard, and more than one email
   channel (a team inbox, an on-call address) is possible. Goravel's mail
@@ -105,3 +105,11 @@ None published.
 - **The Telegram API base URL is configurable** (`BAKERY_TELEGRAM_API_URL`)
   only so tests can point it at a local stand-in; the other kinds take full
   URLs already.
+- **Notification channels and Deliveries are Bakery's own.** Coolify keeps
+  one settings row per channel kind per team (one Discord, one Slack, ...)
+  and no delivery log. Bakery lets an admin add several named Notification
+  channels of the same kind and shows each one's recent Deliveries, which
+  is how a failing channel gets noticed. The Event kind values are
+  Coolify's (`deployment_success`, `server_disk_usage`, ...), so the
+  subscriptions map one to one. `ntfy` is a Channel kind Coolify does not
+  have; it costs one small sender and is popular with self-hosters.

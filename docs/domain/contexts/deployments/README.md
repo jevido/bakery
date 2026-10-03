@@ -5,11 +5,11 @@
 
 ## Purpose
 
-Turns an Application into a running Container on its Target server: clone the Source and build
+Turns an Application into a running Container on its Target server: clone the Git repository and build
 the Image with Podman on that Server (from its Dockerfile, a Dockerfile Nixpacks writes, or
-a generated static file server), or pull its Image reference, then start the
+a generated static file server), or pull its Docker image, then start the
 Container, move the Route to it, and remove the
-Container it replaces once the new one passes its Health check, writing
+Container it replaces once the new one passes its Healthcheck, writing
 every step to the Deployment log. Also cancels a Deployment and rolls back to
 an earlier one's Image, and runs Previews: a copy of the Application per open
 Pull request, deployed from its head branch and removed when it closes. Also follows
@@ -21,8 +21,8 @@ Application is (projects) or for the Caddy configuration (routing).
 | Term | Meaning |
 | ---- | ------- |
 | Deployment | One attempt on one Server (the Application's Target server when it started), with a status, its trigger, the branch and commit (SHA, subject, author) it built or the Source image (reference with digest) it pulled, its Image and Container. |
-| Source image | The pulled reference with its digest, e.g. `docker.io/traefik/whoami@sha256:…`, recorded by an `image` Deployment. |
-| Health check | Probed inside the new Container (`curl`, else `wget`) before the Route moves. |
+| Source image | The pulled reference with its digest, e.g. `docker.io/traefik/whoami@sha256:…`, recorded by a `dockerimage` Deployment. |
+| Healthcheck | Probed inside the new Container (`curl`, else `wget`) before the Route moves. |
 | Cancelled | The final status of a Deployment the Owner cancelled. |
 | Rollback | A Deployment that starts an earlier finished Deployment's Image, skipping clone and build. |
 | Active | A Deployment in `queued`, `cloning`, `building` or `starting`. |
@@ -45,9 +45,9 @@ Application is (projects) or for the Caddy configuration (routing).
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Deployment | Belongs to the Application itself or to one of its Previews. Status only moves forward: `queued` → `cloning` → `building` → `starting` → `finished` (an `image` Deployment moves from `cloning` straight on to `building` without cloning), and any active status → `failed` (with an error) or `cancelled`. A Rollback moves from `queued` straight to `starting`; it names its source Deployment, which is `finished`, of the same Application, and whose Image still exists. An Application has at most one queued Deployment of its own and one per Preview, and at most one running Deployment in all; a queued one is only picked up once the Application has no running one, and a new Deploy while one is already queued (for the same Preview) is refused. A Preview Deployment cannot be rolled back to: a Preview always builds its head. Its log is append-only and ordered. |
+| Deployment | Belongs to the Application itself or to one of its Previews. Status only moves forward: `queued` → `cloning` → `building` → `starting` → `finished` (a `dockerimage` Deployment moves from `cloning` straight on to `building` without cloning), and any active status → `failed` (with an error) or `cancelled`. A Rollback moves from `queued` straight to `starting`; it names its source Deployment, which is `finished`, of the same Application, and whose Image still exists. An Application has at most one queued Deployment of its own and one per Preview, and at most one running Deployment in all; a queued one is only picked up once the Application has no running one, and a new Deploy while one is already queued (for the same Preview) is refused. A Preview Deployment cannot be rolled back to: a Preview always builds its head. Its log is append-only and ordered. |
 | Webhook | One per Application, with a secret and Auto-deploy on or off. A call is accepted only with a valid signature for that secret (HMAC-SHA256 of the body for GitHub, Gitea and Forgejo; the token for GitLab). Only a push to the Application's branch, with Auto-deploy on, queues a Deployment. Only a Pull request event, with Previews on, whose head is a branch of the same repository and whose base is the Application's branch, opens, deploys or closes a Preview. |
-| Preview | One per Application and Preview number. `open` → `closed`, and back to `open` when the Pull request is reopened. Only an open Preview is deployed. Closing it removes its Containers, Volumes, Images and Preview route on its Server; a closed Preview has nothing left running. Never for an `image` Application. |
+| Preview | One per Application and Preview number. `open` → `closed`, and back to `open` when the Pull request is reopened. Only an open Preview is deployed. Closing it removes its Containers, Volumes, Images and Preview route on its Server; a closed Preview has nothing left running. Never for a `dockerimage` Application. |
 | Known host | One per host (and port). The first clone from a host records its keys; every later clone must see the same ones, or the Deployment fails. Only the Owner can forget a host. |
 
 ### Commands
@@ -58,7 +58,7 @@ Application is (projects) or for the Caddy configuration (routing).
   the Route has moved it is too late, and the Deployment finishes.
 - `Rollback(deployment)`: queues a Deployment with trigger `rollback` that
   runs the given Deployment's Image with today's runtime variables, port,
-  Domains, Health check, Persistent storage and Resource limits.
+  Domains, Healthcheck, Persistent storage and Resource limits.
 - `ReceivePush(application, headers, body)`: verifies a Webhook call and
   queues a Deployment with trigger `webhook`.
 - `ReceivePullRequest(application, headers, body)`: verifies the call like a
@@ -88,7 +88,7 @@ Application is (projects) or for the Caddy configuration (routing).
     into the clone), `Build` it with the build variables as build args.
   - `static`: `Clone`, write a generated Containerfile (Caddy serving the
     Publish directory on port 80) into the clone, `Build` it.
-  - `image`: `Pull` the Image reference with the Registry credentials,
+  - `dockerimage`: `Pull` the Docker image with the Registry credentials,
     record the Source image, tag it as the Deployment's Image.
 
 ### Domain events
@@ -105,12 +105,12 @@ Application is (projects) or for the Caddy configuration (routing).
   `OnDeploymentFinished` (notifications).
 - **Consumes:** `projects.ApplicationForDeploy` (the snapshot is taken once, at
   the start of a Deployment, so editing the Application mid-build does not
-  change what is being built; it carries the Deploy key for SSH Sources);
+  change what is being built; it carries the Deploy key for SSH Git repositories);
   `routing.SwitchRoute` (with the Target server); `ApplicationDeleted` (the
   Webhook goes too, and Containers and Volumes are removed on every Server
   the Application's Deployments ran on); `servers.Connect`, the Server
   connection every step of a Deployment runs through.
-  A push Webhook for an `image` Application is ignored: it has no branch.
+  A push Webhook for a `dockerimage` Application is ignored: it has no branch.
   `routing.SwitchPreviewRoute` and `routing.DropPreviewRoute` for Previews.
 - **Receives:** Webhook calls from git hosts, unauthenticated but signed:
   pushes and Pull request events.
@@ -126,11 +126,11 @@ Application is (projects) or for the Caddy configuration (routing).
   (later: one per Server) needs no redesign. On start, the API marks
   Deployments left active by a crash as `failed` ("interrupted by restart").
 - **The route moves before the old Container goes, and only to a healthy
-  one.** A redeploy starts the new Container, waits for its Health check,
+  one.** A redeploy starts the new Container, waits for its Healthcheck,
   switches the Route, then stops the old one gracefully, so a failed build,
   start or check never takes the running Application down and visitors
   never reach a Container that cannot answer yet.
-- **The Health check runs inside the new Container**, through Podman's exec
+- **The Healthcheck runs inside the new Container**, through Podman's exec
   API (`curl`, else `wget`, against `127.0.0.1:<port><path>`), as Coolify
   does. The API cannot reach Container addresses in development (it runs on
   the host, and rootless Container addresses live in Podman's network
@@ -148,7 +148,7 @@ Application is (projects) or for the Caddy configuration (routing).
   Container left over from a crash is still cleaned up by the next Deployment.
   When the Application is deleted (`ApplicationDeleted`), its Containers and
   Deployments go with it.
-- **Without a Health check, a Container must stay running for two seconds**
+- **Without a Healthcheck, a Container must stay running for two seconds**
   before the Route moves to it, so an app that crashes on boot fails its
   Deployment instead of taking the traffic.
 - **Every log line is stored** (batched inserts), so a reload or a second
@@ -195,7 +195,7 @@ Application is (projects) or for the Caddy configuration (routing).
   then work the same for every Build pack, and a moving tag like `:latest`
   never changes what an old Deployment rolls back to. The digest is recorded
   as the Source image so the history says exactly what ran.
-- **An `image` Deployment has no status of its own for pulling**: it skips
+- **A `dockerimage` Deployment has no status of its own for pulling**: it skips
   `cloning` and pulls during `building` ("getting the Image"). Its log says
   what happens, and the dashboard needs no new status.
 - **Registry credentials go to Podman per pull** in the `X-Registry-Auth`
@@ -234,7 +234,7 @@ Application is (projects) or for the Caddy configuration (routing).
   runs with the Application's runtime variables; building a fork's code with
   them would hand those Secrets to anyone who opens a Pull request. Keeping
   to the same repository also means the head is a branch of the
-  Application's own Source, cloned with the same Deploy key.
+  Application's own Git repository, cloned with the same Deploy key.
 - **A Preview has its own Volumes but the Application's variables,
   settings and Target server.** A Pull request must never write into
   production's data; everything else is what makes it a faithful copy.
@@ -258,3 +258,14 @@ Application is (projects) or for the Caddy configuration (routing).
 - **The Preview domain is `pr-<n>.<primary Domain>`.** It works under
   `*.localhost` with no setup and, on a server, needs one wildcard DNS record
   per Application; certificates are still issued per host.
+- **Deployment status is finer than Coolify's.** Coolify knows `queued`,
+  `in_progress`, `finished`, `failed` and `cancelled-by-user`. Bakery keeps
+  `cloning`, `building` and `starting` instead of one `in_progress`,
+  because the dashboard shows the step and the worker's state machine moves
+  through them, and keeps `cancelled`. The Coolify API (`/api/v1`) maps the
+  three running statuses to `in_progress` and `cancelled` to
+  `cancelled-by-user`, so its clients see Coolify's values.
+- **Known host and Git host token have no Coolify counterpart.** Coolify
+  clones with `StrictHostKeyChecking=no` and writes pull request comments
+  through its GitHub App; Bakery pins git hosts' SSH keys and, until it has
+  Sources, writes the Preview comment with a token stored on the Webhook.

@@ -88,7 +88,7 @@ None published yet.
 ## Why it's shaped this way
 
 - **Its own context, not part of deployments or databases.** A Service has
-  no Source and no build, like a Database, but many Containers, Domains and
+  no Git repository and no build, like a Database, but many Containers, Domains and
   arbitrary images, unlike one. Either host would have to bend its model.
   The name clashes with the repo's `services/` directory; Coolify's word
   wins because it is the Owner's.
@@ -131,3 +131,7 @@ None published yet.
 - **Templates are embedded in the API**, not fetched at run time: no calls
   to the outside world, a catalog that matches the code that runs it, and
   images pinned to a major version.
+- **Component stays one term.** Coolify splits a Service's entries into
+  Service Applications and Service Databases, guessed from the image name,
+  and gives the two different pages. Bakery runs every entry the same way
+  and does not model that split; one word for one thing.

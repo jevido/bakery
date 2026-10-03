@@ -8,7 +8,7 @@
 Knows who may use this Bakery and what each of them may do: the Members,
 each with a Role, the one Owner created by Setup, the Invitations that bring
 in the others, how a request proves who sent it (a Session or an API
-token), and each Member's own Account, Two-factor authentication included.
+token), and each Member's own Profile, Two-factor authentication included.
 It is **not** responsible for several Teams or OAuth login; those come in
 later phases and will grow this context.
 
@@ -25,7 +25,7 @@ later phases and will grow this context.
 | API token | A named `bky_…` secret of one Member, sent as `Authorization: Bearer`. |
 | Principal | Who a request is from: a Member and the Role the request acts with (the Member's, or viewer for a read-only API token). |
 | Secret | A value a viewer may not read (see the glossary). |
-| Account | A Member's own name, password, Sessions and Two-factor authentication, changed only by that Member. |
+| Profile | A Member's own name, password, Sessions and Two-factor authentication, changed only by that Member. |
 | Two-factor authentication | A TOTP secret on a Member: `off`, `pending` (made, not yet confirmed with a code) or `on`. When on, signing in needs an Authenticator code or a Recovery code after the password. |
 | Authenticator code | 6 digits from the Member's app (RFC 6238, SHA-1, 30 s steps), accepted for the current step ± 1 and only once. |
 | Recovery code | One of 10 single-use codes handed out when Two-factor authentication is switched on or the codes are renewed. |
@@ -82,7 +82,7 @@ Who may run each is in brackets.
   - `identity.Admin`: only admin and owner; wraps Servers, S3 storages,
     Known hosts, Members and Invitations.
   - `identity.Secrets`: member or higher, for GETs that return Secrets (and
-    the list of S3 storages, which members pick for a Backup schedule).
+    the list of S3 storages, which members pick for a Scheduled backup).
   - `identity.CanSeeSecrets(ctx)`: for a response that mixes Secrets with
     fields a viewer may see; the controller leaves the Secrets out.
   - `OnInvitationCreated(f)`: see Domain events.
@@ -148,7 +148,7 @@ Who may run each is in brackets.
   as SHA-256**, like API tokens, and each is deleted when used.
 - **API tokens are not asked for a code.** A token is created from a
   Session that already passed two-factor; asking scripts for codes would
-  make tokens useless. The two-factor and Account routes take a Session
+  make tokens useless. The two-factor and Profile routes take a Session
   only, so a leaked token can neither switch two-factor off nor change the
   password.
 - **The Owner's lost phone is an artisan command.** Nobody outranks the
@@ -157,3 +157,13 @@ Who may run each is in brackets.
 - **The Owner is not transferable yet**, and can be neither demoted nor
   removed, so an installation can never be left without someone who can
   manage it.
+- **The `viewer` Role is kept although Coolify has none.** Coolify's Roles
+  are owner, admin and member; Bakery adds viewer for read-only access
+  (dashboards on a wall, a read-only API token) without handing out
+  Secrets. The Coolify API (`/api/v1`) reports a viewer as a member with
+  read-only rights. Members keep their name, as on Coolify's Team page;
+  Teams themselves come in a later phase, until then one Bakery is one
+  team.
+- **Profile, not Account.** The page where a Member changes their own
+  name, password, Sessions and Two-factor authentication is Coolify's
+  Profile page, so Bakery calls it Profile too.
