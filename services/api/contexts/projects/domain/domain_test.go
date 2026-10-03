@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -313,6 +314,30 @@ func TestResourceLimits(t *testing.T) {
 	} {
 		if field(l.Check()) != f {
 			t.Errorf("%+v: want %s", l, f)
+		}
+	}
+}
+
+func TestNewEnvironment(t *testing.T) {
+	e, err := NewEnvironment("  staging ", " Pre-production ")
+	if err != nil || e.Name != "staging" || e.Description != "Pre-production" {
+		t.Fatalf("valid input: %+v, %v", e, err)
+	}
+	if _, err := NewEnvironment("Prüfung (eu) #2", ""); err != nil {
+		t.Errorf("unicode and allowed punctuation refused: %v", err)
+	}
+	long := strings.Repeat("a", 256)
+	for _, c := range []struct{ name, description, field string }{
+		{"", "", "name"},
+		{"  ", "", "name"},
+		{"qa", "", "name"},
+		{long, "", "name"},
+		{"stag;ing", "", "name"},
+		{"$(rm)", "", "name"},
+		{"staging", long, "description"},
+	} {
+		if _, err := NewEnvironment(c.name, c.description); field(err) != c.field {
+			t.Errorf("NewEnvironment(%q, %d chars) = %v, want a %s error", c.name, len(c.description), err, c.field)
 		}
 	}
 }

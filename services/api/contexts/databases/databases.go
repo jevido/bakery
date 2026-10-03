@@ -65,6 +65,7 @@ func svc() *app.Service {
 		service.S3 = func(st domain.S3Storage) app.S3Client { return infra.S3{Storage: st} }
 		service.BackupExecutionFinished = publishBackupExecutionFinished
 		projects.OnProjectDeleting(service.InUse)
+		projects.OnEnvironmentDeleting(service.InUseInEnvironment)
 	})
 	return service
 }

@@ -68,6 +68,7 @@ func svc() *app.Service {
 		}
 		service.SetTemplates(catalog)
 		projects.OnProjectDeleting(service.InUse)
+		projects.OnEnvironmentDeleting(service.InUseInEnvironment)
 		projects.OnDomainCheck(service.DomainInUse)
 	})
 	return service

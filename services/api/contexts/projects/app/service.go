@@ -14,6 +14,9 @@ import (
 var (
 	ErrNotFound        = errors.New("not found")
 	ErrProjectNotEmpty = errors.New("delete the project's applications, databases and services first")
+	// ErrEnvironmentNotEmpty is returned when an Environment that still has
+	// Applications, Databases or Services is deleted.
+	ErrEnvironmentNotEmpty = errors.New("the environment has resources")
 )
 
 // Store keeps projects, environments, applications and Environment variables.
@@ -31,6 +34,14 @@ type Store interface {
 	DeleteProject(ctx context.Context, id uint64) error
 
 	Environment(ctx context.Context, id uint64) (domain.Environment, bool, error)
+	// EnvironmentNameTaken reports whether another Environment of the
+	// Project than exceptID has the name, case-insensitively.
+	EnvironmentNameTaken(ctx context.Context, projectID uint64, name string, exceptID uint64) (bool, error)
+	CreateEnvironment(ctx context.Context, e domain.Environment) (domain.Environment, error)
+	UpdateEnvironment(ctx context.Context, e domain.Environment) error
+	// DeleteEnvironment refuses (ErrEnvironmentNotEmpty) while it has
+	// Applications.
+	DeleteEnvironment(ctx context.Context, id uint64) error
 
 	SlugTaken(ctx context.Context, slug string) (bool, error)
 	// DomainsTaken returns those of the Domains that an Application other
@@ -60,6 +71,7 @@ type Service struct {
 	onDeleted        []func(ctx context.Context, applicationID uint64)
 	onDomainsChanged []func(ctx context.Context, applicationID uint64, domains []string)
 	onDeleting       []func(ctx context.Context, projectID uint64) (bool, error)
+	onEnvDeleting    []func(ctx context.Context, environmentID uint64) (bool, error)
 	onDomainCheck    []func(ctx context.Context, domain string) (bool, error)
 	// ServerExists and LocalServer are servers' Exists and LocalID, asked
 	// when an Application is created with a Target server; nil allows only
@@ -137,6 +149,13 @@ func (s *Service) OnApplicationDomainsChanged(f func(ctx context.Context, applic
 // and the deletion is refused.
 func (s *Service) OnProjectDeleting(inUse func(ctx context.Context, projectID uint64) (bool, error)) {
 	s.onDeleting = append(s.onDeleting, inUse)
+}
+
+// OnEnvironmentDeleting registers a check DeleteEnvironment asks first:
+// another context that keeps something in the Environment answers true while
+// it does, and the deletion is refused.
+func (s *Service) OnEnvironmentDeleting(inUse func(ctx context.Context, environmentID uint64) (bool, error)) {
+	s.onEnvDeleting = append(s.onEnvDeleting, inUse)
 }
 
 // OnDomainCheck registers a check asked for every Domain an Application is
@@ -458,6 +477,92 @@ func (s *Service) environment(ctx context.Context, id uint64) (domain.Environmen
 		err = ErrNotFound
 	}
 	return e, err
+}
+
+// EnvironmentInProject returns the Environment with its Applications, and
+// its Project (whose Environments are all listed), or ErrNotFound.
+func (s *Service) EnvironmentInProject(ctx context.Context, id uint64) (domain.Project, domain.Environment, error) {
+	e, err := s.environment(ctx, id)
+	if err != nil {
+		return domain.Project{}, domain.Environment{}, err
+	}
+	p, err := s.Project(ctx, e.ProjectID)
+	if err != nil {
+		return domain.Project{}, domain.Environment{}, err
+	}
+	for _, env := range p.Environments {
+		if env.ID == id {
+			return p, env, nil
+		}
+	}
+	return domain.Project{}, domain.Environment{}, ErrNotFound
+}
+
+// CreateEnvironment adds an Environment to the Project; its name is unique
+// within the Project, case-insensitively.
+func (s *Service) CreateEnvironment(ctx context.Context, projectID uint64, name, description string) (domain.Environment, error) {
+	if _, err := s.Project(ctx, projectID); err != nil {
+		return domain.Environment{}, err
+	}
+	e, err := domain.NewEnvironment(name, description)
+	if err != nil {
+		return domain.Environment{}, err
+	}
+	e.ProjectID = projectID
+	if err := s.checkEnvironmentName(ctx, e, 0); err != nil {
+		return domain.Environment{}, err
+	}
+	return s.store.CreateEnvironment(ctx, e)
+}
+
+// UpdateEnvironment renames or describes the Environment.
+func (s *Service) UpdateEnvironment(ctx context.Context, id uint64, name, description string) (domain.Environment, error) {
+	current, err := s.environment(ctx, id)
+	if err != nil {
+		return domain.Environment{}, err
+	}
+	e, err := domain.NewEnvironment(name, description)
+	if err != nil {
+		return domain.Environment{}, err
+	}
+	e.ID, e.ProjectID = id, current.ProjectID
+	if err := s.checkEnvironmentName(ctx, e, id); err != nil {
+		return domain.Environment{}, err
+	}
+	if err := s.store.UpdateEnvironment(ctx, e); err != nil {
+		return domain.Environment{}, err
+	}
+	return s.environment(ctx, id)
+}
+
+func (s *Service) checkEnvironmentName(ctx context.Context, e domain.Environment, exceptID uint64) error {
+	taken, err := s.store.EnvironmentNameTaken(ctx, e.ProjectID, e.Name, exceptID)
+	if err != nil {
+		return err
+	}
+	if taken {
+		return &domain.FieldError{Field: "name", Message: fmt.Sprintf("the project already has an environment named %s", e.Name)}
+	}
+	return nil
+}
+
+// DeleteEnvironment deletes an Environment without Applications, Databases
+// or Services, with its Shared variables. The last Environment of a Project
+// may go too, as in Coolify.
+func (s *Service) DeleteEnvironment(ctx context.Context, id uint64) error {
+	if _, err := s.environment(ctx, id); err != nil {
+		return err
+	}
+	for _, inUse := range s.onEnvDeleting {
+		used, err := inUse(ctx, id)
+		if err != nil {
+			return err
+		}
+		if used {
+			return ErrEnvironmentNotEmpty
+		}
+	}
+	return s.store.DeleteEnvironment(ctx, id)
 }
 
 func (s *Service) EnvironmentSharedVariables(ctx context.Context, environmentID uint64) ([]domain.EnvironmentVariable, error) {

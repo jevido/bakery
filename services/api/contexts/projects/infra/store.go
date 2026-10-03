@@ -27,10 +27,15 @@ type projectRecord struct {
 func (projectRecord) TableName() string { return "projects" }
 
 type environmentRecord struct {
-	ID        uint64 `gorm:"primaryKey"`
-	ProjectID uint64
-	Name      string
+	ID          uint64 `gorm:"primaryKey"`
+	ProjectID   uint64
+	Name        string
+	Description string
 	orm.Timestamps
+}
+
+func (r environmentRecord) toDomain() domain.Environment {
+	return domain.Environment{ID: r.ID, ProjectID: r.ProjectID, Name: r.Name, Description: r.Description}
 }
 
 func (environmentRecord) TableName() string { return "environments" }
@@ -270,7 +275,7 @@ func (s Store) CreateProject(ctx context.Context, p domain.Project) (domain.Proj
 		return domain.Project{}, err
 	}
 	p.ID = rec.ID
-	p.Environments = []domain.Environment{{ID: env.ID, ProjectID: rec.ID, Name: env.Name}}
+	p.Environments = []domain.Environment{env.toDomain()}
 	return p, nil
 }
 
@@ -315,7 +320,8 @@ func (s Store) Project(ctx context.Context, id uint64) (domain.Project, bool, er
 		return domain.Project{}, false, err
 	}
 	for _, e := range envs {
-		env := domain.Environment{ID: e.ID, ProjectID: id, Name: e.Name, Applications: []domain.Application{}}
+		env := e.toDomain()
+		env.Applications = []domain.Application{}
 		for _, a := range all {
 			if a.EnvironmentID == e.ID {
 				env.Applications = append(env.Applications, a)
@@ -349,7 +355,51 @@ func (s Store) DeleteProject(ctx context.Context, id uint64) error {
 func (s Store) Environment(ctx context.Context, id uint64) (domain.Environment, bool, error) {
 	var rec environmentRecord
 	found, err := first(s.query(ctx).Where("id", id), &rec)
-	return domain.Environment{ID: rec.ID, ProjectID: rec.ProjectID, Name: rec.Name}, found, err
+	return rec.toDomain(), found, err
+}
+
+func (s Store) EnvironmentNameTaken(ctx context.Context, projectID uint64, name string, exceptID uint64) (bool, error) {
+	return s.query(ctx).Model(&environmentRecord{}).Where("project_id", projectID).
+		Where("lower(name) = lower(?)", name).Where("id <> ?", exceptID).Exists()
+}
+
+func (s Store) CreateEnvironment(ctx context.Context, e domain.Environment) (domain.Environment, error) {
+	rec := environmentRecord{ProjectID: e.ProjectID, Name: e.Name, Description: e.Description}
+	if err := s.query(ctx).Create(&rec); err != nil {
+		return domain.Environment{}, environmentNameViolation(err)
+	}
+	return rec.toDomain(), nil
+}
+
+func (s Store) UpdateEnvironment(ctx context.Context, e domain.Environment) error {
+	_, err := s.query(ctx).Model(&environmentRecord{}).Where("id", e.ID).Update(map[string]any{"name": e.Name, "description": e.Description})
+	return environmentNameViolation(err)
+}
+
+// DeleteEnvironment deletes the Environment and, by cascade, its Shared
+// variables; the applications foreign key restricts, so the count and the
+// delete share a transaction.
+func (s Store) DeleteEnvironment(ctx context.Context, id uint64) error {
+	return facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		n, err := tx.Model(&applicationRecord{}).Where("environment_id", id).Count()
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			return app.ErrEnvironmentNotEmpty
+		}
+		_, err = tx.Where("id", id).Delete(&environmentRecord{})
+		return err
+	})
+}
+
+// environmentNameViolation turns a hit on the per-Project name index (two
+// requests racing past the service's own check) into its field error.
+func environmentNameViolation(err error) error {
+	if err != nil && (strings.Contains(err.Error(), "23505") || strings.Contains(err.Error(), "duplicate key")) {
+		return &domain.FieldError{Field: "name", Message: "the project already has an environment with this name"}
+	}
+	return err
 }
 
 func (s Store) SlugTaken(ctx context.Context, slug string) (bool, error) {

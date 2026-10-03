@@ -4,6 +4,7 @@ package http
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -160,8 +161,19 @@ func publicURL(d string, server uint64) string {
 
 type environmentJSON struct {
 	ID           uint64            `json:"id"`
+	ProjectID    uint64            `json:"project_id"`
+	ProjectName  string            `json:"project_name,omitempty"`
 	Name         string            `json:"name"`
+	Description  string            `json:"description"`
 	Applications []applicationJSON `json:"applications"`
+}
+
+func environmentToJSON(e domain.Environment, localServer uint64) environmentJSON {
+	out := environmentJSON{ID: e.ID, ProjectID: e.ProjectID, Name: e.Name, Description: e.Description, Applications: []applicationJSON{}}
+	for _, a := range e.Applications {
+		out.Applications = append(out.Applications, applicationToJSON(a, localServer))
+	}
+	return out
 }
 
 type projectJSON struct {
@@ -174,11 +186,7 @@ type projectJSON struct {
 func projectToJSON(p domain.Project, localServer uint64) projectJSON {
 	out := projectJSON{ID: p.ID, Name: p.Name, Description: p.Description}
 	for _, e := range p.Environments {
-		ej := environmentJSON{ID: e.ID, Name: e.Name, Applications: []applicationJSON{}}
-		for _, a := range e.Applications {
-			ej.Applications = append(ej.Applications, applicationToJSON(a, localServer))
-		}
-		out.Environments = append(out.Environments, ej)
+		out.Environments = append(out.Environments, environmentToJSON(e, localServer))
 	}
 	return out
 }
@@ -269,6 +277,73 @@ func (c *Controller) DeleteProject(ctx contractshttp.Context) contractshttp.Resp
 		return notFound(ctx)
 	}
 	if err := c.service.DeleteProject(ctx.Context(), pid); err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().NoContent()
+}
+
+type environmentRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+func (c *Controller) CreateEnvironment(ctx contractshttp.Context) contractshttp.Response {
+	pid, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req environmentRequest
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	e, err := c.service.CreateEnvironment(ctx.Context(), pid, req.Name, req.Description)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Json(contractshttp.StatusCreated, contractshttp.Json{"environment": environmentToJSON(e, c.localID(ctx))})
+}
+
+func (c *Controller) ShowEnvironment(ctx contractshttp.Context) contractshttp.Response {
+	eid, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	p, e, err := c.service.EnvironmentInProject(ctx.Context(), eid)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out := environmentToJSON(e, c.localID(ctx))
+	out.ProjectName = p.Name
+	return ctx.Response().Success().Json(contractshttp.Json{"environment": out})
+}
+
+func (c *Controller) UpdateEnvironment(ctx contractshttp.Context) contractshttp.Response {
+	eid, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req environmentRequest
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	e, err := c.service.UpdateEnvironment(ctx.Context(), eid, req.Name, req.Description)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"environment": environmentToJSON(e, c.localID(ctx))})
+}
+
+func (c *Controller) DeleteEnvironment(ctx contractshttp.Context) contractshttp.Response {
+	eid, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	err := c.service.DeleteEnvironment(ctx.Context(), eid)
+	if errors.Is(err, app.ErrEnvironmentNotEmpty) {
+		e, _ := c.service.Environment(ctx.Context(), eid)
+		return respond.Error(ctx, contractshttp.StatusConflict, fmt.Sprintf("Environment %s has resources, delete them first.", e.Name))
+	}
+	if err != nil {
 		return fail(ctx, err)
 	}
 	return ctx.Response().NoContent()

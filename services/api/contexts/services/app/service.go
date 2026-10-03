@@ -30,6 +30,7 @@ type Store interface {
 	Delete(ctx context.Context, id uint64) error
 	SlugTaken(ctx context.Context, slug string) (bool, error)
 	CountForProject(ctx context.Context, projectID uint64) (int64, error)
+	CountForEnvironment(ctx context.Context, environmentID uint64) (int64, error)
 	DomainTaken(ctx context.Context, domain string, exceptServiceID uint64) (bool, error)
 }
 
@@ -468,6 +469,13 @@ func (s *Service) ForProject(ctx context.Context, projectID uint64) ([]View, err
 // OnProjectDeleting.
 func (s *Service) InUse(ctx context.Context, projectID uint64) (bool, error) {
 	n, err := s.store.CountForProject(ctx, projectID)
+	return n > 0, err
+}
+
+// InUseInEnvironment reports whether the Environment has Services, for
+// projects' OnEnvironmentDeleting.
+func (s *Service) InUseInEnvironment(ctx context.Context, environmentID uint64) (bool, error) {
+	n, err := s.store.CountForEnvironment(ctx, environmentID)
 	return n > 0, err
 }
 

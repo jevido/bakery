@@ -256,6 +256,10 @@ func (st Store) CountForProject(ctx context.Context, projectID uint64) (int64, e
 	return st.query(ctx).Model(&serviceRecord{}).Where("project_id", projectID).Count()
 }
 
+func (st Store) CountForEnvironment(ctx context.Context, environmentID uint64) (int64, error) {
+	return st.query(ctx).Model(&serviceRecord{}).Where("environment_id", environmentID).Count()
+}
+
 // DomainTaken reports whether a Component of a Service other than
 // exceptServiceID has the Domain.
 func (st Store) DomainTaken(ctx context.Context, d string, exceptServiceID uint64) (bool, error) {

@@ -71,6 +71,11 @@ Local development stack.
   header, Basic auth, a file in Persistent storage surviving a redeploy and
   a rollback, Resource limits on the Container, and the volume going with
   the Application.
+- `environments/test.sh` (`task environments:test`, needs `task dev` but
+  not Forgejo) adds `staging` to a Project, refuses a second `Staging`,
+  renames and describes it, refuses to delete it while an Application or a
+  Database is in it, deletes it once empty, deletes the Project's last
+  Environment too, and checks a viewer is refused every write.
 - `databases/test.sh` (`task databases:test`, needs `task dev` but not
   Forgejo) creates a Database of every Database type and queries each on its
   Internal URL from a container on the `bakery` network, keeps a Postgres

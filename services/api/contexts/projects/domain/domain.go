@@ -9,6 +9,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // DefaultEnvironment is created with every Project.
@@ -37,7 +38,33 @@ type Environment struct {
 	ID           uint64
 	ProjectID    uint64
 	Name         string
+	Description  string
 	Applications []Application
+}
+
+// environmentName is Coolify's ValidationPatterns::NAME_PATTERN.
+var environmentName = regexp.MustCompile(`^[\p{L}\p{M}\p{N}\s\-_.@/&()#,:+]+$`)
+
+// NewEnvironment validates an Environment's fields: a name of 3 to 255
+// characters (Coolify's rule) and a description of at most 255. That the
+// name is unique within its Project only the repository can check.
+func NewEnvironment(name, description string) (Environment, error) {
+	name = strings.TrimSpace(name)
+	description = strings.TrimSpace(description)
+	switch n := utf8.RuneCountInString(name); {
+	case n == 0:
+		return Environment{}, invalid("name", "name is required")
+	case n < 3:
+		return Environment{}, invalid("name", "name is at least 3 characters")
+	case n > 255:
+		return Environment{}, invalid("name", "name is at most 255 characters")
+	case !environmentName.MatchString(name):
+		return Environment{}, invalid("name", "name may only contain letters, numbers, spaces and - _ . / @ & ( ) # , : +")
+	}
+	if utf8.RuneCountInString(description) > 255 {
+		return Environment{}, invalid("description", "description is at most 255 characters")
+	}
+	return Environment{Name: name, Description: description}, nil
 }
 
 // NewProject validates a Project's fields. Its production Environment is

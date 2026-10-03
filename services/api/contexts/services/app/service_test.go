@@ -106,6 +106,18 @@ func (f *fakeStore) CountForProject(_ context.Context, projectID uint64) (int64,
 	}
 	return n, nil
 }
+
+func (f *fakeStore) CountForEnvironment(_ context.Context, environmentID uint64) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for _, s := range f.services {
+		if s.EnvironmentID == environmentID {
+			n++
+		}
+	}
+	return n, nil
+}
 func (f *fakeStore) DomainTaken(_ context.Context, d string, except uint64) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

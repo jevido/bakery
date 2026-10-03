@@ -27,6 +27,7 @@ type Store interface {
 	SlugTaken(ctx context.Context, slug string) (bool, error)
 	PublicPortTaken(ctx context.Context, port int, exceptID uint64) (bool, error)
 	CountForProject(ctx context.Context, projectID uint64) (int64, error)
+	CountForEnvironment(ctx context.Context, environmentID uint64) (int64, error)
 	// ScheduledDatabases lists the Databases whose Scheduled backup is on.
 	ScheduledDatabases(ctx context.Context) ([]domain.Database, error)
 
@@ -431,6 +432,13 @@ func (s *Service) Delete(ctx context.Context, id uint64) error {
 // OnProjectDeleting.
 func (s *Service) InUse(ctx context.Context, projectID uint64) (bool, error) {
 	n, err := s.store.CountForProject(ctx, projectID)
+	return n > 0, err
+}
+
+// InUseInEnvironment reports whether the Environment has Databases, for
+// projects' OnEnvironmentDeleting.
+func (s *Service) InUseInEnvironment(ctx context.Context, environmentID uint64) (bool, error) {
+	n, err := s.store.CountForEnvironment(ctx, environmentID)
 	return n > 0, err
 }
 

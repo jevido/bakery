@@ -1,9 +1,8 @@
 // Package projects is what other contexts and the router may use from the
 // projects context: its routes, ApplicationForDeploy (with the Target
-// server), Environment, the
-// ApplicationDeleted and ApplicationDomainsChanged events and the
-// OnProjectDeleting check. Nothing else in contexts/projects is for outside
-// use.
+// server), Environment, the ApplicationDeleted and ApplicationDomainsChanged
+// events and the OnProjectDeleting and OnEnvironmentDeleting checks. Nothing
+// else in contexts/projects is for outside use.
 package projects
 
 import (
@@ -45,6 +44,10 @@ func Routes(r route.Router) {
 		r.Get("/api/projects/{id}", c.ShowProject)
 		r.Patch("/api/projects/{id}", c.UpdateProject)
 		r.Delete("/api/projects/{id}", c.DeleteProject)
+		r.Post("/api/projects/{id}/environments", c.CreateEnvironment)
+		r.Get("/api/environments/{id}", c.ShowEnvironment)
+		r.Patch("/api/environments/{id}", c.UpdateEnvironment)
+		r.Delete("/api/environments/{id}", c.DeleteEnvironment)
 		r.Post("/api/environments/{id}/applications", c.CreateApplication)
 		r.Get("/api/applications/{id}", c.ShowApplication)
 		r.Patch("/api/applications/{id}", c.UpdateApplication)
@@ -177,6 +180,14 @@ func Environment(ctx context.Context, id uint64) (EnvironmentSnapshot, error) {
 // Applications. An error aborts the deletion.
 func OnProjectDeleting(inUse func(ctx context.Context, projectID uint64) (bool, error)) {
 	svc().OnProjectDeleting(inUse)
+}
+
+// OnEnvironmentDeleting registers a check asked before an Environment is
+// deleted: a context that still keeps something in the Environment answers
+// true, and the deletion is refused as for an Environment with
+// Applications. An error aborts the deletion.
+func OnEnvironmentDeleting(inUse func(ctx context.Context, environmentID uint64) (bool, error)) {
+	svc().OnEnvironmentDeleting(inUse)
 }
 
 // DomainInUse reports whether an Application has the Domain, or it is the

@@ -249,3 +249,113 @@ func TestTargetServer(t *testing.T) {
 		t.Fatalf("update: %v, server %d", err, a.ServerID)
 	}
 }
+
+// envStore keeps Projects' Environments in memory for the Environment use
+// cases; anything else panics through the nil embedded Store.
+type envStore struct {
+	Store
+	envs    map[uint64]domain.Environment
+	hasApps map[uint64]bool
+	next    uint64
+}
+
+func newEnvStore() *envStore {
+	return &envStore{envs: map[uint64]domain.Environment{1: {ID: 1, ProjectID: 1, Name: domain.DefaultEnvironment}}, hasApps: map[uint64]bool{}, next: 1}
+}
+
+func (f *envStore) Project(_ context.Context, id uint64) (domain.Project, bool, error) {
+	p := domain.Project{ID: id, Name: "shop"}
+	for _, e := range f.envs {
+		if e.ProjectID == id {
+			p.Environments = append(p.Environments, e)
+		}
+	}
+	return p, id == 1, nil
+}
+func (f *envStore) Environment(_ context.Context, id uint64) (domain.Environment, bool, error) {
+	e, ok := f.envs[id]
+	return e, ok, nil
+}
+func (f *envStore) EnvironmentNameTaken(_ context.Context, projectID uint64, name string, exceptID uint64) (bool, error) {
+	for _, e := range f.envs {
+		if e.ProjectID == projectID && e.ID != exceptID && strings.EqualFold(e.Name, name) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (f *envStore) CreateEnvironment(_ context.Context, e domain.Environment) (domain.Environment, error) {
+	f.next++
+	e.ID = f.next
+	f.envs[e.ID] = e
+	return e, nil
+}
+func (f *envStore) UpdateEnvironment(_ context.Context, e domain.Environment) error {
+	f.envs[e.ID] = e
+	return nil
+}
+func (f *envStore) DeleteEnvironment(_ context.Context, id uint64) error {
+	if f.hasApps[id] {
+		return ErrEnvironmentNotEmpty
+	}
+	delete(f.envs, id)
+	return nil
+}
+
+func TestEnvironments(t *testing.T) {
+	ctx := context.Background()
+	store := newEnvStore()
+	s := NewService(store, fakeKey, "example.com", "")
+	var fe *domain.FieldError
+
+	if _, err := s.CreateEnvironment(ctx, 2, "staging", ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown project: %v", err)
+	}
+	staging, err := s.CreateEnvironment(ctx, 1, " staging ", "pre-production")
+	if err != nil || staging.Name != "staging" || staging.ProjectID != 1 || staging.Description != "pre-production" {
+		t.Fatalf("create: %+v, %v", staging, err)
+	}
+	if _, err := s.CreateEnvironment(ctx, 1, "Staging", ""); !errors.As(err, &fe) || fe.Field != "name" {
+		t.Fatalf("a second Staging: want a name error, got %v", err)
+	}
+	if _, err := s.UpdateEnvironment(ctx, staging.ID, "PRODUCTION", ""); !errors.As(err, &fe) || fe.Field != "name" {
+		t.Fatalf("rename onto production: want a name error, got %v", err)
+	}
+	renamed, err := s.UpdateEnvironment(ctx, staging.ID, "Staging", "")
+	if err != nil || renamed.Name != "Staging" || renamed.ProjectID != 1 {
+		t.Fatalf("rename to another case of its own name: %+v, %v", renamed, err)
+	}
+
+	used := true
+	s.OnEnvironmentDeleting(func(_ context.Context, id uint64) (bool, error) { return used && id == staging.ID, nil })
+	if err := s.DeleteEnvironment(ctx, staging.ID); !errors.Is(err, ErrEnvironmentNotEmpty) {
+		t.Fatalf("delete with a Database in it: %v", err)
+	}
+	used = false
+	store.hasApps[staging.ID] = true
+	if err := s.DeleteEnvironment(ctx, staging.ID); !errors.Is(err, ErrEnvironmentNotEmpty) {
+		t.Fatalf("delete with an Application in it: %v", err)
+	}
+	store.hasApps[staging.ID] = false
+	if err := s.DeleteEnvironment(ctx, staging.ID); err != nil {
+		t.Fatalf("delete an empty one: %v", err)
+	}
+	if err := s.DeleteEnvironment(ctx, staging.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("delete twice: %v", err)
+	}
+	if err := s.DeleteEnvironment(ctx, 1); err != nil {
+		t.Fatalf("the last Environment may go: %v", err)
+	}
+}
+
+func TestEnvironmentInProject(t *testing.T) {
+	ctx := context.Background()
+	s := NewService(newEnvStore(), fakeKey, "example.com", "")
+	p, e, err := s.EnvironmentInProject(ctx, 1)
+	if err != nil || p.Name != "shop" || e.Name != domain.DefaultEnvironment {
+		t.Fatalf("got %+v, %+v, %v", p, e, err)
+	}
+	if _, _, err := s.EnvironmentInProject(ctx, 9); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown: %v", err)
+	}
+}

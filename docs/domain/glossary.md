@@ -25,7 +25,7 @@ document; list them here when people outside the context use them too.
 | API token | identity | A named secret (`bky_…`) of one Member, sent as `Authorization: Bearer`, acting with that Member's Role, or as viewer when it is *read-only*. Shown once, stored hashed, revocable; it dies with its Member. | Session, Deploy key |
 | Secret | identity (used by every context) | A value a viewer may not read: Environment variable and Shared variable values, Database credentials and URLs, Service variable values, the Webhook secret, the Git host token, Backup execution contents. | Environment variable |
 | Project | projects | A named group of Environments, usually one product. | Repository |
-| Environment | projects | A stage inside a Project (`production` is created with every Project). Holds its Resources. | Environment variable, the dev/next/prod environments of this repo |
+| Environment | projects | A stage inside a Project (`production` is created with every Project; more can be added). Holds its Resources. | Environment variable, the dev/next/prod environments of this repo |
 | Application | projects | Something The Bakery builds from a Git repository (or pulls as a Docker image) and runs as one Container behind its Domains. | Service, Container |
 | Resource | projects (used by every context) | An Application, Database or Service in an Environment; Coolify's word for all three, as in an Environment's list of Resources. | Resource limits |
 | Slug | projects | The URL-safe, unique short name of an Application, used in its default Domain and image name. | Name |

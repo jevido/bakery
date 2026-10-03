@@ -200,6 +200,10 @@ func (s Store) CountForProject(ctx context.Context, projectID uint64) (int64, er
 	return s.query(ctx).Model(&databaseRecord{}).Where("project_id", projectID).Count()
 }
 
+func (s Store) CountForEnvironment(ctx context.Context, environmentID uint64) (int64, error) {
+	return s.query(ctx).Model(&databaseRecord{}).Where("environment_id", environmentID).Count()
+}
+
 // ScheduledDatabases lists every Database whose Scheduled backup is on.
 func (s Store) ScheduledDatabases(ctx context.Context) ([]domain.Database, error) {
 	return s.list(s.query(ctx).Where("backup_enabled", true))

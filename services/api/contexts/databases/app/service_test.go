@@ -86,6 +86,17 @@ func (m *memStore) CountForProject(ctx context.Context, projectID uint64) (int64
 	l, _ := m.ForProject(ctx, projectID)
 	return int64(len(l)), nil
 }
+func (m *memStore) CountForEnvironment(_ context.Context, environmentID uint64) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var n int64
+	for _, d := range m.dbs {
+		if d.EnvironmentID == environmentID {
+			n++
+		}
+	}
+	return n, nil
+}
 func (m *memStore) ScheduledDatabases(context.Context) ([]domain.Database, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

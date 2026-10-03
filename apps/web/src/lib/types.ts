@@ -88,7 +88,14 @@ export type Preview = {
 
 export type KnownHost = { id: number; host: string; fingerprints: string[]; created_at: string }
 
-export type Environment = { id: number; name: string; applications: Application[] }
+export type Environment = {
+  id: number
+  project_id: number
+  project_name?: string
+  name: string
+  description: string
+  applications: Application[]
+}
 
 export type Project = {
   id: number
