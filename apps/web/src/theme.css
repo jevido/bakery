@@ -643,3 +643,110 @@ html:not(.dark) {
   box-shadow: 0 0 0 1px var(--coollabs-hairline);
   padding: 1rem;
 }
+
+/* Coolify's auth shell (resources/css/app.css, `.auth-*`): the centred card
+   that Login, Setup, Invite and the loading states sit in. */
+.auth-shell {
+  min-height: 100dvh;
+  display: flex;
+  background:
+    radial-gradient(circle at 50% 0%, color-mix(in oklab, var(--color-coollabs) 9%, transparent), transparent 34rem),
+    var(--coollabs-canvas);
+  color: #171717;
+}
+
+.dark .auth-shell {
+  color: var(--color-fg);
+}
+
+.auth-shell-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  width: 100%;
+  padding: 2rem 1rem;
+}
+
+.auth-card {
+  width: min(100%, 27rem);
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--coollabs-elevated);
+  box-shadow:
+    0 0 0 1px var(--coollabs-hairline),
+    0 20px 60px rgb(0 0 0 / 0.14);
+}
+
+.auth-card-heading {
+  padding: 1.25rem 1.25rem 1rem;
+}
+
+.auth-card-heading h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: #171717;
+}
+
+.dark .auth-card-heading h1 {
+  color: var(--color-fg);
+}
+
+.auth-card-heading p {
+  margin-top: 0.25rem;
+  max-width: 38ch;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  color: var(--coollabs-subtle);
+}
+
+.auth-card-body {
+  border-radius: 10px;
+  padding: 1.25rem;
+  background: var(--coollabs-base);
+  box-shadow: 0 0 0 1px var(--coollabs-fill);
+}
+
+.auth-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 3rem;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.8125rem;
+  color: var(--coollabs-subtle);
+}
+
+.auth-text-link {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #525252;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+  cursor: pointer;
+}
+
+.dark .auth-text-link {
+  color: var(--color-fg-dim);
+}
+
+.auth-text-link:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.auth-guidance {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border-radius: 8px;
+  padding: 0.625rem 0.75rem;
+  background: var(--coollabs-recessed);
+  color: var(--coollabs-subtle);
+  font-size: 0.75rem;
+  line-height: 1rem;
+}

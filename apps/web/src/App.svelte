@@ -21,6 +21,9 @@
   import Storages from './pages/Storages.svelte'
   import Notifications from './pages/Notifications.svelte'
   import Setup from './pages/Setup.svelte'
+  import AuthAlert from './lib/ui/AuthAlert.svelte'
+  import AuthShell from './lib/ui/AuthShell.svelte'
+  import Spinner from './lib/ui/Spinner.svelte'
   import Toaster from './lib/ui/Toaster.svelte'
 
   // The components page is for development only; behind import.meta.env.DEV
@@ -40,9 +43,13 @@
 </script>
 
 {#if failed}
-  <main class="auth"><p class="error">Cannot reach the API: {failed}</p></main>
+  <AuthShell>
+    <AuthAlert type="error"><p>Cannot reach the API: {failed}</p></AuthAlert>
+  </AuthShell>
 {:else if session.state === 'loading'}
-  <main class="auth"><p class="muted">Loading…</p></main>
+  <AuthShell>
+    <div class="flex justify-center text-sm text-neutral-500 dark:text-fg-dim"><Spinner text="Loading…" /></div>
+  </AuthShell>
 {:else if router.route.name === 'invite'}
   <!-- An Invitation link opens for anyone, signed in or not. -->
   <Invite token={router.route.token} />

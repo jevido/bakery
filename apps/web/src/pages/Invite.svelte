@@ -1,8 +1,16 @@
 <script lang="ts">
+  // Coolify's invitation/accept.blade.php. Coolify's invitee already has an
+  // account; a Bakery invitee does not, so the card also asks for a name and
+  // a password before "Accept invitation".
   import { api, ApiError } from '../lib/api'
-  import Field from '../lib/Field.svelte'
+  import Icon from '../lib/Icon.svelte'
   import { go } from '../lib/router.svelte'
   import { session, type Member, type Role } from '../lib/session.svelte'
+  import AuthAlert from '../lib/ui/AuthAlert.svelte'
+  import AuthShell from '../lib/ui/AuthShell.svelte'
+  import Button from '../lib/ui/Button.svelte'
+  import Input from '../lib/ui/Input.svelte'
+  import Spinner from '../lib/ui/Spinner.svelte'
 
   let { token }: { token: string } = $props()
 
@@ -36,7 +44,7 @@
         password,
       })
       session.signedIn(member)
-      go('/projects')
+      go('/')
     } catch (err) {
       if (!(err instanceof ApiError)) throw err
       if (err.status === 410 || err.status === 404) {
@@ -49,56 +57,62 @@
       busy = false
     }
   }
+
+  const role = (r: Role) => r.charAt(0).toUpperCase() + r.slice(1)
 </script>
 
-<main class="auth">
+<AuthShell description="Review your invitation to join The Bakery.">
   {#if refusal}
-    <div class="card" data-testid="invite-refused">
-      <h1>Invitation</h1>
-      <p class="error">{refusal}</p>
-      <p class="muted">Ask whoever invited you for a new link.</p>
+    <div class="flex flex-col gap-4" data-testid="invite-refused">
+      <AuthAlert type="error"><p>{refusal}</p></AuthAlert>
+      <div class="auth-guidance">
+        <Icon name="info-circle" class="mt-0.5 size-4 shrink-0" />
+        <p>Ask whoever invited you for a new link.</p>
+      </div>
     </div>
   {:else if invitation === null}
-    <p class="muted">Loading…</p>
-  {:else if session.member}
-    <div class="card">
-      <h1>Invitation</h1>
-      <p>
-        This invitation is for <strong>{invitation.email}</strong>, but you are signed in as {session.member.email}. Sign out to
-        accept it.
-      </p>
-      <button onclick={() => session.logout()}>Log out</button>
-    </div>
+    <div class="flex justify-center text-sm text-neutral-500 dark:text-fg-dim"><Spinner text="Loading…" /></div>
   {:else}
-    <form class="card" onsubmit={accept}>
-      <h1>Join The Bakery</h1>
-      <p class="muted">You were invited as <strong>{invitation.role}</strong>. Pick your name and a password to sign in with.</p>
-      <label class="field">
-        <span>Email</span>
-        <input type="email" value={invitation.email} readonly aria-label="Email" />
-      </label>
-      <Field label="Name" bind:value={name} error={errors.name} autocomplete="name" required />
-      <Field
-        label="Password (at least 12 characters)"
-        type="password"
-        bind:value={password}
-        error={errors.password}
-        autocomplete="new-password"
-        required
-      />
-      {#if message}<p class="error">{message}</p>{/if}
-      <button class="primary" disabled={busy}>Accept invitation</button>
-    </form>
+    <div class="flex flex-col gap-4">
+      <div class="auth-guidance">
+        <Icon name="teams" class="mt-0.5 size-4 shrink-0" />
+        <p>You have been invited to collaborate on The Bakery.</p>
+      </div>
+      <dl class="divide-y divide-neutral-200 rounded-lg border border-neutral-200 text-sm dark:divide-white/10 dark:border-white/10">
+        <div class="flex items-center justify-between gap-4 px-3 py-2.5">
+          <dt class="text-neutral-500 dark:text-fg-dim">Email</dt>
+          <dd class="min-w-0 truncate font-medium text-neutral-900 dark:text-white">{invitation.email}</dd>
+        </div>
+        <div class="flex items-center justify-between gap-4 px-3 py-2.5">
+          <dt class="text-neutral-500 dark:text-fg-dim">Role</dt>
+          <dd class="font-medium text-neutral-900 dark:text-white">{role(invitation.role)}</dd>
+        </div>
+      </dl>
+      {#if session.member}
+        <AuthAlert type="warning">
+          You are signed in as {session.member.email}. Log out to accept this invitation.
+        </AuthAlert>
+        <Button class="w-full justify-center" onclick={() => session.logout()}>Logout</Button>
+      {:else}
+        {#if message}<AuthAlert type="error"><p>{message}</p></AuthAlert>{/if}
+        <form class="flex flex-col gap-4" onsubmit={accept}>
+          <Input label="Name" name="name" bind:value={name} error={errors.name} autocomplete="name" required />
+          <Input
+            label="Password"
+            type="password"
+            name="password"
+            bind:value={password}
+            error={errors.password}
+            autocomplete="new-password"
+            required
+          />
+          <div class="auth-guidance">
+            <Icon name="info-circle" class="mt-0.5 size-4 shrink-0" />
+            <p>Use at least 12 characters.</p>
+          </div>
+          <Button class="w-full justify-center" type="submit" variant="highlighted" loading={busy}>Accept invitation</Button>
+        </form>
+      {/if}
+    </div>
   {/if}
-</main>
-
-<style>
-  .field {
-    display: grid;
-    gap: 0.3rem;
-  }
-  .field span {
-    font-size: 0.8rem;
-    color: var(--muted);
-  }
-</style>
+</AuthShell>
