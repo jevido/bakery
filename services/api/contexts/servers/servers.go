@@ -33,7 +33,7 @@ func svc() *app.Service {
 		if sock == "" {
 			sock = podman.DefaultSocket()
 		}
-		service = app.NewService(infra.Store{}, infra.NewServerKey, infra.Connector{Local: podman.Default(), LocalSocket: sock})
+		service = app.NewService(infra.Store{}, infra.NewPrivateKey, infra.Connector{Local: podman.Default(), LocalSocket: sock})
 		pool = &infra.Pool{Local: podman.Default()}
 		service.Forget = pool.Forget
 		service.Log = facades.Log().Errorf

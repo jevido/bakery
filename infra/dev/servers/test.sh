@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End to end: Servers. The Local server is reachable with metrics; a Remote
 # server (the stand-in from `task remote:up`, sshd and rootless Podman on
-# 127.0.0.1:4972) is added, its Server key authorised, validated and
+# 127.0.0.1:4972) is added, its Private key authorised, validated and
 # observed, including a Bakery container running on it; a replaced host key
 # makes it unreachable until the host key is forgotten; Cleanup frees space
 # on both without touching unlabelled images; the Local server cannot be
@@ -30,7 +30,7 @@ start_stand_in() {
 	"${REMOTE[@]}" up -d --build --force-recreate remote >/dev/null 2>&1
 	wait_for 60 "the stand-in's Podman socket" podman exec "$STAND_IN" test -S /run/user/1000/podman/podman.sock
 }
-authorise() { # authorise ID: adds the Server key to the stand-in
+authorise() { # authorise ID: adds the Private key to the stand-in
 	local key
 	key=$(server "$1" "['public_key']")
 	podman exec "$STAND_IN" sh -c "echo '$key' >> /home/podman/.ssh/authorized_keys"

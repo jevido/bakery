@@ -175,11 +175,11 @@
 
   {#if server.kind === 'remote' && server.public_key && session.isAdmin}
     <section class="card">
-      <h2>Server key</h2>
+      <h2>Private Key</h2>
       <p class="muted">
         Bakery logs in with this key. Add it for <span class="mono">{server.user}</span> on the server, then press Validate:
       </p>
-      <pre class="mono key" data-testid="server-key">{server.public_key}</pre>
+      <pre class="mono key" data-testid="private-key">{server.public_key}</pre>
       <pre class="mono key">echo '{server.public_key}' &gt;&gt; ~/.ssh/authorized_keys</pre>
       <div class="actions">
         <CopyButton text={server.public_key} label="Copy public key" />

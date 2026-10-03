@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-var key = ServerKey{Public: "ssh-ed25519 AAAA bakery@x", Private: "-----BEGIN OPENSSH PRIVATE KEY-----"}
+var key = PrivateKey{Public: "ssh-ed25519 AAAA bakery@x", Private: "-----BEGIN OPENSSH PRIVATE KEY-----"}
 
 func TestNewRemote(t *testing.T) {
 	s, err := NewRemote(Input{Name: " web 1 ", Host: "203.0.113.10", User: "bakery"}, key)
@@ -28,7 +28,7 @@ func TestNewRemote(t *testing.T) {
 			t.Errorf("%+v: err %v, want a FieldError", in, err)
 		}
 	}
-	if _, err := NewRemote(Input{Name: "a", Host: "h", User: "u"}, ServerKey{}); err == nil {
+	if _, err := NewRemote(Input{Name: "a", Host: "h", User: "u"}, PrivateKey{}); err == nil {
 		t.Error("no key accepted")
 	}
 }

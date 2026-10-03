@@ -92,7 +92,7 @@ func (r serverRecord) toDomain() (domain.Server, error) {
 	}
 	s := domain.Server{
 		ID: r.ID, Name: r.Name, Kind: domain.Kind(r.Kind), Host: r.Host, Port: r.Port, User: r.UserName,
-		Key: domain.ServerKey{Public: r.PublicKey, Private: private}, HostKey: r.HostKey,
+		Key: domain.PrivateKey{Public: r.PublicKey, Private: private}, HostKey: r.HostKey,
 		Status: domain.Status(r.Status), LastCleanup: domain.Cleanup{Reclaimed: r.LastCleanupReclaimed},
 		FailedProbes: r.FailedProbes, DiskAlmostFull: r.DiskAlmostFull,
 		CreatedAt: createdAt(r.Timestamps),

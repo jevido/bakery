@@ -97,7 +97,7 @@ Local development stack.
   no container, network or volume.
 - `servers/test.sh` (`task servers:test`, needs `task dev`) checks the Local
   server is reachable with metrics and cannot be deleted, starts the Remote
-  server stand-in, adds it as a Server, authorises its Server key and
+  server stand-in, adds it as a Server, authorises its Private key and
   validates it, sees a Bakery container running there in its metrics, cleans
   up both Servers without touching an unlabelled image, replaces the
   stand-in's host keys and checks the Server is refused until the host key

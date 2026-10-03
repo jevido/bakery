@@ -39,8 +39,8 @@ type Store interface {
 // Service runs the servers use cases.
 type Service struct {
 	store Store
-	// newKey generates a Server key with the comment.
-	newKey    func(comment string) (domain.ServerKey, error)
+	// newKey generates a Private key with the comment.
+	newKey    func(comment string) (domain.PrivateKey, error)
 	connector Connector
 	now       func() time.Time
 	// Retention applies Image retention on the Local server; nil skips it.
@@ -86,7 +86,7 @@ func (s *Service) log(format string, args ...any) {
 	}
 }
 
-func NewService(store Store, newKey func(comment string) (domain.ServerKey, error), connector Connector) *Service {
+func NewService(store Store, newKey func(comment string) (domain.PrivateKey, error), connector Connector) *Service {
 	return &Service{store: store, newKey: newKey, connector: connector, now: func() time.Time { return time.Now().UTC() }}
 }
 
@@ -129,10 +129,10 @@ func (s *Service) checkUnique(ctx context.Context, srv domain.Server) error {
 	return nil
 }
 
-// Add creates a Remote server with a new Server key.
+// Add creates a Remote server with a new Private key.
 func (s *Service) Add(ctx context.Context, in domain.Input) (domain.Server, error) {
 	// Validate the input before spending a key on it.
-	if _, err := domain.NewRemote(in, domain.ServerKey{Public: "-", Private: "-"}); err != nil {
+	if _, err := domain.NewRemote(in, domain.PrivateKey{Public: "-", Private: "-"}); err != nil {
 		return domain.Server{}, err
 	}
 	key, err := s.newKey("bakery@" + in.Name)

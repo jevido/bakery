@@ -37,7 +37,7 @@ server() { bakery GET "/api/servers/$1" | json "d['server']$2"; }
 code() { curl -s -o /dev/null -w '%{http_code}' -b "$JAR" "$@"; }
 # as_podman COMMAND: runs a shell command as the stand-in's podman user.
 as_podman() { podman exec "$STAND_IN" su podman -s /bin/sh -c "export XDG_RUNTIME_DIR=/run/user/1000; $1"; }
-authorise() { # authorise ID: adds the Server key to the stand-in
+authorise() { # authorise ID: adds the Private key to the stand-in
 	local key
 	key=$(server "$1" "['public_key']")
 	podman exec "$STAND_IN" sh -c "echo '$key' >> /home/podman/.ssh/authorized_keys"

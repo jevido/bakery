@@ -76,8 +76,8 @@ func (m *memStore) Local(context.Context) (domain.Server, bool, error) {
 	return domain.Server{}, false, nil
 }
 
-func fakeKey(comment string) (domain.ServerKey, error) {
-	return domain.ServerKey{Public: "ssh-ed25519 AAAA " + comment, Private: "PRIVATE"}, nil
+func fakeKey(comment string) (domain.PrivateKey, error) {
+	return domain.PrivateKey{Public: "ssh-ed25519 AAAA " + comment, Private: "PRIVATE"}, nil
 }
 
 func TestEnsureLocalOnce(t *testing.T) {

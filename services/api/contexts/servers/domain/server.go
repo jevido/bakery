@@ -91,9 +91,9 @@ type Cleanup struct {
 	Reclaimed int64
 }
 
-// ServerKey is the SSH key pair Bakery logs in to a Remote server with. The
+// PrivateKey is the SSH key pair Bakery logs in to a Remote server with. The
 // private half is OpenSSH PEM, the public half an authorized_keys line.
-type ServerKey struct {
+type PrivateKey struct {
 	Public  string
 	Private string
 }
@@ -107,7 +107,7 @@ type Server struct {
 	Host string
 	Port int
 	User string
-	Key  ServerKey
+	Key  PrivateKey
 	// HostKey is the pinned SSH host key (authorized_keys format); empty
 	// until the first successful connection.
 	HostKey     string
@@ -170,13 +170,13 @@ func NewLocal() Server {
 }
 
 // NewRemote validates the input for a Remote server reached with key.
-func NewRemote(in Input, key ServerKey) (Server, error) {
+func NewRemote(in Input, key PrivateKey) (Server, error) {
 	in, err := in.normalize()
 	if err != nil {
 		return Server{}, err
 	}
 	if key.Public == "" || key.Private == "" {
-		return Server{}, errors.New("servers: a Remote server needs a Server key")
+		return Server{}, errors.New("servers: a Remote server needs a Private key")
 	}
 	return Server{Name: in.Name, Kind: Remote, Host: in.Host, Port: in.Port, User: in.User, Key: key, Status: Unvalidated}, nil
 }

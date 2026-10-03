@@ -65,7 +65,7 @@ func TestValidateStandIn(t *testing.T) {
 	}
 	local := podman.New(podman.DefaultSocket())
 	ctx := context.Background()
-	s := app.NewService(&oneServer{servers: map[uint64]domain.Server{}}, NewServerKey, Connector{Local: local, LocalSocket: podman.DefaultSocket()})
+	s := app.NewService(&oneServer{servers: map[uint64]domain.Server{}}, NewPrivateKey, Connector{Local: local, LocalSocket: podman.DefaultSocket()})
 	srv, err := s.Add(ctx, domain.Input{Name: "stand-in", Host: "127.0.0.1", Port: 4972, User: "podman"})
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +115,7 @@ func TestValidateLocal(t *testing.T) {
 	}
 	local := podman.New(podman.DefaultSocket())
 	store := &oneServer{servers: map[uint64]domain.Server{}}
-	s := app.NewService(store, NewServerKey, Connector{Local: local, LocalSocket: podman.DefaultSocket()})
+	s := app.NewService(store, NewPrivateKey, Connector{Local: local, LocalSocket: podman.DefaultSocket()})
 	srv, _ := s.EnsureLocal(context.Background())
 	srv, err := s.Validate(context.Background(), srv.ID)
 	if err != nil {
@@ -148,7 +148,7 @@ func TestPoolStandIn(t *testing.T) {
 	}
 	local := podman.New(podman.DefaultSocket())
 	ctx := context.Background()
-	s := app.NewService(&oneServer{servers: map[uint64]domain.Server{}}, NewServerKey, Connector{Local: local, LocalSocket: podman.DefaultSocket()})
+	s := app.NewService(&oneServer{servers: map[uint64]domain.Server{}}, NewPrivateKey, Connector{Local: local, LocalSocket: podman.DefaultSocket()})
 	srv, err := s.Add(ctx, domain.Input{Name: "stand-in", Host: "127.0.0.1", Port: 4972, User: "podman"})
 	if err != nil {
 		t.Fatal(err)
