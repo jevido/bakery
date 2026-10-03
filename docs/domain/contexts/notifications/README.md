@@ -7,7 +7,7 @@
 
 Tell the people running Bakery when something needs their attention: a
 Deployment or a Backup execution failed, a Server became unreachable or came back, a
-Server's disk is almost full. Each Notification goes to every Notification
+Server's disk usage is high. Each Notification goes to every Notification
 channel subscribed to its Event kind: an email address, a Discord or Slack
 channel, a Telegram chat, an ntfy topic or a webhook. It also emails an
 Invitation to the person invited.
@@ -23,7 +23,7 @@ each channel; an audit log is something else.
 | ---- | ------- |
 | Notification channel | A named place Notifications go to: a Channel kind, its settings (secrets encrypted) and the Event kinds it is subscribed to. |
 | Channel kind | `email` (SMTP server, from address, recipients), `discord` and `slack` (an incoming webhook URL, a secret), `telegram` (a bot token and a chat id), `ntfy` (a server URL, a topic and optionally a token) or `webhook` (any URL, kept secret, JSON signed with an optional secret). |
-| Event kind | What a Notification is about: `deployment_failure`, `deployment_success`, `backup_failure`, `backup_success`, `server_unreachable`, `server_reachable`, `server_disk_usage`. A new channel is subscribed to all but the two `_succeeded` ones. |
+| Event kind | What a Notification is about: `deployment_failure`, `deployment_success`, `backup_failure`, `backup_success`, `server_unreachable`, `server_reachable`, `server_disk_usage`. A new channel is subscribed to all but the two `_success` ones. |
 | Notification | What a publisher hands over: an Event kind, a title, a body, an optional link into the dashboard and when it happened. Not stored on its own. |
 | Delivery | One Notification sent to one Notification channel: `pending`, `sent` or `failed`, the attempts made (at most 3) and the last error. The 50 newest per channel are kept. |
 | Test notification | A Notification sent at once from a channel's Test button, recorded as a Delivery like any other. |
@@ -111,5 +111,9 @@ None published.
   channels of the same kind and shows each one's recent Deliveries, which
   is how a failing channel gets noticed. The Event kind values are
   Coolify's (`deployment_success`, `server_disk_usage`, ...), so the
-  subscriptions map one to one. `ntfy` is a Channel kind Coolify does not
+  subscriptions map one to one. They were Bakery's own before
+  (`deployment_failed`, `deployment_succeeded`, `backup_failed`,
+  `backup_succeeded`, `disk_almost_full`); stored subscriptions and
+  Deliveries were migrated, but a webhook receiver that matched on the old
+  names in the payload's `event` field must match the new ones. `ntfy` is a Channel kind Coolify does not
   have; it costs one small sender and is popular with self-hosters.

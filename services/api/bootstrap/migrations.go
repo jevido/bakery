@@ -54,5 +54,7 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000039RenameImageBuildPackToDockerimage{},
 		&migrations.M20260930000040RenameWwwRedirectToRedirect{},
 		&migrations.M20260930000041RenameEngineAndDatabaseBackups{},
+		&migrations.M20260930000042RenameNotificationEventKinds{},
+		&migrations.M20260930000043RenameDiskAlmostFullToHighDiskUsage{},
 	}
 }

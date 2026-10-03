@@ -41,7 +41,7 @@ func capture(t *testing.T, status int, answer string) (*httptest.Server, *captur
 }
 
 var failed = domain.Notification{
-	Kind: domain.DeploymentFailed, Title: "Deployment of shop failed", Body: "build failed",
+	Kind: domain.DeploymentFailure, Title: "Deployment of shop failed", Body: "build failed",
 	Link: "http://localhost:4930/applications/3", At: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC),
 }
 
@@ -151,7 +151,7 @@ func TestWebhookSigned(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := decode(t, got.body)
-	if m["event"] != "deployment_failed" || m["title"] != failed.Title || m["at"] != "2026-09-30T12:00:00Z" || m["link"] != failed.Link {
+	if m["event"] != "deployment_failure" || m["title"] != failed.Title || m["at"] != "2026-09-30T12:00:00Z" || m["link"] != failed.Link {
 		t.Errorf("payload %v", m)
 	}
 	mac := hmac.New(sha256.New, []byte("s3cret"))

@@ -95,7 +95,7 @@ channel "{\"name\":\"$RUN-discord\",\"kind\":\"discord\",\"settings\":{\"url\":\
 channel "{\"name\":\"$RUN-slack\",\"kind\":\"slack\",\"settings\":{\"url\":\"$RECEIVER/slack/tok-$RUN\"}}"
 channel "{\"name\":\"$RUN-telegram\",\"kind\":\"telegram\",\"settings\":{\"bot_token\":\"123:bot-$RUN\",\"chat_id\":\"-100\"}}"
 channel "{\"name\":\"$RUN-ntfy\",\"kind\":\"ntfy\",\"settings\":{\"url\":\"$RECEIVER/ntfy\",\"topic\":\"bakery\",\"token\":\"tk-$RUN\"}}"
-channel "{\"name\":\"$RUN-hook\",\"kind\":\"webhook\",\"settings\":{\"url\":\"$RECEIVER/hook/tok-$RUN\",\"secret\":\"secret-$RUN\"},\"event_kinds\":[\"deployment_failed\",\"deployment_succeeded\",\"backup_failed\",\"server_unreachable\",\"server_reachable\"]}"
+channel "{\"name\":\"$RUN-hook\",\"kind\":\"webhook\",\"settings\":{\"url\":\"$RECEIVER/hook/tok-$RUN\",\"secret\":\"secret-$RUN\"},\"event_kinds\":[\"deployment_failure\",\"deployment_success\",\"backup_failure\",\"server_unreachable\",\"server_reachable\"]}"
 HOOK=$CHANNEL
 for secret in "pw-$RUN" "tok-$RUN" "bot-$RUN" "tk-$RUN" "secret-$RUN"; do
 	! grep -q -- "$secret" <<<"$(bakery GET /api/notification-channels)" || fail "a secret ($secret) is in the channel list"
@@ -141,19 +141,19 @@ mails 1 "$OPS" "$FAILED"
 for path in "/discord/tok-$RUN" "/slack/tok-$RUN" "/ntfy/bakery" "/hook/tok-$RUN" "/telegram/bot123:bot-$RUN/sendMessage"; do
 	received 2 "r['path']=='$path'"
 done
-one "the webhook's failed deployment" "r['path']=='/hook/tok-$RUN' and json.loads(r['body'])['event']=='deployment_failed' and '$FAILED' == json.loads(r['body'])['title'] and json.loads(r['body'])['link'].endswith('/#/applications/$APP_ID')"
+one "the webhook's failed deployment" "r['path']=='/hook/tok-$RUN' and json.loads(r['body'])['event']=='deployment_failure' and '$FAILED' == json.loads(r['body'])['title'] and json.loads(r['body'])['link'].endswith('/#/applications/$APP_ID')"
 one "ntfy marks a failure" "r['path']=='/ntfy/bakery' and r['headers'].get('title')=='$FAILED' and r['headers'].get('tags')=='warning'"
 
 bakery PATCH "/api/applications/$APP_ID" "{\"name\":\"$RUN\",\"docker_image\":\"ghcr.io/traefik/whoami:v1.10\",\"port\":80}" >/dev/null
 bakery POST "/api/applications/$APP_ID/deploy" >/dev/null
 wait_for 180 "the deployment" deployment_done
-received 1 "r['path']=='/hook/tok-$RUN' and json.loads(r['body'])['event']=='deployment_succeeded'"
+received 1 "r['path']=='/hook/tok-$RUN' and json.loads(r['body'])['event']=='deployment_success'"
 sleep 3
 [ "$(count "'Deployment of $APP_SLUG succeeded' in r['body']")" = 1 ] || fail "a channel not subscribed heard of a succeeded deployment"
 echo "ok: failures to all, success only to the webhook"
 
 say "A channel that cannot be reached fails after three attempts, the others are sent"
-channel "{\"name\":\"$RUN-closed\",\"kind\":\"webhook\",\"settings\":{\"url\":\"http://127.0.0.1:4989/closed\"},\"event_kinds\":[\"deployment_failed\"]}"
+channel "{\"name\":\"$RUN-closed\",\"kind\":\"webhook\",\"settings\":{\"url\":\"http://127.0.0.1:4989/closed\"},\"event_kinds\":[\"deployment_failure\"]}"
 CLOSED=$CHANNEL
 bakery PATCH "/api/applications/$APP_ID" "{\"name\":\"$RUN\",\"docker_image\":\"ghcr.io/jevido/bakery-e2e-does-not-exist:v0\",\"port\":80}" >/dev/null
 bakery POST "/api/applications/$APP_ID/deploy" >/dev/null
@@ -175,7 +175,7 @@ wait_for 120 "the database" db_running
 STORAGE_ID=$(bakery POST /api/s3-storages "{\"name\":\"$RUN\",\"endpoint\":\"http://127.0.0.1:4989\",\"bucket\":\"nope\",\"access_key\":\"a\",\"secret_key\":\"b\"}" | json "d['s3_storage']['id']")
 bakery PUT "/api/databases/$DB_ID/scheduled-backup" "{\"enabled\":false,\"cron\":\"0 3 * * *\",\"retention\":2,\"s3_storage_id\":$STORAGE_ID}" >/dev/null
 bakery POST "/api/databases/$DB_ID/backup-executions" >/dev/null
-received 1 "r['path']=='/hook/tok-$RUN' and json.loads(r['body'])['event']=='backup_failed' and json.loads(r['body'])['title']=='Backup of $DB_NAME failed'"
+received 1 "r['path']=='/hook/tok-$RUN' and json.loads(r['body'])['event']=='backup_failure' and json.loads(r['body'])['title']=='Backup of $DB_NAME failed'"
 mails 1 "$OPS" "Backup of $DB_NAME failed"
 echo "ok: the failed backup was told"
 

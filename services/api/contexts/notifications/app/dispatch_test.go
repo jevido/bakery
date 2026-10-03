@@ -89,7 +89,7 @@ func setup(t *testing.T) (*Service, *fakeStore, *fakeSender, *time.Time) {
 	store := &fakeStore{}
 	for _, in := range []domain.Input{
 		{Name: "all", Kind: domain.Webhook, Settings: domain.Settings{URL: "http://a/"}},
-		{Name: "backups", Kind: domain.Webhook, Settings: domain.Settings{URL: "http://b/"}, EventKinds: []domain.EventKind{domain.BackupFailed}},
+		{Name: "backups", Kind: domain.Webhook, Settings: domain.Settings{URL: "http://b/"}, EventKinds: []domain.EventKind{domain.BackupFailure}},
 	} {
 		c, err := domain.NewChannel(in)
 		if err != nil {
@@ -106,11 +106,11 @@ func setup(t *testing.T) (*Service, *fakeStore, *fakeSender, *time.Time) {
 
 func TestNotifyOnlySubscribed(t *testing.T) {
 	s, store, sender, _ := setup(t)
-	s.Notify(context.Background(), domain.Notification{Kind: domain.DeploymentSucceeded})
+	s.Notify(context.Background(), domain.Notification{Kind: domain.DeploymentSuccess})
 	if len(store.deliveries) != 0 {
 		t.Fatalf("nobody subscribes, got %v", store.deliveries)
 	}
-	s.Notify(context.Background(), domain.Notification{Kind: domain.DeploymentFailed, Title: "x"})
+	s.Notify(context.Background(), domain.Notification{Kind: domain.DeploymentFailure, Title: "x"})
 	if len(store.deliveries) != 1 || store.deliveries[0].ChannelID != 1 {
 		t.Fatalf("got %+v", store.deliveries)
 	}
@@ -122,7 +122,7 @@ func TestNotifyOnlySubscribed(t *testing.T) {
 func TestRetriesThenFails(t *testing.T) {
 	s, store, sender, now := setup(t)
 	sender.failing[2] = 10
-	s.Notify(context.Background(), domain.Notification{Kind: domain.BackupFailed})
+	s.Notify(context.Background(), domain.Notification{Kind: domain.BackupFailure})
 	s.DispatchDue(context.Background())
 	if d := store.deliveries[1]; d.Status != domain.Pending || d.Attempts != 1 || d.LastError != "connection refused" {
 		t.Fatalf("after 1: %+v", d)

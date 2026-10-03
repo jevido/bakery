@@ -17,7 +17,7 @@ type Notification struct {
 // channels that can mark it (ntfy's tags) do.
 func (k EventKind) Alarming() bool {
 	switch k {
-	case DeploymentFailed, BackupFailed, ServerUnreachable, DiskAlmostFull:
+	case DeploymentFailure, BackupFailure, ServerUnreachable, ServerDiskUsage:
 		return true
 	}
 	return false

@@ -33,7 +33,7 @@ func TestNewChannelDefaults(t *testing.T) {
 	if !slices.Equal(c.Settings.To, []string{"ops@example.com"}) {
 		t.Errorf("to %v", c.Settings.To)
 	}
-	if !c.Subscribed(DeploymentFailed) || c.Subscribed(DeploymentSucceeded) || c.Subscribed(BackupSucceeded) || !c.Subscribed(DiskAlmostFull) {
+	if !c.Subscribed(DeploymentFailure) || c.Subscribed(DeploymentSuccess) || c.Subscribed(BackupSuccess) || !c.Subscribed(ServerDiskUsage) {
 		t.Errorf("event kinds %v", c.EventKinds)
 	}
 }
@@ -99,10 +99,10 @@ func TestChangeKeepsSecrets(t *testing.T) {
 	}
 
 	d, _ := NewChannel(Input{Name: "d", Kind: Discord, Settings: Settings{URL: "https://discord.com/api/webhooks/1/x"}})
-	if err := d.Change(Input{Name: "d", EventKinds: []EventKind{BackupFailed, BackupFailed}}); err != nil {
+	if err := d.Change(Input{Name: "d", EventKinds: []EventKind{BackupFailure, BackupFailure}}); err != nil {
 		t.Fatal(err)
 	}
-	if d.Settings.URL != "https://discord.com/api/webhooks/1/x" || !slices.Equal(d.EventKinds, []EventKind{BackupFailed}) {
+	if d.Settings.URL != "https://discord.com/api/webhooks/1/x" || !slices.Equal(d.EventKinds, []EventKind{BackupFailure}) {
 		t.Errorf("got %+v", d)
 	}
 	if err := d.Change(Input{Name: "d", Kind: Slack}); field(t, err) != "kind" {

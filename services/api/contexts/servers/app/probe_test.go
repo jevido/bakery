@@ -62,13 +62,13 @@ func TestProbeAll(t *testing.T) {
 	for _, e := range heard[1:] {
 		changes = append(changes, e.Change)
 	}
-	if !slices.Equal(changes, []domain.HealthChange{domain.BecameReachable, domain.BecameAlmostFull}) {
+	if !slices.Equal(changes, []domain.HealthChange{domain.BecameReachable, domain.BecameHighDiskUsage}) {
 		t.Fatalf("changes %v", changes)
 	}
 	if e := heard[2]; e.DiskUsed != 95<<30 || e.DiskTotal != 100<<30 {
 		t.Fatalf("disk %+v", e)
 	}
-	if got, _ := s.Get(ctx, local.ID); got.Status != domain.Reachable || !got.DiskAlmostFull {
+	if got, _ := s.Get(ctx, local.ID); got.Status != domain.Reachable || !got.HighDiskUsage {
 		t.Fatalf("stored %+v", got)
 	}
 }

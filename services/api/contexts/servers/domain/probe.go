@@ -4,19 +4,19 @@ package domain
 type HealthChange string
 
 const (
-	BecameUnreachable HealthChange = "unreachable"
-	BecameReachable   HealthChange = "reachable"
-	BecameAlmostFull  HealthChange = "disk_almost_full"
+	BecameUnreachable   HealthChange = "unreachable"
+	BecameReachable     HealthChange = "reachable"
+	BecameHighDiskUsage HealthChange = "server_disk_usage"
 )
 
 const (
 	// FailedProbesForUnreachable is how many probes in a row must fail
 	// before a Reachable Server counts as Unreachable.
 	FailedProbesForUnreachable = 2
-	// DiskAlmostFullPercent sets Disk almost full; it is cleared below
+	// HighDiskUsagePercent raises high disk usage; it is cleared below
 	// DiskClearPercent, so a disk hovering at the mark does not flap.
-	DiskAlmostFullPercent = 90
-	DiskClearPercent      = 85
+	HighDiskUsagePercent = 90
+	DiskClearPercent     = 85
 )
 
 // Probed says whether the Server probe checks the Server: one whose latest
@@ -51,11 +51,11 @@ func (s *Server) RecordProbe(reached bool, diskUsed, diskTotal int64) []HealthCh
 	if diskTotal > 0 {
 		used := diskUsed * 100 / diskTotal
 		switch {
-		case !s.DiskAlmostFull && used >= DiskAlmostFullPercent:
-			s.DiskAlmostFull = true
-			changes = append(changes, BecameAlmostFull)
-		case s.DiskAlmostFull && used < DiskClearPercent:
-			s.DiskAlmostFull = false
+		case !s.HighDiskUsage && used >= HighDiskUsagePercent:
+			s.HighDiskUsage = true
+			changes = append(changes, BecameHighDiskUsage)
+		case s.HighDiskUsage && used < DiskClearPercent:
+			s.HighDiskUsage = false
 		}
 	}
 	return changes

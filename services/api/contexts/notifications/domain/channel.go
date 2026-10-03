@@ -43,13 +43,13 @@ var Kinds = []Kind{Email, Discord, Slack, Telegram, Ntfy, Webhook}
 type EventKind string
 
 const (
-	DeploymentFailed    EventKind = "deployment_failed"
-	DeploymentSucceeded EventKind = "deployment_succeeded"
-	BackupFailed        EventKind = "backup_failed"
-	BackupSucceeded     EventKind = "backup_succeeded"
-	ServerUnreachable   EventKind = "server_unreachable"
-	ServerReachable     EventKind = "server_reachable"
-	DiskAlmostFull      EventKind = "disk_almost_full"
+	DeploymentFailure EventKind = "deployment_failure"
+	DeploymentSuccess EventKind = "deployment_success"
+	BackupFailure     EventKind = "backup_failure"
+	BackupSuccess     EventKind = "backup_success"
+	ServerUnreachable EventKind = "server_unreachable"
+	ServerReachable   EventKind = "server_reachable"
+	ServerDiskUsage   EventKind = "server_disk_usage"
 )
 
 // EventKindInfo describes an Event kind for the dashboard.
@@ -62,13 +62,13 @@ type EventKindInfo struct {
 
 // EventKinds are every Event kind, in the order the dashboard lists them.
 var EventKinds = []EventKindInfo{
-	{DeploymentFailed, "Deployment failed", true},
-	{DeploymentSucceeded, "Deployment succeeded", false},
-	{BackupFailed, "Backup failed", true},
-	{BackupSucceeded, "Backup succeeded", false},
+	{DeploymentSuccess, "Deployment success", false},
+	{DeploymentFailure, "Deployment failure", true},
+	{BackupSuccess, "Backup success", false},
+	{BackupFailure, "Backup failure", true},
+	{ServerDiskUsage, "Disk usage warning", true},
+	{ServerReachable, "Server reachable", true},
 	{ServerUnreachable, "Server unreachable", true},
-	{ServerReachable, "Server reachable again", true},
-	{DiskAlmostFull, "Disk almost full", true},
 }
 
 // DefaultEventKinds are what a new channel is subscribed to when none are

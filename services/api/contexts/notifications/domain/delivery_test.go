@@ -7,7 +7,7 @@ import (
 
 func TestDeliveryRetriesThenFails(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
-	d := NewDelivery(1, Notification{Kind: BackupFailed}, now)
+	d := NewDelivery(1, Notification{Kind: BackupFailure}, now)
 	if d.Status != Pending || !d.NextAttemptAt.Equal(now) {
 		t.Fatalf("new %+v", d)
 	}

@@ -115,10 +115,10 @@ type Server struct {
 	Validation  Validation
 	LastCleanup Cleanup
 	// FailedProbes counts the Server probes in a row that could not reach
-	// it; DiskAlmostFull is set by a probe that found its disk almost full.
-	FailedProbes   int
-	DiskAlmostFull bool
-	CreatedAt      time.Time
+	// it; HighDiskUsage is set by a probe that found its disk 90 % used or more.
+	FailedProbes  int
+	HighDiskUsage bool
+	CreatedAt     time.Time
 }
 
 // Input is what the Owner types for a Remote server.
@@ -196,7 +196,7 @@ func (s *Server) Edit(in Input) error {
 		s.HostKey = ""
 		s.Status = Unvalidated
 		s.Validation = Validation{}
-		s.FailedProbes, s.DiskAlmostFull = 0, false
+		s.FailedProbes, s.HighDiskUsage = 0, false
 	}
 	s.Name, s.Host, s.Port, s.User = in.Name, in.Host, in.Port, in.User
 	return nil

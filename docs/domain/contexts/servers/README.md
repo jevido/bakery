@@ -122,8 +122,8 @@ Local server. It does not keep a metrics history either.
 - **Cleanup runs daily at 03:00 server time** on every Reachable Server, and
   on demand. What it freed is an estimate: an Image's size counts layers it
   may share with Images that stay.
-- **A Server probe needs two failures before Unreachable**, and Disk almost
-  full clears only below 85 %, so one dropped SSH connection or a disk
+- **A Server probe needs two failures before Unreachable**, and high disk
+  usage clears only below 85 %, so one dropped SSH connection or a disk
   hovering at 90 % does not page anyone again and again. The probe reuses
   the Server metrics read, so it adds no check of its own to maintain.
 - **Linger is required**: without it the user's Containers stop when their

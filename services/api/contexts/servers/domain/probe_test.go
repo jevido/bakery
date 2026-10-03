@@ -36,25 +36,25 @@ func TestProbeUnreachableAfterTwoFailures(t *testing.T) {
 	}
 }
 
-func TestProbeDiskAlmostFull(t *testing.T) {
+func TestProbeHighDiskUsage(t *testing.T) {
 	s := validated()
 	if got := s.RecordProbe(true, 89, 100); len(got) != 0 {
 		t.Fatalf("89 %%: %v", got)
 	}
-	if got := s.RecordProbe(true, 90, 100); !slices.Equal(got, []HealthChange{BecameAlmostFull}) || !s.DiskAlmostFull {
+	if got := s.RecordProbe(true, 90, 100); !slices.Equal(got, []HealthChange{BecameHighDiskUsage}) || !s.HighDiskUsage {
 		t.Fatalf("90 %%: %v", got)
 	}
 	if got := s.RecordProbe(true, 95, 100); len(got) != 0 {
 		t.Fatalf("still full repeated: %v", got)
 	}
-	if got := s.RecordProbe(true, 86, 100); len(got) != 0 || !s.DiskAlmostFull {
+	if got := s.RecordProbe(true, 86, 100); len(got) != 0 || !s.HighDiskUsage {
 		t.Fatalf("86 %% cleared it: %v", got)
 	}
 	s.RecordProbe(true, 84, 100)
-	if s.DiskAlmostFull {
+	if s.HighDiskUsage {
 		t.Fatal("84 % did not clear it")
 	}
-	if got := s.RecordProbe(true, 91, 100); !slices.Equal(got, []HealthChange{BecameAlmostFull}) {
+	if got := s.RecordProbe(true, 91, 100); !slices.Equal(got, []HealthChange{BecameHighDiskUsage}) {
 		t.Fatalf("full again: %v", got)
 	}
 }
@@ -65,7 +65,7 @@ func TestProbeLeavesFailedValidationAlone(t *testing.T) {
 	if s.Probed() {
 		t.Fatal("a Server whose Validation failed is probed")
 	}
-	if got := s.RecordProbe(true, 99, 100); len(got) != 0 || s.Status != Unreachable || s.DiskAlmostFull {
+	if got := s.RecordProbe(true, 99, 100); len(got) != 0 || s.Status != Unreachable || s.HighDiskUsage {
 		t.Fatalf("got %v %+v", got, s)
 	}
 	u := Server{Kind: Remote, Status: Unvalidated}

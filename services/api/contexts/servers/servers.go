@@ -230,7 +230,7 @@ func probe(ctx context.Context, s *app.Service) {
 type ServerHealthChanged struct {
 	ServerID   uint64
 	ServerName string
-	// Change is "unreachable", "reachable" or "disk_almost_full".
+	// Change is "unreachable", "reachable" or "server_disk_usage".
 	Change string
 	// Reason is why an unreachable Server could not be reached.
 	Reason    string

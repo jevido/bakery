@@ -49,14 +49,14 @@ func deploymentNotification(e deployments.DeploymentFinished, dashboard string) 
 		name += fmt.Sprintf(" (preview of pull request #%d)", e.Preview)
 	}
 	n := domain.Notification{
-		Kind:  domain.DeploymentSucceeded,
+		Kind:  domain.DeploymentSuccess,
 		Title: "Deployment of " + name + " succeeded",
 		Link:  fmt.Sprintf("%s/#/applications/%d", dashboard, e.ApplicationID),
 		At:    e.FinishedAt,
 	}
 	var body []string
 	if !e.Succeeded {
-		n.Kind = domain.DeploymentFailed
+		n.Kind = domain.DeploymentFailure
 		n.Title = "Deployment of " + name + " failed"
 		body = append(body, e.Reason)
 	}
@@ -96,7 +96,7 @@ func size(n int64) string {
 
 func backupNotification(e databases.BackupExecutionFinished, dashboard string) domain.Notification {
 	n := domain.Notification{
-		Kind:  domain.BackupSucceeded,
+		Kind:  domain.BackupSuccess,
 		Title: "Backup of " + e.DatabaseName + " succeeded",
 		Link:  fmt.Sprintf("%s/#/databases/%d", dashboard, e.DatabaseID),
 		At:    e.FinishedAt,
@@ -113,7 +113,7 @@ func backupNotification(e databases.BackupExecutionFinished, dashboard string) d
 		n.Body = fmt.Sprintf("%s of %s: %s, %s.", trigger, e.Type, size(e.SizeBytes), where)
 		return n
 	}
-	n.Kind = domain.BackupFailed
+	n.Kind = domain.BackupFailure
 	n.Title = "Backup of " + e.DatabaseName + " failed"
 	n.Body = e.Reason + "\n" + trigger + " of " + e.Type + "."
 	return n
@@ -130,9 +130,9 @@ func serverNotification(e servers.ServerHealthChanged, dashboard string, now tim
 		n.Kind = domain.ServerReachable
 		n.Title = "Server " + e.ServerName + " is reachable again"
 		n.Body = "Bakery reaches it again."
-	case "disk_almost_full":
-		n.Kind = domain.DiskAlmostFull
-		n.Title = "Disk of " + e.ServerName + " is almost full"
+	case "server_disk_usage":
+		n.Kind = domain.ServerDiskUsage
+		n.Title = "High disk usage on " + e.ServerName
 		percent := int64(0)
 		if e.DiskTotal > 0 {
 			percent = e.DiskUsed * 100 / e.DiskTotal
