@@ -140,7 +140,7 @@
       />
     </div>
     {#if check}
-      <p class={check.ok ? 'ok' : 'error'} role="status">{check.ok ? 'Connected: Bakery can reach the bucket.' : check.message}</p>
+      <p class={check.ok ? 'ok' : 'error'} role="status">{check.ok ? 'Connected: The Bakery can reach the bucket.' : check.message}</p>
     {/if}
     {#if message}<p class="error">{message}</p>{/if}
     <div class="actions">

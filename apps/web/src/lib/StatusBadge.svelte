@@ -4,10 +4,10 @@
   let { status }: { status: DeploymentStatus | DatabaseStatus | ExecutionStatus | ServiceStatus | ServerStatus } = $props()
 </script>
 
-<span class={['badge', status]}>{status}</span>
+<span class={['status-badge', status]}>{status}</span>
 
 <style>
-  .badge {
+  .status-badge {
     display: inline-block;
     padding: 0.05rem 0.5rem;
     border-radius: 999px;

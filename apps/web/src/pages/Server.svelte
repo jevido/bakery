@@ -118,7 +118,7 @@
   let removeError = $state('')
 
   async function remove() {
-    if (!server || !confirm(`Remove ${server.name} from Bakery? Nothing on the server itself is touched.`)) return
+    if (!server || !confirm(`Remove ${server.name} from The Bakery? Nothing on the server itself is touched.`)) return
     removeError = ''
     try {
       await api('DELETE', `/servers/${id}`)
@@ -159,10 +159,10 @@
 {:else}
   <p class="crumbs"><a href={href('/servers')}>Servers</a> /</p>
   <div class="head">
-    <div class="title">
+    <div class="heading">
       <h1>{server.name}</h1>
       <StatusBadge status={server.status} />
-      <p class="muted mono">{server.kind === 'local' ? 'The machine Bakery runs on' : `${server.user}@${server.host}:${server.port}`}</p>
+      <p class="muted mono">{server.kind === 'local' ? 'The machine The Bakery runs on' : `${server.user}@${server.host}:${server.port}`}</p>
     </div>
     {#if session.isAdmin}<div class="buttons">
       <button class="primary" disabled={!!busy} onclick={validate}>{busy === 'validate' ? 'Validating…' : 'Validate'}</button>
@@ -177,7 +177,7 @@
     <section class="card">
       <h2>Private Key</h2>
       <p class="muted">
-        Bakery logs in with this key. Add it for <span class="mono">{server.user}</span> on the server, then press Validate:
+        The Bakery logs in with this key. Add it for <span class="mono">{server.user}</span> on the server, then press Validate:
       </p>
       <pre class="mono key" data-testid="private-key">{server.public_key}</pre>
       <pre class="mono key">echo '{server.public_key}' &gt;&gt; ~/.ssh/authorized_keys</pre>
@@ -228,7 +228,7 @@
         </p>
         <h3>Containers</h3>
         {#if metrics.containers.length === 0}
-          <p class="muted">No Bakery containers run here.</p>
+          <p class="muted">The Bakery runs no containers here.</p>
         {:else}
           <table data-testid="containers">
             <thead><tr><th>Container</th><th>Belongs to</th><th>CPU</th><th>Memory</th></tr></thead>
@@ -262,7 +262,7 @@
     <section>
       <h2>Cleanup</h2>
       <p class="muted">
-        Every night at 03:00 Bakery removes images nothing needs any more: dangling Bakery images, and the images of
+        Every night at 03:00 The Bakery removes images nothing needs any more: dangling images of The Bakery, and the images of
         deployments older than the five newest of each application that runs here.
       </p>
       {#if cleaned}<p data-testid="cleaned">{cleaned}</p>{/if}
@@ -314,14 +314,14 @@
     flex-wrap: wrap;
     margin-bottom: 1rem;
   }
-  .title {
+  .heading {
     display: flex;
     align-items: center;
     gap: 0.6rem;
     flex-wrap: wrap;
   }
-  .title h1,
-  .title p {
+  .heading h1,
+  .heading p {
     margin: 0;
   }
   .buttons,

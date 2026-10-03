@@ -106,7 +106,7 @@
       {/if}
     </form>
     <p class="muted small">
-      With a token, Bakery keeps one comment on each pull request with its preview's link. The webhook (on the Source tab)
+      With a token, The Bakery keeps one comment on each pull request with its preview's link. The webhook (on the Source tab)
       must also send pull request events: on GitHub "Pull requests", on Gitea and Forgejo "Pull request" and "Pull request
       synchronized", on GitLab "Merge request events". Pull requests from forks get no preview.
     </p>

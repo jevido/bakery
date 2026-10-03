@@ -34,7 +34,7 @@
 
 <main class="auth">
   <form class="card" onsubmit={submit}>
-    <h1>Welcome to Bakery</h1>
+    <h1>Welcome to The Bakery</h1>
     <p class="muted">Create the Owner, the first Member. This happens once; you will sign in as the Owner from now on.</p>
     <Field label="Name" bind:value={name} error={errors.name} autocomplete="name" required />
     <Field label="Email" type="email" bind:value={email} error={errors.email} autocomplete="email" required />

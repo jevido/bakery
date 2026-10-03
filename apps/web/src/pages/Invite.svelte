@@ -71,7 +71,7 @@
     </div>
   {:else}
     <form class="card" onsubmit={accept}>
-      <h1>Join Bakery</h1>
+      <h1>Join The Bakery</h1>
       <p class="muted">You were invited as <strong>{invitation.role}</strong>. Pick your name and a password to sign in with.</p>
       <label class="field">
         <span>Email</span>

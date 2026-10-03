@@ -35,7 +35,7 @@
   <h3>Deploy key</h3>
   <p class="muted">
     Add this public key to the repository as a <strong>read-only deploy key</strong> (GitHub: Settings → Deploy keys; GitLab:
-    Settings → Repository → Deploy keys; Gitea/Forgejo: Settings → Deploy keys). Bakery clones with it.
+    Settings → Repository → Deploy keys; Gitea/Forgejo: Settings → Deploy keys). The Bakery clones with it.
   </p>
   <pre class="mono key" data-testid="deploy-key">{application.deploy_key_public}</pre>
   <div class="actions">

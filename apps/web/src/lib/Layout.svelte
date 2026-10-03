@@ -32,7 +32,7 @@
   <aside>
     <a class="brand" href={href('/projects')}>
       <img src="/favicon.svg" alt="" width="22" height="22" />
-      Bakery
+      The Bakery
     </a>
     <nav>
       <a href={href('/projects')} aria-current={section === 'projects' ? 'page' : undefined}>Projects</a>

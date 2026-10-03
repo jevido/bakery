@@ -62,7 +62,7 @@
 {#if adding}
   <form class="card form" onsubmit={add}>
     <p class="muted">
-      A server Bakery reaches over SSH as a user with rootless Podman. Bakery generates a key for it; you add that key to the
+      A server The Bakery reaches over SSH as a user with rootless Podman. The Bakery generates a key for it; you add that key to the
       user's <span class="mono">~/.ssh/authorized_keys</span> next.
     </p>
     <Field label="Name" bind:value={name} error={errors.name} required />
@@ -86,7 +86,7 @@
   <div class="list">
     {#each servers as s (s.id)}
       <a class="card server" href={href(`/servers/${s.id}`)} data-testid="server">
-        <div class="title">
+        <div class="heading">
           <strong>{s.name}</strong>
           <StatusBadge status={s.status} />
           <span class="muted mono">{s.kind === 'local' ? 'this machine' : `${s.user}@${s.host}:${s.port}`}</span>
@@ -147,7 +147,7 @@
   .server:hover {
     border-color: var(--muted);
   }
-  .title {
+  .heading {
     display: flex;
     align-items: center;
     gap: 0.6rem;

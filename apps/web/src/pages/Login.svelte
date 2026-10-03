@@ -71,7 +71,7 @@
 <main class="auth">
   {#if step === 'password'}
     <form class="card" onsubmit={submit}>
-      <h1>Sign in to Bakery</h1>
+      <h1>Sign in to The Bakery</h1>
       <Field label="Email" type="email" bind:value={email} autocomplete="email" required />
       <Field label="Password" type="password" bind:value={password} autocomplete="current-password" required />
       {#if message}<p class="error">{message}</p>{/if}

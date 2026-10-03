@@ -142,7 +142,7 @@
   }
 
   function download() {
-    const text = `Bakery recovery codes for ${session.member?.email}\nEach works once.\n\n${recoveryCodes!.join('\n')}\n`
+    const text = `The Bakery recovery codes for ${session.member?.email}\nEach works once.\n\n${recoveryCodes!.join('\n')}\n`
     const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }))
     const a = document.createElement('a')
     a.href = url
@@ -192,7 +192,7 @@
     <p class="muted">Loading…</p>
   {:else if recoveryCodes}
     <p>
-      Keep these recovery codes somewhere safe. Each one signs you in once without your phone. <strong>Bakery cannot show them again.</strong>
+      Keep these recovery codes somewhere safe. Each one signs you in once without your phone. <strong>The Bakery cannot show them again.</strong>
     </p>
     <ul class="codes mono" data-testid="recovery-codes">
       {#each recoveryCodes as c (c)}<li>{c}</li>{/each}

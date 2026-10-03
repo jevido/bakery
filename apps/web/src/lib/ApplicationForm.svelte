@@ -255,7 +255,7 @@
     </label>
     {#if checkEnabled}
       <p class="muted">
-        Bakery requests the path inside the new container until it answers 2xx or 3xx. The image needs <code>curl</code> or
+        The Bakery requests the path inside the new container until it answers 2xx or 3xx. The image needs <code>curl</code> or
         <code>wget</code>.
       </p>
       <Field label="Health check path" bind:value={checkPath} error={errors['health_check.path']} placeholder="/health" />

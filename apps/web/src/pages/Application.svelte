@@ -109,7 +109,7 @@
     <a href={href(`/projects/${application.project_id}`)}>Project</a> /
   </p>
   <div class="head">
-    <div class="title">
+    <div class="heading">
       <h1>{application.name}</h1>
       {#if latest}<StatusBadge status={latest.status} />{/if}
       <p>
@@ -249,7 +249,7 @@
     gap: 1rem;
     margin-bottom: 1rem;
   }
-  .title {
+  .heading {
     display: grid;
     grid-template-columns: auto auto;
     justify-content: start;
@@ -257,10 +257,10 @@
     align-items: center;
     column-gap: 0.75rem;
   }
-  .title h1 {
+  .heading h1 {
     margin: 0;
   }
-  .title p {
+  .heading p {
     grid-column: 1 / -1;
     margin: 0.2rem 0 0;
   }

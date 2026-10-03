@@ -193,7 +193,7 @@
   <p class="muted">Notifications are managed by admins.</p>
 {:else}
   <p class="muted">
-    Where Bakery tells you that a deployment or backup failed, a server became unreachable or came back, or a disk is almost
+    Where The Bakery tells you that a deployment or backup failed, a server became unreachable or came back, or a disk is almost
     full. The first email channel also sends invitations to the people you invite.
   </p>
   {#if error}<p class="error">{error}</p>{/if}
@@ -312,7 +312,7 @@
         />
         {#if form.kind === 'webhook'}
           <Field label="Secret (optional, signs each request)" type="password" bind:value={form.secret} error={errors.secret} autocomplete="new-password" placeholder={keep} />
-          <p class="muted small">Bakery POSTs JSON; with a secret, the header <span class="mono">X-Bakery-Signature: sha256=…</span> is the HMAC-SHA256 of the body.</p>
+          <p class="muted small">The Bakery POSTs JSON; with a secret, the header <span class="mono">X-Bakery-Signature: sha256=…</span> is the HMAC-SHA256 of the body.</p>
         {/if}
       {:else if form.kind === 'telegram'}
         <Field label="Bot token" type="password" bind:value={form.bot_token} error={errors.bot_token} autocomplete="new-password" placeholder={keep || '123456:ABC-DEF…'} required={editing === 'new'} />

@@ -51,7 +51,7 @@
 
 <h1>API tokens</h1>
 <p class="muted">
-  Tokens let scripts and CI use Bakery's API as you, with your role. A read-only token can only read, like a viewer.
+  Tokens let scripts and CI use The Bakery's API as you, with your role. A read-only token can only read, like a viewer.
 </p>
 
 <form class="card form" onsubmit={create}>
@@ -65,7 +65,7 @@
   </div>
   {#if created}
     <div class="created" data-testid="new-token">
-      <p>Copy the token <strong>{created.name}</strong> now; Bakery cannot show it again.</p>
+      <p>Copy the token <strong>{created.name}</strong> now; The Bakery cannot show it again.</p>
       <div class="value">
         <input readonly value={created.token} aria-label="New API token" />
         <CopyButton text={created.token} />

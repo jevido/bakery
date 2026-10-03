@@ -1,11 +1,22 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bakery</title>
+    <meta name="theme-color" content="#101010" />
+    <title>The Bakery</title>
     <meta name="robots" content="noindex" />
+    <script>
+      // Applies the theme before first paint, so a light theme never flashes
+      // dark. The same rule as src/lib/theme.svelte.ts, which takes over later.
+      ;(function () {
+        var theme = localStorage.getItem('theme')
+        var dark = theme !== 'light' && (theme !== 'system' || matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.classList.toggle('dark', dark)
+        document.querySelector('meta[name=theme-color]').setAttribute('content', dark ? '#101010' : '#ffffff')
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>
