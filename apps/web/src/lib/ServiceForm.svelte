@@ -15,7 +15,7 @@
   } = $props()
 
   let mode = $state<'template' | 'compose'>('template')
-  let templates = $state.raw<ServiceTemplate[]>([])
+  let templates = $state.raw<ServiceTemplate[] | null>(null)
   let loadError = $state('')
   let search = $state('')
   let picked = $state<string | null>(null)
@@ -31,7 +31,7 @@
 
   let shown = $derived.by(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return templates
+    if (!templates || !q) return templates ?? []
     return templates.filter((t) => [t.name, t.description, ...t.tags].some((s) => s.toLowerCase().includes(q)))
   })
   let composeLines = $derived(errors.compose ? errors.compose.split('\n') : [])
@@ -91,7 +91,7 @@
             </span>
           </label>
         {:else}
-          <p class="muted">No template matches.</p>
+          <p class="muted">{templates ? 'No template matches.' : 'Loading…'}</p>
         {/each}
       </div>
     {/if}

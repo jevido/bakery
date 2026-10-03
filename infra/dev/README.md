@@ -67,7 +67,7 @@ Local development stack.
 - `buildpack/test.sh` (`task buildpack:test`) deploys one Application per
   Build pack, including a private image from Forgejo's registry.
 - `settings/test.sh` (`task settings:test`) checks Application settings:
-  two Domains, removing one without a deploy, the Www redirect, a Response
+  two Domains, removing one without a deploy, the Redirect, a Response
   header, Basic auth, a file in Persistent storage surviving a redeploy and
   a rollback, Resource limits on the Container, and the volume going with
   the Application.

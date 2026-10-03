@@ -59,7 +59,7 @@ Other tasks: `task api:check` (gofmt, go vet, go test), `task api:migrate`,
 Artisan runs as `go run . artisan ...`. `go run . artisan
 identity:reset-two-factor <email>` switches a Member's two-factor
 authentication off (the Owner's included) and signs them out, for someone
-who lost their phone and their recovery codes. Account and two-factor are
+who lost their phone and their recovery codes. Profile and two-factor are
 under `/api/me` (Session only) and `POST /api/login/two-factor`; `task
 account:test` checks them end to end.
 Previews of pull requests are under `/api/applications/{id}/previews`

@@ -68,8 +68,8 @@ wait_for 20 "$APEX" answers "$APEX" 1
 echo "ok: www.$APEX answers 308 to $APEX"
 bakery PATCH "/api/applications/$APP_ID" "$(app_json "[\"$A\",\"www.$APEX\"]")" >/dev/null
 routing '{"redirect":"www"}' >/dev/null
-to_www() { [ "$(curl -sk --max-time 5 --resolve "$APEX:4943:127.0.0.1" -o /dev/null -w '%{http_code} %{redirect_url}' "https://$APEX:4943/some/path?q=1" || true)" = "308 https://www.$APEX:4943/some/path?q=1" ]; }
-wait_for 20 "$APEX to redirect" to_www
+apex_redirects() { [ "$(curl -sk --max-time 5 --resolve "$APEX:4943:127.0.0.1" -o /dev/null -w '%{http_code} %{redirect_url}' "https://$APEX:4943/some/path?q=1" || true)" = "308 https://www.$APEX:4943/some/path?q=1" ]; }
+wait_for 20 "$APEX to redirect" apex_redirects
 wait_for 20 "www.$APEX" answers "www.$APEX" 1
 echo "ok: $APEX answers 308 to www.$APEX"
 

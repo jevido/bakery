@@ -17,9 +17,8 @@
   let loadError = $state('')
   let databases = $state.raw<Database[]>([])
   let services = $state.raw<Service[]>([])
-  let addingTo = $state<number | null>(null)
-  let addingDatabaseTo = $state<number | null>(null)
-  let addingServiceTo = $state<number | null>(null)
+  // The Resource being added, and the Environment it goes in.
+  let adding = $state<{ environment: number; kind: 'choose' | 'application' | 'database' | 'service' } | null>(null)
   let deleteError = $state('')
 
   $effect(() => {
@@ -102,17 +101,9 @@
     <section>
       <div class="head">
         <h2>{env.name}</h2>
-        {#if session.canWrite}<div class="buttons">
-          {#if addingServiceTo !== env.id}
-            <button onclick={() => (addingServiceTo = env.id)}>New service</button>
-          {/if}
-          {#if addingDatabaseTo !== env.id}
-            <button onclick={() => (addingDatabaseTo = env.id)}>New database</button>
-          {/if}
-          {#if addingTo !== env.id}
-            <button class="primary" onclick={() => (addingTo = env.id)}>New application</button>
-          {/if}
-        </div>{/if}
+        {#if session.canWrite && adding?.environment !== env.id}
+          <button class="primary" onclick={() => (adding = { environment: env.id, kind: 'choose' })}>+ New Resource</button>
+        {/if}
       </div>
       <details>
         <summary>Shared variables of {env.name}</summary>
@@ -121,32 +112,42 @@
           description={`Every application in ${env.name} gets these, unless it sets the same name. They win over the project's.`}
         />
       </details>
-      {#if addingTo === env.id}
+      {#if adding?.environment === env.id && adding.kind === 'choose'}
+        <div class="card">
+          <h3>New Resource</h3>
+          <div class="buttons">
+            <button onclick={() => (adding = { environment: env.id, kind: 'application' })}>Application</button>
+            <button onclick={() => (adding = { environment: env.id, kind: 'database' })}>Database</button>
+            <button onclick={() => (adding = { environment: env.id, kind: 'service' })}>Service</button>
+            <button onclick={() => (adding = null)}>Cancel</button>
+          </div>
+        </div>
+      {:else if adding?.environment === env.id && adding.kind === 'application'}
         <div class="card">
           <ApplicationForm
             submitLabel="Create application"
             onsubmit={(input) => addApplication(env.id, input)}
-            oncancel={() => (addingTo = null)}
+            oncancel={() => (adding = null)}
           />
         </div>
-      {/if}
-      {#if addingDatabaseTo === env.id}
+      {:else if adding?.environment === env.id && adding.kind === 'database'}
         <div class="card">
           <DatabaseForm
             submitLabel="Create database"
             onsubmit={(input) => addDatabase(env.id, input)}
-            oncancel={() => (addingDatabaseTo = null)}
+            oncancel={() => (adding = null)}
           />
         </div>
-      {/if}
-      {#if addingServiceTo === env.id}
+      {:else if adding?.environment === env.id && adding.kind === 'service'}
         <div class="card">
-          <ServiceForm onsubmit={(input) => addService(env.id, input)} oncancel={() => (addingServiceTo = null)} />
+          <ServiceForm onsubmit={(input) => addService(env.id, input)} oncancel={() => (adding = null)} />
         </div>
       {/if}
-      {#if env.applications.length === 0}
-        <p class="muted">No applications in {env.name} yet.</p>
-      {:else}
+      <h3>Resources</h3>
+      {#if env.applications.length === 0 && envDatabases.length === 0 && envServices.length === 0}
+        <p class="muted">No resources in {env.name} yet.</p>
+      {/if}
+      {#if env.applications.length > 0}
         <table>
           <thead><tr><th>Application</th><th>Source</th><th>Domain</th></tr></thead>
           <tbody>
@@ -227,6 +228,9 @@
   }
   h2 {
     text-transform: capitalize;
+  }
+  h3 {
+    margin: 0;
   }
   details {
     margin: 0.5rem 0;

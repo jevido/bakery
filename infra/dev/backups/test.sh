@@ -37,7 +37,7 @@ PROJECT_ID=$(bakery POST /api/projects "{\"name\":\"$RUN\"}" | json "d['project'
 ENV_ID=$(bakery GET "/api/projects/$PROJECT_ID" | json "d['project']['environments'][0]['id']")
 
 database() { bakery GET "/api/databases/$1" | json "d['database']$2"; }
-create() { # create ENGINE: prints the new Database's id
+create() { # create TYPE: prints the new Database's id
 	local out
 	out=$(bakery POST "/api/environments/$ENV_ID/databases" "{\"name\":\"$RUN-$1\",\"type\":\"$1\"}")
 	echo "$out" | json "d['database']['id']" || fail "creating $1: $out"
@@ -53,7 +53,7 @@ running() { # running ID
 }
 container() { echo "bakery-db-$(database "$1" "['slug']")"; }
 
-# sql ENGINE ID STATEMENT: runs STATEMENT with the Engine's own client in
+# sql TYPE ID STATEMENT: runs STATEMENT with the Database type's own client in
 # the Database's Container, printing the result without headers.
 # shellcheck disable=SC2016 # the variables expand in the container
 sql() {

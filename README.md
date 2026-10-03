@@ -142,7 +142,7 @@ over the project's.
 
 ### Databases and backups
 
-**New → Database** in an environment runs PostgreSQL, MySQL, MariaDB,
+**+ New Resource → Database** in an environment runs PostgreSQL, MySQL, MariaDB,
 Redis, Valkey or MongoDB with generated credentials; applications reach it
 on its internal URL, and a public port opens it from outside the server.
 Its **Backups** tab backs up PostgreSQL, MySQL, MariaDB and MongoDB on a
@@ -154,7 +154,7 @@ Garage S3 stand-in) run all of this end to end.
 
 ### Services
 
-**New service** in an environment runs multi-container software in one
+**+ New Resource → Service** in an environment runs multi-container software in one
 step: pick Uptime Kuma, Umami (with its own PostgreSQL), n8n, Gitea or
 whoami from the catalog, or paste a `compose.yml` of your own. Passwords
 the file asks for as `${SERVICE_PASSWORD_<X>}` or `${SERVICE_USER_<X>}` are
@@ -201,9 +201,9 @@ at once. Under **API tokens** anyone creates tokens for scripts, sent as
 `Authorization: Bearer bky_…`, with their own role or read-only; a token is
 shown once. `task access:test` runs this end to end.
 
-### Account and two-factor authentication
+### Profile and two-factor authentication
 
-Everyone's own **Account** page (their name in the header) changes their
+Everyone's own **Profile** page (their name in the header) changes their
 name and password and signs out every other browser; a new password does
 that too. **Two-factor authentication** is switched on there with any
 authenticator app (TOTP, from a QR code or the key typed in) and hands out

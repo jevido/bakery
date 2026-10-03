@@ -115,7 +115,7 @@ tasks:
   buildpack:test:
     desc: Every build pack end to end against Forgejo and its registry (needs task dev)
     cmds:
-      - ./infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/server/checks.sh
+      - ./infra/dev/buildpack/test.sh
 
   settings:test:
     desc: Domains, Redirect, headers, basic auth, persistent storage and resource limits end to end against Forgejo (needs task dev)

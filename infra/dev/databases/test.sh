@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End to end: one-click Databases. Every Engine becomes running and answers
+# End to end: one-click Databases. Every Database type becomes running and answers
 # its own client on the Internal URL from a container on the bakery network;
 # Postgres keeps its data across stop/start and a Public port change; the
 # Public URL answers from the host until the Public port is removed; a
@@ -25,7 +25,7 @@ ENV_ID=$(bakery GET "/api/projects/$PROJECT_ID" | json "d['project']['environmen
 
 database() { bakery GET "/api/databases/$1" | json "d['database']$2"; }
 status_is() { [ "$(database "$1" "['status']")" = "$2" ]; }
-create() { # create ENGINE: prints the new Database's id
+create() { # create TYPE: prints the new Database's id
 	local out
 	out=$(bakery POST "/api/environments/$ENV_ID/databases" "{\"name\":\"$RUN-$1\",\"type\":\"$1\"}")
 	echo "$out" | json "d['database']['id']" || fail "creating $1: $out"
@@ -53,7 +53,7 @@ update() { # update ID PUBLIC_PORT
 	bakery PATCH "/api/databases/$1" "{\"name\":\"$RUN-postgresql\",\"version\":\"18-alpine\",\"public_port\":$2,\"resource_limits\":{\"memory_mb\":null,\"cpus\":null}}" >/dev/null
 }
 
-say "Every Engine"
+say "Every Database type"
 declare -A ID
 for type in postgresql mysql mariadb redis valkey mongodb; do
 	ID[$type]=$(create "$type")
@@ -65,7 +65,7 @@ for type in postgresql mysql mariadb redis valkey mongodb; do
 done
 
 say "Internal URLs from the bakery network"
-q() { # q ENGINE EXPECTED CMD
+q() { # q TYPE EXPECTED CMD
 	local got
 	got=$(client "${ID[$1]}" "$3" 2>&1 | tr -d '\r' | tail -1)
 	[ "$got" = "$2" ] || fail "$1 on its internal URL answered '$got'"
