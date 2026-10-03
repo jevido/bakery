@@ -55,7 +55,7 @@ say "Owner sets up a project with an Application, a Database and an Environment 
 PROJECT_ID=$(bakery POST /api/projects "{\"name\":\"$RUN\"}" | json "d['project']['id']")
 ENV_ID=$(bakery GET "/api/projects/$PROJECT_ID" | json "d['project']['environments'][0]['id']")
 APP_ID=$(bakery POST "/api/environments/$ENV_ID/applications" \
-	"{\"name\":\"$RUN\",\"build_pack\":\"image\",\"image_reference\":\"ghcr.io/traefik/whoami:v1.10\",\"port\":80}" | json "d['application']['id']")
+	"{\"name\":\"$RUN\",\"build_pack\":\"dockerimage\",\"docker_image\":\"ghcr.io/traefik/whoami:v1.10\",\"port\":80}" | json "d['application']['id']")
 APP_SLUG=$(bakery GET "/api/applications/$APP_ID" | json "d['application']['slug']")
 APPS+=("$APP_ID $APP_SLUG")
 bakery PUT "/api/applications/$APP_ID/environment-variables" '{"environment_variables":[{"name":"SECRET","value":"hunter2hunter2","runtime":true}]}' >/dev/null

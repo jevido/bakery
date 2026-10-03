@@ -41,7 +41,7 @@ func githubPush(secret, ref string) (domain.Header, []byte) {
 
 func TestReceivePush(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	hooks := NewWebhooks(s.service, memWebhooks{})
 
 	h, body := githubPush("x", "refs/heads/main")
@@ -93,12 +93,12 @@ func TestReceivePush(t *testing.T) {
 
 func TestReceivePushIgnoresImageApplications(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	s.app = imageApp
 	hooks := NewWebhooks(s.service, memWebhooks{})
 	hook, _ := hooks.Webhook(ctx, 1)
 	h, body := githubPush(hook.Secret, "refs/heads/main")
-	if out, err := hooks.ReceivePush(ctx, 1, h, body); err != nil || out.Deployment != nil || out.Ignored != "image applications are not built from git" {
+	if out, err := hooks.ReceivePush(ctx, 1, h, body); err != nil || out.Deployment != nil || out.Ignored != "dockerimage applications are not built from git" {
 		t.Fatalf("push: %+v %v", out, err)
 	}
 }
@@ -116,7 +116,7 @@ func forgejoPullRequest(secret, action string, number int, head, base string, he
 
 func TestReceivePullRequest(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	hooks := NewWebhooks(s.service, memWebhooks{})
 	hook, _ := hooks.Webhook(ctx, 1)
 	call := func(action string, number int, head, base string, headRepo int) PushOutcome {

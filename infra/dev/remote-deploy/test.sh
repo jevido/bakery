@@ -159,7 +159,7 @@ RELAY_ID=$(add_server "$RUN-relay" "$RELAY_PORT")
 kill "$RELAY"
 RELAY=""
 FIRST_APP="$APP_ID $APP_SLUG $DOMAIN"
-new_app "{\"name\":\"$RUN-gone\",\"build_pack\":\"image\",\"image_reference\":\"docker.io/traefik/whoami:v1.10\",\"port\":80,\"server_id\":$RELAY_ID}"
+new_app "{\"name\":\"$RUN-gone\",\"build_pack\":\"dockerimage\",\"docker_image\":\"docker.io/traefik/whoami:v1.10\",\"port\":80,\"server_id\":$RELAY_ID}"
 GONE=$(deploy)
 wait_for 60 "the deployment to fail" status_is "$GONE" failed
 ERROR=$(deployment "$GONE" "['error']")

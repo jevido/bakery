@@ -17,7 +17,7 @@ func init() {
 		// The network Bakery's containers share; Caddy reaches Applications
 		// on it by container name.
 		"network": config.Env("BAKERY_NETWORK", "bakery"),
-		// Registry hosts (host[:port], comma-separated) image Applications
+		// Registry hosts (host[:port], comma-separated) dockerimage Applications
 		// are pulled from without TLS verification. Empty on a server.
 		"insecure_registries": config.Env("BAKERY_INSECURE_REGISTRIES", ""),
 		// The nixpacks binary the nixpacks Build pack writes Dockerfiles

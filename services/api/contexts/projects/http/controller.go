@@ -42,14 +42,14 @@ type applicationJSON struct {
 	Name             string   `json:"name"`
 	Slug             string   `json:"slug"`
 	BuildPack        string   `json:"build_pack"`
-	ImageReference   string   `json:"image_reference"`
+	DockerImage      string   `json:"docker_image"`
 	PublishDirectory string   `json:"publish_directory"`
 	GitURL           string   `json:"git_url"`
 	GitBranch        string   `json:"git_branch"`
 	DockerfilePath   string   `json:"dockerfile_path"`
 	Port             int      `json:"port"`
 	Domains          []string `json:"domains"`
-	// DeployKeyPublic is empty for an https Source.
+	// DeployKeyPublic is empty for an https Git repository.
 	DeployKeyPublic string `json:"deploy_key_public"`
 	// The registry password itself is never returned.
 	RegistryUsername    string `json:"registry_username"`
@@ -128,7 +128,7 @@ func applicationToJSON(a domain.Application, localServer uint64) applicationJSON
 	return applicationJSON{
 		ServerID: server,
 		ID:       a.ID, ProjectID: a.ProjectID, EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug,
-		BuildPack: string(a.BuildPack), ImageReference: a.ImageReference, PublishDirectory: a.PublishDirectory,
+		BuildPack: string(a.BuildPack), DockerImage: a.DockerImage, PublishDirectory: a.PublishDirectory,
 		GitURL: a.GitURL, GitBranch: a.GitBranch, DockerfilePath: a.DockerfilePath, Port: a.Port, Domains: a.Domains,
 		DeployKeyPublic: a.DeployKey.Public, PublicURL: publicURL(a.PrimaryDomain(), a.ServerID), PublicURLs: publicURLs(a.Domains, a.ServerID),
 		RegistryUsername: a.RegistryCredentials.Username, HasRegistryPassword: a.RegistryCredentials.Username != "", // both or neither
@@ -279,7 +279,7 @@ type applicationRequest struct {
 	// BuildPack omitted keeps the current one (dockerfile for a new
 	// Application).
 	BuildPack        string   `json:"build_pack"`
-	ImageReference   string   `json:"image_reference"`
+	DockerImage      string   `json:"docker_image"`
 	PublishDirectory string   `json:"publish_directory"`
 	GitURL           string   `json:"git_url"`
 	GitBranch        string   `json:"git_branch"`
@@ -308,7 +308,7 @@ type registryCredentialsJSON struct {
 func (r applicationRequest) input() domain.ApplicationInput {
 	in := domain.ApplicationInput{
 		Name: r.Name, GitURL: r.GitURL, GitBranch: r.GitBranch,
-		BuildPack: domain.BuildPack(r.BuildPack), ImageReference: r.ImageReference, PublishDirectory: r.PublishDirectory,
+		BuildPack: domain.BuildPack(r.BuildPack), DockerImage: r.DockerImage, PublishDirectory: r.PublishDirectory,
 		DockerfilePath: r.DockerfilePath, Port: r.Port, Domains: r.Domains, ServerID: r.ServerID,
 	}
 	if r.HealthCheck != nil {

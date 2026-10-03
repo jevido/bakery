@@ -149,7 +149,7 @@
 
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected={tab === 'deployments'} onclick={() => (tab = 'deployments')}>Deployments</button>
-    {#if application.build_pack !== 'image'}
+    {#if application.build_pack !== 'dockerimage'}
       <button role="tab" aria-selected={tab === 'previews'} onclick={() => (tab = 'previews')}>Previews</button>
     {/if}
     <button role="tab" aria-selected={tab === 'logs'} onclick={() => (tab = 'logs')}>Logs</button>
@@ -169,17 +169,17 @@
       empty="No running container. Deploy the application first."
       stopped="The container stopped (a new deployment may have replaced it)."
     />
-  {:else if tab === 'source' && application.build_pack === 'image'}
+  {:else if tab === 'source' && application.build_pack === 'dockerimage'}
     <dl class="source">
-      <dt>Image</dt>
-      <dd class="mono">{application.image_reference}</dd>
+      <dt>Docker Image</dt>
+      <dd class="mono">{application.docker_image}</dd>
       <dt>Registry credentials</dt>
       <dd>{application.registry_username ? `as ${application.registry_username}` : 'none (public image)'}</dd>
     </dl>
     <p class="muted">Every deploy pulls the image again, so a moved tag is picked up. Rollbacks start the exact image pulled then.</p>
   {:else if tab === 'source'}
     <dl class="source">
-      <dt>Repository</dt>
+      <dt>Git repository</dt>
       <dd class="mono">{application.git_url}</dd>
       <dt>Branch</dt>
       <dd class="mono">{application.git_branch}</dd>

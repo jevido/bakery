@@ -7,8 +7,8 @@ export type Application = {
   name: string
   slug: string
   build_pack: BuildPack
-  /** Set for the image build pack, which has no git source. */
-  image_reference: string
+  /** Set for the dockerimage build pack, which has no Git repository. */
+  docker_image: string
   /** What the static build pack serves. */
   publish_directory: string
   git_url: string
@@ -17,7 +17,7 @@ export type Application = {
   port: number
   /** 1–10 hostnames; the first is the primary one. */
   domains: string[]
-  /** Empty for an https Source. */
+  /** Empty for an https Git repository. */
   deploy_key_public: string
   /** On the primary Domain. */
   public_url: string
@@ -38,7 +38,7 @@ export type Storage = { name: string; mount_path: string }
 /** null is unlimited. */
 export type ResourceLimits = { memory_mb: number | null; cpus: number | null }
 
-export type BuildPack = 'dockerfile' | 'nixpacks' | 'static' | 'image'
+export type BuildPack = 'dockerfile' | 'nixpacks' | 'static' | 'dockerimage'
 
 /** Times in seconds. */
 export type HealthCheck = {
@@ -105,7 +105,7 @@ export type InheritedVariable = EnvironmentVariable & { from: 'project' | 'envir
 
 export type ApplicationInput = Pick<
   Application,
-  'name' | 'build_pack' | 'image_reference' | 'publish_directory' | 'git_url' | 'git_branch' | 'dockerfile_path' | 'port' | 'domains'
+  'name' | 'build_pack' | 'docker_image' | 'publish_directory' | 'git_url' | 'git_branch' | 'dockerfile_path' | 'port' | 'domains'
 > & {
   /** Omitted keeps the current one. */
   health_check?: HealthCheck

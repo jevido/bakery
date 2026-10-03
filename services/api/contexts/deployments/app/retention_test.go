@@ -11,7 +11,7 @@ import (
 
 func TestPruneImagesKeepsRetention(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	for i := uint64(1); i <= 7; i++ {
 		s.store.items = append(s.store.items, domain.Deployment{ID: i, ApplicationID: 1, Status: domain.Finished, Image: fmt.Sprintf("localhost/bakery/whoami:%d", i)})
 	}
@@ -33,7 +33,7 @@ func TestPruneImagesKeepsRetention(t *testing.T) {
 
 func TestPruneImagesPerServer(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	remote := &fakeRuntime{running: map[string]bool{}}
 	s.servers[7] = remote
 	for i := uint64(1); i <= 7; i++ {

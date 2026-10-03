@@ -122,7 +122,7 @@ func TestGitURLKinds(t *testing.T) {
 		got := ""
 		if err == nil {
 			got = "https"
-			if IsSSHSource(raw) {
+			if IsSSHRepository(raw) {
 				got = "ssh"
 			}
 		}
@@ -202,30 +202,30 @@ func TestCheckEnvironmentVariablesScope(t *testing.T) {
 }
 
 func TestBuildPacks(t *testing.T) {
-	img, err := ApplicationInput{Name: "who", BuildPack: Image, ImageReference: " docker.io/traefik/whoami:v1.10 ",
+	img, err := ApplicationInput{Name: "who", BuildPack: DockerImage, DockerImage: " docker.io/traefik/whoami:v1.10 ",
 		GitURL: "https://github.com/x/y", Port: 80}.Normalize()
 	if err != nil {
 		t.Fatalf("image: %v", err)
 	}
-	if img.ImageReference != "docker.io/traefik/whoami:v1.10" || img.GitURL != "" || img.GitBranch != "" || img.DockerfilePath != "" {
+	if img.DockerImage != "docker.io/traefik/whoami:v1.10" || img.GitURL != "" || img.GitBranch != "" || img.DockerfilePath != "" {
 		t.Errorf("image input not cleaned: %+v", img)
 	}
 	for _, ref := range []string{"localhost/app:1", "127.0.0.1:4950/me/app:1", "ghcr.io/me/app@sha256:abc"} {
-		if _, err := (ApplicationInput{Name: "x", BuildPack: Image, ImageReference: ref, Port: 80}).Normalize(); err != nil {
+		if _, err := (ApplicationInput{Name: "x", BuildPack: DockerImage, DockerImage: ref, Port: 80}).Normalize(); err != nil {
 			t.Errorf("%s: %v", ref, err)
 		}
 	}
 	for _, ref := range []string{"", "nginx", "nginx:1.27", "library/nginx", "-x/y", "docker.io/a b"} {
-		if _, err := (ApplicationInput{Name: "x", BuildPack: Image, ImageReference: ref, Port: 80}).Normalize(); field(err) != "image_reference" {
-			t.Errorf("%q: err = %v, want image_reference", ref, err)
+		if _, err := (ApplicationInput{Name: "x", BuildPack: DockerImage, DockerImage: ref, Port: 80}).Normalize(); field(err) != "docker_image" {
+			t.Errorf("%q: err = %v, want docker_image", ref, err)
 		}
 	}
 
-	st, err := ApplicationInput{Name: "site", BuildPack: Static, GitURL: "https://github.com/x/y", Port: 3000, ImageReference: "docker.io/x/y"}.Normalize()
+	st, err := ApplicationInput{Name: "site", BuildPack: Static, GitURL: "https://github.com/x/y", Port: 3000, DockerImage: "docker.io/x/y"}.Normalize()
 	if err != nil {
 		t.Fatalf("static: %v", err)
 	}
-	if st.Port != StaticPort || st.PublishDirectory != "." || st.ImageReference != "" {
+	if st.Port != StaticPort || st.PublishDirectory != "." || st.DockerImage != "" {
 		t.Errorf("static defaults: %+v", st)
 	}
 	for _, dir := range []string{"../x", "/srv", "a/../../b"} {
@@ -247,7 +247,7 @@ func TestBuildPacks(t *testing.T) {
 }
 
 func TestRegistryCredentials(t *testing.T) {
-	base := ApplicationInput{Name: "x", BuildPack: Image, ImageReference: "ghcr.io/me/app:1", Port: 80}
+	base := ApplicationInput{Name: "x", BuildPack: DockerImage, DockerImage: "ghcr.io/me/app:1", Port: 80}
 	with := func(u, p string) ApplicationInput {
 		in := base
 		in.RegistryCredentials = &RegistryCredentials{Username: u, Password: p}

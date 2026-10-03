@@ -81,7 +81,7 @@ func applications(ctx context.Context, id uint64) (app.Application, error) {
 		storages[i] = app.Storage(st)
 	}
 	return app.Application{
-		ID: s.ID, Slug: s.Slug, BuildPack: s.BuildPack, ImageReference: s.ImageReference, PublishDirectory: s.PublishDirectory,
+		ID: s.ID, Slug: s.Slug, BuildPack: s.BuildPack, DockerImage: s.DockerImage, PublishDirectory: s.PublishDirectory,
 		RegistryUsername: s.RegistryUsername, RegistryPassword: s.RegistryPassword,
 		GitURL: s.GitURL, GitBranch: s.GitBranch,
 		ServerID: s.ServerID, DockerfilePath: s.DockerfilePath, Port: s.Port, Domains: s.Domains, BuildVariables: s.BuildVariables, RuntimeVariables: s.RuntimeVariables, DeployKey: s.DeployKey,

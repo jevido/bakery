@@ -67,21 +67,21 @@ func (m *memPreviews) DeleteForApplication(_ context.Context, applicationID uint
 	return nil
 }
 
-// recordingSource remembers the branch each clone asked for.
-type recordingSource struct {
-	fakeSource
+// recordingCloner remembers the branch each clone asked for.
+type recordingCloner struct {
+	fakeCloner
 	branches *[]string
 }
 
-func (r recordingSource) Clone(ctx context.Context, req CloneRequest, out func(string, string)) (Commit, error) {
+func (r recordingCloner) Clone(ctx context.Context, req CloneRequest, out func(string, string)) (Commit, error) {
 	*r.branches = append(*r.branches, req.Branch)
-	return r.fakeSource.Clone(ctx, req, out)
+	return r.fakeCloner.Clone(ctx, req, out)
 }
 
 func TestPreviewDeploymentRunsBesideTheApplication(t *testing.T) {
 	ctx := context.Background()
 	var branches []string
-	s := newSetup(t, recordingSource{branches: &branches})
+	s := newSetup(t, recordingCloner{branches: &branches})
 	s.app = func(a *Application) { a.Storages = []Storage{{Name: "data", MountPath: "/data"}} }
 	s.runtime.running["bakery-app-1-0"] = true // production
 	s.previews.Save(ctx, domain.Preview{ApplicationID: 1, Number: 7, Branch: "feature", State: domain.PreviewOpen})
@@ -144,7 +144,7 @@ func TestPreviewDeploymentRunsBesideTheApplication(t *testing.T) {
 
 func TestClosedPreviewFailsItsDeployment(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	s.previews.Save(ctx, domain.Preview{ApplicationID: 1, Number: 3, Branch: "x", State: domain.PreviewOpen})
 	d, err := s.service.DeployPreview(ctx, 1, 3, domain.TriggerWebhook)
 	if err != nil {
@@ -171,8 +171,8 @@ func TestClosedPreviewFailsItsDeployment(t *testing.T) {
 
 func TestImageApplicationsHaveNoPreviews(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
-	s.app = func(a *Application) { a.BuildPack = BuildPackImage }
+	s := newSetup(t, fakeCloner{})
+	s.app = func(a *Application) { a.BuildPack = BuildPackDockerImage }
 	s.previews.Save(ctx, domain.Preview{ApplicationID: 1, Number: 3, Branch: "x", State: domain.PreviewOpen})
 	if _, err := s.service.DeployPreview(ctx, 1, 3, domain.TriggerManual); !errors.Is(err, ErrNoPreviews) {
 		t.Fatalf("preview of an image application: %v", err)
@@ -181,7 +181,7 @@ func TestImageApplicationsHaveNoPreviews(t *testing.T) {
 
 func TestClosePreviewRemovesWhatItRan(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	var dropped []int
 	s.service.DropPreviewRoute = func(_ context.Context, _ uint64, n int) error {
 		dropped = append(dropped, n)
@@ -249,7 +249,7 @@ func (f *fakeComments) Edit(_ context.Context, t CommentTarget, token, id, body 
 
 func TestPreviewComment(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	hooks := memWebhooks{1: {ApplicationID: 1, Secret: "s", Previews: true, GitHostToken: "tok"}}
 	comments := &fakeComments{}
 	s.service.Comments = NewCommenter(hooks, s.previews, comments)
@@ -294,7 +294,7 @@ func TestPreviewComment(t *testing.T) {
 
 func TestPreviewCommentFailureKeepsTheDeployment(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	s.service.Comments = NewCommenter(memWebhooks{1: {ApplicationID: 1, Secret: "s", GitHostToken: "tok"}}, s.previews, &fakeComments{fail: true})
 	s.previews.Save(ctx, domain.Preview{ApplicationID: 1, Number: 7, Branch: "f", State: domain.PreviewOpen, Provider: domain.Forgejo, API: "http://git"})
 	d, _ := s.service.DeployPreview(ctx, 1, 7, domain.TriggerWebhook)
@@ -305,7 +305,7 @@ func TestPreviewCommentFailureKeepsTheDeployment(t *testing.T) {
 	}
 
 	// Without a Git host token nothing is posted or logged.
-	s2 := newSetup(t, fakeSource{})
+	s2 := newSetup(t, fakeCloner{})
 	comments := &fakeComments{}
 	s2.service.Comments = NewCommenter(memWebhooks{1: {ApplicationID: 1, Secret: "s"}}, s2.previews, comments)
 	s2.previews.Save(ctx, domain.Preview{ApplicationID: 1, Number: 7, Branch: "f", State: domain.PreviewOpen, API: "http://git"})

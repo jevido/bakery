@@ -24,7 +24,7 @@
   const start = untrack(() => initial) ?? {
     name: '',
     build_pack: 'dockerfile' as BuildPack,
-    image_reference: '',
+    docker_image: '',
     publish_directory: '.',
     git_url: '',
     git_branch: 'main',
@@ -36,16 +36,16 @@
     { value: 'dockerfile', label: 'Dockerfile', hint: 'Build the Dockerfile in the repository.' },
     { value: 'nixpacks', label: 'Nixpacks', hint: 'Nixpacks detects the language and builds it; no Dockerfile needed.' },
     { value: 'static', label: 'Static site', hint: 'Serve a directory of the repository as files, on port 80.' },
-    { value: 'image', label: 'Image', hint: 'Run a prebuilt image from a registry; nothing is cloned or built.' },
+    { value: 'dockerimage', label: 'Docker Image', hint: 'Run a prebuilt Docker image from a registry; nothing is cloned or built.' },
   ]
   let name = $state(start.name)
   let build_pack = $state<BuildPack>(start.build_pack || 'dockerfile')
-  let image_reference = $state(start.image_reference ?? '')
+  let docker_image = $state(start.docker_image ?? '')
   let publish_directory = $state(start.publish_directory || '.')
   let registryUsername = $state(untrack(() => initial?.registry_username) ?? '')
   let registryPassword = $state('')
   const hadPassword = untrack(() => initial?.has_registry_password) ?? false
-  const fromGit = $derived(build_pack !== 'image')
+  const fromGit = $derived(build_pack !== 'dockerimage')
   let git_url = $state(start.git_url)
   let git_branch = $state(start.git_branch || 'main')
   let dockerfile_path = $state(start.dockerfile_path || 'Dockerfile')
@@ -102,7 +102,7 @@
       const input: ApplicationInput = {
         name,
         build_pack,
-        image_reference,
+        docker_image,
         publish_directory,
         git_url,
         git_branch,
@@ -119,7 +119,7 @@
         },
       }
       if (creating && server_id !== 0) input.server_id = server_id
-      if (build_pack === 'image') input.registry_credentials = { username: registryUsername, password: registryPassword }
+      if (build_pack === 'dockerimage') input.registry_credentials = { username: registryUsername, password: registryPassword }
       await onsubmit(input)
       registryPassword = ''
     } catch (err) {
@@ -197,9 +197,9 @@
     </div>
   {:else}
     <Field
-      label="Image reference"
-      bind:value={image_reference}
-      error={errors.image_reference}
+      label="Docker Image"
+      bind:value={docker_image}
+      error={errors.docker_image}
       placeholder="docker.io/traefik/whoami:v1.10"
       required
     />

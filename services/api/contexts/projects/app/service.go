@@ -102,11 +102,11 @@ func NewService(store Store, newDeployKey NewDeployKey, domainSuffix, reservedDo
 	return &Service{store: store, newDeployKey: newDeployKey, domainSuffix: domainSuffix, reservedDomain: strings.ToLower(reservedDomain)}
 }
 
-// keepDeployKey gives an SSH Source a Deploy key if it has none, and takes it
-// away from any other Source: an SSH Source always has one, an https Source
-// never carries an unused one.
+// keepDeployKey gives an SSH Git repository a Deploy key if it has none, and
+// takes it away from any other: an SSH Git repository always has one, an
+// https one never carries an unused one.
 func (s *Service) keepDeployKey(a *domain.Application) error {
-	if !domain.IsSSHSource(a.GitURL) {
+	if !domain.IsSSHRepository(a.GitURL) {
 		a.DeployKey = domain.DeployKey{}
 		return nil
 	}
@@ -235,7 +235,7 @@ func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, i
 		Name:             in.Name,
 		Slug:             slug,
 		BuildPack:        in.BuildPack,
-		ImageReference:   in.ImageReference,
+		DockerImage:      in.DockerImage,
 		PublishDirectory: in.PublishDirectory,
 		GitURL:           in.GitURL,
 		GitBranch:        in.GitBranch,
@@ -342,7 +342,7 @@ func (s *Service) UpdateApplication(ctx context.Context, id uint64, in domain.Ap
 	if err != nil {
 		return domain.Application{}, err
 	}
-	a.BuildPack, a.ImageReference, a.PublishDirectory = in.BuildPack, in.ImageReference, in.PublishDirectory
+	a.BuildPack, a.DockerImage, a.PublishDirectory = in.BuildPack, in.DockerImage, in.PublishDirectory
 	if in.RegistryCredentials != nil {
 		a.RegistryCredentials = *in.RegistryCredentials
 	}
@@ -385,7 +385,7 @@ func (s *Service) RegenerateDeployKey(ctx context.Context, id uint64) (domain.Ap
 	if err != nil {
 		return domain.Application{}, err
 	}
-	if !domain.IsSSHSource(a.GitURL) {
+	if !domain.IsSSHRepository(a.GitURL) {
 		return domain.Application{}, &domain.FieldError{Field: "git_url", Message: "only an application with an SSH git URL has a deploy key"}
 	}
 	a.DeployKey = domain.DeployKey{}

@@ -122,13 +122,13 @@ func (l *memLogs) After(context.Context, uint64, uint64, int) ([]domain.LogLine,
 }
 func (l *memLogs) text() string { return strings.Join(l.lines, "\n") }
 
-type fakeSource struct {
+type fakeCloner struct {
 	noDockerfile, fail bool
 	// files are written into the clone, by slash path.
 	files map[string]string
 }
 
-func (f fakeSource) Clone(_ context.Context, req CloneRequest, out func(string, string)) (Commit, error) {
+func (f fakeCloner) Clone(_ context.Context, req CloneRequest, out func(string, string)) (Commit, error) {
 	dir := req.Dir
 	if f.fail {
 		return Commit{}, errors.New("Remote branch nope not found")
@@ -273,7 +273,7 @@ type setup struct {
 	app func(*Application)
 }
 
-func newSetup(t *testing.T, src Source, check ...HealthCheck) *setup {
+func newSetup(t *testing.T, src Cloner, check ...HealthCheck) *setup {
 	s := &setup{store: &memStore{}, logs: &memLogs{}, runtime: &fakeRuntime{running: map[string]bool{}}, routes: map[string]string{}, servers: map[uint64]*fakeRuntime{}, routedOn: map[string]uint64{}}
 	s.servers[0] = s.runtime
 	apps := func(_ context.Context, id uint64) (Application, error) {
@@ -316,7 +316,7 @@ func newSetup(t *testing.T, src Source, check ...HealthCheck) *setup {
 
 func TestDeploySucceedsAndReplacesOldContainer(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	s.runtime.running["bakery-app-1-0"] = true // a previous deployment
 
 	d, err := s.service.Deploy(ctx, 1)
@@ -372,12 +372,12 @@ func statuses(ss []domain.Status) []string {
 
 func TestDeployFailures(t *testing.T) {
 	cases := map[string]struct {
-		src     fakeSource
+		src     fakeCloner
 		runtime func(*fakeRuntime)
 		want    string
 	}{
-		"clone":         {src: fakeSource{fail: true}, want: "clone failed: Remote branch nope not found"},
-		"no dockerfile": {src: fakeSource{noDockerfile: true}, want: "no Dockerfile in the repository at 0123456789ab"},
+		"clone":         {src: fakeCloner{fail: true}, want: "clone failed: Remote branch nope not found"},
+		"no dockerfile": {src: fakeCloner{noDockerfile: true}, want: "no Dockerfile in the repository at 0123456789ab"},
 		"build":         {runtime: func(r *fakeRuntime) { r.buildErr = errors.New("exit status 1") }, want: "build failed: exit status 1"},
 		"start":         {runtime: func(r *fakeRuntime) { r.startErr = errors.New("exited with code 1") }, want: "container did not start: exited with code 1"},
 	}
@@ -407,7 +407,7 @@ func TestDeployFailures(t *testing.T) {
 
 func TestDeployQueuesBehindARunningDeployment(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	first, _ := s.service.Deploy(ctx, 1)
 	if _, found, _ := s.store.ClaimNext(ctx); !found {
 		t.Fatal("first not claimed")
@@ -438,7 +438,7 @@ var check = HealthCheck{Enabled: true, Path: "/health", Interval: 1, Timeout: 1,
 
 func TestDeployWaitsUntilHealthy(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{}, check)
+	s := newSetup(t, fakeCloner{}, check)
 	s.runtime.running["bakery-app-1-0"] = true
 	s.runtime.probes = []probe{{detail: "curl: (7) Failed to connect"}, {detail: "HTTP 503"}, {ok: true}}
 	d, _ := s.service.Deploy(ctx, 1)
@@ -465,7 +465,7 @@ func TestDeployWaitsUntilHealthy(t *testing.T) {
 
 func TestDeployWithoutHealthCheckSettles(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	s.service.Deploy(ctx, 1)
 	s.worker.RunOnce(ctx)
 	if !s.runtime.specs[0].Settle || len(s.runtime.probed) != 0 {
@@ -485,7 +485,7 @@ func TestDeployUnhealthyKeepsTheOldContainer(t *testing.T) {
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
-			s := newSetup(t, fakeSource{}, check)
+			s := newSetup(t, fakeCloner{}, check)
 			s.runtime.running["bakery-app-1-0"] = true
 			s.runtime.probes = c.probes
 			d, _ := s.service.Deploy(ctx, 1)
@@ -509,7 +509,7 @@ func TestDeployUnhealthyKeepsTheOldContainer(t *testing.T) {
 
 func TestCancelQueued(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	d, _ := s.service.Deploy(ctx, 1)
 	got, err := s.service.Cancel(ctx, d.ID)
 	if err != nil || got.Status != domain.Cancelled {
@@ -525,7 +525,7 @@ func TestCancelQueued(t *testing.T) {
 
 func TestCancelRunning(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	s.runtime.running["bakery-app-1-0"] = true
 	s.runtime.building = make(chan struct{})
 	d, _ := s.service.Deploy(ctx, 1)
@@ -558,21 +558,21 @@ func TestCancelRunning(t *testing.T) {
 	}
 }
 
-type countingSource struct {
-	fakeSource
+type countingCloner struct {
+	fakeCloner
 	clones *int
 }
 
-func (c countingSource) Clone(ctx context.Context, req CloneRequest, out func(string, string)) (Commit, error) {
+func (c countingCloner) Clone(ctx context.Context, req CloneRequest, out func(string, string)) (Commit, error) {
 	*c.clones++
-	return c.fakeSource.Clone(ctx, req, out)
+	return c.fakeCloner.Clone(ctx, req, out)
 }
 
 func TestRollback(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	clones := 0
-	s.worker.source = countingSource{clones: &clones}
+	s.worker.cloner = countingCloner{clones: &clones}
 	first, _ := s.service.Deploy(ctx, 1)
 	s.worker.RunOnce(ctx)
 	s.service.Deploy(ctx, 1)
@@ -609,7 +609,7 @@ func TestRollback(t *testing.T) {
 
 func TestRollbackRefused(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	ok, _ := s.service.Deploy(ctx, 1)
 	s.worker.RunOnce(ctx)
 	s.runtime.buildErr = errors.New("boom")
@@ -626,14 +626,14 @@ func TestRollbackRefused(t *testing.T) {
 }
 
 func imageApp(a *Application) {
-	a.BuildPack, a.ImageReference = BuildPackImage, "docker.io/traefik/whoami:v1.10"
+	a.BuildPack, a.DockerImage = BuildPackDockerImage, "docker.io/traefik/whoami:v1.10"
 	a.GitURL, a.GitBranch, a.DockerfilePath = "", "", ""
 	a.RegistryUsername, a.RegistryPassword = "me", "s3cret"
 }
 
 func TestImageBuildPackPullsInsteadOfBuilding(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{fail: true}) // a clone would fail
+	s := newSetup(t, fakeCloner{fail: true}) // a clone would fail
 	s.app = imageApp
 	d, _ := s.service.Deploy(ctx, 1)
 	s.worker.RunOnce(ctx)
@@ -670,7 +670,7 @@ func TestImageBuildPackPullsInsteadOfBuilding(t *testing.T) {
 
 func TestImageBuildPackPullFailure(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	s.app = imageApp
 	s.runtime.pullErr = errors.New("unauthorized: authentication required")
 	d, _ := s.service.Deploy(ctx, 1)
@@ -686,7 +686,7 @@ func TestImageBuildPackPullFailure(t *testing.T) {
 
 func TestStaticBuildPack(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{noDockerfile: true, files: map[string]string{"public/index.html": "<h1>hi</h1>"}})
+	s := newSetup(t, fakeCloner{noDockerfile: true, files: map[string]string{"public/index.html": "<h1>hi</h1>"}})
 	var generated string
 	s.app = func(a *Application) { a.BuildPack, a.PublishDirectory, a.Port = BuildPackStatic, "public", 80 }
 	d, _ := s.service.Deploy(ctx, 1)
@@ -732,7 +732,7 @@ func (p *fakePlanner) Plan(_ context.Context, dir string, env map[string]string,
 
 func TestNixpacksBuildPack(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{noDockerfile: true})
+	s := newSetup(t, fakeCloner{noDockerfile: true})
 	s.app = func(a *Application) { a.BuildPack = BuildPackNixpacks }
 	d, _ := s.service.Deploy(ctx, 1)
 	s.worker.RunOnce(ctx)
@@ -765,7 +765,7 @@ func TestNixpacksBuildPack(t *testing.T) {
 
 func TestDeployMountsPersistentStorage(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	s.app = func(a *Application) { a.Storages = []Storage{{Name: "data", MountPath: "/data"}} }
 	if _, err := s.service.Deploy(ctx, 1); err != nil {
 		t.Fatal(err)
@@ -781,7 +781,7 @@ func TestDeployMountsPersistentStorage(t *testing.T) {
 
 func TestDeployAppliesResourceLimits(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	s.app = func(a *Application) { a.MemoryMB, a.CPUs = 256, 0.5 }
 	if _, err := s.service.Deploy(ctx, 1); err != nil {
 		t.Fatal(err)
@@ -797,7 +797,7 @@ func TestDeployAppliesResourceLimits(t *testing.T) {
 
 func TestDeployOnTargetServer(t *testing.T) {
 	ctx := context.Background()
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	remote := &fakeRuntime{running: map[string]bool{}}
 	s.servers[7] = remote
 	s.app = func(a *Application) { a.ServerID = 7 }
@@ -851,7 +851,7 @@ func TestFinishedHearsFinishedAndFailedNotCancelled(t *testing.T) {
 		return &got
 	}
 
-	s := newSetup(t, fakeSource{})
+	s := newSetup(t, fakeCloner{})
 	got := listen(s)
 	_, _ = s.service.Deploy(ctx, 1)
 	s.worker.RunOnce(ctx)
@@ -863,7 +863,7 @@ func TestFinishedHearsFinishedAndFailedNotCancelled(t *testing.T) {
 		t.Fatalf("heard %+v, want %+v", *got, want)
 	}
 
-	c := newSetup(t, fakeSource{})
+	c := newSetup(t, fakeCloner{})
 	got = listen(c)
 	c.runtime.building = make(chan struct{})
 	d, _ := c.service.Deploy(ctx, 1)

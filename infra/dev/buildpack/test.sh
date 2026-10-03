@@ -49,7 +49,7 @@ wait_for 900 "the nixpacks deployment" deployment_done
 
 # Not Docker Hub: it rate limits pulls, and every image deploy pulls.
 say "Image: a public image"
-new_app "{\"name\":\"$RUN-public\",\"build_pack\":\"image\",\"image_reference\":\"ghcr.io/traefik/whoami:v1.10\",\"port\":80}"
+new_app "{\"name\":\"$RUN-public\",\"build_pack\":\"dockerimage\",\"docker_image\":\"ghcr.io/traefik/whoami:v1.10\",\"port\":80}"
 bakery POST "/api/applications/$APP_ID/deploy" >/dev/null
 wait_for 300 "the public image deployment" deployment_done
 grep -q '^Hostname:' <<<"$(fetch / || true)" || fail "whoami answers: $(fetch / || true)"
@@ -61,12 +61,12 @@ forgejo PATCH "/admin/users/$FORGEJO_USER" "{\"login_name\":\"$FORGEJO_USER\",\"
 podman pull -q ghcr.io/traefik/whoami:v1.10 >/dev/null
 podman tag ghcr.io/traefik/whoami:v1.10 "$REGISTRY_IMAGE:1"
 podman push -q --tls-verify=false --creds "$FORGEJO_USER:$TOKEN" "$REGISTRY_IMAGE:1"
-new_app "{\"name\":\"$RUN-private\",\"build_pack\":\"image\",\"image_reference\":\"$REGISTRY_IMAGE:1\",\"port\":80}"
+new_app "{\"name\":\"$RUN-private\",\"build_pack\":\"dockerimage\",\"docker_image\":\"$REGISTRY_IMAGE:1\",\"port\":80}"
 bakery POST "/api/applications/$APP_ID/deploy" >/dev/null
 failed() { [ "$(latest "['status']")" = failed ]; }
 wait_for 120 "the deployment without credentials to fail" failed
 grep -qiE 'unauthori[sz]ed|authentication' <<<"$(latest "['error']")" || fail "error without credentials: $(latest "['error']")"
-bakery PATCH "/api/applications/$APP_ID" "{\"name\":\"$RUN-private\",\"image_reference\":\"$REGISTRY_IMAGE:1\",\"port\":80,\"registry_credentials\":{\"username\":\"$FORGEJO_USER\",\"password\":\"$TOKEN\"}}" >/dev/null
+bakery PATCH "/api/applications/$APP_ID" "{\"name\":\"$RUN-private\",\"docker_image\":\"$REGISTRY_IMAGE:1\",\"port\":80,\"registry_credentials\":{\"username\":\"$FORGEJO_USER\",\"password\":\"$TOKEN\"}}" >/dev/null
 FIRST=$(bakery POST "/api/applications/$APP_ID/deploy" | json "d['deployment']['id']")
 wait_for 120 "the deployment with credentials" deployment_done
 grep -q '^Hostname:' <<<"$(fetch / || true)" || fail "private whoami answers: $(fetch / || true)"

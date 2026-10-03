@@ -134,8 +134,8 @@ func (w *Webhooks) ReceivePush(ctx context.Context, applicationID uint64, header
 	if !domain.IsPush(provider, event) {
 		return PushOutcome{Ignored: fmt.Sprintf("%s event", event)}, nil
 	}
-	if app.BuildPack == BuildPackImage {
-		return PushOutcome{Ignored: "image applications are not built from git"}, nil
+	if app.BuildPack == BuildPackDockerImage {
+		return PushOutcome{Ignored: "dockerimage applications are not built from git"}, nil
 	}
 	if !hook.AutoDeploy {
 		return PushOutcome{Ignored: "auto-deploy is off"}, nil
@@ -167,8 +167,8 @@ func (w *Webhooks) receivePullRequest(ctx context.Context, hook domain.Webhook, 
 	switch {
 	case !hook.Previews:
 		return PushOutcome{Ignored: "previews are off"}, nil
-	case app.BuildPack == BuildPackImage:
-		return PushOutcome{Ignored: "image applications have no previews"}, nil
+	case app.BuildPack == BuildPackDockerImage:
+		return PushOutcome{Ignored: "dockerimage applications have no previews"}, nil
 	case pr.Action == "":
 		return PushOutcome{Ignored: fmt.Sprintf("nothing to do for pull request #%d", pr.Number)}, nil
 	case !pr.SameRepo:

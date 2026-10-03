@@ -17,9 +17,9 @@ var (
 	ErrNotCancellable = errors.New("deployment can no longer be cancelled")
 	// ErrImageGone is a Rollback to a Deployment whose Image was removed.
 	ErrImageGone = errors.New("the image of that deployment is gone")
-	// ErrNoPreviews is a Preview of an image Application, which has no
+	// ErrNoPreviews is a Preview of a dockerimage Application, which has no
 	// branches to preview.
-	ErrNoPreviews = errors.New("image applications have no previews")
+	ErrNoPreviews = errors.New("dockerimage applications have no previews")
 )
 
 // Store keeps Deployments.
@@ -84,9 +84,9 @@ type Application struct {
 	Slug string
 	// BuildPack is one of the BuildPack* constants.
 	BuildPack string
-	// ImageReference is what the image pack pulls; it has no Source.
-	ImageReference string
-	// RegistryUsername and RegistryPassword pull ImageReference; both empty
+	// DockerImage is what the dockerimage pack pulls; it has no Git repository.
+	DockerImage string
+	// RegistryUsername and RegistryPassword pull DockerImage; both empty
 	// is anonymous.
 	RegistryUsername string
 	RegistryPassword string
@@ -102,7 +102,7 @@ type Application struct {
 	// Container.
 	BuildVariables   map[string]string
 	RuntimeVariables map[string]string
-	// DeployKey is the private key an SSH Source is cloned with; empty for
+	// DeployKey is the private key an SSH Git repository is cloned with; empty for
 	// https.
 	DeployKey   string
 	HealthCheck HealthCheck
@@ -123,10 +123,10 @@ type Storage struct {
 
 // Build packs, as projects names them.
 const (
-	BuildPackDockerfile = "dockerfile"
-	BuildPackNixpacks   = "nixpacks"
-	BuildPackStatic     = "static"
-	BuildPackImage      = "image"
+	BuildPackDockerfile  = "dockerfile"
+	BuildPackNixpacks    = "nixpacks"
+	BuildPackStatic      = "static"
+	BuildPackDockerImage = "dockerimage"
 )
 
 // HealthCheck is how the new Container is probed before the Route moves to
@@ -159,8 +159,8 @@ type CloneRequest struct {
 	DeployKey string
 }
 
-// Source fetches an Application's code.
-type Source interface {
+// Cloner fetches an Application's code from its Git repository.
+type Cloner interface {
 	// Clone checks the branch out into Dir (which must not exist) and
 	// returns the commit.
 	Clone(ctx context.Context, req CloneRequest, out func(stream, line string)) (Commit, error)

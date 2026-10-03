@@ -4,10 +4,10 @@ export const packLabel: Record<BuildPack, string> = {
   dockerfile: 'Dockerfile',
   nixpacks: 'Nixpacks',
   static: 'Static site',
-  image: 'Image',
+  dockerimage: 'Docker Image',
 }
 
-/** Where an application comes from, in one line. */
+/** What the Source tab shows, in one line: the Git repository and branch, or the Docker image. */
 export function sourceLine(a: Application): string {
-  return a.build_pack === 'image' ? a.image_reference : `${a.git_url} @ ${a.git_branch}`
+  return a.build_pack === 'dockerimage' ? a.docker_image : `${a.git_url} @ ${a.git_branch}`
 }

@@ -57,14 +57,14 @@ func NewProject(name, description string) (Project, error) {
 type BuildPack string
 
 const (
-	// Dockerfile builds the Dockerfile at a path in the Source.
+	// Dockerfile builds the Dockerfile at a path in the Git repository.
 	Dockerfile BuildPack = "dockerfile"
-	// Nixpacks lets Nixpacks write the Dockerfile for the Source.
+	// Nixpacks lets Nixpacks write the Dockerfile for the Git repository.
 	Nixpacks BuildPack = "nixpacks"
-	// Static serves the Publish directory of the Source on port 80.
+	// Static serves the Publish directory of the Git repository on port 80.
 	Static BuildPack = "static"
-	// Image pulls the Image reference; there is no Source.
-	Image BuildPack = "image"
+	// DockerImage pulls the Docker image; there is no Git repository.
+	DockerImage BuildPack = "dockerimage"
 )
 
 // StaticPort is the port every static Application listens on.
@@ -72,7 +72,7 @@ const StaticPort = 80
 
 func (b BuildPack) Valid() bool {
 	switch b {
-	case Dockerfile, Nixpacks, Static, Image:
+	case Dockerfile, Nixpacks, Static, DockerImage:
 		return true
 	}
 	return false
@@ -85,9 +85,9 @@ type Application struct {
 	Name          string
 	Slug          string
 	BuildPack     BuildPack
-	// ImageReference is set exactly when BuildPack is Image; the Source
-	// fields are then empty.
-	ImageReference   string
+	// DockerImage is set exactly when BuildPack is DockerImage; the Git
+	// repository fields are then empty.
+	DockerImage      string
 	PublishDirectory string
 	GitURL           string
 	GitBranch        string
@@ -95,9 +95,9 @@ type Application struct {
 	Port             int
 	// Domains are 1 to MaxDomains hostnames; the first is the primary one.
 	Domains []string
-	// DeployKey is set exactly when the Source is SSH.
+	// DeployKey is set exactly when the Git repository is SSH.
 	DeployKey DeployKey
-	// RegistryCredentials are only set for the image pack. Password is
+	// RegistryCredentials are only set for the dockerimage pack. Password is
 	// empty unless the Application was read for a Deployment.
 	RegistryCredentials RegistryCredentials
 	HealthCheck         HealthCheck
@@ -221,7 +221,7 @@ func (h HealthCheck) Normalize() (HealthCheck, error) {
 	return h, nil
 }
 
-// RegistryCredentials are what an image Application pulls with. Both
+// RegistryCredentials are what a dockerimage Application pulls with. Both
 // empty means anonymous.
 type RegistryCredentials struct {
 	Username string
@@ -241,7 +241,7 @@ type DeployKey struct {
 type ApplicationInput struct {
 	Name             string
 	BuildPack        BuildPack
-	ImageReference   string
+	DockerImage      string
 	PublishDirectory string
 	GitURL           string
 	GitBranch        string
@@ -281,15 +281,15 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 	in.GitURL = strings.TrimSpace(in.GitURL)
 	in.GitBranch = strings.TrimSpace(in.GitBranch)
 	in.DockerfilePath = strings.TrimSpace(in.DockerfilePath)
-	in.ImageReference = strings.TrimSpace(in.ImageReference)
+	in.DockerImage = strings.TrimSpace(in.DockerImage)
 	in.PublishDirectory = strings.TrimSpace(in.PublishDirectory)
 	if in.BuildPack == "" {
 		in.BuildPack = Dockerfile
 	}
-	if in.BuildPack == Image {
+	if in.BuildPack == DockerImage {
 		in.GitURL, in.GitBranch, in.DockerfilePath = "", "", ""
 	} else {
-		in.ImageReference = ""
+		in.DockerImage = ""
 		if in.GitBranch == "" {
 			in.GitBranch = "main"
 		}
@@ -316,10 +316,10 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 		return in, invalid("name", "name needs at least one letter or digit")
 	}
 	if !in.BuildPack.Valid() {
-		return in, invalid("build_pack", "build pack must be dockerfile, nixpacks, static or image")
+		return in, invalid("build_pack", "build pack must be dockerfile, nixpacks, static or dockerimage")
 	}
-	if in.BuildPack == Image {
-		if err := checkImageReference(in.ImageReference); err != nil {
+	if in.BuildPack == DockerImage {
+		if err := checkDockerImage(in.DockerImage); err != nil {
 			return in, err
 		}
 	} else {
@@ -340,7 +340,7 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 		}
 		in.RegistryCredentials = &c
 	}
-	if in.BuildPack != Image {
+	if in.BuildPack != DockerImage {
 		in.RegistryCredentials = &RegistryCredentials{}
 	} else if c := in.RegistryCredentials; c != nil {
 		switch {
@@ -430,7 +430,7 @@ func checkGitURL(raw string) error {
 	if raw == "" {
 		return invalid("git_url", "git URL is required")
 	}
-	if IsSSHSource(raw) {
+	if IsSSHRepository(raw) {
 		return nil
 	}
 	u, err := url.Parse(raw)
@@ -440,10 +440,10 @@ func checkGitURL(raw string) error {
 	return nil
 }
 
-// IsSSHSource reports whether raw is an SSH git URL: ssh://user@host[:port]/path
+// IsSSHRepository reports whether raw is an SSH git URL: ssh://user@host[:port]/path
 // or user@host:path. The user is required and no part may start with "-", so
 // neither can be read as an ssh option.
-func IsSSHSource(raw string) bool {
+func IsSSHRepository(raw string) bool {
 	if strings.HasPrefix(raw, "ssh://") {
 		u, err := url.Parse(raw)
 		if err != nil || u.User == nil || u.User.Username() == "" || strings.HasPrefix(u.User.Username(), "-") {
@@ -458,7 +458,7 @@ func IsSSHSource(raw string) bool {
 	return !strings.HasPrefix(raw, "-") && scpLikeURL.MatchString(raw)
 }
 
-// checkRepositoryPath keeps a path of the Source inside the clone.
+// checkRepositoryPath keeps a path of the Git repository inside the clone.
 func checkRepositoryPath(field, what, p string) error {
 	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "-") {
 		return invalid(field, "%s must be relative to the repository root", what)
@@ -474,21 +474,21 @@ func checkRepositoryPath(field, what, p string) error {
 	return nil
 }
 
-// checkImageReference asks for a reference that names its registry: a
+// checkDockerImage asks for a Docker image that names its registry: a
 // short name like nginx resolves differently per server (Podman's
 // unqualified-search-registries) and may prompt.
-func checkImageReference(ref string) error {
+func checkDockerImage(ref string) error {
 	switch {
 	case ref == "":
-		return invalid("image_reference", "image reference is required")
+		return invalid("docker_image", "docker image is required")
 	case len(ref) > 500:
-		return invalid("image_reference", "image reference is at most 500 characters")
+		return invalid("docker_image", "docker image is at most 500 characters")
 	case strings.HasPrefix(ref, "-") || strings.ContainsAny(ref, " \t\n\r\"'`$\\"):
-		return invalid("image_reference", "image reference must not contain spaces or quotes")
+		return invalid("docker_image", "docker image must not contain spaces or quotes")
 	}
 	host, _, found := strings.Cut(ref, "/")
 	if !found || (!strings.ContainsAny(host, ".:") && host != "localhost") {
-		return invalid("image_reference", "use a full reference like docker.io/library/nginx:1.27")
+		return invalid("docker_image", "use a full reference like docker.io/library/nginx:1.27")
 	}
 	return nil
 }

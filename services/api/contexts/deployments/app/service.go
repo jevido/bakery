@@ -65,7 +65,7 @@ func (s *Service) DeployPreview(ctx context.Context, applicationID uint64, numbe
 	if err != nil {
 		return domain.Deployment{}, err
 	}
-	if a.BuildPack == BuildPackImage {
+	if a.BuildPack == BuildPackDockerImage {
 		return domain.Deployment{}, ErrNoPreviews
 	}
 	p, found, err := s.previews.ByNumber(ctx, applicationID, number)

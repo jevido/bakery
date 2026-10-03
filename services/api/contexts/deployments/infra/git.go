@@ -17,8 +17,8 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/deployments/domain"
 )
 
-// Git clones with the git binary where the API runs. SSH Sources are cloned
-// with the Application's Deploy key and the Known hosts from KnownHosts.
+// Git clones with the git binary where the API runs. SSH Git repositories are
+// cloned with the Application's Deploy key and the Known hosts from KnownHosts.
 type Git struct {
 	KnownHosts app.KnownHosts
 }

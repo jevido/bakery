@@ -41,9 +41,12 @@ e2e_cleanup_hook() {
 	for id in $(bakery GET /api/invitations 2>/dev/null | json "' '.join(str(i['id']) for i in d['invitations'] if '$RUN' in i['email'])"); do
 		bakery DELETE "/api/invitations/$id" >/dev/null
 	done
-	curl -s "$MAILPIT/api/v1/messages?limit=500" | json "' '.join(m['ID'] for m in d['messages'] if any('$RUN' in t['Address'] for t in m['To']))" |
-		python3 -c "import json,sys; ids=sys.stdin.read().split(); print(json.dumps({'IDs': ids}))" |
-		curl -s -X DELETE -H 'Content-Type: application/json' -d @- "$MAILPIT/api/v1/messages" >/dev/null
+	# Only when Mailpit runs: the test fails early without it.
+	if curl -sf "$MAILPIT/api/v1/info" -o /dev/null; then
+		curl -s "$MAILPIT/api/v1/messages?limit=500" | json "' '.join(m['ID'] for m in d['messages'] if any('$RUN' in t['Address'] for t in m['To']))" |
+			python3 -c "import json,sys; ids=sys.stdin.read().split(); print(json.dumps({'IDs': ids}))" |
+			curl -s -X DELETE -H 'Content-Type: application/json' -d @- "$MAILPIT/api/v1/messages" >/dev/null
+	fi
 	[ -z "$STOPPED" ] || podman start "$STAND_IN" >/dev/null 2>&1
 	[ -z "$RECEIVER_PID" ] || kill "$RECEIVER_PID" 2>/dev/null
 	if [ -n "$RESTARTED" ]; then
@@ -129,7 +132,7 @@ say "A failed Deployment reaches every channel; a succeeded one only the channel
 PROJECT_ID=$(bakery POST /api/projects "{\"name\":\"$RUN\"}" | json "d['project']['id']")
 ENV_ID=$(bakery GET "/api/projects/$PROJECT_ID" | json "d['project']['environments'][0]['id']")
 APP_ID=$(bakery POST "/api/environments/$ENV_ID/applications" \
-	"{\"name\":\"$RUN\",\"build_pack\":\"image\",\"image_reference\":\"ghcr.io/jevido/bakery-e2e-does-not-exist:v0\",\"port\":80}" | json "d['application']['id']")
+	"{\"name\":\"$RUN\",\"build_pack\":\"dockerimage\",\"docker_image\":\"ghcr.io/jevido/bakery-e2e-does-not-exist:v0\",\"port\":80}" | json "d['application']['id']")
 APP_SLUG=$(bakery GET "/api/applications/$APP_ID" | json "d['application']['slug']")
 APPS+=("$APP_ID $APP_SLUG")
 bakery POST "/api/applications/$APP_ID/deploy" >/dev/null
@@ -141,7 +144,7 @@ done
 one "the webhook's failed deployment" "r['path']=='/hook/tok-$RUN' and json.loads(r['body'])['event']=='deployment_failed' and '$FAILED' == json.loads(r['body'])['title'] and json.loads(r['body'])['link'].endswith('/#/applications/$APP_ID')"
 one "ntfy marks a failure" "r['path']=='/ntfy/bakery' and r['headers'].get('title')=='$FAILED' and r['headers'].get('tags')=='warning'"
 
-bakery PATCH "/api/applications/$APP_ID" "{\"name\":\"$RUN\",\"image_reference\":\"ghcr.io/traefik/whoami:v1.10\",\"port\":80}" >/dev/null
+bakery PATCH "/api/applications/$APP_ID" "{\"name\":\"$RUN\",\"docker_image\":\"ghcr.io/traefik/whoami:v1.10\",\"port\":80}" >/dev/null
 bakery POST "/api/applications/$APP_ID/deploy" >/dev/null
 wait_for 180 "the deployment" deployment_done
 received 1 "r['path']=='/hook/tok-$RUN' and json.loads(r['body'])['event']=='deployment_succeeded'"
@@ -152,7 +155,7 @@ echo "ok: failures to all, success only to the webhook"
 say "A channel that cannot be reached fails after three attempts, the others are sent"
 channel "{\"name\":\"$RUN-closed\",\"kind\":\"webhook\",\"settings\":{\"url\":\"http://127.0.0.1:4989/closed\"},\"event_kinds\":[\"deployment_failed\"]}"
 CLOSED=$CHANNEL
-bakery PATCH "/api/applications/$APP_ID" "{\"name\":\"$RUN\",\"image_reference\":\"ghcr.io/jevido/bakery-e2e-does-not-exist:v0\",\"port\":80}" >/dev/null
+bakery PATCH "/api/applications/$APP_ID" "{\"name\":\"$RUN\",\"docker_image\":\"ghcr.io/jevido/bakery-e2e-does-not-exist:v0\",\"port\":80}" >/dev/null
 bakery POST "/api/applications/$APP_ID/deploy" >/dev/null
 closed_failed() { [ "$(bakery GET "/api/notification-channels/$CLOSED/deliveries" | json "d['deliveries'][0]['status'] if d['deliveries'] else ''")" = failed ]; }
 wait_for 150 "the delivery to the closed port to fail" closed_failed

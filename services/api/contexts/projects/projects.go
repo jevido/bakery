@@ -68,10 +68,10 @@ func Routes(r route.Router) {
 type ApplicationSnapshot struct {
 	ID   uint64
 	Slug string
-	// BuildPack is "dockerfile", "nixpacks", "static" or "image".
+	// BuildPack is "dockerfile", "nixpacks", "static" or "dockerimage".
 	BuildPack string
-	// ImageReference is set for the image pack, which has no Source.
-	ImageReference string
+	// DockerImage is set for the dockerimage pack, which has no Git repository.
+	DockerImage string
 	// RegistryUsername and RegistryPassword (decrypted) are what the image
 	// pack pulls with; both empty means anonymous.
 	RegistryUsername string
@@ -86,7 +86,7 @@ type ApplicationSnapshot struct {
 	BuildVariables   map[string]string
 	RuntimeVariables map[string]string
 	// DeployKey is the Deploy key's private half (OpenSSH PEM), empty for
-	// an https Source.
+	// an https Git repository.
 	DeployKey   string
 	HealthCheck HealthCheck
 	Storages    []Storage
@@ -138,7 +138,7 @@ func ApplicationForDeploy(ctx context.Context, id uint64) (ApplicationSnapshot, 
 		storages[i] = Storage(s)
 	}
 	return ApplicationSnapshot{
-		ID: a.ID, Slug: a.Slug, BuildPack: string(a.BuildPack), ImageReference: a.ImageReference, PublishDirectory: a.PublishDirectory,
+		ID: a.ID, Slug: a.Slug, BuildPack: string(a.BuildPack), DockerImage: a.DockerImage, PublishDirectory: a.PublishDirectory,
 		RegistryUsername: a.RegistryCredentials.Username, RegistryPassword: a.RegistryCredentials.Password,
 		GitURL: a.GitURL, GitBranch: a.GitBranch,
 		DockerfilePath: a.DockerfilePath, Port: a.Port, Domains: a.Domains, BuildVariables: build, RuntimeVariables: runtime, DeployKey: a.DeployKey.Private,

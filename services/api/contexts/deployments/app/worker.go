@@ -20,7 +20,7 @@ import (
 // Worker claims queued Deployments one at a time and runs them.
 type Worker struct {
 	service  *Service
-	source   Source
+	cloner   Cloner
 	runtimes Runtimes
 	router   Router
 	// PreviewRouter routes Preview Deployments; nil fails them.
@@ -56,11 +56,11 @@ func sleep(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func NewWorker(service *Service, source Source, runtimes Runtimes, router Router, workDir string) *Worker {
+func NewWorker(service *Service, cloner Cloner, runtimes Runtimes, router Router, workDir string) *Worker {
 	// Rollbacks and Image retention reach the Servers the same way.
 	service.runtimes = runtimes
 	return &Worker{
-		service: service, source: source, runtimes: runtimes, router: router, WorkDir: workDir,
+		service: service, cloner: cloner, runtimes: runtimes, router: router, WorkDir: workDir,
 		Timeout: 30 * time.Minute, Poll: 2 * time.Second, Log: func(string, ...any) {}, now: time.Now, sleep: sleep,
 	}
 }
@@ -164,7 +164,7 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, slug *string, 
 	*slug = app.Slug
 	branch := app.GitBranch
 	if d.Preview != 0 {
-		if app.BuildPack == BuildPackImage {
+		if app.BuildPack == BuildPackDockerImage {
 			return ErrNoPreviews
 		}
 		p, found, err := w.service.previews.ByNumber(ctx, d.ApplicationID, d.Preview)
@@ -205,7 +205,7 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, slug *string, 
 		return w.goLive(ctx, rt, d, app, info)
 	}
 
-	if app.BuildPack == BuildPackImage {
+	if app.BuildPack == BuildPackDockerImage {
 		return w.pull(ctx, rt, d, app, log, info)
 	}
 
@@ -222,7 +222,7 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, slug *string, 
 		return err
 	}
 	info("Cloning %s (branch %s)", app.GitURL, branch)
-	commit, err := w.source.Clone(ctx, CloneRequest{URL: app.GitURL, Branch: branch, Dir: dir, DeployKey: app.DeployKey}, log.Line)
+	commit, err := w.cloner.Clone(ctx, CloneRequest{URL: app.GitURL, Branch: branch, Dir: dir, DeployKey: app.DeployKey}, log.Line)
 	if err != nil {
 		return fmt.Errorf("clone failed: %w", err)
 	}
@@ -299,7 +299,7 @@ func StaticContainerfile(publish, self string) string {
 	return file + "EXPOSE 80\n" + `CMD ["caddy", "file-server", "--root", "/srv", "--listen", ":80"]` + "\n"
 }
 
-// pull gets an image Application's Image reference from its registry and
+// pull gets a dockerimage Application's Docker image from its registry and
 // tags it as the Deployment's Image; there is nothing to clone or build.
 func (w *Worker) pull(ctx context.Context, rt Runtime, d *domain.Deployment, app Application, log LogWriter, info func(string, ...any)) error {
 	if err := w.advance(ctx, d, domain.Building); err != nil {
@@ -307,12 +307,12 @@ func (w *Worker) pull(ctx context.Context, rt Runtime, d *domain.Deployment, app
 	}
 	d.Image = domain.ImageTag(app.Slug, d.ID)
 	if app.RegistryUsername != "" {
-		info("Pulling %s with registry credentials for %s", app.ImageReference, app.RegistryUsername)
+		info("Pulling %s with registry credentials for %s", app.DockerImage, app.RegistryUsername)
 	} else {
-		info("Pulling %s", app.ImageReference)
+		info("Pulling %s", app.DockerImage)
 	}
 	digest, err := rt.Pull(ctx, PullRequest{
-		Reference: app.ImageReference, Tag: d.Image, Username: app.RegistryUsername, Password: app.RegistryPassword,
+		Reference: app.DockerImage, Tag: d.Image, Username: app.RegistryUsername, Password: app.RegistryPassword,
 	}, func(line string) { log.Line(domain.StreamOut, line) })
 	if err != nil {
 		return fmt.Errorf("pull failed: %w", err)
