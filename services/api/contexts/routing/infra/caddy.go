@@ -107,7 +107,7 @@ func Render(routes []domain.Route, opts RenderOptions) ([]byte, error) {
 			"terminal": true,
 		})
 		// An explicit Domain of any Route wins over a counterpart.
-		for counterpart, target := range domain.Counterparts(r.Domains, r.Settings.WwwRedirect) {
+		for counterpart, target := range domain.Counterparts(r.Domains, r.Settings.Redirect) {
 			if !explicit[counterpart] {
 				redirects = append(redirects, counterpart)
 				redirectTo[counterpart] = target

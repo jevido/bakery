@@ -33,9 +33,9 @@ type PreviewRoute struct {
 }
 
 // Route is the Preview route in the shape Render takes: the Application's
-// Response headers and Basic auth, never a Www redirect, and Derived.
+// Response headers and Basic auth, never a Redirect, and Derived.
 func (r PreviewRoute) Route(settings RouteSettings) Route {
-	settings.WwwRedirect = WwwOff
+	settings.Redirect = Both
 	return Route{
 		ApplicationID: r.ApplicationID, ServerID: r.ServerID, Domains: r.Domains, Container: r.Container, Port: r.Port,
 		Settings: settings, Derived: true,

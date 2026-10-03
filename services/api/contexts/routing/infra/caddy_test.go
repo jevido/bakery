@@ -316,13 +316,13 @@ func TestRenderSeveralDomains(t *testing.T) {
 	}
 }
 
-func TestRenderWwwRedirect(t *testing.T) {
+func TestRenderRedirect(t *testing.T) {
 	raw, err := Render([]domain.Route{
 		{ApplicationID: 1, Domains: []string{"example.com"}, Container: "bakery-app-1-4", Port: 80,
-			Settings: domain.RouteSettings{WwwRedirect: domain.ToApex}},
+			Settings: domain.RouteSettings{Redirect: domain.NonWww}},
 		// Another Application owns www.other.com explicitly: no counterpart.
 		{ApplicationID: 2, Domains: []string{"other.com"}, Container: "bakery-app-2-1", Port: 80,
-			Settings: domain.RouteSettings{WwwRedirect: domain.ToApex}},
+			Settings: domain.RouteSettings{Redirect: domain.NonWww}},
 		{ApplicationID: 3, Domains: []string{"www.other.com"}, Container: "bakery-app-3-1", Port: 80},
 	}, RenderOptions{InternalTLS: true, HTTPSPort: 4943})
 	if err != nil {
@@ -409,7 +409,7 @@ func TestRenderServiceRoute(t *testing.T) {
 
 func TestRenderPreviewRoute(t *testing.T) {
 	settings := domain.RouteSettings{
-		ApplicationID: 1, WwwRedirect: domain.ToWww,
+		ApplicationID: 1, Redirect: domain.Www,
 		ResponseHeaders: []domain.ResponseHeader{{Name: "X-Frame-Options", Value: "DENY"}},
 		BasicAuth:       domain.BasicAuth{Enabled: true, Username: "u", PasswordHash: "$2a$10$hash"},
 	}

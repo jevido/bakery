@@ -84,9 +84,9 @@ func TestProxyRoutesToContainer(t *testing.T) {
 		}, "whoami answering on "+host)
 	}
 
-	// Www redirect: www.test.localhost answers 308 to test.localhost.
+	// Redirect: www.test.localhost answers 308 to test.localhost.
 	route := domain.Route{ApplicationID: 1, Domains: []string{"test.localhost"}, Container: "bakery-test-whoami", Port: 80,
-		Settings: domain.RouteSettings{WwwRedirect: domain.ToApex}}
+		Settings: domain.RouteSettings{Redirect: domain.NonWww}}
 	if err := proxy.Apply(ctx, []domain.Route{route}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}

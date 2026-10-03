@@ -13,7 +13,7 @@ import (
 type settingsRecord struct {
 	ID            uint64 `gorm:"primaryKey"`
 	ApplicationID uint64
-	WwwRedirect   string
+	Redirect      string
 	// ResponseHeaders is a JSON array of {name, value}.
 	ResponseHeaders       string
 	BasicAuthEnabled      bool
@@ -35,7 +35,7 @@ func (r settingsRecord) toDomain() (domain.RouteSettings, error) {
 		return domain.RouteSettings{}, err
 	}
 	s := domain.RouteSettings{
-		ApplicationID: r.ApplicationID, WwwRedirect: domain.WwwRedirect(r.WwwRedirect),
+		ApplicationID: r.ApplicationID, Redirect: domain.Redirect(r.Redirect),
 		ResponseHeaders: make([]domain.ResponseHeader, len(headers)),
 		BasicAuth:       domain.BasicAuth{Enabled: r.BasicAuthEnabled, Username: r.BasicAuthUsername, PasswordHash: r.BasicAuthPasswordHash},
 	}
@@ -86,14 +86,14 @@ func (Settings) Put(ctx context.Context, s domain.RouteSettings) error {
 		return err
 	}
 	_, err = facades.Orm().WithContext(ctx).Query().Exec(`
-		INSERT INTO route_settings (application_id, www_redirect, response_headers,
+		INSERT INTO route_settings (application_id, redirect, response_headers,
 		    basic_auth_enabled, basic_auth_username, basic_auth_password_hash, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, now(), now())
 		ON CONFLICT (application_id) DO UPDATE
-		SET www_redirect = EXCLUDED.www_redirect, response_headers = EXCLUDED.response_headers,
+		SET redirect = EXCLUDED.redirect, response_headers = EXCLUDED.response_headers,
 		    basic_auth_enabled = EXCLUDED.basic_auth_enabled, basic_auth_username = EXCLUDED.basic_auth_username,
 		    basic_auth_password_hash = EXCLUDED.basic_auth_password_hash, updated_at = now()`,
-		s.ApplicationID, string(s.WwwRedirect), string(raw),
+		s.ApplicationID, string(s.Redirect), string(raw),
 		s.BasicAuth.Enabled, s.BasicAuth.Username, s.BasicAuth.PasswordHash)
 	return err
 }

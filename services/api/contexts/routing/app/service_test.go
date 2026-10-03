@@ -149,7 +149,7 @@ func TestServiceRoutes(t *testing.T) {
 	apps := &fakeRoutes{routes: []domain.Route{{ApplicationID: 1, Domains: []string{"app.localhost"}, Container: "bakery-app-1-1", Port: 80}}}
 	svcRoutes := &fakeServiceRoutes{}
 	// Settings for application id 0 must never reach a Service route.
-	settings := &fakeSettings{all: map[uint64]domain.RouteSettings{0: {WwwRedirect: domain.ToApex}}}
+	settings := &fakeSettings{all: map[uint64]domain.RouteSettings{0: {Redirect: domain.NonWww}}}
 	proxy := &fakeProxy{}
 	s := NewService(apps, svcRoutes, &fakePreviewRoutes{}, settings, oneProxy{proxy})
 
@@ -159,7 +159,7 @@ func TestServiceRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := proxy.applied[len(proxy.applied)-1]
-	if len(last) != 3 || last[1].Container != "bakery-svc-3-web" || last[2].Settings.WwwRedirect != domain.WwwOff {
+	if len(last) != 3 || last[1].Container != "bakery-svc-3-web" || last[2].Settings.Redirect != domain.Both {
 		t.Fatalf("applied %+v", last)
 	}
 	if err := s.SetServiceRoutes(ctx, 3, []domain.ServiceRoute{web}); err != nil {
@@ -181,7 +181,7 @@ func TestPreviewRoutes(t *testing.T) {
 	routes := &upsertRoutes{}
 	previews := &fakePreviewRoutes{}
 	settings := &fakeSettings{all: map[uint64]domain.RouteSettings{1: {
-		ApplicationID: 1, WwwRedirect: domain.ToWww,
+		ApplicationID: 1, Redirect: domain.Www,
 		BasicAuth: domain.BasicAuth{Enabled: true, Username: "u", PasswordHash: "h"},
 	}}}
 	ps := proxies{}
@@ -197,7 +197,7 @@ func TestPreviewRoutes(t *testing.T) {
 		t.Fatalf("applied %+v", last)
 	}
 	p := last[1]
-	if !p.Derived || p.Container != "c7" || p.Settings.WwwRedirect != domain.WwwOff || !p.Settings.BasicAuth.Enabled {
+	if !p.Derived || p.Container != "c7" || p.Settings.Redirect != domain.Both || !p.Settings.BasicAuth.Enabled {
 		t.Fatalf("preview route %+v", p)
 	}
 	if err := s.DropPreviewRoute(ctx, 1, 7); err != nil {

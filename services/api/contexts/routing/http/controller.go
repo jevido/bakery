@@ -26,7 +26,7 @@ func NewController(service *app.Service, exists ApplicationExists) *Controller {
 }
 
 type settingsJSON struct {
-	WwwRedirect     string        `json:"www_redirect"`
+	Redirect        string        `json:"redirect"`
 	ResponseHeaders []headerJSON  `json:"response_headers"`
 	BasicAuth       basicAuthJSON `json:"basic_auth"`
 }
@@ -47,7 +47,7 @@ type basicAuthJSON struct {
 
 func settingsToJSON(s domain.RouteSettings) settingsJSON {
 	out := settingsJSON{
-		WwwRedirect:     string(s.WwwRedirect),
+		Redirect:        string(s.Redirect),
 		ResponseHeaders: make([]headerJSON, len(s.ResponseHeaders)),
 		BasicAuth:       basicAuthJSON{Enabled: s.BasicAuth.Enabled, Username: s.BasicAuth.Username, PasswordSet: s.BasicAuth.PasswordHash != ""},
 	}
@@ -59,7 +59,7 @@ func settingsToJSON(s domain.RouteSettings) settingsJSON {
 
 func (r settingsJSON) settings(applicationID uint64) domain.RouteSettings {
 	s := domain.RouteSettings{
-		ApplicationID: applicationID, WwwRedirect: domain.WwwRedirect(r.WwwRedirect),
+		ApplicationID: applicationID, Redirect: domain.Redirect(r.Redirect),
 		ResponseHeaders: make([]domain.ResponseHeader, len(r.ResponseHeaders)),
 		BasicAuth:       domain.BasicAuth{Enabled: r.BasicAuth.Enabled, Username: r.BasicAuth.Username},
 	}

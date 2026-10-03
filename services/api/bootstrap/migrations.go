@@ -52,5 +52,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000037CreatePreviewRoutesTable{},
 		&migrations.M20260930000038RenameEnvVarsToEnvironmentVariables{},
 		&migrations.M20260930000039RenameImageBuildPackToDockerimage{},
+		&migrations.M20260930000040RenameWwwRedirectToRedirect{},
 	}
 }

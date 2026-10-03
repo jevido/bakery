@@ -118,7 +118,7 @@ tasks:
       - ./infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/server/checks.sh
 
   settings:test:
-    desc: Domains, www redirect, headers, basic auth, persistent storage and resource limits end to end against Forgejo (needs task dev)
+    desc: Domains, Redirect, headers, basic auth, persistent storage and resource limits end to end against Forgejo (needs task dev)
     cmds:
       - ./infra/dev/settings/test.sh
 

@@ -18,24 +18,24 @@ func invalid(field, format string, args ...any) error {
 	return &FieldError{Field: field, Message: fmt.Sprintf(format, args...)}
 }
 
-// WwwRedirect says which of a Domain and its www counterpart redirects to
-// the other.
-type WwwRedirect string
+// Redirect says which of a Domain and its www counterpart redirects to the
+// other, in Coolify's values.
+type Redirect string
 
 const (
-	// WwwOff serves only the Domains themselves.
-	WwwOff WwwRedirect = "off"
-	// ToApex redirects www.<Domain> to each Domain without www.
-	ToApex WwwRedirect = "to_apex"
-	// ToWww redirects <Domain> to each Domain that starts with www.
-	ToWww WwwRedirect = "to_www"
+	// Both serves only the Domains themselves; neither redirects.
+	Both Redirect = "both"
+	// NonWww redirects www.<Domain> to each Domain without www.
+	NonWww Redirect = "non-www"
+	// Www redirects <Domain> to each Domain that starts with www.
+	Www Redirect = "www"
 )
 
 // RouteSettings is how the Proxy treats one Application's traffic. It is
 // stored apart from the Route, since it exists before the first Deployment.
 type RouteSettings struct {
 	ApplicationID   uint64
-	WwwRedirect     WwwRedirect
+	Redirect        Redirect
 	ResponseHeaders []ResponseHeader
 	BasicAuth       BasicAuth
 }
@@ -69,17 +69,17 @@ var forbiddenHeaders = map[string]bool{
 
 // DefaultRouteSettings is everything off.
 func DefaultRouteSettings(applicationID uint64) RouteSettings {
-	return RouteSettings{ApplicationID: applicationID, WwwRedirect: WwwOff}
+	return RouteSettings{ApplicationID: applicationID, Redirect: Both}
 }
 
-// Check validates the settings; an empty Www redirect means off.
+// Check validates the settings; an empty Redirect means both.
 func (s RouteSettings) Check() (RouteSettings, error) {
-	switch s.WwwRedirect {
+	switch s.Redirect {
 	case "":
-		s.WwwRedirect = WwwOff
-	case WwwOff, ToApex, ToWww:
+		s.Redirect = Both
+	case Both, NonWww, Www:
 	default:
-		return s, invalid("www_redirect", "www redirect must be off, to_apex or to_www")
+		return s, invalid("redirect", "redirect must be both, www or non-www")
 	}
 	if len(s.ResponseHeaders) > MaxResponseHeaders {
 		return s, invalid("response_headers", "at most %d response headers", MaxResponseHeaders)
@@ -135,10 +135,10 @@ func isHostname(s string) bool {
 	return true
 }
 
-// Counterparts maps each counterpart host the Www redirect adds to the
+// Counterparts maps each counterpart host the Redirect adds to the
 // Domain it redirects to. A counterpart that is one of the Domains itself,
 // or not a hostname of at least two labels (www.com → com), is left out.
-func Counterparts(domains []string, mode WwwRedirect) map[string]string {
+func Counterparts(domains []string, mode Redirect) map[string]string {
 	out := map[string]string{}
 	own := make(map[string]bool, len(domains))
 	for _, d := range domains {
@@ -147,9 +147,9 @@ func Counterparts(domains []string, mode WwwRedirect) map[string]string {
 	for _, d := range domains {
 		var counterpart string
 		switch {
-		case mode == ToApex && !strings.HasPrefix(d, "www."):
+		case mode == NonWww && !strings.HasPrefix(d, "www."):
 			counterpart = "www." + d
-		case mode == ToWww && strings.HasPrefix(d, "www."):
+		case mode == Www && strings.HasPrefix(d, "www."):
 			counterpart = strings.TrimPrefix(d, "www.")
 		default:
 			continue

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { session } from './session.svelte'
   import { api, ApiError } from './api'
-  import type { RouteSettings, WwwRedirect } from './types'
+  import type { RouteSettings, Redirect } from './types'
 
   let { applicationId, domains }: { applicationId: number; domains: string[] } = $props()
 
@@ -9,7 +9,7 @@
 
   let loaded = $state(false)
   let loadError = $state('')
-  let www = $state<WwwRedirect>('off')
+  let redirect = $state<Redirect>('both')
   let headers = $state<HeaderRow[]>([])
   let authEnabled = $state(false)
   let username = $state('')
@@ -21,21 +21,21 @@
   let busy = $state(false)
   let nextKey = 0
 
-  // What the Www redirect adds, as the proxy renders it (a counterpart that
+  // What the Redirect adds, as the proxy renders it (a counterpart that
   // is one of the Domains itself is served, not redirected).
   let counterparts = $derived.by(() => {
     const out: [string, string][] = []
     for (const d of domains) {
       let c = ''
-      if (www === 'to_apex' && !d.startsWith('www.')) c = 'www.' + d
-      if (www === 'to_www' && d.startsWith('www.')) c = d.slice(4)
+      if (redirect === 'non-www' && !d.startsWith('www.')) c = 'www.' + d
+      if (redirect === 'www' && d.startsWith('www.')) c = d.slice(4)
       if (c && c.includes('.') && !domains.includes(c)) out.push([c, d])
     }
     return out
   })
 
   function show(s: RouteSettings) {
-    www = s.www_redirect
+    redirect = s.redirect
     headers = s.response_headers.map((h) => ({ key: nextKey++, ...h }))
     authEnabled = s.basic_auth.enabled
     username = s.basic_auth.username
@@ -62,7 +62,7 @@
     applied = false
     try {
       const r = await api<{ routing: RouteSettings }>('PUT', `/applications/${applicationId}/routing`, {
-        www_redirect: www,
+        redirect,
         response_headers: headers.filter((h) => h.name.trim() !== '').map((h) => ({ name: h.name.trim(), value: h.value })),
         basic_auth: { enabled: authEnabled, username, password },
       })
@@ -88,20 +88,20 @@
     <fieldset class="contents" disabled={!session.canWrite}>
     <p class="muted">How the proxy treats this application's traffic. Saving applies it at once, without a deploy.</p>
     <fieldset>
-      <legend>Www redirect</legend>
-      <select aria-label="Www redirect" bind:value={www}>
-        <option value="off">Off</option>
-        <option value="to_apex">Redirect www to the domain without www</option>
-        <option value="to_www">Redirect the domain without www to www</option>
+      <legend>Redirect</legend>
+      <select aria-label="Redirect" bind:value={redirect}>
+        <option value="both">Allow www &amp; non-www</option>
+        <option value="www">Redirect to www</option>
+        <option value="non-www">Redirect to non-www</option>
       </select>
       {#if counterparts.length > 0}
         <ul class="mono preview">
           {#each counterparts as [from, to] (from)}<li>{from} → {to}</li>{/each}
         </ul>
-      {:else if www !== 'off'}
+      {:else if redirect !== 'both'}
         <p class="muted">No domain has a counterpart to redirect for this choice.</p>
       {/if}
-      {#if errors.www_redirect}<small class="error">{errors.www_redirect}</small>{/if}
+      {#if errors.redirect}<small class="error">{errors.redirect}</small>{/if}
     </fieldset>
     <fieldset>
       <legend>Response headers</legend>

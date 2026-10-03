@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End to end against the Forgejo stand-in: Application settings. Several
-# Domains (and a change that needs no deploy), the Www redirect, a Response
+# Domains (and a change that needs no deploy), the Redirect, a Response
 # header, Basic auth, Persistent storage across a redeploy and a rollback,
 # Resource limits, and the volume going with the Application. Needs
 # `task dev` running (API on 127.0.0.1:4910, proxy on 4943). Starts Forgejo
@@ -58,17 +58,23 @@ answers "$A" 1 || fail "$A stopped answering"
 [ "$(deployments)" = 1 ] || fail "changing the domains started a deployment"
 echo "ok: $B gone, $A still served, no new deployment"
 
-say "Www redirect"
+say "Redirect"
 bakery PATCH "/api/applications/$APP_ID" "$(app_json "[\"$A\",\"$APEX\"]")" >/dev/null
-routing '{"www_redirect":"to_apex"}' >/dev/null
+routing '{"redirect":"non-www"}' >/dev/null
 redirect() { curl -sk --max-time 5 --resolve "www.$APEX:4943:127.0.0.1" -o /dev/null -w '%{http_code} %{redirect_url}' "https://www.$APEX:4943/some/path?q=1" || true; }
 redirects() { [ "$(redirect)" = "308 https://$APEX:4943/some/path?q=1" ]; }
 wait_for 20 "www.$APEX to redirect" redirects
 wait_for 20 "$APEX" answers "$APEX" 1
 echo "ok: www.$APEX answers 308 to $APEX"
+bakery PATCH "/api/applications/$APP_ID" "$(app_json "[\"$A\",\"www.$APEX\"]")" >/dev/null
+routing '{"redirect":"www"}' >/dev/null
+to_www() { [ "$(curl -sk --max-time 5 --resolve "$APEX:4943:127.0.0.1" -o /dev/null -w '%{http_code} %{redirect_url}' "https://$APEX:4943/some/path?q=1" || true)" = "308 https://www.$APEX:4943/some/path?q=1" ]; }
+wait_for 20 "$APEX to redirect" to_www
+wait_for 20 "www.$APEX" answers "www.$APEX" 1
+echo "ok: $APEX answers 308 to www.$APEX"
 
 say "Response header and Basic auth"
-routing '{"www_redirect":"off","response_headers":[{"name":"X-Frame-Options","value":"DENY"}],"basic_auth":{"enabled":true,"username":"visitor","password":"let-me-in"}}' >/dev/null
+routing '{"redirect":"both","response_headers":[{"name":"X-Frame-Options","value":"DENY"}],"basic_auth":{"enabled":true,"username":"visitor","password":"let-me-in"}}' >/dev/null
 locked() { [ "$(on "$A" | cut -c1-3)" = 401 ]; }
 wait_for 20 "basic auth" locked
 [ "$(on "$A" -u visitor:wrong | cut -c1-3)" = 401 ] || fail "a wrong password got in"
@@ -77,7 +83,7 @@ grep -qi '^x-frame-options: DENY' <<<"$(curl -skI -u visitor:let-me-in --resolve
 grep -q password_set <<<"$(bakery GET "/api/applications/$APP_ID/routing")" || fail "the settings do not say a password is set"
 # shellcheck disable=SC2016 # a literal bcrypt prefix
 if grep -qF '$2a$' <<<"$(bakery GET "/api/applications/$APP_ID/routing")"; then fail "the password hash leaves the API"; fi
-routing '{"www_redirect":"off"}' >/dev/null
+routing '{"redirect":"both"}' >/dev/null
 wait_for 20 "basic auth off" answers "$A" 1
 echo "ok: 401 without, 200 with the password, header set; switched off again"
 

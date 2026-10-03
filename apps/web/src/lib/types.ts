@@ -50,11 +50,11 @@ export type HealthCheck = {
   start_period: number
 }
 
-export type WwwRedirect = 'off' | 'to_apex' | 'to_www'
+export type Redirect = 'both' | 'www' | 'non-www'
 
 /** How the proxy treats an application's traffic; the password hash is never returned. */
 export type RouteSettings = {
-  www_redirect: WwwRedirect
+  redirect: Redirect
   response_headers: { name: string; value: string }[]
   basic_auth: { enabled: boolean; username: string; password_set: boolean }
 }
