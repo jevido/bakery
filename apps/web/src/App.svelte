@@ -14,8 +14,8 @@
   import Application from './pages/Application.svelte'
   import Database from './pages/Database.svelte'
   import Environment from './pages/Environment.svelte'
-  import LegacyProject from './pages/LegacyProject.svelte'
   import EnvironmentEdit from './pages/EnvironmentEdit.svelte'
+  import NewResource from './pages/NewResource.svelte'
   import Project from './pages/Project.svelte'
   import ProjectEdit from './pages/ProjectEdit.svelte'
   import Projects from './pages/Projects.svelte'
@@ -77,7 +77,12 @@
     {:else if router.route.name === 'environment-edit'}
       <EnvironmentEdit projectId={router.route.projectId} id={router.route.id} />
     {:else if router.route.name === 'environment-new'}
-      <LegacyProject id={router.route.projectId} newIn={router.route.id} />
+      <NewResource
+        projectId={router.route.projectId}
+        id={router.route.id}
+        type={router.route.type}
+        server={router.route.server}
+      />
     {:else if router.route.name === 'project-first-environment-new'}
       <div class="flex justify-center"><Spinner text="Loading…" /></div>
     {:else if router.route.name === 'application'}

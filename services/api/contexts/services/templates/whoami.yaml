@@ -1,6 +1,8 @@
 name: whoami
 description: A tiny web server that answers with what it sees of each request. Handy to check that a Domain reaches The Bakery.
 docs_url: https://github.com/traefik/whoami
+category: development
+logo: svgs/default.webp
 tags: [test, http]
 compose: |
   services:

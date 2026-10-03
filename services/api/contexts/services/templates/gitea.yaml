@@ -1,6 +1,8 @@
 name: Gitea
 description: A lightweight git hosting service with issues, pull requests and packages.
 docs_url: https://docs.gitea.com/installation/install-with-docker
+category: git
+logo: svgs/gitea.svg
 tags: [git, code hosting]
 compose: |
   services:

@@ -655,6 +655,63 @@ html:not(.dark) {
   padding: 1rem;
 }
 
+/* Flush layer-card body (lists and other full-bleed content). */
+.application-settings-section-body.is-flush {
+  padding: 0;
+}
+
+/* Coolify's custom listbox trigger (it replaces a native <select>). */
+.listbox-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+  height: 2rem;
+  padding: 0 0.625rem 0 0.75rem;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--coollabs-line);
+  background: var(--coollabs-recessed);
+  font-size: 0.875rem;
+  color: #000000;
+  text-align: left;
+  cursor: pointer;
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: 120ms;
+}
+
+.listbox-trigger-label {
+  min-width: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.dark .listbox-trigger {
+  color: var(--color-fg);
+}
+
+.listbox-trigger:disabled {
+  cursor: not-allowed;
+  background-color: var(--color-neutral-100);
+  color: var(--color-neutral-400);
+}
+
+.dark .listbox-trigger:disabled {
+  background-color: color-mix(in oklab, var(--color-white) 3%, transparent);
+  color: var(--color-fg-faint);
+}
+
+.listbox-trigger:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: none;
+}
+
 /* Coolify's auth shell (resources/css/app.css, `.auth-*`): the centred card
    that Login, Setup, Invite and the loading states sit in. */
 .auth-shell {

@@ -173,6 +173,8 @@ type templateJSON struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	DocsURL     string   `json:"docs_url"`
+	Category    string   `json:"category"`
+	Logo        string   `json:"logo"`
 	Tags        []string `json:"tags"`
 }
 
@@ -181,7 +183,7 @@ func (c *Controller) Templates(ctx contractshttp.Context) contractshttp.Response
 	list := c.service.Templates()
 	out := make([]templateJSON, len(list))
 	for i, t := range list {
-		out[i] = templateJSON{Key: t.Key, Name: t.Name, Description: t.Description, DocsURL: t.DocsURL, Tags: t.Tags}
+		out[i] = templateJSON{Key: t.Key, Name: t.Name, Description: t.Description, DocsURL: t.DocsURL, Category: t.Category, Logo: t.Logo, Tags: t.Tags}
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"templates": out})
 }

@@ -1,6 +1,8 @@
 name: Uptime Kuma
 description: Self-hosted monitoring for websites, APIs and ports, with status pages and notifications.
 docs_url: https://github.com/louislam/uptime-kuma
+category: monitoring
+logo: svgs/uptime-kuma.svg
 tags: [monitoring, status page]
 compose: |
   services:

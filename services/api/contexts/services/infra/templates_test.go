@@ -23,8 +23,8 @@ func TestCatalog(t *testing.T) {
 			t.Errorf("unexpected template %s", tpl.Key)
 			continue
 		}
-		if tpl.Description == "" || tpl.DocsURL == "" {
-			t.Errorf("%s: description and docs_url are required", tpl.Key)
+		if tpl.Description == "" || tpl.DocsURL == "" || tpl.Category == "" || tpl.Logo == "" {
+			t.Errorf("%s: description, docs_url, category and logo are required", tpl.Key)
 		}
 		s, err := domain.NewService(1, 1, tpl.Name, "t-"+tpl.Key, tpl.Compose, "localhost", Generate)
 		if err != nil {

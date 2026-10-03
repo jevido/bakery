@@ -1,14 +1,16 @@
 import { api } from './api'
 import type { Project } from './types'
 
-// Hash router, with Coolify's paths for Projects and Environments: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new, #/project/{id}/environment/{envId}/edit, #/applications/{id}, #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
+// Hash router, with Coolify's paths for Projects and Environments: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/applications/{id}, #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
   | { name: 'project'; id: number }
   | { name: 'project-edit'; id: number }
   | { name: 'environment'; projectId: number; id: number }
-  | { name: 'environment-new'; projectId: number; id: number }
+  // type and server are Coolify's query: the card picked and the Server it
+  // goes on (…/new?type=public&server=1).
+  | { name: 'environment-new'; projectId: number; id: number; type: string; server: number | null }
   | { name: 'environment-edit'; projectId: number; id: number }
   // #/projects/{id}?new from before Coolify's paths: the New Resource page of
   // the Project's first Environment, found once the Project has loaded.
@@ -65,7 +67,16 @@ function parse(hash: string): Route {
       const envId = Number(parts[3])
       if (parts[2] === 'environment' && Number.isInteger(envId)) {
         if (parts.length === 4) return { name: 'environment', projectId: id, id: envId }
-        if (parts.length === 5 && parts[4] === 'new') return { name: 'environment-new', projectId: id, id: envId }
+        if (parts.length === 5 && parts[4] === 'new') {
+          const server = Number(flags.get('server') ?? '')
+          return {
+            name: 'environment-new',
+            projectId: id,
+            id: envId,
+            type: flags.get('type') ?? '',
+            server: flags.has('server') && Number.isInteger(server) && server > 0 ? server : null,
+          }
+        }
         if (parts.length === 5 && parts[4] === 'edit') return { name: 'environment-edit', projectId: id, id: envId }
       }
     }

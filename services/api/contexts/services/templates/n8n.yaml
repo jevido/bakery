@@ -1,6 +1,8 @@
 name: n8n
 description: Workflow automation with a visual editor and hundreds of integrations.
 docs_url: https://docs.n8n.io/hosting/
+category: automation
+logo: svgs/n8n.png
 tags: [automation, workflows]
 compose: |
   services:

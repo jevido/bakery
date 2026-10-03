@@ -1,6 +1,8 @@
 name: Umami
 description: Simple, privacy-friendly web analytics, with its own PostgreSQL.
 docs_url: https://umami.is/docs
+category: analytics
+logo: svgs/umami.svg
 tags: [analytics]
 compose: |
   services:

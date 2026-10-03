@@ -9,12 +9,17 @@
     initial,
     submitLabel,
     domainPlaceholder = '<slug>.localhost',
+    server,
+    buildPack,
     onsubmit,
     oncancel,
   }: {
     initial?: ApplicationInput & { registry_username?: string; has_registry_password?: boolean; server_id?: number }
     submitLabel: string
     domainPlaceholder?: string
+    /** Creating: the Server picked on the New Resource page, and the card's build pack. */
+    server?: number
+    buildPack?: BuildPack
     onsubmit: (input: ApplicationInput) => Promise<void>
     oncancel?: () => void
   } = $props()
@@ -23,7 +28,7 @@
   // the form with {#key} when it should start over).
   const start = untrack(() => initial) ?? {
     name: '',
-    build_pack: 'dockerfile' as BuildPack,
+    build_pack: untrack(() => buildPack) ?? ('dockerfile' as BuildPack),
     docker_image: '',
     publish_directory: '.',
     git_url: '',
@@ -59,7 +64,7 @@
   // The Target server is chosen once, when the application is created.
   const creating = untrack(() => initial) === undefined
   let servers = $state.raw<Server[]>([])
-  let server_id = $state(untrack(() => initial?.server_id) ?? 0)
+  let server_id = $state(untrack(() => initial?.server_id ?? server) ?? 0)
   const currentServer = $derived(servers.find((s) => s.id === server_id))
   api<{ servers: Server[] }>('GET', '/servers')
     .then((r) => {

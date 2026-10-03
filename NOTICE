@@ -7,6 +7,15 @@ This product includes markup, styles and icons adapted from Coolify v4.3.23
 rewritten for Svelte and Tailwind CSS and changed throughout; Coolify's name,
 logo and brand are not used.
 
+The New Resource page uses icons copied unchanged from Coolify v4.3.23's
+public/svgs/ under the same license: resources/public-repo.svg,
+resources/deploy-key.svg, resources/docker-compose.svg,
+resources/docker-image.svg, resources/postgres.svg, resources/mysql.svg,
+resources/mariadb.svg, resources/redis.svg, resources/mongodb.svg,
+default.webp, gitea.svg, n8n.png, umami.svg and uptime-kuma.svg (in
+apps/web/public/svgs/). The products they show are trademarks of their
+owners. resources/valkey.svg is The Bakery's own.
+
 The dashboard uses the Geist and Geist Mono fonts, Copyright 2024 The Geist
 Project Authors (https://github.com/vercel/geist-font), licensed under the
 SIL Open Font License, Version 1.1.

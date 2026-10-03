@@ -82,7 +82,7 @@ document; list them here when people outside the context use them too.
 | Component | services | One entry under a Compose file's `services:`, run as one Container `bakery-svc-<service-id>-<name>`. *Public* when it has a port and Domains. | Service, Application |
 | Service variable | services | A `${NAME}` a Compose file refers to, with a value stored encrypted: set by the Owner, or generated when it is a Magic variable. | Environment variable, Shared variable |
 | Magic variable | services | A Service variable The Bakery fills in, named as in Coolify's templates: `SERVICE_PASSWORD_*`, `SERVICE_USER_*`, `SERVICE_BASE64_*` (generated once), `SERVICE_FQDN_<NAME>` / `SERVICE_URL_<NAME>` (the Component's primary Domain). A `_<PORT>` suffix makes the Component public on that port. | Database credentials |
-| Service template | services | A named, described Compose file embedded in The Bakery; the catalog under New → Service. | Build pack |
+| Service template | services | A named, described Compose file embedded in The Bakery, with a category and a logo; the Services catalog on the New Resource page. | Build pack |
 | Service status | services | `running`, `stopped`, `deploying`, `degraded` or `failed`, summed up from each Component's status (read from Podman like a Database status). Only the desired state is stored. | Deployment status |
 | Service route | routing | A Public Component's Domains pointed at its Container and port. One per Public Component, rendered with the Routes. | Route |
 | Proxy | routing | The Caddy container `bakery-proxy` on a Server, configured only through its admin API. One per Server that has Routes; the Local server's also serves the Dashboard Route and Service routes. | Server |

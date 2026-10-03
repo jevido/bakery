@@ -23,7 +23,7 @@ serving Domains (routing does, through Service routes).
 | Public Component | A Component whose environment names `SERVICE_FQDN_<NAME>_<PORT>` or `SERVICE_URL_<NAME>_<PORT>`: it has a port and 1–10 Domains, and the Proxy serves it. |
 | Service variable | A `${NAME}` the Compose file refers to, with a value stored encrypted. Set by the Owner, or generated when it is a Magic variable. |
 | Magic variable | A Service variable The Bakery fills in by itself, following Coolify's template convention: `SERVICE_PASSWORD_<X>`, `SERVICE_PASSWORD_64_<X>`, `SERVICE_USER_<X>`, `SERVICE_BASE64_<X>`, `SERVICE_BASE64_64_<X>` (generated once), `SERVICE_FQDN_<NAME>` and `SERVICE_URL_<NAME>` (a Component's primary Domain, without and with `https://`). |
-| Service template | A named, described Compose file embedded in The Bakery, the catalog the Owner picks from. |
+| Service template | A named, described Compose file embedded in The Bakery, with Coolify's category and logo, the catalog the Owner picks from on the New Resource page. |
 | Service network | The network `bakery-svc-<service id>`; every Component is on it under its Component name. |
 | Service volume | A named volume of the Compose file, as `bakery-svc-<service id>-<volume>`. |
 | Desired state | `running` or `stopped`: what the Owner asked for. |

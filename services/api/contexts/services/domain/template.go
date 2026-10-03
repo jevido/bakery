@@ -9,12 +9,16 @@ import (
 )
 
 // Template is a Service template: a named, described Compose file from the
-// catalog.
+// catalog. Category and Logo are Coolify's template headers: the New
+// Resource page filters on the first and shows the second, a file under the
+// dashboard's svgs/.
 type Template struct {
 	Key         string
 	Name        string
 	Description string
 	DocsURL     string
+	Category    string
+	Logo        string
 	Tags        []string
 	Compose     string
 }
@@ -28,13 +32,15 @@ func ParseTemplate(key string, src []byte) (Template, error) {
 		Name        string   `yaml:"name"`
 		Description string   `yaml:"description"`
 		DocsURL     string   `yaml:"docs_url"`
+		Category    string   `yaml:"category"`
+		Logo        string   `yaml:"logo"`
 		Tags        []string `yaml:"tags"`
 		Compose     string   `yaml:"compose"`
 	}
 	if err := yaml.Unmarshal(src, &raw); err != nil {
 		return Template{}, fmt.Errorf("template %s: %w", key, err)
 	}
-	t := Template{Key: key, Name: strings.TrimSpace(raw.Name), Description: strings.TrimSpace(raw.Description), DocsURL: raw.DocsURL, Tags: raw.Tags, Compose: raw.Compose}
+	t := Template{Key: key, Name: strings.TrimSpace(raw.Name), Description: strings.TrimSpace(raw.Description), DocsURL: raw.DocsURL, Category: strings.TrimSpace(raw.Category), Logo: strings.TrimSpace(raw.Logo), Tags: raw.Tags, Compose: raw.Compose}
 	switch {
 	case !templateKey.MatchString(key):
 		return Template{}, fmt.Errorf("template %q: the key is lowercase letters, digits and -", key)

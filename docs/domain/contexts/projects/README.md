@@ -194,3 +194,15 @@ reaches an Application (routing).
   characters would make both unreadable; 8 keeps them short and still makes
   a clash unlikely (and `freeSlug` resolves one if it happens). Databases and
   Services follow the same rule in their contexts.
+- **The New Resource page shows only what The Bakery can create.** Coolify's
+  chooser also offers Git repositories through a GitHub or GitLab App, a
+  Dockerfile without a repository, KeyDB, Dragonfly and ClickHouse, a
+  PostgreSQL image picker (Supabase, PostGIS, PGVector) and connecting an
+  existing PostgreSQL; none exists here yet, so the cards are left out
+  rather than shown dead. Valkey has a card Coolify does not. Destinations
+  do not exist either, so there is no "Select a destination" step, and the
+  "Select a server" step is asked only for Applications: Databases, Services
+  and a pasted Docker Compose file (which becomes a Service) run on the
+  Local server. A remote Server counts as ready once validated; the Local
+  server always does. Cards link to the upstream projects' documentation
+  (git, Podman, the database's own), not to Coolify's.

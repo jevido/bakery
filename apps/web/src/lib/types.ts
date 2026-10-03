@@ -296,6 +296,10 @@ export type ServiceTemplate = {
   name: string
   description: string
   docs_url: string
+  /** Coolify's template category, e.g. monitoring. */
+  category: string
+  /** A file under the dashboard's svgs/. */
+  logo: string
   tags: string[]
 }
 
