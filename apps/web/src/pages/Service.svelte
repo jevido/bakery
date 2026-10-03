@@ -298,7 +298,7 @@
     <div class="row">
       <label>
         Component
-        <select bind:value={logComponent}>
+        <select value={logTarget} onchange={(e) => (logComponent = e.currentTarget.value)}>
           {#each service.components as c (c.name)}<option value={c.name}>{c.name}</option>{/each}
         </select>
       </label>

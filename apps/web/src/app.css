@@ -168,6 +168,15 @@
     border-collapse: collapse;
   }
 
+  /* On a phone a wide table scrolls on its own instead of widening the page,
+     as Coolify's overflow-x-auto wrappers do. */
+  @media (width < 40rem) {
+    table:not(.chrome *) {
+      display: block;
+      overflow-x: auto;
+    }
+  }
+
   th,
   td {
     text-align: left;

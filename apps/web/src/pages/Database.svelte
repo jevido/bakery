@@ -232,7 +232,7 @@
   }
   .connect {
     display: grid;
-    grid-template-columns: max-content 1fr;
+    grid-template-columns: max-content minmax(0, 1fr);
     gap: 0.5rem 1rem;
     align-items: center;
     margin: 0 0 1rem;
@@ -246,7 +246,8 @@
     gap: 0.5rem;
     align-items: center;
     flex-wrap: wrap;
-    word-break: break-all;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .ok {
     color: var(--ok);

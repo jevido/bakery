@@ -162,6 +162,7 @@
   p {
     margin: 0;
   }
+  p + p,
   p + table,
   table + p {
     margin-top: 0.8rem;

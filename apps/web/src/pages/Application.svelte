@@ -232,7 +232,7 @@
   }
   .source {
     display: grid;
-    grid-template-columns: max-content 1fr;
+    grid-template-columns: max-content minmax(0, 1fr);
     gap: 0.3rem 1rem;
     margin: 0 0 1rem;
   }
@@ -241,6 +241,8 @@
   }
   .source dd {
     margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .head {
     display: flex;

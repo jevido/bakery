@@ -34,7 +34,7 @@
     members = m.members
     invitations = i.invitations
   }
-  load().catch((e) => (loadError = e.message))
+  if (session.isAdmin) load().catch((e) => (loadError = e.message))
 
   /** Whether the signed-in person may change this Member: not the Owner, not themselves. */
   function manageable(m: Member): boolean {
@@ -111,6 +111,10 @@
 </script>
 
 <h1>Members</h1>
+
+{#if !session.isAdmin}
+  <p class="muted">Members are managed by admins.</p>
+{:else}
 
 <form class="card form" onsubmit={invite}>
   <h2>Invite someone</h2>
@@ -200,6 +204,8 @@
       </tbody>
     </table>
   {/if}
+{/if}
+
 {/if}
 
 <style>

@@ -357,6 +357,7 @@
   p {
     margin: 0;
   }
+  p + p,
   p + table,
   table + p,
   h1 + p {
