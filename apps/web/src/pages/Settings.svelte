@@ -1,6 +1,6 @@
 <script lang="ts">
+  import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { api } from '../lib/api'
-  import S3Storages from '../lib/S3Storages.svelte'
   import { session } from '../lib/session.svelte'
   import type { KnownHost } from '../lib/types'
 
@@ -21,6 +21,8 @@
   }
 
   const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
+
+  $effect(() => breadcrumb.set({ label: 'Settings' }))
 </script>
 
 <h1>Settings</h1>
@@ -58,7 +60,6 @@
   </table>
 {/if}
 
-<S3Storages />
 {/if}
 
 <style>

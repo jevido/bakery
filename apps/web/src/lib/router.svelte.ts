@@ -1,5 +1,6 @@
-// Hash router: #/projects, #/projects/{id}, #/applications/{id}, #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login.
+// Hash router: #/ (the Dashboard), #/projects, #/projects/{id}, #/applications/{id}, #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login.
 export type Route =
+  | { name: 'dashboard' }
   | { name: 'projects' }
   | { name: 'project'; id: number }
   | { name: 'application'; id: number }
@@ -7,6 +8,7 @@ export type Route =
   | { name: 'service'; id: number }
   | { name: 'servers' }
   | { name: 'server'; id: number }
+  | { name: 'storages' }
   | { name: 'settings' }
   | { name: 'members' }
   | { name: 'notifications' }
@@ -18,8 +20,9 @@ export type Route =
 
 function parse(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent)
-  if (parts.length === 0) return { name: 'projects' }
+  if (parts.length === 0) return { name: 'dashboard' }
   if (parts[0] === 'login' && parts.length === 1) return { name: 'login' }
+  if (parts[0] === 'storages' && parts.length === 1) return { name: 'storages' }
   if (parts[0] === 'settings' && parts.length === 1) return { name: 'settings' }
   if (parts[0] === 'members' && parts.length === 1) return { name: 'members' }
   if (parts[0] === 'notifications' && parts.length === 1) return { name: 'notifications' }

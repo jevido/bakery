@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { api, ApiError } from '../lib/api'
   import CopyButton from '../lib/CopyButton.svelte'
   import Field from '../lib/Field.svelte'
@@ -150,6 +151,11 @@
     linger: 'Linger',
     ports: 'Ports 80 and 443',
   }
+
+  const crumbName = $derived(server?.name)
+  $effect(() => {
+    if (crumbName !== undefined) breadcrumb.set({ label: 'Servers', href: '#/servers' }, { label: crumbName })
+  })
 </script>
 
 {#if loadError}
@@ -157,7 +163,6 @@
 {:else if !server}
   <p class="muted">Loading…</p>
 {:else}
-  <p class="crumbs"><a href={href('/servers')}>Servers</a> /</p>
   <div class="head">
     <div class="heading">
       <h1>{server.name}</h1>
@@ -303,9 +308,6 @@
 {/if}
 
 <style>
-  .crumbs {
-    margin: 0 0 0.5rem;
-  }
   .head {
     display: flex;
     justify-content: space-between;

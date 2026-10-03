@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { api, ApiError } from '../lib/api'
   import Field from '../lib/Field.svelte'
   import { go, href } from '../lib/router.svelte'
@@ -50,6 +51,8 @@
       busy = false
     }
   }
+
+  $effect(() => breadcrumb.set({ label: 'Servers' }))
 </script>
 
 <div class="head">

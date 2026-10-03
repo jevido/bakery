@@ -1,9 +1,10 @@
 <script lang="ts">
+  import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { api, ApiError } from '../lib/api'
   import ContainerLogs from '../lib/ContainerLogs.svelte'
   import CopyButton from '../lib/CopyButton.svelte'
   import Field from '../lib/Field.svelte'
-  import { go, href } from '../lib/router.svelte'
+  import { go } from '../lib/router.svelte'
   import { session } from '../lib/session.svelte'
   import StatusBadge from '../lib/StatusBadge.svelte'
   import type { Service } from '../lib/types'
@@ -146,6 +147,13 @@
   // --- Logs.
   let logComponent = $state('')
   let logTarget = $derived(logComponent || service?.components[0]?.name || '')
+
+  // The top bar's breadcrumb: Project › Service.
+  const crumbProject = $derived(service?.project_id)
+  const crumbName = $derived(service?.name)
+  $effect(() => {
+    if (crumbProject !== undefined && crumbName !== undefined) breadcrumb.resource(crumbProject, crumbName)
+  })
 </script>
 
 {#if loadError}
@@ -153,10 +161,6 @@
 {:else if !service}
   <p class="muted">Loading…</p>
 {:else}
-  <p class="crumbs">
-    <a href={href('/projects')}>Projects</a> /
-    <a href={href(`/projects/${service.project_id}`)}>Project</a> /
-  </p>
   <div class="head">
     <div class="heading">
       <h1>{service.name}</h1>
@@ -327,10 +331,6 @@
 {/if}
 
 <style>
-  .crumbs {
-    margin: 0 0 0.5rem;
-    font-size: 0.85rem;
-  }
   .head {
     display: flex;
     justify-content: space-between;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { packLabel } from '../lib/buildPacks'
   import { api, ApiError } from '../lib/api'
   import ApplicationForm from '../lib/ApplicationForm.svelte'
@@ -97,6 +98,13 @@
     await api('DELETE', `/applications/${id}`)
     go(`/projects/${projectId}`)
   }
+
+  // The top bar's breadcrumb: Project › Application.
+  const crumbProject = $derived(application?.project_id)
+  const crumbName = $derived(application?.name)
+  $effect(() => {
+    if (crumbProject !== undefined && crumbName !== undefined) breadcrumb.resource(crumbProject, crumbName)
+  })
 </script>
 
 {#if loadError}
@@ -104,10 +112,6 @@
 {:else if !application}
   <p class="muted">Loading…</p>
 {:else}
-  <p class="crumbs">
-    <a href={href('/projects')}>Projects</a> /
-    <a href={href(`/projects/${application.project_id}`)}>Project</a> /
-  </p>
   <div class="head">
     <div class="heading">
       <h1>{application.name}</h1>
@@ -237,10 +241,6 @@
   }
   .source dd {
     margin: 0;
-  }
-  .crumbs {
-    margin: 0 0 0.5rem;
-    font-size: 0.85rem;
   }
   .head {
     display: flex;

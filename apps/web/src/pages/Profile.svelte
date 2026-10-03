@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { renderSVG } from 'uqr'
   import { api, ApiError } from '../lib/api'
   import CopyButton from '../lib/CopyButton.svelte'
@@ -150,6 +151,8 @@
     a.click()
     URL.revokeObjectURL(url)
   }
+
+  $effect(() => breadcrumb.set({ label: 'Profile' }))
 </script>
 
 <h1>Profile</h1>

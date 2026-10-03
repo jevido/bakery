@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { api, ApiError } from '../lib/api'
   import ApplicationForm from '../lib/ApplicationForm.svelte'
   import DatabaseForm from '../lib/DatabaseForm.svelte'
@@ -69,9 +70,13 @@
       deleteError = err.message
     }
   }
+
+  const crumbName = $derived(project?.name)
+  $effect(() => {
+    if (crumbName !== undefined) breadcrumb.set({ label: crumbName })
+  })
 </script>
 
-<p class="crumbs"><a href={href('/projects')}>Projects</a> /</p>
 
 {#if loadError}
   <p class="error">{loadError}</p>
@@ -198,10 +203,6 @@
 {/if}
 
 <style>
-  .crumbs {
-    margin: 0 0 0.5rem;
-    font-size: 0.85rem;
-  }
   .head {
     display: flex;
     justify-content: space-between;

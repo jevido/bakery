@@ -83,7 +83,6 @@
   }
 </script>
 
-<h2>S3 storages</h2>
 <p class="muted">
   S3-compatible buckets (AWS S3, Garage, Cloudflare R2, Backblaze B2 and the like) that database backups are uploaded to, next
   to the copy on this server.

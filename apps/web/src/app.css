@@ -3,7 +3,8 @@
  * Tailwind's base layer (after its preflight), so utility classes in ported
  * markup always win, and their variables come from the tokens in theme.css,
  * so the old pages follow the dark/light switch. This file shrinks as pages
- * are ported and goes when the last one is.
+ * are ported and goes when the last one is. The shell's own markup (inside
+ * `.chrome`) is Coolify's and is left out of the element rules.
  */
 @layer base {
   :root {
@@ -19,7 +20,6 @@
     --ok: var(--color-success);
     --warn: var(--color-warning);
     --mono: var(--font-mono);
-    font: 14px/1.45 var(--font-sans);
   }
 
   .dark {
@@ -32,9 +32,11 @@
     --muted: var(--color-fg-faint);
   }
 
+  /* On body, not :root, so rem stays 16px and Tailwind's sizes match Coolify's. */
   body {
     background: var(--bg);
     color: var(--text);
+    font: 14px/1.45 var(--font-sans);
   }
 
   /* Preflight zeroes margins on headings, paragraphs and lists; the old pages
@@ -71,13 +73,13 @@
     margin-left: 40px;
   }
 
-  ul,
-  ol {
+  ul:not(.chrome *),
+  ol:not(.chrome *) {
     margin: 1em 0;
     padding-left: 40px;
   }
 
-  ul {
+  ul:not(.chrome *) {
     list-style: disc;
   }
 
@@ -85,7 +87,7 @@
     list-style: decimal;
   }
 
-  a {
+  a:not(.chrome *) {
     color: var(--accent);
     text-decoration: underline;
   }
@@ -123,8 +125,8 @@
   input:not([type='checkbox'], [type='radio']):focus-visible,
   select:not([multiple]):focus-visible,
   textarea:not(.input):focus-visible,
-  button:focus-visible,
-  a:focus-visible {
+  button:not(.chrome *):focus-visible,
+  a:not(.chrome *):focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
@@ -136,7 +138,7 @@
     border-color: var(--muted);
   }
 
-  button {
+  button:not(.chrome *) {
     background: var(--hover);
     border: 1px solid var(--border);
     border-radius: 6px;

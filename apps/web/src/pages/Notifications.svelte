@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { api, ApiError } from '../lib/api'
   import Field from '../lib/Field.svelte'
   import { session } from '../lib/session.svelte'
@@ -185,6 +186,8 @@
   const label = (kind: string) => eventKinds.find((e) => e.kind === kind)?.label ?? kind
   const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' })
   const keep = $derived(editing !== null && editing !== 'new' ? 'unchanged' : '')
+
+  $effect(() => breadcrumb.set({ label: 'Notifications' }))
 </script>
 
 <h1>Notifications</h1>

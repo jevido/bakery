@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { api, ApiError } from '../lib/api'
   import CopyButton from '../lib/CopyButton.svelte'
   import Field from '../lib/Field.svelte'
@@ -47,6 +48,8 @@
 
   const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
   let example = $derived(created ? `curl -H "Authorization: Bearer ${created.token}" ${location.origin}/api/projects` : '')
+
+  $effect(() => breadcrumb.set({ label: 'Keys & Tokens' }))
 </script>
 
 <h1>API tokens</h1>

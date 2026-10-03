@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { api, ApiError } from '../lib/api'
   import CopyButton from '../lib/CopyButton.svelte'
   import Field from '../lib/Field.svelte'
@@ -105,6 +106,8 @@
   }
 
   const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
+
+  $effect(() => breadcrumb.set({ label: 'Members' }))
 </script>
 
 <h1>Members</h1>

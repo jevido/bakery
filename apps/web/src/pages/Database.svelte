@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { api, ApiError } from '../lib/api'
   import ContainerLogs from '../lib/ContainerLogs.svelte'
   import CopyButton from '../lib/CopyButton.svelte'
   import DatabaseBackups from '../lib/DatabaseBackups.svelte'
   import DatabaseForm from '../lib/DatabaseForm.svelte'
   import { databaseTypeLabel } from '../lib/databaseTypes'
-  import { go, href } from '../lib/router.svelte'
+  import { go } from '../lib/router.svelte'
   import { session } from '../lib/session.svelte'
   import StatusBadge from '../lib/StatusBadge.svelte'
   import type { Database, DatabaseInput } from '../lib/types'
@@ -79,6 +80,13 @@
     if (!url) return ''
     return showPasswords ? url : url.replace(`:${encodeURIComponent(secret)}@`, ':••••••@')
   }
+
+  // The top bar's breadcrumb: Project › Database.
+  const crumbProject = $derived(database?.project_id)
+  const crumbName = $derived(database?.name)
+  $effect(() => {
+    if (crumbProject !== undefined && crumbName !== undefined) breadcrumb.resource(crumbProject, crumbName)
+  })
 </script>
 
 {#if loadError}
@@ -87,10 +95,6 @@
   <p class="muted">Loading…</p>
 {:else}
   {@const creds = database.credentials}
-  <p class="crumbs">
-    <a href={href('/projects')}>Projects</a> /
-    <a href={href(`/projects/${database.project_id}`)}>Project</a> /
-  </p>
   <div class="head">
     <div class="heading">
       <h1>{database.name}</h1>
@@ -180,10 +184,6 @@
 {/if}
 
 <style>
-  .crumbs {
-    margin: 0 0 0.5rem;
-    font-size: 0.85rem;
-  }
   .head {
     display: flex;
     justify-content: space-between;
