@@ -13,6 +13,7 @@
   import NotFound from './pages/NotFound.svelte'
   import Application from './pages/Application.svelte'
   import Database from './pages/Database.svelte'
+  import Environment from './pages/Environment.svelte'
   import LegacyProject from './pages/LegacyProject.svelte'
   import Project from './pages/Project.svelte'
   import ProjectEdit from './pages/ProjectEdit.svelte'
@@ -70,7 +71,9 @@
       <Project id={router.route.id} />
     {:else if router.route.name === 'project-edit'}
       <ProjectEdit id={router.route.id} />
-    {:else if router.route.name === 'environment' || router.route.name === 'environment-edit'}
+    {:else if router.route.name === 'environment'}
+      <Environment projectId={router.route.projectId} id={router.route.id} />
+    {:else if router.route.name === 'environment-edit'}
       <LegacyProject id={router.route.projectId} />
     {:else if router.route.name === 'environment-new'}
       <LegacyProject id={router.route.projectId} newIn={router.route.id} />

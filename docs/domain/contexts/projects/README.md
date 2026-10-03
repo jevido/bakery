@@ -180,3 +180,10 @@ reaches an Application (routing).
   Resources; The Bakery does the same, but each kind stays owned by its own
   context (projects, databases, services), and nothing stores a Resource as
   such.
+- **An Environment's page shows an Application's latest Deployment, not its
+  container.** Coolify keeps a container status on every Application; The
+  Bakery's Applications have none of their own, so the page shows the state
+  of the latest Deployment (Finished, Failed, Building, …), as the
+  Application page does. Databases and Services show their own status. The
+  page has no Tags column or filter until Tags exist, and no description
+  under a Resource's name, since Resources have none yet.
