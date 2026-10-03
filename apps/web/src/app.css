@@ -4,7 +4,8 @@
  * markup always win, and their variables come from the tokens in theme.css,
  * so the old pages follow the dark/light switch. This file shrinks as pages
  * are ported and goes when the last one is. The shell's own markup (inside
- * `.chrome`) is Coolify's and is left out of the element rules.
+ * `.chrome`, as is every `lib/ui/` component) is Coolify's and is left out of
+ * the element rules.
  */
 @layer base {
   :root {
@@ -41,31 +42,31 @@
 
   /* Preflight zeroes margins on headings, paragraphs and lists; the old pages
      were laid out with the browser's defaults. */
-  h1 {
+  h1:not(.chrome *) {
     font-size: 1.25rem;
     margin: 0 0 1rem;
   }
 
-  h2 {
+  h2:not(.chrome *) {
     font-size: 1rem;
     margin: 1.5rem 0 0.75rem;
   }
 
-  h1,
-  h2,
-  h3,
-  h4 {
+  h1:not(.chrome *),
+  h2:not(.chrome *),
+  h3:not(.chrome *),
+  h4:not(.chrome *) {
     font-weight: 600;
     letter-spacing: normal;
   }
 
-  h3 {
+  h3:not(.chrome *) {
     font-size: 1.17em;
     margin: 1em 0;
   }
 
-  p,
-  dl {
+  p:not(.chrome *),
+  dl:not(.chrome *) {
     margin: 1em 0;
   }
 
@@ -131,8 +132,8 @@
     outline-offset: 1px;
   }
 
-  input[type='checkbox'],
-  input[type='radio'] {
+  input[type='checkbox']:not(.chrome *),
+  input[type='radio']:not(.chrome *) {
     color: var(--color-coollabs);
     background-color: var(--bg);
     border-color: var(--muted);
@@ -157,7 +158,7 @@
     color: var(--danger);
   }
 
-  button:disabled {
+  button:not(.chrome *):disabled {
     opacity: 0.55;
     cursor: default;
   }

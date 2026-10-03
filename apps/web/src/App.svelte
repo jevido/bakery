@@ -21,6 +21,11 @@
   import Storages from './pages/Storages.svelte'
   import Notifications from './pages/Notifications.svelte'
   import Setup from './pages/Setup.svelte'
+  import Toaster from './lib/ui/Toaster.svelte'
+
+  // The components page is for development only; behind import.meta.env.DEV
+  // the production bundle leaves it out.
+  const devComponents = import.meta.env.DEV ? import('./pages/dev/Components.svelte').then((m) => m.default) : null
 
   setUnauthorizedHandler(() => session.signedOut())
 
@@ -74,8 +79,14 @@
       <ApiTokens />
     {:else if router.route.name === 'profile'}
       <Profile />
+    {:else if router.route.name === 'dev-components' && devComponents}
+      {#await devComponents then Components}
+        <Components />
+      {/await}
     {:else}
       <NotFound />
     {/if}
   </Layout>
 {/if}
+
+<Toaster />

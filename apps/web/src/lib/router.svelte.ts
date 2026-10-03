@@ -1,4 +1,4 @@
-// Hash router: #/ (the Dashboard), #/projects, #/projects/{id}, #/applications/{id}, #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login.
+// Hash router: #/ (the Dashboard), #/projects, #/projects/{id}, #/applications/{id}, #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
@@ -16,12 +16,14 @@ export type Route =
   | { name: 'profile' }
   | { name: 'invite'; token: string }
   | { name: 'login' }
+  | { name: 'dev-components' }
   | { name: 'notfound' }
 
 function parse(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent)
   if (parts.length === 0) return { name: 'dashboard' }
   if (parts[0] === 'login' && parts.length === 1) return { name: 'login' }
+  if (import.meta.env.DEV && parts[0] === 'dev' && parts[1] === 'components' && parts.length === 2) return { name: 'dev-components' }
   if (parts[0] === 'storages' && parts.length === 1) return { name: 'storages' }
   if (parts[0] === 'settings' && parts.length === 1) return { name: 'settings' }
   if (parts[0] === 'members' && parts.length === 1) return { name: 'members' }
