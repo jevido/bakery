@@ -171,6 +171,12 @@ func Slugify(name string, t DatabaseType) string {
 	return s
 }
 
+// GeneratedName is the name a Database created without one gets, as Coolify
+// names it: "<type>-database-<random>".
+func GeneratedName(t DatabaseType, random string) string {
+	return string(t) + "-database-" + random
+}
+
 // ContainerName is the Database's Container and its hostname on the bakery
 // network.
 func ContainerName(slug string) string { return "bakery-db-" + slug }

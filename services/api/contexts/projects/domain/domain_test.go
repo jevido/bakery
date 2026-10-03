@@ -341,3 +341,32 @@ func TestNewEnvironment(t *testing.T) {
 		}
 	}
 }
+
+func TestGeneratedApplicationName(t *testing.T) {
+	for _, c := range []struct {
+		pack                BuildPack
+		url, branch, random string
+		want                string
+	}{
+		{Dockerfile, "https://github.com/traefik/whoami", "master", "ab12cd34", "whoami:master-ab12cd34"},
+		{Nixpacks, "https://github.com/me/My Repo.git/", "", "ab12cd34", "my-repo:main-ab12cd34"},
+		{Dockerfile, "git@github.com:me/WebApp.git", "feature/x", "ab12cd34", "web-app:feature/x-ab12cd34"},
+		{Dockerfile, "git@host:repo.git", "main", "ab12cd34", "repo:main-ab12cd34"},
+		{DockerImage, "", "", "ab12cd34", "docker-image-ab12cd34"},
+	} {
+		if got := GeneratedApplicationName(c.pack, c.url, c.branch, c.random); got != c.want {
+			t.Errorf("GeneratedApplicationName(%s, %q, %q) = %q, want %q", c.pack, c.url, c.branch, got, c.want)
+		}
+	}
+	long := GeneratedApplicationName(Dockerfile, "https://x/"+strings.Repeat("a", 120), "main", "ab12cd34")
+	if len(long) != 100 || !strings.HasSuffix(long, ":main-ab12cd34") {
+		t.Errorf("long repository: %q (%d)", long, len(long))
+	}
+	in := ApplicationInput{Name: GeneratedApplicationName(Dockerfile, "https://github.com/traefik/whoami", "master", "ab12cd34"), GitURL: "https://github.com/traefik/whoami", Port: 80}
+	if _, err := in.Normalize(); err != nil {
+		t.Errorf("a generated name must pass Normalize: %v", err)
+	}
+	if got := Slugify(in.Name); got != "whoami-master-ab12cd34" {
+		t.Errorf("slug %q", got)
+	}
+}

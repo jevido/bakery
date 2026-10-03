@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -379,5 +380,15 @@ func TestCreateFromTemplate(t *testing.T) {
 	var fe *domain.FieldError
 	if _, err := s.CreateFromTemplate(ctx, 1, "nope", ""); !errors.As(err, &fe) || fe.Field != "template" {
 		t.Errorf("unknown template: %v", err)
+	}
+}
+
+func TestCreateWithoutAName(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := newTestService(&fakeRuntime{})
+	v, err := s.Create(ctx, 1, Input{Compose: webCompose})
+	s.Wait()
+	if err != nil || !regexp.MustCompile(`^docker-compose-[a-z2-7]{8}$`).MatchString(v.Name) || v.Slug != v.Name {
+		t.Fatalf("pasted compose: %v, name %q, slug %q", err, v.Name, v.Slug)
 	}
 }

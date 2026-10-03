@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -142,6 +143,10 @@ const passwordAlphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01
 
 // newPassword is 32 random letters and digits: no character any Database type's
 // URL or configuration treats specially.
+// randomSuffix is the random part of a generated name: 8 lowercase letters
+// and digits (Coolify uses 24; 8 keeps the slug readable).
+func randomSuffix() string { return strings.ToLower(rand.Text()[:8]) }
+
 func newPassword() string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -270,6 +275,9 @@ func (s *Service) Create(ctx context.Context, environmentID uint64, in domain.In
 	env, err := s.environments(ctx, environmentID)
 	if err != nil {
 		return View{}, err
+	}
+	if strings.TrimSpace(in.Name) == "" && in.Type.Valid() {
+		in.Name = domain.GeneratedName(in.Type, randomSuffix())
 	}
 	slug, err := s.freeSlug(ctx, domain.Slugify(in.Name, in.Type))
 	if err != nil {

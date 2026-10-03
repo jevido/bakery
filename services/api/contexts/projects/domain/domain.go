@@ -9,6 +9,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -546,6 +547,60 @@ func Slugify(name string) string {
 		s = strings.TrimRight(s[:40], "-")
 	}
 	return s
+}
+
+// GeneratedApplicationName is the name an Application created without one
+// gets, as Coolify names it: "docker-image-<random>" for a Docker image,
+// otherwise the kebab case of "<repository>:<branch>-<random>", where
+// <repository> is the last path segment of the git URL without ".git". The
+// repository part is cut so the name stays within 100 characters.
+func GeneratedApplicationName(buildPack BuildPack, gitURL, branch, random string) string {
+	if buildPack == DockerImage {
+		return "docker-image-" + random
+	}
+	gitURL = strings.TrimSuffix(strings.TrimSpace(gitURL), "/")
+	repository := strings.TrimSuffix(gitURL[strings.LastIndexAny(gitURL, "/:")+1:], ".git")
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		branch = "main"
+	}
+	rest := kebab(":" + branch + "-" + random)
+	repository = kebab(repository)
+	for len(repository)+len(rest) > 100 && repository != "" {
+		_, size := utf8.DecodeLastRuneInString(repository)
+		repository = repository[:len(repository)-size]
+	}
+	name := repository + rest
+	for len(name) > 100 {
+		_, size := utf8.DecodeLastRuneInString(name)
+		name = name[:len(name)-size]
+	}
+	return name
+}
+
+// kebab is Laravel's Str::kebab followed by Coolify's NAME_PATTERN filter:
+// whitespace dropped with the next word capitalised, a dash before every
+// upper-case letter but the first, lower case, and only letters, digits and
+// -_.@/&()#,:+ kept.
+func kebab(s string) string {
+	var b strings.Builder
+	upperNext := false
+	for i, r := range s {
+		switch {
+		case unicode.IsSpace(r):
+			upperNext = true
+			continue
+		case upperNext:
+			r, upperNext = unicode.ToUpper(r), false
+		}
+		if unicode.IsUpper(r) && i > 0 && b.Len() > 0 {
+			b.WriteByte('-')
+		}
+		if unicode.IsLetter(r) || unicode.IsMark(r) || unicode.IsDigit(r) || strings.ContainsRune("-_.@/&()#,:+", r) {
+			b.WriteRune(unicode.ToLower(r))
+		}
+	}
+	return b.String()
 }
 
 // DefaultDomain is the Domain an Application gets when none is given.

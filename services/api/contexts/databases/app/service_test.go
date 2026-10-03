@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"regexp"
 	"slices"
 	"sync"
 	"testing"
@@ -496,5 +497,19 @@ func TestRecoverStartsMissing(t *testing.T) {
 	s.Wait()
 	if got := rt.Calls(); !equal(got, []string{"start"}) || !rt.containers[a.ID] || rt.containers[b.ID] {
 		t.Fatalf("recover: %v %v", got, rt.containers)
+	}
+}
+
+func TestCreateWithoutAName(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := newTestService()
+	v, err := s.Create(ctx, 7, domain.Input{Type: domain.PostgreSQL})
+	s.Wait()
+	if err != nil || !regexp.MustCompile(`^postgresql-database-[a-z2-7]{8}$`).MatchString(v.Name) || v.Slug != v.Name {
+		t.Fatalf("created %v, name %q, slug %q", err, v.Name, v.Slug)
+	}
+	var fe *domain.FieldError
+	if _, err := s.Create(ctx, 7, domain.Input{Type: "oracle"}); !errors.As(err, &fe) || fe.Field != "type" {
+		t.Fatalf("unknown type: %v", err)
 	}
 }

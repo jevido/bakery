@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"slices"
@@ -235,6 +236,9 @@ func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, i
 	if !found {
 		return domain.Application{}, ErrNotFound
 	}
+	if strings.TrimSpace(in.Name) == "" {
+		in.Name = domain.GeneratedApplicationName(in.BuildPack, in.GitURL, in.GitBranch, randomSuffix())
+	}
 	in, err = in.Normalize()
 	if err != nil {
 		return domain.Application{}, err
@@ -286,6 +290,10 @@ func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, i
 	}
 	return s.store.CreateApplication(ctx, a)
 }
+
+// randomSuffix is the random part of a generated name: 8 lowercase letters
+// and digits (Coolify uses 24; 8 keeps the slug and default domain readable).
+func randomSuffix() string { return strings.ToLower(rand.Text()[:8]) }
 
 // freeSlug returns base, or base-2, base-3, ... whichever is free first.
 func (s *Service) freeSlug(ctx context.Context, base string) (string, error) {

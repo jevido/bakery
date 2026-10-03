@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -357,5 +358,22 @@ func TestEnvironmentInProject(t *testing.T) {
 	}
 	if _, _, err := s.EnvironmentInProject(ctx, 9); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown: %v", err)
+	}
+}
+
+func TestCreateApplicationWithoutAName(t *testing.T) {
+	ctx := context.Background()
+	s := NewService(&fakeStore{}, fakeKey, "example.com", "")
+	generated := regexp.MustCompile(`^whoami:master-[a-z2-7]{8}$`)
+	a, err := s.CreateApplication(ctx, 1, domain.ApplicationInput{GitURL: "https://github.com/traefik/whoami", GitBranch: "master", Port: 80})
+	if err != nil || !generated.MatchString(a.Name) {
+		t.Fatalf("git repository: %v, name %q", err, a.Name)
+	}
+	if a.Slug != domain.Slugify(a.Name) || a.Domains[0] != a.Slug+".example.com" {
+		t.Errorf("slug %q, domains %q", a.Slug, a.Domains)
+	}
+	a, err = s.CreateApplication(ctx, 1, domain.ApplicationInput{Name: "  ", BuildPack: domain.DockerImage, DockerImage: "docker.io/traefik/whoami:v1.10", Port: 80})
+	if err != nil || !regexp.MustCompile(`^docker-image-[a-z2-7]{8}$`).MatchString(a.Name) {
+		t.Fatalf("docker image: %v, name %q", err, a.Name)
 	}
 }

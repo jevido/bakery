@@ -351,6 +351,10 @@ func Slugify(name string) string {
 	return s
 }
 
+// GeneratedName is the name a Service created from a pasted Compose file
+// without a name gets, as Coolify names it: "docker-compose-<random>".
+func GeneratedName(random string) string { return "docker-compose-" + random }
+
 // ContainerName is a Component's Container, e.g. bakery-svc-3-web.
 func ContainerName(serviceID uint64, component string) string {
 	return fmt.Sprintf("bakery-svc-%d-%s", serviceID, component)

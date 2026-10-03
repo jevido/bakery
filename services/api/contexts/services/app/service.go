@@ -3,8 +3,10 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -200,11 +202,18 @@ func (s *Service) checkDomains(ctx context.Context, sv domain.Service) error {
 	return nil
 }
 
+// randomSuffix is the random part of a generated name: 8 lowercase letters
+// and digits (Coolify uses 24; 8 keeps the slug and default domains readable).
+func randomSuffix() string { return strings.ToLower(rand.Text()[:8]) }
+
 // Create stores a new Service and brings it Up in the background.
 func (s *Service) Create(ctx context.Context, environmentID uint64, in Input) (View, error) {
 	env, err := s.environments(ctx, environmentID)
 	if err != nil {
 		return View{}, err
+	}
+	if strings.TrimSpace(in.Name) == "" && in.TemplateKey == "" {
+		in.Name = domain.GeneratedName(randomSuffix())
 	}
 	sv, err := s.newService(ctx, env, in)
 	if err != nil {

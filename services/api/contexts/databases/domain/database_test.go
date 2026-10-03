@@ -128,3 +128,12 @@ func TestURLs(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestGeneratedName(t *testing.T) {
+	if got := GeneratedName(PostgreSQL, "ab12cd34"); got != "postgresql-database-ab12cd34" {
+		t.Errorf("got %q", got)
+	}
+	if _, err := NewDatabase(2, 1, Input{Name: GeneratedName(Valkey, "ab12cd34"), Type: Valkey}, "x", pw); err != nil {
+		t.Errorf("a generated name must be valid: %v", err)
+	}
+}

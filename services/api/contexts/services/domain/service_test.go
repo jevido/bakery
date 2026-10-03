@@ -205,3 +205,9 @@ func TestNames(t *testing.T) {
 		t.Error("default domain")
 	}
 }
+
+func TestGeneratedName(t *testing.T) {
+	if got := GeneratedName("ab12cd34"); got != "docker-compose-ab12cd34" {
+		t.Errorf("got %q", got)
+	}
+}
