@@ -640,6 +640,13 @@ html:not(.dark) {
   color: var(--color-fg-dim);
 }
 
+.application-settings-section > .application-settings-section-header p {
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--coollabs-subtle);
+}
+
 .application-settings-section-body {
   position: relative;
   border-radius: 8px;
@@ -786,6 +793,39 @@ html:not(.dark) {
 
   .projects-table-grid > :nth-child(2),
   .projects-table-grid > :nth-child(3) {
+    display: none;
+  }
+}
+
+/* A Project's Environments table rows, from Coolify's app.css: the
+   description drops out under 900px, the resource count under 640px. */
+.environments-table-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(220px, 1.5fr)
+    minmax(90px, 0.55fr)
+    minmax(240px, 1.6fr)
+    6rem;
+  column-gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .environments-table-grid {
+    grid-template-columns: minmax(220px, 1fr) 6rem 6rem;
+  }
+
+  .environments-table-grid .environment-description {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .environments-table-grid {
+    grid-template-columns: minmax(0, 1fr) 5rem;
+    column-gap: 0.75rem;
+  }
+
+  .environments-table-grid .environment-resource-count {
     display: none;
   }
 }

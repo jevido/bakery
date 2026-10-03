@@ -17,6 +17,7 @@
   import StatusBadge, { containerStatus } from '../../lib/ui/StatusBadge.svelte'
   import Textarea from '../../lib/ui/Textarea.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
+  import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
 
   $effect(() => breadcrumb.set({ label: 'Components' }))
@@ -30,6 +31,18 @@
   let deleted = $state<string[] | null>(null)
   let loading = $state(false)
   let modalOpen = $state(false)
+  let savedTitle = $state('My project')
+  let draftTitle = $state('My project')
+  let draftSaving = $state(false)
+
+  function saveDraft() {
+    draftSaving = true
+    setTimeout(() => {
+      savedTitle = draftTitle
+      draftSaving = false
+      toast.success('Project updated.')
+    }, 500)
+  }
 
   function fakeSave() {
     loading = true
@@ -149,6 +162,12 @@
       <Button onclick={() => toast.warning('High disk usage')}>Warning</Button>
       <Button onclick={() => toast.error('Deployment failed', 'exit status 1')}>Error</Button>
     </div>
+  </section>
+
+  <section id="unsaved-bar">
+    <SectionHeading title="UnsavedBar" subtitle="unsaved-bar: shows while the field differs from what was saved; Enter saves" />
+    <Input label="Name" bind:value={draftTitle} />
+    <UnsavedBar dirty={draftTitle !== savedTitle} saving={draftSaving} onsave={saveDraft} onreset={() => (draftTitle = savedTitle)} />
   </section>
 
   <section id="modals">
