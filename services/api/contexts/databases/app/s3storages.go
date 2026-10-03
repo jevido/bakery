@@ -8,7 +8,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/databases/domain"
 )
 
-// ErrS3StorageInUse is returned when deleting an S3 storage a Backup
+// ErrS3StorageInUse is returned when deleting an S3 storage a Backup execution
 // schedule uses.
 var ErrS3StorageInUse = errors.New("a database's backup schedule uses this S3 storage: choose another storage there first")
 

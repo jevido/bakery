@@ -40,7 +40,7 @@ func (r Runtime) Start(ctx context.Context, d domain.Database) error {
 			return fmt.Errorf("pulling %s: %w", image, err)
 		}
 	}
-	spec := d.Engine.Spec()
+	spec := d.Type.Spec()
 	volume := domain.VolumeName(d.ID)
 	if err := r.Podman.CreateVolume(ctx, volume, r.labels(d.ID)); err != nil {
 		return fmt.Errorf("creating volume %s: %w", volume, err)

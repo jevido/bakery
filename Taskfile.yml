@@ -133,7 +133,7 @@ tasks:
       - ./infra/dev/account/test.sh
 
   databases:test:
-    desc: Every database engine, internal and public URLs, stop/start and deletion end to end (needs task dev; RESTART_API=1 also restarts it)
+    desc: Every Database type, internal and public URLs, stop/start and deletion end to end (needs task dev; RESTART_API=1 also restarts it)
     cmds:
       - ./infra/dev/databases/test.sh
 
@@ -153,7 +153,7 @@ tasks:
       - ./infra/dev/remote-deploy/test.sh
 
   backups:test:
-    desc: Backups of every engine to local disk and Garage, restore, retention and schedule end to end (needs task dev and task s3:up)
+    desc: Backup executions of every Database type to local disk and Garage, restore, retention and schedule end to end (needs task dev and task s3:up)
     cmds:
       - ./infra/dev/backups/test.sh
 

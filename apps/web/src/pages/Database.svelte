@@ -4,7 +4,7 @@
   import CopyButton from '../lib/CopyButton.svelte'
   import DatabaseBackups from '../lib/DatabaseBackups.svelte'
   import DatabaseForm from '../lib/DatabaseForm.svelte'
-  import { engineLabel } from '../lib/engines'
+  import { databaseTypeLabel } from '../lib/databaseTypes'
   import { go, href } from '../lib/router.svelte'
   import { session } from '../lib/session.svelte'
   import StatusBadge from '../lib/StatusBadge.svelte'
@@ -95,7 +95,7 @@
     <div class="title">
       <h1>{database.name}</h1>
       <StatusBadge status={database.status} />
-      <p class="muted">{engineLabel(database.engine)} {database.version}</p>
+      <p class="muted">{databaseTypeLabel(database.type)} {database.version}</p>
     </div>
     {#if session.canWrite}<div class="buttons">
       {#if database.desired_state === 'stopped'}

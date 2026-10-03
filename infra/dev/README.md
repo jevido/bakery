@@ -72,7 +72,7 @@ Local development stack.
   a rollback, Resource limits on the Container, and the volume going with
   the Application.
 - `databases/test.sh` (`task databases:test`, needs `task dev` but not
-  Forgejo) creates a Database of every Engine and queries each on its
+  Forgejo) creates a Database of every Database type and queries each on its
   Internal URL from a container on the `bakery` network, keeps a Postgres
   row across stop/start and a Public port change, reaches it on the Public
   URL from the host, checks a Project with Databases cannot be deleted, and

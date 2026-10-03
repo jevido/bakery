@@ -35,14 +35,14 @@ func TestDeploymentNotification(t *testing.T) {
 }
 
 func TestBackupNotification(t *testing.T) {
-	n := backupNotification(databases.BackupFinished{
-		DatabaseID: 4, DatabaseName: "main", Engine: "postgresql", Reason: "the dump exited with code 1: refused", Trigger: "scheduled",
+	n := backupNotification(databases.BackupExecutionFinished{
+		DatabaseID: 4, DatabaseName: "main", Type: "postgresql", Reason: "the dump exited with code 1: refused", Trigger: "scheduled",
 	}, "http://localhost:4930")
 	if n.Kind != domain.BackupFailed || n.Title != "Backup of main failed" || n.Link != "http://localhost:4930/#/databases/4" ||
 		n.Body != "the dump exited with code 1: refused\nA scheduled backup of postgresql." {
 		t.Fatalf("got %+v", n)
 	}
-	n = backupNotification(databases.BackupFinished{DatabaseName: "main", Engine: "mysql", Succeeded: true, Trigger: "manual", SizeBytes: 1_400_000, OffSite: true}, "x")
+	n = backupNotification(databases.BackupExecutionFinished{DatabaseName: "main", Type: "mysql", Succeeded: true, Trigger: "manual", SizeBytes: 1_400_000, OffSite: true}, "x")
 	if n.Kind != domain.BackupSucceeded || n.Body != "A backup started by hand of mysql: 1.4 MB, kept on the server's disk and uploaded to S3." {
 		t.Fatalf("got %+v", n)
 	}

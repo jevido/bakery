@@ -63,7 +63,7 @@ func svc() *app.Service {
 		service.Log = facades.Log().Errorf
 		service.Files = infra.BackupFiles{Dir: cfg.GetString("bakery.backups.dir")}
 		service.S3 = func(st domain.S3Storage) app.S3Client { return infra.S3{Storage: st} }
-		service.BackupFinished = publishBackupFinished
+		service.BackupExecutionFinished = publishBackupExecutionFinished
 		projects.OnProjectDeleting(service.InUse)
 	})
 	return service
@@ -82,13 +82,13 @@ func Routes(r route.Router) {
 		r.Post("/api/databases/{id}/start", c.Start)
 		r.Post("/api/databases/{id}/stop", c.Stop)
 		r.Post("/api/databases/{id}/restart", c.Restart)
-		r.Put("/api/databases/{id}/backup-schedule", c.SetBackupSchedule)
-		r.Get("/api/databases/{id}/backups", c.Backups)
-		r.Post("/api/databases/{id}/backups", c.BackUp)
-		r.Post("/api/backups/{id}/restore", c.Restore)
-		r.Delete("/api/backups/{id}", c.DeleteBackup)
+		r.Put("/api/databases/{id}/scheduled-backup", c.SetScheduledBackup)
+		r.Get("/api/databases/{id}/backup-executions", c.BackupExecutions)
+		r.Post("/api/databases/{id}/backup-executions", c.BackUp)
+		r.Post("/api/backup-executions/{id}/restore", c.Restore)
+		r.Delete("/api/backup-executions/{id}", c.DeleteBackupExecution)
 	})
-	// Members pick an S3 storage for a Backup schedule, so they may list
+	// Members pick an S3 storage for a Scheduled backup, so they may list
 	// them (no secret keys are shown); only admins change them.
 	r.Middleware(identity.Auth, identity.Secrets).Group(func(r route.Router) {
 		r.Get("/api/s3-storages", c.S3Storages)
@@ -101,8 +101,8 @@ func Routes(r route.Router) {
 	})
 }
 
-// StreamRoutes registers the log stream and Backup downloads, behind
-// identity.Auth but outside the request timeout. A Backup holds the
+// StreamRoutes registers the log stream and Backup execution downloads, behind
+// identity.Auth but outside the request timeout. A Backup execution holds the
 // Database's data, so its download is a Secret.
 func StreamRoutes(r route.Router) {
 	c := databaseshttp.NewStreamController(svc(), shutdown)
@@ -110,13 +110,13 @@ func StreamRoutes(r route.Router) {
 		r.Get("/api/databases/{id}/logs", c.Logs)
 	})
 	r.Middleware(identity.Auth, identity.Secrets).Group(func(r route.Router) {
-		r.Get("/api/backups/{id}/download", c.Download)
+		r.Get("/api/backup-executions/{id}/download", c.Download)
 	})
 }
 
 // Recover starts, in the background, every Database that should run and has
 // no Container, retrying while Podman or the database is unreachable, and
-// then the scheduler of Backups.
+// then the scheduler of Backup executions.
 func Recover(ctx context.Context) {
 	s := svc()
 	go func() {
@@ -131,7 +131,7 @@ func Recover(ctx context.Context) {
 				err = s.Recover(ctx)
 			}
 			if err == nil {
-				// Only now: Recover marks Backups left running as failed,
+				// Only now: Recover marks Backup executions left running as failed,
 				// which must not hit one the scheduler just started.
 				go schedule(ctx, s)
 				return
@@ -146,7 +146,7 @@ func Recover(ctx context.Context) {
 	}()
 }
 
-// schedule runs the Backup scheduler at the start of every minute until
+// schedule runs the Scheduled backupr at the start of every minute until
 // ctx ends.
 func schedule(ctx context.Context, s *app.Service) {
 	for {
@@ -162,45 +162,45 @@ func schedule(ctx context.Context, s *app.Service) {
 	}
 }
 
-// BackupFinished is a Backup that ended; one Recover fails after a restart
+// BackupExecutionFinished is a Backup execution that ended; one Recover fails after a restart
 // is not announced.
-type BackupFinished struct {
-	BackupID     uint64
-	DatabaseID   uint64
-	DatabaseName string
-	Engine       string
-	Succeeded    bool
+type BackupExecutionFinished struct {
+	BackupExecutionID uint64
+	DatabaseID        uint64
+	DatabaseName      string
+	Type              string
+	Succeeded         bool
 	// Reason is why it failed.
 	Reason string
 	// Trigger is "manual" or "scheduled".
 	Trigger   string
 	SizeBytes int64
-	// OffSite says the Backup was also uploaded to its S3 storage.
+	// OffSite says the Backup execution was also uploaded to its S3 storage.
 	OffSite    bool
 	FinishedAt time.Time
 }
 
 var (
-	backupMu         sync.Mutex
-	onBackupFinished []func(ctx context.Context, e BackupFinished)
+	backupMu                  sync.Mutex
+	onBackupExecutionFinished []func(ctx context.Context, e BackupExecutionFinished)
 )
 
-// OnBackupFinished registers f to hear of every BackupFinished. It runs in
-// its own goroutine, so it can neither hold up nor break a Backup.
-func OnBackupFinished(f func(ctx context.Context, e BackupFinished)) {
+// OnBackupExecutionFinished registers f to hear of every BackupFinished. It runs in
+// its own goroutine, so it can neither hold up nor break a Backup execution.
+func OnBackupExecutionFinished(f func(ctx context.Context, e BackupExecutionFinished)) {
 	backupMu.Lock()
 	defer backupMu.Unlock()
-	onBackupFinished = append(onBackupFinished, f)
+	onBackupExecutionFinished = append(onBackupExecutionFinished, f)
 }
 
-func publishBackupFinished(_ context.Context, d domain.Database, b domain.Backup) {
-	e := BackupFinished{
-		BackupID: b.ID, DatabaseID: d.ID, DatabaseName: d.Name, Engine: string(d.Engine),
-		Succeeded: b.Status == domain.BackupSucceeded, Reason: b.Error, Trigger: string(b.Trigger),
+func publishBackupExecutionFinished(_ context.Context, d domain.Database, b domain.BackupExecution) {
+	e := BackupExecutionFinished{
+		BackupExecutionID: b.ID, DatabaseID: d.ID, DatabaseName: d.Name, Type: string(d.Type),
+		Succeeded: b.Status == domain.ExecutionSucceeded, Reason: b.Error, Trigger: string(b.Trigger),
 		SizeBytes: b.SizeBytes, OffSite: b.S3, FinishedAt: b.FinishedAt,
 	}
 	backupMu.Lock()
-	subscribers := slices.Clone(onBackupFinished)
+	subscribers := slices.Clone(onBackupExecutionFinished)
 	backupMu.Unlock()
 	for _, f := range subscribers {
 		go func() {

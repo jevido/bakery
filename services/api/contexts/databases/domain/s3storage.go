@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// S3Storage is an S3-compatible bucket Backups are uploaded to.
+// S3Storage is an S3-compatible bucket Backup executions are uploaded to.
 type S3Storage struct {
 	ID        uint64
 	Name      string
@@ -73,7 +73,7 @@ func (s *S3Storage) Update(in S3Input) error {
 	return nil
 }
 
-// Dir is the key prefix of one Database's Backups, ending in "/".
+// Dir is the key prefix of one Database's Backup executions, ending in "/".
 func (s S3Storage) Dir(slug string, databaseID uint64) string {
 	dir := slug + "-" + strconv.FormatUint(databaseID, 10) + "/"
 	if s.Prefix != "" {
@@ -82,7 +82,7 @@ func (s S3Storage) Dir(slug string, databaseID uint64) string {
 	return dir
 }
 
-// Key is the object key of one Backup file.
+// Key is the object key of one Backup execution file.
 func (s S3Storage) Key(slug string, databaseID uint64, file string) string {
 	return s.Dir(slug, databaseID) + file
 }

@@ -13,23 +13,23 @@ import (
 )
 
 var (
-	// ErrBusy is returned while a Backup or Restore of the Database runs.
+	// ErrBusy is returned while a Backup execution or Restore of the Database runs.
 	ErrBusy = errors.New("a backup or restore of this database is already running")
 	// ErrNotRunning is returned for a Database that is not running.
 	ErrNotRunning = errors.New("the database is not running: start it first")
-	// ErrBackupRunning is returned for a Backup that has not finished.
+	// ErrBackupRunning is returned for a Backup execution that has not finished.
 	ErrBackupRunning = errors.New("the backup is still running")
-	// ErrNotRestorable is returned for a Backup that failed or whose file
+	// ErrNotRestorable is returned for a Backup execution that failed or whose file
 	// is gone.
 	ErrNotRestorable = errors.New("only a succeeded backup whose file still exists can be restored")
 )
 
-// BackupFiles keeps Backup files in the Backups directory, one directory
+// BackupFiles keeps Backup execution files in the Backups directory, one directory
 // per Database.
 type BackupFiles interface {
 	// Write creates the file through write; a failed write leaves no file.
 	Write(databaseID uint64, name string, write func(w io.Writer) error) (size int64, err error)
-	// Open opens a Backup file; an error satisfying errors.Is(err,
+	// Open opens a Backup execution file; an error satisfying errors.Is(err,
 	// fs.ErrNotExist) means it is gone.
 	Open(databaseID uint64, name string) (BackupFile, error)
 	// Remove removes one file; a missing file is not an error.
@@ -38,7 +38,7 @@ type BackupFiles interface {
 	RemoveAll(databaseID uint64) error
 }
 
-// BackupFile is an open Backup file.
+// BackupFile is an open Backup execution file.
 type BackupFile interface {
 	io.Reader
 	io.ReaderAt
@@ -54,16 +54,16 @@ type S3Client interface {
 	Delete(ctx context.Context, key string) error
 }
 
-// backupTimeout bounds one Backup or Restore.
+// backupTimeout bounds one Backup execution or Restore.
 const backupTimeout = 2 * time.Hour
 
-// job is a running Backup or Restore of one Database.
+// job is a running Backup execution or Restore of one Database.
 type job struct {
 	cancel context.CancelFunc
 	done   chan struct{}
 }
 
-// claim reserves the Database for one Backup or Restore.
+// claim reserves the Database for one Backup execution or Restore.
 func (s *Service) claim(id uint64) (*job, context.Context, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -86,7 +86,7 @@ func (s *Service) release(id uint64, j *job) {
 	close(j.done)
 }
 
-// endJob cancels whatever Backup or Restore runs for the Database and
+// endJob cancels whatever Backup execution or Restore runs for the Database and
 // waits for it to end.
 func (s *Service) endJob(id uint64) {
 	s.mu.Lock()
@@ -110,10 +110,10 @@ func (s *Service) logf(format string, args ...any) {
 	}
 }
 
-// checkRunning is what BackUp and Restore need of the Database: an Engine
+// checkRunning is what BackUp and Restore need of the Database: a Database type
 // with backups, running.
 func (s *Service) checkRunning(ctx context.Context, d domain.Database) error {
-	if !d.Engine.Spec().Backups {
+	if !d.Type.Spec().Backups {
 		return domain.ErrNoBackups
 	}
 	status, _, err := s.runtime.Status(ctx, d)
@@ -126,26 +126,26 @@ func (s *Service) checkRunning(ctx context.Context, d domain.Database) error {
 	return nil
 }
 
-// BackUp starts a Backup of the Database and returns it while it runs.
-func (s *Service) BackUp(ctx context.Context, id uint64, trigger domain.BackupTrigger) (domain.Backup, error) {
+// BackUp starts a Backup execution of the Database and returns it while it runs.
+func (s *Service) BackUp(ctx context.Context, id uint64, trigger domain.ExecutionTrigger) (domain.BackupExecution, error) {
 	d, err := s.get(ctx, id)
 	if err != nil {
-		return domain.Backup{}, err
+		return domain.BackupExecution{}, err
 	}
 	if err := s.checkRunning(ctx, d); err != nil {
-		return domain.Backup{}, err
+		return domain.BackupExecution{}, err
 	}
 	j, jctx, err := s.claim(id)
 	if err != nil {
-		return domain.Backup{}, err
+		return domain.BackupExecution{}, err
 	}
-	b, err := domain.NewBackup(d, trigger, s.Now())
+	b, err := domain.NewBackupExecution(d, trigger, s.Now())
 	if err == nil {
-		b, err = s.store.CreateBackup(ctx, b)
+		b, err = s.store.CreateBackupExecution(ctx, b)
 	}
 	if err != nil {
 		s.release(id, j)
-		return domain.Backup{}, err
+		return domain.BackupExecution{}, err
 	}
 	s.wg.Add(1)
 	go func() {
@@ -156,8 +156,8 @@ func (s *Service) BackUp(ctx context.Context, id uint64, trigger domain.BackupTr
 	return b, nil
 }
 
-// runBackup dumps, uploads and prunes. Its outcome is stored on the Backup.
-func (s *Service) runBackup(ctx context.Context, d domain.Database, b domain.Backup) {
+// runBackup dumps, uploads and prunes. Its outcome is stored on the Backup execution.
+func (s *Service) runBackup(ctx context.Context, d domain.Database, b domain.BackupExecution) {
 	finish := func(err error, local bool, size int64, s3 bool) {
 		if err != nil {
 			b.Fail(err.Error(), local, size, s.Now())
@@ -167,11 +167,11 @@ func (s *Service) runBackup(ctx context.Context, d domain.Database, b domain.Bac
 		// The job's context may be cancelled; the outcome is still stored.
 		sctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		if serr := s.store.SaveBackup(sctx, b); serr != nil {
+		if serr := s.store.SaveBackupExecution(sctx, b); serr != nil {
 			s.logf("databases: saving backup %d: %v", b.ID, serr)
 		}
-		if s.BackupFinished != nil {
-			s.BackupFinished(sctx, d, b)
+		if s.BackupExecutionFinished != nil {
+			s.BackupExecutionFinished(sctx, d, b)
 		}
 		if err != nil {
 			s.logf("databases: backup %d of database %d: %v", b.ID, d.ID, err)
@@ -217,7 +217,7 @@ func (s *Service) runBackup(ctx context.Context, d domain.Database, b domain.Bac
 	s.prune(d)
 }
 
-func (s *Service) upload(ctx context.Context, d domain.Database, b domain.Backup, size int64) error {
+func (s *Service) upload(ctx context.Context, d domain.Database, b domain.BackupExecution, size int64) error {
 	st, found, err := s.store.S3Storage(ctx, b.S3StorageID)
 	if err != nil {
 		return err
@@ -236,25 +236,25 @@ func (s *Service) upload(ctx context.Context, d domain.Database, b domain.Backup
 	return nil
 }
 
-// prune deletes the Backups Retention no longer keeps. Failures are
-// logged; they never fail a Backup.
+// prune deletes the Backup executions Retention no longer keeps. Failures are
+// logged; they never fail a Backup execution.
 func (s *Service) prune(d domain.Database) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	backups, err := s.store.Backups(ctx, d.ID)
+	backups, err := s.store.BackupExecutions(ctx, d.ID)
 	if err != nil {
 		s.logf("databases: pruning backups of database %d: %v", d.ID, err)
 		return
 	}
-	for _, b := range domain.Prune(backups, d.BackupSchedule.Retention) {
-		if err := s.removeBackup(ctx, d, b); err != nil {
+	for _, b := range domain.Prune(backups, d.ScheduledBackup.Retention) {
+		if err := s.removeExecution(ctx, d, b); err != nil {
 			s.logf("databases: pruning backup %d: %v", b.ID, err)
 		}
 	}
 }
 
-// removeBackup removes the Backup's file, its S3 object and its row.
-func (s *Service) removeBackup(ctx context.Context, d domain.Database, b domain.Backup) error {
+// removeExecution removes the Backup execution's file, its S3 object and its row.
+func (s *Service) removeExecution(ctx context.Context, d domain.Database, b domain.BackupExecution) error {
 	if b.Local {
 		if err := s.Files.Remove(d.ID, b.FileName); err != nil {
 			return err
@@ -271,19 +271,19 @@ func (s *Service) removeBackup(ctx context.Context, d domain.Database, b domain.
 			}
 		}
 	}
-	return s.store.DeleteBackup(ctx, b.ID)
+	return s.store.DeleteBackupExecution(ctx, b.ID)
 }
 
-// Backups lists the Database's Backups, newest first.
-func (s *Service) Backups(ctx context.Context, databaseID uint64) ([]domain.Backup, error) {
+// BackupExecutions lists the Database's Backup executions, newest first.
+func (s *Service) BackupExecutions(ctx context.Context, databaseID uint64) ([]domain.BackupExecution, error) {
 	if _, err := s.get(ctx, databaseID); err != nil {
 		return nil, err
 	}
-	return s.store.Backups(ctx, databaseID)
+	return s.store.BackupExecutions(ctx, databaseID)
 }
 
-func (s *Service) backup(ctx context.Context, id uint64) (domain.Backup, domain.Database, error) {
-	b, found, err := s.store.Backup(ctx, id)
+func (s *Service) execution(ctx context.Context, id uint64) (domain.BackupExecution, domain.Database, error) {
+	b, found, err := s.store.BackupExecution(ctx, id)
 	if err == nil && !found {
 		err = ErrNotFound
 	}
@@ -294,30 +294,30 @@ func (s *Service) backup(ctx context.Context, id uint64) (domain.Backup, domain.
 	return b, d, err
 }
 
-// DeleteBackup removes a finished Backup, its file and its S3 object.
-func (s *Service) DeleteBackup(ctx context.Context, id uint64) error {
-	b, d, err := s.backup(ctx, id)
+// DeleteBackupExecution removes a finished Backup execution, its file and its S3 object.
+func (s *Service) DeleteBackupExecution(ctx context.Context, id uint64) error {
+	b, d, err := s.execution(ctx, id)
 	if err != nil {
 		return err
 	}
-	if b.Status == domain.BackupRunning {
+	if b.Status == domain.ExecutionRunning {
 		return ErrBackupRunning
 	}
-	return s.removeBackup(ctx, d, b)
+	return s.removeExecution(ctx, d, b)
 }
 
-// OpenBackup opens the Backup's file, from the Backups directory or, when
+// OpenBackupExecution opens the Backup execution's file, from the Backups directory or, when
 // it is gone there, from its S3 storage. It returns the file name too.
-func (s *Service) OpenBackup(ctx context.Context, id uint64) (io.ReadCloser, int64, string, error) {
-	b, d, err := s.backup(ctx, id)
+func (s *Service) OpenBackupExecution(ctx context.Context, id uint64) (io.ReadCloser, int64, string, error) {
+	b, d, err := s.execution(ctx, id)
 	if err != nil {
 		return nil, 0, "", err
 	}
-	r, size, err := s.openBackup(ctx, d, b)
+	r, size, err := s.openExecution(ctx, d, b)
 	return r, size, b.FileName, err
 }
 
-func (s *Service) openBackup(ctx context.Context, d domain.Database, b domain.Backup) (io.ReadCloser, int64, error) {
+func (s *Service) openExecution(ctx context.Context, d domain.Database, b domain.BackupExecution) (io.ReadCloser, int64, error) {
 	if !b.Restorable() {
 		return nil, 0, ErrNotRestorable
 	}
@@ -347,16 +347,16 @@ func isNotExist(err error) bool { return errors.Is(err, fs.ErrNotExist) }
 // RestoreOutcome is how the last Restore of a Database went. It is kept in
 // memory only: an API restart forgets the note, never data.
 type RestoreOutcome struct {
-	BackupID   uint64
-	StartedAt  time.Time
-	FinishedAt time.Time
-	Error      string
+	BackupExecutionID uint64
+	StartedAt         time.Time
+	FinishedAt        time.Time
+	Error             string
 }
 
-// Restore replaces the running Database's data with the Backup, in the
+// Restore replaces the running Database's data with the Backup execution, in the
 // background.
 func (s *Service) Restore(ctx context.Context, backupID uint64) error {
-	b, d, err := s.backup(ctx, backupID)
+	b, d, err := s.execution(ctx, backupID)
 	if err != nil {
 		return err
 	}
@@ -379,7 +379,7 @@ func (s *Service) Restore(ctx context.Context, backupID uint64) error {
 		defer s.wg.Done()
 		defer s.release(d.ID, j)
 		err := s.runRestore(jctx, d, b)
-		out := RestoreOutcome{BackupID: b.ID, StartedAt: started, FinishedAt: s.Now().UTC()}
+		out := RestoreOutcome{BackupExecutionID: b.ID, StartedAt: started, FinishedAt: s.Now().UTC()}
 		if err != nil {
 			out.Error = err.Error()
 			s.logf("databases: restoring backup %d into database %d: %v", b.ID, d.ID, err)
@@ -392,8 +392,8 @@ func (s *Service) Restore(ctx context.Context, backupID uint64) error {
 	return nil
 }
 
-func (s *Service) runRestore(ctx context.Context, d domain.Database, b domain.Backup) error {
-	r, size, err := s.openBackup(ctx, d, b)
+func (s *Service) runRestore(ctx context.Context, d domain.Database, b domain.BackupExecution) error {
+	r, size, err := s.openExecution(ctx, d, b)
 	if err != nil {
 		return err
 	}
@@ -423,8 +423,8 @@ func (s *Service) restoreState(id uint64) (bool, *RestoreOutcome) {
 	return s.restoring[id], &out
 }
 
-// SetBackupSchedule replaces the Database's Backup schedule.
-func (s *Service) SetBackupSchedule(ctx context.Context, id uint64, sched domain.BackupSchedule) (View, error) {
+// SetScheduledBackup replaces the Database's Scheduled backup.
+func (s *Service) SetScheduledBackup(ctx context.Context, id uint64, sched domain.ScheduledBackup) (View, error) {
 	d, err := s.get(ctx, id)
 	if err != nil {
 		return View{}, err
@@ -435,10 +435,10 @@ func (s *Service) SetBackupSchedule(ctx context.Context, id uint64, sched domain
 			return View{}, err
 		}
 		if !found {
-			return View{}, &domain.FieldError{Field: "backup_schedule.s3_storage_id", Message: "that S3 storage does not exist"}
+			return View{}, &domain.FieldError{Field: "scheduled_backup.s3_storage_id", Message: "that S3 storage does not exist"}
 		}
 	}
-	if err := d.SetBackupSchedule(sched, s.Now()); err != nil {
+	if err := d.SetScheduledBackup(sched, s.Now()); err != nil {
 		return View{}, err
 	}
 	if err := s.store.Update(ctx, d); err != nil {
@@ -449,7 +449,7 @@ func (s *Service) SetBackupSchedule(ctx context.Context, id uint64, sched domain
 
 // nextBackup is when the Database's schedule fires next; zero when off.
 func (s *Service) nextBackup(ctx context.Context, d domain.Database) (time.Time, error) {
-	sched := d.BackupSchedule
+	sched := d.ScheduledBackup
 	if !sched.Enabled {
 		return time.Time{}, nil
 	}
@@ -464,9 +464,9 @@ func (s *Service) nextBackup(ctx context.Context, d domain.Database) (time.Time,
 	return sched.Next(from), nil
 }
 
-// Tick starts a Backup of every Database whose schedule is due at now. A
-// due Backup that cannot start (the Database is stopped, or busy) is
-// recorded as a failed scheduled Backup, so the Owner sees why a run was
+// Tick starts a Backup execution of every Database whose schedule is due at now. A
+// due Backup execution that cannot start (the Database is stopped, or busy) is
+// recorded as a failed scheduled Backup execution, so the Owner sees why a run was
 // missed, and the schedule waits for its next time.
 func (s *Service) Tick(ctx context.Context, now time.Time) error {
 	list, err := s.store.ScheduledDatabases(ctx)
@@ -478,17 +478,17 @@ func (s *Service) Tick(ctx context.Context, now time.Time) error {
 		if err != nil {
 			return err
 		}
-		if !d.BackupSchedule.Due(last, now) {
+		if !d.ScheduledBackup.Due(last, now) {
 			continue
 		}
 		if _, err := s.BackUp(ctx, d.ID, domain.TriggerScheduled); err != nil {
 			s.logf("databases: scheduled backup of database %d: %v", d.ID, err)
-			b, nerr := domain.NewBackup(d, domain.TriggerScheduled, now)
+			b, nerr := domain.NewBackupExecution(d, domain.TriggerScheduled, now)
 			if nerr != nil {
 				continue
 			}
 			b.Fail(err.Error(), false, 0, now)
-			if _, cerr := s.store.CreateBackup(ctx, b); cerr != nil {
+			if _, cerr := s.store.CreateBackupExecution(ctx, b); cerr != nil {
 				return cerr
 			}
 		}

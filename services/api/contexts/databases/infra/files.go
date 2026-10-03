@@ -11,7 +11,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/databases/app"
 )
 
-// BackupFiles keeps Backup files below Dir, in one directory per Database.
+// BackupFiles keeps Backup execution files below Dir, in one directory per Database.
 // Directories are 0700 and files 0600: they hold every row of a Database.
 type BackupFiles struct{ Dir string }
 
@@ -35,7 +35,7 @@ func (c *counter) Write(p []byte) (int, error) {
 }
 
 // Write writes to name.partial, syncs it and renames it into place, so a
-// Backup file is either complete or absent.
+// Backup execution file is either complete or absent.
 func (f BackupFiles) Write(databaseID uint64, name string, write func(w io.Writer) error) (int64, error) {
 	if err := os.MkdirAll(f.dir(databaseID), 0o700); err != nil {
 		return 0, err

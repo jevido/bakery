@@ -20,7 +20,7 @@ func subscribe() {
 	deployments.OnDeploymentFinished(func(ctx context.Context, e deployments.DeploymentFinished) {
 		svc().Notify(ctx, deploymentNotification(e, DashboardURL()))
 	})
-	databases.OnBackupFinished(func(ctx context.Context, e databases.BackupFinished) {
+	databases.OnBackupExecutionFinished(func(ctx context.Context, e databases.BackupExecutionFinished) {
 		svc().Notify(ctx, backupNotification(e, DashboardURL()))
 	})
 	identity.OnInvitationCreated(func(ctx context.Context, e identity.InvitationCreated) (bool, error) {
@@ -94,7 +94,7 @@ func size(n int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "kMGTPE"[exp])
 }
 
-func backupNotification(e databases.BackupFinished, dashboard string) domain.Notification {
+func backupNotification(e databases.BackupExecutionFinished, dashboard string) domain.Notification {
 	n := domain.Notification{
 		Kind:  domain.BackupSucceeded,
 		Title: "Backup of " + e.DatabaseName + " succeeded",
@@ -110,12 +110,12 @@ func backupNotification(e databases.BackupFinished, dashboard string) domain.Not
 		where = "kept on the server's disk and uploaded to S3"
 	}
 	if e.Succeeded {
-		n.Body = fmt.Sprintf("%s of %s: %s, %s.", trigger, e.Engine, size(e.SizeBytes), where)
+		n.Body = fmt.Sprintf("%s of %s: %s, %s.", trigger, e.Type, size(e.SizeBytes), where)
 		return n
 	}
 	n.Kind = domain.BackupFailed
 	n.Title = "Backup of " + e.DatabaseName + " failed"
-	n.Body = e.Reason + "\n" + trigger + " of " + e.Engine + "."
+	n.Body = e.Reason + "\n" + trigger + " of " + e.Type + "."
 	return n
 }
 

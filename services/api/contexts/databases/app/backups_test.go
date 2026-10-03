@@ -149,7 +149,7 @@ func newBackupEnv(t *testing.T) (*backupEnv, View, domain.S3Storage) {
 	s.S3 = func(domain.S3Storage) S3Client { return e.bucket }
 	rt.dump = []byte("PGDMP-data")
 	ctx := context.Background()
-	v, err := s.Create(ctx, 7, domain.Input{Name: "main", Engine: domain.PostgreSQL})
+	v, err := s.Create(ctx, 7, domain.Input{Name: "main", Type: domain.PostgreSQL})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,21 +158,21 @@ func newBackupEnv(t *testing.T) (*backupEnv, View, domain.S3Storage) {
 	return e, v, st
 }
 
-func (e *backupEnv) backUp(t *testing.T, id uint64) domain.Backup {
+func (e *backupEnv) backUp(t *testing.T, id uint64) domain.BackupExecution {
 	t.Helper()
 	b, err := e.s.BackUp(context.Background(), id, domain.TriggerManual)
 	if err != nil {
 		t.Fatal(err)
 	}
 	e.s.Wait()
-	b, _, _ = e.store.Backup(context.Background(), b.ID)
+	b, _, _ = e.store.BackupExecution(context.Background(), b.ID)
 	return b
 }
 
-func setSchedule(t *testing.T, e *backupEnv, id uint64, sched domain.BackupSchedule) {
+func setSchedule(t *testing.T, e *backupEnv, id uint64, sched domain.ScheduledBackup) {
 	t.Helper()
 	d, _, _ := e.store.Get(context.Background(), id)
-	if err := d.SetBackupSchedule(sched, e.s.Now()); err != nil {
+	if err := d.SetScheduledBackup(sched, e.s.Now()); err != nil {
 		t.Fatal(err)
 	}
 	e.store.Update(context.Background(), d)
@@ -180,9 +180,9 @@ func setSchedule(t *testing.T, e *backupEnv, id uint64, sched domain.BackupSched
 
 func TestBackUpLocalAndS3(t *testing.T) {
 	e, v, st := newBackupEnv(t)
-	setSchedule(t, e, v.ID, domain.BackupSchedule{Cron: "0 3 * * *", Retention: 7, S3StorageID: st.ID})
+	setSchedule(t, e, v.ID, domain.ScheduledBackup{Cron: "0 3 * * *", Retention: 7, S3StorageID: st.ID})
 	b := e.backUp(t, v.ID)
-	if b.Status != domain.BackupSucceeded || !b.Local || !b.S3 || b.SizeBytes != int64(len("PGDMP-data")) || !strings.HasSuffix(b.FileName, ".dump") {
+	if b.Status != domain.ExecutionSucceeded || !b.Local || !b.S3 || b.SizeBytes != int64(len("PGDMP-data")) || !strings.HasSuffix(b.FileName, ".dump") {
 		t.Fatalf("backup %+v", b)
 	}
 	if got := e.files.names(); len(got) != 1 || got[0] != key(v.ID, b.FileName) {
@@ -195,7 +195,7 @@ func TestBackUpLocalAndS3(t *testing.T) {
 
 func TestBackUpGzipsMySQL(t *testing.T) {
 	e, _, _ := newBackupEnv(t)
-	v, _ := e.s.Create(context.Background(), 7, domain.Input{Name: "my", Engine: domain.MySQL})
+	v, _ := e.s.Create(context.Background(), 7, domain.Input{Name: "my", Type: domain.MySQL})
 	e.s.Wait()
 	e.rt.dump = []byte("CREATE TABLE t;")
 	b := e.backUp(t, v.ID)
@@ -215,19 +215,19 @@ func TestBackUpFailures(t *testing.T) {
 
 	e.rt.dumpCode, e.rt.dumpStderr = 1, "pg_dump: error: connection refused"
 	b := e.backUp(t, v.ID)
-	if b.Status != domain.BackupFailed || b.Local || !strings.Contains(b.Error, "connection refused") || len(e.files.names()) != 0 {
+	if b.Status != domain.ExecutionFailed || b.Local || !strings.Contains(b.Error, "connection refused") || len(e.files.names()) != 0 {
 		t.Fatalf("failed dump: %+v, files %v", b, e.files.names())
 	}
 
 	e.rt.dumpCode = 0
 	e.bucket.putErr = errors.New("s3: AccessDenied")
-	setSchedule(t, e, v.ID, domain.BackupSchedule{Cron: "0 3 * * *", Retention: 7, S3StorageID: st.ID})
+	setSchedule(t, e, v.ID, domain.ScheduledBackup{Cron: "0 3 * * *", Retention: 7, S3StorageID: st.ID})
 	b = e.backUp(t, v.ID)
-	if b.Status != domain.BackupFailed || !b.Local || b.S3 || !strings.Contains(b.Error, "AccessDenied") || len(e.files.names()) != 1 {
+	if b.Status != domain.ExecutionFailed || !b.Local || b.S3 || !strings.Contains(b.Error, "AccessDenied") || len(e.files.names()) != 1 {
 		t.Fatalf("failed upload: %+v, files %v", b, e.files.names())
 	}
 
-	r, _ := e.s.Create(ctx, 7, domain.Input{Name: "r", Engine: domain.Redis})
+	r, _ := e.s.Create(ctx, 7, domain.Input{Name: "r", Type: domain.Redis})
 	e.s.Wait()
 	if _, err := e.s.BackUp(ctx, r.ID, domain.TriggerManual); !errors.Is(err, domain.ErrNoBackups) {
 		t.Fatalf("redis: %v", err)
@@ -249,7 +249,7 @@ func TestBackUpOneAtATime(t *testing.T) {
 	if _, err := e.s.BackUp(ctx, v.ID, domain.TriggerManual); !errors.Is(err, ErrBusy) {
 		t.Fatalf("second: %v", err)
 	}
-	if err := e.s.DeleteBackup(ctx, first.ID); !errors.Is(err, ErrBackupRunning) {
+	if err := e.s.DeleteBackupExecution(ctx, first.ID); !errors.Is(err, ErrBackupRunning) {
 		t.Fatalf("delete running: %v", err)
 	}
 	close(e.rt.dumpGate)
@@ -262,12 +262,12 @@ func TestBackUpOneAtATime(t *testing.T) {
 
 func TestRetentionPrunes(t *testing.T) {
 	e, v, st := newBackupEnv(t)
-	setSchedule(t, e, v.ID, domain.BackupSchedule{Cron: "0 3 * * *", Retention: 2, S3StorageID: st.ID})
-	var all []domain.Backup
+	setSchedule(t, e, v.ID, domain.ScheduledBackup{Cron: "0 3 * * *", Retention: 2, S3StorageID: st.ID})
+	var all []domain.BackupExecution
 	for range 3 {
 		all = append(all, e.backUp(t, v.ID))
 	}
-	list, _ := e.s.Backups(context.Background(), v.ID)
+	list, _ := e.s.BackupExecutions(context.Background(), v.ID)
 	if len(list) != 2 || list[0].ID != all[2].ID || list[1].ID != all[1].ID {
 		t.Fatalf("kept %+v", list)
 	}
@@ -284,10 +284,10 @@ func TestRetentionPrunes(t *testing.T) {
 func TestDeleteBackupAndDatabase(t *testing.T) {
 	e, v, st := newBackupEnv(t)
 	ctx := context.Background()
-	setSchedule(t, e, v.ID, domain.BackupSchedule{Cron: "0 3 * * *", Retention: 7, S3StorageID: st.ID})
+	setSchedule(t, e, v.ID, domain.ScheduledBackup{Cron: "0 3 * * *", Retention: 7, S3StorageID: st.ID})
 	a := e.backUp(t, v.ID)
 	e.backUp(t, v.ID)
-	if err := e.s.DeleteBackup(ctx, a.ID); err != nil {
+	if err := e.s.DeleteBackupExecution(ctx, a.ID); err != nil {
 		t.Fatal(err)
 	}
 	if len(e.files.names()) != 1 || len(e.bucket.keys()) != 1 {
@@ -300,7 +300,7 @@ func TestDeleteBackupAndDatabase(t *testing.T) {
 	if len(e.files.names()) != 0 || len(e.bucket.keys()) != 1 {
 		t.Fatalf("after delete database: files %v objects %v", e.files.names(), e.bucket.keys())
 	}
-	if list, _ := e.store.Backups(ctx, v.ID); len(list) != 0 {
+	if list, _ := e.store.BackupExecutions(ctx, v.ID); len(list) != 0 {
 		t.Fatalf("rows left %+v", list)
 	}
 }
@@ -309,14 +309,14 @@ func TestRecoverFailsInterrupted(t *testing.T) {
 	e, v, _ := newBackupEnv(t)
 	ctx := context.Background()
 	d, _, _ := e.store.Get(ctx, v.ID)
-	b, _ := domain.NewBackup(d, domain.TriggerScheduled, e.s.Now())
-	b, _ = e.store.CreateBackup(ctx, b)
+	b, _ := domain.NewBackupExecution(d, domain.TriggerScheduled, e.s.Now())
+	b, _ = e.store.CreateBackupExecution(ctx, b)
 	if err := e.s.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
 	e.s.Wait()
-	got, _, _ := e.store.Backup(ctx, b.ID)
-	if got.Status != domain.BackupFailed || !strings.Contains(got.Error, "interrupted") {
+	got, _, _ := e.store.BackupExecution(ctx, b.ID)
+	if got.Status != domain.ExecutionFailed || !strings.Contains(got.Error, "interrupted") {
 		t.Fatalf("after recover %+v", got)
 	}
 }
@@ -324,25 +324,25 @@ func TestRecoverFailsInterrupted(t *testing.T) {
 func TestSetBackupSchedule(t *testing.T) {
 	e, v, st := newBackupEnv(t)
 	ctx := context.Background()
-	on := domain.BackupSchedule{Enabled: true, Cron: "0 3 * * *", Retention: 3, S3StorageID: st.ID}
-	got, err := e.s.SetBackupSchedule(ctx, v.ID, on)
+	on := domain.ScheduledBackup{Enabled: true, Cron: "0 3 * * *", Retention: 3, S3StorageID: st.ID}
+	got, err := e.s.SetScheduledBackup(ctx, v.ID, on)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The clock is just past 03:00 on 1 October: the next run is tomorrow.
-	if !got.BackupSchedule.Enabled || !got.NextBackupAt.Equal(time.Date(2026, 10, 2, 3, 0, 0, 0, time.UTC)) {
-		t.Fatalf("schedule %+v, next %s", got.BackupSchedule, got.NextBackupAt)
+	if !got.ScheduledBackup.Enabled || !got.NextBackupAt.Equal(time.Date(2026, 10, 2, 3, 0, 0, 0, time.UTC)) {
+		t.Fatalf("schedule %+v, next %s", got.ScheduledBackup, got.NextBackupAt)
 	}
 	on.S3StorageID = 999
 	var fe *domain.FieldError
-	if _, err := e.s.SetBackupSchedule(ctx, v.ID, on); !errors.As(err, &fe) || fe.Field != "backup_schedule.s3_storage_id" {
+	if _, err := e.s.SetScheduledBackup(ctx, v.ID, on); !errors.As(err, &fe) || fe.Field != "scheduled_backup.s3_storage_id" {
 		t.Fatalf("unknown storage: %v", err)
 	}
 	on.S3StorageID, on.Cron = 0, "every night"
-	if _, err := e.s.SetBackupSchedule(ctx, v.ID, on); !errors.As(err, &fe) || fe.Field != "backup_schedule.cron" {
+	if _, err := e.s.SetScheduledBackup(ctx, v.ID, on); !errors.As(err, &fe) || fe.Field != "scheduled_backup.cron" {
 		t.Fatalf("bad cron: %v", err)
 	}
-	off, _ := e.s.SetBackupSchedule(ctx, v.ID, domain.BackupSchedule{Cron: "0 3 * * *", Retention: 3})
+	off, _ := e.s.SetScheduledBackup(ctx, v.ID, domain.ScheduledBackup{Cron: "0 3 * * *", Retention: 3})
 	if !off.NextBackupAt.IsZero() {
 		t.Fatalf("off has a next backup: %s", off.NextBackupAt)
 	}
@@ -352,13 +352,13 @@ func TestTick(t *testing.T) {
 	e, v, _ := newBackupEnv(t)
 	ctx := context.Background()
 	// Switched on at 03:00:0x on 1 October.
-	if _, err := e.s.SetBackupSchedule(ctx, v.ID, domain.BackupSchedule{Enabled: true, Cron: "0 3 * * *", Retention: 7}); err != nil {
+	if _, err := e.s.SetScheduledBackup(ctx, v.ID, domain.ScheduledBackup{Enabled: true, Cron: "0 3 * * *", Retention: 7}); err != nil {
 		t.Fatal(err)
 	}
 	day := func(d, h, m int) time.Time { return time.Date(2026, 10, d, h, m, 0, 0, time.UTC) }
 	count := func() int {
 		e.s.Wait()
-		l, _ := e.s.Backups(ctx, v.ID)
+		l, _ := e.s.BackupExecutions(ctx, v.ID)
 		return len(l)
 	}
 	e.s.Tick(ctx, day(1, 14, 0))
@@ -372,8 +372,8 @@ func TestTick(t *testing.T) {
 	if n := count(); n != 1 {
 		t.Fatalf("after a long outage: %d backups", n)
 	}
-	l, _ := e.s.Backups(ctx, v.ID)
-	if l[0].Trigger != domain.TriggerScheduled || l[0].Status != domain.BackupSucceeded {
+	l, _ := e.s.BackupExecutions(ctx, v.ID)
+	if l[0].Trigger != domain.TriggerScheduled || l[0].Status != domain.ExecutionSucceeded {
 		t.Fatalf("scheduled backup %+v", l[0])
 	}
 	// Stopped when due: a failed scheduled Backup says why, once.
@@ -384,8 +384,8 @@ func TestTick(t *testing.T) {
 	if n := count(); n != 2 {
 		t.Fatalf("while stopped: %d backups", n)
 	}
-	l, _ = e.s.Backups(ctx, v.ID)
-	if l[0].Status != domain.BackupFailed || !strings.Contains(l[0].Error, "not running") {
+	l, _ = e.s.BackupExecutions(ctx, v.ID)
+	if l[0].Status != domain.ExecutionFailed || !strings.Contains(l[0].Error, "not running") {
 		t.Fatalf("missed run %+v", l[0])
 	}
 }
@@ -393,7 +393,7 @@ func TestTick(t *testing.T) {
 func TestRestore(t *testing.T) {
 	e, v, st := newBackupEnv(t)
 	ctx := context.Background()
-	setSchedule(t, e, v.ID, domain.BackupSchedule{Cron: "0 3 * * *", Retention: 7, S3StorageID: st.ID})
+	setSchedule(t, e, v.ID, domain.ScheduledBackup{Cron: "0 3 * * *", Retention: 7, S3StorageID: st.ID})
 	b := e.backUp(t, v.ID)
 	d, _, _ := e.store.Get(ctx, v.ID)
 
@@ -408,7 +408,7 @@ func TestRestore(t *testing.T) {
 		t.Fatalf("execs %v", e.rt.execs)
 	}
 	view, _ := e.s.Get(ctx, v.ID)
-	if view.Restoring || view.LastRestore == nil || view.LastRestore.BackupID != b.ID || view.LastRestore.Error != "" {
+	if view.Restoring || view.LastRestore == nil || view.LastRestore.BackupExecutionID != b.ID || view.LastRestore.Error != "" {
 		t.Fatalf("after restore: %v %+v", view.Restoring, view.LastRestore)
 	}
 
@@ -466,7 +466,7 @@ func TestS3Storages(t *testing.T) {
 	if _, err := e.s.CheckS3Storage(ctx, 0, in); !errors.As(err, &fe) || fe.Field != "secret_key" {
 		t.Fatalf("check without a secret: %v", err)
 	}
-	setSchedule(t, e, v.ID, domain.BackupSchedule{Cron: "0 3 * * *", Retention: 7, S3StorageID: st.ID})
+	setSchedule(t, e, v.ID, domain.ScheduledBackup{Cron: "0 3 * * *", Retention: 7, S3StorageID: st.ID})
 	if err := e.s.DeleteS3Storage(ctx, st.ID); !errors.Is(err, ErrS3StorageInUse) {
 		t.Fatalf("delete in use: %v", err)
 	}
@@ -478,8 +478,8 @@ func TestS3Storages(t *testing.T) {
 func TestBackupFinishedIsHeard(t *testing.T) {
 	e, v, _ := newBackupEnv(t)
 	var mu sync.Mutex
-	var heard []domain.Backup
-	e.s.BackupFinished = func(_ context.Context, d domain.Database, b domain.Backup) {
+	var heard []domain.BackupExecution
+	e.s.BackupExecutionFinished = func(_ context.Context, d domain.Database, b domain.BackupExecution) {
 		mu.Lock()
 		defer mu.Unlock()
 		if d.ID != v.ID {
@@ -492,7 +492,7 @@ func TestBackupFinishedIsHeard(t *testing.T) {
 	e.backUp(t, v.ID)
 	mu.Lock()
 	defer mu.Unlock()
-	if len(heard) != 2 || heard[0].Status != domain.BackupSucceeded || heard[1].Status != domain.BackupFailed || !strings.Contains(heard[1].Error, "connection refused") {
+	if len(heard) != 2 || heard[0].Status != domain.ExecutionSucceeded || heard[1].Status != domain.ExecutionFailed || !strings.Contains(heard[1].Error, "connection refused") {
 		t.Fatalf("heard %+v", heard)
 	}
 }

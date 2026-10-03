@@ -55,25 +55,27 @@ backing up Redis and Valkey (see below).
 - `StartDatabase`, `StopDatabase`, `RestartDatabase`: set the desired state and act on the Container.
 - `DeleteDatabase`: remove the Container, then the volume, then the row.
 - `DeleteDatabase` also removes its Backup execution files and rows; objects in S3 storage stay.
-- `SetBackupSchedule(database, enabled, cron, retention, s3 storage?)`: validate and store; switching it on remembers when, so it first fires at the next time after that.
+- `SetScheduledBackup(database, enabled, cron, retention, s3 storage?)`: validate and store; switching it on remembers when, so it first fires at the next time after that.
 - `BackUpDatabase(database, trigger)`: dump the Database inside its Container into the Backups directory, upload to the S3 storage if any, then prune by Retention locally and in S3.
-- `RestoreBackup(backup)`: copy the Backup execution's file (downloaded from S3 if the local file is gone) into the Container and run the Database type's restore.
-- `DeleteBackup(backup)`: remove its file, its S3 object and its row.
+- `Restore(backup execution)`: copy the Backup execution's file (downloaded from S3 if the local file is gone) into the Container and run the Database type's restore.
+- `DeleteBackupExecution(backup execution)`: remove its file, its S3 object and its row.
 - `CreateS3Storage`, `UpdateS3Storage` (empty secret keeps it), `DeleteS3Storage`, `TestS3Storage` (can Bakery reach the bucket with these keys).
 - `Recover()`: at API start, start every Database whose desired state is `running` and whose Container is missing, mark Backup executions still `running` as failed (interrupted), and start the scheduler, which backs up every Database whose Scheduled backup is due, once a minute.
 
 ### Domain events
 
-- `BackupFinished { backup, database, name, type, succeeded, reason,
+- `BackupExecutionFinished { backup execution, database, name, type, succeeded, reason,
   trigger, size, off-site }`: a Backup execution ended. Not for one marked failed by
-  `Recover` after a restart. Registered with `OnBackupFinished(f)`; each
+  `Recover` after a restart. Registered with `OnBackupExecutionFinished(f)`; each
   subscriber runs in its own goroutine.
 
 ## Integration
 
 - **Publishes:** the Databases API (`/api/environments/{id}/databases`,
-  `/api/projects/{id}/databases`, `/api/databases/{id}` and its actions and
-  log stream) for the dashboard, and `OnBackupFinished` (notifications).
+  `/api/projects/{id}/databases`, `/api/databases/{id}` and its actions,
+  log stream, `scheduled-backup` and `backup-executions`, and
+  `/api/backup-executions/{id}` with its download and restore) for the
+  dashboard, and `OnBackupExecutionFinished` (notifications).
 - **Talks to:** S3-compatible storage (AWS S3, Garage, and the like) over
   its HTTP API, for S3 storages.
 - **Consumes:** `projects.Environment(id)` to place a new Database (and

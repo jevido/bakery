@@ -41,7 +41,7 @@ adapt to.
 | servers | routing | customer/supplier | `servers.Connect(serverID)` to run and configure the Proxy of a Remote server |
 | servers | projects | customer/supplier | `servers.Exists(id)` when an Application is created with a Target server; projects registers `servers.OnServerDeleting` so a Server Applications target is not deleted |
 | deployments | notifications | published language | `deployments.OnDeploymentFinished { deployment, application, slug, succeeded, reason, branch, commit, trigger, rollback }`: a Deployment ended succeeded or failed (not cancelled, not failed by a restart) |
-| databases | notifications | published language | `databases.OnBackupFinished { backup, database, name, type, succeeded, reason, trigger, size, off-site }`: a Backup execution ended (not one failed by a restart) |
+| databases | notifications | published language | `databases.OnBackupExecutionFinished { backup execution, database, name, type, succeeded, reason, trigger, size, off-site }`: a Backup execution ended (not one failed by a restart) |
 | servers | notifications | published language | `servers.OnServerHealthChanged { server, name, change, reason, disk used/total }`: a Server probe found a Server unreachable, reachable again, or its disk usage high |
 | identity | notifications | customer/supplier | `identity.OnInvitationCreated { email, role, invited by, link, expires }`, called synchronously; notifications answers whether it emailed the link |
 
@@ -84,6 +84,6 @@ flowchart LR
   servers -->|Exists, OnServerDeleting| projects
   identity -->|OnInvitationCreated| notifications
   deployments -->|OnDeploymentFinished| notifications
-  databases -->|OnBackupFinished| notifications
+  databases -->|OnBackupExecutionFinished| notifications
   servers -->|OnServerHealthChanged| notifications
 ```

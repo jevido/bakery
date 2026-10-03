@@ -39,7 +39,7 @@ ENV_ID=$(bakery GET "/api/projects/$PROJECT_ID" | json "d['project']['environmen
 database() { bakery GET "/api/databases/$1" | json "d['database']$2"; }
 create() { # create ENGINE: prints the new Database's id
 	local out
-	out=$(bakery POST "/api/environments/$ENV_ID/databases" "{\"name\":\"$RUN-$1\",\"engine\":\"$1\"}")
+	out=$(bakery POST "/api/environments/$ENV_ID/databases" "{\"name\":\"$RUN-$1\",\"type\":\"$1\"}")
 	echo "$out" | json "d['database']['id']" || fail "creating $1: $out"
 }
 running() { # running ID
@@ -85,11 +85,11 @@ read_row() {
 	esac
 }
 
-backup_field() { bakery GET "/api/databases/$1/backups" | json "[b for b in d['backups'] if b['id']==$2][0]$3"; }
+backup_field() { bakery GET "/api/databases/$1/backup-executions" | json "[b for b in d['backup_executions'] if b['id']==$2][0]$3"; }
 back_up() { # back_up ID: prints the new Backup's id once it succeeded
 	local out b until=$((SECONDS + 120)) s
-	out=$(bakery POST "/api/databases/$1/backups")
-	b=$(echo "$out" | json "d['backup']['id']") || fail "backing up $1: $out"
+	out=$(bakery POST "/api/databases/$1/backup-executions")
+	b=$(echo "$out" | json "d['backup_execution']['id']") || fail "backing up $1: $out"
 	while :; do
 		s=$(backup_field "$1" "$b" "['status']")
 		[ "$s" = succeeded ] && break
@@ -101,7 +101,7 @@ back_up() { # back_up ID: prints the new Backup's id once it succeeded
 }
 restore() { # restore ID BACKUP
 	local out until=$((SECONDS + 120))
-	out=$(bakery POST "/api/backups/$2/restore")
+	out=$(bakery POST "/api/backup-executions/$2/restore")
 	[[ $out == *restoring* ]] || fail "restoring $2: $out"
 	while [ "$(database "$1" "['restoring']")" = True ]; do
 		[ $SECONDS -lt $until ] || fail "restore of $2 did not finish"
@@ -113,7 +113,7 @@ restore() { # restore ID BACKUP
 }
 schedule() { # schedule ID CRON RETENTION
 	local out
-	out=$(bakery PUT "/api/databases/$1/backup-schedule" "{\"enabled\":true,\"cron\":\"$2\",\"retention\":$3,\"s3_storage_id\":$STORAGE_ID}")
+	out=$(bakery PUT "/api/databases/$1/scheduled-backup" "{\"enabled\":true,\"cron\":\"$2\",\"retention\":$3,\"s3_storage_id\":$STORAGE_ID}")
 	[[ $out == *'"database"'* ]] || fail "setting the schedule of $1: $out"
 }
 
@@ -125,26 +125,26 @@ STORAGE_ID=$(echo "$out" | json "d['s3_storage']['id']") || fail "creating the S
 echo "ok: storage $STORAGE_ID reaches the bucket"
 
 declare -A ID
-for engine in postgresql mysql mariadb mongodb redis; do
-	ID[$engine]=$(create "$engine")
-	DBS+=("${ID[$engine]}")
+for type in postgresql mysql mariadb mongodb redis; do
+	ID[$type]=$(create "$type")
+	DBS+=("${ID[$type]}")
 done
 
-for engine in postgresql mysql mariadb mongodb; do
-	say "$engine: back up, drop, restore"
-	id=${ID[$engine]}
+for type in postgresql mysql mariadb mongodb; do
+	say "$type: back up, drop, restore"
+	id=${ID[$type]}
 	running "$id"
 	schedule "$id" "0 3 * * *" 2
-	write_row "$engine" "$id"
+	write_row "$type" "$id"
 	b=$(back_up "$id")
-	[ "$(backup_field "$id" "$b" "['local']")/$(backup_field "$id" "$b" "['s3']")" = True/True ] || fail "$engine backup not local and in S3"
+	[ "$(backup_field "$id" "$b" "['local']")/$(backup_field "$id" "$b" "['s3']")" = True/True ] || fail "$type backup not local and in S3"
 	file=$(backup_field "$id" "$b" "['file_name']")
-	[ -s "$BACKUPS_DIR/$id/$file" ] || fail "$engine: no file $BACKUPS_DIR/$id/$file"
-	grep -q "/$file$" <<<"$(objects "$RUN/")" || fail "$engine: $file not in the bucket"
-	drop_row "$engine" "$id"
+	[ -s "$BACKUPS_DIR/$id/$file" ] || fail "$type: no file $BACKUPS_DIR/$id/$file"
+	grep -q "/$file$" <<<"$(objects "$RUN/")" || fail "$type: $file not in the bucket"
+	drop_row "$type" "$id"
 	restore "$id" "$b"
-	[ "$(read_row "$engine" "$id" | tr -d '\r')" = kept ] || fail "$engine: row not back after restore"
-	echo "ok: $engine row back from $file"
+	[ "$(read_row "$type" "$id" | tr -d '\r')" = kept ] || fail "$type: row not back after restore"
+	echo "ok: $type row back from $file"
 done
 
 PG=${ID[postgresql]}
@@ -159,7 +159,7 @@ echo "ok: restored from Garage"
 say "Retention 2"
 back_up "$PG" >/dev/null
 back_up "$PG" >/dev/null
-n=$(bakery GET "/api/databases/$PG/backups" | json "len(d['backups'])")
+n=$(bakery GET "/api/databases/$PG/backup-executions" | json "len(d['backup_executions'])")
 [ "$n" = 2 ] || fail "$n backups listed, want 2"
 files=$(find "$BACKUPS_DIR/$PG" -type f | wc -l)
 [ "$files" = 2 ] || fail "$files files in $BACKUPS_DIR/$PG, want 2"
@@ -171,12 +171,12 @@ echo "ok: two backups, two files, two objects"
 say "Scheduled every minute"
 MY=${ID[mysql]}
 schedule "$MY" "* * * * *" 5
-scheduled() { [ "$(bakery GET "/api/databases/$MY/backups" | json "sum(1 for b in d['backups'] if b['trigger']=='scheduled' and b['status']=='succeeded')")" -ge 1 ]; }
+scheduled() { [ "$(bakery GET "/api/databases/$MY/backup-executions" | json "sum(1 for b in d['backup_executions'] if b['trigger']=='scheduled' and b['status']=='succeeded')")" -ge 1 ]; }
 wait_for 150 "a scheduled backup" scheduled
 echo "ok: a scheduled backup succeeded"
 
 say "Redis has no backups"
-out=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -X POST "$API/api/databases/${ID[redis]}/backups")
+out=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -X POST "$API/api/databases/${ID[redis]}/backup-executions")
 [ "$out" = 422 ] || fail "backing up redis answered $out"
 echo "ok: 422"
 

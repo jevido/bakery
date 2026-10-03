@@ -1,5 +1,5 @@
-// Package domain is the databases model: the Database, its Engine, its
-// Backups, S3 storages and the rules for each. It depends on nothing
+// Package domain is the databases model: the Database, its Database type, its
+// Backup executions, S3 storages and the rules for each. It depends on nothing
 // outside the standard library except robfig/cron, a pure cron parser.
 package domain
 
@@ -71,7 +71,7 @@ func (l ResourceLimits) Check() error {
 	return nil
 }
 
-// Database is the aggregate root: one Engine running as one Container in an
+// Database is the aggregate root: one Database type running as one Container in an
 // Environment.
 type Database struct {
 	ID            uint64
@@ -79,20 +79,20 @@ type Database struct {
 	ProjectID     uint64
 	Name          string
 	Slug          string
-	Engine        Engine
+	Type          DatabaseType
 	Version       string
 	Credentials   Credentials
 	// PublicPort is the host port it is published on; 0 is none.
-	PublicPort     int
-	ResourceLimits ResourceLimits
-	DesiredState   DesiredState
-	BackupSchedule BackupSchedule
+	PublicPort      int
+	ResourceLimits  ResourceLimits
+	DesiredState    DesiredState
+	ScheduledBackup ScheduledBackup
 }
 
-// Input is what the Owner chooses. Engine is only read on creation.
+// Input is what the Owner chooses. Database type is only read on creation.
 type Input struct {
 	Name           string
-	Engine         Engine
+	Type           DatabaseType
 	Version        string
 	PublicPort     int
 	ResourceLimits ResourceLimits
@@ -100,11 +100,11 @@ type Input struct {
 
 var versionTag = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$`)
 
-func (in Input) normalize(engine Engine) (Input, error) {
+func (in Input) normalize(t DatabaseType) (Input, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Version = strings.TrimSpace(in.Version)
 	if in.Version == "" {
-		in.Version = engine.Spec().DefaultVersion
+		in.Version = t.Spec().DefaultVersion
 	}
 	switch {
 	case in.Name == "":
@@ -122,29 +122,29 @@ func (in Input) normalize(engine Engine) (Input, error) {
 // NewDatabase validates the input and generates the Credentials. The slug
 // must already be free; the Database starts out wanted running.
 func NewDatabase(environmentID, projectID uint64, in Input, slug string, generatePassword func() string) (Database, error) {
-	if !in.Engine.Valid() {
-		return Database{}, invalid("engine", "engine must be one of %s", strings.Join(engineNames(), ", "))
+	if !in.Type.Valid() {
+		return Database{}, invalid("type", "type must be one of %s", strings.Join(typeNames(), ", "))
 	}
-	in, err := in.normalize(in.Engine)
+	in, err := in.normalize(in.Type)
 	if err != nil {
 		return Database{}, err
 	}
 	creds := Credentials{Username: DefaultUsername, Password: generatePassword(), DatabaseName: strings.ReplaceAll(slug, "-", "_")}
-	if in.Engine.Spec().RootPassword {
+	if in.Type.Spec().RootPassword {
 		creds.RootPassword = generatePassword()
 	}
 	return Database{
 		EnvironmentID: environmentID, ProjectID: projectID,
-		Name: in.Name, Slug: slug, Engine: in.Engine, Version: in.Version,
+		Name: in.Name, Slug: slug, Type: in.Type, Version: in.Version,
 		Credentials: creds, PublicPort: in.PublicPort, ResourceLimits: in.ResourceLimits,
-		DesiredState: Running, BackupSchedule: DefaultBackupSchedule,
+		DesiredState: Running, ScheduledBackup: DefaultScheduledBackup,
 	}, nil
 }
 
 // Update changes what may change: name, version, Public port and Resource
 // limits. It reports whether the Container has to be recreated for it.
 func (d *Database) Update(in Input) (recreate bool, err error) {
-	in, err = in.normalize(d.Engine)
+	in, err = in.normalize(d.Type)
 	if err != nil {
 		return false, err
 	}
@@ -159,14 +159,14 @@ const DefaultUsername = "bakery"
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
 // Slugify turns a name into the base of a Slug; an empty result falls back
-// to the Engine's name.
-func Slugify(name string, engine Engine) string {
+// to the Database type's name.
+func Slugify(name string, t DatabaseType) string {
 	s := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(name), "-"), "-")
 	if len(s) > 40 {
 		s = strings.TrimRight(s[:40], "-")
 	}
 	if s == "" {
-		s = string(engine)
+		s = string(t)
 	}
 	return s
 }

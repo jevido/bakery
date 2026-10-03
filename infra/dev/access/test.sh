@@ -59,7 +59,7 @@ APP_ID=$(bakery POST "/api/environments/$ENV_ID/applications" \
 APP_SLUG=$(bakery GET "/api/applications/$APP_ID" | json "d['application']['slug']")
 APPS+=("$APP_ID $APP_SLUG")
 bakery PUT "/api/applications/$APP_ID/environment-variables" '{"environment_variables":[{"name":"SECRET","value":"hunter2hunter2","runtime":true}]}' >/dev/null
-DB_ID=$(bakery POST "/api/environments/$ENV_ID/databases" "{\"name\":\"$RUN\",\"engine\":\"redis\"}" | json "d['database']['id']")
+DB_ID=$(bakery POST "/api/environments/$ENV_ID/databases" "{\"name\":\"$RUN\",\"type\":\"redis\"}" | json "d['database']['id']")
 
 say "Invitations"
 MEMBER=$WORK/member VIEWER=$WORK/viewer

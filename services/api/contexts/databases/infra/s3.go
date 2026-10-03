@@ -20,7 +20,7 @@ import (
 
 // S3 is a thin client for one S3 storage: path-style URLs
 // (<endpoint>/<bucket>/<key>) signed with Signature V4, which AWS, Garage
-// and other S3-compatible stores all accept. Only what Backups need; no
+// and other S3-compatible stores all accept. Only what Backup executions need; no
 // SDK, for the same reason as the Podman client.
 type S3 struct {
 	Storage domain.S3Storage

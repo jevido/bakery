@@ -11,7 +11,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/databases/domain"
 )
 
-type backupRecord struct {
+type backupExecutionRecord struct {
 	ID          uint64 `gorm:"primaryKey"`
 	DatabaseID  uint64
 	Status      string
@@ -27,10 +27,10 @@ type backupRecord struct {
 	orm.Timestamps
 }
 
-func (backupRecord) TableName() string { return "database_backups" }
+func (backupExecutionRecord) TableName() string { return "backup_executions" }
 
-func toBackupRecord(b domain.Backup) backupRecord {
-	return backupRecord{
+func toBackupExecutionRecord(b domain.BackupExecution) backupExecutionRecord {
+	return backupExecutionRecord{
 		ID: b.ID, DatabaseID: b.DatabaseID, Status: string(b.Status), Trigger: string(b.Trigger),
 		FileName: b.FileName, SizeBytes: b.SizeBytes, Local: b.Local, S3: b.S3,
 		S3StorageID: nonZero(b.S3StorageID), Error: b.Error,
@@ -38,62 +38,62 @@ func toBackupRecord(b domain.Backup) backupRecord {
 	}
 }
 
-func (r backupRecord) toDomain() domain.Backup {
-	return domain.Backup{
-		ID: r.ID, DatabaseID: r.DatabaseID, Status: domain.BackupStatus(r.Status), Trigger: domain.BackupTrigger(r.Trigger),
+func (r backupExecutionRecord) toDomain() domain.BackupExecution {
+	return domain.BackupExecution{
+		ID: r.ID, DatabaseID: r.DatabaseID, Status: domain.ExecutionStatus(r.Status), Trigger: domain.ExecutionTrigger(r.Trigger),
 		FileName: r.FileName, SizeBytes: r.SizeBytes, Local: r.Local, S3: r.S3,
 		S3StorageID: deref(r.S3StorageID), Error: r.Error,
 		StartedAt: r.StartedAt.UTC(), FinishedAt: derefTime(r.FinishedAt),
 	}
 }
 
-func (s Store) CreateBackup(ctx context.Context, b domain.Backup) (domain.Backup, error) {
-	rec := toBackupRecord(b)
+func (s Store) CreateBackupExecution(ctx context.Context, b domain.BackupExecution) (domain.BackupExecution, error) {
+	rec := toBackupExecutionRecord(b)
 	if err := s.query(ctx).Create(&rec); err != nil {
-		return domain.Backup{}, err
+		return domain.BackupExecution{}, err
 	}
 	b.ID = rec.ID
 	return b, nil
 }
 
-func (s Store) SaveBackup(ctx context.Context, b domain.Backup) error {
-	rec := toBackupRecord(b)
-	_, err := s.query(ctx).Model(&backupRecord{}).Where("id", b.ID).Update(map[string]any{
+func (s Store) SaveBackupExecution(ctx context.Context, b domain.BackupExecution) error {
+	rec := toBackupExecutionRecord(b)
+	_, err := s.query(ctx).Model(&backupExecutionRecord{}).Where("id", b.ID).Update(map[string]any{
 		"status": rec.Status, "size_bytes": rec.SizeBytes, "local": rec.Local, "s3": rec.S3,
 		"s3_storage_id": rec.S3StorageID, "error": rec.Error, "finished_at": rec.FinishedAt,
 	})
 	return err
 }
 
-// Backup returns the Backup; found is false when there is none.
-func (s Store) Backup(ctx context.Context, id uint64) (domain.Backup, bool, error) {
-	var rec backupRecord
+// BackupExecution returns the BackupExecution; found is false when there is none.
+func (s Store) BackupExecution(ctx context.Context, id uint64) (domain.BackupExecution, bool, error) {
+	var rec backupExecutionRecord
 	if err := s.query(ctx).Where("id", id).FirstOrFail(&rec); err != nil {
 		if errors.Is(err, frameworkerrors.OrmRecordNotFound) {
-			return domain.Backup{}, false, nil
+			return domain.BackupExecution{}, false, nil
 		}
-		return domain.Backup{}, false, err
+		return domain.BackupExecution{}, false, err
 	}
 	return rec.toDomain(), true, nil
 }
 
-// Backups lists the Database's Backups, newest first.
-func (s Store) Backups(ctx context.Context, databaseID uint64) ([]domain.Backup, error) {
-	var recs []backupRecord
+// BackupExecutions lists the Database's BackupExecutions, newest first.
+func (s Store) BackupExecutions(ctx context.Context, databaseID uint64) ([]domain.BackupExecution, error) {
+	var recs []backupExecutionRecord
 	if err := s.query(ctx).Where("database_id", databaseID).Order("started_at desc").Order("id desc").Find(&recs); err != nil {
 		return nil, err
 	}
-	out := make([]domain.Backup, len(recs))
+	out := make([]domain.BackupExecution, len(recs))
 	for i, r := range recs {
 		out[i] = r.toDomain()
 	}
 	return out, nil
 }
 
-// LastScheduledStart is when the Database's newest scheduled Backup
+// LastScheduledStart is when the Database's newest scheduled Backup execution
 // started; the zero time without one.
 func (s Store) LastScheduledStart(ctx context.Context, databaseID uint64) (time.Time, error) {
-	var rec backupRecord
+	var rec backupExecutionRecord
 	err := s.query(ctx).Where("database_id", databaseID).Where("trigger", string(domain.TriggerScheduled)).Order("started_at desc").FirstOrFail(&rec)
 	if errors.Is(err, frameworkerrors.OrmRecordNotFound) {
 		return time.Time{}, nil
@@ -104,21 +104,21 @@ func (s Store) LastScheduledStart(ctx context.Context, databaseID uint64) (time.
 	return rec.StartedAt.UTC(), nil
 }
 
-func (s Store) DeleteBackup(ctx context.Context, id uint64) error {
-	_, err := s.query(ctx).Where("id", id).Delete(&backupRecord{})
+func (s Store) DeleteBackupExecution(ctx context.Context, id uint64) error {
+	_, err := s.query(ctx).Where("id", id).Delete(&backupExecutionRecord{})
 	return err
 }
 
-// DeleteBackups removes the rows of every Backup of the Database.
-func (s Store) DeleteBackups(ctx context.Context, databaseID uint64) error {
-	_, err := s.query(ctx).Where("database_id", databaseID).Delete(&backupRecord{})
+// DeleteBackupExecutions removes the rows of every Backup execution of the Database.
+func (s Store) DeleteBackupExecutions(ctx context.Context, databaseID uint64) error {
+	_, err := s.query(ctx).Where("database_id", databaseID).Delete(&backupExecutionRecord{})
 	return err
 }
 
-// FailRunningBackups marks every running Backup failed with reason.
-func (s Store) FailRunningBackups(ctx context.Context, reason string, at time.Time) (int64, error) {
-	res, err := s.query(ctx).Model(&backupRecord{}).Where("status", string(domain.BackupRunning)).Update(map[string]any{
-		"status": string(domain.BackupFailed), "error": reason, "finished_at": at.UTC(),
+// FailRunningBackupExecutions marks every running Backup execution failed with reason.
+func (s Store) FailRunningBackupExecutions(ctx context.Context, reason string, at time.Time) (int64, error) {
+	res, err := s.query(ctx).Model(&backupExecutionRecord{}).Where("status", string(domain.ExecutionRunning)).Update(map[string]any{
+		"status": string(domain.ExecutionFailed), "error": reason, "finished_at": at.UTC(),
 	})
 	if err != nil {
 		return 0, err

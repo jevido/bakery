@@ -149,9 +149,9 @@ export type Deployment = {
 
 export type LogLine = { stream: 'info' | 'out' | 'err'; line: string }
 
-export type Engine = 'postgresql' | 'mysql' | 'mariadb' | 'redis' | 'valkey' | 'mongodb'
+export type DatabaseType = 'postgresql' | 'mysql' | 'mariadb' | 'redis' | 'valkey' | 'mongodb'
 
-/** Read from Podman: starting until it answers its engine's readiness probe. */
+/** Read from Podman: starting until it answers its Database type's readiness probe. */
 export type DatabaseStatus = 'starting' | 'running' | 'stopped' | 'exited' | 'missing'
 
 export type Database = {
@@ -160,7 +160,7 @@ export type Database = {
   project_id: number
   name: string
   slug: string
-  engine: Engine
+  type: DatabaseType
   version: string
   status: DatabaseStatus
   desired_state: 'running' | 'stopped'
@@ -177,14 +177,14 @@ export type Database = {
   public_url?: string | null
   /** false for Redis and Valkey. */
   backups_supported: boolean
-  backup_schedule: BackupSchedule
+  scheduled_backup: ScheduledBackup
   /** When the schedule fires next (UTC); null when it is off. */
   next_backup_at: string | null
   restoring: boolean
-  last_restore: { backup_id: number; started_at: string; finished_at: string; error?: string } | null
+  last_restore: { backup_execution_id: number; started_at: string; finished_at: string; error?: string } | null
 }
 
-export type BackupSchedule = {
+export type ScheduledBackup = {
   enabled: boolean
   /** Five-field cron expression, in UTC. */
   cron: string
@@ -193,12 +193,12 @@ export type BackupSchedule = {
   s3_storage_id: number | null
 }
 
-export type BackupStatus = 'running' | 'succeeded' | 'failed'
+export type ExecutionStatus = 'running' | 'succeeded' | 'failed'
 
-export type Backup = {
+export type BackupExecution = {
   id: number
   database_id: number
-  status: BackupStatus
+  status: ExecutionStatus
   trigger: 'manual' | 'scheduled'
   file_name: string
   size_bytes: number
@@ -211,13 +211,13 @@ export type Backup = {
 
 export type DatabaseInput = {
   name: string
-  engine?: Engine
+  type?: DatabaseType
   version: string
   public_port: number | null
   resource_limits: ResourceLimits
 }
 
-/** An S3-compatible bucket Backups are uploaded to; the secret is write-only. */
+/** An S3-compatible bucket Backup executions are uploaded to; the secret is write-only. */
 export type S3Storage = {
   id: number
   name: string

@@ -64,7 +64,7 @@ None published.
     ones, nor those failed by a restart) → `deployment_failure` /
     `deployment_success`; a Preview Deployment's message names the
     Preview ("preview of pull request #n").
-  - `databases.OnBackupFinished` (succeeded or failed; not those failed by a
+  - `databases.OnBackupExecutionFinished` (succeeded or failed; not those failed by a
     restart) → `backup_failure` / `backup_success`.
   - `servers.OnServerHealthChanged` (a Server probe changed something) →
     `server_unreachable`, `server_reachable` or `server_disk_usage`.

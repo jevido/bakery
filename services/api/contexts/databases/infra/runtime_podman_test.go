@@ -26,10 +26,10 @@ func runtime(t *testing.T) Runtime {
 	return Runtime{Podman: c, Network: "bakery-test", PublicBind: "127.0.0.1"}
 }
 
-func testDatabase(t *testing.T, id uint64, engine domain.Engine) domain.Database {
+func testDatabase(t *testing.T, id uint64, typ domain.DatabaseType) domain.Database {
 	t.Helper()
-	slug := "test-" + string(engine)
-	d, err := domain.NewDatabase(1, 1, domain.Input{Name: slug, Engine: engine}, slug, func() string { return "secret-" + slug })
+	slug := "test-" + string(typ)
+	d, err := domain.NewDatabase(1, 1, domain.Input{Name: slug, Type: typ}, slug, func() string { return "secret-" + slug })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,10 +49,10 @@ func waitStatus(t *testing.T, ctx context.Context, r Runtime, d domain.Database,
 			return
 		}
 		if s == domain.StatusExited {
-			t.Fatalf("%s %s", d.Engine, detail)
+			t.Fatalf("%s %s", d.Type, detail)
 		}
 	}
-	t.Fatalf("%s: status %s, want %s", d.Engine, got, want)
+	t.Fatalf("%s: status %s, want %s", d.Type, got, want)
 }
 
 func TestPostgresLifecycle(t *testing.T) {

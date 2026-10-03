@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { BackupStatus, DatabaseStatus, DeploymentStatus, ServerStatus, ServiceStatus } from './types'
+  import type { ExecutionStatus, DatabaseStatus, DeploymentStatus, ServerStatus, ServiceStatus } from './types'
 
-  let { status }: { status: DeploymentStatus | DatabaseStatus | BackupStatus | ServiceStatus | ServerStatus } = $props()
+  let { status }: { status: DeploymentStatus | DatabaseStatus | ExecutionStatus | ServiceStatus | ServerStatus } = $props()
 </script>
 
 <span class={['badge', status]}>{status}</span>

@@ -63,7 +63,7 @@ type databaseJSON struct {
 	ProjectID      uint64     `json:"project_id"`
 	Name           string     `json:"name"`
 	Slug           string     `json:"slug"`
-	Engine         string     `json:"engine"`
+	Type           string     `json:"type"`
 	Version        string     `json:"version"`
 	Status         string     `json:"status"`
 	DesiredState   string     `json:"desired_state"`
@@ -77,20 +77,20 @@ type databaseJSON struct {
 	// SecretsHidden says the credentials and URLs were left out for a viewer.
 	SecretsHidden bool `json:"secrets_hidden,omitempty"`
 
-	BackupsSupported bool         `json:"backups_supported"`
-	BackupSchedule   scheduleJSON `json:"backup_schedule"`
-	NextBackupAt     *time.Time   `json:"next_backup_at"`
-	Restoring        bool         `json:"restoring"`
-	LastRestore      *restoreJSON `json:"last_restore"`
+	BackupsSupported bool                `json:"backups_supported"`
+	ScheduledBackup  scheduledBackupJSON `json:"scheduled_backup"`
+	NextBackupAt     *time.Time          `json:"next_backup_at"`
+	Restoring        bool                `json:"restoring"`
+	LastRestore      *restoreJSON        `json:"last_restore"`
 }
 
 func toJSON(v app.View, full bool) databaseJSON {
 	out := databaseJSON{
 		ID: v.ID, EnvironmentID: v.EnvironmentID, ProjectID: v.ProjectID,
-		Name: v.Name, Slug: v.Slug, Engine: string(v.Engine), Version: v.Version,
+		Name: v.Name, Slug: v.Slug, Type: string(v.Type), Version: v.Version,
 		Status: string(v.Status), DesiredState: string(v.DesiredState), Error: v.Error,
 		ResourceLimits:   limitsToJSON(v.ResourceLimits),
-		BackupsSupported: v.Engine.Spec().Backups, BackupSchedule: scheduleToJSON(v.BackupSchedule),
+		BackupsSupported: v.Type.Spec().Backups, ScheduledBackup: scheduledBackupToJSON(v.ScheduledBackup),
 		Restoring: v.Restoring,
 	}
 	if !v.NextBackupAt.IsZero() {
@@ -98,7 +98,7 @@ func toJSON(v app.View, full bool) databaseJSON {
 		out.NextBackupAt = &next
 	}
 	if r := v.LastRestore; r != nil {
-		out.LastRestore = &restoreJSON{BackupID: r.BackupID, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt, Error: r.Error}
+		out.LastRestore = &restoreJSON{BackupExecutionID: r.BackupExecutionID, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt, Error: r.Error}
 	}
 	if v.PublicPort != 0 {
 		port := v.PublicPort
@@ -117,18 +117,18 @@ func toJSON(v app.View, full bool) databaseJSON {
 	return out
 }
 
-// databaseRequest is the whole Database as the Owner sets it; engine is
+// databaseRequest is the whole Database as the Owner sets it; type is
 // only read on creation, public_port null (or 0) is none.
 type databaseRequest struct {
 	Name           string     `json:"name"`
-	Engine         string     `json:"engine"`
+	Type           string     `json:"type"`
 	Version        string     `json:"version"`
 	PublicPort     *int       `json:"public_port"`
 	ResourceLimits limitsJSON `json:"resource_limits"`
 }
 
 func (r databaseRequest) input() domain.Input {
-	in := domain.Input{Name: r.Name, Engine: domain.Engine(r.Engine), Version: r.Version, ResourceLimits: r.ResourceLimits.limits()}
+	in := domain.Input{Name: r.Name, Type: domain.DatabaseType(r.Type), Version: r.Version, ResourceLimits: r.ResourceLimits.limits()}
 	if r.PublicPort != nil {
 		in.PublicPort = *r.PublicPort
 	}

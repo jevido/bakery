@@ -2,11 +2,11 @@
   import { session } from './session.svelte'
   import { untrack } from 'svelte'
   import { ApiError } from './api'
-  import { engines } from './engines'
+  import { databaseTypes } from './databaseTypes'
   import Field from './Field.svelte'
-  import type { Database, DatabaseInput, Engine } from './types'
+  import type { Database, DatabaseInput, DatabaseType } from './types'
 
-  // Without a database it creates one (name, engine, version); with one it
+  // Without a database it creates one (name, Database type, version); with one it
   // edits what may change (name, version, public port, resource limits).
   let {
     database,
@@ -23,7 +23,7 @@
   // The form keeps its own copy; the parent re-creates it to reset.
   const start = untrack(() => database)
   let name = $state(start?.name ?? '')
-  let engine = $state<Engine>(start?.engine ?? 'postgresql')
+  let databaseType = $state<DatabaseType>(start?.type ?? 'postgresql')
   let version = $state(start?.version ?? '')
   let publicPort = $state(start?.public_port == null ? '' : String(start.public_port))
   let memoryMB = $state(start?.resource_limits.memory_mb == null ? '' : String(start.resource_limits.memory_mb))
@@ -32,7 +32,7 @@
   let message = $state('')
   let busy = $state(false)
 
-  let defaultVersion = $derived(engines.find((e) => e.engine === engine)?.defaultVersion ?? '')
+  let defaultVersion = $derived(databaseTypes.find((t) => t.type === databaseType)?.defaultVersion ?? '')
 
   async function submit(e: SubmitEvent) {
     e.preventDefault()
@@ -49,7 +49,7 @@
           cpus: cpus.trim() === '' ? null : Number(cpus),
         },
       }
-      if (!start) input.engine = engine
+      if (!start) input.type = databaseType
       await onsubmit(input)
     } catch (err) {
       if (!(err instanceof ApiError)) throw err
@@ -67,16 +67,16 @@
   <Field label="Name" bind:value={name} error={errors.name} required />
   {#if !start}
     <fieldset>
-      <legend>Engine</legend>
+      <legend>Database type</legend>
       <div class="choices">
-        {#each engines as e (e.engine)}
-          <label class={['choice', engine === e.engine && 'selected']}>
-            <input type="radio" name="engine" value={e.engine} bind:group={engine} />
-            {e.label}
+        {#each databaseTypes as t (t.type)}
+          <label class={['choice', databaseType === t.type && 'selected']}>
+            <input type="radio" name="type" value={t.type} bind:group={databaseType} />
+            {t.label}
           </label>
         {/each}
       </div>
-      {#if errors.engine}<small class="error">{errors.engine}</small>{/if}
+      {#if errors.type}<small class="error">{errors.type}</small>{/if}
     </fieldset>
   {/if}
   <Field label="Version (image tag)" bind:value={version} error={errors.version} placeholder={start ? '' : defaultVersion} />

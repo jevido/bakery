@@ -20,7 +20,7 @@ type databaseRecord struct {
 	ProjectID             uint64
 	Name                  string
 	Slug                  string
-	Engine                string
+	Type                  string
 	Version               string
 	Username              string
 	PasswordEncrypted     string
@@ -65,14 +65,14 @@ func toRecord(d domain.Database) (databaseRecord, error) {
 	}
 	rec := databaseRecord{
 		ID: d.ID, EnvironmentID: d.EnvironmentID, ProjectID: d.ProjectID,
-		Name: d.Name, Slug: d.Slug, Engine: string(d.Engine), Version: d.Version,
+		Name: d.Name, Slug: d.Slug, Type: string(d.Type), Version: d.Version,
 		Username: d.Credentials.Username, PasswordEncrypted: password, RootPasswordEncrypted: root,
 		DatabaseName: d.Credentials.DatabaseName,
 		MemoryMB:     d.ResourceLimits.MemoryMB, CPUs: d.ResourceLimits.CPUs,
 		DesiredState:  string(d.DesiredState),
-		BackupEnabled: d.BackupSchedule.Enabled, BackupCron: d.BackupSchedule.Cron,
-		BackupRetention:   d.BackupSchedule.Retention,
-		BackupS3StorageID: nonZero(d.BackupSchedule.S3StorageID), BackupEnabledAt: nonZeroTime(d.BackupSchedule.EnabledAt),
+		BackupEnabled: d.ScheduledBackup.Enabled, BackupCron: d.ScheduledBackup.Cron,
+		BackupRetention:   d.ScheduledBackup.Retention,
+		BackupS3StorageID: nonZero(d.ScheduledBackup.S3StorageID), BackupEnabledAt: nonZeroTime(d.ScheduledBackup.EnabledAt),
 	}
 	if d.PublicPort != 0 {
 		port := d.PublicPort
@@ -92,11 +92,11 @@ func (r databaseRecord) toDomain() (domain.Database, error) {
 	}
 	d := domain.Database{
 		ID: r.ID, EnvironmentID: r.EnvironmentID, ProjectID: r.ProjectID,
-		Name: r.Name, Slug: r.Slug, Engine: domain.Engine(r.Engine), Version: r.Version,
+		Name: r.Name, Slug: r.Slug, Type: domain.DatabaseType(r.Type), Version: r.Version,
 		Credentials:    domain.Credentials{Username: r.Username, Password: password, RootPassword: root, DatabaseName: r.DatabaseName},
 		ResourceLimits: domain.ResourceLimits{MemoryMB: r.MemoryMB, CPUs: r.CPUs},
 		DesiredState:   domain.DesiredState(r.DesiredState),
-		BackupSchedule: domain.BackupSchedule{
+		ScheduledBackup: domain.ScheduledBackup{
 			Enabled: r.BackupEnabled, Cron: r.BackupCron, Retention: r.BackupRetention,
 			S3StorageID: deref(r.BackupS3StorageID), EnabledAt: derefTime(r.BackupEnabledAt),
 		},
@@ -200,12 +200,12 @@ func (s Store) CountForProject(ctx context.Context, projectID uint64) (int64, er
 	return s.query(ctx).Model(&databaseRecord{}).Where("project_id", projectID).Count()
 }
 
-// ScheduledDatabases lists every Database whose Backup schedule is on.
+// ScheduledDatabases lists every Database whose Scheduled backup is on.
 func (s Store) ScheduledDatabases(ctx context.Context) ([]domain.Database, error) {
 	return s.list(s.query(ctx).Where("backup_enabled", true))
 }
 
-// S3StorageInUse reports whether a Backup schedule names the S3 storage.
+// S3StorageInUse reports whether a Scheduled backup names the S3 storage.
 func (s Store) S3StorageInUse(ctx context.Context, id uint64) (bool, error) {
 	n, err := s.query(ctx).Model(&databaseRecord{}).Where("backup_s3_storage_id", id).Count()
 	return n > 0, err

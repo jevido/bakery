@@ -27,18 +27,18 @@ type Store interface {
 	SlugTaken(ctx context.Context, slug string) (bool, error)
 	PublicPortTaken(ctx context.Context, port int, exceptID uint64) (bool, error)
 	CountForProject(ctx context.Context, projectID uint64) (int64, error)
-	// ScheduledDatabases lists the Databases whose Backup schedule is on.
+	// ScheduledDatabases lists the Databases whose Scheduled backup is on.
 	ScheduledDatabases(ctx context.Context) ([]domain.Database, error)
 
-	CreateBackup(ctx context.Context, b domain.Backup) (domain.Backup, error)
-	SaveBackup(ctx context.Context, b domain.Backup) error
-	Backup(ctx context.Context, id uint64) (domain.Backup, bool, error)
-	// Backups lists a Database's Backups, newest first.
-	Backups(ctx context.Context, databaseID uint64) ([]domain.Backup, error)
+	CreateBackupExecution(ctx context.Context, b domain.BackupExecution) (domain.BackupExecution, error)
+	SaveBackupExecution(ctx context.Context, b domain.BackupExecution) error
+	BackupExecution(ctx context.Context, id uint64) (domain.BackupExecution, bool, error)
+	// BackupExecutions lists a Database's BackupExecutions, newest first.
+	BackupExecutions(ctx context.Context, databaseID uint64) ([]domain.BackupExecution, error)
 	LastScheduledStart(ctx context.Context, databaseID uint64) (time.Time, error)
-	DeleteBackup(ctx context.Context, id uint64) error
-	DeleteBackups(ctx context.Context, databaseID uint64) error
-	FailRunningBackups(ctx context.Context, reason string, at time.Time) (int64, error)
+	DeleteBackupExecution(ctx context.Context, id uint64) error
+	DeleteBackupExecutions(ctx context.Context, databaseID uint64) error
+	FailRunningBackupExecutions(ctx context.Context, reason string, at time.Time) (int64, error)
 
 	// S3 storages; the secret key is encrypted by the Store.
 	S3Storages(ctx context.Context) ([]domain.S3Storage, error)
@@ -87,7 +87,7 @@ type View struct {
 	Error       string
 	InternalURL string
 	PublicURL   string
-	// NextBackupAt is when the Backup schedule fires next; zero when off.
+	// NextBackupAt is when the Scheduled backup fires next; zero when off.
 	NextBackupAt time.Time
 	Restoring    bool
 	LastRestore  *RestoreOutcome
@@ -107,14 +107,14 @@ type Service struct {
 	NewPassword  func() string
 	// Log reports background failures; nil discards them.
 	Log func(format string, args ...any)
-	// Files keeps Backup files; S3 makes a client for an S3 storage.
+	// Files keeps Backup execution files; S3 makes a client for an S3 storage.
 	Files BackupFiles
 	S3    func(domain.S3Storage) S3Client
-	// Now is the clock of Backups and schedules.
+	// Now is the clock of Backup executions and schedules.
 	Now func() time.Time
-	// BackupFinished, when set, hears of every Backup that ended, after it
+	// BackupExecutionFinished, when set, hears of every Backup execution that ended, after it
 	// was saved (not of those Recover fails after a restart).
-	BackupFinished func(ctx context.Context, d domain.Database, b domain.Backup)
+	BackupExecutionFinished func(ctx context.Context, d domain.Database, b domain.BackupExecution)
 
 	mu      sync.Mutex
 	locks   map[uint64]*sync.Mutex
@@ -139,7 +139,7 @@ func NewService(store Store, runtime Runtime, environments Environments, publicH
 
 const passwordAlphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-// newPassword is 32 random letters and digits: no character any Engine's
+// newPassword is 32 random letters and digits: no character any Database type's
 // URL or configuration treats specially.
 func newPassword() string {
 	b := make([]byte, 32)
@@ -270,7 +270,7 @@ func (s *Service) Create(ctx context.Context, environmentID uint64, in domain.In
 	if err != nil {
 		return View{}, err
 	}
-	slug, err := s.freeSlug(ctx, domain.Slugify(in.Name, in.Engine))
+	slug, err := s.freeSlug(ctx, domain.Slugify(in.Name, in.Type))
 	if err != nil {
 		return View{}, err
 	}
@@ -398,7 +398,7 @@ func (s *Service) Stop(ctx context.Context, id uint64) (View, error) {
 }
 
 // Delete removes the Container, the volume with all data, the Database's
-// Backup files and rows, and the Database. Its S3 objects stay.
+// Backup execution files and rows, and the Database. Its S3 objects stay.
 func (s *Service) Delete(ctx context.Context, id uint64) error {
 	d, err := s.get(ctx, id)
 	if err != nil {
@@ -413,7 +413,7 @@ func (s *Service) Delete(ctx context.Context, id uint64) error {
 			return err
 		}
 	}
-	if err := s.store.DeleteBackups(ctx, id); err != nil {
+	if err := s.store.DeleteBackupExecutions(ctx, id); err != nil {
 		return err
 	}
 	if err := s.store.Delete(ctx, id); err != nil {
@@ -434,11 +434,11 @@ func (s *Service) InUse(ctx context.Context, projectID uint64) (bool, error) {
 	return n > 0, err
 }
 
-// Recover marks Backups a stopped API left running as failed, and starts,
+// Recover marks Backup executions a stopped API left running as failed, and starts,
 // in the background, every Database that should run but has no Container
 // (removed by hand, or lost with an upgrade).
 func (s *Service) Recover(ctx context.Context) error {
-	if _, err := s.store.FailRunningBackups(ctx, "interrupted: the API stopped during the backup", s.Now()); err != nil {
+	if _, err := s.store.FailRunningBackupExecutions(ctx, "interrupted: the API stopped during the backup", s.Now()); err != nil {
 		return err
 	}
 	list, err := s.store.Wanted(ctx)

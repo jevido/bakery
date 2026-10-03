@@ -15,7 +15,7 @@ import (
 )
 
 // conflict maps the errors that mean "not now" or "not this one" to 409,
-// and an Engine without backups to 422.
+// and a Database type without backups to 422.
 func conflict(ctx contractshttp.Context, err error) (contractshttp.Response, bool) {
 	for _, e := range []error{app.ErrBusy, app.ErrNotRunning, app.ErrBackupRunning, app.ErrNotRestorable, app.ErrS3StorageInUse} {
 		if errors.Is(err, e) {
@@ -35,15 +35,15 @@ func failBackup(ctx contractshttp.Context, err error) contractshttp.Response {
 	return fail(ctx, err)
 }
 
-type scheduleJSON struct {
+type scheduledBackupJSON struct {
 	Enabled     bool    `json:"enabled"`
 	Cron        string  `json:"cron"`
 	Retention   int     `json:"retention"`
 	S3StorageID *uint64 `json:"s3_storage_id"`
 }
 
-func scheduleToJSON(s domain.BackupSchedule) scheduleJSON {
-	out := scheduleJSON{Enabled: s.Enabled, Cron: s.Cron, Retention: s.Retention}
+func scheduledBackupToJSON(s domain.ScheduledBackup) scheduledBackupJSON {
+	out := scheduledBackupJSON{Enabled: s.Enabled, Cron: s.Cron, Retention: s.Retention}
 	if s.S3StorageID != 0 {
 		id := s.S3StorageID
 		out.S3StorageID = &id
@@ -51,8 +51,8 @@ func scheduleToJSON(s domain.BackupSchedule) scheduleJSON {
 	return out
 }
 
-func (r scheduleJSON) schedule() domain.BackupSchedule {
-	s := domain.BackupSchedule{Enabled: r.Enabled, Cron: r.Cron, Retention: r.Retention}
+func (r scheduledBackupJSON) schedule() domain.ScheduledBackup {
+	s := domain.ScheduledBackup{Enabled: r.Enabled, Cron: r.Cron, Retention: r.Retention}
 	if r.S3StorageID != nil {
 		s.S3StorageID = *r.S3StorageID
 	}
@@ -60,13 +60,13 @@ func (r scheduleJSON) schedule() domain.BackupSchedule {
 }
 
 type restoreJSON struct {
-	BackupID   uint64    `json:"backup_id"`
-	StartedAt  time.Time `json:"started_at"`
-	FinishedAt time.Time `json:"finished_at"`
-	Error      string    `json:"error,omitempty"`
+	BackupExecutionID uint64    `json:"backup_execution_id"`
+	StartedAt         time.Time `json:"started_at"`
+	FinishedAt        time.Time `json:"finished_at"`
+	Error             string    `json:"error,omitempty"`
 }
 
-type backupJSON struct {
+type backupExecutionJSON struct {
 	ID         uint64     `json:"id"`
 	DatabaseID uint64     `json:"database_id"`
 	Status     string     `json:"status"`
@@ -80,8 +80,8 @@ type backupJSON struct {
 	FinishedAt *time.Time `json:"finished_at"`
 }
 
-func backupToJSON(b domain.Backup) backupJSON {
-	out := backupJSON{
+func executionToJSON(b domain.BackupExecution) backupExecutionJSON {
+	out := backupExecutionJSON{
 		ID: b.ID, DatabaseID: b.DatabaseID, Status: string(b.Status), Trigger: string(b.Trigger),
 		FileName: b.FileName, SizeBytes: b.SizeBytes, Local: b.Local, S3: b.S3, Error: b.Error,
 		StartedAt: b.StartedAt,
@@ -93,40 +93,40 @@ func backupToJSON(b domain.Backup) backupJSON {
 	return out
 }
 
-// SetBackupSchedule replaces the Database's Backup schedule.
-func (c *Controller) SetBackupSchedule(ctx contractshttp.Context) contractshttp.Response {
+// SetScheduledBackup replaces the Database's Scheduled backup.
+func (c *Controller) SetScheduledBackup(ctx contractshttp.Context) contractshttp.Response {
 	dbID, ok := id(ctx)
 	if !ok {
 		return notFound(ctx)
 	}
-	var req scheduleJSON
+	var req scheduledBackupJSON
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	v, err := c.service.SetBackupSchedule(ctx.Context(), dbID, req.schedule())
+	v, err := c.service.SetScheduledBackup(ctx.Context(), dbID, req.schedule())
 	if errors.Is(err, domain.ErrNoBackups) {
-		return respond.Invalid(ctx, "backup_schedule.enabled", err.Error())
+		return respond.Invalid(ctx, "scheduled_backup.enabled", err.Error())
 	}
 	return one(ctx, contractshttp.StatusOK, v, err)
 }
 
-func (c *Controller) Backups(ctx contractshttp.Context) contractshttp.Response {
+func (c *Controller) BackupExecutions(ctx contractshttp.Context) contractshttp.Response {
 	dbID, ok := id(ctx)
 	if !ok {
 		return notFound(ctx)
 	}
-	list, err := c.service.Backups(ctx.Context(), dbID)
+	list, err := c.service.BackupExecutions(ctx.Context(), dbID)
 	if err != nil {
 		return fail(ctx, err)
 	}
-	out := make([]backupJSON, len(list))
+	out := make([]backupExecutionJSON, len(list))
 	for i, b := range list {
-		out[i] = backupToJSON(b)
+		out[i] = executionToJSON(b)
 	}
-	return ctx.Response().Success().Json(contractshttp.Json{"backups": out})
+	return ctx.Response().Success().Json(contractshttp.Json{"backup_executions": out})
 }
 
-// BackUp starts a Backup now; it runs in the background.
+// BackUp starts a Backup execution now; it runs in the background.
 func (c *Controller) BackUp(ctx contractshttp.Context) contractshttp.Response {
 	dbID, ok := id(ctx)
 	if !ok {
@@ -136,10 +136,10 @@ func (c *Controller) BackUp(ctx contractshttp.Context) contractshttp.Response {
 	if err != nil {
 		return failBackup(ctx, err)
 	}
-	return ctx.Response().Json(contractshttp.StatusAccepted, contractshttp.Json{"backup": backupToJSON(b)})
+	return ctx.Response().Json(contractshttp.StatusAccepted, contractshttp.Json{"backup_execution": executionToJSON(b)})
 }
 
-// Restore starts restoring the Backup into its Database.
+// Restore starts restoring the Backup execution into its Database.
 func (c *Controller) Restore(ctx contractshttp.Context) contractshttp.Response {
 	bID, ok := id(ctx)
 	if !ok {
@@ -151,25 +151,25 @@ func (c *Controller) Restore(ctx contractshttp.Context) contractshttp.Response {
 	return ctx.Response().Json(contractshttp.StatusAccepted, contractshttp.Json{"restoring": true})
 }
 
-func (c *Controller) DeleteBackup(ctx contractshttp.Context) contractshttp.Response {
+func (c *Controller) DeleteBackupExecution(ctx contractshttp.Context) contractshttp.Response {
 	bID, ok := id(ctx)
 	if !ok {
 		return notFound(ctx)
 	}
-	if err := c.service.DeleteBackup(ctx.Context(), bID); err != nil {
+	if err := c.service.DeleteBackupExecution(ctx.Context(), bID); err != nil {
 		return failBackup(ctx, err)
 	}
 	return ctx.Response().NoContent()
 }
 
-// Download streams the Backup file, from local disk or its S3 storage.
+// Download streams the Backup execution file, from local disk or its S3 storage.
 func (c *StreamController) Download(ctx contractshttp.Context) contractshttp.Response {
 	bID, ok := id(ctx)
 	if !ok {
 		return notFound(ctx)
 	}
 	reqCtx := ctx.Request().Origin().Context()
-	r, size, name, err := c.service.OpenBackup(reqCtx, bID)
+	r, size, name, err := c.service.OpenBackupExecution(reqCtx, bID)
 	if err != nil {
 		return failBackup(ctx, err)
 	}

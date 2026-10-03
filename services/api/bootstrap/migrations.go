@@ -53,5 +53,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000038RenameEnvVarsToEnvironmentVariables{},
 		&migrations.M20260930000039RenameImageBuildPackToDockerimage{},
 		&migrations.M20260930000040RenameWwwRedirectToRedirect{},
+		&migrations.M20260930000041RenameEngineAndDatabaseBackups{},
 	}
 }

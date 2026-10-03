@@ -16,13 +16,13 @@ import (
 type memStore struct {
 	mu       sync.Mutex
 	dbs      map[uint64]domain.Database
-	backups  map[uint64]domain.Backup
+	backups  map[uint64]domain.BackupExecution
 	storages map[uint64]domain.S3Storage
 	nextID   uint64
 }
 
 func newMemStore() *memStore {
-	return &memStore{dbs: map[uint64]domain.Database{}, backups: map[uint64]domain.Backup{}, storages: map[uint64]domain.S3Storage{}}
+	return &memStore{dbs: map[uint64]domain.Database{}, backups: map[uint64]domain.BackupExecution{}, storages: map[uint64]domain.S3Storage{}}
 }
 
 func (m *memStore) Create(_ context.Context, d domain.Database) (domain.Database, error) {
@@ -91,14 +91,14 @@ func (m *memStore) ScheduledDatabases(context.Context) ([]domain.Database, error
 	defer m.mu.Unlock()
 	var out []domain.Database
 	for _, d := range m.dbs {
-		if d.BackupSchedule.Enabled {
+		if d.ScheduledBackup.Enabled {
 			out = append(out, d)
 		}
 	}
 	slices.SortFunc(out, func(a, b domain.Database) int { return cmp.Compare(a.ID, b.ID) })
 	return out, nil
 }
-func (m *memStore) CreateBackup(_ context.Context, b domain.Backup) (domain.Backup, error) {
+func (m *memStore) CreateBackupExecution(_ context.Context, b domain.BackupExecution) (domain.BackupExecution, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.nextID++
@@ -106,28 +106,28 @@ func (m *memStore) CreateBackup(_ context.Context, b domain.Backup) (domain.Back
 	m.backups[b.ID] = b
 	return b, nil
 }
-func (m *memStore) SaveBackup(_ context.Context, b domain.Backup) error {
+func (m *memStore) SaveBackupExecution(_ context.Context, b domain.BackupExecution) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.backups[b.ID] = b
 	return nil
 }
-func (m *memStore) Backup(_ context.Context, id uint64) (domain.Backup, bool, error) {
+func (m *memStore) BackupExecution(_ context.Context, id uint64) (domain.BackupExecution, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	b, ok := m.backups[id]
 	return b, ok, nil
 }
-func (m *memStore) Backups(_ context.Context, databaseID uint64) ([]domain.Backup, error) {
+func (m *memStore) BackupExecutions(_ context.Context, databaseID uint64) ([]domain.BackupExecution, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []domain.Backup
+	var out []domain.BackupExecution
 	for _, b := range m.backups {
 		if b.DatabaseID == databaseID {
 			out = append(out, b)
 		}
 	}
-	slices.SortFunc(out, func(a, b domain.Backup) int {
+	slices.SortFunc(out, func(a, b domain.BackupExecution) int {
 		if c := b.StartedAt.Compare(a.StartedAt); c != 0 {
 			return c
 		}
@@ -136,7 +136,7 @@ func (m *memStore) Backups(_ context.Context, databaseID uint64) ([]domain.Backu
 	return out, nil
 }
 func (m *memStore) LastScheduledStart(ctx context.Context, databaseID uint64) (time.Time, error) {
-	bs, _ := m.Backups(ctx, databaseID)
+	bs, _ := m.BackupExecutions(ctx, databaseID)
 	for _, b := range bs {
 		if b.Trigger == domain.TriggerScheduled {
 			return b.StartedAt, nil
@@ -144,13 +144,13 @@ func (m *memStore) LastScheduledStart(ctx context.Context, databaseID uint64) (t
 	}
 	return time.Time{}, nil
 }
-func (m *memStore) DeleteBackup(_ context.Context, id uint64) error {
+func (m *memStore) DeleteBackupExecution(_ context.Context, id uint64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.backups, id)
 	return nil
 }
-func (m *memStore) DeleteBackups(_ context.Context, databaseID uint64) error {
+func (m *memStore) DeleteBackupExecutions(_ context.Context, databaseID uint64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for id, b := range m.backups {
@@ -160,12 +160,12 @@ func (m *memStore) DeleteBackups(_ context.Context, databaseID uint64) error {
 	}
 	return nil
 }
-func (m *memStore) FailRunningBackups(_ context.Context, reason string, at time.Time) (int64, error) {
+func (m *memStore) FailRunningBackupExecutions(_ context.Context, reason string, at time.Time) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var n int64
 	for id, b := range m.backups {
-		if b.Status == domain.BackupRunning {
+		if b.Status == domain.ExecutionRunning {
 			b.Fail(reason, false, 0, at)
 			m.backups[id] = b
 			n++
@@ -203,7 +203,7 @@ func (m *memStore) S3StorageInUse(_ context.Context, id uint64) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, d := range m.dbs {
-		if d.BackupSchedule.S3StorageID == id {
+		if d.ScheduledBackup.S3StorageID == id {
 			return true, nil
 		}
 	}
@@ -357,10 +357,10 @@ func equal(a, b []string) bool {
 func TestCreateStartsInTheBackground(t *testing.T) {
 	ctx := context.Background()
 	s, _, rt := newTestService()
-	if _, err := s.Create(ctx, 8, domain.Input{Name: "x", Engine: domain.Redis}); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Create(ctx, 8, domain.Input{Name: "x", Type: domain.Redis}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown environment: %v", err)
 	}
-	v, err := s.Create(ctx, 7, domain.Input{Name: "Main", Engine: domain.PostgreSQL, PublicPort: 5433})
+	v, err := s.Create(ctx, 7, domain.Input{Name: "Main", Type: domain.PostgreSQL, PublicPort: 5433})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,11 +374,11 @@ func TestCreateStartsInTheBackground(t *testing.T) {
 	if v, _ := s.Get(ctx, v.ID); v.Status != domain.StatusRunning {
 		t.Fatalf("status %s", v.Status)
 	}
-	second, err := s.Create(ctx, 7, domain.Input{Name: "main", Engine: domain.Redis})
+	second, err := s.Create(ctx, 7, domain.Input{Name: "main", Type: domain.Redis})
 	if err != nil || second.Slug != "main-2" {
 		t.Fatalf("second: %v %v", second.Slug, err)
 	}
-	_, err = s.Create(ctx, 7, domain.Input{Name: "third", Engine: domain.Redis, PublicPort: 5433})
+	_, err = s.Create(ctx, 7, domain.Input{Name: "third", Type: domain.Redis, PublicPort: 5433})
 	var fe *domain.FieldError
 	if !errors.As(err, &fe) || fe.Field != "public_port" {
 		t.Fatalf("taken public port: %v", err)
@@ -389,7 +389,7 @@ func TestStartErrorIsShown(t *testing.T) {
 	ctx := context.Background()
 	s, _, rt := newTestService()
 	rt.startErr = errors.New("port is already allocated")
-	v, err := s.Create(ctx, 7, domain.Input{Name: "x", Engine: domain.Redis})
+	v, err := s.Create(ctx, 7, domain.Input{Name: "x", Type: domain.Redis})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +403,7 @@ func TestStartErrorIsShown(t *testing.T) {
 func TestUpdateRecreatesOnlyWhenNeeded(t *testing.T) {
 	ctx := context.Background()
 	s, _, rt := newTestService()
-	v, _ := s.Create(ctx, 7, domain.Input{Name: "x", Engine: domain.Redis})
+	v, _ := s.Create(ctx, 7, domain.Input{Name: "x", Type: domain.Redis})
 	s.Wait()
 	if _, err := s.Update(ctx, v.ID, domain.Input{Name: "renamed"}); err != nil {
 		t.Fatal(err)
@@ -438,7 +438,7 @@ func TestUpdateRecreatesOnlyWhenNeeded(t *testing.T) {
 func TestStopStartDeleteAndInUse(t *testing.T) {
 	ctx := context.Background()
 	s, store, rt := newTestService()
-	v, _ := s.Create(ctx, 7, domain.Input{Name: "x", Engine: domain.MongoDB})
+	v, _ := s.Create(ctx, 7, domain.Input{Name: "x", Type: domain.MongoDB})
 	s.Wait()
 	if used, _ := s.InUse(ctx, 3); !used {
 		t.Fatal("project not in use")
@@ -473,8 +473,8 @@ func TestStopStartDeleteAndInUse(t *testing.T) {
 func TestRecoverStartsMissing(t *testing.T) {
 	ctx := context.Background()
 	s, _, rt := newTestService()
-	a, _ := s.Create(ctx, 7, domain.Input{Name: "a", Engine: domain.Redis})
-	b, _ := s.Create(ctx, 7, domain.Input{Name: "b", Engine: domain.Redis})
+	a, _ := s.Create(ctx, 7, domain.Input{Name: "a", Type: domain.Redis})
+	b, _ := s.Create(ctx, 7, domain.Input{Name: "b", Type: domain.Redis})
 	s.Wait()
 	s.Stop(ctx, b.ID)
 	rt.containers[a.ID] = false // removed by hand

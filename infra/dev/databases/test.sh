@@ -27,7 +27,7 @@ database() { bakery GET "/api/databases/$1" | json "d['database']$2"; }
 status_is() { [ "$(database "$1" "['status']")" = "$2" ]; }
 create() { # create ENGINE: prints the new Database's id
 	local out
-	out=$(bakery POST "/api/environments/$ENV_ID/databases" "{\"name\":\"$RUN-$1\",\"engine\":\"$1\"}")
+	out=$(bakery POST "/api/environments/$ENV_ID/databases" "{\"name\":\"$RUN-$1\",\"type\":\"$1\"}")
 	echo "$out" | json "d['database']['id']" || fail "creating $1: $out"
 }
 running() { # running ID: waits, failing early on an error
@@ -55,13 +55,13 @@ update() { # update ID PUBLIC_PORT
 
 say "Every Engine"
 declare -A ID
-for engine in postgresql mysql mariadb redis valkey mongodb; do
-	ID[$engine]=$(create "$engine")
-	DBS+=("${ID[$engine]}")
+for type in postgresql mysql mariadb redis valkey mongodb; do
+	ID[$type]=$(create "$type")
+	DBS+=("${ID[$type]}")
 done
-for engine in postgresql mysql mariadb redis valkey mongodb; do
-	running "${ID[$engine]}"
-	echo "ok: $engine running"
+for type in postgresql mysql mariadb redis valkey mongodb; do
+	running "${ID[$type]}"
+	echo "ok: $type running"
 done
 
 say "Internal URLs from the bakery network"
@@ -139,12 +139,12 @@ if [ -n "${RESTART_API:-}" ]; then
 fi
 
 say "Deleting removes Container and volume"
-for engine in "${!ID[@]}"; do
-	id=${ID[$engine]}
+for type in "${!ID[@]}"; do
+	id=${ID[$type]}
 	name=$(container "$id")
-	[ "$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -X DELETE "$API/api/databases/$id")" = 204 ] || fail "deleting $engine"
-	podman container exists "$name" && fail "$engine container left"
-	podman volume exists "bakery-db-$id-data" && fail "$engine volume left"
+	[ "$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -X DELETE "$API/api/databases/$id")" = 204 ] || fail "deleting $type"
+	podman container exists "$name" && fail "$type container left"
+	podman volume exists "bakery-db-$id-data" && fail "$type volume left"
 done
 DBS=()
 echo "ok: nothing left"

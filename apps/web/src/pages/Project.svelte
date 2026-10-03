@@ -2,7 +2,7 @@
   import { api, ApiError } from '../lib/api'
   import ApplicationForm from '../lib/ApplicationForm.svelte'
   import DatabaseForm from '../lib/DatabaseForm.svelte'
-  import { engineLabel } from '../lib/engines'
+  import { databaseTypeLabel } from '../lib/databaseTypes'
   import { sourceLine } from '../lib/buildPacks'
   import EnvironmentVariables from '../lib/EnvironmentVariables.svelte'
   import ServiceForm from '../lib/ServiceForm.svelte'
@@ -162,12 +162,12 @@
       {/if}
       {#if envDatabases.length > 0}
         <table>
-          <thead><tr><th>Database</th><th>Engine</th><th>Status</th></tr></thead>
+          <thead><tr><th>Database</th><th>Database type</th><th>Status</th></tr></thead>
           <tbody>
             {#each envDatabases as d (d.id)}
               <tr>
                 <td><a href={href(`/databases/${d.id}`)}>{d.name}</a></td>
-                <td class="muted">{engineLabel(d.engine)} {d.version}</td>
+                <td class="muted">{databaseTypeLabel(d.type)} {d.version}</td>
                 <td><StatusBadge status={d.status} /></td>
               </tr>
             {/each}
