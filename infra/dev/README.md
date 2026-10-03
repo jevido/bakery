@@ -18,7 +18,7 @@ Local development stack.
   profile (`garage/garage.toml`, dev-only secrets): `task s3:up` starts it on
   `127.0.0.1:4960` and runs `garage/setup.sh`, which gives the node a
   layout and creates the bucket `bakery-backups` and a key for it, written to
-  `.claude/ralph/state/garage.env`. `task s3:down` removes it, its volumes
+  `infra/dev/state/garage.env`. `task s3:down` removes it, its volumes
   and that file.
 - `compose.yml` also holds the **Remote server stand-in** under the `remote`
   profile (`remote/Containerfile`): sshd and rootless Podman for the user
@@ -50,7 +50,7 @@ Local development stack.
   Deploy key, adds Bakery's Webhook to it, pushes and waits for the push to
   deploy by itself, then checks a push signed with a rotated secret deploys
   nothing. It signs in as the Owner from `BAKERY_OWNER_EMAIL` /
-  `BAKERY_OWNER_PASSWORD` (or `.claude/ralph/state/owner.env`) and removes
+  `BAKERY_OWNER_PASSWORD` (or `infra/dev/state/owner.env`) and removes
   everything it created, Forgejo included (`KEEP_FORGEJO=1` keeps it).
 - `deploy/test.sh` (`task deploy:test`, same requirements) deploys a repository
   from Forgejo with a Health check, a build-only variable and Shared

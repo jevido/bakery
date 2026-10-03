@@ -11,6 +11,9 @@
 # Tool caches
 /.task/
 
+# Dev credentials the test scripts generate (owner password, Garage key)
+/infra/dev/state/
+
 # Environment. Secrets never live in the repo.
 .env
 .env.*

@@ -30,7 +30,7 @@ Notifications link to the dashboard at `BAKERY_DASHBOARD_URL` (empty:
 Backups of Databases are written to `BAKERY_BACKUPS_DIR` (`storage/backups`
 here); S3 storages are tested against the Garage stand-in on
 `127.0.0.1:4960` (`task s3:up` from the repo root writes its key to
-`.claude/ralph/state/garage.env`).
+`infra/dev/state/garage.env`).
 
 Services are run from their Compose file through the Podman API (no
 `podman compose`); the template catalog is the YAML files embedded from

@@ -53,11 +53,6 @@ tasks:
     internal: true
     deps: [api:dev, web:dev]
 
-  ralph:
-    desc: Unattended loop that plans and builds phases until Coolify parity (.claude/ralph)
-    cmds:
-      - ./.claude/ralph/ralph.sh
-
   git:up:
     desc: Start the Forgejo stand-in (127.0.0.1:4950 HTTP, :4952 SSH)
     cmds:
@@ -90,7 +85,7 @@ tasks:
       - podman compose -f infra/dev/compose.yml --profile mail rm -sf mailpit
 
   s3:up:
-    desc: Start the Garage S3 stand-in (127.0.0.1:4960) with bucket bakery-backups; key in .claude/ralph/state/garage.env
+    desc: Start the Garage S3 stand-in (127.0.0.1:4960) with bucket bakery-backups; key in infra/dev/state/garage.env
     cmds:
       - podman compose -f infra/dev/compose.yml --profile s3 up -d garage
       - ./infra/dev/garage/setup.sh
@@ -100,7 +95,7 @@ tasks:
     cmds:
       - podman compose -f infra/dev/compose.yml --profile s3 rm -sf garage
       - podman volume rm -f bakery-dev_bakery-garage-meta bakery-dev_bakery-garage-data
-      - rm -f .claude/ralph/state/garage.env
+      - rm -f infra/dev/state/garage.env
 
   git:test:
     desc: Private repository, deploy key and webhook end to end against Forgejo (needs task dev)

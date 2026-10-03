@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Prepares the Garage stand-in started by `task s3:up`: one node with a
 # layout, the bucket bakery-backups and the key bakery-dev allowed on it.
-# Writes the endpoint and key to .claude/ralph/state/garage.env (gitignored)
+# Writes the endpoint and key to infra/dev/state/garage.env (gitignored)
 # for tests. Safe to run again.
 set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 CTR=bakery-dev-garage-1
-STATE=.claude/ralph/state
+STATE=infra/dev/state
 garage() { podman exec "$CTR" /garage "$@" 2>/dev/null; }
 
 until=$((SECONDS + 60))

@@ -25,7 +25,7 @@ func garageStorage(t *testing.T) domain.S3Storage {
 	for dir != "/" && !exists(filepath.Join(dir, ".git")) {
 		dir = filepath.Dir(dir)
 	}
-	f, err := os.Open(filepath.Join(dir, ".claude/ralph/state/garage.env"))
+	f, err := os.Open(filepath.Join(dir, "infra/dev/state/garage.env"))
 	if err != nil {
 		t.Skipf("no garage.env (task s3:up): %v", err)
 	}
