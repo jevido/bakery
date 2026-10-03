@@ -54,7 +54,7 @@ func Routes(r route.Router) {
 	r.Middleware(Auth).Get("/api/me", c.Me)
 	r.Get("/api/invitations/by-token/{token}", c.InvitationByToken)
 	r.Post("/api/invitations/by-token/{token}/accept", c.AcceptInvitation)
-	// Every Role manages its own API tokens, Account and two-factor, with a
+	// Every Role manages its own API tokens, Profile and two-factor, with a
 	// Session only.
 	r.Middleware(identityhttp.Auth{Service: service, SelfService: true}).Group(func(r route.Router) {
 		r.Get("/api/api-tokens", c.APITokens)

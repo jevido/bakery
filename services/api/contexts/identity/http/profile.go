@@ -10,8 +10,8 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/identity/domain"
 )
 
-// accountError answers the errors the Account routes share, or nil.
-func accountError(ctx contractshttp.Context, err error) contractshttp.Response {
+// profileError answers the errors the Profile routes share, or nil.
+func profileError(ctx contractshttp.Context, err error) contractshttp.Response {
 	switch {
 	case err == nil:
 		return nil
@@ -39,7 +39,7 @@ func (c *Controller) ChangeName(ctx contractshttp.Context) contractshttp.Respons
 	}
 	id, _ := MemberID(ctx)
 	m, err := c.service.ChangeName(ctx.Context(), id, req.Name)
-	if r := accountError(ctx, err); r != nil {
+	if r := profileError(ctx, err); r != nil {
 		return r
 	}
 	m.Role = RoleOf(ctx)
@@ -60,7 +60,7 @@ func (c *Controller) ChangePassword(ctx contractshttp.Context) contractshttp.Res
 	}
 	id, _ := MemberID(ctx)
 	m, err := c.service.ChangePassword(ctx.Context(), id, req.CurrentPassword, req.NewPassword)
-	if r := accountError(ctx, err); r != nil {
+	if r := profileError(ctx, err); r != nil {
 		return r
 	}
 	return c.withSession(ctx, contractshttp.StatusOK, m)
@@ -71,7 +71,7 @@ func (c *Controller) ChangePassword(ctx contractshttp.Context) contractshttp.Res
 func (c *Controller) SignOutOtherSessions(ctx contractshttp.Context) contractshttp.Response {
 	id, _ := MemberID(ctx)
 	m, err := c.service.SignOutOtherSessions(ctx.Context(), id)
-	if r := accountError(ctx, err); r != nil {
+	if r := profileError(ctx, err); r != nil {
 		return r
 	}
 	return c.withSession(ctx, contractshttp.StatusOK, m)

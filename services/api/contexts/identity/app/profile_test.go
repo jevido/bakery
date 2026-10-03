@@ -9,7 +9,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/identity/domain"
 )
 
-func TestAccount(t *testing.T) {
+func TestProfile(t *testing.T) {
 	ctx := context.Background()
 	s, now, m := twoFactorService(t)
 

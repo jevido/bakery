@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End to end: a Member's Account and Two-factor authentication. Invited
+# End to end: a Member's Profile and Two-factor authentication. Invited
 # Members (never the dev Owner, whom every other test signs in as) rename
 # themselves, switch two-factor on, sign in in two steps with Authenticator
 # codes and Recovery codes, change their password, and are reset by an
@@ -93,11 +93,11 @@ join "$A_EMAIL" admin "$A"
 join "$V_EMAIL" viewer "$V"
 OWNER_ID=$(bakery GET /api/members | json "[m['id'] for m in d['members'] if m['role']=='owner'][0]")
 
-say "Account"
+say "Profile"
 expect "a member renames themselves" 200 "$(as "$M" PATCH /api/me '{"name":"Mia Member"}')"
 expect "the new name is theirs" "Mia Member" "$(body "d['member']['name']")"
 expect "an empty name is refused" 422 "$(as "$M" PATCH /api/me '{"name":"  "}')"
-expect "a viewer changes their own Account too" 200 "$(as "$V" PATCH /api/me '{"name":"Vic Viewer"}')"
+expect "a viewer changes their own Profile too" 200 "$(as "$V" PATCH /api/me '{"name":"Vic Viewer"}')"
 expect "the member makes an API token before two-factor" 201 "$(as "$M" POST /api/api-tokens '{"name":"ci"}')"
 TOKEN=$(body "d['token']")
 

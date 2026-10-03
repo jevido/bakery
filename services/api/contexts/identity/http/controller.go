@@ -168,7 +168,7 @@ func sessionCookie(value string, maxAge int) contractshttp.Cookie {
 type Auth struct {
 	Service *app.Service
 	// SelfService is for the routes where a Member manages their own API
-	// tokens, Account and two-factor: every Role may change those, but only
+	// tokens, Profile and two-factor: every Role may change those, but only
 	// with a Session, so a leaked token can neither mint more nor switch
 	// two-factor off.
 	SelfService bool

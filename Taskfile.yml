@@ -128,7 +128,7 @@ tasks:
       - ./infra/dev/access/test.sh
 
   account:test:
-    desc: Account and two-factor authentication end to end (needs task dev)
+    desc: Profile and two-factor authentication end to end (needs task dev)
     cmds:
       - ./infra/dev/account/test.sh
 

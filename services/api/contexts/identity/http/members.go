@@ -226,7 +226,7 @@ func (c *Controller) ResetTwoFactor(ctx contractshttp.Context) contractshttp.Res
 	case errors.Is(err, domain.ErrOwnerIsFixed):
 		return respond.Error(ctx, contractshttp.StatusForbidden, "the owner's two-factor can only be reset on the server")
 	case errors.Is(err, domain.ErrSelf):
-		return respond.Error(ctx, contractshttp.StatusForbidden, "switch your own two-factor off on your Account page")
+		return respond.Error(ctx, contractshttp.StatusForbidden, "switch your own two-factor off on your Profile page")
 	case errors.Is(err, app.ErrTwoFactorOff):
 		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
 	case err != nil:

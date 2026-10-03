@@ -152,9 +152,9 @@
   }
 </script>
 
-<h1>Account</h1>
+<h1>Profile</h1>
 
-<h2>Profile</h2>
+<h2>Profile details</h2>
 <form class="card form" onsubmit={saveName}>
   <Field label="Name" bind:value={name} error={nameErrors.name} autocomplete="name" required />
   <p class="muted small">Email: {session.member?.email} · Role: {session.member?.role}</p>
