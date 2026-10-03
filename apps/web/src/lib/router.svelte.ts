@@ -1,8 +1,8 @@
-// Hash router: #/ (the Dashboard), #/projects, #/projects/{id}, #/applications/{id}, #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
+// Hash router: #/ (the Dashboard), #/projects, #/projects/{id} (#/projects/{id}?new opens its New Resource chooser), #/applications/{id}, #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
-  | { name: 'project'; id: number }
+  | { name: 'project'; id: number; new: boolean }
   | { name: 'application'; id: number }
   | { name: 'database'; id: number }
   | { name: 'service'; id: number }
@@ -20,7 +20,9 @@ export type Route =
   | { name: 'notfound' }
 
 function parse(hash: string): Route {
-  const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent)
+  const [path, query = ''] = hash.replace(/^#\/?/, '').split('?', 2)
+  const flags = new URLSearchParams(query)
+  const parts = path.split('/').filter(Boolean).map(decodeURIComponent)
   if (parts.length === 0) return { name: 'dashboard' }
   if (parts[0] === 'login' && parts.length === 1) return { name: 'login' }
   if (import.meta.env.DEV && parts[0] === 'dev' && parts[1] === 'components' && parts.length === 2) return { name: 'dev-components' }
@@ -40,7 +42,7 @@ function parse(hash: string): Route {
   if (parts[0] === 'projects') {
     if (parts.length === 1) return { name: 'projects' }
     const id = Number(parts[1])
-    if (parts.length === 2 && Number.isInteger(id)) return { name: 'project', id }
+    if (parts.length === 2 && Number.isInteger(id)) return { name: 'project', id, new: flags.has('new') }
   }
   if (parts[0] === 'applications' && parts.length === 2) {
     const id = Number(parts[1])

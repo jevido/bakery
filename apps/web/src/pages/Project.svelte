@@ -12,7 +12,9 @@
   import StatusBadge from '../lib/StatusBadge.svelte'
   import type { Application, ApplicationInput, Database, DatabaseInput, Project, Service, ServiceInput } from '../lib/types'
 
-  let { id }: { id: number } = $props()
+  // openNew: arrived from the Dashboard's "Add resource", so the New Resource
+  // chooser of the first Environment opens once the Project has loaded.
+  let { id, openNew = false }: { id: number; openNew?: boolean } = $props()
 
   let project = $state.raw<Project | null>(null)
   let loadError = $state('')
@@ -36,6 +38,12 @@
         databases = d.databases
         services = sv.services
         project = p.project
+        const first = p.project.environments?.[0]
+        if (openNew && session.canWrite && first) {
+          adding = { environment: first.id, kind: 'choose' }
+          // Drop ?new so a reload does not reopen it; replaceState fires no hashchange.
+          history.replaceState(null, '', `#/projects/${id}`)
+        }
       })
       .catch((e) => (loadError = e.message))
   })

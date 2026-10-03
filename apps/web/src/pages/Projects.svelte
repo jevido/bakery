@@ -2,7 +2,7 @@
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { api, ApiError } from '../lib/api'
   import Field from '../lib/Field.svelte'
-  import { go, href, router } from '../lib/router.svelte'
+  import { go, href } from '../lib/router.svelte'
   import { session } from '../lib/session.svelte'
   import type { Project } from '../lib/types'
 
@@ -33,7 +33,7 @@
     }
   }
 
-  $effect(() => breadcrumb.set({ label: router.route.name === 'dashboard' ? 'Dashboard' : 'Projects' }))
+  $effect(() => breadcrumb.set({ label: 'Projects' }))
 </script>
 
 <div class="head">

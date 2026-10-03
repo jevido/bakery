@@ -6,6 +6,7 @@
   import { session } from './lib/session.svelte'
   import Login from './pages/Login.svelte'
   import Invite from './pages/Invite.svelte'
+  import Dashboard from './pages/Dashboard.svelte'
   import Members from './pages/Members.svelte'
   import ApiTokens from './pages/ApiTokens.svelte'
   import Profile from './pages/Profile.svelte'
@@ -59,11 +60,12 @@
   <Login />
 {:else}
   <Layout>
-    {#if router.route.name === 'dashboard' || router.route.name === 'projects'}
-      <!-- The Dashboard opens Projects until it has a page of its own. -->
+    {#if router.route.name === 'dashboard'}
+      <Dashboard />
+    {:else if router.route.name === 'projects'}
       <Projects />
     {:else if router.route.name === 'project'}
-      <Project id={router.route.id} />
+      <Project id={router.route.id} openNew={router.route.new} />
     {:else if router.route.name === 'application'}
       <Application id={router.route.id} />
     {:else if router.route.name === 'database'}
