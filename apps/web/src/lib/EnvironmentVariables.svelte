@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, ApiError } from './api'
   import { session } from './session.svelte'
-  import type { EnvVar, InheritedVariable } from './types'
+  import type { EnvironmentVariable, InheritedVariable } from './types'
 
   let {
     path,
@@ -12,7 +12,7 @@
     description?: string
   } = $props()
 
-  type Row = EnvVar & { key: number; revealed: boolean }
+  type Row = EnvironmentVariable & { key: number; revealed: boolean }
 
   let rows = $state<Row[]>([])
   let inherited = $state.raw<InheritedVariable[]>([])
@@ -24,13 +24,13 @@
 
   let anyBuild = $derived(rows.some((r) => r.build))
 
-  function toRows(vars: EnvVar[]): Row[] {
+  function toRows(vars: EnvironmentVariable[]): Row[] {
     return vars.map((v) => ({ ...v, key: nextKey++, revealed: false }))
   }
 
   function load() {
-    return api<{ env: EnvVar[]; inherited?: InheritedVariable[] }>('GET', path).then((r) => {
-      rows = toRows(r.env)
+    return api<{ environment_variables: EnvironmentVariable[]; inherited?: InheritedVariable[] }>('GET', path).then((r) => {
+      rows = toRows(r.environment_variables)
       inherited = r.inherited ?? []
       loaded = true
     })
@@ -59,10 +59,10 @@
     error = ''
     saved = false
     try {
-      const env = rows
+      const variables = rows
         .filter((r) => r.name.trim() !== '')
         .map((r) => ({ name: r.name.trim(), value: r.value, build: r.build, runtime: r.runtime }))
-      await api('PUT', path, { env })
+      await api('PUT', path, { environment_variables: variables })
       // Read back, so overridden inherited variables are marked again.
       await load()
       saved = true
@@ -74,7 +74,7 @@
     }
   }
 
-  function scope(v: EnvVar): string {
+  function scope(v: EnvironmentVariable): string {
     return [v.build && 'build', v.runtime && 'runtime'].filter(Boolean).join(' + ')
   }
 </script>

@@ -51,14 +51,14 @@ join() {
 
 sign_in
 
-say "Owner sets up a project with an Application, a Database and an Env var"
+say "Owner sets up a project with an Application, a Database and an Environment variable"
 PROJECT_ID=$(bakery POST /api/projects "{\"name\":\"$RUN\"}" | json "d['project']['id']")
 ENV_ID=$(bakery GET "/api/projects/$PROJECT_ID" | json "d['project']['environments'][0]['id']")
 APP_ID=$(bakery POST "/api/environments/$ENV_ID/applications" \
 	"{\"name\":\"$RUN\",\"build_pack\":\"image\",\"image_reference\":\"ghcr.io/traefik/whoami:v1.10\",\"port\":80}" | json "d['application']['id']")
 APP_SLUG=$(bakery GET "/api/applications/$APP_ID" | json "d['application']['slug']")
 APPS+=("$APP_ID $APP_SLUG")
-bakery PUT "/api/applications/$APP_ID/env" '{"env":[{"name":"SECRET","value":"hunter2hunter2","runtime":true}]}' >/dev/null
+bakery PUT "/api/applications/$APP_ID/environment-variables" '{"environment_variables":[{"name":"SECRET","value":"hunter2hunter2","runtime":true}]}' >/dev/null
 DB_ID=$(bakery POST "/api/environments/$ENV_ID/databases" "{\"name\":\"$RUN\",\"engine\":\"redis\"}" | json "d['database']['id']")
 
 say "Invitations"
@@ -85,14 +85,14 @@ expect "the viewer is a viewer" viewer "$(body "d['member']['role']")"
 
 say "What a viewer may do"
 expect "viewer reads the project" 200 "$(as "$VIEWER" GET "/api/projects/$PROJECT_ID")"
-expect "viewer cannot read Env vars" 403 "$(as "$VIEWER" GET "/api/applications/$APP_ID/env")"
+expect "viewer cannot read Environment variables" 403 "$(as "$VIEWER" GET "/api/applications/$APP_ID/environment-variables")"
 expect "viewer reads the Database" 200 "$(as "$VIEWER" GET "/api/databases/$DB_ID")"
 expect "viewer sees no Database credentials" "None True" "$(body "d['database'].get('credentials'), d['database'].get('secrets_hidden')")"
 expect "viewer cannot deploy" 403 "$(as "$VIEWER" POST "/api/applications/$APP_ID/deploy")"
 expect "viewer cannot make a project" 403 "$(as "$VIEWER" POST /api/projects '{"name":"nope"}')"
 
 say "What a member may do"
-expect "member reads Env vars" 200 "$(as "$MEMBER" GET "/api/applications/$APP_ID/env")"
+expect "member reads Environment variables" 200 "$(as "$MEMBER" GET "/api/applications/$APP_ID/environment-variables")"
 expect "member sees Database credentials" True "$(as "$MEMBER" GET "/api/databases/$DB_ID" >/dev/null; body "d['database'].get('credentials') is not None")"
 expect "member deploys" 201 "$(as "$MEMBER" POST "/api/applications/$APP_ID/deploy")"
 wait_for 180 "the member's deployment" deployment_done
@@ -129,7 +129,7 @@ wait_for 180 "the token's deployment" deployment_done
 echo "ok: the deployment finished"
 expect "the read-only token reads" 200 "$(with "$READ" GET "/api/projects/$PROJECT_ID")"
 expect "the read-only token cannot change anything" 403 "$(with "$READ" POST /api/projects '{"name":"nope"}')"
-expect "the read-only token sees no Secrets" 403 "$(with "$READ" GET "/api/applications/$APP_ID/env")"
+expect "the read-only token sees no Secrets" 403 "$(with "$READ" GET "/api/applications/$APP_ID/environment-variables")"
 expect "a token cannot make a token" 403 "$(with "$FULL" POST /api/api-tokens '{"name":"more"}')"
 expect "the token was last used just now" True "$(as "$MEMBER" GET /api/api-tokens >/dev/null; body "[t for t in d['api_tokens'] if t['name']=='ci'][0]['last_used_at'] is not None")"
 expect "the member revokes the token" 204 "$(as "$MEMBER" DELETE "/api/api-tokens/$FULL_ID")"

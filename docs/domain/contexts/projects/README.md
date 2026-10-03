@@ -45,8 +45,8 @@ reaches an Application (routing).
 
 - `CreateProject`, `RenameProject`, `DeleteProject` (refused while it has Applications, or while a registered in-use check, such as databases', says the Project is in use).
 - `CreateApplication(environment, ...)`, `UpdateApplication`, `DeleteApplication`.
-- `ReplaceEnvVars(application, [name, value, build, runtime])`: the whole set is replaced at once.
-- `ReplaceProjectVariables(project, ...)`, `ReplaceEnvironmentVariables(environment, ...)`: the same, for Shared variables.
+- `ReplaceEnvironmentVariables(application, [name, value, build, runtime])`: the whole set is replaced at once.
+- `ReplaceProjectSharedVariables(project, ...)`, `ReplaceEnvironmentSharedVariables(environment, ...)`: the same, for Shared variables.
 - `RegenerateDeployKey(application)`: a new key pair replaces the old one; the Owner has to add the new public half to the repository.
 
 ### Domain events
@@ -58,7 +58,7 @@ reaches an Application (routing).
 
 - **Publishes:** `ApplicationForDeploy(id) (ApplicationSnapshot, error)` for
   deployments (Build pack, Git repository, Dockerfile path, Publish directory, Docker image and decrypted Registry credentials, port, Domains, Healthcheck, Persistent storages, Resource limits,
-  `BuildEnv` and `RuntimeEnv`, Deploy key, and `ServerID`, the Target server, 0 for the Local server). The two variable sets are
+  `BuildVariables` and `RuntimeVariables`, Deploy key, and `ServerID`, the Target server, 0 for the Local server). The two variable sets are
   already merged (Application > Environment > Project) and split by scope.
   Changing its fields is a breaking change for deployments.
   `ApplicationExists(id)` for routing, which keeps Route settings per
@@ -108,7 +108,7 @@ reaches an Application (routing).
   references can be added on top later. A name overridden at a lower level
   takes that level's scope too, so the Owner sees one row per name.
 - **The merge happens here, not in deployments.** Deployments gets two plain
-  sets (`BuildEnv`, `RuntimeEnv`) and never learns that Projects and
+  sets (`BuildVariables`, `RuntimeVariables`) and never learns that Projects and
   Environments have variables, so how variables are shared can change
   without touching it.
 - **Build values end up in the Image's history.** Build args are visible to

@@ -1,5 +1,5 @@
 // Package infra stores the projects context with the Goravel ORM and
-// encrypts env var values with Goravel's Crypt (APP_KEY).
+// encrypts Environment variable values with Goravel's Crypt (APP_KEY).
 package infra
 
 import (
@@ -230,8 +230,9 @@ func encryptPrivate(k domain.DeployKey) (string, error) {
 	return facades.Crypt().EncryptString(k.Private)
 }
 
-// variableRecord is a row of env_vars, environment_variables or
-// project_variables; Owner is the application, environment or project id.
+// variableRecord is a row of environment_variables,
+// environment_shared_variables or project_shared_variables; Owner is the
+// application, environment or project id.
 type variableRecord struct {
 	ID             uint64 `gorm:"primaryKey"`
 	Owner          uint64 `gorm:"-"`
@@ -244,9 +245,9 @@ type variableRecord struct {
 
 // variableTables maps a variable level to its table and owner column.
 var variableTables = map[string][2]string{
-	domain.FromApplication: {"env_vars", "application_id"},
-	domain.FromEnvironment: {"environment_variables", "environment_id"},
-	domain.FromProject:     {"project_variables", "project_id"},
+	domain.FromApplication: {"environment_variables", "application_id"},
+	domain.FromEnvironment: {"environment_shared_variables", "environment_id"},
+	domain.FromProject:     {"project_shared_variables", "project_id"},
 }
 
 type Store struct{}
@@ -488,24 +489,24 @@ func (s Store) DeleteApplication(ctx context.Context, id uint64) error {
 	return err
 }
 
-func (s Store) Variables(ctx context.Context, level string, ownerID uint64) ([]domain.EnvVar, error) {
+func (s Store) Variables(ctx context.Context, level string, ownerID uint64) ([]domain.EnvironmentVariable, error) {
 	t := variableTables[level]
 	var recs []variableRecord
 	if err := s.query(ctx).Table(t[0]).Where(t[1], ownerID).OrderBy("name").Find(&recs); err != nil {
 		return nil, err
 	}
-	out := make([]domain.EnvVar, len(recs))
+	out := make([]domain.EnvironmentVariable, len(recs))
 	for i, r := range recs {
 		value, err := facades.Crypt().DecryptString(r.ValueEncrypted)
 		if err != nil {
 			return nil, errors.New("cannot decrypt variable " + r.Name + " (was APP_KEY changed?)")
 		}
-		out[i] = domain.EnvVar{Name: r.Name, Value: value, Build: r.Build, Runtime: r.Runtime}
+		out[i] = domain.EnvironmentVariable{Name: r.Name, Value: value, Build: r.Build, Runtime: r.Runtime}
 	}
 	return out, nil
 }
 
-func (s Store) ReplaceVariables(ctx context.Context, level string, ownerID uint64, vars []domain.EnvVar) error {
+func (s Store) ReplaceVariables(ctx context.Context, level string, ownerID uint64, vars []domain.EnvironmentVariable) error {
 	t := variableTables[level]
 	rows := make([]map[string]any, len(vars))
 	now := time.Now()

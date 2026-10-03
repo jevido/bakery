@@ -108,7 +108,7 @@ deploy_whoami() {
 	env=$(api -f "https://$DOMAIN/api/projects/$project" | jq -r '.project.environments[0].id')
 	app=$(api -f -d "{\"name\":\"whoami\",\"git_url\":\"https://github.com/traefik/whoami\",\"git_branch\":\"master\",\"port\":80,\"domains\":[\"$APP_DOMAIN\"],\"resource_limits\":{\"memory_mb\":128,\"cpus\":0.5}}" \
 		"https://$DOMAIN/api/environments/$env/applications" | jq -r .application.id)
-	api -f -o /dev/null -X PUT -d '{"env":[{"name":"HELLO","value":"from-bakery"}]}' "https://$DOMAIN/api/applications/$app/env"
+	api -f -o /dev/null -X PUT -d '{"environment_variables":[{"name":"HELLO","value":"from-bakery"}]}' "https://$DOMAIN/api/applications/$app/environment-variables"
 	deployment=$(api -f -X POST "https://$DOMAIN/api/applications/$app/deploy" | jq -r .deployment.id)
 	echo "$app" >/root/bakery-app-id
 	for _ in $(seq 150); do

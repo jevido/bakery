@@ -98,10 +98,10 @@ export type Project = {
 }
 
 /** build: handed to the build as a build arg; runtime: set in the container. */
-export type EnvVar = { name: string; value: string; build: boolean; runtime: boolean }
+export type EnvironmentVariable = { name: string; value: string; build: boolean; runtime: boolean }
 
 /** A shared variable as seen from an application; overridden when a narrower level sets the same name. */
-export type InheritedVariable = EnvVar & { from: 'project' | 'environment'; overridden: boolean }
+export type InheritedVariable = EnvironmentVariable & { from: 'project' | 'environment'; overridden: boolean }
 
 export type ApplicationInput = Pick<
   Application,

@@ -277,7 +277,7 @@ func newSetup(t *testing.T, src Source, check ...HealthCheck) *setup {
 	s := &setup{store: &memStore{}, logs: &memLogs{}, runtime: &fakeRuntime{running: map[string]bool{}}, routes: map[string]string{}, servers: map[uint64]*fakeRuntime{}, routedOn: map[string]uint64{}}
 	s.servers[0] = s.runtime
 	apps := func(_ context.Context, id uint64) (Application, error) {
-		a := Application{ID: id, Slug: "whoami", GitURL: "https://example.com/r", GitBranch: "main", DockerfilePath: "Dockerfile", Port: 80, Domains: []string{"whoami.localhost"}, RuntimeEnv: map[string]string{"HELLO": "world"}, BuildEnv: map[string]string{"VITE_API": "https://api", "B": "1"}}
+		a := Application{ID: id, Slug: "whoami", GitURL: "https://example.com/r", GitBranch: "main", DockerfilePath: "Dockerfile", Port: 80, Domains: []string{"whoami.localhost"}, RuntimeVariables: map[string]string{"HELLO": "world"}, BuildVariables: map[string]string{"VITE_API": "https://api", "B": "1"}}
 		if len(check) > 0 {
 			a.HealthCheck = check[0]
 		}

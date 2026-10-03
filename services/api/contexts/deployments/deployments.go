@@ -84,7 +84,7 @@ func applications(ctx context.Context, id uint64) (app.Application, error) {
 		ID: s.ID, Slug: s.Slug, BuildPack: s.BuildPack, ImageReference: s.ImageReference, PublishDirectory: s.PublishDirectory,
 		RegistryUsername: s.RegistryUsername, RegistryPassword: s.RegistryPassword,
 		GitURL: s.GitURL, GitBranch: s.GitBranch,
-		ServerID: s.ServerID, DockerfilePath: s.DockerfilePath, Port: s.Port, Domains: s.Domains, BuildEnv: s.BuildEnv, RuntimeEnv: s.RuntimeEnv, DeployKey: s.DeployKey,
+		ServerID: s.ServerID, DockerfilePath: s.DockerfilePath, Port: s.Port, Domains: s.Domains, BuildVariables: s.BuildVariables, RuntimeVariables: s.RuntimeVariables, DeployKey: s.DeployKey,
 		HealthCheck: app.HealthCheck(s.HealthCheck), Storages: storages,
 		MemoryMB: s.MemoryMB, CPUs: s.CPUs,
 	}, nil

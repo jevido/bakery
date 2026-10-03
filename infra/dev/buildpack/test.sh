@@ -42,7 +42,7 @@ require("http").createServer((q, r) => r.end("nixpacks " + process.env.GREETING 
 JS
 push "A Node app"
 new_app "{\"name\":\"$RUN-node\",\"git_url\":\"ssh://git@127.0.0.1:4952/$FORGEJO_USER/$RUN.git\",\"port\":3000,\"build_pack\":\"nixpacks\"}"
-bakery PUT "/api/applications/$APP_ID/env" '{"env":[{"name":"GREETING","value":"hello","build":true,"runtime":true}]}' >/dev/null
+bakery PUT "/api/applications/$APP_ID/environment-variables" '{"environment_variables":[{"name":"GREETING","value":"hello","build":true,"runtime":true}]}' >/dev/null
 bakery POST "/api/applications/$APP_ID/deploy" >/dev/null
 wait_for 900 "the nixpacks deployment" deployment_done
 [ "$(fetch /)" = "nixpacks hello production" ] || fail "nixpacks app answers: $(fetch / || true)"

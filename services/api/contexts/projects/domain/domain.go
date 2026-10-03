@@ -1,5 +1,5 @@
 // Package domain is the projects model: Projects, Environments,
-// Applications and Env vars, and the rules for each.
+// Applications and Environment variables, and the rules for each.
 package domain
 
 import (
@@ -269,7 +269,7 @@ type ApplicationInput struct {
 var (
 	hostnameLabel = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 	nonSlug       = regexp.MustCompile(`[^a-z0-9]+`)
-	envVarName    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	variableName  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	// scpLikeURL is git's user@host:path form (git@github.com:owner/repo.git).
 	scpLikeURL = regexp.MustCompile(`^[A-Za-z0-9._-]+@[A-Za-z0-9][A-Za-z0-9.-]*:[^-\s][^\s]*$`)
 )
@@ -526,28 +526,28 @@ func DefaultDomain(slug, suffix string) string {
 	return slug + "." + suffix
 }
 
-// EnvVar is a variable of an Application, or a Shared variable of a
+// EnvironmentVariable is a variable of an Application, or a Shared variable of a
 // Project or Environment. Build and Runtime are its scope.
-type EnvVar struct {
+type EnvironmentVariable struct {
 	Name    string
 	Value   string
 	Build   bool
 	Runtime bool
 }
 
-// CheckEnvVars validates a whole set: names valid and unique, and every
+// CheckEnvironmentVariables validates a whole set: names valid and unique, and every
 // variable reaching the build, the Container or both.
-func CheckEnvVars(vars []EnvVar) error {
+func CheckEnvironmentVariables(vars []EnvironmentVariable) error {
 	seen := make(map[string]bool, len(vars))
 	for _, v := range vars {
-		if !envVarName.MatchString(v.Name) {
-			return invalid("env", "%q is not a valid env var name (letters, digits and _, not starting with a digit)", v.Name)
+		if !variableName.MatchString(v.Name) {
+			return invalid("environment_variables", "%q is not a valid variable name (letters, digits and _, not starting with a digit)", v.Name)
 		}
 		if seen[v.Name] {
-			return invalid("env", "%s is set twice", v.Name)
+			return invalid("environment_variables", "%s is set twice", v.Name)
 		}
 		if !v.Build && !v.Runtime {
-			return invalid("env", "%s must be available at build time, at runtime or both", v.Name)
+			return invalid("environment_variables", "%s must be available at build time, at runtime or both", v.Name)
 		}
 		seen[v.Name] = true
 	}
@@ -565,15 +565,15 @@ const (
 // Overridden means a narrower level sets the same name, so this value is
 // not used.
 type InheritedVariable struct {
-	EnvVar
+	EnvironmentVariable
 	From       string
 	Overridden bool
 }
 
 // Inherited lists the Shared variables an Application gets, Environment
 // ones first.
-func Inherited(project, environment, application []EnvVar) []InheritedVariable {
-	names := func(vars []EnvVar) map[string]bool {
+func Inherited(project, environment, application []EnvironmentVariable) []InheritedVariable {
+	names := func(vars []EnvironmentVariable) map[string]bool {
 		m := make(map[string]bool, len(vars))
 		for _, v := range vars {
 			m[v.Name] = true
@@ -583,10 +583,10 @@ func Inherited(project, environment, application []EnvVar) []InheritedVariable {
 	inApp, inEnv := names(application), names(environment)
 	out := make([]InheritedVariable, 0, len(project)+len(environment))
 	for _, v := range environment {
-		out = append(out, InheritedVariable{EnvVar: v, From: FromEnvironment, Overridden: inApp[v.Name]})
+		out = append(out, InheritedVariable{EnvironmentVariable: v, From: FromEnvironment, Overridden: inApp[v.Name]})
 	}
 	for _, v := range project {
-		out = append(out, InheritedVariable{EnvVar: v, From: FromProject, Overridden: inApp[v.Name] || inEnv[v.Name]})
+		out = append(out, InheritedVariable{EnvironmentVariable: v, From: FromProject, Overridden: inApp[v.Name] || inEnv[v.Name]})
 	}
 	return out
 }
@@ -594,9 +594,9 @@ func Inherited(project, environment, application []EnvVar) []InheritedVariable {
 // Merge is what an Application's build and Container get: Application
 // variables win over Environment ones, which win over Project ones. A name
 // set at a narrower level takes that level's scope too.
-func Merge(project, environment, application []EnvVar) (build, runtime map[string]string) {
-	merged := map[string]EnvVar{}
-	for _, level := range [][]EnvVar{project, environment, application} {
+func Merge(project, environment, application []EnvironmentVariable) (build, runtime map[string]string) {
+	merged := map[string]EnvironmentVariable{}
+	for _, level := range [][]EnvironmentVariable{project, environment, application} {
 		for _, v := range level {
 			merged[v.Name] = v
 		}

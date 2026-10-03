@@ -50,5 +50,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000035AddTwoFactor{},
 		&migrations.M20260930000036AddPreviews{},
 		&migrations.M20260930000037CreatePreviewRoutesTable{},
+		&migrations.M20260930000038RenameEnvVarsToEnvironmentVariables{},
 	}
 }

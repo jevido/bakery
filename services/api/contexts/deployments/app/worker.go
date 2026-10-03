@@ -262,7 +262,7 @@ func (w *Worker) dockerfile(ctx context.Context, d *domain.Deployment, app Appli
 			return "", nil, errors.New("the nixpacks build pack is not available here")
 		}
 		info("Generating a build plan with Nixpacks")
-		return w.Planner.Plan(ctx, dir, app.BuildEnv, log.Line)
+		return w.Planner.Plan(ctx, dir, app.BuildVariables, log.Line)
 	case BuildPackStatic:
 		publish := path.Clean(app.PublishDirectory)
 		if st, err := os.Stat(filepath.Join(dir, filepath.FromSlash(publish))); err != nil || !st.IsDir() {
@@ -273,7 +273,7 @@ func (w *Worker) dockerfile(ctx context.Context, d *domain.Deployment, app Appli
 			return "", nil, err
 		}
 		info("Serving %s as a static site", publish)
-		if len(app.BuildEnv) > 0 {
+		if len(app.BuildVariables) > 0 {
 			info("Build variables are not used by the static build pack")
 		}
 		return name, nil, nil
@@ -281,7 +281,7 @@ func (w *Worker) dockerfile(ctx context.Context, d *domain.Deployment, app Appli
 		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(app.DockerfilePath))); err != nil {
 			return "", nil, fmt.Errorf("no %s in the repository at %s", app.DockerfilePath, shortSHA(commit.SHA))
 		}
-		return app.DockerfilePath, app.BuildEnv, nil
+		return app.DockerfilePath, app.BuildVariables, nil
 	}
 	return "", nil, fmt.Errorf("build pack %s is not supported yet", app.BuildPack)
 }
@@ -356,7 +356,7 @@ func (w *Worker) goLive(ctx context.Context, rt Runtime, d *domain.Deployment, a
 	}
 	info("Starting container %s", d.Container)
 	if err := rt.Start(ctx, ContainerSpec{
-		Name: d.Container, Image: d.Image, ApplicationID: app.ID, DeploymentID: d.ID, Preview: d.Preview, Env: app.RuntimeEnv,
+		Name: d.Container, Image: d.Image, ApplicationID: app.ID, DeploymentID: d.ID, Preview: d.Preview, Env: app.RuntimeVariables,
 		Mounts: mounts, MemoryMB: app.MemoryMB, CPUs: app.CPUs, Settle: !app.HealthCheck.Enabled,
 	}); err != nil {
 		return fmt.Errorf("container did not start: %w", err)

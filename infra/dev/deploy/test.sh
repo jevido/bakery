@@ -39,9 +39,9 @@ status_is() { [ "$(deployment "$1" "['status']")" = "$2" ]; }
 
 say "Health check, a build-only variable and Shared variables"
 bakery PATCH "/api/applications/$APP_ID" "{\"name\":\"$RUN\",\"git_url\":\"ssh://git@127.0.0.1:4952/$FORGEJO_USER/$RUN.git\",\"git_branch\":\"main\",\"port\":8080,\"health_check\":{\"enabled\":true,\"path\":\"/health\",\"interval\":1,\"timeout\":2,\"retries\":5}}" >/dev/null
-bakery PUT "/api/applications/$APP_ID/env" '{"env":[{"name":"BUILT_WITH","value":"build-arg-ok","build":true,"runtime":false}]}' >/dev/null
-bakery PUT "/api/projects/$PROJECT_ID/variables" '{"env":[{"name":"GREETING","value":"hello from the project"}]}' >/dev/null
-bakery PUT "/api/environments/$ENV_ID/variables" '{"env":[{"name":"GREETING","value":"hello from the environment"}]}' >/dev/null
+bakery PUT "/api/applications/$APP_ID/environment-variables" '{"environment_variables":[{"name":"BUILT_WITH","value":"build-arg-ok","build":true,"runtime":false}]}' >/dev/null
+bakery PUT "/api/projects/$PROJECT_ID/variables" '{"environment_variables":[{"name":"GREETING","value":"hello from the project"}]}' >/dev/null
+bakery PUT "/api/environments/$ENV_ID/variables" '{"environment_variables":[{"name":"GREETING","value":"hello from the environment"}]}' >/dev/null
 FIRST=$(deploy)
 wait_for 300 "the first deployment" deployment_done
 wait_for 30 "version 1" serves 1

@@ -5,7 +5,7 @@
   import ContainerLogs from '../lib/ContainerLogs.svelte'
   import DeployKey from '../lib/DeployKey.svelte'
   import Deployments from '../lib/Deployments.svelte'
-  import EnvEditor from '../lib/EnvEditor.svelte'
+  import EnvironmentVariables from '../lib/EnvironmentVariables.svelte'
   import Previews from '../lib/Previews.svelte'
   import Routing from '../lib/Routing.svelte'
   import { go, href } from '../lib/router.svelte'
@@ -16,7 +16,7 @@
 
   let { id }: { id: number } = $props()
 
-  type Tab = 'deployments' | 'previews' | 'logs' | 'source' | 'general' | 'routing' | 'env'
+  type Tab = 'deployments' | 'previews' | 'logs' | 'source' | 'general' | 'routing' | 'environment-variables'
 
   let application = $state.raw<Application | null>(null)
   let deployments = $state.raw<Deployment[]>([])
@@ -156,7 +156,7 @@
     <button role="tab" aria-selected={tab === 'source'} onclick={() => (tab = 'source')}>Source</button>
     <button role="tab" aria-selected={tab === 'general'} onclick={() => (tab = 'general')}>General</button>
     <button role="tab" aria-selected={tab === 'routing'} onclick={() => (tab = 'routing')}>Routing</button>
-    <button role="tab" aria-selected={tab === 'env'} onclick={() => (tab = 'env')}>Environment variables</button>
+    <button role="tab" aria-selected={tab === 'environment-variables'} onclick={() => (tab = 'environment-variables')}>Environment Variables</button>
   </div>
 
   {#if tab === 'deployments'}
@@ -214,7 +214,7 @@
   {:else if tab === 'routing'}
     <Routing applicationId={application.id} domains={application.domains} />
   {:else}
-    <EnvEditor path={`/applications/${application.id}/env`} />
+    <EnvironmentVariables path={`/applications/${application.id}/environment-variables`} />
   {/if}
 {/if}
 

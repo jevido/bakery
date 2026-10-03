@@ -4,7 +4,7 @@
   import DatabaseForm from '../lib/DatabaseForm.svelte'
   import { engineLabel } from '../lib/engines'
   import { sourceLine } from '../lib/buildPacks'
-  import EnvEditor from '../lib/EnvEditor.svelte'
+  import EnvironmentVariables from '../lib/EnvironmentVariables.svelte'
   import ServiceForm from '../lib/ServiceForm.svelte'
   import { go, href } from '../lib/router.svelte'
   import { session } from '../lib/session.svelte'
@@ -90,7 +90,7 @@
 
   <details>
     <summary>Shared variables of the project</summary>
-    <EnvEditor
+    <EnvironmentVariables
       path={`/projects/${project.id}/variables`}
       description="Every application in this project gets these, unless its environment or the application sets the same name."
     />
@@ -116,7 +116,7 @@
       </div>
       <details>
         <summary>Shared variables of {env.name}</summary>
-        <EnvEditor
+        <EnvironmentVariables
           path={`/environments/${env.id}/variables`}
           description={`Every application in ${env.name} gets these, unless it sets the same name. They win over the project's.`}
         />

@@ -98,9 +98,10 @@ type Application struct {
 	Port             int
 	// Domains are the Application's Domains, primary first.
 	Domains []string
-	// BuildEnv reaches the build as build args, RuntimeEnv the Container.
-	BuildEnv   map[string]string
-	RuntimeEnv map[string]string
+	// BuildVariables reach the build as build args, RuntimeVariables the
+	// Container.
+	BuildVariables   map[string]string
+	RuntimeVariables map[string]string
 	// DeployKey is the private key an SSH Source is cloned with; empty for
 	// https.
 	DeployKey   string
