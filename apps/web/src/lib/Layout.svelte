@@ -193,7 +193,9 @@
         inert={!open}
         class={[
           'relative flex h-full w-72 max-w-[85vw] min-w-0 flex-col overflow-hidden rounded-l-2xl border-l border-neutral-200 bg-white shadow-[-8px_0_30px_-6px_rgba(0,0,0,0.18)] transition-transform dark:border-white/[0.12] dark:bg-panel dark:shadow-[-8px_0_30px_-4px_rgba(0,0,0,0.5)]',
-          open ? 'translate-x-0 duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]' : 'translate-x-full duration-200 ease-in',
+          // Closed, it moves its own width plus its shadow's reach off-screen,
+          // so the shadow does not show at the edge of the page.
+          open ? 'translate-x-0 duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]' : 'translate-x-[calc(100%+3rem)] duration-200 ease-in',
         ]}
       >
         <div class="flex h-12 shrink-0 items-center justify-between gap-1.5 border-b border-neutral-200 px-4 dark:border-white/[0.06]">
