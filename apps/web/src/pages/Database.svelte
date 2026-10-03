@@ -73,7 +73,7 @@
     if (!ok) return
     const projectId = database.project_id
     await api('DELETE', `/databases/${id}`)
-    go(`/projects/${projectId}`)
+    go(`/project/${projectId}`)
   }
 
   function hidden(secret: string, url?: string | null): string {

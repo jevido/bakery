@@ -62,7 +62,7 @@
     if (!ok) return
     const projectId = service.project_id
     await api('DELETE', `/services/${id}`)
-    go(`/projects/${projectId}`)
+    go(`/project/${projectId}`)
   }
 
   // --- Domains, one editor per public Component.

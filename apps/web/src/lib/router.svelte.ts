@@ -1,8 +1,18 @@
-// Hash router: #/ (the Dashboard), #/projects, #/projects/{id} (#/projects/{id}?new opens its New Resource chooser), #/applications/{id}, #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
+import { api } from './api'
+import type { Project } from './types'
+
+// Hash router, with Coolify's paths for Projects and Environments: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new, #/project/{id}/environment/{envId}/edit, #/applications/{id}, #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
-  | { name: 'project'; id: number; new: boolean }
+  | { name: 'project'; id: number }
+  | { name: 'project-edit'; id: number }
+  | { name: 'environment'; projectId: number; id: number }
+  | { name: 'environment-new'; projectId: number; id: number }
+  | { name: 'environment-edit'; projectId: number; id: number }
+  // #/projects/{id}?new from before Coolify's paths: the New Resource page of
+  // the Project's first Environment, found once the Project has loaded.
+  | { name: 'project-first-environment-new'; id: number }
   | { name: 'application'; id: number }
   | { name: 'database'; id: number }
   | { name: 'service'; id: number }
@@ -42,7 +52,23 @@ function parse(hash: string): Route {
   if (parts[0] === 'projects') {
     if (parts.length === 1) return { name: 'projects' }
     const id = Number(parts[1])
-    if (parts.length === 2 && Number.isInteger(id)) return { name: 'project', id, new: flags.has('new') }
+    if (parts.length === 2 && Number.isInteger(id)) {
+      if (flags.has('new')) return { name: 'project-first-environment-new', id }
+      return redirect(`/project/${id}`)
+    }
+  }
+  if (parts[0] === 'project') {
+    const id = Number(parts[1])
+    if (Number.isInteger(id)) {
+      if (parts.length === 2) return { name: 'project', id }
+      if (parts.length === 3 && parts[2] === 'edit') return { name: 'project-edit', id }
+      const envId = Number(parts[3])
+      if (parts[2] === 'environment' && Number.isInteger(envId)) {
+        if (parts.length === 4) return { name: 'environment', projectId: id, id: envId }
+        if (parts.length === 5 && parts[4] === 'new') return { name: 'environment-new', projectId: id, id: envId }
+        if (parts.length === 5 && parts[4] === 'edit') return { name: 'environment-edit', projectId: id, id: envId }
+      }
+    }
   }
   if (parts[0] === 'applications' && parts.length === 2) {
     const id = Number(parts[1])
@@ -59,13 +85,36 @@ function parse(hash: string): Route {
   return { name: 'notfound' }
 }
 
+// An old link opens its new path in place, so Back does not return to it and
+// bounce forward again. replaceState fires no hashchange; the caller parses.
+function redirect(path: string): Route {
+  history.replaceState(null, '', '#' + path)
+  return parse(location.hash)
+}
+
 class Router {
-  route = $state<Route>(parse(location.hash))
+  route = $state.raw<Route>(parse(location.hash))
 
   constructor() {
-    window.addEventListener('hashchange', () => {
-      this.route = parse(location.hash)
-    })
+    window.addEventListener('hashchange', () => this.update())
+    this.update()
+  }
+
+  private update() {
+    const route = parse(location.hash)
+    this.route = route
+    if (route.name === 'project-first-environment-new') {
+      api<{ project: Project }>('GET', `/projects/${route.id}`)
+        .then(({ project }) => {
+          // The person may have moved on while the Project was on its way.
+          if (this.route !== route) return
+          const first = project.environments?.[0]
+          this.route = redirect(first ? `/project/${route.id}/environment/${first.id}/new` : `/project/${route.id}`)
+        })
+        .catch(() => {
+          if (this.route === route) this.route = redirect(`/project/${route.id}`)
+        })
+    }
   }
 }
 

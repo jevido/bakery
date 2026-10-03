@@ -6,16 +6,16 @@
   //
   // Left out for now: the active-deployments strip (dashboard.active-deployments)
   // and the per-server metrics chart (dashboard.server-metrics-chart). They come
-  // with the live updates of the page ports. A Project card has no settings
-  // button either, as there is no Project settings page yet; the card itself
-  // opens the Project. The Servers empty state skips "A private key is
-  // required": every Server here gets its own key when it is added.
+  // with the live updates of the page ports. The Servers empty state skips "A
+  // private key is required": every Server here gets its own key when it is
+  // added.
   import { api } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import Icon from '../lib/Icon.svelte'
+  import { projectCounts, type ProjectCounts } from '../lib/projectCounts'
   import { href } from '../lib/router.svelte'
   import { session } from '../lib/session.svelte'
-  import type { Database, Project, Server, Service } from '../lib/types'
+  import type { Project, Server } from '../lib/types'
   import Empty from '../lib/ui/Empty.svelte'
   import SectionHeading from '../lib/ui/SectionHeading.svelte'
   import Spinner from '../lib/ui/Spinner.svelte'
@@ -27,41 +27,24 @@
   let projects = $state.raw<Project[] | null>(null)
   let servers = $state.raw<Server[] | null>(null)
   // Per Project id: its Environments and Resources, filled in after the list.
-  let counts = $state.raw<Record<number, { environments: number; firstEnvironment?: number; resources: number }>>({})
+  let counts = $state.raw<Record<number, ProjectCounts>>({})
   let projectsError = $state('')
   let serversError = $state('')
 
   api<{ projects: Project[] }>('GET', '/projects')
     .then((r) => {
       projects = [...r.projects].sort(byName).slice(0, itemLimit)
-      for (const p of projects) loadCounts(p.id)
+      for (const p of projects) {
+        projectCounts(p.id).then((c) => {
+          if (c) counts = { ...counts, [p.id]: c }
+        })
+      }
     })
     .catch((e) => (projectsError = e.message))
 
   api<{ servers: Server[] }>('GET', '/servers')
     .then((r) => (servers = [...r.servers].sort(byName).slice(0, itemLimit)))
     .catch((e) => (serversError = e.message))
-
-  // Applications come with the Project; Databases and Services are their own
-  // contexts with their own endpoints.
-  async function loadCounts(id: number) {
-    const [p, d, s] = await Promise.all([
-      api<{ project: Project }>('GET', `/projects/${id}`),
-      api<{ databases: Database[] }>('GET', `/projects/${id}/databases`),
-      api<{ services: Service[] }>('GET', `/projects/${id}/services`),
-    ]).catch(() => [])
-    if (!p) return
-    const environments = p.project.environments ?? []
-    const applications = environments.reduce((n, e) => n + e.applications.length, 0)
-    counts = {
-      ...counts,
-      [id]: {
-        environments: environments.length,
-        firstEnvironment: environments[0]?.id,
-        resources: applications + d.databases.length + s.services.length,
-      },
-    }
-  }
 
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
@@ -104,7 +87,7 @@
           {#each projects as project (project.id)}
             {@const c = counts[project.id]}
             <article class={card}>
-              <a href={href(`/projects/${project.id}`)} class="absolute inset-0 rounded-xl" aria-label="Open {project.name}"></a>
+              <a href={href(`/project/${project.id}`)} class="absolute inset-0 rounded-xl" aria-label="Open {project.name}"></a>
 
               <div class="flex min-w-0 items-start gap-3">
                 <div class={[iconBox, 'dark:border-white/[0.08]']}>
@@ -128,12 +111,22 @@
                 <div class="relative z-10 flex shrink-0 items-center gap-0.5">
                   {#if c?.firstEnvironment && session.canWrite}
                     <a
-                      href={href(`/projects/${project.id}?new`)}
+                      href={href(`/project/${project.id}/environment/${c.firstEnvironment}/new`)}
                       class="flex size-6.5 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg"
                       title="Add resource"
                       aria-label="Add resource to {project.name}"
                     >
                       <Icon name="plus" class="size-3" />
+                    </a>
+                  {/if}
+                  {#if session.canWrite}
+                    <a
+                      href={href(`/project/${project.id}/edit`)}
+                      class="flex size-6.5 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg"
+                      title="Project settings"
+                      aria-label="Open settings for {project.name}"
+                    >
+                      <Icon name="settings" class="size-3" />
                     </a>
                   {/if}
                 </div>

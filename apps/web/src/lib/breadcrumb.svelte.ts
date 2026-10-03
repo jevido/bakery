@@ -20,7 +20,7 @@ class Breadcrumb {
    * Resource only knows its Project's id, so the name follows when it loads.
    */
   resource(projectId: number, name: string) {
-    const project: Crumb = { label: 'Project', href: `#/projects/${projectId}` }
+    const project: Crumb = { label: 'Project', href: `#/project/${projectId}` }
     this.set(project, { label: name })
     api<{ project: Project }>('GET', `/projects/${projectId}`)
       .then(({ project: p }) => {

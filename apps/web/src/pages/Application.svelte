@@ -96,7 +96,7 @@
     if (!application) return
     const projectId = application.project_id
     await api('DELETE', `/applications/${id}`)
-    go(`/projects/${projectId}`)
+    go(`/project/${projectId}`)
   }
 
   // The top bar's breadcrumb: Project › Application.

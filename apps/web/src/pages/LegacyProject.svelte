@@ -12,9 +12,11 @@
   import StatusBadge from '../lib/StatusBadge.svelte'
   import type { Application, ApplicationInput, Database, DatabaseInput, Project, Service, ServiceInput } from '../lib/types'
 
-  // openNew: arrived from the Dashboard's "Add resource", so the New Resource
-  // chooser of the first Environment opens once the Project has loaded.
-  let { id, openNew = false }: { id: number; openNew?: boolean } = $props()
+  // The Project page from before Coolify's pages, kept while they are ported:
+  // every #/project/… route whose page does not exist yet opens it.
+  // newIn: arrived on an Environment's New Resource path, so that
+  // Environment's chooser opens once the Project has loaded.
+  let { id, newIn }: { id: number; newIn?: number } = $props()
 
   let project = $state.raw<Project | null>(null)
   let loadError = $state('')
@@ -38,11 +40,8 @@
         databases = d.databases
         services = sv.services
         project = p.project
-        const first = p.project.environments?.[0]
-        if (openNew && session.canWrite && first) {
-          adding = { environment: first.id, kind: 'choose' }
-          // Drop ?new so a reload does not reopen it; replaceState fires no hashchange.
-          history.replaceState(null, '', `#/projects/${id}`)
+        if (newIn !== undefined && session.canWrite && p.project.environments?.some((e) => e.id === newIn)) {
+          adding = { environment: newIn, kind: 'choose' }
         }
       })
       .catch((e) => (loadError = e.message))

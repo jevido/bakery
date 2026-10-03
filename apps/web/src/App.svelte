@@ -13,7 +13,7 @@
   import NotFound from './pages/NotFound.svelte'
   import Application from './pages/Application.svelte'
   import Database from './pages/Database.svelte'
-  import Project from './pages/Project.svelte'
+  import LegacyProject from './pages/LegacyProject.svelte'
   import Projects from './pages/Projects.svelte'
   import Server from './pages/Server.svelte'
   import Servers from './pages/Servers.svelte'
@@ -64,8 +64,14 @@
       <Dashboard />
     {:else if router.route.name === 'projects'}
       <Projects />
-    {:else if router.route.name === 'project'}
-      <Project id={router.route.id} openNew={router.route.new} />
+    {:else if router.route.name === 'project' || router.route.name === 'project-edit'}
+      <LegacyProject id={router.route.id} />
+    {:else if router.route.name === 'environment' || router.route.name === 'environment-edit'}
+      <LegacyProject id={router.route.projectId} />
+    {:else if router.route.name === 'environment-new'}
+      <LegacyProject id={router.route.projectId} newIn={router.route.id} />
+    {:else if router.route.name === 'project-first-environment-new'}
+      <div class="flex justify-center"><Spinner text="Loading…" /></div>
     {:else if router.route.name === 'application'}
       <Application id={router.route.id} />
     {:else if router.route.name === 'database'}
