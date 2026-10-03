@@ -15,6 +15,7 @@
   import Database from './pages/Database.svelte'
   import Environment from './pages/Environment.svelte'
   import LegacyProject from './pages/LegacyProject.svelte'
+  import EnvironmentEdit from './pages/EnvironmentEdit.svelte'
   import Project from './pages/Project.svelte'
   import ProjectEdit from './pages/ProjectEdit.svelte'
   import Projects from './pages/Projects.svelte'
@@ -74,7 +75,7 @@
     {:else if router.route.name === 'environment'}
       <Environment projectId={router.route.projectId} id={router.route.id} />
     {:else if router.route.name === 'environment-edit'}
-      <LegacyProject id={router.route.projectId} />
+      <EnvironmentEdit projectId={router.route.projectId} id={router.route.id} />
     {:else if router.route.name === 'environment-new'}
       <LegacyProject id={router.route.projectId} newIn={router.route.id} />
     {:else if router.route.name === 'project-first-environment-new'}
