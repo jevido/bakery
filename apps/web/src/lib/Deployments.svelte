@@ -21,7 +21,7 @@
 
   let current = $derived(deployments.find((d) => d.id === selected) ?? null)
   // The one serving now: the newest finished deployment.
-  let live = $derived(deployments.find((d) => d.status === 'finished') ?? null)
+  let live = $derived(deployments.find((d) => d.status === 'finished' && d.preview === 0) ?? null)
   let actionError = $state('')
   let busy = $state(false)
 
@@ -117,7 +117,7 @@
               <!-- A viewer cannot cancel or roll back. -->
             {:else if d.active}
               <button disabled={busy} onclick={() => cancel(d)}>Cancel</button>
-            {:else if d.status === 'finished' && d.id !== live?.id}
+            {:else if d.status === 'finished' && d.preview === 0 && d.id !== live?.id}
               <button disabled={busy} onclick={() => rollback(d)}>Roll back</button>
             {/if}
           </td>
@@ -128,6 +128,7 @@
 {/if}
 
 {#snippet trigger(d: Deployment)}
+  {#if d.preview}<span class="tag" data-testid="preview-tag">PR #{d.preview}</span>{/if}
   {#if d.trigger === 'webhook'}<span class="tag">webhook</span>{/if}
   {#if d.trigger === 'rollback'}<span class="tag">rollback of #{d.rollback_of}</span>{/if}
 {/snippet}

@@ -59,7 +59,32 @@ export type RouteSettings = {
   basic_auth: { enabled: boolean; username: string; password_set: boolean }
 }
 
-export type Webhook = { path: string; secret: string; auto_deploy: boolean }
+export type Webhook = {
+  path: string
+  secret: string
+  auto_deploy: boolean
+  /** Pull requests start Previews. */
+  previews: boolean
+  /** Whether a Git host token is saved; the token itself never comes back. */
+  has_git_host_token: boolean
+}
+
+export type Preview = {
+  number: number
+  title: string
+  branch: string
+  /** The pull request's page on the git host. */
+  url: string
+  provider: string
+  state: 'open' | 'closed'
+  /** pr-<number>.<primary domain> */
+  domain: string
+  public_url: string
+  commented: boolean
+  latest_deployment: Deployment | null
+  created_at: string
+  closed_at: string | null
+}
 
 export type KnownHost = { id: number; host: string; fingerprints: string[]; created_at: string }
 
@@ -99,6 +124,8 @@ export type DeploymentStatus = 'queued' | 'cloning' | 'building' | 'starting' | 
 export type Deployment = {
   id: number
   application_id: number
+  /** The pull request number of a Preview Deployment, 0 for the application itself. */
+  preview: number
   /** The server it ran on. */
   server_id: number
   status: DeploymentStatus

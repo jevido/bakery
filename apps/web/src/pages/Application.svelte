@@ -6,6 +6,7 @@
   import DeployKey from '../lib/DeployKey.svelte'
   import Deployments from '../lib/Deployments.svelte'
   import EnvEditor from '../lib/EnvEditor.svelte'
+  import Previews from '../lib/Previews.svelte'
   import Routing from '../lib/Routing.svelte'
   import { go, href } from '../lib/router.svelte'
   import { session } from '../lib/session.svelte'
@@ -15,7 +16,7 @@
 
   let { id }: { id: number } = $props()
 
-  type Tab = 'deployments' | 'logs' | 'source' | 'general' | 'routing' | 'env'
+  type Tab = 'deployments' | 'previews' | 'logs' | 'source' | 'general' | 'routing' | 'env'
 
   let application = $state.raw<Application | null>(null)
   let deployments = $state.raw<Deployment[]>([])
@@ -30,10 +31,13 @@
   // must point.
   let server = $state.raw<Server | null>(null)
 
-  let latest = $derived(deployments[0] ?? null)
+  // The application's own Deployments; Previews' are listed with them but
+  // have their own queue.
+  let own = $derived(deployments.filter((d) => d.preview === 0))
+  let latest = $derived(own[0] ?? null)
   let active = $derived(deployments.some((d) => d.active))
   // One Deployment can wait behind the running one; a second cannot.
-  let queued = $derived(deployments.some((d) => d.status === 'queued'))
+  let queued = $derived(own.some((d) => d.status === 'queued'))
 
   async function loadDeployments() {
     const r = await api<{ deployments: Deployment[] }>('GET', `/applications/${id}/deployments`)
@@ -145,6 +149,9 @@
 
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected={tab === 'deployments'} onclick={() => (tab = 'deployments')}>Deployments</button>
+    {#if application.build_pack !== 'image'}
+      <button role="tab" aria-selected={tab === 'previews'} onclick={() => (tab = 'previews')}>Previews</button>
+    {/if}
     <button role="tab" aria-selected={tab === 'logs'} onclick={() => (tab = 'logs')}>Logs</button>
     <button role="tab" aria-selected={tab === 'source'} onclick={() => (tab = 'source')}>Source</button>
     <button role="tab" aria-selected={tab === 'general'} onclick={() => (tab = 'general')}>General</button>
@@ -154,6 +161,8 @@
 
   {#if tab === 'deployments'}
     <Deployments {deployments} bind:selected serverNames={server ? { [server.id]: server.name } : {}} onchange={() => loadDeployments().catch(() => {})} />
+  {:else if tab === 'previews'}
+    <Previews applicationId={application.id} onchange={() => loadDeployments().catch(() => {})} />
   {:else if tab === 'logs'}
     <ContainerLogs
       url={`/api/applications/${application.id}/logs`}
