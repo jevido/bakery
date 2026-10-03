@@ -52,6 +52,13 @@ Local development stack.
   nothing. It signs in as the Owner from `BAKERY_OWNER_EMAIL` /
   `BAKERY_OWNER_PASSWORD` (or `infra/dev/state/owner.env`) and removes
   everything it created, Forgejo included (`KEEP_FORGEJO=1` keeps it).
+- `previews/test.sh` (`task previews:test`, same requirements) switches on
+  Previews with a Forgejo token, opens a pull request from a branch and
+  checks it is served on `pr-<n>.<domain>` with a Volume of its own while
+  production keeps serving `main`, that the pull request has one Preview
+  comment that follows a push to it, that a pull request from a fork (a
+  second Forgejo user) deploys nothing, and that closing the pull request
+  removes the Preview's Container, Volume and route and edits the comment.
 - `deploy/test.sh` (`task deploy:test`, same requirements) deploys a repository
   from Forgejo with a Health check, a build-only variable and Shared
   variables; redeploys while polling it (no request may fail); checks a

@@ -22,7 +22,7 @@ CMD ["httpd", "-f", "-p", "8080", "-h", "/www"]
 DOCKERFILE
 echo "version main" >"$REPO/index.html"
 push "Version main"
-create_app 8080
+create_app 8080 ',"storages":[{"name":"data","mount_path":"/data"}]'
 
 say "Deploy the application itself"
 bakery POST "/api/applications/$APP_ID/deploy" >/dev/null
@@ -61,12 +61,13 @@ fetch_preview() { curl -sf --resolve "$PREVIEW_DOMAIN:4943:127.0.0.1" -k "https:
 preview_serves() { [ "$(fetch_preview /)" = "$1" ]; }
 wait_for 30 "version feature on $PREVIEW_DOMAIN" preview_serves "version feature"
 serves "version main" || fail "production changed: $(fetch /)"
+[ -n "$(podman volume ls -q --filter "label=bakery.application=$APP_ID" --filter "label=bakery.preview=$PR")" ] || fail "the preview has no volume of its own"
 echo "ok: pull request #$PR serves version feature on $PREVIEW_DOMAIN, production still main"
 
 say "The preview comment"
 comments() { forgejo GET "/repos/$FORGEJO_USER/$RUN/issues/$PR/comments"; }
 bakery_comments() { comments | json "len([c for c in d if c['body'].startswith('**Bakery preview**')])"; }
-comment_says() { comments | json "next((c['body'] for c in d if c['body'].startswith('**Bakery preview**')), '')" | grep -qF "$1"; }
+comment_says() { grep -qF "$1" <<<"$(comments | json "next((c['body'] for c in d if c['body'].startswith('**Bakery preview**')), '')")"; }
 PREVIEW_URL=$(preview "['public_url']")
 wait_for 30 "a comment with $PREVIEW_URL" comment_says "Deployed: $PREVIEW_URL"
 [ "$(bakery_comments)" = 1 ] || fail "$(bakery_comments) bakery comments"
@@ -86,6 +87,26 @@ wait_for 30 "the comment to name the new commit" comment_says "Version feature 2
 serves "version main" || fail "production changed: $(fetch /)"
 echo "ok: the push redeployed the preview and edited the one comment"
 
+say "A pull request from a fork deploys nothing"
+FORKER=forker
+"${COMPOSE[@]}" exec -T forgejo forgejo admin user create --username "$FORKER" --password "$PASSWORD" \
+	--email forker@example.test --must-change-password=false >/dev/null 2>&1 || true
+FORKER_TOKEN=$("${COMPOSE[@]}" exec -T forgejo forgejo admin user generate-access-token --username "$FORKER" \
+	--token-name "$RUN" --scopes all --raw 2>/dev/null | tr -d '\r\n')
+forgejo PUT "/repos/$FORGEJO_USER/$RUN/collaborators/$FORKER" '{"permission":"read"}' >/dev/null
+as_forker() { curl -sS -f -X "$1" "$FORGEJO/api/v1$2" -H "Authorization: token $FORKER_TOKEN" -H 'Content-Type: application/json' -d "$3"; }
+as_forker POST "/repos/$FORGEJO_USER/$RUN/forks" '{}' >/dev/null
+git -C "$REPO" checkout -q -b from-fork main
+echo "version fork" >"$REPO/index.html"
+git -C "$REPO" -c user.name="E2E Forker" -c user.email=forker@example.test commit -qam "Version fork"
+wait_for 30 "the fork" git -C "$REPO" push -q "http://$FORKER:$PASSWORD@127.0.0.1:4950/$FORKER/$RUN.git" from-fork
+FORK_PR=$(as_forker POST "/repos/$FORGEJO_USER/$RUN/pulls" "{\"title\":\"From a fork\",\"head\":\"$FORKER:from-fork\",\"base\":\"main\"}" | json "d['number']")
+BEFORE=$(latest "['id']")
+sleep 15
+[ "$(previews | json "len([p for p in d['previews'] if p['number']==$FORK_PR])")" = 0 ] || fail "the fork's pull request #$FORK_PR got a preview"
+[ "$(latest "['id']")" = "$BEFORE" ] || fail "the fork's pull request started a deployment"
+echo "ok: pull request #$FORK_PR from $FORKER/$RUN deployed nothing"
+
 say "Closing pull request #$PR removes the preview"
 forgejo PATCH "/repos/$FORGEJO_USER/$RUN/pulls/$PR" '{"state":"closed"}' >/dev/null
 preview_closed() { [ "$(preview "['state']")" = closed ]; }
@@ -97,3 +118,5 @@ wait_for 60 "$PREVIEW_DOMAIN to stop answering" preview_gone
 serves "version main" || fail "production changed: $(fetch /)"
 wait_for 30 "the comment to say removed" comment_says "Removed"
 echo "ok: closing #$PR removed its container and route and said so; production still serves main"
+
+say "PASS"

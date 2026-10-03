@@ -102,6 +102,11 @@ tasks:
     cmds:
       - ./infra/dev/git/test.sh
 
+  previews:test:
+    desc: Previews of pull requests (deploy, redeploy, comment, fork ignored, close) end to end against Forgejo (needs task dev)
+    cmds:
+      - ./infra/dev/previews/test.sh
+
   deploy:test:
     desc: Health check, zero-downtime redeploy, cancel, rollback and variables end to end against Forgejo (needs task dev)
     cmds:
@@ -177,8 +182,8 @@ tasks:
     desc: shellcheck the install script
     cmds:
       - |
-        if command -v shellcheck >/dev/null; then shellcheck -x infra/dev/garage/setup.sh infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/access/test.sh infra/dev/account/test.sh infra/dev/databases/test.sh infra/dev/backups/test.sh infra/dev/services/test.sh infra/dev/servers/test.sh infra/dev/remote-deploy/test.sh infra/dev/notifications/test.sh infra/dev/server/checks.sh
-        else podman run --rm -v .:/mnt:ro,Z -w /mnt docker.io/koalaman/shellcheck-alpine shellcheck -x infra/dev/garage/setup.sh infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/access/test.sh infra/dev/account/test.sh infra/dev/databases/test.sh infra/dev/backups/test.sh infra/dev/services/test.sh infra/dev/servers/test.sh infra/dev/remote-deploy/test.sh infra/dev/notifications/test.sh infra/dev/server/checks.sh
+        if command -v shellcheck >/dev/null; then shellcheck -x infra/dev/garage/setup.sh infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/access/test.sh infra/dev/account/test.sh infra/dev/databases/test.sh infra/dev/backups/test.sh infra/dev/services/test.sh infra/dev/servers/test.sh infra/dev/remote-deploy/test.sh infra/dev/notifications/test.sh infra/dev/previews/test.sh infra/dev/server/checks.sh
+        else podman run --rm -v .:/mnt:ro,Z -w /mnt docker.io/koalaman/shellcheck-alpine shellcheck -x infra/dev/garage/setup.sh infra/install/install.sh infra/dev/git/test.sh infra/dev/deploy/test.sh infra/dev/buildpack/test.sh infra/dev/settings/test.sh infra/dev/access/test.sh infra/dev/account/test.sh infra/dev/databases/test.sh infra/dev/backups/test.sh infra/dev/services/test.sh infra/dev/servers/test.sh infra/dev/remote-deploy/test.sh infra/dev/notifications/test.sh infra/dev/previews/test.sh infra/dev/server/checks.sh
         fi
 
   check:

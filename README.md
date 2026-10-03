@@ -106,6 +106,20 @@ deployment, marked `webhook` in the list next to its commit. The git host
 must be able to reach the URL, so this works on a server, or locally with
 the Forgejo stand-in (`task git:test` runs the whole flow against it).
 
+### Preview deployments
+
+On the application's **Previews** tab, switch on preview deployments. Every
+pull request (merge request) into the application's repository then gets its
+own running copy on `pr-<number>.<domain>`, with the application's variables
+and settings but its own volumes, redeployed on every push to it and removed
+with everything it used when the pull request is closed or merged. The
+webhook on the **Source** tab must send pull request events too. Paste a git
+host token (GitHub, GitLab, Gitea or Forgejo) and Bakery keeps one comment on
+the pull request with the preview's link and state. Pull requests from forks
+get no preview. The tab lists the previews with a redeploy and a delete
+button; their deployments are marked in the history. `task previews:test`
+runs the whole life cycle against the Forgejo stand-in.
+
 ### Health checks, cancel and rollback
 
 Under **General → Health check**, give the path your app answers on when it

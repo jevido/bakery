@@ -62,6 +62,9 @@ authentication off (the Owner's included) and signs them out, for someone
 who lost their phone and their recovery codes. Account and two-factor are
 under `/api/me` (Session only) and `POST /api/login/two-factor`; `task
 account:test` checks them end to end.
+Previews of pull requests are under `/api/applications/{id}/previews`
+and switched on with `PATCH /api/applications/{id}/webhook`; `task
+previews:test` checks their life cycle end to end against Forgejo.
 
 ## Layout
 
