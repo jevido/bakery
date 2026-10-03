@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Tell the people running Bakery when something needs their attention: a
+Tell the people running The Bakery when something needs their attention: a
 Deployment or a Backup execution failed, a Server became unreachable or came back, a
 Server's disk usage is high. Each Notification goes to every Notification
 channel subscribed to its Event kind: an email address, a Discord or Slack
@@ -82,7 +82,7 @@ None published.
   this context and a new Event kind touches only its publisher and the
   translation here.
 - **Events are callbacks the downstream registers**, like every other event in
-  Bakery (`OnApplicationDeleted`, `OnCleanup`): the publishers export
+  The Bakery (`OnApplicationDeleted`, `OnCleanup`): the publishers export
   `On…(f)` and notifications registers in `Start`. There is one process, so a
   broker would add a moving part and no decoupling the callbacks lack. The
   publishers call them in their own goroutine with a recover, so a
@@ -94,7 +94,7 @@ None published.
   itself (`net/smtp`).
 - **Deliveries are stored and retried in-process** (now, +10 s, +60 s) by a
   dispatcher that claims due ones with `FOR UPDATE SKIP LOCKED`, so a
-  restart resumes them instead of losing them. The volume one Bakery
+  restart resumes them instead of losing them. The volume one installation
   produces does not justify a queue worker to operate.
 - **Only the newest 50 Deliveries per channel** are kept: they answer "did
   it arrive?", not "what happened last month?".
@@ -105,13 +105,13 @@ None published.
 - **The Telegram API base URL is configurable** (`BAKERY_TELEGRAM_API_URL`)
   only so tests can point it at a local stand-in; the other kinds take full
   URLs already.
-- **Notification channels and Deliveries are Bakery's own.** Coolify keeps
+- **Notification channels and Deliveries are The Bakery's own.** Coolify keeps
   one settings row per channel kind per team (one Discord, one Slack, ...)
-  and no delivery log. Bakery lets an admin add several named Notification
+  and no delivery log. The Bakery lets an admin add several named Notification
   channels of the same kind and shows each one's recent Deliveries, which
   is how a failing channel gets noticed. The Event kind values are
   Coolify's (`deployment_success`, `server_disk_usage`, ...), so the
-  subscriptions map one to one. They were Bakery's own before
+  subscriptions map one to one. They were The Bakery's own before
   (`deployment_failed`, `deployment_succeeded`, `backup_failed`,
   `backup_succeeded`, `disk_almost_full`); stored subscriptions and
   Deliveries were migrated, but a webhook receiver that matched on the old

@@ -5,7 +5,7 @@ tested for real without a machine or a real ACME CA.
 
 - `bakery-test-server`: Fedora with systemd as PID 1 (privileged,
   `--systemd=always`). `install.sh` installs Podman, creates the `bakery`
-  user and runs Bakery inside it, nested rootless Podman included.
+  user and runs The Bakery inside it, nested rootless Podman included.
 - `bakery-test-pebble`: [Pebble](https://github.com/letsencrypt/pebble) as
   ACME CA on `https://pebble:14000/dir`, with every challenge valid, so no
   DNS stand-in is needed. The dashboard domain is `bakery.test`.

@@ -18,12 +18,12 @@ serving Domains (routing does, through Service routes).
 | Term | Meaning |
 | ---- | ------- |
 | Service | A Compose file run as a set of Containers in one Environment, with a name and a Slug. |
-| Compose file | The `compose.yml` text a Service is made of, in the subset Bakery supports. |
-| Component | One entry under the Compose file's `services:`, run as the Container `bakery-svc-<service id>-<name>`. Bakery's word, so "service" never means two things. |
+| Compose file | The `compose.yml` text a Service is made of, in the subset The Bakery supports. |
+| Component | One entry under the Compose file's `services:`, run as the Container `bakery-svc-<service id>-<name>`. The Bakery's word, so "service" never means two things. |
 | Public Component | A Component whose environment names `SERVICE_FQDN_<NAME>_<PORT>` or `SERVICE_URL_<NAME>_<PORT>`: it has a port and 1–10 Domains, and the Proxy serves it. |
 | Service variable | A `${NAME}` the Compose file refers to, with a value stored encrypted. Set by the Owner, or generated when it is a Magic variable. |
-| Magic variable | A Service variable Bakery fills in by itself, following Coolify's template convention: `SERVICE_PASSWORD_<X>`, `SERVICE_PASSWORD_64_<X>`, `SERVICE_USER_<X>`, `SERVICE_BASE64_<X>`, `SERVICE_BASE64_64_<X>` (generated once), `SERVICE_FQDN_<NAME>` and `SERVICE_URL_<NAME>` (a Component's primary Domain, without and with `https://`). |
-| Service template | A named, described Compose file embedded in Bakery, the catalog the Owner picks from. |
+| Magic variable | A Service variable The Bakery fills in by itself, following Coolify's template convention: `SERVICE_PASSWORD_<X>`, `SERVICE_PASSWORD_64_<X>`, `SERVICE_USER_<X>`, `SERVICE_BASE64_<X>`, `SERVICE_BASE64_64_<X>` (generated once), `SERVICE_FQDN_<NAME>` and `SERVICE_URL_<NAME>` (a Component's primary Domain, without and with `https://`). |
+| Service template | A named, described Compose file embedded in The Bakery, the catalog the Owner picks from. |
 | Service network | The network `bakery-svc-<service id>`; every Component is on it under its Component name. |
 | Service volume | A named volume of the Compose file, as `bakery-svc-<service id>-<volume>`. |
 | Desired state | `running` or `stopped`: what the Owner asked for. |
@@ -38,7 +38,7 @@ serving Domains (routing does, through Service routes).
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Service | Belongs to one Environment of one Project. Name 1–100 characters; Slug lowercase `[a-z0-9-]`, unique among Services. The Compose file parses under the supported subset (see below) and has 1–20 Components; Component names match `^[a-z0-9][a-z0-9_-]{0,62}$`; `depends_on` names existing Components without cycles. A Public Component has a port 1–65535 and 1–10 Domains, the first primary, each a lowercase hostname, listed once, unique across Bakery (Application Domains included) and never the dashboard domain. Service variable names match `^[A-Za-z_][A-Za-z0-9_]*$`; every variable the Compose file refers to has a value or a default. Magic variables are generated once, never set by the Owner, and kept when the Compose file changes while it still refers to them. Desired state is `running` or `stopped`. |
+| Service | Belongs to one Environment of one Project. Name 1–100 characters; Slug lowercase `[a-z0-9-]`, unique among Services. The Compose file parses under the supported subset (see below) and has 1–20 Components; Component names match `^[a-z0-9][a-z0-9_-]{0,62}$`; `depends_on` names existing Components without cycles. A Public Component has a port 1–65535 and 1–10 Domains, the first primary, each a lowercase hostname, listed once, unique across The Bakery (Application Domains included) and never the dashboard domain. Service variable names match `^[A-Za-z_][A-Za-z0-9_]*$`; every variable the Compose file refers to has a value or a default. Magic variables are generated once, never set by the Owner, and kept when the Compose file changes while it still refers to them. Desired state is `running` or `stopped`. |
 
 The supported Compose subset, per Component: `image` (required),
 `command`, `entrypoint`, `environment` (map or list), `volumes` (named
@@ -94,7 +94,7 @@ None published yet.
   wins because it is the Owner's.
 - **Component, not "service", for one compose entry**, so a type called
   Service is always the whole thing.
-- **Bakery parses the Compose file and runs it through the libpod API**,
+- **The Bakery parses the Compose file and runs it through the libpod API**,
   never `podman compose`: the Podman CLI is off limits and the client must
   work over an SSH-tunnelled socket later. Owning the parser means a
   subset, and a readable refusal (with the line) for the rest instead of
@@ -133,5 +133,5 @@ None published yet.
   images pinned to a major version.
 - **Component stays one term.** Coolify splits a Service's entries into
   Service Applications and Service Databases, guessed from the image name,
-  and gives the two different pages. Bakery runs every entry the same way
+  and gives the two different pages. The Bakery runs every entry the same way
   and does not model that split; one word for one thing.

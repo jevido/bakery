@@ -113,11 +113,11 @@ say "Test each channel"
 for id in "${CHANNELS[@]}"; do
 	[ "$(bakery POST "/api/notification-channels/$id/test" | json "d['ok']")" = True ] || fail "the test of channel $id failed"
 done
-mails 1 "$OPS" "Test notification from Bakery"
-received 1 "r['path']=='/discord/tok-$RUN' and json.loads(r['body'])['content'].startswith('**Test notification from Bakery**')"
-received 1 "r['path']=='/slack/tok-$RUN' and json.loads(r['body'])['text'].startswith('*Test notification from Bakery*')"
+mails 1 "$OPS" "Test notification from The Bakery"
+received 1 "r['path']=='/discord/tok-$RUN' and json.loads(r['body'])['content'].startswith('**Test notification from The Bakery**')"
+received 1 "r['path']=='/slack/tok-$RUN' and json.loads(r['body'])['text'].startswith('*Test notification from The Bakery*')"
 received 1 "r['path']=='/telegram/bot123:bot-$RUN/sendMessage' and json.loads(r['body'])['chat_id']=='-100'"
-received 1 "r['path']=='/ntfy/bakery' and r['headers'].get('title')=='Test notification from Bakery' and r['headers'].get('authorization')=='Bearer tk-$RUN'"
+received 1 "r['path']=='/ntfy/bakery' and r['headers'].get('title')=='Test notification from The Bakery' and r['headers'].get('authorization')=='Bearer tk-$RUN'"
 received 1 "r['path']=='/hook/tok-$RUN'"
 python3 - "$LOG" "secret-$RUN" "/hook/tok-$RUN" <<'PY' || fail "the webhook signature does not verify"
 import hashlib, hmac, json, sys
@@ -204,8 +204,10 @@ say "An Invitation is emailed with a link that works"
 INVITEE="dev-$RUN@example.com"
 OUT=$(bakery POST /api/invitations "{\"email\":\"$INVITEE\",\"role\":\"member\"}")
 [ "$(json "d['emailed']" <<<"$OUT")" = True ] || fail "not emailed: $OUT"
-mails 1 "$INVITEE" "invited you to Bakery"
+mails 1 "$INVITEE" "invited you to The Bakery"
 MESSAGE=$(curl -s "$MAILPIT/api/v1/messages?limit=500" | json "[m['ID'] for m in d['messages'] if any(t['Address']=='$INVITEE' for t in m['To'])][0]")
+[ "$(curl -s "$MAILPIT/api/v1/message/$MESSAGE" | json "'invited you to The Bakery as member' in d['Text'] and d['From']['Name'] == 'The Bakery'")" = True ] ||
+	fail "the invitation email does not read The Bakery"
 TOKEN=$(curl -s "$MAILPIT/api/v1/message/$MESSAGE" | json "__import__('re').search(r'#/invite/([A-Za-z0-9]+)', d['Text']).group(1)")
 [ "$(curl -s -o /dev/null -w '%{http_code}' "$API/api/invitations/by-token/$TOKEN")" = 200 ] || fail "the emailed link does not open"
 [ "$(mail_count "$OPS" "invited you")" = 0 ] ||

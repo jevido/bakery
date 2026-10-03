@@ -289,7 +289,7 @@ func (s *Service) freeSlug(ctx context.Context, base string) (string, error) {
 func (s *Service) checkDomains(ctx context.Context, domains []string, exceptID uint64) error {
 	for _, d := range domains {
 		if s.reservedDomain != "" && d == s.reservedDomain {
-			return &domain.FieldError{Field: "domains", Message: d + " is reserved for the Bakery dashboard"}
+			return &domain.FieldError{Field: "domains", Message: d + " is reserved for The Bakery dashboard"}
 		}
 	}
 	taken, err := s.store.DomainsTaken(ctx, domains, exceptID)

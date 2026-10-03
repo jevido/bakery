@@ -104,12 +104,14 @@ func VerifyTOTP(secret []byte, code string, now time.Time, lastStep int64) (int6
 func OTPAuthURI(account string, secret []byte) string {
 	q := url.Values{}
 	q.Set("secret", EncodeTOTPSecret(secret))
-	q.Set("issuer", "Bakery")
+	q.Set("issuer", "The Bakery")
 	q.Set("algorithm", "SHA1")
 	q.Set("digits", fmt.Sprint(totpDigits))
 	q.Set("period", fmt.Sprint(totpPeriod))
-	label := url.PathEscape("Bakery:" + account)
-	return "otpauth://totp/" + label + "?" + q.Encode()
+	label := url.PathEscape("The Bakery:" + account)
+	// Authenticator apps want a space in the query as %20; Encode writes
+	// "+".
+	return "otpauth://totp/" + label + "?" + strings.ReplaceAll(q.Encode(), "+", "%20")
 }
 
 // NewRecoveryCodes reads RecoveryCodeCount codes of 10 base32 characters

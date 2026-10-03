@@ -62,7 +62,7 @@ func TestVerifyTOTP(t *testing.T) {
 
 func TestOTPAuthURI(t *testing.T) {
 	got := OTPAuthURI("a+b@example.com", rfcSecret)
-	want := "otpauth://totp/Bakery:a+b@example.com?algorithm=SHA1&digits=6&issuer=Bakery&period=30&secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+	want := "otpauth://totp/The%20Bakery:a+b@example.com?algorithm=SHA1&digits=6&issuer=The%20Bakery&period=30&secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 	if got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
 	}

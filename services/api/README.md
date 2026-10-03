@@ -1,6 +1,6 @@
 # api
 
-Bakery's JSON API: the source of truth for the Members, projects, applications,
+The Bakery's JSON API: the source of truth for the Members, projects, applications,
 deployments, databases, services and servers, and the unit that drives Podman and Caddy. Goravel v1.18 on
 Postgres 18, listening on `127.0.0.1:4910`.
 
@@ -37,7 +37,7 @@ Services are run from their Compose file through the Podman API (no
 `contexts/services/templates/`, one per template.
 
 Servers are the Local server (the Podman socket above) and Remote servers,
-reached over SSH with a key Bakery generates; the Podman API is tunnelled
+reached over SSH with a key The Bakery generates; the Podman API is tunnelled
 through that connection (`app/podman/ssh.go`). `task remote:up` from the repo
 root starts a stand-in on `127.0.0.1:4972` for `task api:test:podman`,
 `task servers:test` and `task remote-deploy:test`. Other contexts reach a

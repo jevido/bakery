@@ -221,7 +221,7 @@ func emailMessage(st domain.Settings, to []string, subject, body string, now tim
 	id := make([]byte, 12)
 	_, _ = rand.Read(id)
 	domainPart := st.From[strings.LastIndex(st.From, "@")+1:]
-	fmt.Fprintf(&b, "From: Bakery <%s>\r\n", st.From)
+	fmt.Fprintf(&b, "From: The Bakery <%s>\r\n", st.From)
 	fmt.Fprintf(&b, "To: %s\r\n", strings.Join(to, ", "))
 	fmt.Fprintf(&b, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", subject))
 	fmt.Fprintf(&b, "Date: %s\r\n", now.Format(time.RFC1123Z))
@@ -233,7 +233,7 @@ func emailMessage(st domain.Settings, to []string, subject, body string, now tim
 }
 
 func sendEmail(ctx context.Context, st domain.Settings, n domain.Notification) error {
-	msg := emailMessage(st, st.To, "[Bakery] "+n.Title, lines(n.Body, n.Link), time.Now())
+	msg := emailMessage(st, st.To, "[The Bakery] "+n.Title, lines(n.Body, n.Link), time.Now())
 	return sendMail(ctx, st, st.To, msg)
 }
 

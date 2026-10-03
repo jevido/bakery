@@ -106,7 +106,7 @@ func shellQuote(s string) string {
 func sshFailure(line string) string {
 	switch {
 	case strings.Contains(line, "REMOTE HOST IDENTIFICATION HAS CHANGED"), strings.Contains(line, "Host key verification failed"):
-		return "the SSH host key of <host> changed since the first clone; if that is expected, forget the host in Bakery's settings and deploy again"
+		return "the SSH host key of <host> changed since the first clone; if that is expected, forget the host in The Bakery's settings and deploy again"
 	case strings.Contains(line, "Permission denied (publickey"):
 		return "the repository refused the deploy key; add the public key shown on the application page to the repository's deploy keys"
 	}

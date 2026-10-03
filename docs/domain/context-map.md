@@ -49,7 +49,7 @@ adapt to.
 
 | System | Used by | Through |
 | ------ | ------- | ------- |
-| Podman (rootless libpod API) | deployments, routing, databases, services, servers | Bakery's own thin client in `app/podman`, over the local socket or tunnelled over SSH |
+| Podman (rootless libpod API) | deployments, routing, databases, services, servers | The Bakery's own thin client in `app/podman`, over the local socket or tunnelled over SSH |
 | SSH | servers (for deployments and routing through Server connections) | `golang.org/x/crypto/ssh`: Podman's socket and the Remote Proxy's admin socket through `direct-streamlocal` channels, plain commands for checks |
 | Caddy admin API | routing | JSON config loaded with `POST /load` |
 | S3-compatible storage | databases | Its own thin S3 client (Signature V4), for Backup executions |

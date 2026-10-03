@@ -46,8 +46,8 @@ Local development stack.
   and that an Invitation is emailed to the invited person with a working
   link. It restarts the API as it was at the end.
 - `git/test.sh` (`task git:test`, with `task dev` running) creates a private
-  repository in Forgejo, deploys it through Bakery with the Application's
-  Deploy key, adds Bakery's Webhook to it, pushes and waits for the push to
+  repository in Forgejo, deploys it through The Bakery with the Application's
+  Deploy key, adds The Bakery's Webhook to it, pushes and waits for the push to
   deploy by itself, then checks a push signed with a rotated secret deploys
   nothing. It signs in as the Owner from `BAKERY_OWNER_EMAIL` /
   `BAKERY_OWNER_PASSWORD` (or `infra/dev/state/owner.env`) and removes

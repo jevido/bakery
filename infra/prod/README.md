@@ -1,6 +1,6 @@
 # prod
 
-Production: one Linux server running Bakery, installed and upgraded with
+Production: one Linux server running The Bakery, installed and upgraded with
 [`infra/install/install.sh`](../install/install.sh). Everything runs as
 rootless Podman containers of the `bakery` user on the `bakery` network.
 
@@ -109,7 +109,7 @@ sudo -u bakery XDG_RUNTIME_DIR=/run/user/$(id -u bakery) \
   podman volume export bakery-svc-3-postgresql-data > postgresql-data.tar
 ```
 
-**Bakery's own database** (`bakery-postgres`) is not backed up
+**The Bakery's own database** (`bakery-postgres`) is not backed up
 automatically yet. By hand:
 
 ```sh

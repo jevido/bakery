@@ -125,11 +125,11 @@ func serverNotification(e servers.ServerHealthChanged, dashboard string, now tim
 	case "unreachable":
 		n.Kind = domain.ServerUnreachable
 		n.Title = "Server " + e.ServerName + " is unreachable"
-		n.Body = "Bakery could not reach it twice in a row: " + e.Reason + "\nApplications on it may be down, and deployments to it fail until it is back."
+		n.Body = "The Bakery could not reach it twice in a row: " + e.Reason + "\nApplications on it may be down, and deployments to it fail until it is back."
 	case "reachable":
 		n.Kind = domain.ServerReachable
 		n.Title = "Server " + e.ServerName + " is reachable again"
-		n.Body = "Bakery reaches it again."
+		n.Body = "The Bakery reaches it again."
 	case "server_disk_usage":
 		n.Kind = domain.ServerDiskUsage
 		n.Title = "High disk usage on " + e.ServerName

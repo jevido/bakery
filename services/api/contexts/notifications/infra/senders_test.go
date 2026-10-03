@@ -258,7 +258,7 @@ func TestEmail(t *testing.T) {
 	if srv.auth != "\x00u\x00pw" || srv.from != "MAIL FROM:<bakery@example.com>" || len(srv.to) != 2 {
 		t.Errorf("auth %q from %q to %v", srv.auth, srv.from, srv.to)
 	}
-	for _, want := range []string{"Subject: [Bakery] Deployment of shop failed\r\n", "To: a@example.com, b@example.com\r\n", "\r\n\r\nbuild failed\r\nhttp://localhost:4930/applications/3\r\n"} {
+	for _, want := range []string{"Subject: [The Bakery] Deployment of shop failed\r\n", "To: a@example.com, b@example.com\r\n", "\r\n\r\nbuild failed\r\nhttp://localhost:4930/applications/3\r\n"} {
 		if !strings.Contains(srv.data, want) {
 			t.Errorf("message lacks %q:\n%s", want, srv.data)
 		}

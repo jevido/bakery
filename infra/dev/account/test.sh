@@ -105,7 +105,7 @@ say "Switching two-factor on"
 expect "two-factor starts off" off "$(as "$M" GET /api/me/two-factor >/dev/null && body "d['state']")"
 expect "setup starts" 200 "$(as "$M" POST /api/me/two-factor)"
 SECRET=$(body "d['secret']")
-grep -q "^otpauth://totp/Bakery:" <<<"$(body "d['otpauth_uri']")" || fail "otpauth URI: $(body "d['otpauth_uri']")"
+grep -q "^otpauth://totp/The%20Bakery:" <<<"$(body "d['otpauth_uri']")" || fail "otpauth URI: $(body "d['otpauth_uri']")"
 expect "it is pending" pending "$(as "$M" GET /api/me/two-factor >/dev/null && body "d['state']")"
 expect "a wrong code is refused" 422 "$(as "$M" POST /api/me/two-factor/confirm '{"code":"000000"}')"
 next_code "$SECRET"

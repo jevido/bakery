@@ -1,7 +1,7 @@
 # install
 
 `install.sh` turns a fresh Linux server (Fedora/RHEL or Debian/Ubuntu, with
-systemd) into a running Bakery, and upgrades it when run again.
+systemd) into a running installation of The Bakery, and upgrades it when run again.
 
 ```sh
 sudo bash install.sh --domain bakery.example.com --email me@example.com
@@ -9,7 +9,7 @@ sudo bash install.sh --domain bakery.example.com --email me@example.com
 
 Point the domain's DNS at the server and open ports 80 and 443 first: the
 proxy gets its certificate over ACME (HTTP-01). A Database given a Public
-port in the dashboard is published on that port on every interface; Bakery
+port in the dashboard is published on that port on every interface; The Bakery
 does not manage a firewall, so open (or keep closed) such ports yourself.
 
 ## What it does

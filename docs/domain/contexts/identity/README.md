@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Knows who may use this Bakery and what each of them may do: the Members,
+Knows who may use this installation of The Bakery and what each of them may do: the Members,
 each with a Role, the one Owner created by Setup, the Invitations that bring
 in the others, how a request proves who sent it (a Session or an API
 token), and each Member's own Profile, Two-factor authentication included.
@@ -107,7 +107,7 @@ Who may run each is in brackets.
   context's tables and queries for a feature few self-hosters use. The
   Members of this installation are its one team; several Teams can be added
   above it later.
-- **Invitations are links, not emails.** Bakery sends no email yet. The
+- **Invitations are links, not emails.** The Bakery sends no email yet. The
   admin copies the link and sends it however they like.
 - **Roles are enforced by coarse middlewares, not per route checks.** Auth
   refuses changes by viewers, `Admin` wraps whole admin areas, `Secrets`
@@ -153,17 +153,17 @@ Who may run each is in brackets.
   password.
 - **The Owner's lost phone is an artisan command.** Nobody outranks the
   Owner in the dashboard, and whoever has a shell on the server already
-  controls Bakery.
+  controls The Bakery.
 - **The Owner is not transferable yet**, and can be neither demoted nor
   removed, so an installation can never be left without someone who can
   manage it.
 - **The `viewer` Role is kept although Coolify has none.** Coolify's Roles
-  are owner, admin and member; Bakery adds viewer for read-only access
+  are owner, admin and member; The Bakery adds viewer for read-only access
   (dashboards on a wall, a read-only API token) without handing out
   Secrets. The Coolify API (`/api/v1`) reports a viewer as a member with
   read-only rights. Members keep their name, as on Coolify's Team page;
-  Teams themselves come in a later phase, until then one Bakery is one
+  Teams themselves come in a later phase, until then one installation of The Bakery is one
   team.
 - **Profile, not Account.** The page where a Member changes their own
   name, password, Sessions and Two-factor authentication is Coolify's
-  Profile page, so Bakery calls it Profile too.
+  Profile page, so The Bakery calls it Profile too.

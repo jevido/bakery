@@ -1,6 +1,6 @@
-# Bakery
+# The Bakery
 
-Bakery is a self-hosted platform for deploying applications, databases and
+The Bakery is a self-hosted platform for deploying applications, databases and
 services on your own servers, in the spirit of [Coolify](https://coolify.io),
 built on rootless Podman, Caddy, Goravel, Svelte 5 and Postgres.
 `services/api` is the source of truth and drives Podman and Caddy;
@@ -74,7 +74,7 @@ Each application picks how it becomes an image:
 
 - **Dockerfile**: builds the Dockerfile at a path in the repository.
 - **Nixpacks**: no Dockerfile needed; [Nixpacks](https://nixpacks.com)
-  detects the language (Node, Go, Python, PHP, Ruby, Rust, …) and Bakery
+  detects the language (Node, Go, Python, PHP, Ruby, Rust, …) and The Bakery
   builds the plan it writes. `task api:dev` downloads the pinned `nixpacks`
   binary into `services/api/bin/`.
 - **Static site**: serves a directory of the repository (the publish
@@ -90,7 +90,7 @@ its container registry.
 ### Private repositories
 
 Use the repository's SSH URL, for example `git@github.com:you/app.git` or
-`ssh://git@git.example.com:2222/you/app.git`. Bakery generates a deploy key
+`ssh://git@git.example.com:2222/you/app.git`. The Bakery generates a deploy key
 for the application; copy the public key from the **Source** tab and add it
 to the repository as a read-only deploy key (GitHub: Settings → Deploy keys),
 then press **Deploy**. The first clone from a host trusts its SSH host key;
@@ -114,7 +114,7 @@ own running copy on `pr-<number>.<domain>`, with the application's variables
 and settings but its own volumes, redeployed on every push to it and removed
 with everything it used when the pull request is closed or merged. The
 webhook on the **Source** tab must send pull request events too. Paste a git
-host token (GitHub, GitLab, Gitea or Forgejo) and Bakery keeps one comment on
+host token (GitHub, GitLab, Gitea or Forgejo) and The Bakery keeps one comment on
 the pull request with the preview's link and state. Pull requests from forks
 get no preview. The tab lists the previews with a redeploy and a delete
 button; their deployments are marked in the history. `task previews:test`
@@ -123,7 +123,7 @@ runs the whole life cycle against the Forgejo stand-in.
 ### Health checks, cancel and rollback
 
 Under **General → Health check**, give the path your app answers on when it
-is ready (e.g. `/health`). Bakery then requests it inside the new container
+is ready (e.g. `/health`). The Bakery then requests it inside the new container
 (with `curl` or `wget`, so the image needs one of them) and only moves
 traffic once it answers 2xx or 3xx; a redeploy then serves every request. A
 check that never passes fails the deployment and the running version stays.
@@ -171,11 +171,11 @@ the volumes) and deletes it, and follows each component's logs.
 
 ### Servers
 
-**Servers** lists the machine Bakery runs on and any server you add over
-SSH: give its host, port and user, add the key Bakery shows to that user's
+**Servers** lists the machine The Bakery runs on and any server you add over
+SSH: give its host, port and user, add the key The Bakery shows to that user's
 `~/.ssh/authorized_keys`, and press **Validate** (rootless Podman 4.4 or
 newer, its API socket, and linger on). Each server shows its CPU, memory
-and disk, and every night (or on **Clean up now**) Bakery removes images
+and disk, and every night (or on **Clean up now**) The Bakery removes images
 nothing needs any more.
 
 When you add an application you pick the server it runs on. It is cloned
@@ -184,14 +184,14 @@ here, built on that server and served there by that server's own proxy on
 80/443 free and `net.ipv4.ip_unprivileged_port_start=80`. Redeploys,
 rollbacks, logs and cleanup work as they do locally. The server cannot be
 changed afterwards, and a server that still runs applications cannot be
-removed. Databases and services run on Bakery's own server for now.
+removed. Databases and services run on The Bakery's own server for now.
 `task servers:test` and `task remote-deploy:test` run this end to end
 against a stand-in server in a container (`task remote:up`).
 
 ### Members and API tokens
 
 The first account is the **owner**. Under **Members** the owner (or an
-admin) invites people by email with a role and copies the link Bakery gives
+admin) invites people by email with a role and copies the link The Bakery gives
 back (it works once, for 7 days): a **viewer** reads everything except
 secrets (variables, database credentials, webhook secrets, backups) and
 changes nothing, a **member** also adds, changes and deploys applications,
@@ -216,13 +216,13 @@ account:test` runs this end to end.
 
 ### Notifications
 
-Under **Notifications** an admin adds channels Bakery reports to: email
+Under **Notifications** an admin adds channels The Bakery reports to: email
 (any SMTP server), Discord or Slack (an incoming webhook URL), Telegram (a
 bot token and chat id), ntfy (a topic on ntfy.sh or your own server) or a
 webhook (JSON, signed with `X-Bakery-Signature: sha256=…` when it has a
 secret). Each channel picks its events: a deployment or backup failed (or
 succeeded, off by default), a server became unreachable or came back, a
-server's disk is almost full. Bakery probes every validated server every 5
+server's disk is almost full. The Bakery probes every validated server every 5
 minutes and only reports a change. **Test** sends a test message, and each
 channel lists what it recently sent; a channel that cannot be reached is
 tried three times. With an email channel, invitations are also emailed to
@@ -239,7 +239,7 @@ sudo bash infra/install/install.sh --domain bakery.example.com --email me@exampl
   --api-image <registry>/bakery-api:<tag> --web-image <registry>/bakery-web:<tag>
 ```
 
-It installs rootless Podman, runs Bakery as the `bakery` user and serves
+It installs rootless Podman, runs The Bakery as the `bakery` user and serves
 the dashboard on `https://bakery.example.com` with a Let's Encrypt
 certificate; applications get certificates the same way. Run it again to
 upgrade. Images are not published yet: build them with `task images` and

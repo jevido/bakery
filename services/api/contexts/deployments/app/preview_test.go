@@ -257,7 +257,7 @@ func TestPreviewComment(t *testing.T) {
 
 	s.service.DeployPreview(ctx, 1, 7, domain.TriggerWebhook)
 	s.worker.RunOnce(ctx)
-	if len(comments.posts) != 1 || !strings.Contains(comments.posts[0], "http://git/api/v1/repos/u/r 7 tok: **Bakery preview**") ||
+	if len(comments.posts) != 1 || !strings.Contains(comments.posts[0], "http://git/api/v1/repos/u/r 7 tok: **The Bakery preview**") ||
 		!strings.Contains(comments.posts[0], "✅ Deployed: https://pr-7.whoami.localhost") || !strings.Contains(comments.posts[0], "`0123456789ab Fix the login`") {
 		t.Fatalf("posts %q", comments.posts)
 	}
@@ -272,7 +272,7 @@ func TestPreviewComment(t *testing.T) {
 	s.runtime.buildErr = errors.New("exit status 1")
 	s.service.DeployPreview(ctx, 1, 7, domain.TriggerWebhook)
 	s.worker.RunOnce(ctx)
-	if len(comments.posts) != 1 || len(comments.edits) != 1 || !strings.Contains(comments.edits[0], "1: **Bakery preview**\n\n❌ Deployment failed: build failed: exit status 1") {
+	if len(comments.posts) != 1 || len(comments.edits) != 1 || !strings.Contains(comments.edits[0], "1: **The Bakery preview**\n\n❌ Deployment failed: build failed: exit status 1") {
 		t.Fatalf("edits %q", comments.edits)
 	}
 
@@ -287,7 +287,7 @@ func TestPreviewComment(t *testing.T) {
 
 	// Closing says it was removed.
 	s.service.ClosePreview(ctx, 1, 7)
-	if last := comments.edits[len(comments.edits)-1]; !strings.Contains(last, "2: **Bakery preview**\n\n🗑️ Removed") {
+	if last := comments.edits[len(comments.edits)-1]; !strings.Contains(last, "2: **The Bakery preview**\n\n🗑️ Removed") {
 		t.Fatalf("after close %q", comments.edits)
 	}
 }

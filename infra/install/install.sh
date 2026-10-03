@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs Bakery on this server, or upgrades it when run again.
+# Installs The Bakery on this server, or upgrades it when run again.
 #
 #   sudo bash install.sh --domain bakery.example.com --email me@example.com
 #
@@ -139,7 +139,7 @@ delegate_controllers() {
 	printf '[Service]\nDelegate=cpu cpuset io memory pids\n' >/etc/systemd/system/user@.service.d/90-bakery-delegate.conf
 	systemctl daemon-reload
 	if runuser -u "$BAKERY_USER" -- env XDG_RUNTIME_DIR="$RUNTIME_DIR" podman container exists bakery-api 2>/dev/null; then
-		log "Bakery is running: the new delegation applies after the next reboot"
+		log "The Bakery is running: the new delegation applies after the next reboot"
 		return
 	fi
 	# Nothing of Bakery's runs yet, so the user manager can restart now.
@@ -276,7 +276,7 @@ wait_ready() {
 	for _ in $(seq 120); do
 		# -k: only asks whether it is up; the certificate may still be on its way.
 		if curl -fsk --max-time 3 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/health" >/dev/null 2>&1; then
-			log "Bakery is running at https://$DOMAIN"
+			log "The Bakery is running at https://$DOMAIN"
 			return
 		fi
 		sleep 2

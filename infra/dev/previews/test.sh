@@ -66,8 +66,8 @@ echo "ok: pull request #$PR serves version feature on $PREVIEW_DOMAIN, productio
 
 say "The preview comment"
 comments() { forgejo GET "/repos/$FORGEJO_USER/$RUN/issues/$PR/comments"; }
-bakery_comments() { comments | json "len([c for c in d if c['body'].startswith('**Bakery preview**')])"; }
-comment_says() { grep -qF "$1" <<<"$(comments | json "next((c['body'] for c in d if c['body'].startswith('**Bakery preview**')), '')")"; }
+bakery_comments() { comments | json "len([c for c in d if c['body'].startswith('**The Bakery preview**')])"; }
+comment_says() { grep -qF "$1" <<<"$(comments | json "next((c['body'] for c in d if c['body'].startswith('**The Bakery preview**')), '')")"; }
 PREVIEW_URL=$(preview "['public_url']")
 wait_for 30 "a comment with $PREVIEW_URL" comment_says "Deployed: $PREVIEW_URL"
 [ "$(bakery_comments)" = 1 ] || fail "$(bakery_comments) bakery comments"

@@ -119,7 +119,7 @@ func (s *Service) TestChannel(ctx context.Context, id uint64) (sendErr error, er
 	}
 	n := domain.Notification{
 		Kind:  c.EventKinds[0],
-		Title: "Test notification from Bakery",
+		Title: "Test notification from The Bakery",
 		Body:  "This is a test of the notification channel \"" + c.Name + "\". If you can read it, it works.",
 		Link:  s.DashboardURL,
 		At:    s.Now(),

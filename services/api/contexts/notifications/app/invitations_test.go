@@ -48,7 +48,7 @@ func TestSendInvitation(t *testing.T) {
 	if !sent || err != nil {
 		t.Fatalf("sent %v, %v", sent, err)
 	}
-	if mailer.channel != "ops" || len(mailer.to) != 1 || mailer.to[0] != "dev@example.com" || mailer.subject != "[Bakery] Jeff invited you to Bakery" {
+	if mailer.channel != "ops" || len(mailer.to) != 1 || mailer.to[0] != "dev@example.com" || mailer.subject != "[The Bakery] Jeff invited you to The Bakery" {
 		t.Fatalf("mailed %+v", mailer)
 	}
 	for _, want := range []string{"as member", inv.Link, "7 October 2026 12:00 UTC"} {

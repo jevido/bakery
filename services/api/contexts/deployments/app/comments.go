@@ -80,7 +80,7 @@ func (c *Commenter) Comment(ctx context.Context, applicationID uint64, number in
 // or failed.
 func (c *Commenter) DeployedBody(d domain.Deployment, previewDomain string) string {
 	var b strings.Builder
-	b.WriteString("**Bakery preview**\n\n")
+	b.WriteString("**The Bakery preview**\n\n")
 	commit := shortSHA(d.CommitSHA)
 	if d.CommitMessage != "" {
 		commit += " " + d.CommitMessage
@@ -96,5 +96,5 @@ func (c *Commenter) DeployedBody(d domain.Deployment, previewDomain string) stri
 
 // RemovedBody is the Preview comment once its Pull request closed.
 func (c *Commenter) RemovedBody() string {
-	return "**Bakery preview**\n\n🗑️ Removed: the pull request was closed. · " + c.now().UTC().Format("2006-01-02 15:04 UTC") + "\n"
+	return "**The Bakery preview**\n\n🗑️ Removed: the pull request was closed. · " + c.now().UTC().Format("2006-01-02 15:04 UTC") + "\n"
 }

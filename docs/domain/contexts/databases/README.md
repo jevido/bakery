@@ -59,7 +59,7 @@ backing up Redis and Valkey (see below).
 - `BackUpDatabase(database, trigger)`: dump the Database inside its Container into the Backups directory, upload to the S3 storage if any, then prune by Retention locally and in S3.
 - `Restore(backup execution)`: copy the Backup execution's file (downloaded from S3 if the local file is gone) into the Container and run the Database type's restore.
 - `DeleteBackupExecution(backup execution)`: remove its file, its S3 object and its row.
-- `CreateS3Storage`, `UpdateS3Storage` (empty secret keeps it), `DeleteS3Storage`, `TestS3Storage` (can Bakery reach the bucket with these keys).
+- `CreateS3Storage`, `UpdateS3Storage` (empty secret keeps it), `DeleteS3Storage`, `TestS3Storage` (can The Bakery reach the bucket with these keys).
 - `Recover()`: at API start, start every Database whose desired state is `running` and whose Container is missing, mark Backup executions still `running` as failed (interrupted), and start the scheduler, which backs up every Database whose Scheduled backup is due, once a minute.
 
 ### Domain events
@@ -125,12 +125,12 @@ backing up Redis and Valkey (see below).
   image moved its default data path) and older alike.
 - **The Public port is published on a configured address**
   (`BAKERY_DATABASES_PUBLIC_BIND`: every interface on a server, `127.0.0.1`
-  in development). Bakery does not manage a firewall; a port another
+  in development). The Bakery does not manage a firewall; a port another
   process holds fails the start with Podman's reason.
 - **Backups live in databases, not in a context of their own.** How to dump
   and restore is Database type knowledge; a separate backups context would need a
   contract as wide as the Database type catalog. S3 storage is an aggregate here
-  for now; when a second consumer appears (volume backups, Bakery's own
+  for now; when a second consumer appears (volume backups, The Bakery's own
   database) it moves out and that move is recorded here.
 - **Logical dumps, run inside the Container.** `pg_dump -Fc`,
   `mysqldump`/`mariadb-dump --single-transaction` (gzipped by the API) and
@@ -169,6 +169,6 @@ backing up Redis and Valkey (see below).
   open-source fork of Redis and runs the same way; it stays as a Bakery
   extra. Like Redis it has no Backup executions.
 - **One Scheduled backup per Database.** Coolify allows several
-  Scheduled backups per Database; Bakery keeps one, part of the Database,
+  Scheduled backups per Database; The Bakery keeps one, part of the Database,
   until a later phase adds the rest. The words already match Coolify's:
   Scheduled backup, Backup execution, Database type.

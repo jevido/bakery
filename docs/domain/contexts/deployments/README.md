@@ -32,7 +32,7 @@ Application is (projects) or for the Caddy configuration (routing).
 | Pull request | A git host's request to merge a branch into the Application's branch (a GitLab merge request too), as its Webhook calls describe it. |
 | Preview | A copy of the Application built from one open Pull request's head branch, with its own Containers (`bakery-app-<id>-pr<n>-<deployment>`, labelled `bakery.preview=<n>`), Volumes (`bakery-app-<id>-pr<n>-<storage>`) and Preview route on the Preview domain `pr-<n>.<primary Domain>`. |
 | Preview Deployment | A Deployment that belongs to a Preview. The history shows it next to the Application's own, marked with its Preview number. |
-| Preview comment | The one comment on the Pull request Bakery posts after the first Preview Deployment and edits after each later one and when the Preview goes. |
+| Preview comment | The one comment on the Pull request The Bakery posts after the first Preview Deployment and edits after each later one and when the Preview goes. |
 | Git host token | The git host access token the Preview comment is written with. Encrypted at rest, never returned. |
 | Known host | A git host's SSH host key, trusted on first use. |
 | Worker | The loop inside the API that claims queued Deployments and runs them. |
@@ -144,7 +144,7 @@ Application is (projects) or for the Caddy configuration (routing).
   text. The REST client is small and will work unchanged over an
   SSH-tunnelled socket for remote Servers.
 - **An Application's Containers are found by label**
-  (`bakery.application=<id>`), not by the names Bakery remembers, so a
+  (`bakery.application=<id>`), not by the names The Bakery remembers, so a
   Container left over from a crash is still cleaned up by the next Deployment.
   When the Application is deleted (`ApplicationDeleted`), its Containers and
   Deployments go with it.
@@ -178,7 +178,7 @@ Application is (projects) or for the Caddy configuration (routing).
   keeps a cancel function per running Deployment. A second API process would
   need a `cancel_requested` flag the Worker polls; it is added with remote
   Servers if the Worker moves.
-  Podman's build API has no way to stop a build: when Bakery hangs up, the
+  Podman's build API has no way to stop a build: when The Bakery hangs up, the
   step being built runs to its end in the background and its result is
   thrown away (no Image is tagged). The Deployment is cancelled at once and
   the Application can deploy again straight away.
@@ -208,8 +208,8 @@ Application is (projects) or for the Caddy configuration (routing).
   the rule to reach Podman only through its REST API still holds. The binary
   is pinned in the API image; `BAKERY_NIXPACKS` points at it elsewhere.
 - **Volumes are created by the Deployment, removed with the Application.**
-  `Start` creates each Persistent storage's volume (if missing) with Bakery's
-  labels before creating the Container, so Bakery only ever removes volumes
+  `Start` creates each Persistent storage's volume (if missing) with The Bakery's
+  labels before creating the Container, so The Bakery only ever removes volumes
   it made. On `ApplicationDeleted` the volumes go after the Containers.
   During a zero-downtime switch the old and new Container mount the same
   volume for a moment: an app that cannot share its data directory (SQLite
@@ -219,7 +219,7 @@ Application is (projects) or for the Caddy configuration (routing).
   needs the `cpu` and `memory` controllers delegated to the Bakery user,
   which the install script makes sure of.
 - **Every step runs on the Target server, except the clone.** The clone
-  stays on Bakery's side, which holds the Deploy keys and Known hosts, and
+  stays on The Bakery's side, which holds the Deploy keys and Known hosts, and
   is streamed to the Server's Podman as the build context; the libpod build
   endpoint takes it over any connection, SSH included. So the Image is
   built where it runs and no registry is needed. Building on one Server and
@@ -259,7 +259,7 @@ Application is (projects) or for the Caddy configuration (routing).
   `*.localhost` with no setup and, on a server, needs one wildcard DNS record
   per Application; certificates are still issued per host.
 - **Deployment status is finer than Coolify's.** Coolify knows `queued`,
-  `in_progress`, `finished`, `failed` and `cancelled-by-user`. Bakery keeps
+  `in_progress`, `finished`, `failed` and `cancelled-by-user`. The Bakery keeps
   `cloning`, `building` and `starting` instead of one `in_progress`,
   because the dashboard shows the step and the worker's state machine moves
   through them, and keeps `cancelled`. The Coolify API (`/api/v1`) maps the
@@ -267,5 +267,5 @@ Application is (projects) or for the Caddy configuration (routing).
   `cancelled-by-user`, so its clients see Coolify's values.
 - **Known host and Git host token have no Coolify counterpart.** Coolify
   clones with `StrictHostKeyChecking=no` and writes pull request comments
-  through its GitHub App; Bakery pins git hosts' SSH keys and, until it has
+  through its GitHub App; The Bakery pins git hosts' SSH keys and, until it has
   Sources, writes the Preview comment with a token stored on the Webhook.

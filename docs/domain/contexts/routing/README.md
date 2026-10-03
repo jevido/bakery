@@ -24,7 +24,7 @@ responsible for which Container is current; deployments tells it.
 | Counterpart | The host a Redirect adds for one Domain. |
 | Response header | Name and value set on every response. |
 | Basic auth | One username + password asked for before any request is proxied. |
-| Dashboard Route | Bakery's own dashboard domain: `/api/*` to the API container, everything else to the dashboard container. From configuration, not a stored Route. |
+| Dashboard Route | The Bakery's own dashboard domain: `/api/*` to the API container, everything else to the dashboard container. From configuration, not a stored Route. |
 | Apply | For one Server: render the full Caddy JSON config from that Server's Routes (plus, on the Local server, the Service routes and the Dashboard Route) and load it into that Server's Proxy with `POST /load`. |
 | ACME | Certificates from an ACME CA (Let's Encrypt by default; any directory URL, e.g. Pebble in tests), used on a Server when Internal TLS is off. |
 | Internal TLS | Certificates from Caddy's own CA, for `*.localhost` in development. |
@@ -65,7 +65,7 @@ None.
 
 - **Caddy is configured only through its admin API, and always with the full
   config.** Rendering everything from the `routes` table and loading it with
-  `POST /load` means Caddy holds no state Bakery does not have: a lost or
+  `POST /load` means Caddy holds no state The Bakery does not have: a lost or
   recreated Proxy is fixed by one Apply. Cost: every change re-sends the whole
   config, which is fine for hundreds of routes.
 - **The Dashboard Route is rendered from configuration, not stored as a
@@ -118,7 +118,7 @@ None.
   Applications on its own 80/443, so the DNS of an Application's Domain
   points at the Server it runs on, as in Coolify. A central Proxy would need
   host ports on every Server and traffic between hosts, and would make
-  Bakery's own server a single point of failure for all of them. Each
+  The Bakery's own server a single point of failure for all of them. Each
   Server's Proxy gets only its own Routes; Apply works per Server, so a
   change on one Server never reloads another.
 - **A Remote Proxy's admin API is a unix socket in a volume**
@@ -128,16 +128,16 @@ None.
   nothing clashes and nothing outside can reach the unauthenticated admin
   API.
 - **Service routes and the Dashboard Route stay on the Local server**:
-  Services still run there, and the dashboard is Bakery's own.
+  Services still run there, and the dashboard is The Bakery's own.
 - **Preview routes are a table of their own**, not extra rows of Route. A
   Route is one per Application (the upsert relies on it) and projects owns
   its Domains; a Preview route's Domain is derived, and it disappears when
   its Pull request closes. Rendering it with the Application's Route
   settings keeps an Application behind Basic auth protected in its Previews
   too; a Redirect makes no sense for a derived host.
-- **Route, Route settings and Response header are Bakery's terms.**
+- **Route, Route settings and Response header are The Bakery's terms.**
   Coolify has no Route: it writes proxy labels onto each container and lets
-  the person edit them as custom labels, headers included. Bakery renders
+  the person edit them as custom labels, headers included. The Bakery renders
   the whole Caddy config from the database instead, so it needs a word for
   what it renders. The Redirect values are Coolify's (`both`, `www`,
   `non-www`).

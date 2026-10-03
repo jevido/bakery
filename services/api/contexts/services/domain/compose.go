@@ -138,7 +138,7 @@ var refusedKeys = map[string]string{
 	"configs":        "is not supported",
 	"profiles":       "is not supported",
 	"env_file":       "is not supported; use environment:",
-	"container_name": "is not supported; Bakery names Containers itself",
+	"container_name": "is not supported; The Bakery names Containers itself",
 	"tmpfs":          "is not supported",
 }
 

@@ -27,8 +27,8 @@ func InvitationEmail(inv Invitation) (subject, body string) {
 	if by == "" {
 		by = "Someone"
 	}
-	subject = "[Bakery] " + by + " invited you to Bakery"
-	body = fmt.Sprintf(`%s invited you to their Bakery as %s.
+	subject = "[The Bakery] " + by + " invited you to The Bakery"
+	body = fmt.Sprintf(`%s invited you to The Bakery as %s.
 
 Open this link to pick your name and password:
 
