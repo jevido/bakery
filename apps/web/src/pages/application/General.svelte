@@ -227,7 +227,7 @@
                 {:else if !primaryDomain}
                   Make this application available from a URL
                 {:else}
-                  Manage DNS checks and redirect settings
+                  Manage domains and the www redirect
                 {/if}
               </p>
             </div>

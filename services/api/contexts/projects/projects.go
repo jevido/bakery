@@ -203,7 +203,10 @@ func OnDomainCheck(inUse func(ctx context.Context, domain string) (bool, error))
 	svc().OnDomainCheck(inUse)
 }
 
+// ApplicationDeleted is the event published when an Application is deleted.
+type ApplicationDeleted = app.ApplicationDeleted
+
 // OnApplicationDeleted registers a handler for the ApplicationDeleted event.
-func OnApplicationDeleted(f func(ctx context.Context, applicationID uint64)) {
+func OnApplicationDeleted(f func(ctx context.Context, e ApplicationDeleted)) {
 	svc().OnApplicationDeleted(f)
 }

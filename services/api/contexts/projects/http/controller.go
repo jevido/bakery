@@ -476,7 +476,11 @@ func (c *Controller) DeleteApplication(ctx contractshttp.Context) contractshttp.
 	if !ok {
 		return notFound(ctx)
 	}
-	if err := c.service.DeleteApplication(ctx.Context(), aid); err != nil {
+	// Coolify's delete_volumes; delete_images stands in for its
+	// docker_cleanup. Both default to true, as Coolify's do.
+	deleteVolumes := ctx.Request().QueryBool("delete_volumes", true)
+	deleteImages := ctx.Request().QueryBool("delete_images", true)
+	if err := c.service.DeleteApplication(ctx.Context(), aid, deleteVolumes, deleteImages); err != nil {
 		return fail(ctx, err)
 	}
 	return ctx.Response().NoContent()

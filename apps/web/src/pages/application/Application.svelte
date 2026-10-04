@@ -1,8 +1,7 @@
 <script lang="ts">
   // Coolify's Application page (resources/views/livewire/project/application/configuration.blade.php,
   // Apache-2.0, see NOTICE): the heading, the configuration sidebar and the
-  // sub-page the URL names. Sub-pages not yet in Coolify's markup still render
-  // the components the old tabbed page used.
+  // sub-page the URL names.
   import { api, ApiError } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import EnvironmentVariables from '../../lib/EnvironmentVariables.svelte'
@@ -15,6 +14,7 @@
   import { toast } from '../../lib/ui/toast.svelte'
   import Advanced from './Advanced.svelte'
   import ConfigurationSidebar from './ConfigurationSidebar.svelte'
+  import Danger from './Danger.svelte'
   import DeploymentPage from './Deployment.svelte'
   import DeploymentHistory from './DeploymentHistory.svelte'
   import Domains from './Domains.svelte'
@@ -181,12 +181,6 @@
         ],
   )
 
-  async function remove() {
-    if (!application) return
-    await api('DELETE', `/applications/${id}`)
-    go(`/project/${application.project_id}/environment/${application.environment_id}`)
-  }
-
   const serverNames = $derived<Record<number, string>>(server ? { [server.id]: server.name } : {})
 
   // Projects › Project › Environment › Application, with its status.
@@ -205,14 +199,6 @@
       )
   })
 </script>
-
-{#snippet later(title: string, text?: string)}
-  <div class="chrome">
-    <h2 class="text-[15px]! font-semibold! text-black dark:text-fg">{title}</h2>
-    {#if text}<p class="mt-2 text-[13px] text-neutral-600 dark:text-fg-dim">{text}</p>{/if}
-    <p class="mt-2 text-[13px] text-neutral-500 dark:text-fg-dim">This page is ported in a later task.</p>
-  </div>
-{/snippet}
 
 {#if loadError}
   <p class="chrome text-sm text-error">{loadError}</p>
@@ -297,10 +283,12 @@
         {:else if page === 'advanced'}
           <Advanced {application} />
         {:else if page === 'danger' && session.canWrite}
-          <h2>Danger zone</h2>
-          <button class="danger" onclick={remove}>Delete application</button>
+          <Danger {application} />
         {:else}
-          {@render later('Not available', 'This Application has no such page.')}
+          <div class="chrome">
+            <h2 class="text-[15px]! font-semibold! text-black dark:text-fg">Not available</h2>
+            <p class="mt-2 text-[13px] text-neutral-600 dark:text-fg-dim">This Application has no such page.</p>
+          </div>
         {/if}
       </div>
     </div>

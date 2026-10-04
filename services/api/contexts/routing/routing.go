@@ -72,9 +72,9 @@ func svc() *app.Service {
 				facades.Log().Errorf("routing: moving the route of application %d to %v: %v", applicationID, domains, err)
 			}
 		})
-		projects.OnApplicationDeleted(func(ctx context.Context, applicationID uint64) {
-			if err := service.DropRoute(ctx, applicationID); err != nil {
-				facades.Log().Errorf("routing: dropping route of application %d: %v", applicationID, err)
+		projects.OnApplicationDeleted(func(ctx context.Context, e projects.ApplicationDeleted) {
+			if err := service.DropRoute(ctx, e.ApplicationID); err != nil {
+				facades.Log().Errorf("routing: dropping route of application %d: %v", e.ApplicationID, err)
 			}
 		})
 	})

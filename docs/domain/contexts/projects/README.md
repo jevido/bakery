@@ -52,7 +52,7 @@ reaches an Application (routing).
 
 ### Domain events
 
-- `ApplicationDeleted { applicationID }`: routing drops its Route and Route settings; deployments removes its Containers and volumes.
+- `ApplicationDeleted { applicationID, deleteVolumes, deleteImages }`: routing drops its Route and Route settings; deployments removes its Containers, and its volumes and Images when asked (both by default, as Coolify's Danger Zone ticks them).
 - `ApplicationDomainsChanged { applicationID, domains }`: fired after an update that changed the Domains (in their new order); routing points the Application's Route at them.
 
 ## Integration
@@ -232,6 +232,65 @@ reaches an Application (routing).
   Environment has no "Clone" action: cloning copies Resources with their
   Persistent storage and Domains, a feature of its own across three
   contexts. Without Tags there is no Tags filter or column.
+- **The Application page shows only what The Bakery has behind it.** The
+  page follows Coolify's (heading, Actions menu, configuration sidebar,
+  Coolify's URLs), but its sidebar has no Swarm, Backups, Terminal,
+  Scheduled Tasks, Resource Operations, Metrics or Tags items, and no
+  configuration checker (Coolify's "configuration changed, redeploy"
+  banner): each arrives with the feature behind it, as the main sidebar and
+  the New Resource page leave out what does not exist. On phones the
+  sidebar is Coolify's grid of links, as its Blade renders it.
+- **General and Advanced carry only The Bakery's settings.** Left out of
+  General: internal access, Web server and Site type, Base directory,
+  Docker build stage target, watch paths, install/build/start commands,
+  Builder selection, custom Nginx configuration, the pushed image name and
+  tag for Git build packs, port mappings, network aliases, custom Docker
+  options, the deployment lifecycle commands and container labels; out of
+  Advanced: its Build, Container, Git, Compose, Gzip and strip prefix,
+  Operations, Logs and GPU sections. They come with the application
+  settings still missing. Settings Coolify has no field for land in its
+  nearest section: HTTP Basic Authentication in General → Security (turning
+  it off saves at once; turning it on waits for Save, since the routing
+  settings refuse it without a username and password), custom response
+  headers in Advanced → Proxy, and the www redirect on Domains. Auto deploy
+  belongs to the Webhook, which carries a secret, so a viewer sees that the
+  setting is hidden rather than its value. Coolify's listboxes are native
+  selects.
+- **Domains has no DNS, protocol redirect or search indexing column.** The
+  Bakery checks no DNS, has no indexing setting, and whether HTTP redirects
+  to HTTPS depends on the install, which the dashboard cannot see; a column
+  that could be wrong is worse than none. The last Domain cannot be
+  removed, since an Application always has one, and Generate domain offers
+  the Application's own default (`<slug>.<domain suffix>`), not a random
+  name. General's Access card links there with "Manage domains and the www
+  redirect" instead of Coolify's "Manage DNS checks and redirect settings".
+- **Environment Variables differ in three ways.** The Developer view
+  refuses a line without `=` (with its line number) instead of dropping it,
+  because a save replaces the whole set and a dropped line would delete
+  that variable. New variables are runtime only, also when pasted, since
+  build values end up in the Image's history (see above). Below the table a
+  read-only Shared variables list shows what the Project and Environment
+  hand down, since without `{{ }}` references nothing else shows what an
+  Application actually gets.
+- **Persistent Storage has volume mounts only.** File, host file and
+  directory mounts (bind mounts) and volume backups do not exist; a bind
+  mount would also let an Application read the host's files.
+- **Healthcheck and Resource Limits keep Coolify's form on The Bakery's
+  model.** The Healthcheck is a GET on a path at the Application's port, so
+  the check type, method, scheme, host, port, expected code and response
+  text are left out; Enable and Disable save only the switch, leaving edits
+  in the unsaved bar, so a toggle never fails for a field the person did
+  not touch. Memory is typed in Coolify's units (`512m`, `1g`) and stored in
+  whole megabytes. The Servers page shows the Target server's host and
+  reachability, not a Podman network, since there are no Destinations yet.
+- **Delete offers two of Coolify's four checkboxes.** Coolify's Danger Zone
+  asks whether to delete volumes, connected networks, configuration files
+  and to run a Docker cleanup, then asks for the password. An Application
+  in The Bakery has no network or configuration files of its own, so only
+  "delete volumes" and "remove its Images" (in place of the server-wide
+  Docker cleanup, which is the Server's Cleanup here) are offered, both
+  ticked as Coolify's are. The password step is left out: the delete
+  endpoints take none, and typing the Application's name is required.
 - **Shared variables live on the settings pages for now.** Coolify edits a
   Project's and an Environment's shared variables on separate Shared
   Variables pages; until those pages exist, Project settings and

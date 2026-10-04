@@ -69,7 +69,7 @@ type Service struct {
 	// reservedDomain is the dashboard's own domain; no Application may take
 	// it. Empty when there is none.
 	reservedDomain   string
-	onDeleted        []func(ctx context.Context, applicationID uint64)
+	onDeleted        []func(ctx context.Context, e ApplicationDeleted)
 	onDomainsChanged []func(ctx context.Context, applicationID uint64, domains []string)
 	onDeleting       []func(ctx context.Context, projectID uint64) (bool, error)
 	onEnvDeleting    []func(ctx context.Context, environmentID uint64) (bool, error)
@@ -134,8 +134,19 @@ func (s *Service) keepDeployKey(a *domain.Application) error {
 	return nil
 }
 
+// ApplicationDeleted is the event DeleteApplication publishes: what is to be
+// removed with the Application besides its Containers, Routes and
+// Deployments, as the person deleting it chose.
+type ApplicationDeleted struct {
+	ApplicationID uint64
+	// DeleteVolumes removes its volumes, and with them its stored data.
+	DeleteVolumes bool
+	// DeleteImages removes the Images its Deployments built or pulled.
+	DeleteImages bool
+}
+
 // OnApplicationDeleted registers a handler for the ApplicationDeleted event.
-func (s *Service) OnApplicationDeleted(f func(ctx context.Context, applicationID uint64)) {
+func (s *Service) OnApplicationDeleted(f func(ctx context.Context, e ApplicationDeleted)) {
 	s.onDeleted = append(s.onDeleted, f)
 }
 
@@ -431,15 +442,18 @@ func (s *Service) RegenerateDeployKey(ctx context.Context, id uint64) (domain.Ap
 	return a, nil
 }
 
-func (s *Service) DeleteApplication(ctx context.Context, id uint64) error {
+// DeleteApplication deletes the Application and publishes
+// ApplicationDeleted with the volumes and Images removed or kept as asked.
+func (s *Service) DeleteApplication(ctx context.Context, id uint64, deleteVolumes, deleteImages bool) error {
 	if _, err := s.Application(ctx, id); err != nil {
 		return err
 	}
 	if err := s.store.DeleteApplication(ctx, id); err != nil {
 		return err
 	}
+	e := ApplicationDeleted{ApplicationID: id, DeleteVolumes: deleteVolumes, DeleteImages: deleteImages}
 	for _, f := range s.onDeleted {
-		f(ctx, id)
+		f(ctx, e)
 	}
 	return nil
 }

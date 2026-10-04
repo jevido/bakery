@@ -111,12 +111,20 @@ func svc() *app.Service {
 		// the newest five finished Deployments there go, unless a Container
 		// still uses one. It works once StartWorker ran.
 		servers.OnCleanup(service.PruneImages)
-		projects.OnApplicationDeleted(func(ctx context.Context, applicationID uint64) {
+		projects.OnApplicationDeleted(func(ctx context.Context, e projects.ApplicationDeleted) {
+			applicationID := e.ApplicationID
 			// Every Server its Deployments ran on; a Server that cannot be
 			// reached keeps what is there, which its Cleanup leaves alone.
 			ids, err := (infra.Store{}).ServerIDs(ctx, applicationID)
 			if err != nil {
 				facades.Log().Errorf("deployments: servers of application %d: %v", applicationID, err)
+			}
+			// The Images, read before the Deployments that name them go.
+			var all []domain.Deployment
+			if e.DeleteImages {
+				if all, err = (infra.Store{}).ByApplication(ctx, applicationID, -1); err != nil {
+					facades.Log().Errorf("deployments: images of application %d: %v", applicationID, err)
+				}
 			}
 			for _, id := range ids {
 				rt, err := runtimeOn(ctx, id)
@@ -126,8 +134,22 @@ func svc() *app.Service {
 				}
 				if err := rt.RemoveAll(ctx, applicationID); err != nil {
 					facades.Log().Errorf("deployments: removing containers of application %d on %s: %v", applicationID, rt.Server, err)
-				} else if err := rt.RemoveVolumes(ctx, applicationID); err != nil {
-					facades.Log().Errorf("deployments: removing volumes of application %d on %s: %v", applicationID, rt.Server, err)
+					continue
+				}
+				if e.DeleteVolumes {
+					if err := rt.RemoveVolumes(ctx, applicationID); err != nil {
+						facades.Log().Errorf("deployments: removing volumes of application %d on %s: %v", applicationID, rt.Server, err)
+					}
+				}
+				seen := map[string]bool{}
+				for _, d := range all {
+					if d.ServerID != id || d.Image == "" || seen[d.Image] {
+						continue
+					}
+					seen[d.Image] = true
+					if _, err := rt.RemoveImage(ctx, d.Image); err != nil {
+						facades.Log().Errorf("deployments: removing image %s on %s: %v", d.Image, rt.Server, err)
+					}
 				}
 			}
 			if err := service.DeletePreviews(ctx, applicationID); err != nil {

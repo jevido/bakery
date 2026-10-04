@@ -128,8 +128,9 @@ Application is (projects) or for the Caddy configuration (routing).
   the start of a Deployment, so editing the Application mid-build does not
   change what is being built; it carries the Deploy key for SSH Git repositories);
   `routing.SwitchRoute` (with the Target server); `ApplicationDeleted` (the
-  Webhook goes too, and Containers and Volumes are removed on every Server
-  the Application's Deployments ran on); `servers.Connect`, the Server
+  Webhook goes too, and Containers, and the volumes and Images unless the
+  event says to keep them, are removed on every Server the Application's
+  Deployments ran on); `servers.Connect`, the Server
   connection every step of a Deployment runs through.
   A push Webhook for a `dockerimage` Application is ignored: it has no branch.
   `routing.SwitchPreviewRoute` and `routing.DropPreviewRoute` for Previews,
@@ -232,7 +233,10 @@ Application is (projects) or for the Caddy configuration (routing).
 - **Volumes are created by the Deployment, removed with the Application.**
   `Start` creates each Persistent storage's volume (if missing) with The Bakery's
   labels before creating the Container, so The Bakery only ever removes volumes
-  it made. On `ApplicationDeleted` the volumes go after the Containers.
+  it made. On `ApplicationDeleted` the volumes go after the Containers,
+  unless the person deleting chose to keep them; the Images of its
+  Deployments go too unless kept, since Server Cleanup removes only
+  dangling Images and those of Applications that still exist.
   During a zero-downtime switch the old and new Container mount the same
   volume for a moment: an app that cannot share its data directory (SQLite
   with an exclusive lock) sees two writers briefly.

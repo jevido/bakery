@@ -133,6 +133,32 @@ func TestDomainsChanged(t *testing.T) {
 	}
 }
 
+func (f *fakeStore) DeleteApplication(context.Context, uint64) error {
+	f.app = domain.Application{}
+	return nil
+}
+
+func TestDeleteApplicationPublishesWhatToRemove(t *testing.T) {
+	ctx := context.Background()
+	s := NewService(&fakeStore{}, fakeKey, "example.com", "")
+	var events []ApplicationDeleted
+	s.OnApplicationDeleted(func(_ context.Context, e ApplicationDeleted) { events = append(events, e) })
+	a, err := s.CreateApplication(ctx, 1, domain.ApplicationInput{Name: "web", GitURL: "https://example.com/r.git", Port: 80})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteApplication(ctx, a.ID, false, true); err != nil {
+		t.Fatal(err)
+	}
+	want := ApplicationDeleted{ApplicationID: a.ID, DeleteVolumes: false, DeleteImages: true}
+	if len(events) != 1 || events[0] != want {
+		t.Fatalf("events %+v, want %+v", events, want)
+	}
+	if err := s.DeleteApplication(ctx, a.ID, true, true); !errors.Is(err, ErrNotFound) || len(events) != 1 {
+		t.Fatalf("deleting again: %v, events %+v", err, events)
+	}
+}
+
 // projectStore holds one Project and records whether it was deleted.
 type projectStore struct {
 	Store
