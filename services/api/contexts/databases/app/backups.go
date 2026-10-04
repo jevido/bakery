@@ -270,20 +270,28 @@ func (s *Service) prune(d domain.Database, sb domain.ScheduledBackup) {
 		return
 	}
 	for _, b := range domain.Prune(backups, sb.Retention) {
-		if err := s.removeExecution(ctx, d, b); err != nil {
+		if err := s.removeExecution(ctx, d, b, Copies{Local: true, S3: true}); err != nil {
 			s.logf("databases: pruning backup %d: %v", b.ID, err)
 		}
 	}
 }
 
-// removeExecution removes the Backup execution's file, its S3 object and its row.
-func (s *Service) removeExecution(ctx context.Context, d domain.Database, b domain.BackupExecution) error {
-	if b.Local {
+// Copies says which copies of a Backup execution a delete removes with
+// its row, as Coolify's delete asks: the file on this server, the object in
+// its S3 storage, or both. A copy left behind is no longer listed.
+type Copies struct {
+	Local bool
+	S3    bool
+}
+
+// removeExecution removes the Backup execution's row and the copies files names.
+func (s *Service) removeExecution(ctx context.Context, d domain.Database, b domain.BackupExecution, files Copies) error {
+	if b.Local && files.Local {
 		if err := s.Files.Remove(d.ID, b.FileName); err != nil {
 			return err
 		}
 	}
-	if b.S3 && b.S3StorageID != 0 {
+	if b.S3 && b.S3StorageID != 0 && files.S3 {
 		st, found, err := s.store.S3Storage(ctx, b.S3StorageID)
 		if err != nil {
 			return err
@@ -317,8 +325,9 @@ func (s *Service) execution(ctx context.Context, id uint64) (domain.BackupExecut
 	return b, d, err
 }
 
-// DeleteBackupExecution removes a finished Backup execution, its file and its S3 object.
-func (s *Service) DeleteBackupExecution(ctx context.Context, id uint64) error {
+// DeleteBackupExecution removes a finished Backup execution with its file
+// and, when deleteS3, its S3 object.
+func (s *Service) DeleteBackupExecution(ctx context.Context, id uint64, deleteS3 bool) error {
 	b, d, err := s.execution(ctx, id)
 	if err != nil {
 		return err
@@ -326,7 +335,7 @@ func (s *Service) DeleteBackupExecution(ctx context.Context, id uint64) error {
 	if b.Status == domain.ExecutionRunning {
 		return ErrBackupRunning
 	}
-	return s.removeExecution(ctx, d, b)
+	return s.removeExecution(ctx, d, b, Copies{Local: true, S3: deleteS3})
 }
 
 // OpenBackupExecution opens the Backup execution's file, from the Backups directory or, when
@@ -569,9 +578,8 @@ func (s *Service) UpdateScheduledBackup(ctx context.Context, id uint64, in domai
 }
 
 // DeleteScheduledBackup removes a Scheduled backup with its Backup
-// executions' files and rows; their S3 objects stay, as they do when a
-// Database is deleted. Not while one of them runs.
-func (s *Service) DeleteScheduledBackup(ctx context.Context, id uint64) error {
+// executions' rows and the copies files names. Not while one of them runs.
+func (s *Service) DeleteScheduledBackup(ctx context.Context, id uint64, files Copies) error {
 	sb, d, err := s.scheduledBackup(ctx, id)
 	if err != nil {
 		return err
@@ -586,12 +594,7 @@ func (s *Service) DeleteScheduledBackup(ctx context.Context, id uint64) error {
 		}
 	}
 	for _, b := range list {
-		if b.Local {
-			if err := s.Files.Remove(d.ID, b.FileName); err != nil {
-				return err
-			}
-		}
-		if err := s.store.DeleteBackupExecution(ctx, b.ID); err != nil {
+		if err := s.removeExecution(ctx, d, b, files); err != nil {
 			return err
 		}
 	}
@@ -605,30 +608,6 @@ func (s *Service) ScheduledBackupExecutions(ctx context.Context, id uint64) ([]d
 		return nil, err
 	}
 	return s.store.ScheduledBackupExecutions(ctx, id)
-}
-
-// SetScheduledBackup replaces the Database's oldest Scheduled backup, for
-// the dashboard until it lists them all.
-func (s *Service) SetScheduledBackup(ctx context.Context, databaseID uint64, in domain.ScheduledBackupInput) (View, error) {
-	d, err := s.get(ctx, databaseID)
-	if err != nil {
-		return View{}, err
-	}
-	if !d.Type.Spec().Backups {
-		// Off was always accepted on any Database type; it changes nothing.
-		if !in.Enabled {
-			return s.view(ctx, d)
-		}
-		return View{}, domain.ErrNoBackups
-	}
-	sb, err := s.oldestScheduledBackup(ctx, d)
-	if err != nil {
-		return View{}, err
-	}
-	if _, err := s.UpdateScheduledBackup(ctx, sb.ID, in); err != nil {
-		return View{}, err
-	}
-	return s.view(ctx, d)
 }
 
 // nextBackup is when the Scheduled backup fires next; zero when off.

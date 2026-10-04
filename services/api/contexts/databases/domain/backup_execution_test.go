@@ -30,7 +30,11 @@ func TestScheduledBackupCheck(t *testing.T) {
 	}{
 		{ScheduledBackupInput{Cron: "0 3 * * *", Retention: 7}, ""},
 		{ScheduledBackupInput{Cron: "*/15 * * * 1-5", Retention: 100}, ""},
-		{ScheduledBackupInput{Cron: "@daily", Retention: 7}, "scheduled_backup.cron"},
+		{ScheduledBackupInput{Cron: "@daily", Retention: 7}, ""},
+		{ScheduledBackupInput{Cron: "daily", Retention: 7}, ""},
+		{ScheduledBackupInput{Cron: "every_minute", Retention: 7}, ""},
+		{ScheduledBackupInput{Cron: "@every 1h", Retention: 7}, "scheduled_backup.cron"},
+		{ScheduledBackupInput{Cron: "nightly", Retention: 7}, "scheduled_backup.cron"},
 		{ScheduledBackupInput{Cron: "TZ=Europe/Amsterdam 0 3 * * *", Retention: 7}, "scheduled_backup.cron"},
 		{ScheduledBackupInput{Cron: "0 3 * *", Retention: 7}, "scheduled_backup.cron"},
 		{ScheduledBackupInput{Cron: "61 3 * * *", Retention: 7}, "scheduled_backup.cron"},
@@ -108,6 +112,13 @@ func TestDue(t *testing.T) {
 	s.Enabled = false
 	if s.Due(time.Time{}, at("2027-01-01T00:00:00Z")) {
 		t.Fatal("disabled schedule is due")
+	}
+	// Coolify's shortcuts: daily is midnight UTC.
+	for _, c := range []string{"daily", "@daily"} {
+		s := ScheduledBackup{Enabled: true, Cron: c, EnabledAt: at("2026-09-30T14:00:00Z")}
+		if got := s.NextAt(time.Time{}); !got.Equal(at("2026-10-01T00:00:00Z")) {
+			t.Errorf("%s: next %s", c, got)
+		}
 	}
 }
 

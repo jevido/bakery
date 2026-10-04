@@ -83,7 +83,6 @@ func Routes(r route.Router) {
 		r.Post("/api/databases/{id}/start", c.Start)
 		r.Post("/api/databases/{id}/stop", c.Stop)
 		r.Post("/api/databases/{id}/restart", c.Restart)
-		r.Put("/api/databases/{id}/scheduled-backup", c.SetScheduledBackup)
 		r.Get("/api/databases/{id}/backup-executions", c.BackupExecutions)
 		r.Post("/api/databases/{id}/backup-executions", c.BackUp)
 		r.Get("/api/databases/{id}/scheduled-backups", c.ScheduledBackups)

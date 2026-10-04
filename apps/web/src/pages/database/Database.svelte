@@ -4,7 +4,6 @@
   // sub-page the URL names.
   import { api, ApiError } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
-  import DatabaseBackups from '../../lib/DatabaseBackups.svelte'
   import { databaseTypeLabel } from '../../lib/databaseTypes'
   import { databasePath, go, href, type DatabasePage, type ScheduledBackupSection } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
@@ -16,9 +15,11 @@
   import ResourceLimits from '../application/ResourceLimits.svelte'
   import RuntimeLogs from '../application/RuntimeLogs.svelte'
   import Servers from '../application/Servers.svelte'
+  import Backups from './Backups.svelte'
   import ConfigurationSidebar from './ConfigurationSidebar.svelte'
   import General from './General.svelte'
   import Heading from './Heading.svelte'
+  import ScheduledBackupPage from './ScheduledBackupPage.svelte'
 
   let {
     projectId,
@@ -177,43 +178,46 @@
     </div>
   {/if}
 
-  <section class="mt-4 w-full max-w-none lg:mt-0">
-    <div class="grid min-w-0 gap-8 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
-      <ConfigurationSidebar {database} {page} />
+  {#if page === 'backups' && scheduledBackupId && database.backups_supported}
+    <ScheduledBackupPage {database} id={scheduledBackupId} section={backupSection} ondatabase={(d) => (database = d)} />
+  {:else}
+    <section class="mt-4 w-full max-w-none lg:mt-0">
+      <div class="grid min-w-0 gap-8 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
+        <ConfigurationSidebar {database} {page} />
 
-      <!-- Until Backups and Danger Zone are ported, the old tabs' contents
-           render here. -->
-      <div class="min-w-0">
-        {#if page === ''}
-          <General {database} onchange={(d) => (database = d)} />
-        {:else if page === 'resource-limits'}
-          <ResourceLimits
-            limits={database.resource_limits}
-            onsave={(resource_limits) => patch({ resource_limits })}
-            applied="The database restarts with them."
-          />
-        {:else if page === 'persistent-storage'}
-          <PersistentStorage
-            storages={[database.volume]}
-            helper="The database keeps its data in this volume, which outlives restarts, settings changes and new images."
-          />
-        {:else if page === 'servers'}
-          <Servers {server} {status} />
-        {:else if page === 'logs'}
-          <RuntimeLogs url={`/api/databases/${database.id}/logs`} container={database.status === 'stopped' ? '' : database.container} />
-        {:else if page === 'backups' && database.backups_supported}
-          <DatabaseBackups {database} onchange={(d) => (database = d)} />
-        {:else if page === 'danger' && session.canWrite}
-          <h2>Danger zone</h2>
-          <p class="muted">Deleting removes the container, the data volume and the backups on this server. Copies in S3 storage stay.</p>
-          <button class="danger" onclick={remove}>Delete database</button>
-        {:else}
-          <div class="chrome">
-            <h2 class="text-[15px]! font-semibold! text-black dark:text-fg">Not available</h2>
-            <p class="mt-2 text-[13px] text-neutral-600 dark:text-fg-dim">This Database has no such page.</p>
-          </div>
-        {/if}
+        <!-- Until Danger Zone is ported, the old tab's contents render here. -->
+        <div class="min-w-0">
+          {#if page === ''}
+            <General {database} onchange={(d) => (database = d)} />
+          {:else if page === 'resource-limits'}
+            <ResourceLimits
+              limits={database.resource_limits}
+              onsave={(resource_limits) => patch({ resource_limits })}
+              applied="The database restarts with them."
+            />
+          {:else if page === 'persistent-storage'}
+            <PersistentStorage
+              storages={[database.volume]}
+              helper="The database keeps its data in this volume, which outlives restarts, settings changes and new images."
+            />
+          {:else if page === 'servers'}
+            <Servers {server} {status} />
+          {:else if page === 'logs'}
+            <RuntimeLogs url={`/api/databases/${database.id}/logs`} container={database.status === 'stopped' ? '' : database.container} />
+          {:else if page === 'backups' && database.backups_supported}
+            <Backups {database} />
+          {:else if page === 'danger' && session.canWrite}
+            <h2>Danger zone</h2>
+            <p class="muted">Deleting removes the container, the data volume and the backups on this server. Copies in S3 storage stay.</p>
+            <button class="danger" onclick={remove}>Delete database</button>
+          {:else}
+            <div class="chrome">
+              <h2 class="text-[15px]! font-semibold! text-black dark:text-fg">Not available</h2>
+              <p class="mt-2 text-[13px] text-neutral-600 dark:text-fg-dim">This Database has no such page.</p>
+            </div>
+          {/if}
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
+  {/if}
 {/if}

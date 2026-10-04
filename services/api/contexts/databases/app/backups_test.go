@@ -169,11 +169,24 @@ func (e *backupEnv) backUp(t *testing.T, id uint64) domain.BackupExecution {
 	return b
 }
 
-func setSchedule(t *testing.T, e *backupEnv, id uint64, in domain.ScheduledBackupInput) {
+// setSchedule replaces the Database's first Scheduled backup, the one a
+// new Database gets.
+func setSchedule(t *testing.T, e *backupEnv, id uint64, in domain.ScheduledBackupInput) ScheduledBackupView {
 	t.Helper()
-	if _, err := e.s.SetScheduledBackup(context.Background(), id, in); err != nil {
+	got, err := e.s.UpdateScheduledBackup(context.Background(), firstSchedule(t, e, id), in)
+	if err != nil {
 		t.Fatal(err)
 	}
+	return got
+}
+
+func firstSchedule(t *testing.T, e *backupEnv, id uint64) uint64 {
+	t.Helper()
+	list, err := e.s.ScheduledBackups(context.Background(), id)
+	if err != nil || len(list) == 0 {
+		t.Fatalf("scheduled backups of %d: %v %v", id, list, err)
+	}
+	return list[0].ID
 }
 
 func TestBackUpLocalAndS3(t *testing.T) {
@@ -247,7 +260,7 @@ func TestBackUpOneAtATime(t *testing.T) {
 	if _, err := e.s.BackUpDatabase(ctx, v.ID, domain.TriggerManual); !errors.Is(err, ErrBusy) {
 		t.Fatalf("second: %v", err)
 	}
-	if err := e.s.DeleteBackupExecution(ctx, first.ID); !errors.Is(err, ErrBackupRunning) {
+	if err := e.s.DeleteBackupExecution(ctx, first.ID, true); !errors.Is(err, ErrBackupRunning) {
 		t.Fatalf("delete running: %v", err)
 	}
 	close(e.rt.dumpGate)
@@ -285,17 +298,25 @@ func TestDeleteBackupAndDatabase(t *testing.T) {
 	setSchedule(t, e, v.ID, domain.ScheduledBackupInput{Cron: "0 3 * * *", Retention: 7, S3StorageID: st.ID})
 	a := e.backUp(t, v.ID)
 	e.backUp(t, v.ID)
-	if err := e.s.DeleteBackupExecution(ctx, a.ID); err != nil {
+	// Deleted without its S3 object, then with it.
+	if err := e.s.DeleteBackupExecution(ctx, a.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	if len(e.files.names()) != 1 || len(e.bucket.keys()) != 1 {
+	if len(e.files.names()) != 1 || len(e.bucket.keys()) != 2 {
+		t.Fatalf("after delete backup keeping S3: files %v objects %v", e.files.names(), e.bucket.keys())
+	}
+	b := e.backUp(t, v.ID)
+	if err := e.s.DeleteBackupExecution(ctx, b.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.files.names()) != 1 || len(e.bucket.keys()) != 2 {
 		t.Fatalf("after delete backup: files %v objects %v", e.files.names(), e.bucket.keys())
 	}
 	if err := e.s.Delete(ctx, v.ID); err != nil {
 		t.Fatal(err)
 	}
 	// Local Backups go with the Database; S3 copies stay.
-	if len(e.files.names()) != 0 || len(e.bucket.keys()) != 1 {
+	if len(e.files.names()) != 0 || len(e.bucket.keys()) != 2 {
 		t.Fatalf("after delete database: files %v objects %v", e.files.names(), e.bucket.keys())
 	}
 	if list, _ := e.store.BackupExecutions(ctx, v.ID); len(list) != 0 {
@@ -324,24 +345,25 @@ func TestSetBackupSchedule(t *testing.T) {
 	e, v, st := newBackupEnv(t)
 	ctx := context.Background()
 	on := domain.ScheduledBackupInput{Enabled: true, Cron: "0 3 * * *", Retention: 3, S3StorageID: st.ID}
-	got, err := e.s.SetScheduledBackup(ctx, v.ID, on)
+	sID := firstSchedule(t, e, v.ID)
+	got, err := e.s.UpdateScheduledBackup(ctx, sID, on)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The clock is just past 03:00 on 1 October: the next run is tomorrow.
-	if !got.ScheduledBackup.Enabled || !got.NextBackupAt.Equal(time.Date(2026, 10, 2, 3, 0, 0, 0, time.UTC)) {
+	if !got.Enabled || !got.NextBackupAt.Equal(time.Date(2026, 10, 2, 3, 0, 0, 0, time.UTC)) {
 		t.Fatalf("schedule %+v, next %s", got.ScheduledBackup, got.NextBackupAt)
 	}
 	on.S3StorageID = 999
 	var fe *domain.FieldError
-	if _, err := e.s.SetScheduledBackup(ctx, v.ID, on); !errors.As(err, &fe) || fe.Field != "scheduled_backup.s3_storage_id" {
+	if _, err := e.s.UpdateScheduledBackup(ctx, sID, on); !errors.As(err, &fe) || fe.Field != "scheduled_backup.s3_storage_id" {
 		t.Fatalf("unknown storage: %v", err)
 	}
 	on.S3StorageID, on.Cron = 0, "every night"
-	if _, err := e.s.SetScheduledBackup(ctx, v.ID, on); !errors.As(err, &fe) || fe.Field != "scheduled_backup.cron" {
+	if _, err := e.s.UpdateScheduledBackup(ctx, sID, on); !errors.As(err, &fe) || fe.Field != "scheduled_backup.cron" {
 		t.Fatalf("bad cron: %v", err)
 	}
-	off, _ := e.s.SetScheduledBackup(ctx, v.ID, domain.ScheduledBackupInput{Cron: "0 3 * * *", Retention: 3})
+	off, _ := e.s.UpdateScheduledBackup(ctx, sID, domain.ScheduledBackupInput{Cron: "0 3 * * *", Retention: 3})
 	if !off.NextBackupAt.IsZero() {
 		t.Fatalf("off has a next backup: %s", off.NextBackupAt)
 	}
@@ -351,9 +373,7 @@ func TestTick(t *testing.T) {
 	e, v, _ := newBackupEnv(t)
 	ctx := context.Background()
 	// Switched on at 03:00:0x on 1 October.
-	if _, err := e.s.SetScheduledBackup(ctx, v.ID, domain.ScheduledBackupInput{Enabled: true, Cron: "0 3 * * *", Retention: 7}); err != nil {
-		t.Fatal(err)
-	}
+	setSchedule(t, e, v.ID, domain.ScheduledBackupInput{Enabled: true, Cron: "0 3 * * *", Retention: 7})
 	day := func(d, h, m int) time.Time { return time.Date(2026, 10, d, h, m, 0, 0, time.UTC) }
 	count := func() int {
 		e.s.Wait()
@@ -549,8 +569,9 @@ func TestManyScheduledBackups(t *testing.T) {
 		t.Fatalf("database's executions %+v", all)
 	}
 
-	// Deleting one removes its executions and files; its S3 objects stay.
-	if err := e.s.DeleteScheduledBackup(ctx, second.ID); err != nil {
+	// Deleting one removes its executions and files; its S3 objects stay
+	// unless asked.
+	if err := e.s.DeleteScheduledBackup(ctx, second.ID, Copies{Local: true}); err != nil {
 		t.Fatal(err)
 	}
 	if all, _ := e.s.BackupExecutions(ctx, v.ID); len(all) != 1 || all[0].ID != a.ID {
@@ -590,7 +611,7 @@ func TestDeleteScheduledBackupWhileRunning(t *testing.T) {
 	if _, err := e.s.BackUp(ctx, list[0].ID, domain.TriggerManual); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.s.DeleteScheduledBackup(ctx, list[0].ID); !errors.Is(err, ErrBackupRunning) {
+	if err := e.s.DeleteScheduledBackup(ctx, list[0].ID, Copies{Local: true}); !errors.Is(err, ErrBackupRunning) {
 		t.Fatalf("delete while running: %v", err)
 	}
 	close(e.rt.dumpGate)

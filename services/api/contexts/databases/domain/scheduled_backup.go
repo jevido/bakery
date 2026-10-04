@@ -15,7 +15,8 @@ type ScheduledBackup struct {
 	ID         uint64
 	DatabaseID uint64
 	Enabled    bool
-	// Cron is a five-field cron expression.
+	// Cron is a five-field cron expression or one of Coolify's shortcuts
+	// (daily, @hourly…), kept as the Owner typed it.
 	Cron      string
 	Retention int
 	// S3StorageID is the S3 storage Backup executions are uploaded to; 0 is local
@@ -38,8 +39,27 @@ type ScheduledBackupInput struct {
 // 03:00 UTC, keeping 7.
 var DefaultScheduledBackup = ScheduledBackupInput{Cron: "0 3 * * *", Retention: 7}
 
+// cronShortcuts are the words Coolify takes for a Frequency
+// (VALID_CRON_STRINGS), each with its five-field expression.
+var cronShortcuts = map[string]string{
+	"every_minute": "* * * * *",
+	"hourly":       "0 * * * *",
+	"daily":        "0 0 * * *",
+	"weekly":       "0 0 * * 0",
+	"monthly":      "0 0 1 * *",
+	"yearly":       "0 0 1 1 *",
+	"@hourly":      "0 * * * *",
+	"@daily":       "0 0 * * *",
+	"@weekly":      "0 0 * * 0",
+	"@monthly":     "0 0 1 * *",
+	"@yearly":      "0 0 1 1 *",
+}
+
 func parseCron(expr string) (cron.Schedule, error) {
-	// ParseStandard also takes descriptors (@daily) and a TZ= prefix; only
+	if e, ok := cronShortcuts[expr]; ok {
+		expr = e
+	}
+	// ParseStandard also takes other descriptors and a TZ= prefix; only
 	// plain five-field expressions are allowed, so times stay UTC.
 	if len(strings.Fields(expr)) != 5 {
 		return nil, errors.New("five fields expected")
@@ -50,7 +70,7 @@ func parseCron(expr string) (cron.Schedule, error) {
 // Check validates the cron expression and the Retention.
 func (in ScheduledBackupInput) Check() error {
 	if _, err := parseCron(in.Cron); err != nil {
-		return invalid("scheduled_backup.cron", "%q is not a five-field cron expression (minute hour day month weekday)", in.Cron)
+		return invalid("scheduled_backup.cron", "%q is neither a five-field cron expression (minute hour day month weekday) nor every_minute, hourly, daily, weekly, monthly or yearly", in.Cron)
 	}
 	if in.Retention < 1 || in.Retention > 100 {
 		return invalid("scheduled_backup.retention", "keep between 1 and 100 backups")

@@ -199,27 +199,32 @@ export type Database = {
   public_url?: string | null
   /** false for Redis and Valkey. */
   backups_supported: boolean
-  scheduled_backup: ScheduledBackup
-  /** When the schedule fires next (UTC); null when it is off. */
-  next_backup_at: string | null
   restoring: boolean
   last_restore: { backup_execution_id: number; started_at: string; finished_at: string; error?: string } | null
 }
 
 export type ScheduledBackup = {
+  id: number
+  database_id: number
   enabled: boolean
-  /** Five-field cron expression, in UTC. */
+  /** Coolify's Frequency: a five-field cron expression in UTC, or a shortcut such as daily. */
   cron: string
   retention: number
   /** null: local disk only. */
   s3_storage_id: number | null
+  /** When it fires next (UTC); absent when it is off. */
+  next_backup_at?: string
 }
+
+/** A Scheduled backup as the Owner sets it. */
+export type ScheduledBackupInput = Omit<ScheduledBackup, 'id' | 'database_id' | 'next_backup_at'>
 
 export type ExecutionStatus = 'running' | 'succeeded' | 'failed'
 
 export type BackupExecution = {
   id: number
   database_id: number
+  scheduled_backup_id: number
   status: ExecutionStatus
   trigger: 'manual' | 'scheduled'
   file_name: string

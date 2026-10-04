@@ -2,7 +2,9 @@
 # End to end: Backups of Databases. For PostgreSQL, MySQL, MariaDB and
 # MongoDB a row is backed up to local disk and the Garage stand-in, deleted
 # and restored; a Backup whose local file is gone restores from Garage;
-# Retention 2 keeps two files and two objects; a schedule of every minute
+# Retention 2 keeps two files and two objects; a second Scheduled backup
+# lists its own Backup executions and deletes them with or without their S3
+# copies; a schedule of every minute
 # backs up by itself; Redis refuses a Backup; deleting a Database removes
 # its local Backups. Needs `task dev` and `task s3:up`.
 set -euo pipefail
@@ -111,10 +113,11 @@ restore() { # restore ID BACKUP
 	err=$(database "$1" "['last_restore'].get('error') or ''")
 	[ -z "$err" ] || fail "restore of $2 failed: $err"
 }
-schedule() { # schedule ID CRON RETENTION
+first_schedule() { bakery GET "/api/databases/$1/scheduled-backups" | json "d['scheduled_backups'][0]['id']"; }
+schedule() { # schedule ID CRON RETENTION: sets the Database's first Scheduled backup
 	local out
-	out=$(bakery PUT "/api/databases/$1/scheduled-backup" "{\"enabled\":true,\"cron\":\"$2\",\"retention\":$3,\"s3_storage_id\":$STORAGE_ID}")
-	[[ $out == *'"database"'* ]] || fail "setting the schedule of $1: $out"
+	out=$(bakery PATCH "/api/scheduled-backups/$(first_schedule "$1")" "{\"enabled\":true,\"cron\":\"$2\",\"retention\":$3,\"s3_storage_id\":$STORAGE_ID}")
+	[[ $out == *'"scheduled_backup"'* ]] || fail "setting the schedule of $1: $out"
 }
 
 say "S3 storage (Garage)"
@@ -168,6 +171,32 @@ objs=$(objects "$RUN/$slug-$PG/" | grep -c .)
 [ "$objs" = 2 ] || fail "$objs objects in the bucket, want 2"
 echo "ok: two backups, two files, two objects"
 
+say "A second Scheduled backup"
+out=$(bakery POST "/api/databases/$PG/scheduled-backups" "{\"enabled\":false,\"cron\":\"daily\",\"retention\":5,\"s3_storage_id\":$STORAGE_ID}")
+SB=$(echo "$out" | json "d['scheduled_backup']['id']") || fail "adding a Scheduled backup: $out"
+own_backup() { # own_backup: Back up now on the second Scheduled backup; prints its id once it succeeded
+	local b until=$((SECONDS + 120)) s
+	b=$(bakery POST "/api/scheduled-backups/$SB/backup-executions" | json "d['backup_execution']['id']") || fail "backing up $SB"
+	while :; do
+		s=$(backup_field "$PG" "$b" "['status']")
+		[ "$s" = succeeded ] && break
+		[ $SECONDS -lt $until ] || fail "backup $b still $s"
+		sleep 1
+	done
+	echo "$b"
+}
+b1=$(own_backup)
+own_backup >/dev/null
+[ "$(bakery GET "/api/scheduled-backups/$SB/backup-executions" | json "len(d['backup_executions'])")" = 2 ] || fail "the second lists other executions"
+[ "$(bakery GET "/api/scheduled-backups/$(first_schedule "$PG")/backup-executions" | json "len(d['backup_executions'])")" = 2 ] || fail "the first lists other executions"
+[ "$(objects "$RUN/$slug-$PG/" | grep -c .)" = 4 ] || fail "want 4 objects"
+[ "$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -X DELETE "$API/api/backup-executions/$b1?delete_s3=false")" = 204 ] || fail "deleting $b1"
+[ "$(objects "$RUN/$slug-$PG/" | grep -c .)" = 4 ] || fail "delete_s3=false removed the object"
+[ "$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -X DELETE "$API/api/scheduled-backups/$SB?delete_s3=true")" = 204 ] || fail "deleting $SB"
+[ "$(objects "$RUN/$slug-$PG/" | grep -c .)" = 3 ] || fail "delete_s3=true left the object"
+[ "$(find "$BACKUPS_DIR/$PG" -type f | wc -l)" = 2 ] || fail "the second's files stayed"
+echo "ok: each lists its own; delete_s3 keeps or removes the S3 copies"
+
 say "Scheduled every minute"
 MY=${ID[mysql]}
 schedule "$MY" "* * * * *" 5
@@ -187,7 +216,7 @@ for id in "${DBS[@]}"; do
 	[ ! -e "$BACKUPS_DIR/$id" ] || fail "$BACKUPS_DIR/$id left"
 done
 DBS=()
-[ "$(objects "$RUN/$slug-$PG/" | grep -c .)" = 2 ] || fail "S3 copies did not stay"
+[ "$(objects "$RUN/$slug-$PG/" | grep -c .)" = 3 ] || fail "S3 copies did not stay"
 echo "ok: local backups gone, S3 copies stay"
 echo
 echo "PASS"

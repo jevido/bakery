@@ -173,7 +173,8 @@ db_running() { [ "$(bakery GET "/api/databases/$DB_ID" | json "d['database']['st
 wait_for 120 "the database" db_running
 # An S3 storage nobody answers on: the dump succeeds, the upload fails.
 STORAGE_ID=$(bakery POST /api/s3-storages "{\"name\":\"$RUN\",\"endpoint\":\"http://127.0.0.1:4989\",\"bucket\":\"nope\",\"access_key\":\"a\",\"secret_key\":\"b\"}" | json "d['s3_storage']['id']")
-bakery PUT "/api/databases/$DB_ID/scheduled-backup" "{\"enabled\":false,\"cron\":\"0 3 * * *\",\"retention\":2,\"s3_storage_id\":$STORAGE_ID}" >/dev/null
+SB_ID=$(bakery GET "/api/databases/$DB_ID/scheduled-backups" | json "d['scheduled_backups'][0]['id']")
+bakery PATCH "/api/scheduled-backups/$SB_ID" "{\"enabled\":false,\"cron\":\"0 3 * * *\",\"retention\":2,\"s3_storage_id\":$STORAGE_ID}" >/dev/null
 bakery POST "/api/databases/$DB_ID/backup-executions" >/dev/null
 received 1 "r['path']=='/hook/tok-$RUN' and json.loads(r['body'])['event']=='backup_failure' and json.loads(r['body'])['title']=='Backup of $DB_NAME failed'"
 mails 1 "$OPS" "Backup of $DB_NAME failed"

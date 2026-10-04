@@ -4,7 +4,6 @@ package http
 import (
 	"errors"
 	"strconv"
-	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
@@ -88,11 +87,9 @@ type databaseJSON struct {
 	// SecretsHidden says the credentials and URLs were left out for a viewer.
 	SecretsHidden bool `json:"secrets_hidden,omitempty"`
 
-	BackupsSupported bool                `json:"backups_supported"`
-	ScheduledBackup  scheduledBackupJSON `json:"scheduled_backup"`
-	NextBackupAt     *time.Time          `json:"next_backup_at"`
-	Restoring        bool                `json:"restoring"`
-	LastRestore      *restoreJSON        `json:"last_restore"`
+	BackupsSupported bool         `json:"backups_supported"`
+	Restoring        bool         `json:"restoring"`
+	LastRestore      *restoreJSON `json:"last_restore"`
 }
 
 func toJSON(v app.View, full bool) databaseJSON {
@@ -103,12 +100,8 @@ func toJSON(v app.View, full bool) databaseJSON {
 		ResourceLimits:   limitsToJSON(v.ResourceLimits),
 		Container:        domain.ContainerName(v.Slug),
 		Volume:           volumeJSON{Name: domain.VolumeName(v.ID), MountPath: v.Type.Spec().DataPath},
-		BackupsSupported: v.Type.Spec().Backups, ScheduledBackup: scheduledBackupToJSON(v.ScheduledBackup),
-		Restoring: v.Restoring,
-	}
-	if !v.NextBackupAt.IsZero() {
-		next := v.NextBackupAt
-		out.NextBackupAt = &next
+		BackupsSupported: v.Type.Spec().Backups,
+		Restoring:        v.Restoring,
 	}
 	if r := v.LastRestore; r != nil {
 		out.LastRestore = &restoreJSON{BackupExecutionID: r.BackupExecutionID, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt, Error: r.Error}

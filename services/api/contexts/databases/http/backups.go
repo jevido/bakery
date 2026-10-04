@@ -35,11 +35,9 @@ func failBackup(ctx contractshttp.Context, err error) contractshttp.Response {
 	return fail(ctx, err)
 }
 
-// scheduledBackupJSON is a Scheduled backup; on the Database JSON, until
-// the dashboard lists them all, without an id it is the defaults.
 type scheduledBackupJSON struct {
-	ID           uint64     `json:"id,omitempty"`
-	DatabaseID   uint64     `json:"database_id,omitempty"`
+	ID           uint64     `json:"id"`
+	DatabaseID   uint64     `json:"database_id"`
 	Enabled      bool       `json:"enabled"`
 	Cron         string     `json:"cron"`
 	Retention    int        `json:"retention"`
@@ -48,10 +46,6 @@ type scheduledBackupJSON struct {
 }
 
 func scheduledBackupToJSON(s domain.ScheduledBackup) scheduledBackupJSON {
-	if s.ID == 0 {
-		in := domain.DefaultScheduledBackup
-		return scheduledBackupJSON{Cron: in.Cron, Retention: in.Retention}
-	}
 	out := scheduledBackupJSON{ID: s.ID, DatabaseID: s.DatabaseID, Enabled: s.Enabled, Cron: s.Cron, Retention: s.Retention}
 	if s.S3StorageID != 0 {
 		id := s.S3StorageID
@@ -148,23 +142,6 @@ func oneScheduledBackup(ctx contractshttp.Context, status int, v app.ScheduledBa
 	return ctx.Response().Json(status, contractshttp.Json{"scheduled_backup": scheduledBackupViewToJSON(v)})
 }
 
-// SetScheduledBackup replaces the Database's oldest Scheduled backup.
-func (c *Controller) SetScheduledBackup(ctx contractshttp.Context) contractshttp.Response {
-	dbID, ok := id(ctx)
-	if !ok {
-		return notFound(ctx)
-	}
-	var req scheduledBackupRequest
-	if err := ctx.Request().Bind(&req); err != nil {
-		return respond.BadBody(ctx)
-	}
-	v, err := c.service.SetScheduledBackup(ctx.Context(), dbID, req.input())
-	if errors.Is(err, domain.ErrNoBackups) {
-		return respond.Invalid(ctx, "scheduled_backup.enabled", err.Error())
-	}
-	return one(ctx, contractshttp.StatusOK, v, err)
-}
-
 func (c *Controller) ScheduledBackups(ctx contractshttp.Context) contractshttp.Response {
 	dbID, ok := id(ctx)
 	if !ok {
@@ -217,13 +194,15 @@ func (c *Controller) UpdateScheduledBackup(ctx contractshttp.Context) contractsh
 }
 
 // DeleteScheduledBackup removes the Scheduled backup with its Backup
-// executions (their S3 objects stay).
+// executions: their files unless delete_local=false, their S3 objects only
+// with delete_s3=true (Coolify's delete_s3, false by default).
 func (c *Controller) DeleteScheduledBackup(ctx contractshttp.Context) contractshttp.Response {
 	sID, ok := id(ctx)
 	if !ok {
 		return notFound(ctx)
 	}
-	if err := c.service.DeleteScheduledBackup(ctx.Context(), sID); err != nil {
+	copies := app.Copies{Local: ctx.Request().QueryBool("delete_local", true), S3: ctx.Request().QueryBool("delete_s3", false)}
+	if err := c.service.DeleteScheduledBackup(ctx.Context(), sID, copies); err != nil {
 		return failBackup(ctx, err)
 	}
 	return ctx.Response().NoContent()
@@ -281,12 +260,14 @@ func (c *Controller) Restore(ctx contractshttp.Context) contractshttp.Response {
 	return ctx.Response().Json(contractshttp.StatusAccepted, contractshttp.Json{"restoring": true})
 }
 
+// DeleteBackupExecution removes a Backup execution with its file and, unless
+// delete_s3=false, its S3 object (the dashboard always says which).
 func (c *Controller) DeleteBackupExecution(ctx contractshttp.Context) contractshttp.Response {
 	bID, ok := id(ctx)
 	if !ok {
 		return notFound(ctx)
 	}
-	if err := c.service.DeleteBackupExecution(ctx.Context(), bID); err != nil {
+	if err := c.service.DeleteBackupExecution(ctx.Context(), bID, ctx.Request().QueryBool("delete_s3", true)); err != nil {
 		return failBackup(ctx, err)
 	}
 	return ctx.Response().NoContent()

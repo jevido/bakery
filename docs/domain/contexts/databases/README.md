@@ -34,7 +34,7 @@ backing up Redis and Valkey (see below).
 | Execution status | `running`, `succeeded` or `failed` (with a reason). |
 | Execution trigger | `manual` (Back up now) or `scheduled`. |
 | Execution location | Where a Backup execution is: `local` (the Backups directory), `s3`, or both. |
-| Scheduled backup | On/off, a five-field cron expression (UTC), a Retention and an optional S3 storage, with its own Backup executions; any number per Database. |
+| Scheduled backup | On/off, a Frequency (a five-field cron expression in UTC, or one of Coolify's shortcuts: `every_minute`, `hourly`, `daily`, `weekly`, `monthly`, `yearly`, with or without `@`), a Retention and an optional S3 storage, with its own Backup executions; any number per Database. |
 | Retention | How many of a Scheduled backup's newest succeeded Backup executions are kept, 1–100, default 7. |
 | Backups directory | Where Backup execution files are written: `<database id>/<UTC timestamp>.<ext>`. |
 | S3 storage | An S3-compatible bucket: endpoint, region, bucket, prefix, access key, secret key (write-only). |
@@ -47,7 +47,7 @@ backing up Redis and Valkey (see below).
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Database | Belongs to one Environment of one Project. Its Database type and Database credentials are fixed at creation; credentials are generated, never typed. Name 1–100 characters; Description at most 255 characters; one created without a name gets `<type>-database-<random>` (8 lowercase letters and digits), as Coolify names it. Slug unique among Databases. Database version is a valid image tag; an Image given instead must name the Database type's repository (with or without `docker.io/` and `library/`, no digest), and its tag becomes the Database version (none is `latest`). Public port is none or 1024–65535 and unique among Databases. Resource limits: memory 16–65536 MB, CPU 0.1–64 cores, empty is unlimited. Desired state is `running` or `stopped`. |
-| Scheduled backup | Belongs to one Database, of a Database type with backups (not Redis, Valkey). Cron is a valid five-field expression, Retention 1–100, the S3 storage exists. Switching it on remembers when; it first fires at the next time after that. Cannot be deleted while one of its Backup executions runs. |
+| Scheduled backup | Belongs to one Database, of a Database type with backups (not Redis, Valkey). Cron is a valid five-field expression or shortcut, Retention 1–100, the S3 storage exists. Switching it on remembers when; it first fires at the next time after that. Cannot be deleted while one of its Backup executions runs. |
 | Backup execution | Belongs to one Scheduled backup of one Database, and takes that Scheduled backup's S3 storage when it starts. Starts `running` and ends once, `succeeded` or `failed`. At most one Backup execution or Restore runs per Database at a time. Only a `running` Database is backed up or restored; only a succeeded Backup execution is restored. |
 | S3 storage | Name 1–100, unique. Endpoint is an http(s) URL without a path; bucket follows S3 naming (3–63 lowercase letters, digits, `-`, `.`); region defaults to `us-east-1`; prefix optional. The secret key is never returned. Cannot be deleted while a Scheduled backup uses it. |
 
@@ -60,10 +60,10 @@ backing up Redis and Valkey (see below).
 - `DeleteDatabase` also removes its Backup execution files and rows and its Scheduled backups; objects in S3 storage stay.
 - `CreateDatabase` of a Database type with backups also adds its first Scheduled backup: off, `0 3 * * *`, Retention 7.
 - `CreateScheduledBackup(database, enabled, cron, retention, s3 storage?)`, `UpdateScheduledBackup(...)`: validate and store; switching it on remembers when, so it first fires at the next time after that.
-- `DeleteScheduledBackup(scheduled backup)`: remove its Backup execution files and rows, then it; objects in S3 storage stay.
+- `DeleteScheduledBackup(scheduled backup, local?, s3?)`: remove its Backup execution rows with their files (unless local is off) and their S3 objects (only when s3 is on), then it.
 - `BackUp(scheduled backup, trigger)`: dump the Database inside its Container into the Backups directory, upload to the Scheduled backup's S3 storage if any, then prune that Scheduled backup's Backup executions by its Retention, locally and in S3.
 - `Restore(backup execution)`: copy the Backup execution's file (downloaded from S3 if the local file is gone) into the Container and run the Database type's restore.
-- `DeleteBackupExecution(backup execution)`: remove its file, its S3 object and its row.
+- `DeleteBackupExecution(backup execution, s3?)`: remove its file and its row, and its S3 object when s3 is on.
 - `CreateS3Storage`, `UpdateS3Storage` (empty secret keeps it), `DeleteS3Storage`, `TestS3Storage` (can The Bakery reach the bucket with these keys).
 - `Recover()`: at API start, start every Database whose desired state is `running` and whose Container is missing, mark Backup executions still `running` as failed (interrupted), and start the scheduler, which once a minute starts a Backup execution for every Scheduled backup that is due; one whose Database is busy (another Scheduled backup due at the same time, a Restore) stays due until the next minute.
 
@@ -195,7 +195,11 @@ backing up Redis and Valkey (see below).
   backups exactly the one it had, switched off ones too, so its earlier
   Backup executions keep an owner. Backup executions of one Database still
   run one at a time; two Scheduled backups due in the same minute run one
-  after the other. Cron in UTC so a server's time zone never shifts it. Missed runs while the API was down produce
+  after the other. Deleting a Scheduled backup or a Backup execution asks,
+  as Coolify's dialogs do, whether its local files and its S3 copies go
+  too; S3 copies stay unless asked. A shortcut Frequency is stored as
+  typed and read as its five-field expression (`daily` is midnight UTC);
+  other descriptors (`@every 1h`) and a `TZ=` prefix are refused. Cron in UTC so a server's time zone never shifts it. Missed runs while the API was down produce
   one Backup execution, not a burst. The scheduler runs in the API process and reads
   schedules from the database each minute, rather than Goravel's compiled
   schedule. Cron parsing uses `robfig/cron`, a pure parser, the one

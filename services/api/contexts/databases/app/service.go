@@ -102,13 +102,8 @@ type View struct {
 	Error       string
 	InternalURL string
 	PublicURL   string
-	// ScheduledBackup is the Database's oldest Scheduled backup (zero
-	// without one), and NextBackupAt when it fires next (zero when off), for
-	// the dashboard until it lists them all.
-	ScheduledBackup domain.ScheduledBackup
-	NextBackupAt    time.Time
-	Restoring       bool
-	LastRestore     *RestoreOutcome
+	Restoring   bool
+	LastRestore *RestoreOutcome
 }
 
 // opTimeout bounds one background start, pull included.
@@ -339,18 +334,6 @@ func (s *Service) view(ctx context.Context, d domain.Database) (View, error) {
 		detail = lastErr
 	}
 	v := View{Database: d, Status: status, Error: detail, InternalURL: d.InternalURL(), PublicURL: d.PublicURL(s.publicHost)}
-	if d.Type.Spec().Backups {
-		list, err := s.store.ScheduledBackups(ctx, d.ID)
-		if err != nil {
-			return View{}, err
-		}
-		if len(list) > 0 {
-			v.ScheduledBackup = list[0]
-			if v.NextBackupAt, err = s.nextBackup(ctx, list[0]); err != nil {
-				return View{}, err
-			}
-		}
-	}
 	v.Restoring, v.LastRestore = s.restoreState(d.ID)
 	return v, nil
 }
