@@ -4,6 +4,7 @@ package http
 import (
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -148,12 +149,47 @@ func (c *Controller) Status(ctx contractshttp.Context) contractshttp.Response {
 	return ctx.Response().Success().Json(statusJSON(s))
 }
 
+// List answers a page of the Application's Deployment history, newest
+// first: `skip`, `take` (1–100, default 50), `sort=oldest`, `search`, and
+// comma-separated `status` (finished, failed, in_progress, queued,
+// cancelled), `source` (manual, pull-request, webhook, rollback, restart),
+// `server` ids and a `pull_request` number. `count` is how many match in
+// all; `filters=1` adds the values present to filter on.
 func (c *Controller) List(ctx contractshttp.Context) contractshttp.Response {
 	id, ok := RouteID(ctx)
 	if !ok {
 		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
 	}
-	ds, err := c.service.Deployments(ctx.Context(), id)
+	r := ctx.Request()
+	q := app.HistoryQuery{
+		Skip:    max(0, r.InputInt("skip", 0)),
+		Take:    min(100, max(1, r.InputInt("take", 50))),
+		Oldest:  r.Input("sort") == "oldest",
+		Search:  r.Input("search"),
+		Preview: max(0, r.InputInt("pull_request", 0)),
+	}
+	for _, v := range list(r.Input("status")) {
+		if v == "in_progress" {
+			q.Statuses = append(q.Statuses, domain.Cloning, domain.Building, domain.Starting)
+		} else {
+			q.Statuses = append(q.Statuses, domain.Status(v))
+		}
+	}
+	for _, v := range list(r.Input("source")) {
+		q.Sources = append(q.Sources, app.HistorySource(v))
+	}
+	for _, v := range list(r.Input("server")) {
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			continue
+		}
+		q.ServerIDs = append(q.ServerIDs, n)
+		// Deployments on the Local server store 0.
+		if LocalServer != nil && n == LocalServer() {
+			q.ServerIDs = append(q.ServerIDs, 0)
+		}
+	}
+	ds, total, err := c.service.History(ctx.Context(), id, q)
 	if err != nil {
 		return c.fail(ctx, err)
 	}
@@ -161,7 +197,89 @@ func (c *Controller) List(ctx contractshttp.Context) contractshttp.Response {
 	for i, d := range ds {
 		out[i] = ToJSON(d)
 	}
-	return ctx.Response().Success().Json(contractshttp.Json{"deployments": out})
+	body := contractshttp.Json{"deployments": out, "count": total}
+	if r.InputBool("filters") {
+		f, err := c.service.HistoryFacets(ctx.Context(), id)
+		if err != nil {
+			return c.fail(ctx, err)
+		}
+		body["filters"] = facetsJSON(f)
+	}
+	return ctx.Response().Success().Json(body)
+}
+
+func list(v string) []string {
+	var out []string
+	for _, s := range strings.Split(v, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+type historyFiltersJSON struct {
+	Statuses  []string `json:"statuses"`
+	Sources   []string `json:"sources"`
+	ServerIDs []uint64 `json:"server_ids"`
+	Previews  []int    `json:"pull_requests"`
+}
+
+// facetsJSON names the statuses as the status filter takes them, with the
+// running steps as one in_progress.
+func facetsJSON(f app.HistoryFacets) historyFiltersJSON {
+	out := historyFiltersJSON{Statuses: []string{}, Sources: []string{}, ServerIDs: []uint64{}, Previews: f.Previews}
+	if out.Previews == nil {
+		out.Previews = []int{}
+	}
+	seen := map[string]bool{}
+	for _, s := range f.Statuses {
+		v := string(s)
+		if s.Active() && s != domain.Queued {
+			v = "in_progress"
+		}
+		if !seen[v] {
+			seen[v] = true
+			out.Statuses = append(out.Statuses, v)
+		}
+	}
+	for _, s := range f.Sources {
+		out.Sources = append(out.Sources, string(s))
+	}
+	servers := map[uint64]bool{}
+	for _, id := range f.ServerIDs {
+		if id == 0 && LocalServer != nil {
+			id = LocalServer()
+		}
+		if !servers[id] {
+			servers[id] = true
+			out.ServerIDs = append(out.ServerIDs, id)
+		}
+	}
+	return out
+}
+
+// Images answers the Deployments whose Image a Rollback can start again,
+// newest first, the current one marked.
+func (c *Controller) Images(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := RouteID(ctx)
+	if !ok {
+		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
+	}
+	images, err := c.service.RetainedImages(ctx.Context(), id)
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	type imageJSON struct {
+		Image      string         `json:"image"`
+		Current    bool           `json:"current"`
+		Deployment deploymentJSON `json:"deployment"`
+	}
+	out := make([]imageJSON, len(images))
+	for i, img := range images {
+		out[i] = imageJSON{Image: img.Image, Current: img.Current, Deployment: ToJSON(img.Deployment)}
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"images": out})
 }
 
 func (c *Controller) Show(ctx contractshttp.Context) contractshttp.Response {

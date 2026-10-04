@@ -74,6 +74,12 @@ Application is (projects) or for the Caddy configuration (routing).
 - `Rollback(deployment)`: queues a Deployment with trigger `rollback` that
   runs the given Deployment's Image with today's runtime variables, port,
   Domains, Healthcheck, Persistent storage and Resource limits.
+- Queries: an Application's Deployment history, one page at a time, by
+  search (id, commit, message, branch, status, image), status, source
+  (manual, pull request, webhook, rollback, restart), Server and Pull
+  request; and its retained Images, the Deployments a Rollback can start
+  again (Image retention's newest five finished, one per Image, whose Image
+  is still on their Server), the newest marked as the running one.
 - `ReceivePush(application, headers, body)`: verifies a Webhook call and
   queues a Deployment with trigger `webhook`.
 - `ReceivePullRequest(application, headers, body)`: verifies the call like a
@@ -313,3 +319,20 @@ Application is (projects) or for the Caddy configuration (routing).
   prune the server after stopping; The Bakery's Cleanup is its own action
   on the Server (servers), so Stop only stops. The Stop and Restart modals
   are otherwise Coolify's.
+- **The Deployment page streams; it has no debug lines and no Force start.**
+  Coolify's Deployment page polls its log every two seconds and hides
+  "debug" lines (its own commands) behind Show debug logs; The Bakery
+  streams the log over SSE and stores three streams (`info` for its own
+  steps, shown bold as Coolify shows a command; `out`; `err`, shown red),
+  none of them hidden, so the toggle is left out. Coolify's Force start
+  runs a queued deployment past its server's concurrency limit; The Bakery
+  runs one Deployment per Application at a time with at most one waiting,
+  so a queued one has only Cancel deployment. Download all logs downloads
+  the whole streamed log; Download displayed logs what Find in logs shows.
+- **Rollback lists Deployments, not image tags.** Coolify's Rollback page
+  lists `docker images` of the application by tag (a commit sha) and
+  rolls back by tag. The Bakery tags each Image with its Deployment, so its
+  Rollback page lists the retained Deployments whose Image is still there,
+  with the commit beside the tag, and rolls back to a Deployment (which
+  also carries its commit and message into the history). Image retention is
+  a fixed five, so the page has no "Images to keep" setting.

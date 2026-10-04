@@ -12,6 +12,7 @@ import (
 	frameworkerrors "github.com/goravel/framework/errors"
 
 	"github.com/jevido/bakery/services/api/app/facades"
+	"github.com/jevido/bakery/services/api/contexts/deployments/app"
 	"github.com/jevido/bakery/services/api/contexts/deployments/domain"
 )
 
@@ -185,6 +186,97 @@ func (s Store) Active(ctx context.Context, applicationID uint64) (domain.Deploym
 		return domain.Deployment{}, false, nil
 	}
 	return recs[0].toDomain(), true, nil
+}
+
+// sourceSQL is a Deployment's app.HistorySource.
+const sourceSQL = `CASE WHEN preview > 0 THEN 'pull-request'
+	WHEN "trigger" = 'webhook' THEN 'webhook'
+	WHEN "trigger" = 'rollback' THEN 'rollback'
+	WHEN "trigger" = 'restart' THEN 'restart'
+	ELSE 'manual' END`
+
+// historyQuery is the Application's Deployments that match q's filters.
+func (s Store) historyQuery(ctx context.Context, applicationID uint64, q app.HistoryQuery) contractsorm.Query {
+	query := s.query(ctx).Model(&deploymentRecord{}).Where("application_id", applicationID)
+	if len(q.Statuses) > 0 {
+		in := make([]any, len(q.Statuses))
+		for i, v := range q.Statuses {
+			in[i] = string(v)
+		}
+		query = query.WhereIn("status", in)
+	}
+	if len(q.Sources) > 0 {
+		in := make([]any, len(q.Sources))
+		for i, v := range q.Sources {
+			in[i] = string(v)
+		}
+		query = query.WhereIn("("+sourceSQL+")", in)
+	}
+	if len(q.ServerIDs) > 0 {
+		in := make([]any, len(q.ServerIDs))
+		for i, v := range q.ServerIDs {
+			in[i] = v
+		}
+		query = query.WhereIn("server_id", in)
+	}
+	if q.Preview != 0 {
+		query = query.Where("preview", q.Preview)
+	}
+	if search := strings.TrimSpace(q.Search); search != "" {
+		like := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(search) + "%"
+		query = query.Where("(CAST(id AS TEXT) = ? OR commit_sha ILIKE ? OR commit_message ILIKE ? OR branch ILIKE ? OR status ILIKE ? OR source_image ILIKE ?)",
+			strings.TrimPrefix(search, "#"), like, like, like, like, like)
+	}
+	return query
+}
+
+func (s Store) History(ctx context.Context, applicationID uint64, q app.HistoryQuery) ([]domain.Deployment, int, error) {
+	total, err := s.historyQuery(ctx, applicationID, q).Count()
+	if err != nil {
+		return nil, 0, err
+	}
+	query := s.historyQuery(ctx, applicationID, q)
+	if q.Oldest {
+		query = query.OrderBy("id")
+	} else {
+		query = query.OrderByDesc("id")
+	}
+	var recs []deploymentRecord
+	if err := query.Offset(q.Skip).Limit(q.Take).Find(&recs); err != nil {
+		return nil, 0, err
+	}
+	out := make([]domain.Deployment, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+	}
+	return out, int(total), nil
+}
+
+func (s Store) HistoryFacets(ctx context.Context, applicationID uint64) (app.HistoryFacets, error) {
+	var f app.HistoryFacets
+	base := func() contractsorm.Query {
+		return s.query(ctx).Model(&deploymentRecord{}).Where("application_id", applicationID)
+	}
+	var statuses, sources []string
+	if err := base().Distinct("status").Pluck("status", &statuses); err != nil {
+		return f, err
+	}
+	for _, v := range statuses {
+		f.Statuses = append(f.Statuses, domain.Status(v))
+	}
+	if err := base().Select("DISTINCT "+sourceSQL+" AS source").Pluck("source", &sources); err != nil {
+		return f, err
+	}
+	for _, v := range sources {
+		f.Sources = append(f.Sources, app.HistorySource(v))
+	}
+	if err := base().Distinct("server_id").Pluck("server_id", &f.ServerIDs); err != nil {
+		return f, err
+	}
+	if err := base().Where("preview > 0").Distinct("preview").OrderByDesc("preview").Pluck("preview", &f.Previews); err != nil {
+		return f, err
+	}
+	return f, nil
 }
 
 func (s Store) ServerIDs(ctx context.Context, applicationID uint64) ([]uint64, error) {

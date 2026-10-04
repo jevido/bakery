@@ -7,7 +7,6 @@
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import ContainerLogs from '../../lib/ContainerLogs.svelte'
   import DeployKey from '../../lib/DeployKey.svelte'
-  import Deployments from '../../lib/Deployments.svelte'
   import EnvironmentVariables from '../../lib/EnvironmentVariables.svelte'
   import Previews from '../../lib/Previews.svelte'
   import { applicationPath, go, href, type ApplicationPage } from '../../lib/router.svelte'
@@ -19,12 +18,15 @@
   import Webhook from '../../lib/Webhook.svelte'
   import Advanced from './Advanced.svelte'
   import ConfigurationSidebar from './ConfigurationSidebar.svelte'
+  import DeploymentPage from './Deployment.svelte'
+  import DeploymentHistory from './DeploymentHistory.svelte'
   import Domains from './Domains.svelte'
   import General from './General.svelte'
   import Heading, { type Action } from './Heading.svelte'
   import Healthcheck from './Healthcheck.svelte'
   import PersistentStorage from './PersistentStorage.svelte'
   import ResourceLimits from './ResourceLimits.svelte'
+  import Rollback from './Rollback.svelte'
   import Servers from './Servers.svelte'
 
   let {
@@ -183,11 +185,7 @@
     go(`/project/${application.project_id}/environment/${application.environment_id}`)
   }
 
-  // The open Deployment is the URL's: picking one opens its path, going back
-  // to the list opens the list's.
-  function selectDeployment(selected: number | null) {
-    if (application) go(applicationPath(application, 'deployment') + (selected ? `/${selected}` : ''))
-  }
+  const serverNames = $derived<Record<number, string>>(server ? { [server.id]: server.name } : {})
 
   // Projects › Project › Environment › Application, with its status.
   const crumbs = $derived(
@@ -269,12 +267,11 @@
         {:else if page === 'environment-variables'}
           <EnvironmentVariables path={`/applications/${application.id}/environment-variables`} />
         {:else if page === 'deployment'}
-          <Deployments
-            {deployments}
-            bind:selected={() => deploymentId, selectDeployment}
-            serverNames={server ? { [server.id]: server.name } : {}}
-            onchange={() => loadDeployments().catch(() => {})}
-          />
+          {#if deploymentId}
+            <DeploymentPage {application} {deploymentId} {serverNames} onchange={() => loadDeployments().catch(() => {})} />
+          {:else}
+            <DeploymentHistory {application} {serverNames} />
+          {/if}
         {:else if page === 'logs'}
           <ContainerLogs
             url={`/api/applications/${application.id}/logs`}
@@ -313,7 +310,7 @@
         {:else if page === 'healthcheck'}
           <Healthcheck {application} {status} onchange={(a) => (application = a)} />
         {:else if page === 'rollback'}
-          {@render later('Rollback', 'Roll back from a finished Deployment under Deployment Logs.')}
+          <Rollback {application} />
         {:else if page === 'advanced'}
           <Advanced {application} />
         {:else if page === 'danger' && session.canWrite}

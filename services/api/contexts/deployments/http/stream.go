@@ -68,7 +68,7 @@ func (c *StreamController) DeploymentLog(ctx contractshttp.Context) contractshtt
 		}
 		for _, l := range lines {
 			after = l.ID
-			stream.Event("line", strconv.FormatUint(l.ID, 10), map[string]any{"id": l.ID, "stream": l.Stream, "line": l.Line})
+			stream.Event("line", strconv.FormatUint(l.ID, 10), map[string]any{"id": l.ID, "stream": l.Stream, "line": l.Line, "at": l.At})
 		}
 		if len(lines) == batch {
 			continue // more waiting; send before checking the status

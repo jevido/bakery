@@ -101,6 +101,18 @@ wait_for 60 "the rollback" status_is "$ROLLBACK" finished
 wait_for 30 "version 1 again" serves 1
 [ "$(fetch /greeting)" = "hello from the environment" ] || fail "rollback lost the runtime variables"
 echo "ok: version 1 is back without a build (deployment $ROLLBACK, second was $SECOND)"
+# The Rollback page: the rollback's Image is the current one, and the second
+# Deployment's is offered; the first shares the rollback's Image.
+IMAGES=$(bakery GET "/api/applications/$APP_ID/images" | json "' '.join(f\"{i['deployment']['id']}:{i['current']}\" for i in d['images'])")
+case " $IMAGES " in *" $ROLLBACK:True "*) ;; *) fail "images: $IMAGES" ;; esac
+case " $IMAGES " in *" $SECOND:False "*) ;; *) fail "images: $IMAGES" ;; esac
+case " $IMAGES " in *" $FIRST:"*) fail "images list the first deployment: $IMAGES" ;; esac
+# The Deployment history: a page, its total and the filters.
+HISTORY=$(bakery GET "/api/applications/$APP_ID/deployments?take=1&filters=1")
+[ "$(json "len(d['deployments']), d['count'] >= 3, 'rollback' in d['filters']['sources']" <<<"$HISTORY")" = "1 True True" ] || fail "history: $HISTORY"
+[ "$(bakery GET "/api/applications/$APP_ID/deployments?source=rollback&status=finished" | json "[x['id'] for x in d['deployments']], d['count']")" = "[$ROLLBACK] 1" ] ||
+  fail "history filtered by rollback"
+echo "ok: the Rollback page offers the second deployment's image, the history pages and filters"
 
 say "Status, Stop, Deploy, Restart"
 rm "$REPO/slow"

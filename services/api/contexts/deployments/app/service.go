@@ -320,6 +320,67 @@ func (s *Service) Deployments(ctx context.Context, applicationID uint64) ([]doma
 	return s.store.ByApplication(ctx, applicationID, 50)
 }
 
+// History returns a page of the Application's Deployment history, and how
+// many Deployments match in all.
+func (s *Service) History(ctx context.Context, applicationID uint64, q HistoryQuery) ([]domain.Deployment, int, error) {
+	if _, err := s.applications(ctx, applicationID); err != nil {
+		return nil, 0, err
+	}
+	return s.store.History(ctx, applicationID, q)
+}
+
+// HistoryFacets returns what the Application's Deployment history can be
+// filtered on.
+func (s *Service) HistoryFacets(ctx context.Context, applicationID uint64) (HistoryFacets, error) {
+	if _, err := s.applications(ctx, applicationID); err != nil {
+		return HistoryFacets{}, err
+	}
+	return s.store.HistoryFacets(ctx, applicationID)
+}
+
+// RetainedImage is a Deployment whose Image a Rollback can start again.
+type RetainedImage struct {
+	domain.Deployment
+	// Current is the newest finished Deployment's Image: the one the
+	// Application runs, or a Restart starts.
+	Current bool
+}
+
+// RetainedImages returns the Deployments a Rollback can go back to: those
+// domain.RetainedImages names whose Image is still on their Server, newest
+// first.
+func (s *Service) RetainedImages(ctx context.Context, applicationID uint64) ([]RetainedImage, error) {
+	if _, err := s.applications(ctx, applicationID); err != nil {
+		return nil, err
+	}
+	if s.runtimes == nil {
+		return nil, errors.New("no runtime to check images with")
+	}
+	all, err := s.store.ByApplication(ctx, applicationID, -1)
+	if err != nil {
+		return nil, err
+	}
+	var out []RetainedImage
+	runtimes := map[uint64]Runtime{}
+	for i, d := range domain.RetainedImages(all) {
+		rt, ok := runtimes[d.ServerID]
+		if !ok {
+			if rt, err = s.runtimes(ctx, d.ServerID); err != nil {
+				return nil, err
+			}
+			runtimes[d.ServerID] = rt
+		}
+		exists, err := rt.ImageExists(ctx, d.Image)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			out = append(out, RetainedImage{Deployment: d, Current: i == 0})
+		}
+	}
+	return out, nil
+}
+
 // LogAfter returns up to limit log lines with an id above afterID.
 func (s *Service) LogAfter(ctx context.Context, deploymentID, afterID uint64, limit int) ([]domain.LogLine, error) {
 	return s.logs.After(ctx, deploymentID, afterID, limit)

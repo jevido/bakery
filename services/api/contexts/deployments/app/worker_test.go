@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -76,6 +77,12 @@ func (m *memStore) ByID(_ context.Context, id uint64) (domain.Deployment, bool, 
 }
 func (m *memStore) ByApplication(context.Context, uint64, int) ([]domain.Deployment, error) {
 	return m.items, nil
+}
+func (m *memStore) History(context.Context, uint64, HistoryQuery) ([]domain.Deployment, int, error) {
+	return m.items, len(m.items), nil
+}
+func (m *memStore) HistoryFacets(context.Context, uint64) (HistoryFacets, error) {
+	return HistoryFacets{}, nil
 }
 func (m *memStore) ByPreview(_ context.Context, _ uint64, number int, _ int) ([]domain.Deployment, error) {
 	var out []domain.Deployment
@@ -650,6 +657,37 @@ func TestRollbackRefused(t *testing.T) {
 	s.runtime.gone = map[string]bool{"localhost/bakery/whoami:1": true}
 	if _, err := s.service.Rollback(ctx, ok.ID); !errors.Is(err, ErrImageGone) {
 		t.Fatalf("rollback to a removed image: %v", err)
+	}
+}
+
+func TestRetainedImages(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeCloner{})
+	for range 2 {
+		s.service.Deploy(ctx, 1)
+		s.worker.RunOnce(ctx)
+	}
+	ids := func() []uint64 {
+		ds, err := s.service.RetainedImages(ctx, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []uint64
+		for i, d := range ds {
+			if d.Current != (i == 0 && d.ID == 2) {
+				t.Errorf("deployment %d current: %v", d.ID, d.Current)
+			}
+			out = append(out, d.ID)
+		}
+		return out
+	}
+	if got := ids(); !slices.Equal(got, []uint64{2, 1}) {
+		t.Fatalf("retained %v", got)
+	}
+	// An Image removed by hand is not offered.
+	s.runtime.gone = map[string]bool{"localhost/bakery/whoami:1": true}
+	if got := ids(); !slices.Equal(got, []uint64{2}) {
+		t.Fatalf("retained after removal %v", got)
 	}
 }
 

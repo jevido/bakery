@@ -46,6 +46,12 @@ type Store interface {
 	FailInterrupted(ctx context.Context, reason string) (int, error)
 	ByID(ctx context.Context, id uint64) (domain.Deployment, bool, error)
 	ByApplication(ctx context.Context, applicationID uint64, limit int) ([]domain.Deployment, error)
+	// History returns one page of the Application's Deployments that match
+	// q, and how many match in all.
+	History(ctx context.Context, applicationID uint64, q HistoryQuery) ([]domain.Deployment, int, error)
+	// HistoryFacets returns what the Application's Deployments can be
+	// filtered on.
+	HistoryFacets(ctx context.Context, applicationID uint64) (HistoryFacets, error)
 	// ByPreview returns one Preview's Deployments, newest first.
 	ByPreview(ctx context.Context, applicationID uint64, number int, limit int) ([]domain.Deployment, error)
 	// ApplicationIDs lists every Application that has Deployments.
@@ -55,6 +61,42 @@ type Store interface {
 	// Active returns the Application's active Deployment, if any.
 	Active(ctx context.Context, applicationID uint64) (domain.Deployment, bool, error)
 	DeleteForApplication(ctx context.Context, applicationID uint64) error
+}
+
+// HistoryQuery picks a page of an Application's Deployment history. Empty
+// lists match everything.
+type HistoryQuery struct {
+	Skip, Take int
+	// Oldest lists the oldest first instead of the newest.
+	Oldest bool
+	// Search matches the id, commit, commit message, branch and status.
+	Search   string
+	Statuses []domain.Status
+	// Sources are HistorySource values.
+	Sources   []HistorySource
+	ServerIDs []uint64
+	// Preview, when not 0, keeps only that Preview's Deployments.
+	Preview int
+}
+
+// HistorySource is what started a Deployment, as the history shows it: a
+// Preview's Deployment is a pull request one whatever its Trigger.
+type HistorySource string
+
+const (
+	SourceManual      HistorySource = "manual"
+	SourcePullRequest HistorySource = "pull-request"
+	SourceWebhook     HistorySource = "webhook"
+	SourceRollback    HistorySource = "rollback"
+	SourceRestart     HistorySource = "restart"
+)
+
+// HistoryFacets are the distinct values in an Application's Deployments.
+type HistoryFacets struct {
+	Statuses  []domain.Status
+	Sources   []HistorySource
+	ServerIDs []uint64
+	Previews  []int
 }
 
 // PreviewStore keeps Previews, one per Application and number.

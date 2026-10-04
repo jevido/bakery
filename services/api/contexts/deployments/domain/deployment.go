@@ -234,4 +234,5 @@ type LogLine struct {
 	ID     uint64
 	Stream string
 	Line   string
+	At     time.Time
 }

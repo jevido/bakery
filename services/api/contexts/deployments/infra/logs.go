@@ -48,7 +48,7 @@ func (Logs) After(ctx context.Context, deploymentID, afterID uint64, limit int) 
 	}
 	out := make([]domain.LogLine, len(recs))
 	for i, r := range recs {
-		out[i] = domain.LogLine{ID: r.ID, Stream: r.Stream, Line: r.Line}
+		out[i] = domain.LogLine{ID: r.ID, Stream: r.Stream, Line: r.Line, At: r.CreatedAt}
 	}
 	return out, nil
 }

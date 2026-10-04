@@ -51,3 +51,29 @@ func ImagesToPrune(deployments []Deployment, openPreviews map[int]bool) []string
 	}
 	return prune
 }
+
+// RetainedImages returns the Deployments whose Image Image retention keeps
+// for a Rollback: among the newest ImageRetention finished Deployments of the
+// Application itself, the newest one of each Image, newest first. The first
+// is the current one, the Image the Application runs or a Restart starts.
+func RetainedImages(deployments []Deployment) []Deployment {
+	sorted := append([]Deployment(nil), deployments...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ID > sorted[j].ID })
+	var out []Deployment
+	seen := map[string]bool{}
+	finished := 0
+	for _, d := range sorted {
+		if d.Preview != 0 || d.Status != Finished || d.Image == "" {
+			continue
+		}
+		if finished == ImageRetention {
+			break
+		}
+		finished++
+		if !seen[d.Image] {
+			seen[d.Image] = true
+			out = append(out, d)
+		}
+	}
+	return out
+}

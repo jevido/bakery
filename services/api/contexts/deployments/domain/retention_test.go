@@ -49,3 +49,28 @@ func TestImagesToPruneWithPreviews(t *testing.T) {
 		t.Fatalf("pruned %v, want %v", got, want)
 	}
 }
+
+func TestRetainedImages(t *testing.T) {
+	ds := []Deployment{
+		{ID: 1, Status: Finished, Image: "app:1"},
+		{ID: 2, Status: Finished, Image: "app:2"},
+		{ID: 3, Status: Failed, Image: "app:3"},
+		{ID: 4, Preview: 7, Status: Finished, Image: "app:4"},
+		{ID: 5, Status: Finished, Image: "app:5"},
+		{ID: 6, Status: Finished, Image: "app:2"}, // a Rollback to 2
+		{ID: 7, Status: Finished, Image: "app:7"},
+		{ID: 8, Status: Finished, Image: "app:8"},
+		{ID: 9, Status: Queued, Image: "app:1"},
+	}
+	var got []uint64
+	for _, d := range RetainedImages(ds) {
+		got = append(got, d.ID)
+	}
+	// The five newest finished are 8, 7, 6, 5 and 2; 2's Image is 6's.
+	if want := []uint64{8, 7, 6, 5}; !slices.Equal(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	if len(RetainedImages(nil)) != 0 {
+		t.Fatal("images without deployments")
+	}
+}

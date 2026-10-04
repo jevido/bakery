@@ -1258,3 +1258,414 @@ html:not(.dark) {
     height: 2.5rem;
   }
 }
+
+/* Coolify's deployment history table and logs viewer (resources/css/app.css,
+   Apache-2.0, see NOTICE). */
+.deployment-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.deployment-table-grid {
+  min-width: 59rem;
+  grid-template-columns: 7.5rem minmax(7rem, 0.8fr) minmax(12rem, 1.7fr) minmax(8rem, 0.9fr) 6.5rem minmax(7rem, 0.8fr);
+}
+
+@media (min-width: 1024px) {
+  .deployment-table-scroll {
+    overflow-x: visible;
+  }
+
+  .deployment-table-grid {
+    min-width: 0;
+  }
+}
+
+.data-table-row-active {
+  background: var(--coollabs-fill);
+}
+
+.logs-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.logs-viewer {
+  background: var(--coollabs-base);
+  color: #262626;
+}
+
+.dark .logs-viewer {
+  background: var(--color-log);
+  color: #f5f5f5;
+}
+
+.logs-viewer-toolbar {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--color-neutral-200);
+  background: var(--color-neutral-50);
+  padding: 0.5rem 0.75rem;
+}
+
+.dark .logs-viewer-toolbar {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.logs-viewer-toolbar-controls {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.logs-viewer-primary {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.logs-viewer-primary .logs-viewer-actions {
+  width: auto;
+  flex: 1 1 auto;
+}
+
+.logs-viewer-search {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+
+/* Search field uses the same pl-8!/pr-8! + z-10 icon pattern as server/project
+   list filters. Avoid .input here — settings form .input padding (0.75rem)
+   overrides custom padding and makes the search icon overlap the placeholder. */
+
+.logs-viewer-meta {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Compact lines control (runtime/proxy/sentinel logs) */
+.logs-viewer-lines {
+  display: inline-flex;
+  min-width: 0;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.logs-viewer-lines-label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: #737373;
+  white-space: nowrap;
+}
+
+.dark .logs-viewer-lines-label {
+  color: var(--color-fg-faint, #6e6e74);
+}
+
+.logs-viewer-lines-input {
+  width: 4.5rem !important;
+  min-width: 4.5rem !important;
+  max-width: 5rem !important;
+  height: 2rem !important;
+  padding-left: 0.5rem !important;
+  padding-right: 0.375rem !important;
+  font-size: 0.75rem !important;
+  text-align: center;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.logs-viewer-lines-input::-webkit-outer-spin-button,
+.logs-viewer-lines-input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+/* Compact badge that fits the dark logs chrome */
+.logs-viewer-status-badge {
+  height: 1.5rem !important;
+  flex-shrink: 0;
+  border-color: var(--color-neutral-200) !important;
+  background: white !important;
+  padding-inline: 0.5rem !important;
+  font-size: 0.6875rem !important;
+  font-weight: 500 !important;
+  color: var(--color-neutral-700) !important;
+}
+
+.dark .logs-viewer-status-badge {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #d4d4d4 !important;
+}
+
+/* Section header status (proxy/sentinel) stays inline with title on mobile */
+.logs-settings-section > :is(header, .application-settings-section-header) {
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+}
+
+.logs-settings-section > :is(header, .application-settings-section-header) > div:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.logs-settings-section > :is(header, .application-settings-section-header) > div:nth-child(2) {
+  width: auto !important;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.logs-section-status-badge {
+  height: 1.5rem !important;
+  padding-inline: 0.5rem !important;
+  font-size: 0.6875rem !important;
+}
+
+/* Full-width action strip on mobile — icons never sit beside Lines */
+.logs-viewer-actions {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.125rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.logs-viewer-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.logs-viewer-actions > * {
+  flex-shrink: 0;
+}
+
+/* Cancel/force-start + search — right-aligned as a group */
+.logs-viewer-end {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.logs-viewer-end .logs-viewer-meta {
+  width: auto;
+}
+
+.runtime-logs-viewer-end {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.logs-viewer-deployment-actions {
+  display: flex;
+  min-width: 0;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.logs-viewer-deployment-actions:empty {
+  display: none;
+}
+
+.logs-viewer-deployment-btn {
+  height: 2rem !important;
+  min-height: 2rem !important;
+  padding-inline: 0.75rem !important;
+  font-size: 0.75rem !important;
+  line-height: 1rem !important;
+  border-radius: 0.5rem !important;
+}
+
+.logs-viewer-cancel-btn {
+  border-color: color-mix(in oklab, var(--color-error, #ef4444) 55%, transparent) !important;
+  background: color-mix(in oklab, var(--color-error, #ef4444) 10%, transparent) !important;
+  color: color-mix(in oklab, var(--color-error, #f87171) 90%, white) !important;
+}
+
+.logs-viewer-cancel-btn:hover {
+  border-color: color-mix(in oklab, var(--color-error, #ef4444) 75%, transparent) !important;
+  background: color-mix(in oklab, var(--color-error, #ef4444) 18%, transparent) !important;
+}
+
+.logs-viewer-btn,
+.runtime-log-icon-button {
+  position: relative;
+  z-index: 0;
+}
+
+.logs-viewer-btn {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  color: var(--color-neutral-500);
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.logs-viewer-btn:hover {
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-900);
+}
+
+.dark .logs-viewer-btn {
+  color: #a3a3a3;
+}
+
+.dark .logs-viewer-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #f5f5f5;
+}
+
+.logs-viewer-btn-active {
+  background: var(--color-coollabs);
+  color: #fff;
+}
+
+.dark .logs-viewer-btn-active {
+  color: #fff;
+}
+
+.logs-viewer-viewport {
+  min-width: 0;
+  padding: 0.5rem 0.75rem 0;
+}
+
+/* A flex item is reliably included in the scrollable overflow area, unlike
+   bottom padding on overflow containers in some browser/layout combinations. */
+.logs-viewer-viewport::after {
+  content: "";
+  flex: 0 0 2rem;
+}
+
+.logs-viewer-line {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding-block: 0.125rem;
+}
+
+.logs-viewer-line.hidden {
+  display: none;
+}
+
+.logs-viewer-timestamp {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  line-height: 1rem;
+  color: #737373;
+  letter-spacing: 0.01em;
+}
+
+.logs-viewer-line-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+@media (min-width: 640px) {
+  /* Desktop: [actions + status] ... [cancel + search] */
+  .logs-viewer-toolbar-controls {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+  }
+
+  .logs-viewer-primary {
+    width: auto;
+    flex: 0 1 auto;
+  }
+
+  .logs-viewer-meta {
+    order: 0;
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .logs-viewer-search {
+    order: 1;
+    width: auto;
+    max-width: 16rem;
+    flex: 1 1 12rem;
+  }
+
+  .logs-viewer-actions {
+    order: 0;
+    width: auto;
+    flex: 0 0 auto;
+    max-width: 100%;
+    justify-content: flex-end;
+    overflow: visible;
+  }
+
+  .logs-viewer-end {
+    order: 1;
+    width: auto;
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+
+  .logs-viewer-end .logs-viewer-meta {
+    order: 2;
+  }
+
+  .runtime-logs-viewer-end {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .logs-viewer-deployment-actions {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .logs-viewer-btn {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.375rem;
+  }
+
+  .logs-viewer-viewport {
+    padding: 0.5rem 1rem 0;
+  }
+
+  .logs-viewer-line {
+    flex-direction: row;
+    gap: 0.5rem;
+    padding-block: 0;
+  }
+
+  .logs-viewer-timestamp {
+    font-size: 0.75rem;
+    line-height: inherit;
+  }
+}
+

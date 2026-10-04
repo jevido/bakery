@@ -185,6 +185,7 @@ func Routes(r route.Router) {
 		r.Post("/api/applications/{id}/previews/{number}/deploy", c.DeployPreview)
 		r.Delete("/api/applications/{id}/previews/{number}", c.DeletePreview)
 		r.Get("/api/applications/{id}/deployments", c.List)
+		r.Get("/api/applications/{id}/images", c.Images)
 		r.Get("/api/deployments/{id}", c.Show)
 		r.Post("/api/deployments/{id}/cancel", c.Cancel)
 		r.Post("/api/deployments/{id}/rollback", c.Rollback)
