@@ -3,9 +3,11 @@
   // (resources/views/components/application/configuration-sidebar.blade.php,
   // Apache-2.0, see NOTICE): the sub-pages in Coolify's groups, one column on
   // wide screens and a grid of links above the page on narrower ones. Only the
-  // sub-pages The Bakery has something behind are listed.
+  // sub-pages The Bakery has something behind are listed, and under a page
+  // the in-page sections it has been ported with.
   import Icon, { type IconName } from '../../lib/Icon.svelte'
-  import { applicationPath, href, type ApplicationPage } from '../../lib/router.svelte'
+  import { applicationPath, go, href, type ApplicationPage } from '../../lib/router.svelte'
+  import { scrollToSettingsSection, scrollToSettingsSectionLater } from '../../lib/settingsSection.svelte'
   import { session } from '../../lib/session.svelte'
   import type { Application } from '../../lib/types'
 
@@ -43,6 +45,38 @@
     ['Operations', ['Resource Limits', 'Rollback', 'Danger Zone']],
   ]
 
+  // Coolify's $pageSections, for the sections each ported page has.
+  const sections = $derived<Partial<Record<ApplicationPage, { id: string; label: string }[]>>>({
+    '': [
+      { id: 'application-details-section', label: 'Application details' },
+      { id: 'access-section', label: 'Access' },
+      { id: 'build-pipeline-section', label: 'Build pipeline' },
+      ...(gitBased ? [] : [{ id: 'container-image-section', label: 'Container image' }]),
+      { id: 'networking-section', label: 'Networking' },
+      { id: 'security-section', label: 'Security' },
+    ],
+    advanced: [
+      ...(gitBased ? [{ id: 'advanced-deployment-section', label: 'Deployment' }] : []),
+      { id: 'advanced-proxy-section', label: 'Proxy' },
+    ],
+  })
+
+  let activeSection = $state('')
+  $effect(() => {
+    void page
+    activeSection = ''
+  })
+
+  function openSection(item: Item, id: string) {
+    activeSection = id
+    if (item.page === page) {
+      scrollToSettingsSection(id)
+      return
+    }
+    scrollToSettingsSectionLater(id)
+    go(applicationPath(application, item.page))
+  }
+
   const grouped = $derived(
     groups
       .map(([label, labels]) => ({ label, items: labels.map((l) => items.find((i) => i.label === l)).filter((i): i is Item => !!i) }))
@@ -61,14 +95,29 @@
       {/if}
       <div class="nav-section hidden xl:block">{group.label}</div>
       {#each group.items as item (item.label)}
-        <a
-          class={['menu-item', item.page === page && 'menu-item-active']}
-          href={href(applicationPath(application, item.page))}
-          aria-current={item.page === page ? 'page' : undefined}
-        >
-          <Icon name={item.icon} class="menu-item-icon" />
-          <span class="menu-item-label">{item.label}</span>
-        </a>
+        <div>
+          <a
+            class={['menu-item', item.page === page && 'menu-item-active']}
+            href={href(applicationPath(application, item.page))}
+            aria-current={item.page === page ? 'page' : undefined}
+          >
+            <Icon name={item.icon} class="menu-item-icon" />
+            <span class="menu-item-label">{item.label}</span>
+          </a>
+          {#if sections[item.page]?.length}
+            <div class="nav-children hidden flex-col gap-0.5 py-1 xl:flex">
+              {#each sections[item.page] ?? [] as section (section.id)}
+                <button
+                  type="button"
+                  class={['menu-subitem', item.page === page && activeSection === section.id && 'menu-subitem-active']}
+                  onclick={() => openSection(item, section.id)}
+                >
+                  <span class="menu-item-label text-left">{section.label}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       {/each}
     {/each}
   </nav>

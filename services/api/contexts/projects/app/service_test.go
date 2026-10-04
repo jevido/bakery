@@ -377,3 +377,32 @@ func TestCreateApplicationWithoutAName(t *testing.T) {
 		t.Fatalf("docker image: %v, name %q", err, a.Name)
 	}
 }
+
+func TestApplicationDescription(t *testing.T) {
+	ctx := context.Background()
+	s := NewService(&fakeStore{}, fakeKey, "example.com", "")
+	described := "  The shop front  "
+	in := domain.ApplicationInput{Name: "web", Description: &described, GitURL: "https://example.com/r.git", Port: 80}
+	a, err := s.CreateApplication(ctx, 1, in)
+	if err != nil || a.Description != "The shop front" {
+		t.Fatalf("create: %v, %q", err, a.Description)
+	}
+
+	in.Description = nil
+	if a, err = s.UpdateApplication(ctx, a.ID, in); err != nil || a.Description != "The shop front" {
+		t.Fatalf("an update without a description must keep it: %v, %q", err, a.Description)
+	}
+
+	long := strings.Repeat("é", 256)
+	in.Description = &long
+	var fe *domain.FieldError
+	if _, err = s.UpdateApplication(ctx, a.ID, in); !errors.As(err, &fe) || fe.Field != "description" {
+		t.Fatalf("256 characters: want a description FieldError, got %v", err)
+	}
+
+	empty := ""
+	in.Description = &empty
+	if a, err = s.UpdateApplication(ctx, a.ID, in); err != nil || a.Description != "" {
+		t.Fatalf("clearing: %v, %q", err, a.Description)
+	}
+}

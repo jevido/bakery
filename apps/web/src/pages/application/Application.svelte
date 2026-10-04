@@ -19,7 +19,9 @@
   import Spinner from '../../lib/ui/Spinner.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import Webhook from '../../lib/Webhook.svelte'
+  import Advanced from './Advanced.svelte'
   import ConfigurationSidebar from './ConfigurationSidebar.svelte'
+  import General from './General.svelte'
   import Heading, { type Action } from './Heading.svelte'
 
   let {
@@ -217,6 +219,24 @@
   </div>
 {/snippet}
 
+<!-- Domains, Persistent Storage, Healthcheck and Resource Limits are edited
+     in the old form until their pages are ported (tasks 04 to 06). -->
+{#snippet legacyForm()}
+  {#if application}
+    {#key application.id}
+      <div class="mt-6">
+        <ApplicationForm
+          initial={application}
+          submitLabel="Save"
+          domainPlaceholder={`${application.slug}.localhost`}
+          onsubmit={update}
+        />
+      </div>
+    {/key}
+    {#if saved}<p class="ok">Saved. Domains apply at once; everything else on the next deploy.</p>{/if}
+  {/if}
+{/snippet}
+
 {#if loadError}
   <p class="chrome text-sm text-error">{loadError}</p>
 {:else if !application}
@@ -266,17 +286,10 @@
         {/if}
 
         {#if page === ''}
-          {#key application.id}
-            <ApplicationForm
-              initial={application}
-              submitLabel="Save"
-              domainPlaceholder={`${application.slug}.localhost`}
-              onsubmit={update}
-            />
-          {/key}
-          {#if saved}<p class="ok">Saved. Domains apply at once; everything else on the next deploy.</p>{/if}
+          <General {application} onchange={(a) => (application = a)} />
         {:else if page === 'domains'}
           <Routing applicationId={application.id} domains={application.domains} />
+          {@render legacyForm()}
         {:else if page === 'environment-variables'}
           <EnvironmentVariables path={`/applications/${application.id}/environment-variables`} />
         {:else if page === 'deployment'}
@@ -326,20 +339,23 @@
           {@render later(
             'Persistent Storage',
             application.storages.length > 0
-              ? application.storages.map((s) => `${s.name} at ${s.mount_path}`).join(', ') + '. Edit them under General.'
-              : 'No persistent storage. Add it under General.',
+              ? application.storages.map((s) => `${s.name} at ${s.mount_path}`).join(', ') + '.'
+              : 'No persistent storage.',
           )}
+          {@render legacyForm()}
         {:else if page === 'resource-limits'}
           {@render later(
             'Resource Limits',
-            `Memory: ${application.resource_limits.memory_mb ? `${application.resource_limits.memory_mb} MB` : 'unlimited'}, CPU: ${application.resource_limits.cpus ?? 'unlimited'}. Edit them under General.`,
+            `Memory: ${application.resource_limits.memory_mb ? `${application.resource_limits.memory_mb} MB` : 'unlimited'}, CPU: ${application.resource_limits.cpus ?? 'unlimited'}.`,
           )}
+          {@render legacyForm()}
         {:else if page === 'healthcheck'}
-          {@render later('Healthcheck', 'Edit the healthcheck under General.')}
+          {@render later('Healthcheck')}
+          {@render legacyForm()}
         {:else if page === 'rollback'}
           {@render later('Rollback', 'Roll back from a finished Deployment under Deployment Logs.')}
         {:else if page === 'advanced'}
-          {@render later('Advanced')}
+          <Advanced {application} />
         {:else if page === 'danger' && session.canWrite}
           <h2>Danger zone</h2>
           <button class="danger" onclick={remove}>Delete application</button>

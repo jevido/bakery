@@ -402,6 +402,14 @@ html:not(.dark) {
   @apply px-2.5 pt-1 pb-1 text-[11px] font-medium text-nav-muted select-none;
 }
 
+@utility menu-subitem {
+  @apply relative flex h-8 w-full min-w-0 items-center gap-2.5 rounded-md pr-2.5 pl-3 text-[13px] font-medium text-nav-text transition-colors hover:bg-black/[0.04] hover:text-nav-active dark:hover:bg-white/[0.05];
+}
+
+@utility menu-subitem-active {
+  @apply rounded-md bg-black/[0.05] text-nav-active hover:bg-black/[0.05] dark:bg-white/[0.06] dark:hover:bg-white/[0.06];
+}
+
 @utility sub-menu-wrapper {
   @apply flex w-full shrink-0 flex-col gap-0.5 md:w-52;
 }
@@ -658,6 +666,50 @@ html:not(.dark) {
 /* Flush layer-card body (lists and other full-bleed content). */
 .application-settings-section-body.is-flush {
   padding: 0;
+}
+
+/* Coolify's section highlight: scrollToSettingsSection flashes the card's
+   border once a sidebar sub-item scrolled it into view. */
+@keyframes application-settings-section-highlight {
+  0% {
+    opacity: 0;
+  }
+
+  15%,
+  60% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+.application-settings-section {
+  scroll-margin-top: 7rem;
+}
+
+/* The vertical connector line under a sidebar item's section sub-items. */
+.nav-children {
+  position: relative;
+  margin-left: 1.1rem;
+  padding-left: 0.25rem;
+  border-left: 1px solid var(--color-hairline);
+}
+
+.application-settings-section.is-section-highlight {
+  position: relative;
+}
+
+.application-settings-section.is-section-highlight::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border-radius: inherit;
+  border: 0.5px solid var(--color-accent);
+  pointer-events: none;
+  animation: application-settings-section-highlight 500ms ease-out forwards;
 }
 
 /* Coolify's custom listbox trigger (it replaces a native <select>). */

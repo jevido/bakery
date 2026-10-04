@@ -267,6 +267,9 @@ func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, i
 		Domains:          in.Domains,
 		HealthCheck:      domain.DefaultHealthCheck(),
 	}
+	if in.Description != nil {
+		a.Description = *in.Description
+	}
 	if in.HealthCheck != nil {
 		a.HealthCheck = *in.HealthCheck
 	}
@@ -372,6 +375,9 @@ func (s *Service) UpdateApplication(ctx context.Context, id uint64, in domain.Ap
 	a.BuildPack, a.DockerImage, a.PublishDirectory = in.BuildPack, in.DockerImage, in.PublishDirectory
 	if in.RegistryCredentials != nil {
 		a.RegistryCredentials = *in.RegistryCredentials
+	}
+	if in.Description != nil {
+		a.Description = *in.Description
 	}
 	before := a.Domains
 	a.Name, a.GitURL, a.GitBranch, a.DockerfilePath, a.Port, a.Domains =

@@ -111,8 +111,10 @@ type Application struct {
 	EnvironmentID uint64
 	ProjectID     uint64
 	Name          string
-	Slug          string
-	BuildPack     BuildPack
+	// Description is free text of at most 255 characters, empty for none.
+	Description string
+	Slug        string
+	BuildPack   BuildPack
 	// DockerImage is set exactly when BuildPack is DockerImage; the Git
 	// repository fields are then empty.
 	DockerImage      string
@@ -267,7 +269,9 @@ type DeployKey struct {
 // ApplicationInput is what the Owner fills in. Empty optional fields get
 // their defaults in Normalize.
 type ApplicationInput struct {
-	Name             string
+	Name string
+	// Description nil keeps the current one (empty for a new Application).
+	Description      *string
 	BuildPack        BuildPack
 	DockerImage      string
 	PublishDirectory string
@@ -342,6 +346,13 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 	}
 	if Slugify(in.Name) == "" {
 		return in, invalid("name", "name needs at least one letter or digit")
+	}
+	if in.Description != nil {
+		d := strings.TrimSpace(*in.Description)
+		if utf8.RuneCountInString(d) > 255 {
+			return in, invalid("description", "description is at most 255 characters")
+		}
+		in.Description = &d
 	}
 	if !in.BuildPack.Valid() {
 		return in, invalid("build_pack", "build pack must be dockerfile, nixpacks, static or dockerimage")

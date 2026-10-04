@@ -5,6 +5,8 @@ export type Application = {
   project_id: number
   environment_id: number
   name: string
+  /** Empty for none. */
+  description: string
   slug: string
   build_pack: BuildPack
   /** Set for the dockerimage build pack, which has no Git repository. */
@@ -114,6 +116,8 @@ export type ApplicationInput = Pick<
   Application,
   'name' | 'build_pack' | 'docker_image' | 'publish_directory' | 'git_url' | 'git_branch' | 'dockerfile_path' | 'port' | 'domains'
 > & {
+  /** Omitted keeps the current one. */
+  description?: string
   /** Omitted keeps the current one. */
   health_check?: HealthCheck
   /** Omitted keeps the current ones; an empty username removes them; an empty password keeps the stored one. */

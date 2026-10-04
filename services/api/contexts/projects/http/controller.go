@@ -41,6 +41,7 @@ type applicationJSON struct {
 	ProjectID        uint64   `json:"project_id"`
 	EnvironmentID    uint64   `json:"environment_id"`
 	Name             string   `json:"name"`
+	Description      string   `json:"description"`
 	Slug             string   `json:"slug"`
 	BuildPack        string   `json:"build_pack"`
 	DockerImage      string   `json:"docker_image"`
@@ -128,7 +129,7 @@ func applicationToJSON(a domain.Application, localServer uint64) applicationJSON
 	}
 	return applicationJSON{
 		ServerID: server,
-		ID:       a.ID, ProjectID: a.ProjectID, EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug,
+		ID:       a.ID, ProjectID: a.ProjectID, EnvironmentID: a.EnvironmentID, Name: a.Name, Description: a.Description, Slug: a.Slug,
 		BuildPack: string(a.BuildPack), DockerImage: a.DockerImage, PublishDirectory: a.PublishDirectory,
 		GitURL: a.GitURL, GitBranch: a.GitBranch, DockerfilePath: a.DockerfilePath, Port: a.Port, Domains: a.Domains,
 		DeployKeyPublic: a.DeployKey.Public, PublicURL: publicURL(a.PrimaryDomain(), a.ServerID), PublicURLs: publicURLs(a.Domains, a.ServerID),
@@ -351,6 +352,8 @@ func (c *Controller) DeleteEnvironment(ctx contractshttp.Context) contractshttp.
 
 type applicationRequest struct {
 	Name string `json:"name"`
+	// Description omitted keeps the current one.
+	Description *string `json:"description"`
 	// BuildPack omitted keeps the current one (dockerfile for a new
 	// Application).
 	BuildPack        string   `json:"build_pack"`
@@ -382,7 +385,7 @@ type registryCredentialsJSON struct {
 
 func (r applicationRequest) input() domain.ApplicationInput {
 	in := domain.ApplicationInput{
-		Name: r.Name, GitURL: r.GitURL, GitBranch: r.GitBranch,
+		Name: r.Name, Description: r.Description, GitURL: r.GitURL, GitBranch: r.GitBranch,
 		BuildPack: domain.BuildPack(r.BuildPack), DockerImage: r.DockerImage, PublishDirectory: r.PublishDirectory,
 		DockerfilePath: r.DockerfilePath, Port: r.Port, Domains: r.Domains, ServerID: r.ServerID,
 	}

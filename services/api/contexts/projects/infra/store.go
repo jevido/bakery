@@ -44,6 +44,7 @@ type applicationRecord struct {
 	ID                        uint64 `gorm:"primaryKey"`
 	EnvironmentID             uint64
 	Name                      string
+	Description               string
 	Slug                      string
 	BuildPack                 string
 	DockerImage               string
@@ -200,7 +201,7 @@ func writeDomains(tx contractsorm.Query, applicationID uint64, domains []string)
 // decrypts it.
 func (r applicationRecord) toDomain(projectID uint64) domain.Application {
 	return domain.Application{
-		ID: r.ID, EnvironmentID: r.EnvironmentID, ProjectID: projectID, Name: r.Name, Slug: r.Slug,
+		ID: r.ID, EnvironmentID: r.EnvironmentID, ProjectID: projectID, Name: r.Name, Description: r.Description, Slug: r.Slug,
 		BuildPack: domain.BuildPack(r.BuildPack), DockerImage: r.DockerImage, PublishDirectory: r.PublishDirectory,
 		GitURL: r.GitURL, GitBranch: r.GitBranch, DockerfilePath: r.DockerfilePath, Port: r.Port,
 		DeployKey:           domain.DeployKey{Public: r.DeployKeyPublic},
@@ -436,7 +437,7 @@ func (s Store) CreateApplication(ctx context.Context, a domain.Application) (dom
 		return domain.Application{}, err
 	}
 	rec := applicationRecord{
-		EnvironmentID: a.EnvironmentID, Name: a.Name, Slug: a.Slug, GitURL: a.GitURL, GitBranch: a.GitBranch,
+		EnvironmentID: a.EnvironmentID, Name: a.Name, Description: a.Description, Slug: a.Slug, GitURL: a.GitURL, GitBranch: a.GitBranch,
 		BuildPack: string(a.BuildPack), DockerImage: a.DockerImage, PublishDirectory: a.PublishDirectory,
 		DockerfilePath: a.DockerfilePath, Port: a.Port,
 		DeployKeyPublic: a.DeployKey.Public, DeployKeyPrivateEncrypted: private,
@@ -512,7 +513,7 @@ func (s Store) UpdateApplication(ctx context.Context, a domain.Application) erro
 		return err
 	}
 	columns := map[string]any{
-		"name": a.Name, "git_url": a.GitURL, "git_branch": a.GitBranch,
+		"name": a.Name, "description": a.Description, "git_url": a.GitURL, "git_branch": a.GitBranch,
 		"build_pack": string(a.BuildPack), "docker_image": a.DockerImage, "publish_directory": a.PublishDirectory,
 		"dockerfile_path": a.DockerfilePath, "port": a.Port,
 		"deploy_key_public": a.DeployKey.Public, "deploy_key_private_encrypted": private,
