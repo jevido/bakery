@@ -51,6 +51,9 @@ type applicationJSON struct {
 	DockerfilePath   string   `json:"dockerfile_path"`
 	Port             int      `json:"port"`
 	Domains          []string `json:"domains"`
+	// GeneratedDomain is the Domain the Application gets when it has none
+	// (`<slug>.<domain_suffix>`), what the dashboard's Generate domain fills in.
+	GeneratedDomain string `json:"generated_domain"`
 	// DeployKeyPublic is empty for an https Git repository.
 	DeployKeyPublic string `json:"deploy_key_public"`
 	// The registry password itself is never returned.
@@ -132,6 +135,7 @@ func applicationToJSON(a domain.Application, localServer uint64) applicationJSON
 		ID:       a.ID, ProjectID: a.ProjectID, EnvironmentID: a.EnvironmentID, Name: a.Name, Description: a.Description, Slug: a.Slug,
 		BuildPack: string(a.BuildPack), DockerImage: a.DockerImage, PublishDirectory: a.PublishDirectory,
 		GitURL: a.GitURL, GitBranch: a.GitBranch, DockerfilePath: a.DockerfilePath, Port: a.Port, Domains: a.Domains,
+		GeneratedDomain: domain.DefaultDomain(a.Slug, facades.Config().GetString("bakery.domain_suffix", "localhost")),
 		DeployKeyPublic: a.DeployKey.Public, PublicURL: publicURL(a.PrimaryDomain(), a.ServerID), PublicURLs: publicURLs(a.Domains, a.ServerID),
 		RegistryUsername: a.RegistryCredentials.Username, HasRegistryPassword: a.RegistryCredentials.Username != "", // both or neither
 		Storages: storagesToJSON(a.Storages), ResourceLimits: resourceLimitsToJSON(a.ResourceLimits),

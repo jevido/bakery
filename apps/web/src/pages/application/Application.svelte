@@ -11,7 +11,6 @@
   import Deployments from '../../lib/Deployments.svelte'
   import EnvironmentVariables from '../../lib/EnvironmentVariables.svelte'
   import Previews from '../../lib/Previews.svelte'
-  import Routing from '../../lib/Routing.svelte'
   import { applicationPath, go, href, type ApplicationPage } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
   import type { Application, ApplicationInput, Deployment, Environment, Server } from '../../lib/types'
@@ -21,6 +20,7 @@
   import Webhook from '../../lib/Webhook.svelte'
   import Advanced from './Advanced.svelte'
   import ConfigurationSidebar from './ConfigurationSidebar.svelte'
+  import Domains from './Domains.svelte'
   import General from './General.svelte'
   import Heading, { type Action } from './Heading.svelte'
 
@@ -219,8 +219,8 @@
   </div>
 {/snippet}
 
-<!-- Domains, Persistent Storage, Healthcheck and Resource Limits are edited
-     in the old form until their pages are ported (tasks 04 to 06). -->
+<!-- Persistent Storage, Healthcheck and Resource Limits are edited in the
+     old form until their pages are ported (tasks 05 and 06). -->
 {#snippet legacyForm()}
   {#if application}
     {#key application.id}
@@ -288,8 +288,7 @@
         {#if page === ''}
           <General {application} onchange={(a) => (application = a)} />
         {:else if page === 'domains'}
-          <Routing applicationId={application.id} domains={application.domains} />
-          {@render legacyForm()}
+          <Domains {application} {server} onchange={(a) => (application = a)} />
         {:else if page === 'environment-variables'}
           <EnvironmentVariables path={`/applications/${application.id}/environment-variables`} />
         {:else if page === 'deployment'}

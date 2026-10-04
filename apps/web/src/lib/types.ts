@@ -19,6 +19,8 @@ export type Application = {
   port: number
   /** 1–10 hostnames; the first is the primary one. */
   domains: string[]
+  /** `<slug>.<domain suffix>`, the Domain it gets when it has none. */
+  generated_domain: string
   /** Empty for an https Git repository. */
   deploy_key_public: string
   /** On the primary Domain. */
