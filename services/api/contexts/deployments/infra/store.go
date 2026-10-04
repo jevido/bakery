@@ -30,6 +30,7 @@ type deploymentRecord struct {
 	Image         string
 	ContainerName string
 	RollbackOf    *uint64
+	ForceRebuild  bool
 	Error         string
 	StartedAt     *time.Time
 	FinishedAt    *time.Time
@@ -43,7 +44,7 @@ func (r deploymentRecord) toDomain() domain.Deployment {
 	return domain.Deployment{
 		ID: r.ID, ApplicationID: r.ApplicationID, Preview: r.Preview, ServerID: r.ServerID, Status: domain.Status(r.Status), Trigger: domain.Trigger(r.Trigger),
 		Branch: r.Branch, CommitSHA: r.CommitSha, CommitMessage: r.CommitMessage, CommitAuthor: r.CommitAuthor,
-		SourceImage: r.SourceImage, Image: r.Image, Container: r.ContainerName, RollbackOf: r.RollbackOf, Error: r.Error, CreatedAt: r.CreatedAt,
+		SourceImage: r.SourceImage, Image: r.Image, Container: r.ContainerName, RollbackOf: r.RollbackOf, ForceRebuild: r.ForceRebuild, Error: r.Error, CreatedAt: r.CreatedAt,
 		StartedAt: r.StartedAt, FinishedAt: r.FinishedAt,
 	}
 }
@@ -64,7 +65,7 @@ func (s Store) Queue(ctx context.Context, d domain.Deployment) (domain.Deploymen
 	rec := deploymentRecord{
 		ApplicationID: d.ApplicationID, Preview: d.Preview, ServerID: d.ServerID, Status: string(domain.Queued), Trigger: string(d.Trigger),
 		Branch: d.Branch, CommitSha: d.CommitSHA, CommitMessage: d.CommitMessage, CommitAuthor: d.CommitAuthor,
-		SourceImage: d.SourceImage, Image: d.Image, RollbackOf: d.RollbackOf, CreatedAt: now, UpdatedAt: now,
+		SourceImage: d.SourceImage, Image: d.Image, RollbackOf: d.RollbackOf, ForceRebuild: d.ForceRebuild, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.query(ctx).Create(&rec); err != nil {
 		if strings.Contains(err.Error(), "deployments_one_queued") {

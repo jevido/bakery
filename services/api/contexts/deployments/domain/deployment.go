@@ -45,6 +45,9 @@ const (
 	TriggerManual   Trigger = "manual"
 	TriggerWebhook  Trigger = "webhook"
 	TriggerRollback Trigger = "rollback"
+	// TriggerRestart starts the running Deployment's Image again, without
+	// a rebuild.
+	TriggerRestart Trigger = "restart"
 )
 
 var (
@@ -57,6 +60,9 @@ var (
 	// ErrPreviewRollback is a Rollback to a Preview Deployment: a Preview
 	// always builds its head.
 	ErrPreviewRollback = errors.New("a preview deployment cannot be rolled back to")
+	// ErrNothingToRestart is a Restart of an Application that never
+	// finished a Deployment.
+	ErrNothingToRestart = errors.New("the application has no finished deployment to restart")
 )
 
 type Deployment struct {
@@ -78,12 +84,15 @@ type Deployment struct {
 	SourceImage string
 	Image       string
 	Container   string
-	// RollbackOf is the Deployment whose Image a Rollback starts again.
+	// RollbackOf is the Deployment whose Image a Rollback or a Restart
+	// starts again.
 	RollbackOf *uint64
-	Error      string
-	CreatedAt  time.Time
-	StartedAt  *time.Time
-	FinishedAt *time.Time
+	// ForceRebuild builds without Podman's layer cache.
+	ForceRebuild bool
+	Error        string
+	CreatedAt    time.Time
+	StartedAt    *time.Time
+	FinishedAt   *time.Time
 }
 
 // Advance moves the Deployment forward to status. Statuses only move
@@ -134,12 +143,28 @@ func NewRollback(of Deployment) (Deployment, error) {
 	if of.Status != Finished || of.Image == "" {
 		return Deployment{}, ErrNotRollbackTarget
 	}
+	return reuse(of, TriggerRollback), nil
+}
+
+// NewRestart is a queued Deployment that starts the Image of the
+// Application's newest finished Deployment of its own (the one it runs, or
+// ran before it was stopped) again, with today's settings. Given no such
+// Deployment (of is nil), there is nothing to restart.
+func NewRestart(of *Deployment) (Deployment, error) {
+	if of == nil || of.Preview != 0 || of.Status != Finished || of.Image == "" {
+		return Deployment{}, ErrNothingToRestart
+	}
+	return reuse(*of, TriggerRestart), nil
+}
+
+// reuse is a queued Deployment of of's Image, skipping clone and build.
+func reuse(of Deployment, trigger Trigger) Deployment {
 	id := of.ID
-	d := NewDeployment(of.ApplicationID, TriggerRollback)
+	d := NewDeployment(of.ApplicationID, trigger)
 	d.RollbackOf, d.Image, d.ServerID = &id, of.Image, of.ServerID
 	d.Branch, d.CommitSHA, d.CommitMessage, d.CommitAuthor = of.Branch, of.CommitSHA, of.CommitMessage, of.CommitAuthor
 	d.SourceImage = of.SourceImage
-	return d, nil
+	return d
 }
 
 // Cancel ends an active Deployment as cancelled.

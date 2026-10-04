@@ -75,6 +75,8 @@ func deploymentNotification(e deployments.DeploymentFinished, dashboard string) 
 		body = append(body, "Started by the pull request.")
 	case e.Trigger == "webhook":
 		body = append(body, "Started by a push.")
+	case e.Trigger == "restart":
+		body = append(body, "A restart without rebuilding.")
 	}
 	n.Body = strings.Join(body, "\n")
 	return n

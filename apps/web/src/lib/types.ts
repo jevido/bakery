@@ -137,7 +137,7 @@ export type Deployment = {
   server_id: number
   status: DeploymentStatus
   active: boolean
-  trigger: 'manual' | 'webhook' | 'rollback'
+  trigger: 'manual' | 'webhook' | 'rollback' | 'restart'
   branch: string
   commit_sha: string
   commit_message: string
@@ -146,8 +146,10 @@ export type Deployment = {
   source_image: string
   image: string
   container: string
-  /** The deployment whose image a rollback starts again. */
+  /** The deployment whose image a rollback or a restart starts again. */
   rollback_of: number | null
+  /** Built without the build cache (Deploy without cache). */
+  force_rebuild: boolean
   error: string
   created_at: string
   started_at: string | null

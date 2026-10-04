@@ -96,6 +96,7 @@ func svc() *app.Service {
 		service = app.NewService(infra.Store{}, infra.Logs{}, applications, infra.KnownHosts{}, infra.Previews{})
 		webhooks = app.NewWebhooks(service, infra.Webhooks{})
 		service.DropPreviewRoute = routing.DropPreviewRoute
+		service.StopRoute = routing.StopRoute
 		service.Comments = app.NewCommenter(infra.Webhooks{}, infra.Previews{}, infra.GitHosts{})
 		service.Comments.URL = publicURL
 		deploymentshttp.PublicURL = publicURL
@@ -177,6 +178,9 @@ func Routes(r route.Router) {
 		r.Patch("/api/applications/{id}/webhook", wc.Update)
 		r.Post("/api/applications/{id}/webhook/secret", wc.RotateSecret)
 		r.Post("/api/applications/{id}/deploy", c.Deploy)
+		r.Post("/api/applications/{id}/restart", c.Restart)
+		r.Post("/api/applications/{id}/stop", c.Stop)
+		r.Get("/api/applications/{id}/status", c.Status)
 		r.Get("/api/applications/{id}/previews", c.Previews)
 		r.Post("/api/applications/{id}/previews/{number}/deploy", c.DeployPreview)
 		r.Delete("/api/applications/{id}/previews/{number}", c.DeletePreview)
@@ -280,7 +284,7 @@ type DeploymentFinished struct {
 	Branch        string
 	CommitSHA     string
 	CommitMessage string
-	// Trigger is "manual", "webhook" or "rollback".
+	// Trigger is "manual", "webhook", "rollback" or "restart".
 	Trigger    string
 	Rollback   bool
 	FinishedAt time.Time
@@ -305,7 +309,7 @@ func publishFinished(_ context.Context, d domain.Deployment, slug string) {
 		DeploymentID: d.ID, ApplicationID: d.ApplicationID, ApplicationSlug: slug, Preview: d.Preview,
 		Succeeded: d.Status == domain.Finished, Reason: d.Error, Branch: d.Branch,
 		CommitSHA: d.CommitSHA, CommitMessage: d.CommitMessage, Trigger: string(d.Trigger),
-		Rollback: d.RollbackOf != nil, FinishedAt: time.Now(),
+		Rollback: d.Trigger == domain.TriggerRollback, FinishedAt: time.Now(),
 	}
 	if d.FinishedAt != nil {
 		e.FinishedAt = *d.FinishedAt

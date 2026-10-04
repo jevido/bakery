@@ -5,9 +5,10 @@ import type { StatusType } from './ui/StatusBadge.svelte'
 /**
  * One step of the top bar's breadcrumb; the last one is the page itself and
  * has no link. A Resource's crumb carries its status, shown beside the name
- * as Coolify's breadcrumb switcher shows it.
+ * as Coolify's breadcrumb switcher shows it; an Application's is Coolify's
+ * status string (`summary`), shown as its status summary.
  */
-export type Crumb = { label: string; href?: string; status?: { label: string; type: StatusType } }
+export type Crumb = { label: string; href?: string; status?: { label: string; type: StatusType }; summary?: string }
 
 class Breadcrumb {
   crumbs = $state.raw<Crumb[]>([])

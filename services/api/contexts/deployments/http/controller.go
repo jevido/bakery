@@ -46,6 +46,7 @@ type deploymentJSON struct {
 	Image         string     `json:"image"`
 	Container     string     `json:"container"`
 	RollbackOf    *uint64    `json:"rollback_of"`
+	ForceRebuild  bool       `json:"force_rebuild"`
 	Error         string     `json:"error"`
 	CreatedAt     time.Time  `json:"created_at"`
 	StartedAt     *time.Time `json:"started_at"`
@@ -60,7 +61,7 @@ func ToJSON(d domain.Deployment) deploymentJSON {
 	return deploymentJSON{
 		ID: d.ID, ApplicationID: d.ApplicationID, Preview: d.Preview, ServerID: server, Status: string(d.Status), Active: d.Status.Active(),
 		Trigger: string(d.Trigger), Branch: d.Branch, CommitSHA: d.CommitSHA,
-		CommitMessage: d.CommitMessage, CommitAuthor: d.CommitAuthor, SourceImage: d.SourceImage, Image: d.Image, Container: d.Container, RollbackOf: d.RollbackOf, Error: d.Error,
+		CommitMessage: d.CommitMessage, CommitAuthor: d.CommitAuthor, SourceImage: d.SourceImage, Image: d.Image, Container: d.Container, RollbackOf: d.RollbackOf, ForceRebuild: d.ForceRebuild, Error: d.Error,
 		CreatedAt: d.CreatedAt, StartedAt: d.StartedAt, FinishedAt: d.FinishedAt,
 	}
 }
@@ -71,7 +72,8 @@ func (c *Controller) fail(ctx contractshttp.Context, err error) contractshttp.Re
 		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
 	case errors.Is(err, domain.ErrAlreadyQueued), errors.Is(err, app.ErrNotCancellable),
 		errors.Is(err, domain.ErrNotRollbackTarget), errors.Is(err, app.ErrImageGone),
-		errors.Is(err, domain.ErrPreviewRollback), errors.Is(err, domain.ErrPreviewClosed), errors.Is(err, app.ErrNoPreviews):
+		errors.Is(err, domain.ErrPreviewRollback), errors.Is(err, domain.ErrPreviewClosed), errors.Is(err, app.ErrNoPreviews),
+		errors.Is(err, domain.ErrNothingToRestart), errors.Is(err, app.ErrDeploymentInProgress):
 		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
 	}
 	return respond.ServerError(ctx, err)
@@ -88,11 +90,62 @@ func (c *Controller) Deploy(ctx contractshttp.Context) contractshttp.Response {
 	if !ok {
 		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
 	}
-	d, err := c.service.Deploy(ctx.Context(), id)
+	deploy := c.service.Deploy
+	// force_rebuild is the field Coolify's dashboard sends, force its API's.
+	if ctx.Request().InputBool("force_rebuild") || ctx.Request().InputBool("force") {
+		deploy = c.service.DeployWithoutCache
+	}
+	d, err := deploy(ctx.Context(), id)
 	if err != nil {
 		return c.fail(ctx, err)
 	}
 	return ctx.Response().Json(contractshttp.StatusCreated, contractshttp.Json{"deployment": ToJSON(d)})
+}
+
+// Restart queues a Deployment that starts the running Image again.
+func (c *Controller) Restart(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := RouteID(ctx)
+	if !ok {
+		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
+	}
+	d, err := c.service.Restart(ctx.Context(), id)
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	return ctx.Response().Json(contractshttp.StatusCreated, contractshttp.Json{"deployment": ToJSON(d)})
+}
+
+func statusJSON(s app.ApplicationStatus) contractshttp.Json {
+	return contractshttp.Json{"status": string(s.Status), "container_present": s.ContainerPresent}
+}
+
+// Stop stops the Application and answers with its status after.
+func (c *Controller) Stop(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := RouteID(ctx)
+	if !ok {
+		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
+	}
+	if err := c.service.Stop(ctx.Context(), id); err != nil {
+		return c.fail(ctx, err)
+	}
+	s, err := c.service.Status(ctx.Context(), id)
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(statusJSON(s))
+}
+
+// Status answers with the Application's status from its Containers.
+func (c *Controller) Status(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := RouteID(ctx)
+	if !ok {
+		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
+	}
+	s, err := c.service.Status(ctx.Context(), id)
+	if err != nil {
+		return c.fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(statusJSON(s))
 }
 
 func (c *Controller) List(ctx contractshttp.Context) contractshttp.Response {

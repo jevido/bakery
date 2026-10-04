@@ -273,3 +273,50 @@ func TestRemovePreview(t *testing.T) {
 		t.Fatalf("volumes left: %+v %v", vols, err)
 	}
 }
+
+func TestStatesAndStop(t *testing.T) {
+	sock := podman.DefaultSocket()
+	if _, err := os.Stat(sock); err != nil {
+		t.Skipf("no podman socket at %s", sock)
+	}
+	c := podman.New(sock)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	if err := c.EnsureNetwork(ctx, "bakery-test"); err != nil {
+		t.Fatal(err)
+	}
+	r := Runtime{Podman: c, Network: "bakery-test", StartTimeout: 20 * time.Second, Settle: time.Second}
+	buildTestImage(t, ctx, c, "localhost/bakery-test/states:1", false)
+
+	const appID = 990003
+	defer r.RemoveAll(context.Background(), appID)
+	if states, running, err := r.States(ctx, appID); err != nil || len(states) != 0 || running != "" {
+		t.Fatalf("before: %v %q %v", states, running, err)
+	}
+	for _, spec := range []app.ContainerSpec{
+		{Name: "bakery-test-states-1", DeploymentID: 1},
+		{Name: "bakery-test-states-2", DeploymentID: 2},
+		{Name: "bakery-test-states-pr3", DeploymentID: 3, Preview: 3},
+	} {
+		spec.Image, spec.ApplicationID = "localhost/bakery-test/states:1", appID
+		if err := r.Start(ctx, spec); err != nil {
+			t.Fatalf("Start %s: %v", spec.Name, err)
+		}
+	}
+	states, running, err := r.States(ctx, appID)
+	if err != nil || len(states) != 2 || states[0] != "running" || running != "bakery-test-states-2" {
+		t.Fatalf("running: %v %q %v", states, running, err)
+	}
+	stopped, err := r.Stop(ctx, appID)
+	if err != nil || len(stopped) != 2 {
+		t.Fatalf("Stop: %v %v", stopped, err)
+	}
+	if states, running, err := r.States(ctx, appID); err != nil || len(states) != 0 || running != "" {
+		t.Fatalf("after: %v %q %v", states, running, err)
+	}
+	// The Preview keeps running.
+	list, _ := r.containers(ctx, appID)
+	if len(list) != 1 || list[0].State != "running" {
+		t.Fatalf("preview after stop: %+v", list)
+	}
+}

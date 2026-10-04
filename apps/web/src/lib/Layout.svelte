@@ -9,6 +9,7 @@
   import { href, router } from './router.svelte'
   import { session } from './session.svelte'
   import StatusBadge from './ui/StatusBadge.svelte'
+  import StatusSummary from './ui/StatusSummary.svelte'
   import UserMenu from './UserMenu.svelte'
 
   let { children }: { children: Snippet } = $props()
@@ -175,7 +176,9 @@
                 {crumb.label}
               </span>
             {/if}
-            {#if crumb.status}
+            {#if crumb.summary}
+              <div class="ml-1"><StatusSummary status={crumb.summary} /></div>
+            {:else if crumb.status}
               <StatusBadge status={crumb.status.label} type={crumb.status.type} class="ml-1 shrink-0" />
             {/if}
           {/each}

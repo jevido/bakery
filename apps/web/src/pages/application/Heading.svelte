@@ -12,7 +12,7 @@
   // moved into the top bar's resource slot, where the breadcrumb shows the name
   // and status. Actions is shown only to those who may deploy.
   import Icon from '../../lib/Icon.svelte'
-  import StatusBadge, { type StatusType } from '../../lib/ui/StatusBadge.svelte'
+  import StatusSummary from '../../lib/ui/StatusSummary.svelte'
   import { portalTo } from '../../lib/ui/portal'
   import Links from './Links.svelte'
 
@@ -21,12 +21,16 @@
     urls,
     status,
     actions,
+    mobileActions = actions,
   }: {
     name: string
     urls: string[]
-    status: { label: string; type: StatusType } | null
+    /** Coolify's status string, e.g. `running:healthy`; null until known. */
+    status: string | null
     /** Empty for a viewer: no Actions button at all. */
     actions: Action[]
+    /** The phone menu, which Coolify orders a little differently. */
+    mobileActions?: Action[]
   } = $props()
 
   let mobileOpen = $state(false)
@@ -49,8 +53,8 @@
 
 <svelte:window onclick={outside} onkeydown={escape} />
 
-{#snippet items(close: () => void)}
-  {#each actions as action (action.label)}
+{#snippet items(list: Action[], close: () => void)}
+  {#each list as action (action.label)}
     <button
       type="button"
       role="menuitem"
@@ -72,7 +76,7 @@
     <div class="flex min-w-0 flex-col items-start gap-2">
       <h1 class="max-w-full min-w-0 truncate text-[24px]! leading-7! font-semibold! tracking-tight! text-black dark:text-fg">{name}</h1>
       <div class="relative flex w-full min-w-0 items-center gap-2">
-        {#if status}<StatusBadge status={status.label} type={status.type} />{/if}
+        {#if status}<StatusSummary {status} align="right" />{/if}
         <Links {urls} compact />
       </div>
     </div>
@@ -95,7 +99,7 @@
         </button>
         {#if mobileOpen}
           <div class="listbox-panel top-full! right-0! left-0! mt-1! w-full! min-w-0!" role="menu">
-            {@render items(() => (mobileOpen = false))}
+            {@render items(mobileActions, () => (mobileOpen = false))}
           </div>
         {/if}
       </div>
@@ -121,7 +125,7 @@
             </button>
             {#if desktopOpen}
               <div class="listbox-panel top-full! right-0! left-auto! mt-1! w-60! min-w-0!" role="menu">
-                {@render items(() => (desktopOpen = false))}
+                {@render items(actions, () => (desktopOpen = false))}
               </div>
             {/if}
           </div>

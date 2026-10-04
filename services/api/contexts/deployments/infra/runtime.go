@@ -11,6 +11,7 @@ import (
 
 	"github.com/jevido/bakery/services/api/app/podman"
 	"github.com/jevido/bakery/services/api/contexts/deployments/app"
+	"github.com/jevido/bakery/services/api/contexts/deployments/domain"
 )
 
 // Runtime builds and runs Application Containers with Podman.
@@ -34,7 +35,7 @@ func (r Runtime) ServerName() string { return r.Server }
 func (r Runtime) Build(ctx context.Context, req app.BuildRequest, out func(string)) error {
 	tar := podman.TarDir(req.Dir)
 	defer tar.Close()
-	_, err := r.Podman.Build(ctx, tar, podman.BuildOptions{Tag: req.Tag, Dockerfile: req.Dockerfile, Labels: req.Labels, BuildArgs: req.BuildArgs}, out)
+	_, err := r.Podman.Build(ctx, tar, podman.BuildOptions{Tag: req.Tag, Dockerfile: req.Dockerfile, Labels: req.Labels, BuildArgs: req.BuildArgs, NoCache: req.NoCache}, out)
 	return err
 }
 
@@ -294,6 +295,34 @@ func (r Runtime) RemoveVolumes(ctx context.Context, applicationID uint64) error 
 func (r Runtime) RemoveAll(ctx context.Context, applicationID uint64) error {
 	_, err := r.removeWhere(ctx, applicationID, false, func(podman.ContainerSummary) bool { return true })
 	return err
+}
+
+// Stop stops the Application's own Containers gracefully and removes
+// them; its Previews' stay.
+func (r Runtime) Stop(ctx context.Context, applicationID uint64) ([]string, error) {
+	return r.removeWhere(ctx, applicationID, true, func(c podman.ContainerSummary) bool { return PreviewOf(c.Labels) == 0 })
+}
+
+// States returns the states of the Application's own Containers and the
+// name of the newest running one (by its Deployment).
+func (r Runtime) States(ctx context.Context, applicationID uint64) ([]domain.ContainerState, string, error) {
+	list, err := r.containers(ctx, applicationID)
+	if err != nil {
+		return nil, "", err
+	}
+	var states []domain.ContainerState
+	running, newest := "", uint64(0)
+	for _, c := range list {
+		if PreviewOf(c.Labels) != 0 {
+			continue
+		}
+		states = append(states, domain.ContainerState(c.State))
+		deployment, _ := strconv.ParseUint(c.Labels["bakery.deployment"], 10, 64)
+		if c.State == "running" && (running == "" || deployment > newest) {
+			running, newest = strings.TrimPrefix(firstName(c.Names), "/"), deployment
+		}
+	}
+	return states, running, nil
 }
 
 // RemovePreview removes the Preview's Containers at once, then its

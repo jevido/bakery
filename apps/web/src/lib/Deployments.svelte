@@ -131,6 +131,7 @@
   {#if d.preview}<span class="tag" data-testid="preview-tag">PR #{d.preview}</span>{/if}
   {#if d.trigger === 'webhook'}<span class="tag">webhook</span>{/if}
   {#if d.trigger === 'rollback'}<span class="tag">rollback of #{d.rollback_of}</span>{/if}
+  {#if d.trigger === 'restart'}<span class="tag">restart of #{d.rollback_of}</span>{/if}
 {/snippet}
 
 <style>

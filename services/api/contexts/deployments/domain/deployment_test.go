@@ -75,3 +75,40 @@ func TestNames(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestNewRestart(t *testing.T) {
+	if _, err := NewRestart(nil); err != ErrNothingToRestart {
+		t.Fatalf("nil: %v", err)
+	}
+	if _, err := NewRestart(&Deployment{ID: 3, Status: Failed, Image: "i"}); err != ErrNothingToRestart {
+		t.Fatalf("failed one: %v", err)
+	}
+	d, err := NewRestart(&Deployment{ID: 3, ApplicationID: 1, Status: Finished, Image: "i", ServerID: 2, CommitSHA: "abc"})
+	if err != nil || d.Trigger != TriggerRestart || *d.RollbackOf != 3 || d.Image != "i" || d.ServerID != 2 || d.CommitSHA != "abc" || d.Status != Queued {
+		t.Fatalf("restart %+v %v", d, err)
+	}
+}
+
+func TestStatusOf(t *testing.T) {
+	cases := []struct {
+		states []ContainerState
+		health Health
+		want   ApplicationStatus
+	}{
+		{nil, UnknownHealth, StatusExited},
+		{[]ContainerState{"exited"}, UnknownHealth, StatusExited},
+		{[]ContainerState{"running"}, Healthy, "running:healthy"},
+		{[]ContainerState{"running"}, UnknownHealth, "running:unknown"},
+		{[]ContainerState{"running", "created"}, Unhealthy, "running:unhealthy"},
+		{[]ContainerState{"running", "exited"}, Healthy, StatusDegraded},
+		{[]ContainerState{"restarting"}, UnknownHealth, StatusRestarting},
+	}
+	for _, c := range cases {
+		if got := StatusOf(c.states, c.health); got != c.want {
+			t.Errorf("%v %s: %s, want %s", c.states, c.health, got, c.want)
+		}
+	}
+	if !ApplicationStatus("running:unknown").Running() || StatusExited.Running() {
+		t.Fatal("Running")
+	}
+}

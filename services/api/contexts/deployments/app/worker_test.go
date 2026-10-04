@@ -86,7 +86,14 @@ func (m *memStore) ByPreview(_ context.Context, _ uint64, number int, _ int) ([]
 	}
 	return out, nil
 }
-func (m *memStore) Active(context.Context, uint64) (domain.Deployment, bool, error) {
+func (m *memStore) Active(_ context.Context, applicationID uint64) (domain.Deployment, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, d := range m.items {
+		if d.ApplicationID == applicationID && d.Status.Active() {
+			return d, true, nil
+		}
+	}
 	return domain.Deployment{}, false, nil
 }
 func (m *memStore) DeleteForApplication(context.Context, uint64) error  { return nil }
@@ -245,6 +252,27 @@ func (r *fakeRuntime) RemoveOthers(_ context.Context, _ uint64, preview int, kee
 	return out, nil
 }
 func (r *fakeRuntime) RemoveAll(context.Context, uint64) error { return nil }
+func (r *fakeRuntime) Stop(_ context.Context, _ uint64) ([]string, error) {
+	var out []string
+	for name := range r.running {
+		if r.previewOf[name] == 0 {
+			out = append(out, name)
+			delete(r.running, name)
+		}
+	}
+	return out, nil
+}
+func (r *fakeRuntime) States(_ context.Context, _ uint64) ([]domain.ContainerState, string, error) {
+	var states []domain.ContainerState
+	running := ""
+	for name := range r.running {
+		if r.previewOf[name] == 0 {
+			states = append(states, "running")
+			running = max(running, name)
+		}
+	}
+	return states, running, nil
+}
 func (r *fakeRuntime) RemovePreview(_ context.Context, _ uint64, preview int) ([]string, error) {
 	var out []string
 	for name := range r.running {
@@ -877,5 +905,94 @@ func TestFinishedHearsFinishedAndFailedNotCancelled(t *testing.T) {
 	<-done
 	if len(*got) != 0 {
 		t.Fatalf("a cancelled deployment was heard: %+v", *got)
+	}
+}
+
+func TestRestartStartsTheRunningImageAgain(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeCloner{})
+	if _, err := s.service.Restart(ctx, 1); !errors.Is(err, domain.ErrNothingToRestart) {
+		t.Fatalf("restart before any deployment: %v", err)
+	}
+	s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	d, err := s.service.Restart(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Trigger != domain.TriggerRestart || d.Image != "localhost/bakery/whoami:1" || *d.RollbackOf != 1 {
+		t.Fatalf("queued restart: %+v", d)
+	}
+	s.worker.RunOnce(ctx)
+	got, _ := s.service.Deployment(ctx, d.ID)
+	if got.Status != domain.Finished || s.runtime.built != 1 || s.routes["whoami.localhost"] != "bakery-app-1-2" || s.runtime.running["bakery-app-1-1"] {
+		t.Fatalf("restart: %+v, builds %d, routes %v, running %v", got, s.runtime.built, s.routes, s.runtime.running)
+	}
+	if !strings.Contains(s.logs.text(), "Restarting deployment 1 without rebuilding") {
+		t.Errorf("log:\n%s", s.logs.text())
+	}
+}
+
+func TestStopAndStatus(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeCloner{})
+	var stopped []uint64
+	s.service.StopRoute = func(_ context.Context, id uint64) error {
+		stopped = append(stopped, id)
+		return nil
+	}
+	if st, err := s.service.Status(ctx, 1); err != nil || st.Status != domain.StatusExited || st.ContainerPresent {
+		t.Fatalf("status before deploying: %+v %v", st, err)
+	}
+	s.service.Deploy(ctx, 1)
+	if err := s.service.Stop(ctx, 1); !errors.Is(err, ErrDeploymentInProgress) {
+		t.Fatalf("stop with a queued deployment: %v", err)
+	}
+	s.worker.RunOnce(ctx)
+	if st, _ := s.service.Status(ctx, 1); st.Status != "running:unknown" || !st.ContainerPresent {
+		t.Fatalf("status after deploying: %+v", st)
+	}
+	if err := s.service.Stop(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if len(stopped) != 1 || len(s.runtime.running) != 0 {
+		t.Fatalf("stop: routes stopped %v, running %v", stopped, s.runtime.running)
+	}
+	if st, _ := s.service.Status(ctx, 1); st.Status != domain.StatusExited || st.ContainerPresent {
+		t.Fatalf("status after stopping: %+v", st)
+	}
+}
+
+func TestStatusProbesTheHealthcheck(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeCloner{}, HealthCheck{Enabled: true, Path: "/up", Retries: 1, Timeout: 1})
+	s.runtime.probes = []probe{{ok: true}}
+	s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	if st, _ := s.service.Status(ctx, 1); st.Status != "running:healthy" {
+		t.Fatalf("healthy: %+v", st)
+	}
+	s.runtime.probes = []probe{{ok: false, detail: "500"}}
+	s.runtime.probed = nil
+	if st, _ := s.service.Status(ctx, 1); st.Status != "running:unhealthy" {
+		t.Fatalf("unhealthy: %+v", st)
+	}
+}
+
+func TestDeployWithoutCache(t *testing.T) {
+	ctx := context.Background()
+	s := newSetup(t, fakeCloner{})
+	d, err := s.service.DeployWithoutCache(ctx, 1)
+	if err != nil || !d.ForceRebuild {
+		t.Fatalf("queued %+v %v", d, err)
+	}
+	s.worker.RunOnce(ctx)
+	if len(s.runtime.builds) != 1 || !s.runtime.builds[0].NoCache {
+		t.Fatalf("builds %+v", s.runtime.builds)
+	}
+	s.service.Deploy(ctx, 1)
+	s.worker.RunOnce(ctx)
+	if s.runtime.builds[1].NoCache {
+		t.Fatal("a plain deploy built without the cache")
 	}
 }

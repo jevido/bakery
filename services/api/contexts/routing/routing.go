@@ -135,6 +135,12 @@ func SwitchRoute(ctx context.Context, serverID, applicationID uint64, domains []
 	return svc().SwitchRoute(ctx, domain.Route{ApplicationID: applicationID, ServerID: serverID, Domains: domains, Container: container, Port: port})
 }
 
+// StopRoute stops serving a stopped Application's Domains; its Route
+// settings and Preview routes stay. One without a Route is fine.
+func StopRoute(ctx context.Context, applicationID uint64) error {
+	return svc().StopRoute(ctx, applicationID)
+}
+
 // SwitchPreviewRoute points a Preview's Domains at a Container and port on
 // the Application's Server and Applies that Server's Proxy. When it
 // returns nil, Caddy there is serving the new Container.

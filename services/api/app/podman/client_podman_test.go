@@ -444,3 +444,28 @@ func TestNetworkAliasesAndSpec(t *testing.T) {
 		t.Errorf("removing a missing network: %v", err)
 	}
 }
+
+func TestBuildNoCache(t *testing.T) {
+	c := client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	busybox(t, ctx, c)
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "Containerfile"), []byte("FROM docker.io/library/busybox:latest\nRUN echo layer > /layer\n"), 0o644)
+	tag := "localhost/bakery-test/nocache:1"
+	defer c.RemoveImage(context.Background(), tag)
+	build := func(noCache bool) string {
+		var out []string
+		if _, err := c.Build(ctx, TarDir(dir), BuildOptions{Tag: tag, Dockerfile: "Containerfile", NoCache: noCache}, func(l string) { out = append(out, l) }); err != nil {
+			t.Fatalf("build: %v", err)
+		}
+		return strings.Join(out, "\n")
+	}
+	build(false)
+	if log := build(false); !strings.Contains(log, "Using cache") {
+		t.Fatalf("second build did not use the cache:\n%s", log)
+	}
+	if log := build(true); strings.Contains(log, "Using cache") {
+		t.Fatalf("no-cache build used the cache:\n%s", log)
+	}
+}

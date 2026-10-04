@@ -11,11 +11,11 @@
   import Deployments from '../../lib/Deployments.svelte'
   import EnvironmentVariables from '../../lib/EnvironmentVariables.svelte'
   import Previews from '../../lib/Previews.svelte'
-  import { statusLabel, statusTone } from '../../lib/resources'
   import Routing from '../../lib/Routing.svelte'
   import { applicationPath, go, href, type ApplicationPage } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
   import type { Application, ApplicationInput, Deployment, Environment, Server } from '../../lib/types'
+  import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import Webhook from '../../lib/Webhook.svelte'
@@ -39,24 +39,33 @@
   let saved = $state(false)
   let deploying = $state(false)
 
+  // Coolify's status string from the Application's own Containers, and
+  // whether one (running or not) is there to remove.
+  let appStatus = $state.raw<{ status: string; container_present: boolean } | null>(null)
+
   // The Application's own Deployments; Previews' are listed with them but
   // have their own queue.
   const own = $derived(deployments.filter((d) => d.preview === 0))
-  const latest = $derived(own[0] ?? null)
   const active = $derived(deployments.some((d) => d.active))
   // One Deployment can wait behind the running one; a second cannot.
   const queued = $derived(own.some((d) => d.status === 'queued'))
-  const status = $derived(latest ? { label: statusLabel(latest), type: statusTone(latest) } : null)
+  const status = $derived(appStatus?.status ?? null)
+  const exited = $derived(status?.startsWith('exited') ?? false)
 
   async function loadDeployments() {
     const r = await api<{ deployments: Deployment[] }>('GET', `/applications/${id}/deployments`)
     deployments = r.deployments
   }
 
+  async function loadStatus() {
+    appStatus = await api<{ status: string; container_present: boolean }>('GET', `/applications/${id}/status`)
+  }
+
   $effect(() => {
     application = null
     server = null
     deployments = []
+    appStatus = null
     loadError = ''
     api<{ application: Application }>('GET', `/applications/${id}`)
       .then((r) => {
@@ -74,6 +83,7 @@
         api<{ environment: Environment }>('GET', `/environments/${a.environment_id}`)
           .then((e) => (environment = e.environment))
           .catch(() => {})
+        loadStatus().catch(() => {})
         return loadDeployments()
       })
       .catch((e) => (loadError = e.message))
@@ -82,37 +92,85 @@
   // Keeps the Deployments and the status current: quickly while a Deployment
   // is under way, slower otherwise so one started by a push shows up by itself.
   $effect(() => {
-    const t = setInterval(() => loadDeployments().catch(() => {}), active ? 3000 : 5000)
+    const t = setInterval(() => {
+      loadDeployments().catch(() => {})
+      loadStatus().catch(() => {})
+    }, active ? 3000 : 5000)
     return () => clearInterval(t)
   })
 
-  async function deploy() {
+  // Deploy, Redeploy (without cache) and Restart all start a Deployment, and
+  // Coolify then opens its log, as here.
+  async function start(path: string, body?: unknown) {
     if (!application) return
     deploying = true
     try {
-      const r = await api<{ deployment: Deployment }>('POST', `/applications/${id}/deploy`)
+      const r = await api<{ deployment: Deployment }>('POST', `/applications/${id}/${path}`, body)
       await loadDeployments()
-      // Coolify opens the new Deployment's log, as here.
       go(`${applicationPath(application, 'deployment')}/${r.deployment.id}`)
     } catch (err) {
       if (!(err instanceof ApiError)) throw err
-      toast.error('Deployment not started', err.message)
+      toast.error(path === 'restart' ? 'Restart not started' : 'Deployment not started', err.message)
     } finally {
       deploying = false
     }
   }
 
+  const deploy = () => start('deploy')
+  const deployWithoutCache = () => start('deploy', { force_rebuild: true })
+
+  async function restart() {
+    await start('restart')
+  }
+
+  async function stop() {
+    toast.info('Gracefully stopping application.', 'It could take a while depending on the application.')
+    try {
+      appStatus = await api<{ status: string; container_present: boolean }>('POST', `/applications/${id}/stop`)
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err
+      toast.error('Application not stopped', err.message)
+    }
+  }
+
+  // Coolify opens these modals by clicking their hidden triggers.
+  const openModal = (id: string) => () => document.getElementById(id)?.click()
+
+  // Coolify's heading.blade.php: what the menu offers depends on whether the
+  // Application is exited, and the phone menu lists them in its own order.
+  const busy = $derived(deploying || queued)
   const actions = $derived<Action[]>(
-    session.canWrite
-      ? [
-          {
-            label: latest?.status === 'finished' ? 'Redeploy' : 'Deploy',
-            icon: latest?.status === 'finished' ? 'refresh' : 'play-circle',
-            run: deploy,
-            disabled: deploying || queued,
-          },
-        ]
-      : [],
+    !session.canWrite || !status
+      ? []
+      : exited
+        ? [
+            { label: 'Deploy', icon: 'play-circle', run: deploy, disabled: busy },
+            { label: 'Deploy (without cache)', icon: 'refresh', run: deployWithoutCache, disabled: busy },
+            ...(appStatus?.container_present
+              ? [{ label: 'Remove container', icon: 'stop-circle', run: openModal('application-stop-trigger'), danger: true } satisfies Action]
+              : []),
+          ]
+        : [
+            { label: 'Redeploy', icon: 'refresh', run: deploy, disabled: busy },
+            {
+              label: status.startsWith('running') ? 'Redeploy (without cache)' : 'Deploy (without cache)',
+              icon: 'refresh',
+              run: deployWithoutCache,
+              disabled: busy,
+            },
+            { label: 'Restart', icon: 'restart', run: openModal('application-restart-trigger'), disabled: busy },
+            { label: 'Stop', icon: 'stop-circle', run: openModal('application-stop-trigger'), danger: true },
+          ],
+  )
+  const mobileActions = $derived<Action[]>(
+    !session.canWrite || !status || exited
+      ? actions
+      : [
+          { label: 'Deploy', icon: 'refresh', run: deploy, disabled: busy },
+          { label: 'Restart', icon: 'restart', run: openModal('application-restart-trigger'), disabled: busy },
+          { label: 'Deploy (without cache)', icon: 'refresh', run: deployWithoutCache, disabled: busy },
+          { label: 'Stop', icon: 'stop-circle', run: openModal('application-stop-trigger'), danger: true },
+        ],
   )
 
   async function update(input: ApplicationInput) {
@@ -146,7 +204,7 @@
         { label: 'Projects', href: href('/projects') },
         { label: crumbs.project, href: href(`/project/${projectId}`) },
         { label: crumbs.environment, href: href(`/project/${projectId}/environment/${environmentId}`) },
-        { label: crumbs.name, status: status ?? undefined },
+        { label: crumbs.name, summary: status ?? undefined },
       )
   })
 </script>
@@ -164,7 +222,36 @@
 {:else if !application}
   <div class="chrome"><Spinner text="Loading…" /></div>
 {:else}
-  <Heading name={application.name} urls={application.public_urls} {status} {actions} />
+  <Heading name={application.name} urls={application.public_urls} {status} {actions} {mobileActions} />
+  {#if session.canWrite}
+    <div class="hidden" aria-hidden="true">
+      <ConfirmationModal
+        title={exited ? 'Confirm Container Removal?' : 'Confirm Application Stopping?'}
+        buttonTitle={exited ? 'Remove container' : 'Stop'}
+        actions={[
+          exited ? 'The exited application container will be removed.' : 'This application will be stopped.',
+          exited ? 'Anonymous volumes may become eligible for cleanup.' : 'All non-persistent data of this application will be deleted.',
+        ]}
+        confirmWithText={false}
+        onconfirm={stop}
+      >
+        {#snippet trigger(show)}
+          <button id="application-stop-trigger" type="button" onclick={show}>Stop</button>
+        {/snippet}
+      </ConfirmationModal>
+      <ConfirmationModal
+        title="Confirm Application Restart?"
+        buttonTitle="Restart"
+        actions={['This application will be restarted without rebuilding.']}
+        confirmWithText={false}
+        onconfirm={restart}
+      >
+        {#snippet trigger(show)}
+          <button id="application-restart-trigger" type="button" onclick={show}>Restart</button>
+        {/snippet}
+      </ConfirmationModal>
+    </div>
+  {/if}
 
   <section class="mt-4 w-full max-w-none lg:mt-0">
     <div class="grid min-w-0 gap-8 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">

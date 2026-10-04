@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # End to end against the Forgejo stand-in: Health checks, a redeploy that
 # never fails a request, a broken commit that keeps the old version, Cancel,
-# Rollback, a build-only variable and Shared variables. Needs `task dev`
+# Rollback, a build-only variable, Shared variables, the Application status,
+# Stop, Restart and Deploy without cache. Needs `task dev`
 # running (API on 127.0.0.1:4910, proxy on 4943). Starts Forgejo (compose
 # profile git) and removes it and everything the test created when done.
 set -euo pipefail
@@ -100,5 +101,43 @@ wait_for 60 "the rollback" status_is "$ROLLBACK" finished
 wait_for 30 "version 1 again" serves 1
 [ "$(fetch /greeting)" = "hello from the environment" ] || fail "rollback lost the runtime variables"
 echo "ok: version 1 is back without a build (deployment $ROLLBACK, second was $SECOND)"
+
+say "Status, Stop, Deploy, Restart"
+rm "$REPO/slow"
+commit 5 "Version 5"
+app_status() { bakery GET "/api/applications/$APP_ID/status" | json "d['status']"; }
+status_now() { [ "$(app_status)" = "$1" ]; }
+wait_for 30 "running:healthy" status_now running:healthy
+STOPPED=$(bakery POST "/api/applications/$APP_ID/stop")
+[ "$(json "d['status'], d['container_present']" <<<"$STOPPED")" = "exited False" ] || fail "stop answered $STOPPED"
+[ "$(podman ps -a --filter "label=bakery.application=$APP_ID" --format '{{.Names}}')" = "" ] || fail "stop left a container"
+! fetch / >/dev/null || fail "the domain still answers after stop"
+echo "ok: stopped, status exited, nothing left, the domain no longer answers"
+FIFTH=$(deploy)
+wait_for 300 "the deployment after stop" status_is "$FIFTH" finished
+wait_for 30 "version 5" serves 5
+status_now running:healthy || fail "status after deploy: $(app_status)"
+RESTART=$(bakery POST "/api/applications/$APP_ID/restart" | json "d['deployment']['id']")
+wait_for 60 "the restart" status_is "$RESTART" finished
+[ "$(deployment "$RESTART" "['trigger']")" = restart ] || fail "trigger: $(deployment "$RESTART" "['trigger']")"
+[ "$(deployment "$RESTART" "['rollback_of']")" = "$FIFTH" ] || fail "restart of: $(deployment "$RESTART" "['rollback_of']")"
+serves 5 || fail "version 5 is not served after the restart"
+status_now running:healthy || fail "status after restart: $(app_status)"
+[ "$(podman ps --filter "label=bakery.application=$APP_ID" --format '{{.Names}}')" = "bakery-app-$APP_ID-$RESTART" ] || fail "restart did not replace the container"
+echo "ok: deployed again after stop, restarted without a build (deployment $RESTART)"
+
+say "Deploy with and without the build cache"
+log_of() { curl -sS -b "$JAR" --max-time 5 "$API/api/deployments/$1/log" || true; }
+CACHED=$(deploy)
+wait_for 300 "the cached redeploy" status_is "$CACHED" finished
+grep -q "Using cache" <<<"$(log_of "$CACHED")" || fail "a plain redeploy of the same commit used no cached layer"
+FORCED=$(bakery POST "/api/applications/$APP_ID/deploy" '{"force_rebuild":true}' | json "d['deployment']['id']")
+[ "$(deployment "$FORCED" "['force_rebuild']")" = True ] || fail "force_rebuild not recorded"
+wait_for 300 "the redeploy without cache" status_is "$FORCED" finished
+FORCED_LOG=$(log_of "$FORCED")
+grep -q "Building without the build cache" <<<"$FORCED_LOG" || fail "no-cache build not logged"
+! grep -q "Using cache" <<<"$FORCED_LOG" || fail "the redeploy without cache used cached layers"
+serves 5 || fail "version 5 is not served after the redeploy without cache"
+echo "ok: a plain redeploy reuses layers, force_rebuild builds them all"
 
 say "PASS"

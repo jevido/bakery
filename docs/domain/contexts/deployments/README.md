@@ -27,7 +27,10 @@ Application is (projects) or for the Caddy configuration (routing).
 | Rollback | A Deployment that starts an earlier finished Deployment's Image, skipping clone and build. |
 | Active | A Deployment in `queued`, `cloning`, `building` or `starting`. |
 | Running | A Deployment in `cloning`, `building` or `starting`. |
-| Deploy trigger | `manual`, `webhook` or `rollback`. |
+| Deploy trigger | `manual`, `webhook`, `rollback` or `restart`. |
+| Restart | A Deployment that starts the Image of the Application's newest finished Deployment again, skipping clone and build. |
+| Stop | The Application's Route out of its Proxy, its own Containers stopped and removed. |
+| Application status | `running:healthy`, `running:unhealthy`, `running:unknown`, `restarting`, `degraded:unhealthy` or `exited`, from its own Containers. |
 | Webhook | The URL and secret a git host calls on push and on Pull request events, with Previews on or off and the Git host token. |
 | Pull request | A git host's request to merge a branch into the Application's branch (a GitLab merge request too), as its Webhook calls describe it. |
 | Preview | A copy of the Application built from one open Pull request's head branch, with its own Containers (`bakery-app-<id>-pr<n>-<deployment>`, labelled `bakery.preview=<n>`), Volumes (`bakery-app-<id>-pr<n>-<storage>`) and Preview route on the Preview domain `pr-<n>.<primary Domain>`. |
@@ -53,6 +56,18 @@ Application is (projects) or for the Caddy configuration (routing).
 ### Commands
 
 - `Deploy(application)`: queues a manual Deployment, or conflicts if one is already queued.
+- `Deploy(application, without cache)`: the same, building every layer
+  again (Coolify's `force_rebuild`).
+- `Restart(application)`: queues a Deployment with trigger `restart` that
+  starts the Image of the Application's newest finished Deployment (of its
+  own, not a Preview's) again with today's settings; refused when there is
+  none or its Image is gone.
+- `Stop(application)`: refused while a Deployment of it is active; takes
+  its Route out of the Proxy (`routing.StopRoute`) and stops and removes its
+  own Containers on every Server it ran on.
+- `Status(application)`: the Application status from its own Containers on
+  its Target server, probing the newest running one once when it has a
+  Healthcheck.
 - `Cancel(deployment)`: a queued one ends `cancelled` at once; a running one
   has its step stopped, its new Container removed, and ends `cancelled`. Once
   the Route has moved it is too late, and the Deployment finishes.
@@ -111,7 +126,8 @@ Application is (projects) or for the Caddy configuration (routing).
   the Application's Deployments ran on); `servers.Connect`, the Server
   connection every step of a Deployment runs through.
   A push Webhook for a `dockerimage` Application is ignored: it has no branch.
-  `routing.SwitchPreviewRoute` and `routing.DropPreviewRoute` for Previews.
+  `routing.SwitchPreviewRoute` and `routing.DropPreviewRoute` for Previews,
+  `routing.StopRoute` for Stop.
 - **Receives:** Webhook calls from git hosts, unauthenticated but signed:
   pushes and Pull request events.
 - **Talks to:** the git hosts' REST APIs (Forgejo and Gitea, GitHub,
@@ -269,3 +285,31 @@ Application is (projects) or for the Caddy configuration (routing).
   clones with `StrictHostKeyChecking=no` and writes pull request comments
   through its GitHub App; The Bakery pins git hosts' SSH keys and, until it has
   Sources, writes the Preview comment with a token stored on the Webhook.
+- **Restart is a Deployment, as in Coolify.** Coolify's Restart queues a
+  "restart only" deployment that starts the existing image again; The
+  Bakery's does the same through the Rollback path (trigger `restart`,
+  `rollback_of` the Deployment it restarts), so it goes through the
+  Healthcheck and the zero-downtime route switch, picks up changed runtime
+  variables, and shows in the history with its log. Restarting the
+  Container in place would skip the Healthcheck and leave no trace.
+- **Stop removes the Container and the Route, and nothing remembers it.**
+  As Coolify's Stop (with its `docker rm`), the Containers go; the Route
+  goes from routing's table, so a restart of The Bakery, which loads the
+  Proxy from that table, does not bring a stopped Application back. Route
+  settings stay, so the next Deploy serves it as before. Its Previews keep
+  running, as Coolify's Stop leaves preview deployments alone.
+- **The Application status is read live, not stored.** Coolify stores a
+  status that a background job refreshes from `docker ps`; The Bakery asks
+  Podman when the dashboard asks (the dashboard polls it), and probes the
+  Healthcheck once per ask, because its Containers have no Podman health
+  check (see above). `degraded:unhealthy` is Coolify's word for an
+  Application with some Containers running and others stopped; a running
+  Container whose Healthcheck fails is `running:unhealthy`, which Coolify's
+  status summary shows as Degraded too.
+- **Without cache is `nocache` on the libpod build.** The build API also
+  needs `outputformat` set explicitly, or it never finds the layers it
+  cached and every build is without cache.
+- **Stop has no "docker cleanup" checkbox.** Coolify's Stop modal offers to
+  prune the server after stopping; The Bakery's Cleanup is its own action
+  on the Server (servers), so Stop only stops. The Stop and Restart modals
+  are otherwise Coolify's.

@@ -20,6 +20,9 @@ var (
 	// ErrNoPreviews is a Preview of a dockerimage Application, which has no
 	// branches to preview.
 	ErrNoPreviews = errors.New("dockerimage applications have no previews")
+	// ErrDeploymentInProgress is a Stop while a Deployment of the
+	// Application is queued or running.
+	ErrDeploymentInProgress = errors.New("a deployment of this application is in progress")
 )
 
 // Store keeps Deployments.
@@ -218,6 +221,12 @@ type Runtime interface {
 	Remove(ctx context.Context, name string) error
 	// RemoveAll removes every Container of the Application.
 	RemoveAll(ctx context.Context, applicationID uint64) error
+	// Stop stops the Application's own Containers gracefully (not its
+	// Previews') and removes them, returning their names.
+	Stop(ctx context.Context, applicationID uint64) ([]string, error)
+	// States returns the states of the Application's own Containers (not
+	// its Previews'), and the name of the newest running one, if any.
+	States(ctx context.Context, applicationID uint64) (states []domain.ContainerState, running string, err error)
 	// RemovePreview removes the Containers and then the Volumes of one
 	// Preview of the Application, and returns their names.
 	RemovePreview(ctx context.Context, applicationID uint64, preview int) ([]string, error)
@@ -229,6 +238,8 @@ type BuildRequest struct {
 	Tag        string
 	Labels     map[string]string
 	BuildArgs  map[string]string
+	// NoCache builds without the layer cache.
+	NoCache bool
 }
 
 // PullRequest is an image pull. Username and Password empty is anonymous.

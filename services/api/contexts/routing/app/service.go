@@ -293,6 +293,20 @@ func (s *Service) DropRoute(ctx context.Context, applicationID uint64) error {
 	return nil
 }
 
+// StopRoute stops serving the Application itself: its Route goes and its
+// Server is Applied. Its Route settings and Preview routes stay, so the
+// next Deployment serves it as before. One without a Route is fine.
+func (s *Service) StopRoute(ctx context.Context, applicationID uint64) error {
+	server, found, err := s.serverOf(ctx, applicationID)
+	if err != nil || !found {
+		return err
+	}
+	if err := s.routes.Delete(ctx, applicationID); err != nil {
+		return err
+	}
+	return s.apply(ctx, server)
+}
+
 // SwitchPreviewRoute points a Preview's Preview domain at a new Container
 // on its Server, making sure that Server's Proxy runs, then Applies it.
 func (s *Service) SwitchPreviewRoute(ctx context.Context, r domain.PreviewRoute) error {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -20,6 +21,9 @@ type Service struct {
 	// runtimes reach each Server's Podman, for Rollback's Image check,
 	// Image retention and removing Previews; set by the Worker.
 	runtimes Runtimes
+	// StopRoute is routing's; nil leaves the Route of a stopped
+	// Application alone.
+	StopRoute func(ctx context.Context, applicationID uint64) error
 	// DropPreviewRoute is routing's; nil leaves Preview routes alone.
 	DropPreviewRoute func(ctx context.Context, applicationID uint64, preview int) error
 	// Comments writes Preview comments; nil writes none.
@@ -52,10 +56,127 @@ func (s *Service) ForgetKnownHost(ctx context.Context, id uint64) error {
 
 // Deploy queues a Deployment of the Application and wakes the Worker.
 func (s *Service) Deploy(ctx context.Context, applicationID uint64) (domain.Deployment, error) {
+	return s.deploy(ctx, applicationID, false)
+}
+
+// DeployWithoutCache queues a Deployment that builds every layer again.
+func (s *Service) DeployWithoutCache(ctx context.Context, applicationID uint64) (domain.Deployment, error) {
+	return s.deploy(ctx, applicationID, true)
+}
+
+func (s *Service) deploy(ctx context.Context, applicationID uint64, forceRebuild bool) (domain.Deployment, error) {
 	if _, err := s.applications(ctx, applicationID); err != nil {
 		return domain.Deployment{}, err
 	}
-	return s.queue(ctx, domain.NewDeployment(applicationID, domain.TriggerManual))
+	d := domain.NewDeployment(applicationID, domain.TriggerManual)
+	d.ForceRebuild = forceRebuild
+	return s.queue(ctx, d)
+}
+
+// Restart queues a Deployment that starts the Image of the Application's
+// newest finished Deployment again with today's settings, without cloning
+// or building, as Coolify's restart does.
+func (s *Service) Restart(ctx context.Context, applicationID uint64) (domain.Deployment, error) {
+	if _, err := s.applications(ctx, applicationID); err != nil {
+		return domain.Deployment{}, err
+	}
+	all, err := s.store.ByApplication(ctx, applicationID, 50)
+	if err != nil {
+		return domain.Deployment{}, err
+	}
+	var last *domain.Deployment
+	for i := range all {
+		if all[i].Preview == 0 && all[i].Status == domain.Finished && (last == nil || all[i].ID > last.ID) {
+			last = &all[i]
+		}
+	}
+	d, err := domain.NewRestart(last)
+	if err != nil {
+		return d, err
+	}
+	if err := s.checkImage(ctx, d); err != nil {
+		return domain.Deployment{}, err
+	}
+	return s.queue(ctx, d)
+}
+
+// Stop takes the Application's Route out of its Proxy and stops and
+// removes its own Containers (its Previews keep running) on every Server
+// it ran on. Nothing brings it back but a Deploy, Restart or Rollback.
+func (s *Service) Stop(ctx context.Context, applicationID uint64) error {
+	a, err := s.applications(ctx, applicationID)
+	if err != nil {
+		return err
+	}
+	if _, active, err := s.store.Active(ctx, applicationID); err != nil {
+		return err
+	} else if active {
+		return ErrDeploymentInProgress
+	}
+	if s.runtimes == nil {
+		return errors.New("no runtime to stop containers with")
+	}
+	if s.StopRoute != nil {
+		if err := s.StopRoute(ctx, applicationID); err != nil {
+			return fmt.Errorf("taking the route out of the proxy: %w", err)
+		}
+	}
+	servers, err := s.store.ServerIDs(ctx, applicationID)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(servers, a.ServerID) {
+		servers = append(servers, a.ServerID)
+	}
+	for _, id := range servers {
+		rt, err := s.runtimes(ctx, id)
+		if err != nil {
+			return err
+		}
+		if _, err := rt.Stop(ctx, applicationID); err != nil {
+			return fmt.Errorf("stopping on %s: %w", rt.ServerName(), err)
+		}
+	}
+	return nil
+}
+
+// ApplicationStatus is what Status reports: Coolify's status string, and
+// whether a Container (running or not) is there to remove.
+type ApplicationStatus struct {
+	Status           domain.ApplicationStatus
+	ContainerPresent bool
+}
+
+// Status reads the Application's own Containers on its Target server and,
+// when one runs and the Application has a Healthcheck, probes the newest
+// running one once.
+func (s *Service) Status(ctx context.Context, applicationID uint64) (ApplicationStatus, error) {
+	a, err := s.applications(ctx, applicationID)
+	if err != nil {
+		return ApplicationStatus{}, err
+	}
+	if s.runtimes == nil {
+		return ApplicationStatus{}, errors.New("no runtime to read containers with")
+	}
+	rt, err := s.runtimes(ctx, a.ServerID)
+	if err != nil {
+		return ApplicationStatus{}, err
+	}
+	states, running, err := rt.States(ctx, applicationID)
+	if err != nil {
+		return ApplicationStatus{}, err
+	}
+	health := domain.UnknownHealth
+	if running != "" && a.HealthCheck.Enabled {
+		url := fmt.Sprintf("http://127.0.0.1:%d%s", a.Port, a.HealthCheck.Path)
+		timeout := time.Duration(max(a.HealthCheck.Timeout, 1)) * time.Second
+		if ok, _, err := rt.Probe(ctx, running, url, timeout); ok && err == nil {
+			health = domain.Healthy
+		} else {
+			health = domain.Unhealthy
+		}
+	}
+	return ApplicationStatus{Status: domain.StatusOf(states, health), ContainerPresent: len(states) > 0}, nil
 }
 
 // DeployPreview queues a Deployment of the Application's open Preview
@@ -92,21 +213,29 @@ func (s *Service) Rollback(ctx context.Context, id uint64) (domain.Deployment, e
 	if err != nil {
 		return d, err
 	}
+	if err := s.checkImage(ctx, d); err != nil {
+		return domain.Deployment{}, err
+	}
+	return s.queue(ctx, d)
+}
+
+// checkImage makes sure the Image d starts is still on d's Server.
+func (s *Service) checkImage(ctx context.Context, d domain.Deployment) error {
 	if s.runtimes == nil {
-		return domain.Deployment{}, errors.New("no runtime to check images with")
+		return errors.New("no runtime to check images with")
 	}
 	rt, err := s.runtimes(ctx, d.ServerID)
 	if err != nil {
-		return domain.Deployment{}, err
+		return err
 	}
 	ok, err := rt.ImageExists(ctx, d.Image)
 	if err != nil {
-		return domain.Deployment{}, err
+		return err
 	}
 	if !ok {
-		return domain.Deployment{}, fmt.Errorf("%w (%s)", ErrImageGone, d.Image)
+		return fmt.Errorf("%w (%s)", ErrImageGone, d.Image)
 	}
-	return s.queue(ctx, d)
+	return nil
 }
 
 // queue stores a queued Deployment and wakes the Worker.

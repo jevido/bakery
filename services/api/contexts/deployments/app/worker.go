@@ -194,7 +194,11 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, slug *string, 
 		if d.SourceImage != "" {
 			from = "pulled " + d.SourceImage
 		}
-		info("Rolling back to deployment %d (image %s, %s)", *d.RollbackOf, d.Image, from)
+		if d.Trigger == domain.TriggerRestart {
+			info("Restarting deployment %d without rebuilding (image %s, %s)", *d.RollbackOf, d.Image, from)
+		} else {
+			info("Rolling back to deployment %d (image %s, %s)", *d.RollbackOf, d.Image, from)
+		}
 		ok, err := rt.ImageExists(ctx, d.Image)
 		if err != nil {
 			return err
@@ -246,7 +250,10 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, slug *string, 
 	if len(buildArgs) > 0 {
 		info("Build args: %s", strings.Join(slices.Sorted(maps.Keys(buildArgs)), ", "))
 	}
-	req := BuildRequest{Dir: dir, Dockerfile: dockerfile, Tag: d.Image, Labels: labels, BuildArgs: buildArgs}
+	if d.ForceRebuild {
+		info("Building without the build cache")
+	}
+	req := BuildRequest{Dir: dir, Dockerfile: dockerfile, Tag: d.Image, Labels: labels, BuildArgs: buildArgs, NoCache: d.ForceRebuild}
 	if err := rt.Build(ctx, req, func(line string) { log.Line(domain.StreamOut, line) }); err != nil {
 		return fmt.Errorf("build failed: %w", err)
 	}

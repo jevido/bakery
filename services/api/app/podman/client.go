@@ -347,12 +347,16 @@ type BuildOptions struct {
 	Labels     map[string]string
 	// BuildArgs are handed to the Dockerfile's ARGs.
 	BuildArgs map[string]string
+	// NoCache builds every layer again instead of reusing cached ones.
+	NoCache bool
 }
 
 // Build builds an image from a tar of the build context, handing each output
 // line to out as it arrives, and returns the image id.
 func (c *Client) Build(ctx context.Context, contextTar io.Reader, opts BuildOptions, out func(line string)) (string, error) {
-	q := url.Values{"t": {opts.Tag}, "dockerfile": {opts.Dockerfile}, "rm": {"true"}, "layers": {"true"}}
+	// Without an explicit outputformat, libpod's build API never finds the
+	// layers it cached before and builds every step again.
+	q := url.Values{"t": {opts.Tag}, "dockerfile": {opts.Dockerfile}, "rm": {"true"}, "layers": {"true"}, "outputformat": {"application/vnd.oci.image.manifest.v1+json"}}
 	if len(opts.Labels) > 0 {
 		raw, _ := json.Marshal(opts.Labels)
 		q.Set("labels", string(raw))
@@ -360,6 +364,9 @@ func (c *Client) Build(ctx context.Context, contextTar io.Reader, opts BuildOpti
 	if len(opts.BuildArgs) > 0 {
 		raw, _ := json.Marshal(opts.BuildArgs)
 		q.Set("buildargs", string(raw))
+	}
+	if opts.NoCache {
+		q.Set("nocache", "true")
 	}
 	res, err := c.do(ctx, http.MethodPost, "/build", q, contextTar, "application/x-tar")
 	if err != nil {

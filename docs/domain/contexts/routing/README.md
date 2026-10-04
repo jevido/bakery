@@ -46,6 +46,7 @@ responsible for which Container is current; deployments tells it.
 - `SwitchRoute(server, applicationID, domains, container, port)`: upsert the Route, ensure that Server's Proxy (creating it on a Server's first Route), then Apply that Server.
 - `ChangeDomains(applicationID, domains)`: on `ApplicationDomainsChanged`; moves an existing Route to the Domains, then Applies. No Route yet: nothing to do.
 - `ChangeRouteSettings(applicationID, settings)`: store, then Apply.
+- `StopRoute(applicationID)`: delete the Application's Route (not its Preview routes or Route settings) and Apply its Server; for a stopped Application.
 - `SwitchPreviewRoute(server, applicationID, preview, domains, container, port)`: like `SwitchRoute`, for a Preview.
 - `DropPreviewRoute(applicationID, preview)`: when a Preview closes; removes it, then Applies its Server.
 - `DropRoute(applicationID)`: on `ApplicationDeleted`, drops the Route, the Preview routes and the Route settings, then Applies.
@@ -58,7 +59,7 @@ None.
 
 ## Integration
 
-- **Publishes:** `SwitchRoute`, `SwitchPreviewRoute` and `DropPreviewRoute` for deployments; `SetServiceRoutes` and `DropServiceRoutes` for services; the Route settings over HTTP (`GET/PUT /api/applications/{id}/routing`) for the dashboard.
+- **Publishes:** `SwitchRoute`, `StopRoute`, `SwitchPreviewRoute` and `DropPreviewRoute` for deployments; `SetServiceRoutes` and `DropServiceRoutes` for services; the Route settings over HTTP (`GET/PUT /api/applications/{id}/routing`) for the dashboard.
 - **Consumes:** `ApplicationDeleted` and `ApplicationDomainsChanged` from projects; `servers.Connect` to run and configure a Remote Proxy.
 
 ## Why it's shaped this way

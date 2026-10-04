@@ -220,3 +220,26 @@ func TestPreviewRoutes(t *testing.T) {
 		t.Fatalf("after DropRoute: %+v", previews.routes)
 	}
 }
+
+func TestStopRoute(t *testing.T) {
+	ctx := context.Background()
+	routes := &upsertRoutes{}
+	previews := &fakePreviewRoutes{}
+	ps := proxies{}
+	s := NewService(routes, &fakeServiceRoutes{}, previews, &fakeSettings{}, ps)
+	_ = s.SwitchRoute(ctx, domain.Route{ApplicationID: 1, Domains: []string{"app.localhost"}, Container: "c1", Port: 80})
+	_ = s.SwitchRoute(ctx, domain.Route{ApplicationID: 2, Domains: []string{"other.localhost"}, Container: "c2", Port: 80})
+	_ = s.SwitchPreviewRoute(ctx, domain.PreviewRoute{ApplicationID: 1, Preview: 7, Domains: []string{"pr-7.app.localhost"}, Container: "c7", Port: 80})
+	if err := s.StopRoute(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	last := ps[0].applied[len(ps[0].applied)-1]
+	if len(last) != 2 || last[0].ApplicationID != 2 || last[1].Container != "c7" {
+		t.Fatalf("after stop %+v", last)
+	}
+	// Stopping one without a Route applies nothing.
+	n := len(ps[0].applied)
+	if err := s.StopRoute(ctx, 1); err != nil || len(ps[0].applied) != n {
+		t.Fatalf("second stop: %v, %d applies", err, len(ps[0].applied)-n)
+	}
+}
