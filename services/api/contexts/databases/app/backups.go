@@ -126,38 +126,57 @@ func (s *Service) checkRunning(ctx context.Context, d domain.Database) error {
 	return nil
 }
 
-// BackUp starts a Backup execution of the Database and returns it while it runs.
-func (s *Service) BackUp(ctx context.Context, id uint64, trigger domain.ExecutionTrigger) (domain.BackupExecution, error) {
-	d, err := s.get(ctx, id)
+// BackUp starts a Backup execution for the Scheduled backup and returns it
+// while it runs.
+func (s *Service) BackUp(ctx context.Context, scheduledBackupID uint64, trigger domain.ExecutionTrigger) (domain.BackupExecution, error) {
+	sb, d, err := s.scheduledBackup(ctx, scheduledBackupID)
 	if err != nil {
 		return domain.BackupExecution{}, err
 	}
+	return s.backUp(ctx, d, sb, trigger)
+}
+
+// BackUpDatabase starts a Backup execution for the Database's oldest
+// Scheduled backup, making the default one if it has none.
+func (s *Service) BackUpDatabase(ctx context.Context, databaseID uint64, trigger domain.ExecutionTrigger) (domain.BackupExecution, error) {
+	d, err := s.get(ctx, databaseID)
+	if err != nil {
+		return domain.BackupExecution{}, err
+	}
+	sb, err := s.oldestScheduledBackup(ctx, d)
+	if err != nil {
+		return domain.BackupExecution{}, err
+	}
+	return s.backUp(ctx, d, sb, trigger)
+}
+
+func (s *Service) backUp(ctx context.Context, d domain.Database, sb domain.ScheduledBackup, trigger domain.ExecutionTrigger) (domain.BackupExecution, error) {
 	if err := s.checkRunning(ctx, d); err != nil {
 		return domain.BackupExecution{}, err
 	}
-	j, jctx, err := s.claim(id)
+	j, jctx, err := s.claim(d.ID)
 	if err != nil {
 		return domain.BackupExecution{}, err
 	}
-	b, err := domain.NewBackupExecution(d, trigger, s.Now())
+	b, err := domain.NewBackupExecution(d, sb, trigger, s.Now())
 	if err == nil {
 		b, err = s.store.CreateBackupExecution(ctx, b)
 	}
 	if err != nil {
-		s.release(id, j)
+		s.release(d.ID, j)
 		return domain.BackupExecution{}, err
 	}
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		defer s.release(id, j)
-		s.runBackup(jctx, d, b)
+		defer s.release(d.ID, j)
+		s.runBackup(jctx, d, sb, b)
 	}()
 	return b, nil
 }
 
 // runBackup dumps, uploads and prunes. Its outcome is stored on the Backup execution.
-func (s *Service) runBackup(ctx context.Context, d domain.Database, b domain.BackupExecution) {
+func (s *Service) runBackup(ctx context.Context, d domain.Database, sb domain.ScheduledBackup, b domain.BackupExecution) {
 	finish := func(err error, local bool, size int64, s3 bool) {
 		if err != nil {
 			b.Fail(err.Error(), local, size, s.Now())
@@ -208,13 +227,13 @@ func (s *Service) runBackup(ctx context.Context, d domain.Database, b domain.Bac
 	if b.S3StorageID != 0 {
 		if err := s.upload(ctx, d, b, size); err != nil {
 			finish(err, true, size, false)
-			s.prune(d)
+			s.prune(d, sb)
 			return
 		}
 		uploaded = true
 	}
 	finish(nil, true, size, uploaded)
-	s.prune(d)
+	s.prune(d, sb)
 }
 
 func (s *Service) upload(ctx context.Context, d domain.Database, b domain.BackupExecution, size int64) error {
@@ -236,17 +255,21 @@ func (s *Service) upload(ctx context.Context, d domain.Database, b domain.Backup
 	return nil
 }
 
-// prune deletes the Backup executions Retention no longer keeps. Failures are
-// logged; they never fail a Backup execution.
-func (s *Service) prune(d domain.Database) {
+// prune deletes the Scheduled backup's Backup executions its Retention no
+// longer keeps. Failures are logged; they never fail a Backup execution.
+func (s *Service) prune(d domain.Database, sb domain.ScheduledBackup) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	backups, err := s.store.BackupExecutions(ctx, d.ID)
+	// The Owner may have changed the Retention while the dump ran.
+	if cur, found, err := s.store.ScheduledBackup(ctx, sb.ID); err == nil && found {
+		sb = cur
+	}
+	backups, err := s.store.ScheduledBackupExecutions(ctx, sb.ID)
 	if err != nil {
-		s.logf("databases: pruning backups of database %d: %v", d.ID, err)
+		s.logf("databases: pruning backups of scheduled backup %d: %v", sb.ID, err)
 		return
 	}
-	for _, b := range domain.Prune(backups, d.ScheduledBackup.Retention) {
+	for _, b := range domain.Prune(backups, sb.Retention) {
 		if err := s.removeExecution(ctx, d, b); err != nil {
 			s.logf("databases: pruning backup %d: %v", b.ID, err)
 		}
@@ -423,67 +446,236 @@ func (s *Service) restoreState(id uint64) (bool, *RestoreOutcome) {
 	return s.restoring[id], &out
 }
 
-// SetScheduledBackup replaces the Database's Scheduled backup.
-func (s *Service) SetScheduledBackup(ctx context.Context, id uint64, sched domain.ScheduledBackup) (View, error) {
-	d, err := s.get(ctx, id)
+// ScheduledBackupView is a Scheduled backup with when it fires next (zero
+// when off).
+type ScheduledBackupView struct {
+	domain.ScheduledBackup
+	NextBackupAt time.Time
+}
+
+func (s *Service) scheduledBackup(ctx context.Context, id uint64) (domain.ScheduledBackup, domain.Database, error) {
+	sb, found, err := s.store.ScheduledBackup(ctx, id)
+	if err == nil && !found {
+		err = ErrNotFound
+	}
+	if err != nil {
+		return sb, domain.Database{}, err
+	}
+	d, err := s.get(ctx, sb.DatabaseID)
+	return sb, d, err
+}
+
+func (s *Service) scheduledBackupView(ctx context.Context, sb domain.ScheduledBackup) (ScheduledBackupView, error) {
+	next, err := s.nextBackup(ctx, sb)
+	return ScheduledBackupView{ScheduledBackup: sb, NextBackupAt: next}, err
+}
+
+// oldestScheduledBackup is the Database's first Scheduled backup; one with
+// the defaults is made when it has none.
+func (s *Service) oldestScheduledBackup(ctx context.Context, d domain.Database) (domain.ScheduledBackup, error) {
+	if !d.Type.Spec().Backups {
+		return domain.ScheduledBackup{}, domain.ErrNoBackups
+	}
+	list, err := s.store.ScheduledBackups(ctx, d.ID)
+	if err != nil {
+		return domain.ScheduledBackup{}, err
+	}
+	if len(list) > 0 {
+		return list[0], nil
+	}
+	sb, err := domain.NewScheduledBackup(d, domain.DefaultScheduledBackup, s.Now())
+	if err != nil {
+		return sb, err
+	}
+	return s.store.CreateScheduledBackup(ctx, sb)
+}
+
+func (s *Service) checkS3Storage(ctx context.Context, id uint64) error {
+	if id == 0 {
+		return nil
+	}
+	_, found, err := s.store.S3Storage(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return &domain.FieldError{Field: "scheduled_backup.s3_storage_id", Message: "that S3 storage does not exist"}
+	}
+	return nil
+}
+
+// ScheduledBackups lists the Database's Scheduled backups, oldest first.
+func (s *Service) ScheduledBackups(ctx context.Context, databaseID uint64) ([]ScheduledBackupView, error) {
+	if _, err := s.get(ctx, databaseID); err != nil {
+		return nil, err
+	}
+	list, err := s.store.ScheduledBackups(ctx, databaseID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ScheduledBackupView, len(list))
+	for i, sb := range list {
+		if out[i], err = s.scheduledBackupView(ctx, sb); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// ScheduledBackup returns one Scheduled backup.
+func (s *Service) ScheduledBackup(ctx context.Context, id uint64) (ScheduledBackupView, error) {
+	sb, _, err := s.scheduledBackup(ctx, id)
+	if err != nil {
+		return ScheduledBackupView{}, err
+	}
+	return s.scheduledBackupView(ctx, sb)
+}
+
+// CreateScheduledBackup adds a Scheduled backup to the Database.
+func (s *Service) CreateScheduledBackup(ctx context.Context, databaseID uint64, in domain.ScheduledBackupInput) (ScheduledBackupView, error) {
+	d, err := s.get(ctx, databaseID)
+	if err != nil {
+		return ScheduledBackupView{}, err
+	}
+	sb, err := domain.NewScheduledBackup(d, in, s.Now())
+	if err != nil {
+		return ScheduledBackupView{}, err
+	}
+	if err := s.checkS3Storage(ctx, sb.S3StorageID); err != nil {
+		return ScheduledBackupView{}, err
+	}
+	if sb, err = s.store.CreateScheduledBackup(ctx, sb); err != nil {
+		return ScheduledBackupView{}, err
+	}
+	return s.scheduledBackupView(ctx, sb)
+}
+
+// UpdateScheduledBackup replaces what the Owner sets on a Scheduled backup.
+func (s *Service) UpdateScheduledBackup(ctx context.Context, id uint64, in domain.ScheduledBackupInput) (ScheduledBackupView, error) {
+	sb, _, err := s.scheduledBackup(ctx, id)
+	if err != nil {
+		return ScheduledBackupView{}, err
+	}
+	if err := sb.Update(in, s.Now()); err != nil {
+		return ScheduledBackupView{}, err
+	}
+	if err := s.checkS3Storage(ctx, sb.S3StorageID); err != nil {
+		return ScheduledBackupView{}, err
+	}
+	if err := s.store.SaveScheduledBackup(ctx, sb); err != nil {
+		return ScheduledBackupView{}, err
+	}
+	return s.scheduledBackupView(ctx, sb)
+}
+
+// DeleteScheduledBackup removes a Scheduled backup with its Backup
+// executions' files and rows; their S3 objects stay, as they do when a
+// Database is deleted. Not while one of them runs.
+func (s *Service) DeleteScheduledBackup(ctx context.Context, id uint64) error {
+	sb, d, err := s.scheduledBackup(ctx, id)
+	if err != nil {
+		return err
+	}
+	list, err := s.store.ScheduledBackupExecutions(ctx, sb.ID)
+	if err != nil {
+		return err
+	}
+	for _, b := range list {
+		if b.Status == domain.ExecutionRunning {
+			return ErrBackupRunning
+		}
+	}
+	for _, b := range list {
+		if b.Local {
+			if err := s.Files.Remove(d.ID, b.FileName); err != nil {
+				return err
+			}
+		}
+		if err := s.store.DeleteBackupExecution(ctx, b.ID); err != nil {
+			return err
+		}
+	}
+	return s.store.DeleteScheduledBackup(ctx, sb.ID)
+}
+
+// ScheduledBackupExecutions lists the Scheduled backup's Backup executions,
+// newest first.
+func (s *Service) ScheduledBackupExecutions(ctx context.Context, id uint64) ([]domain.BackupExecution, error) {
+	if _, _, err := s.scheduledBackup(ctx, id); err != nil {
+		return nil, err
+	}
+	return s.store.ScheduledBackupExecutions(ctx, id)
+}
+
+// SetScheduledBackup replaces the Database's oldest Scheduled backup, for
+// the dashboard until it lists them all.
+func (s *Service) SetScheduledBackup(ctx context.Context, databaseID uint64, in domain.ScheduledBackupInput) (View, error) {
+	d, err := s.get(ctx, databaseID)
 	if err != nil {
 		return View{}, err
 	}
-	if sched.S3StorageID != 0 {
-		_, found, err := s.store.S3Storage(ctx, sched.S3StorageID)
-		if err != nil {
-			return View{}, err
+	if !d.Type.Spec().Backups {
+		// Off was always accepted on any Database type; it changes nothing.
+		if !in.Enabled {
+			return s.view(ctx, d)
 		}
-		if !found {
-			return View{}, &domain.FieldError{Field: "scheduled_backup.s3_storage_id", Message: "that S3 storage does not exist"}
-		}
+		return View{}, domain.ErrNoBackups
 	}
-	if err := d.SetScheduledBackup(sched, s.Now()); err != nil {
+	sb, err := s.oldestScheduledBackup(ctx, d)
+	if err != nil {
 		return View{}, err
 	}
-	if err := s.store.Update(ctx, d); err != nil {
+	if _, err := s.UpdateScheduledBackup(ctx, sb.ID, in); err != nil {
 		return View{}, err
 	}
 	return s.view(ctx, d)
 }
 
-// nextBackup is when the Database's schedule fires next; zero when off.
-func (s *Service) nextBackup(ctx context.Context, d domain.Database) (time.Time, error) {
-	sched := d.ScheduledBackup
-	if !sched.Enabled {
+// nextBackup is when the Scheduled backup fires next; zero when off.
+func (s *Service) nextBackup(ctx context.Context, sb domain.ScheduledBackup) (time.Time, error) {
+	if !sb.Enabled {
 		return time.Time{}, nil
 	}
-	last, err := s.store.LastScheduledStart(ctx, d.ID)
+	last, err := s.store.LastScheduledStart(ctx, sb.ID)
 	if err != nil {
 		return time.Time{}, err
 	}
-	from := sched.EnabledAt
-	if last.After(from) {
-		from = last
-	}
-	return sched.Next(from), nil
+	return sb.NextAt(last), nil
 }
 
-// Tick starts a Backup execution of every Database whose schedule is due at now. A
-// due Backup execution that cannot start (the Database is stopped, or busy) is
-// recorded as a failed scheduled Backup execution, so the Owner sees why a run was
-// missed, and the schedule waits for its next time.
+// Tick starts a Backup execution for every Scheduled backup that is due at
+// now. One that finds its Database busy (another of its Scheduled backups
+// due at the same time, a Restore) stays due and starts on a later Tick. A
+// due Backup execution that cannot start for another reason (the Database
+// is stopped) is recorded as a failed scheduled Backup execution, so the
+// Owner sees why a run was missed, and the schedule waits for its next time.
 func (s *Service) Tick(ctx context.Context, now time.Time) error {
-	list, err := s.store.ScheduledDatabases(ctx)
+	list, err := s.store.EnabledScheduledBackups(ctx)
 	if err != nil {
 		return err
 	}
-	for _, d := range list {
-		last, err := s.store.LastScheduledStart(ctx, d.ID)
+	for _, sb := range list {
+		last, err := s.store.LastScheduledStart(ctx, sb.ID)
 		if err != nil {
 			return err
 		}
-		if !d.ScheduledBackup.Due(last, now) {
+		if !sb.Due(last, now) {
 			continue
 		}
-		if _, err := s.BackUp(ctx, d.ID, domain.TriggerScheduled); err != nil {
-			s.logf("databases: scheduled backup of database %d: %v", d.ID, err)
-			b, nerr := domain.NewBackupExecution(d, domain.TriggerScheduled, now)
+		d, err := s.get(ctx, sb.DatabaseID)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		_, err = s.backUp(ctx, d, sb, domain.TriggerScheduled)
+		if errors.Is(err, ErrBusy) {
+			continue
+		}
+		if err != nil {
+			s.logf("databases: scheduled backup %d of database %d: %v", sb.ID, d.ID, err)
+			b, nerr := domain.NewBackupExecution(d, sb, domain.TriggerScheduled, now)
 			if nerr != nil {
 				continue
 			}

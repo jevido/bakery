@@ -35,15 +35,24 @@ func failBackup(ctx contractshttp.Context, err error) contractshttp.Response {
 	return fail(ctx, err)
 }
 
+// scheduledBackupJSON is a Scheduled backup; on the Database JSON, until
+// the dashboard lists them all, without an id it is the defaults.
 type scheduledBackupJSON struct {
-	Enabled     bool    `json:"enabled"`
-	Cron        string  `json:"cron"`
-	Retention   int     `json:"retention"`
-	S3StorageID *uint64 `json:"s3_storage_id"`
+	ID           uint64     `json:"id,omitempty"`
+	DatabaseID   uint64     `json:"database_id,omitempty"`
+	Enabled      bool       `json:"enabled"`
+	Cron         string     `json:"cron"`
+	Retention    int        `json:"retention"`
+	S3StorageID  *uint64    `json:"s3_storage_id"`
+	NextBackupAt *time.Time `json:"next_backup_at,omitempty"`
 }
 
 func scheduledBackupToJSON(s domain.ScheduledBackup) scheduledBackupJSON {
-	out := scheduledBackupJSON{Enabled: s.Enabled, Cron: s.Cron, Retention: s.Retention}
+	if s.ID == 0 {
+		in := domain.DefaultScheduledBackup
+		return scheduledBackupJSON{Cron: in.Cron, Retention: in.Retention}
+	}
+	out := scheduledBackupJSON{ID: s.ID, DatabaseID: s.DatabaseID, Enabled: s.Enabled, Cron: s.Cron, Retention: s.Retention}
 	if s.S3StorageID != 0 {
 		id := s.S3StorageID
 		out.S3StorageID = &id
@@ -51,12 +60,29 @@ func scheduledBackupToJSON(s domain.ScheduledBackup) scheduledBackupJSON {
 	return out
 }
 
-func (r scheduledBackupJSON) schedule() domain.ScheduledBackup {
-	s := domain.ScheduledBackup{Enabled: r.Enabled, Cron: r.Cron, Retention: r.Retention}
-	if r.S3StorageID != nil {
-		s.S3StorageID = *r.S3StorageID
+func scheduledBackupViewToJSON(v app.ScheduledBackupView) scheduledBackupJSON {
+	out := scheduledBackupToJSON(v.ScheduledBackup)
+	if !v.NextBackupAt.IsZero() {
+		next := v.NextBackupAt
+		out.NextBackupAt = &next
 	}
-	return s
+	return out
+}
+
+// scheduledBackupRequest is a Scheduled backup as the Owner sets it.
+type scheduledBackupRequest struct {
+	Enabled     bool    `json:"enabled"`
+	Cron        string  `json:"cron"`
+	Retention   int     `json:"retention"`
+	S3StorageID *uint64 `json:"s3_storage_id"`
+}
+
+func (r scheduledBackupRequest) input() domain.ScheduledBackupInput {
+	in := domain.ScheduledBackupInput{Enabled: r.Enabled, Cron: r.Cron, Retention: r.Retention}
+	if r.S3StorageID != nil {
+		in.S3StorageID = *r.S3StorageID
+	}
+	return in
 }
 
 type restoreJSON struct {
@@ -67,22 +93,23 @@ type restoreJSON struct {
 }
 
 type backupExecutionJSON struct {
-	ID         uint64     `json:"id"`
-	DatabaseID uint64     `json:"database_id"`
-	Status     string     `json:"status"`
-	Trigger    string     `json:"trigger"`
-	FileName   string     `json:"file_name"`
-	SizeBytes  int64      `json:"size_bytes"`
-	Local      bool       `json:"local"`
-	S3         bool       `json:"s3"`
-	Error      string     `json:"error,omitempty"`
-	StartedAt  time.Time  `json:"started_at"`
-	FinishedAt *time.Time `json:"finished_at"`
+	ID                uint64     `json:"id"`
+	DatabaseID        uint64     `json:"database_id"`
+	ScheduledBackupID uint64     `json:"scheduled_backup_id"`
+	Status            string     `json:"status"`
+	Trigger           string     `json:"trigger"`
+	FileName          string     `json:"file_name"`
+	SizeBytes         int64      `json:"size_bytes"`
+	Local             bool       `json:"local"`
+	S3                bool       `json:"s3"`
+	Error             string     `json:"error,omitempty"`
+	StartedAt         time.Time  `json:"started_at"`
+	FinishedAt        *time.Time `json:"finished_at"`
 }
 
 func executionToJSON(b domain.BackupExecution) backupExecutionJSON {
 	out := backupExecutionJSON{
-		ID: b.ID, DatabaseID: b.DatabaseID, Status: string(b.Status), Trigger: string(b.Trigger),
+		ID: b.ID, DatabaseID: b.DatabaseID, ScheduledBackupID: b.ScheduledBackupID, Status: string(b.Status), Trigger: string(b.Trigger),
 		FileName: b.FileName, SizeBytes: b.SizeBytes, Local: b.Local, S3: b.S3, Error: b.Error,
 		StartedAt: b.StartedAt,
 	}
@@ -93,29 +120,7 @@ func executionToJSON(b domain.BackupExecution) backupExecutionJSON {
 	return out
 }
 
-// SetScheduledBackup replaces the Database's Scheduled backup.
-func (c *Controller) SetScheduledBackup(ctx contractshttp.Context) contractshttp.Response {
-	dbID, ok := id(ctx)
-	if !ok {
-		return notFound(ctx)
-	}
-	var req scheduledBackupJSON
-	if err := ctx.Request().Bind(&req); err != nil {
-		return respond.BadBody(ctx)
-	}
-	v, err := c.service.SetScheduledBackup(ctx.Context(), dbID, req.schedule())
-	if errors.Is(err, domain.ErrNoBackups) {
-		return respond.Invalid(ctx, "scheduled_backup.enabled", err.Error())
-	}
-	return one(ctx, contractshttp.StatusOK, v, err)
-}
-
-func (c *Controller) BackupExecutions(ctx contractshttp.Context) contractshttp.Response {
-	dbID, ok := id(ctx)
-	if !ok {
-		return notFound(ctx)
-	}
-	list, err := c.service.BackupExecutions(ctx.Context(), dbID)
+func executionsJSON(ctx contractshttp.Context, list []domain.BackupExecution, err error) contractshttp.Response {
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -126,17 +131,142 @@ func (c *Controller) BackupExecutions(ctx contractshttp.Context) contractshttp.R
 	return ctx.Response().Success().Json(contractshttp.Json{"backup_executions": out})
 }
 
-// BackUp starts a Backup execution now; it runs in the background.
+func started(ctx contractshttp.Context, b domain.BackupExecution, err error) contractshttp.Response {
+	if err != nil {
+		return failBackup(ctx, err)
+	}
+	return ctx.Response().Json(contractshttp.StatusAccepted, contractshttp.Json{"backup_execution": executionToJSON(b)})
+}
+
+func oneScheduledBackup(ctx contractshttp.Context, status int, v app.ScheduledBackupView, err error) contractshttp.Response {
+	if errors.Is(err, domain.ErrNoBackups) {
+		return respond.Invalid(ctx, "scheduled_backup.enabled", err.Error())
+	}
+	if err != nil {
+		return failBackup(ctx, err)
+	}
+	return ctx.Response().Json(status, contractshttp.Json{"scheduled_backup": scheduledBackupViewToJSON(v)})
+}
+
+// SetScheduledBackup replaces the Database's oldest Scheduled backup.
+func (c *Controller) SetScheduledBackup(ctx contractshttp.Context) contractshttp.Response {
+	dbID, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req scheduledBackupRequest
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	v, err := c.service.SetScheduledBackup(ctx.Context(), dbID, req.input())
+	if errors.Is(err, domain.ErrNoBackups) {
+		return respond.Invalid(ctx, "scheduled_backup.enabled", err.Error())
+	}
+	return one(ctx, contractshttp.StatusOK, v, err)
+}
+
+func (c *Controller) ScheduledBackups(ctx contractshttp.Context) contractshttp.Response {
+	dbID, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	list, err := c.service.ScheduledBackups(ctx.Context(), dbID)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out := make([]scheduledBackupJSON, len(list))
+	for i, v := range list {
+		out[i] = scheduledBackupViewToJSON(v)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"scheduled_backups": out})
+}
+
+func (c *Controller) CreateScheduledBackup(ctx contractshttp.Context) contractshttp.Response {
+	dbID, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req scheduledBackupRequest
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	v, err := c.service.CreateScheduledBackup(ctx.Context(), dbID, req.input())
+	return oneScheduledBackup(ctx, contractshttp.StatusCreated, v, err)
+}
+
+func (c *Controller) ShowScheduledBackup(ctx contractshttp.Context) contractshttp.Response {
+	sID, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	v, err := c.service.ScheduledBackup(ctx.Context(), sID)
+	return oneScheduledBackup(ctx, contractshttp.StatusOK, v, err)
+}
+
+func (c *Controller) UpdateScheduledBackup(ctx contractshttp.Context) contractshttp.Response {
+	sID, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req scheduledBackupRequest
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	v, err := c.service.UpdateScheduledBackup(ctx.Context(), sID, req.input())
+	return oneScheduledBackup(ctx, contractshttp.StatusOK, v, err)
+}
+
+// DeleteScheduledBackup removes the Scheduled backup with its Backup
+// executions (their S3 objects stay).
+func (c *Controller) DeleteScheduledBackup(ctx contractshttp.Context) contractshttp.Response {
+	sID, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	if err := c.service.DeleteScheduledBackup(ctx.Context(), sID); err != nil {
+		return failBackup(ctx, err)
+	}
+	return ctx.Response().NoContent()
+}
+
+// BackupExecutions lists every Backup execution of the Database.
+func (c *Controller) BackupExecutions(ctx contractshttp.Context) contractshttp.Response {
+	dbID, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	list, err := c.service.BackupExecutions(ctx.Context(), dbID)
+	return executionsJSON(ctx, list, err)
+}
+
+func (c *Controller) ScheduledBackupExecutions(ctx contractshttp.Context) contractshttp.Response {
+	sID, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	list, err := c.service.ScheduledBackupExecutions(ctx.Context(), sID)
+	return executionsJSON(ctx, list, err)
+}
+
+// BackUp starts a Backup execution of the Database's oldest Scheduled
+// backup now; it runs in the background.
 func (c *Controller) BackUp(ctx contractshttp.Context) contractshttp.Response {
 	dbID, ok := id(ctx)
 	if !ok {
 		return notFound(ctx)
 	}
-	b, err := c.service.BackUp(ctx.Context(), dbID, domain.TriggerManual)
-	if err != nil {
-		return failBackup(ctx, err)
+	b, err := c.service.BackUpDatabase(ctx.Context(), dbID, domain.TriggerManual)
+	return started(ctx, b, err)
+}
+
+// BackUpScheduledBackup is Back up now on one Scheduled backup.
+func (c *Controller) BackUpScheduledBackup(ctx contractshttp.Context) contractshttp.Response {
+	sID, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
 	}
-	return ctx.Response().Json(contractshttp.StatusAccepted, contractshttp.Json{"backup_execution": executionToJSON(b)})
+	b, err := c.service.BackUp(ctx.Context(), sID, domain.TriggerManual)
+	return started(ctx, b, err)
 }
 
 // Restore starts restoring the Backup execution into its Database.

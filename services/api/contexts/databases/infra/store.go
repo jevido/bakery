@@ -31,11 +31,6 @@ type databaseRecord struct {
 	MemoryMB              int     `gorm:"column:memory_mb"`
 	CPUs                  float64 `gorm:"column:cpus"`
 	DesiredState          string
-	BackupEnabled         bool
-	BackupCron            string
-	BackupRetention       int
-	BackupS3StorageID     *uint64 `gorm:"column:backup_s3_storage_id"`
-	BackupEnabledAt       *time.Time
 	orm.Timestamps
 }
 
@@ -70,10 +65,7 @@ func toRecord(d domain.Database) (databaseRecord, error) {
 		Username: d.Credentials.Username, PasswordEncrypted: password, RootPasswordEncrypted: root,
 		DatabaseName: d.Credentials.DatabaseName,
 		MemoryMB:     d.ResourceLimits.MemoryMB, CPUs: d.ResourceLimits.CPUs,
-		DesiredState:  string(d.DesiredState),
-		BackupEnabled: d.ScheduledBackup.Enabled, BackupCron: d.ScheduledBackup.Cron,
-		BackupRetention:   d.ScheduledBackup.Retention,
-		BackupS3StorageID: nonZero(d.ScheduledBackup.S3StorageID), BackupEnabledAt: nonZeroTime(d.ScheduledBackup.EnabledAt),
+		DesiredState: string(d.DesiredState),
 	}
 	if d.PublicPort != 0 {
 		port := d.PublicPort
@@ -97,10 +89,6 @@ func (r databaseRecord) toDomain() (domain.Database, error) {
 		Credentials:    domain.Credentials{Username: r.Username, Password: password, RootPassword: root, DatabaseName: r.DatabaseName},
 		ResourceLimits: domain.ResourceLimits{MemoryMB: r.MemoryMB, CPUs: r.CPUs},
 		DesiredState:   domain.DesiredState(r.DesiredState),
-		ScheduledBackup: domain.ScheduledBackup{
-			Enabled: r.BackupEnabled, Cron: r.BackupCron, Retention: r.BackupRetention,
-			S3StorageID: deref(r.BackupS3StorageID), EnabledAt: derefTime(r.BackupEnabledAt),
-		},
 	}
 	if r.PublicPort != nil {
 		d.PublicPort = *r.PublicPort
@@ -174,8 +162,6 @@ func (s Store) Update(ctx context.Context, d domain.Database) error {
 	_, err = s.query(ctx).Model(&databaseRecord{}).Where("id", d.ID).Update(map[string]any{
 		"name": rec.Name, "description": rec.Description, "version": rec.Version, "public_port": rec.PublicPort,
 		"memory_mb": rec.MemoryMB, "cpus": rec.CPUs, "desired_state": rec.DesiredState,
-		"backup_enabled": rec.BackupEnabled, "backup_cron": rec.BackupCron, "backup_retention": rec.BackupRetention,
-		"backup_s3_storage_id": rec.BackupS3StorageID, "backup_enabled_at": rec.BackupEnabledAt,
 	})
 	return err
 }
@@ -203,17 +189,6 @@ func (s Store) CountForProject(ctx context.Context, projectID uint64) (int64, er
 
 func (s Store) CountForEnvironment(ctx context.Context, environmentID uint64) (int64, error) {
 	return s.query(ctx).Model(&databaseRecord{}).Where("environment_id", environmentID).Count()
-}
-
-// ScheduledDatabases lists every Database whose Scheduled backup is on.
-func (s Store) ScheduledDatabases(ctx context.Context) ([]domain.Database, error) {
-	return s.list(s.query(ctx).Where("backup_enabled", true))
-}
-
-// S3StorageInUse reports whether a Scheduled backup names the S3 storage.
-func (s Store) S3StorageInUse(ctx context.Context, id uint64) (bool, error) {
-	n, err := s.query(ctx).Model(&databaseRecord{}).Where("backup_s3_storage_id", id).Count()
-	return n > 0, err
 }
 
 func nonZero(id uint64) *uint64 {

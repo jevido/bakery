@@ -1,6 +1,7 @@
 // Package domain is the databases model: the Database, its Database type, its
-// Backup executions, S3 storages and the rules for each. It depends on nothing
-// outside the standard library except robfig/cron, a pure cron parser.
+// Scheduled backups, their Backup executions, S3 storages and the rules for
+// each. It depends on nothing outside the standard library except
+// robfig/cron, a pure cron parser.
 package domain
 
 import (
@@ -86,10 +87,9 @@ type Database struct {
 	Version     string
 	Credentials Credentials
 	// PublicPort is the host port it is published on; 0 is none.
-	PublicPort      int
-	ResourceLimits  ResourceLimits
-	DesiredState    DesiredState
-	ScheduledBackup ScheduledBackup
+	PublicPort     int
+	ResourceLimits ResourceLimits
+	DesiredState   DesiredState
 }
 
 // Input is what the Owner chooses. Database type is only read on creation.
@@ -154,7 +154,7 @@ func NewDatabase(environmentID, projectID uint64, in Input, slug string, generat
 		EnvironmentID: environmentID, ProjectID: projectID,
 		Name: in.Name, Description: in.Description, Slug: slug, Type: in.Type, Version: in.Version,
 		Credentials: creds, PublicPort: in.PublicPort, ResourceLimits: in.ResourceLimits,
-		DesiredState: Running, ScheduledBackup: DefaultScheduledBackup,
+		DesiredState: Running,
 	}, nil
 }
 

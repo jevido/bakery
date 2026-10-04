@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	contractsorm "github.com/goravel/framework/contracts/database/orm"
 	"github.com/goravel/framework/database/orm"
 	frameworkerrors "github.com/goravel/framework/errors"
 
@@ -12,18 +13,19 @@ import (
 )
 
 type backupExecutionRecord struct {
-	ID          uint64 `gorm:"primaryKey"`
-	DatabaseID  uint64
-	Status      string
-	Trigger     string
-	FileName    string
-	SizeBytes   int64
-	Local       bool
-	S3          bool    `gorm:"column:s3"`
-	S3StorageID *uint64 `gorm:"column:s3_storage_id"`
-	Error       string
-	StartedAt   time.Time
-	FinishedAt  *time.Time
+	ID                uint64 `gorm:"primaryKey"`
+	DatabaseID        uint64
+	ScheduledBackupID uint64
+	Status            string
+	Trigger           string
+	FileName          string
+	SizeBytes         int64
+	Local             bool
+	S3                bool    `gorm:"column:s3"`
+	S3StorageID       *uint64 `gorm:"column:s3_storage_id"`
+	Error             string
+	StartedAt         time.Time
+	FinishedAt        *time.Time
 	orm.Timestamps
 }
 
@@ -31,7 +33,7 @@ func (backupExecutionRecord) TableName() string { return "backup_executions" }
 
 func toBackupExecutionRecord(b domain.BackupExecution) backupExecutionRecord {
 	return backupExecutionRecord{
-		ID: b.ID, DatabaseID: b.DatabaseID, Status: string(b.Status), Trigger: string(b.Trigger),
+		ID: b.ID, DatabaseID: b.DatabaseID, ScheduledBackupID: b.ScheduledBackupID, Status: string(b.Status), Trigger: string(b.Trigger),
 		FileName: b.FileName, SizeBytes: b.SizeBytes, Local: b.Local, S3: b.S3,
 		S3StorageID: nonZero(b.S3StorageID), Error: b.Error,
 		StartedAt: b.StartedAt.UTC(), FinishedAt: nonZeroTime(b.FinishedAt),
@@ -40,7 +42,7 @@ func toBackupExecutionRecord(b domain.BackupExecution) backupExecutionRecord {
 
 func (r backupExecutionRecord) toDomain() domain.BackupExecution {
 	return domain.BackupExecution{
-		ID: r.ID, DatabaseID: r.DatabaseID, Status: domain.ExecutionStatus(r.Status), Trigger: domain.ExecutionTrigger(r.Trigger),
+		ID: r.ID, DatabaseID: r.DatabaseID, ScheduledBackupID: r.ScheduledBackupID, Status: domain.ExecutionStatus(r.Status), Trigger: domain.ExecutionTrigger(r.Trigger),
 		FileName: r.FileName, SizeBytes: r.SizeBytes, Local: r.Local, S3: r.S3,
 		S3StorageID: deref(r.S3StorageID), Error: r.Error,
 		StartedAt: r.StartedAt.UTC(), FinishedAt: derefTime(r.FinishedAt),
@@ -77,10 +79,9 @@ func (s Store) BackupExecution(ctx context.Context, id uint64) (domain.BackupExe
 	return rec.toDomain(), true, nil
 }
 
-// BackupExecutions lists the Database's BackupExecutions, newest first.
-func (s Store) BackupExecutions(ctx context.Context, databaseID uint64) ([]domain.BackupExecution, error) {
+func (s Store) executions(q contractsorm.Query) ([]domain.BackupExecution, error) {
 	var recs []backupExecutionRecord
-	if err := s.query(ctx).Where("database_id", databaseID).Order("started_at desc").Order("id desc").Find(&recs); err != nil {
+	if err := q.Order("started_at desc").Order("id desc").Find(&recs); err != nil {
 		return nil, err
 	}
 	out := make([]domain.BackupExecution, len(recs))
@@ -90,11 +91,22 @@ func (s Store) BackupExecutions(ctx context.Context, databaseID uint64) ([]domai
 	return out, nil
 }
 
-// LastScheduledStart is when the Database's newest scheduled Backup execution
-// started; the zero time without one.
-func (s Store) LastScheduledStart(ctx context.Context, databaseID uint64) (time.Time, error) {
+// BackupExecutions lists the Database's BackupExecutions, newest first.
+func (s Store) BackupExecutions(ctx context.Context, databaseID uint64) ([]domain.BackupExecution, error) {
+	return s.executions(s.query(ctx).Where("database_id", databaseID))
+}
+
+// ScheduledBackupExecutions lists the Scheduled backup's Backup executions,
+// newest first.
+func (s Store) ScheduledBackupExecutions(ctx context.Context, scheduledBackupID uint64) ([]domain.BackupExecution, error) {
+	return s.executions(s.query(ctx).Where("scheduled_backup_id", scheduledBackupID))
+}
+
+// LastScheduledStart is when the Scheduled backup's newest scheduled Backup
+// execution started; the zero time without one.
+func (s Store) LastScheduledStart(ctx context.Context, scheduledBackupID uint64) (time.Time, error) {
 	var rec backupExecutionRecord
-	err := s.query(ctx).Where("database_id", databaseID).Where("trigger", string(domain.TriggerScheduled)).Order("started_at desc").FirstOrFail(&rec)
+	err := s.query(ctx).Where("scheduled_backup_id", scheduledBackupID).Where("trigger", string(domain.TriggerScheduled)).Order("started_at desc").FirstOrFail(&rec)
 	if errors.Is(err, frameworkerrors.OrmRecordNotFound) {
 		return time.Time{}, nil
 	}

@@ -23,19 +23,19 @@ func fieldOf(err error) string {
 	return ""
 }
 
-func TestBackupScheduleCheck(t *testing.T) {
+func TestScheduledBackupCheck(t *testing.T) {
 	for _, tc := range []struct {
-		s     ScheduledBackup
+		s     ScheduledBackupInput
 		field string
 	}{
-		{ScheduledBackup{Cron: "0 3 * * *", Retention: 7}, ""},
-		{ScheduledBackup{Cron: "*/15 * * * 1-5", Retention: 100}, ""},
-		{ScheduledBackup{Cron: "@daily", Retention: 7}, "scheduled_backup.cron"},
-		{ScheduledBackup{Cron: "TZ=Europe/Amsterdam 0 3 * * *", Retention: 7}, "scheduled_backup.cron"},
-		{ScheduledBackup{Cron: "0 3 * *", Retention: 7}, "scheduled_backup.cron"},
-		{ScheduledBackup{Cron: "61 3 * * *", Retention: 7}, "scheduled_backup.cron"},
-		{ScheduledBackup{Cron: "0 3 * * *", Retention: 0}, "scheduled_backup.retention"},
-		{ScheduledBackup{Cron: "0 3 * * *", Retention: 101}, "scheduled_backup.retention"},
+		{ScheduledBackupInput{Cron: "0 3 * * *", Retention: 7}, ""},
+		{ScheduledBackupInput{Cron: "*/15 * * * 1-5", Retention: 100}, ""},
+		{ScheduledBackupInput{Cron: "@daily", Retention: 7}, "scheduled_backup.cron"},
+		{ScheduledBackupInput{Cron: "TZ=Europe/Amsterdam 0 3 * * *", Retention: 7}, "scheduled_backup.cron"},
+		{ScheduledBackupInput{Cron: "0 3 * *", Retention: 7}, "scheduled_backup.cron"},
+		{ScheduledBackupInput{Cron: "61 3 * * *", Retention: 7}, "scheduled_backup.cron"},
+		{ScheduledBackupInput{Cron: "0 3 * * *", Retention: 0}, "scheduled_backup.retention"},
+		{ScheduledBackupInput{Cron: "0 3 * * *", Retention: 101}, "scheduled_backup.retention"},
 	} {
 		if got := fieldOf(tc.s.Check()); got != tc.field {
 			t.Errorf("%+v: field %q, want %q", tc.s, got, tc.field)
@@ -43,32 +43,40 @@ func TestBackupScheduleCheck(t *testing.T) {
 	}
 }
 
-func TestSetBackupSchedule(t *testing.T) {
+func TestScheduledBackup(t *testing.T) {
 	d, _ := NewDatabase(1, 1, Input{Name: "x", Type: PostgreSQL}, "x", pw)
-	if d.ScheduledBackup != DefaultScheduledBackup {
-		t.Fatalf("new database schedule %+v", d.ScheduledBackup)
+	d.ID = 5
+	def, err := NewScheduledBackup(d, DefaultScheduledBackup, time.Now())
+	if err != nil || def.DatabaseID != 5 || def.Enabled || def.Cron != "0 3 * * *" || def.Retention != 7 || !def.EnabledAt.IsZero() {
+		t.Fatalf("default %+v %v", def, err)
 	}
-	on := ScheduledBackup{Enabled: true, Cron: " 0 3 * * * ", Retention: 3}
-	if err := d.SetScheduledBackup(on, at("2026-09-30T14:00:00+02:00")); err != nil {
+	on := ScheduledBackupInput{Enabled: true, Cron: " 0 3 * * * ", Retention: 3}
+	s, err := NewScheduledBackup(d, on, at("2026-09-30T14:00:00+02:00"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if d.ScheduledBackup.Cron != "0 3 * * *" || !d.ScheduledBackup.EnabledAt.Equal(at("2026-09-30T12:00:00Z")) {
-		t.Fatalf("got %+v", d.ScheduledBackup)
+	if s.Cron != "0 3 * * *" || !s.EnabledAt.Equal(at("2026-09-30T12:00:00Z")) {
+		t.Fatalf("got %+v", s)
 	}
 	// Saving it again while on keeps when it was switched on.
 	on.Retention = 5
-	d.SetScheduledBackup(on, at("2026-10-05T00:00:00Z"))
-	if !d.ScheduledBackup.EnabledAt.Equal(at("2026-09-30T12:00:00Z")) || d.ScheduledBackup.Retention != 5 {
-		t.Fatalf("got %+v", d.ScheduledBackup)
+	s.Update(on, at("2026-10-05T00:00:00Z"))
+	if !s.EnabledAt.Equal(at("2026-09-30T12:00:00Z")) || s.Retention != 5 {
+		t.Fatalf("got %+v", s)
+	}
+	// Off forgets it; a bad input changes nothing.
+	s.Update(ScheduledBackupInput{Cron: "0 3 * * *", Retention: 5}, time.Now())
+	if s.Enabled || !s.EnabledAt.IsZero() {
+		t.Fatalf("off %+v", s)
+	}
+	before := s
+	if err := s.Update(ScheduledBackupInput{Cron: "nope", Retention: 5, Enabled: true}, time.Now()); fieldOf(err) != "scheduled_backup.cron" || s != before {
+		t.Fatalf("bad input %+v %v", s, err)
 	}
 
 	r, _ := NewDatabase(1, 1, Input{Name: "r", Type: Redis}, "r", pw)
-	if err := r.SetScheduledBackup(on, time.Now()); !errors.Is(err, ErrNoBackups) {
-		t.Fatalf("redis schedule: %v", err)
-	}
-	// Off is fine on any Database type.
-	if err := r.SetScheduledBackup(DefaultScheduledBackup, time.Now()); err != nil {
-		t.Fatal(err)
+	if _, err := NewScheduledBackup(r, DefaultScheduledBackup, time.Now()); !errors.Is(err, ErrNoBackups) {
+		t.Fatalf("redis scheduled backup: %v", err)
 	}
 }
 
@@ -106,12 +114,12 @@ func TestDue(t *testing.T) {
 func TestBackupLifecycle(t *testing.T) {
 	d, _ := NewDatabase(1, 1, Input{Name: "x", Type: MySQL}, "x", pw)
 	d.ID = 9
-	d.ScheduledBackup.S3StorageID = 4
-	b, err := NewBackupExecution(d, TriggerManual, at("2026-09-30T14:05:06+02:00"))
+	sb := ScheduledBackup{ID: 3, DatabaseID: 9, S3StorageID: 4}
+	b, err := NewBackupExecution(d, sb, TriggerManual, at("2026-09-30T14:05:06+02:00"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.FileName != "20260930T120506Z.sql.gz" || b.Status != ExecutionRunning || b.DatabaseID != 9 || b.S3StorageID != 4 {
+	if b.FileName != "20260930T120506Z.sql.gz" || b.Status != ExecutionRunning || b.DatabaseID != 9 || b.ScheduledBackupID != 3 || b.S3StorageID != 4 {
 		t.Fatalf("got %+v", b)
 	}
 	if err := b.Succeed(123, false, at("2026-09-30T12:06:00Z")); err != nil {
@@ -123,7 +131,10 @@ func TestBackupLifecycle(t *testing.T) {
 	if err := b.Fail("late", false, 0, time.Now()); !errors.Is(err, ErrExecutionFinished) {
 		t.Fatalf("fail after succeed: %v", err)
 	}
-	f, _ := NewBackupExecution(d, TriggerScheduled, time.Now())
+	if _, err := NewBackupExecution(d, ScheduledBackup{ID: 4, DatabaseID: 10}, TriggerManual, time.Now()); err == nil {
+		t.Fatal("a scheduled backup of another database")
+	}
+	f, _ := NewBackupExecution(d, sb, TriggerScheduled, time.Now())
 	f.Fail("upload failed", true, 50, time.Now())
 	if f.Restorable() || !f.Local || f.S3 {
 		t.Fatalf("got %+v", f)
@@ -132,7 +143,7 @@ func TestBackupLifecycle(t *testing.T) {
 		t.Fatalf("succeed after fail: %v", err)
 	}
 	r, _ := NewDatabase(1, 1, Input{Name: "r", Type: Valkey}, "r", pw)
-	if _, err := NewBackupExecution(r, TriggerManual, time.Now()); !errors.Is(err, ErrNoBackups) {
+	if _, err := NewBackupExecution(r, ScheduledBackup{}, TriggerManual, time.Now()); !errors.Is(err, ErrNoBackups) {
 		t.Fatalf("valkey backup: %v", err)
 	}
 }

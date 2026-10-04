@@ -86,6 +86,13 @@ func Routes(r route.Router) {
 		r.Put("/api/databases/{id}/scheduled-backup", c.SetScheduledBackup)
 		r.Get("/api/databases/{id}/backup-executions", c.BackupExecutions)
 		r.Post("/api/databases/{id}/backup-executions", c.BackUp)
+		r.Get("/api/databases/{id}/scheduled-backups", c.ScheduledBackups)
+		r.Post("/api/databases/{id}/scheduled-backups", c.CreateScheduledBackup)
+		r.Get("/api/scheduled-backups/{id}", c.ShowScheduledBackup)
+		r.Patch("/api/scheduled-backups/{id}", c.UpdateScheduledBackup)
+		r.Delete("/api/scheduled-backups/{id}", c.DeleteScheduledBackup)
+		r.Get("/api/scheduled-backups/{id}/backup-executions", c.ScheduledBackupExecutions)
+		r.Post("/api/scheduled-backups/{id}/backup-executions", c.BackUpScheduledBackup)
 		r.Post("/api/backup-executions/{id}/restore", c.Restore)
 		r.Delete("/api/backup-executions/{id}", c.DeleteBackupExecution)
 	})
@@ -147,7 +154,7 @@ func Recover(ctx context.Context) {
 	}()
 }
 
-// schedule runs the Scheduled backupr at the start of every minute until
+// schedule runs the backup scheduler at the start of every minute until
 // ctx ends.
 func schedule(ctx context.Context, s *app.Service) {
 	for {

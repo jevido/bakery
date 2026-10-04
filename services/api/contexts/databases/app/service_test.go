@@ -15,15 +15,19 @@ import (
 )
 
 type memStore struct {
-	mu       sync.Mutex
-	dbs      map[uint64]domain.Database
-	backups  map[uint64]domain.BackupExecution
-	storages map[uint64]domain.S3Storage
-	nextID   uint64
+	mu        sync.Mutex
+	dbs       map[uint64]domain.Database
+	scheduled map[uint64]domain.ScheduledBackup
+	backups   map[uint64]domain.BackupExecution
+	storages  map[uint64]domain.S3Storage
+	nextID    uint64
 }
 
 func newMemStore() *memStore {
-	return &memStore{dbs: map[uint64]domain.Database{}, backups: map[uint64]domain.BackupExecution{}, storages: map[uint64]domain.S3Storage{}}
+	return &memStore{
+		dbs: map[uint64]domain.Database{}, scheduled: map[uint64]domain.ScheduledBackup{},
+		backups: map[uint64]domain.BackupExecution{}, storages: map[uint64]domain.S3Storage{},
+	}
 }
 
 func (m *memStore) Create(_ context.Context, d domain.Database) (domain.Database, error) {
@@ -98,17 +102,59 @@ func (m *memStore) CountForEnvironment(_ context.Context, environmentID uint64) 
 	}
 	return n, nil
 }
-func (m *memStore) ScheduledDatabases(context.Context) ([]domain.Database, error) {
+func (m *memStore) CreateScheduledBackup(_ context.Context, sb domain.ScheduledBackup) (domain.ScheduledBackup, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []domain.Database
-	for _, d := range m.dbs {
-		if d.ScheduledBackup.Enabled {
-			out = append(out, d)
+	m.nextID++
+	sb.ID = m.nextID
+	m.scheduled[sb.ID] = sb
+	return sb, nil
+}
+func (m *memStore) ScheduledBackup(_ context.Context, id uint64) (domain.ScheduledBackup, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sb, ok := m.scheduled[id]
+	return sb, ok, nil
+}
+func (m *memStore) scheduledWhere(keep func(domain.ScheduledBackup) bool) []domain.ScheduledBackup {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []domain.ScheduledBackup
+	for _, sb := range m.scheduled {
+		if keep(sb) {
+			out = append(out, sb)
 		}
 	}
-	slices.SortFunc(out, func(a, b domain.Database) int { return cmp.Compare(a.ID, b.ID) })
-	return out, nil
+	slices.SortFunc(out, func(a, b domain.ScheduledBackup) int { return cmp.Compare(a.ID, b.ID) })
+	return out
+}
+func (m *memStore) ScheduledBackups(_ context.Context, databaseID uint64) ([]domain.ScheduledBackup, error) {
+	return m.scheduledWhere(func(sb domain.ScheduledBackup) bool { return sb.DatabaseID == databaseID }), nil
+}
+func (m *memStore) EnabledScheduledBackups(context.Context) ([]domain.ScheduledBackup, error) {
+	return m.scheduledWhere(func(sb domain.ScheduledBackup) bool { return sb.Enabled }), nil
+}
+func (m *memStore) SaveScheduledBackup(_ context.Context, sb domain.ScheduledBackup) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.scheduled[sb.ID] = sb
+	return nil
+}
+func (m *memStore) DeleteScheduledBackup(_ context.Context, id uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.scheduled, id)
+	return nil
+}
+func (m *memStore) DeleteScheduledBackups(_ context.Context, databaseID uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, sb := range m.scheduled {
+		if sb.DatabaseID == databaseID {
+			delete(m.scheduled, id)
+		}
+	}
+	return nil
 }
 func (m *memStore) CreateBackupExecution(_ context.Context, b domain.BackupExecution) (domain.BackupExecution, error) {
 	m.mu.Lock()
@@ -130,12 +176,12 @@ func (m *memStore) BackupExecution(_ context.Context, id uint64) (domain.BackupE
 	b, ok := m.backups[id]
 	return b, ok, nil
 }
-func (m *memStore) BackupExecutions(_ context.Context, databaseID uint64) ([]domain.BackupExecution, error) {
+func (m *memStore) executionsWhere(keep func(domain.BackupExecution) bool) []domain.BackupExecution {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []domain.BackupExecution
 	for _, b := range m.backups {
-		if b.DatabaseID == databaseID {
+		if keep(b) {
 			out = append(out, b)
 		}
 	}
@@ -145,10 +191,16 @@ func (m *memStore) BackupExecutions(_ context.Context, databaseID uint64) ([]dom
 		}
 		return cmp.Compare(b.ID, a.ID)
 	})
-	return out, nil
+	return out
 }
-func (m *memStore) LastScheduledStart(ctx context.Context, databaseID uint64) (time.Time, error) {
-	bs, _ := m.BackupExecutions(ctx, databaseID)
+func (m *memStore) BackupExecutions(_ context.Context, databaseID uint64) ([]domain.BackupExecution, error) {
+	return m.executionsWhere(func(b domain.BackupExecution) bool { return b.DatabaseID == databaseID }), nil
+}
+func (m *memStore) ScheduledBackupExecutions(_ context.Context, scheduledBackupID uint64) ([]domain.BackupExecution, error) {
+	return m.executionsWhere(func(b domain.BackupExecution) bool { return b.ScheduledBackupID == scheduledBackupID }), nil
+}
+func (m *memStore) LastScheduledStart(ctx context.Context, scheduledBackupID uint64) (time.Time, error) {
+	bs, _ := m.ScheduledBackupExecutions(ctx, scheduledBackupID)
 	for _, b := range bs {
 		if b.Trigger == domain.TriggerScheduled {
 			return b.StartedAt, nil
@@ -214,8 +266,8 @@ func (m *memStore) S3StorageNameTaken(_ context.Context, name string, exceptID u
 func (m *memStore) S3StorageInUse(_ context.Context, id uint64) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, d := range m.dbs {
-		if d.ScheduledBackup.S3StorageID == id {
+	for _, sb := range m.scheduled {
+		if sb.S3StorageID == id {
 			return true, nil
 		}
 	}

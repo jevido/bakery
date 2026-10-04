@@ -29,15 +29,28 @@ type Store interface {
 	PublicPortTaken(ctx context.Context, port int, exceptID uint64) (bool, error)
 	CountForProject(ctx context.Context, projectID uint64) (int64, error)
 	CountForEnvironment(ctx context.Context, environmentID uint64) (int64, error)
-	// ScheduledDatabases lists the Databases whose Scheduled backup is on.
-	ScheduledDatabases(ctx context.Context) ([]domain.Database, error)
+
+	CreateScheduledBackup(ctx context.Context, sb domain.ScheduledBackup) (domain.ScheduledBackup, error)
+	ScheduledBackup(ctx context.Context, id uint64) (domain.ScheduledBackup, bool, error)
+	// ScheduledBackups lists a Database's Scheduled backups, oldest first.
+	ScheduledBackups(ctx context.Context, databaseID uint64) ([]domain.ScheduledBackup, error)
+	// EnabledScheduledBackups lists every Scheduled backup that is on.
+	EnabledScheduledBackups(ctx context.Context) ([]domain.ScheduledBackup, error)
+	SaveScheduledBackup(ctx context.Context, sb domain.ScheduledBackup) error
+	DeleteScheduledBackup(ctx context.Context, id uint64) error
+	DeleteScheduledBackups(ctx context.Context, databaseID uint64) error
 
 	CreateBackupExecution(ctx context.Context, b domain.BackupExecution) (domain.BackupExecution, error)
 	SaveBackupExecution(ctx context.Context, b domain.BackupExecution) error
 	BackupExecution(ctx context.Context, id uint64) (domain.BackupExecution, bool, error)
 	// BackupExecutions lists a Database's BackupExecutions, newest first.
 	BackupExecutions(ctx context.Context, databaseID uint64) ([]domain.BackupExecution, error)
-	LastScheduledStart(ctx context.Context, databaseID uint64) (time.Time, error)
+	// ScheduledBackupExecutions lists a Scheduled backup's Backup executions,
+	// newest first.
+	ScheduledBackupExecutions(ctx context.Context, scheduledBackupID uint64) ([]domain.BackupExecution, error)
+	// LastScheduledStart is when the Scheduled backup's newest scheduled
+	// Backup execution started; zero without one.
+	LastScheduledStart(ctx context.Context, scheduledBackupID uint64) (time.Time, error)
 	DeleteBackupExecution(ctx context.Context, id uint64) error
 	DeleteBackupExecutions(ctx context.Context, databaseID uint64) error
 	FailRunningBackupExecutions(ctx context.Context, reason string, at time.Time) (int64, error)
@@ -89,10 +102,13 @@ type View struct {
 	Error       string
 	InternalURL string
 	PublicURL   string
-	// NextBackupAt is when the Scheduled backup fires next; zero when off.
-	NextBackupAt time.Time
-	Restoring    bool
-	LastRestore  *RestoreOutcome
+	// ScheduledBackup is the Database's oldest Scheduled backup (zero
+	// without one), and NextBackupAt when it fires next (zero when off), for
+	// the dashboard until it lists them all.
+	ScheduledBackup domain.ScheduledBackup
+	NextBackupAt    time.Time
+	Restoring       bool
+	LastRestore     *RestoreOutcome
 }
 
 // opTimeout bounds one background start, pull included.
@@ -293,6 +309,15 @@ func (s *Service) Create(ctx context.Context, environmentID uint64, in domain.In
 	if d, err = s.store.Create(ctx, d); err != nil {
 		return View{}, err
 	}
+	if d.Type.Spec().Backups {
+		sb, err := domain.NewScheduledBackup(d, domain.DefaultScheduledBackup, s.Now())
+		if err == nil {
+			_, err = s.store.CreateScheduledBackup(ctx, sb)
+		}
+		if err != nil {
+			return View{}, err
+		}
+	}
 	s.background(d, "start", s.runtime.Start)
 	return s.view(ctx, d)
 }
@@ -313,15 +338,21 @@ func (s *Service) view(ctx context.Context, d domain.Database) (View, error) {
 	if lastErr != "" {
 		detail = lastErr
 	}
-	next, err := s.nextBackup(ctx, d)
-	if err != nil {
-		return View{}, err
+	v := View{Database: d, Status: status, Error: detail, InternalURL: d.InternalURL(), PublicURL: d.PublicURL(s.publicHost)}
+	if d.Type.Spec().Backups {
+		list, err := s.store.ScheduledBackups(ctx, d.ID)
+		if err != nil {
+			return View{}, err
+		}
+		if len(list) > 0 {
+			v.ScheduledBackup = list[0]
+			if v.NextBackupAt, err = s.nextBackup(ctx, list[0]); err != nil {
+				return View{}, err
+			}
+		}
 	}
-	restoring, lastRestore := s.restoreState(d.ID)
-	return View{
-		Database: d, Status: status, Error: detail, InternalURL: d.InternalURL(), PublicURL: d.PublicURL(s.publicHost),
-		NextBackupAt: next, Restoring: restoring, LastRestore: lastRestore,
-	}, nil
+	v.Restoring, v.LastRestore = s.restoreState(d.ID)
+	return v, nil
 }
 
 func (s *Service) Get(ctx context.Context, id uint64) (View, error) {
@@ -407,7 +438,8 @@ func (s *Service) Stop(ctx context.Context, id uint64) (View, error) {
 }
 
 // Delete removes the Container, the volume with all data, the Database's
-// Backup execution files and rows, and the Database. Its S3 objects stay.
+// Backup execution files and rows, its Scheduled backups, and the Database.
+// Its S3 objects stay.
 func (s *Service) Delete(ctx context.Context, id uint64) error {
 	d, err := s.get(ctx, id)
 	if err != nil {
@@ -423,6 +455,9 @@ func (s *Service) Delete(ctx context.Context, id uint64) error {
 		}
 	}
 	if err := s.store.DeleteBackupExecutions(ctx, id); err != nil {
+		return err
+	}
+	if err := s.store.DeleteScheduledBackups(ctx, id); err != nil {
 		return err
 	}
 	if err := s.store.Delete(ctx, id); err != nil {
