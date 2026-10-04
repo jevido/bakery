@@ -2,6 +2,7 @@
   import { api, ApiError } from './api'
   import { session } from './session.svelte'
   import type { EnvironmentVariable, InheritedVariable } from './types'
+  import Button from './ui/Button.svelte'
 
   let {
     path,
@@ -105,12 +106,10 @@
           <input type="checkbox" bind:checked={row.runtime} onchange={() => (saved = false)} />
           Runtime
         </label>
-        <button type="button" onclick={() => (row.revealed = !row.revealed)}>
+        <Button onclick={() => (row.revealed = !row.revealed)}>
           {row.revealed ? 'Hide' : 'Reveal'}
-        </button>
-        <button type="button" class="danger" aria-label="Remove {row.name}" onclick={() => removeRow(row.key)}>
-          Remove
-        </button>
+        </Button>
+        <Button variant="error" aria-label="Remove {row.name}" onclick={() => removeRow(row.key)}>Remove</Button>
       </div>
     {/each}
     {#if anyBuild}
@@ -121,8 +120,8 @@
     {/if}
     {#if error}<p class="error">{error}</p>{/if}
     <div class="actions">
-      <button type="button" onclick={add}>Add variable</button>
-      <button class="primary" disabled={busy}>Save</button>
+      <Button onclick={add}>Add variable</Button>
+      <Button type="submit" variant="highlighted" loading={busy}>Save</Button>
       {#if saved}<span class="ok">Saved</span>{/if}
     </div>
   </form>

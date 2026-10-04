@@ -224,3 +224,15 @@ reaches an Application (routing).
   The Docker Compose page creates a Service (Coolify's "Docker Compose
   Empty"), and its compose file is checked as any Service's: a `build:` or
   `ports:` key is refused with its line.
+- **The Project pages follow Coolify's, with numeric ids.** The dashboard's
+  paths have Coolify's shape (`#/project/{id}`, `…/environment/{id}`,
+  `…/new`, `…/edit`) but carry The Bakery's numeric ids, since Projects and
+  Environments have no public ids (UUIDs) yet; the Coolify API at `/api/v1`
+  will bring them. A Project has no icon, as nothing stores one, and an
+  Environment has no "Clone" action: cloning copies Resources with their
+  Persistent storage and Domains, a feature of its own across three
+  contexts. Without Tags there is no Tags filter or column.
+- **Shared variables live on the settings pages for now.** Coolify edits a
+  Project's and an Environment's shared variables on separate Shared
+  Variables pages; until those pages exist, Project settings and
+  Environment settings hold them, so they stay reachable.
