@@ -155,10 +155,11 @@ func (r Runtime) Status(ctx context.Context, d domain.Database) (status domain.S
 	return domain.StatusRunning, "", nil
 }
 
-// Logs hands the Container's output to out; with follow until ctx ends or
-// the Container stops. found is false when it has no Container.
+// Logs hands the Container's output to out, each line prefixed with the
+// time it was written; with follow until ctx ends or the Container stops.
+// found is false when it has no Container.
 func (r Runtime) Logs(ctx context.Context, d domain.Database, follow bool, tail int, out func(stream, line string)) (bool, error) {
-	err := r.Podman.Logs(ctx, domain.ContainerName(d.Slug), follow, tail, out)
+	err := r.Podman.TimestampedLogs(ctx, domain.ContainerName(d.Slug), follow, tail, out)
 	if podman.IsNotFound(err) {
 		return false, nil
 	}

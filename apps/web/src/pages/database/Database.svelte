@@ -4,9 +4,7 @@
   // sub-page the URL names.
   import { api, ApiError } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
-  import ContainerLogs from '../../lib/ContainerLogs.svelte'
   import DatabaseBackups from '../../lib/DatabaseBackups.svelte'
-  import DatabaseForm from '../../lib/DatabaseForm.svelte'
   import { databaseTypeLabel } from '../../lib/databaseTypes'
   import { databasePath, go, href, type DatabasePage, type ScheduledBackupSection } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
@@ -14,6 +12,9 @@
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
+  import PersistentStorage from '../application/PersistentStorage.svelte'
+  import ResourceLimits from '../application/ResourceLimits.svelte'
+  import RuntimeLogs from '../application/RuntimeLogs.svelte'
   import Servers from '../application/Servers.svelte'
   import ConfigurationSidebar from './ConfigurationSidebar.svelte'
   import General from './General.svelte'
@@ -41,9 +42,6 @@
   let server = $state.raw<Server | null>(null)
   let loadError = $state('')
   let busy = $state(false)
-  let saved = $state(false)
-  // Bumped after a save, so the settings form starts from what was saved.
-  let formKey = $state(0)
 
   async function load() {
     const r = await api<{ database: Database }>('GET', `/databases/${id}`)
@@ -94,12 +92,20 @@
     }
   }
 
-  async function update(input: DatabaseInput) {
-    saved = false
-    const r = await api<{ database: Database }>('PATCH', `/databases/${id}`, input)
+  // Saves part of the Database, the rest as it is now; the sub-pages throw
+  // the API's ApiError back to show it.
+  async function patch(change: Partial<DatabaseInput>) {
+    if (!database) return
+    const d = database
+    const r = await api<{ database: Database }>('PATCH', `/databases/${id}`, {
+      name: d.name,
+      description: d.description,
+      version: d.version,
+      public_port: d.public_port,
+      resource_limits: d.resource_limits,
+      ...change,
+    } satisfies DatabaseInput)
     database = r.database
-    formKey++
-    saved = true
   }
 
   async function remove() {
@@ -175,28 +181,26 @@
     <div class="grid min-w-0 gap-8 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
       <ConfigurationSidebar {database} {page} />
 
-      <!-- Until Persistent Storage, Resource Limits, Backups and Danger Zone
-           are ported, the old tabs' contents render here. -->
+      <!-- Until Backups and Danger Zone are ported, the old tabs' contents
+           render here. -->
       <div class="min-w-0">
         {#if page === ''}
           <General {database} onchange={(d) => (database = d)} />
         {:else if page === 'resource-limits'}
-          {#key formKey}
-            <DatabaseForm {database} submitLabel="Save" onsubmit={update} />
-          {/key}
-          {#if saved}<p class="ok">Saved.</p>{/if}
+          <ResourceLimits
+            limits={database.resource_limits}
+            onsave={(resource_limits) => patch({ resource_limits })}
+            applied="The database restarts with them."
+          />
         {:else if page === 'persistent-storage'}
-          <p class="muted">The Database keeps its data in its own volume, which outlives restarts and settings changes.</p>
+          <PersistentStorage
+            storages={[database.volume]}
+            helper="The database keeps its data in this volume, which outlives restarts, settings changes and new images."
+          />
         {:else if page === 'servers'}
           <Servers {server} {status} />
         {:else if page === 'logs'}
-          {#key database.status === 'stopped'}
-            <ContainerLogs
-              url={`/api/databases/${database.id}/logs`}
-              empty="No container: the database is stopped."
-              stopped="The container stopped (a restart or a settings change replaces it)."
-            />
-          {/key}
+          <RuntimeLogs url={`/api/databases/${database.id}/logs`} container={database.status === 'stopped' ? '' : database.container} />
         {:else if page === 'backups' && database.backups_supported}
           <DatabaseBackups {database} onchange={(d) => (database = d)} />
         {:else if page === 'danger' && session.canWrite}
@@ -213,9 +217,3 @@
     </div>
   </section>
 {/if}
-
-<style>
-  .ok {
-    color: var(--ok);
-  }
-</style>

@@ -187,6 +187,10 @@ export type Database = {
   /** null: not published. */
   public_port: number | null
   resource_limits: ResourceLimits
+  /** The Container's name, as Runtime Logs show it. */
+  container: string
+  /** The data volume and where the Container mounts it. */
+  volume: Storage
   /** Only on a single database, not in lists. */
   credentials?: { username: string; password: string; root_password?: string; database_name: string }
   /** Set when the credentials and URLs were left out for a viewer. */

@@ -57,6 +57,11 @@ type credentialsJSON struct {
 	DatabaseName string `json:"database_name"`
 }
 
+type volumeJSON struct {
+	Name      string `json:"name"`
+	MountPath string `json:"mount_path"`
+}
+
 type databaseJSON struct {
 	ID             uint64     `json:"id"`
 	EnvironmentID  uint64     `json:"environment_id"`
@@ -72,6 +77,10 @@ type databaseJSON struct {
 	Error          string     `json:"error,omitempty"`
 	PublicPort     *int       `json:"public_port"`
 	ResourceLimits limitsJSON `json:"resource_limits"`
+	// Container is the name of the Database's Container, as its Runtime Logs
+	// show it; Volume is its data volume, as Persistent Storage shows it.
+	Container string     `json:"container"`
+	Volume    volumeJSON `json:"volume"`
 	// Only on a single Database: the list stays free of secrets.
 	Credentials *credentialsJSON `json:"credentials,omitempty"`
 	InternalURL string           `json:"internal_url,omitempty"`
@@ -92,6 +101,8 @@ func toJSON(v app.View, full bool) databaseJSON {
 		Name: v.Name, Description: v.Description, Slug: v.Slug, Type: string(v.Type), Version: v.Version,
 		Image: v.ShortImage(), Status: string(v.Status), DesiredState: string(v.DesiredState), Error: v.Error,
 		ResourceLimits:   limitsToJSON(v.ResourceLimits),
+		Container:        domain.ContainerName(v.Slug),
+		Volume:           volumeJSON{Name: domain.VolumeName(v.ID), MountPath: v.Type.Spec().DataPath},
 		BackupsSupported: v.Type.Spec().Backups, ScheduledBackup: scheduledBackupToJSON(v.ScheduledBackup),
 		Restoring: v.Restoring,
 	}

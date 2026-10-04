@@ -27,3 +27,11 @@ func TestJSONShowsDescriptionAndImage(t *testing.T) {
 		t.Fatalf("json %+v", out)
 	}
 }
+
+func TestJSONShowsContainerAndVolume(t *testing.T) {
+	v := app.View{Database: domain.Database{ID: 7, Slug: "orders-x1", Type: domain.MySQL, Version: "8.4"}}
+	out := toJSON(v, false)
+	if out.Container != "bakery-db-orders-x1" || out.Volume.Name != "bakery-db-7-data" || out.Volume.MountPath != "/var/lib/mysql" {
+		t.Fatalf("json %+v", out)
+	}
+}

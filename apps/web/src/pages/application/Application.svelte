@@ -7,7 +7,7 @@
   import EnvironmentVariables from '../../lib/EnvironmentVariables.svelte'
   import { applicationPath, go, href, type ApplicationPage } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
-  import type { Application, Deployment, Environment, Server } from '../../lib/types'
+  import type { Application, ApplicationInput, Deployment, Environment, Server } from '../../lib/types'
   import Callout from '../../lib/ui/Callout.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
@@ -29,6 +29,7 @@
   import Servers from './Servers.svelte'
   import Source from './Source.svelte'
   import Webhooks from './Webhooks.svelte'
+  import { applicationInput } from './applicationInput'
 
   let {
     projectId,
@@ -106,6 +107,17 @@
     }, active ? 3000 : 5000)
     return () => clearInterval(t)
   })
+
+  // Saves part of the Application, the rest as it is now; the sub-pages that
+  // take an onsave throw the API's ApiError back to show it.
+  async function patch(change: Partial<ApplicationInput>) {
+    if (!application) return
+    const r = await api<{ application: Application }>('PATCH', `/applications/${application.id}`, {
+      ...applicationInput(application),
+      ...change,
+    })
+    application = r.application
+  }
 
   // Deploy, Redeploy (without cache) and Restart all start a Deployment, and
   // Coolify then opens its log, as here.
@@ -263,7 +275,7 @@
             <DeploymentHistory {application} {serverNames} />
           {/if}
         {:else if page === 'logs'}
-          <RuntimeLogs applicationId={application.id} container={appStatus ? appStatus.container : null} />
+          <RuntimeLogs url={`/api/applications/${application.id}/logs`} container={appStatus ? appStatus.container : null} />
         {:else if page === 'source' && application.build_pack !== 'dockerimage'}
           <Source {application} onchange={(a) => (application = a)} />
         {:else if page === 'webhooks'}
@@ -273,9 +285,13 @@
         {:else if page === 'servers'}
           <Servers {server} {status} />
         {:else if page === 'persistent-storage'}
-          <PersistentStorage {application} onchange={(a) => (application = a)} />
+          <PersistentStorage storages={application.storages} onsave={(storages) => patch({ storages })} />
         {:else if page === 'resource-limits'}
-          <ResourceLimits {application} onchange={(a) => (application = a)} />
+          <ResourceLimits
+            limits={application.resource_limits}
+            onsave={(resource_limits) => patch({ resource_limits })}
+            applied="Redeploy to apply them."
+          />
         {:else if page === 'healthcheck'}
           <Healthcheck {application} {status} onchange={(a) => (application = a)} />
         {:else if page === 'rollback'}

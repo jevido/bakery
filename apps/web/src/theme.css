@@ -1135,10 +1135,15 @@ html:not(.dark) {
   }
 }
 
-/* Coolify's Persistent storage volumes: Name | Destination | Actions. The
+/* Coolify's Persistent storage volumes: Name | Destination | Actions, or
+   Name | Destination where nothing can be changed (a Database's volume). The
    Bakery has no volume backups or preview suffix, so those columns go. */
 .volumes-table-grid {
   grid-template-columns: minmax(9rem, 1.2fr) minmax(6rem, 1fr) 10rem;
+}
+
+.volumes-table-grid-readonly {
+  grid-template-columns: minmax(10rem, 1.4fr) minmax(8rem, 1fr);
 }
 
 .volumes-mobile-label {
@@ -1152,11 +1157,13 @@ html:not(.dark) {
 }
 
 @media (max-width: 768px) {
-  .data-table-header.volumes-table-grid {
+  .data-table-header.volumes-table-grid,
+  .data-table-header.volumes-table-grid-readonly {
     display: none;
   }
 
-  .data-table-row.volumes-table-grid {
+  .data-table-row.volumes-table-grid,
+  .data-table-row.volumes-table-grid-readonly {
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -1165,7 +1172,8 @@ html:not(.dark) {
     min-height: 0;
   }
 
-  .data-table-row.volumes-table-grid > * {
+  .data-table-row.volumes-table-grid > *,
+  .data-table-row.volumes-table-grid-readonly > * {
     width: 100%;
     min-width: 0;
   }

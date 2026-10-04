@@ -4,9 +4,10 @@
   // Apache-2.0, see NOTICE): the running Container's card with the logs
   // viewer, its Lines field, refresh, stream, timestamps, colors, level
   // filter, follow, fullscreen, copy, download and find in logs. Coolify
-  // polls `docker logs` every two seconds while streaming; here
-  // `GET /api/applications/{id}/logs` sends the last lines and, with
-  // `follow=1`, goes on with new ones as server-sent events.
+  // polls `docker logs` every two seconds while streaming; here the logs URL
+  // (`/api/applications/{id}/logs` or `/api/databases/{id}/logs`) sends the
+  // last lines and, with `follow=1`, goes on with new ones as server-sent
+  // events.
   import { untrack } from 'svelte'
   import type { Attachment } from 'svelte/attachments'
   import Icon from '../../lib/Icon.svelte'
@@ -16,10 +17,11 @@
   import { toast } from '../../lib/ui/toast.svelte'
 
   let {
-    applicationId,
+    url,
     container,
   }: {
-    applicationId: number
+    /** The Container logs endpoint, without a query. */
+    url: string
     /** The running Container's name; '' when none runs, null while unknown. */
     container: string | null
   } = $props()
@@ -80,7 +82,7 @@
   function read(n: number): Promise<string[]> {
     return new Promise((resolve, reject) => {
       const got: string[] = []
-      const es = new EventSource(`/api/applications/${applicationId}/logs?lines=${n}`)
+      const es = new EventSource(`${url}?lines=${n}`)
       es.addEventListener('line', (e) => got.push(JSON.parse(e.data).line))
       es.addEventListener('end', () => {
         es.close()
@@ -126,7 +128,7 @@
   $effect(() => {
     if (!streaming || !container) return
     const keep = tail(numberOfLines)
-    const es = new EventSource(`/api/applications/${applicationId}/logs?lines=${keep}&follow=1`)
+    const es = new EventSource(`${url}?lines=${keep}&follow=1`)
     let pending: Line[] = []
     let first = true
     let frame = 0

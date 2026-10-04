@@ -473,11 +473,12 @@ func (s *Service) Recover(ctx context.Context) error {
 	return nil
 }
 
-// Logs follows the Database's Container; found is false without one.
-func (s *Service) Logs(ctx context.Context, id uint64, tail int, out func(stream, line string)) (bool, error) {
+// Logs reads the last tail lines of the Database's Container, timestamped,
+// and with follow goes on with new ones; found is false without one.
+func (s *Service) Logs(ctx context.Context, id uint64, follow bool, tail int, out func(stream, line string)) (bool, error) {
 	d, err := s.get(ctx, id)
 	if err != nil {
 		return false, err
 	}
-	return s.runtime.Logs(ctx, d, true, tail, out)
+	return s.runtime.Logs(ctx, d, follow, tail, out)
 }

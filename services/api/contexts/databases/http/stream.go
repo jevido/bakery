@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"strconv"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
@@ -22,18 +21,24 @@ func NewStreamController(service *app.Service, shutdown <-chan struct{}) *Stream
 	return &StreamController{service: service, shutdown: shutdown}
 }
 
-// Logs follows the Database's Container: the last `tail` lines (200 by
-// default), then new ones. It sends `end` when there is no Container or it
-// stops, like the Application's Container logs.
+// maxLines is Coolify's MAX_LOG_LINES: "all" lines is this many.
+const maxLines = 50000
+
+// Logs sends the Database's Container's last `lines` lines (100 by default,
+// -1 for all, at most 50,000, as Coolify's Lines field), each prefixed with
+// its time; with `follow=1` it goes on with new ones. It sends `end` when it
+// is done, there is no Container or it stops, like the Application's
+// Container logs.
 func (c *StreamController) Logs(ctx contractshttp.Context) contractshttp.Response {
 	dbID, ok := id(ctx)
 	if !ok {
 		return notFound(ctx)
 	}
-	tail, err := strconv.Atoi(ctx.Request().Query("tail", "200"))
-	if err != nil || tail < 0 || tail > 5000 {
-		tail = 200
+	lines := ctx.Request().QueryInt("lines", 100)
+	if lines < 0 || lines > maxLines {
+		lines = maxLines
 	}
+	follow := ctx.Request().QueryBool("follow", false)
 	reqCtx := ctx.Request().Origin().Context()
 	if _, err := c.service.Get(reqCtx, dbID); err != nil {
 		return fail(ctx, err)
@@ -43,7 +48,7 @@ func (c *StreamController) Logs(ctx contractshttp.Context) contractshttp.Respons
 		return respond.Error(ctx, contractshttp.StatusInternalServerError, "streaming is not supported")
 	}
 	sse.Follow(reqCtx, stream, c.shutdown, func(ctx context.Context, out func(stream, line string)) (bool, error) {
-		return c.service.Logs(ctx, dbID, tail, func(stream, line string) {
+		return c.service.Logs(ctx, dbID, follow, lines, func(stream, line string) {
 			if stream == "stderr" {
 				out("err", line)
 			} else {

@@ -1,16 +1,18 @@
 <script lang="ts">
   // Coolify's Persistent Storage (resources/views/livewire/project/service/storage.blade.php,
   // shared/storages/all.blade.php and show.blade.php, app/Livewire/Project/Service/Storage.php
-  // and Shared/Storages/*.php; Apache-2.0, see NOTICE): the Application's
-  // volumes, one editable row each, and Add mount → Volume mount. Saved
-  // through the Application; containers mount them from the next deployment.
+  // and Shared/Storages/*.php; Apache-2.0, see NOTICE): a resource's volumes.
+  // With onsave (an Application) each row is editable and Add mount →
+  // Volume mount adds one; containers mount them from the next deployment.
+  // Without it (a Database's own data volume) the rows are read-only and
+  // have no actions column, as Coolify shows a Database's default volume.
   // Left out: File, Host file and Directory mounts (bind mounts), the
   // Volumes/Files/Directories tabs, volume backups and the preview suffix.
   import { untrack } from 'svelte'
-  import { api, ApiError } from '../../lib/api'
+  import { ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
   import { session } from '../../lib/session.svelte'
-  import type { Application, Storage } from '../../lib/types'
+  import type { Storage } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
@@ -19,12 +21,19 @@
   import Modal from '../../lib/ui/Modal.svelte'
   import SettingsSection from '../../lib/ui/SettingsSection.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
-  import { applicationInput } from './applicationInput'
 
-  let { application, onchange }: { application: Application; onchange: (a: Application) => void } = $props()
+  let {
+    storages,
+    onsave,
+    helper = 'Mount volumes to preserve data between deployments. A volume is named after its storage, so a renamed storage starts empty; the data stays under the old name.',
+  }: {
+    storages: Storage[]
+    /** Saves the whole list; throws ApiError when the API refuses it. */
+    onsave?: (list: Storage[]) => Promise<void>
+    helper?: string
+  } = $props()
 
-  const canUpdate = $derived(session.canWrite)
-  const storages = $derived(application.storages)
+  const canUpdate = $derived(session.canWrite && !!onsave)
 
   // The rows being edited, as typed; reset whenever the saved list changes.
   let forms = $state<Storage[]>([])
@@ -47,10 +56,7 @@
   // Saves the list; the API's message, when it refuses, is returned.
   async function save(list: Storage[]): Promise<string> {
     try {
-      onchange(
-        (await api<{ application: Application }>('PATCH', `/applications/${application.id}`, { ...applicationInput(application), storages: list }))
-          .application,
-      )
+      await onsave?.(list)
       return ''
     } catch (err) {
       if (!(err instanceof ApiError)) throw err
@@ -100,6 +106,8 @@
     toast.success('Storage deleted.', 'Its volume and data are kept.')
   }
 
+  const grid = $derived(onsave ? 'volumes-table-grid' : 'volumes-table-grid-readonly')
+
   const changed = (i: number) => forms[i] && (forms[i].name !== storages[i]?.name || forms[i].mount_path !== storages[i]?.mount_path)
 </script>
 
@@ -109,7 +117,7 @@
   <SettingsSection
     id="storage-mounts-section"
     title="Persistent storage"
-    helper="Mount volumes to preserve data between deployments. A volume is named after its storage, so a renamed storage starts empty; the data stays under the old name."
+    {helper}
     flush
   >
     {#snippet actions()}
@@ -147,10 +155,10 @@
       </div>
     {:else}
       <div class="data-table w-full">
-        <div class="data-table-header volumes-table-grid">
+        <div class="data-table-header {grid}">
           <span>Volume Name</span>
           <span>Destination Path</span>
-          <span class="text-right">Actions</span>
+          {#if onsave}<span class="text-right">Actions</span>{/if}
         </div>
         {#each storages as s, i (s.name)}
           {#if canUpdate && forms[i]}
@@ -186,7 +194,7 @@
             </form>
           {:else}
             <div class="env-table-item">
-              <div class="data-table-row volumes-table-grid text-[13px] text-neutral-700 dark:text-fg-dim">
+              <div class="data-table-row {grid} text-[13px] text-neutral-700 dark:text-fg-dim">
                 <div class="volumes-cell-name min-w-0">
                   <span class="volumes-mobile-label">Volume Name</span>
                   <span class="min-w-0 truncate text-[13px] font-medium text-neutral-950 dark:text-fg" title={s.name}>{s.name}</span>
@@ -195,7 +203,7 @@
                   <span class="volumes-mobile-label">Destination Path</span>
                   <span class="block min-w-0 truncate text-[13px] text-neutral-950 dark:text-fg" title={s.mount_path}>{s.mount_path}</span>
                 </div>
-                <span class="text-right text-neutral-400 dark:text-fg-faint">—</span>
+                {#if onsave}<span class="text-right text-neutral-400 dark:text-fg-faint">—</span>{/if}
               </div>
             </div>
           {/if}

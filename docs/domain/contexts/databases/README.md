@@ -103,6 +103,15 @@ backing up Redis and Valkey (see below).
   timeout. The Bakery publishes the Container's port on the host, so Access
   Public saves the typed Public port and Private clears it; there is no
   Proxy timeout and no proxy logs. The Bakery keeps no port while private.
+- **Persistent Storage shows only the data volume, read-only.** Coolify
+  lets a Database gain extra volume, file and directory mounts. A Database
+  here has exactly its one volume, so the page lists it (name and mount
+  path) with no Add mount and no actions column, as Coolify shows a
+  Database's default volume.
+- **Resource Limits are memory and CPUs only**, the two the Database's
+  Resource limits hold, on the same page as the Application's. Coolify's CPU
+  set, CPU weight, memory reservation, swap and swappiness are left out.
+  Saving recreates the Container with the new limits.
 
 - **Its own context, not part of deployments or projects.** A Database has
   no Source, no build, no Route and no Deployments; its lifecycle is

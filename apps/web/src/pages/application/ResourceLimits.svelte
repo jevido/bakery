@@ -5,21 +5,32 @@
   // the unsaved bar. Memory is typed as Coolify's 512m-style value and stored
   // in whole megabytes; 0 (or empty) is unlimited for both. Left out: CPU
   // set, CPU weight, memory reservation, memory and swap limit, swappiness.
+  // Shared by the Application and the Database page, which pass their limits
+  // and how to save them.
   import { untrack } from 'svelte'
-  import { api, ApiError } from '../../lib/api'
+  import { ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
   import { session } from '../../lib/session.svelte'
-  import type { Application } from '../../lib/types'
+  import type { ResourceLimits } from '../../lib/types'
   import Input from '../../lib/ui/Input.svelte'
   import SettingsSection from '../../lib/ui/SettingsSection.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
-  import { applicationInput } from './applicationInput'
 
-  let { application, onchange }: { application: Application; onchange: (a: Application) => void } = $props()
+  let {
+    limits,
+    onsave,
+    applied,
+  }: {
+    limits: ResourceLimits
+    /** Saves the limits; throws ApiError when the API refuses them. */
+    onsave: (limits: ResourceLimits) => Promise<void>
+    /** The toast's description after a save: when the limits take effect. */
+    applied: string
+  } = $props()
 
   const canUpdate = $derived(session.canWrite)
-  const saved = $derived(application.resource_limits)
+  const saved = $derived(limits)
   const savedCpus = $derived(saved.cpus == null ? '0' : String(saved.cpus))
   const savedMemory = $derived(saved.memory_mb == null ? '0' : `${saved.memory_mb}m`)
 
@@ -34,8 +45,10 @@
     errors = {}
   }
 
+  // What was saved changed (a save, or another resource): start from it.
   $effect(() => {
-    void application.id
+    void savedCpus
+    void savedMemory
     untrack(reset)
   })
 
@@ -70,16 +83,9 @@
     }
     saving = true
     try {
-      onchange(
-        (
-          await api<{ application: Application }>('PATCH', `/applications/${application.id}`, {
-            ...applicationInput(application),
-            resource_limits: { memory_mb: memoryMB, cpus: c === '' || Number(c) === 0 ? null : Number(c) },
-          })
-        ).application,
-      )
+      await onsave({ memory_mb: memoryMB, cpus: c === '' || Number(c) === 0 ? null : Number(c) })
       reset()
-      toast.success('Resource limits updated.', 'Redeploy to apply them.')
+      toast.success('Resource limits updated.', applied)
     } catch (err) {
       if (!(err instanceof ApiError)) throw err
       errors = Object.keys(err.errors).length ? err.errors : { 'resource_limits.memory_mb': err.message }
