@@ -174,9 +174,12 @@ export type Database = {
   environment_id: number
   project_id: number
   name: string
+  description: string
   slug: string
   type: DatabaseType
   version: string
+  /** Coolify's Image field: the Docker Hub repository and the version, "postgres:18-alpine". */
+  image: string
   status: DatabaseStatus
   desired_state: 'running' | 'stopped'
   /** Why the last start failed, or how the container exited. */
@@ -226,8 +229,11 @@ export type BackupExecution = {
 
 export type DatabaseInput = {
   name: string
+  description?: string
   type?: DatabaseType
-  version: string
+  /** Either the version (the image tag) or the whole image; image wins. */
+  version?: string
+  image?: string
   public_port: number | null
   resource_limits: ResourceLimits
 }

@@ -8,6 +8,7 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // FieldError is a broken rule on one input field.
@@ -78,10 +79,12 @@ type Database struct {
 	EnvironmentID uint64
 	ProjectID     uint64
 	Name          string
-	Slug          string
-	Type          DatabaseType
-	Version       string
-	Credentials   Credentials
+	// Description is free text of at most 255 characters, empty for none.
+	Description string
+	Slug        string
+	Type        DatabaseType
+	Version     string
+	Credentials Credentials
 	// PublicPort is the host port it is published on; 0 is none.
 	PublicPort      int
 	ResourceLimits  ResourceLimits
@@ -91,9 +94,13 @@ type Database struct {
 
 // Input is what the Owner chooses. Database type is only read on creation.
 type Input struct {
-	Name           string
-	Type           DatabaseType
-	Version        string
+	Name        string
+	Description string
+	Type        DatabaseType
+	Version     string
+	// Image is Coolify's Image field, "<repository>:<tag>"; when set, its
+	// repository must be the Database type's and its tag becomes Version.
+	Image          string
 	PublicPort     int
 	ResourceLimits ResourceLimits
 }
@@ -102,7 +109,15 @@ var versionTag = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$`)
 
 func (in Input) normalize(t DatabaseType) (Input, error) {
 	in.Name = strings.TrimSpace(in.Name)
+	in.Description = strings.TrimSpace(in.Description)
 	in.Version = strings.TrimSpace(in.Version)
+	if strings.TrimSpace(in.Image) != "" {
+		version, err := t.ParseImage(in.Image)
+		if err != nil {
+			return in, err
+		}
+		in.Version = version
+	}
 	if in.Version == "" {
 		in.Version = t.Spec().DefaultVersion
 	}
@@ -111,6 +126,8 @@ func (in Input) normalize(t DatabaseType) (Input, error) {
 		return in, invalid("name", "name is required")
 	case len(in.Name) > 100:
 		return in, invalid("name", "name is at most 100 characters")
+	case utf8.RuneCountInString(in.Description) > 255:
+		return in, invalid("description", "description is at most 255 characters")
 	case !versionTag.MatchString(in.Version):
 		return in, invalid("version", "%q is not a valid image tag", in.Version)
 	case in.PublicPort != 0 && (in.PublicPort < 1024 || in.PublicPort > 65535):
@@ -135,21 +152,21 @@ func NewDatabase(environmentID, projectID uint64, in Input, slug string, generat
 	}
 	return Database{
 		EnvironmentID: environmentID, ProjectID: projectID,
-		Name: in.Name, Slug: slug, Type: in.Type, Version: in.Version,
+		Name: in.Name, Description: in.Description, Slug: slug, Type: in.Type, Version: in.Version,
 		Credentials: creds, PublicPort: in.PublicPort, ResourceLimits: in.ResourceLimits,
 		DesiredState: Running, ScheduledBackup: DefaultScheduledBackup,
 	}, nil
 }
 
-// Update changes what may change: name, version, Public port and Resource
-// limits. It reports whether the Container has to be recreated for it.
+// Update changes what may change: name, description, version, Public port
+// and Resource limits. It reports whether the Container has to be recreated for it.
 func (d *Database) Update(in Input) (recreate bool, err error) {
 	in, err = in.normalize(d.Type)
 	if err != nil {
 		return false, err
 	}
 	recreate = in.Version != d.Version || in.PublicPort != d.PublicPort || in.ResourceLimits != d.ResourceLimits
-	d.Name, d.Version, d.PublicPort, d.ResourceLimits = in.Name, in.Version, in.PublicPort, in.ResourceLimits
+	d.Name, d.Description, d.Version, d.PublicPort, d.ResourceLimits = in.Name, in.Description, in.Version, in.PublicPort, in.ResourceLimits
 	return recreate, nil
 }
 

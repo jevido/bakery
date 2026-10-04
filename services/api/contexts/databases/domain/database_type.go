@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 // DatabaseType is what kind of Database it is.
@@ -61,6 +62,37 @@ func (e DatabaseType) Spec() TypeSpec { return specs[e] }
 
 // Image is the full image reference of a Database.
 func (d Database) Image() string { return d.Type.Spec().Repository + ":" + d.Version }
+
+// ShortImage is the image as Docker Hub names it, "postgres:18-alpine" or
+// "valkey/valkey:8-alpine": what Coolify's Image field shows.
+func (d Database) ShortImage() string {
+	return shortRepository(d.Type.Spec().Repository) + ":" + d.Version
+}
+
+func shortRepository(repo string) string {
+	repo = strings.TrimPrefix(repo, "docker.io/")
+	return strings.TrimPrefix(repo, "library/")
+}
+
+// ParseImage reads Coolify's Image field, "<repository>[:<tag>]", and
+// returns the tag as the Database version. The repository must be the
+// Database type's, spelled with or without "docker.io/" and "library/"; a
+// missing tag is "latest". Digests are refused: the version is a tag.
+func (e DatabaseType) ParseImage(ref string) (string, error) {
+	ref = strings.TrimSpace(ref)
+	repo, tag := ref, "latest"
+	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+		repo, tag = ref[:i], ref[i+1:]
+	}
+	want := shortRepository(e.Spec().Repository)
+	if strings.Contains(repo, "@") || shortRepository(strings.ToLower(repo)) != want {
+		return "", invalid("image", "image must be %s with a tag, for example %s:%s", want, want, e.Spec().DefaultVersion)
+	}
+	if !versionTag.MatchString(tag) {
+		return "", invalid("image", "%q is not a valid image tag", tag)
+	}
+	return tag, nil
+}
 
 // Env is the Container's environment. Every secret the Container needs is
 // passed here, never on its command line.

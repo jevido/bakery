@@ -1,10 +1,14 @@
 <script lang="ts">
   // Coolify's forms/copy-button (resources/views/components/forms/copy-button.blade.php):
   // a read-only input with a label and a copy button inside it on the right.
-  let { text, label, testid }: { text: string; label?: string; testid?: string } = $props()
+  // A secret is masked until its eye, left of the copy button, reveals it.
+  import Icon from '../Icon.svelte'
+
+  let { text, label, testid, secret = false }: { text: string; label?: string; testid?: string; secret?: boolean } = $props()
 
   const id = $props.id()
   let copied = $state(false)
+  let revealed = $state(false)
 
   async function copy() {
     await navigator.clipboard?.writeText(text)
@@ -20,13 +24,23 @@
   <div class="relative">
     <input
       {id}
-      type="text"
+      type={secret && !revealed ? 'password' : 'text'}
       value={text}
-      class="input input-with-copy-button bg-white dark:bg-coolgray-100 dark:read-only:bg-coolgray-100 dark:read-only:text-white"
+      class="input input-with-copy-button {secret ? 'pr-16!' : ''} bg-white dark:bg-coolgray-100 dark:read-only:bg-coolgray-100 dark:read-only:text-white"
       readonly
       data-testid={testid}
       onfocus={(e) => e.currentTarget.select()}
     />
+    {#if secret}
+      <button
+        type="button"
+        onclick={() => (revealed = !revealed)}
+        class="password-toggle absolute inset-y-0 right-7 z-10 flex cursor-pointer items-center pr-2 text-neutral-500 hover:text-black dark:text-neutral-400 dark:hover:text-white"
+        aria-label="Toggle password visibility"
+      >
+        <Icon name={revealed ? 'eye-off2' : 'eye'} class="size-[18px]" />
+      </button>
+    {/if}
     <button
       type="button"
       onclick={copy}

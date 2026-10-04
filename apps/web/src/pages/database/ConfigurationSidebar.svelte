@@ -5,7 +5,8 @@
   // wide screens and a grid of links above the page on narrower ones. Only the
   // sub-pages The Bakery has something behind are listed.
   import Icon, { type IconName } from '../../lib/Icon.svelte'
-  import { databasePath, href, type DatabasePage } from '../../lib/router.svelte'
+  import { databasePath, go, href, type DatabasePage } from '../../lib/router.svelte'
+  import { scrollToSettingsSection, scrollToSettingsSectionLater } from '../../lib/settingsSection.svelte'
   import { session } from '../../lib/session.svelte'
   import type { Database } from '../../lib/types'
 
@@ -32,6 +33,32 @@
     ['Operations', ['Resource Limits', 'Danger Zone']],
   ]
 
+  // Coolify's $pageSections: the sections of General, listed under it.
+  const sections: Partial<Record<DatabasePage, { id: string; label: string }[]>> = {
+    '': [
+      { id: 'database-details-section', label: 'Database details' },
+      { id: 'credentials-section', label: 'Credentials' },
+      { id: 'runtime-network-section', label: 'Runtime and network' },
+      { id: 'public-access-section', label: 'Public access' },
+    ],
+  }
+
+  let activeSection = $state('')
+  $effect(() => {
+    void page
+    activeSection = ''
+  })
+
+  function openSection(item: Item, id: string) {
+    activeSection = id
+    if (item.page === page) {
+      scrollToSettingsSection(id)
+      return
+    }
+    scrollToSettingsSectionLater(id)
+    go(databasePath(database, item.page))
+  }
+
   const grouped = $derived(
     groups
       .map(([label, labels]) => ({ label, items: labels.map((l) => items.find((i) => i.label === l)).filter((i): i is Item => !!i) }))
@@ -50,14 +77,29 @@
       {/if}
       <div class="nav-section hidden xl:block">{group.label}</div>
       {#each group.items as item (item.label)}
-        <a
-          class={['menu-item', item.page === page && 'menu-item-active']}
-          href={href(databasePath(database, item.page))}
-          aria-current={item.page === page ? 'page' : undefined}
-        >
-          <Icon name={item.icon} class="menu-item-icon" />
-          <span class="menu-item-label">{item.label}</span>
-        </a>
+        <div>
+          <a
+            class={['menu-item', item.page === page && 'menu-item-active']}
+            href={href(databasePath(database, item.page))}
+            aria-current={item.page === page ? 'page' : undefined}
+          >
+            <Icon name={item.icon} class="menu-item-icon" />
+            <span class="menu-item-label">{item.label}</span>
+          </a>
+          {#if item.page === page && sections[item.page]?.length}
+            <div class="nav-children hidden flex-col gap-0.5 py-1 xl:flex">
+              {#each sections[item.page] ?? [] as section (section.id)}
+                <button
+                  type="button"
+                  class={['menu-subitem', activeSection === section.id && 'menu-subitem-active']}
+                  onclick={() => openSection(item, section.id)}
+                >
+                  <span class="menu-item-label text-left">{section.label}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       {/each}
     {/each}
   </nav>

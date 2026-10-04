@@ -19,6 +19,7 @@ type databaseRecord struct {
 	EnvironmentID         uint64
 	ProjectID             uint64
 	Name                  string
+	Description           string
 	Slug                  string
 	Type                  string
 	Version               string
@@ -65,7 +66,7 @@ func toRecord(d domain.Database) (databaseRecord, error) {
 	}
 	rec := databaseRecord{
 		ID: d.ID, EnvironmentID: d.EnvironmentID, ProjectID: d.ProjectID,
-		Name: d.Name, Slug: d.Slug, Type: string(d.Type), Version: d.Version,
+		Name: d.Name, Description: d.Description, Slug: d.Slug, Type: string(d.Type), Version: d.Version,
 		Username: d.Credentials.Username, PasswordEncrypted: password, RootPasswordEncrypted: root,
 		DatabaseName: d.Credentials.DatabaseName,
 		MemoryMB:     d.ResourceLimits.MemoryMB, CPUs: d.ResourceLimits.CPUs,
@@ -92,7 +93,7 @@ func (r databaseRecord) toDomain() (domain.Database, error) {
 	}
 	d := domain.Database{
 		ID: r.ID, EnvironmentID: r.EnvironmentID, ProjectID: r.ProjectID,
-		Name: r.Name, Slug: r.Slug, Type: domain.DatabaseType(r.Type), Version: r.Version,
+		Name: r.Name, Description: r.Description, Slug: r.Slug, Type: domain.DatabaseType(r.Type), Version: r.Version,
 		Credentials:    domain.Credentials{Username: r.Username, Password: password, RootPassword: root, DatabaseName: r.DatabaseName},
 		ResourceLimits: domain.ResourceLimits{MemoryMB: r.MemoryMB, CPUs: r.CPUs},
 		DesiredState:   domain.DesiredState(r.DesiredState),
@@ -171,7 +172,7 @@ func (s Store) Update(ctx context.Context, d domain.Database) error {
 		return err
 	}
 	_, err = s.query(ctx).Model(&databaseRecord{}).Where("id", d.ID).Update(map[string]any{
-		"name": rec.Name, "version": rec.Version, "public_port": rec.PublicPort,
+		"name": rec.Name, "description": rec.Description, "version": rec.Version, "public_port": rec.PublicPort,
 		"memory_mb": rec.MemoryMB, "cpus": rec.CPUs, "desired_state": rec.DesiredState,
 		"backup_enabled": rec.BackupEnabled, "backup_cron": rec.BackupCron, "backup_retention": rec.BackupRetention,
 		"backup_s3_storage_id": rec.BackupS3StorageID, "backup_enabled_at": rec.BackupEnabledAt,

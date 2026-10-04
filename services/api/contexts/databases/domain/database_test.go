@@ -39,6 +39,9 @@ func TestNewDatabaseRules(t *testing.T) {
 		{Input{Name: "x", Type: Redis, PublicPort: 70000}, "public_port"},
 		{Input{Name: "x", Type: Redis, ResourceLimits: ResourceLimits{MemoryMB: 8}}, "resource_limits.memory_mb"},
 		{Input{Name: "x", Type: Redis, ResourceLimits: ResourceLimits{CPUs: 0.125}}, "resource_limits.cpus"},
+		{Input{Name: "x", Type: Redis, Description: strings.Repeat("é", 256)}, "description"},
+		{Input{Name: "x", Type: PostgreSQL, Image: "mysql:8"}, "image"},
+		{Input{Name: "x", Type: PostgreSQL, Image: "postgres:16 alpine"}, "image"},
 	} {
 		_, err := NewDatabase(1, 1, tc.in, "x", pw)
 		var fe *FieldError
@@ -48,6 +51,44 @@ func TestNewDatabaseRules(t *testing.T) {
 	}
 	if _, err := NewDatabase(1, 1, Input{Name: "x", Type: Valkey, Version: "8.1.2-alpine", PublicPort: 6380, ResourceLimits: ResourceLimits{MemoryMB: 256, CPUs: 0.5}}, "x", pw); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestParseImage(t *testing.T) {
+	for _, tc := range []struct {
+		t       DatabaseType
+		ref     string
+		version string
+	}{
+		{PostgreSQL, "postgres:16-alpine", "16-alpine"},
+		{PostgreSQL, " docker.io/library/postgres:17 ", "17"},
+		{PostgreSQL, "library/postgres", "latest"},
+		{Valkey, "valkey/valkey:8.1", "8.1"},
+		{Valkey, "docker.io/valkey/valkey:8.1", "8.1"},
+		{MongoDB, "mongo:7", "7"},
+	} {
+		if v, err := tc.t.ParseImage(tc.ref); err != nil || v != tc.version {
+			t.Errorf("%s %q: got %q, %v; want %q", tc.t, tc.ref, v, err, tc.version)
+		}
+	}
+	for _, tc := range []struct {
+		t   DatabaseType
+		ref string
+	}{
+		{PostgreSQL, "mysql:8"},
+		{PostgreSQL, "ghcr.io/library/postgres:16"},
+		{PostgreSQL, "postgres@sha256:abc"},
+		{Valkey, "valkey:8"},
+		{Redis, "redis:"},
+	} {
+		var fe *FieldError
+		if _, err := tc.t.ParseImage(tc.ref); !errors.As(err, &fe) || fe.Field != "image" {
+			t.Errorf("%s %q: want an image error, got %v", tc.t, tc.ref, err)
+		}
+	}
+	d := Database{Type: Valkey, Version: "8-alpine"}
+	if got := d.ShortImage(); got != "valkey/valkey:8-alpine" {
+		t.Fatalf("ShortImage %q", got)
 	}
 }
 
@@ -68,6 +109,12 @@ func TestUpdate(t *testing.T) {
 		if recreate, err := d.Update(in); err != nil || !recreate {
 			t.Fatalf("%+v: recreate %v, %v", in, recreate, err)
 		}
+	}
+	if recreate, err := d.Update(Input{Name: "renamed", Description: " cache ", Image: "redis:7", PublicPort: 6390, ResourceLimits: ResourceLimits{MemoryMB: 64}}); err != nil || recreate || d.Description != "cache" {
+		t.Fatalf("describe: recreate %v, %v, %q", recreate, err, d.Description)
+	}
+	if recreate, err := d.Update(Input{Name: "renamed", Version: "7", Image: "redis:8.2", PublicPort: 6390, ResourceLimits: ResourceLimits{MemoryMB: 64}}); err != nil || !recreate || d.Version != "8.2" {
+		t.Fatalf("image: recreate %v, %v, %q", recreate, err, d.Version)
 	}
 	if _, err := d.Update(Input{Name: ""}); err == nil {
 		t.Fatal("empty name accepted")

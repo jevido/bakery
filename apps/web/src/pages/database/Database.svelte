@@ -5,7 +5,6 @@
   import { api, ApiError } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import ContainerLogs from '../../lib/ContainerLogs.svelte'
-  import CopyButton from '../../lib/CopyButton.svelte'
   import DatabaseBackups from '../../lib/DatabaseBackups.svelte'
   import DatabaseForm from '../../lib/DatabaseForm.svelte'
   import { databaseTypeLabel } from '../../lib/databaseTypes'
@@ -17,6 +16,7 @@
   import { toast } from '../../lib/ui/toast.svelte'
   import Servers from '../application/Servers.svelte'
   import ConfigurationSidebar from './ConfigurationSidebar.svelte'
+  import General from './General.svelte'
   import Heading from './Heading.svelte'
 
   let {
@@ -42,7 +42,6 @@
   let loadError = $state('')
   let busy = $state(false)
   let saved = $state(false)
-  let showPasswords = $state(false)
   // Bumped after a save, so the settings form starts from what was saved.
   let formKey = $state(0)
 
@@ -113,11 +112,6 @@
     go(`/project/${projectId}/environment/${environmentId}`)
   }
 
-  function hidden(secret: string, url?: string | null): string {
-    if (!url) return ''
-    return showPasswords ? url : url.replace(`:${encodeURIComponent(secret)}@`, ':••••••@')
-  }
-
   // Projects › Project › Environment › Database, with its status.
   const crumbs = $derived(
     database && environment ? { project: environment.project_name ?? 'Project', environment: environment.name, name: database.name } : null,
@@ -139,7 +133,6 @@
 {:else if !database}
   <div class="chrome"><Spinner text="Loading…" /></div>
 {:else}
-  {@const creds = database.credentials}
   <Heading
     name={database.name}
     status={database.status}
@@ -182,53 +175,12 @@
     <div class="grid min-w-0 gap-8 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
       <ConfigurationSidebar {database} {page} />
 
-      <!-- Until General, Persistent Storage, Resource Limits, Backups and
-           Danger Zone are ported, the old tabs' contents render here. -->
+      <!-- Until Persistent Storage, Resource Limits, Backups and Danger Zone
+           are ported, the old tabs' contents render here. -->
       <div class="min-w-0">
         {#if page === ''}
-          {#if database.secrets_hidden}
-            <p class="muted">The credentials and connection URLs are hidden for viewers.</p>
-          {:else if creds}
-            <dl class="connect">
-              <dt>Internal URL</dt>
-              <dd>
-                <span class="mono" data-testid="internal-url">{hidden(creds.password, database.internal_url)}</span>
-                <CopyButton text={database.internal_url ?? ''} />
-              </dd>
-              <dt>Public URL</dt>
-              <dd>
-                {#if database.public_url}
-                  <span class="mono" data-testid="public-url">{hidden(creds.password, database.public_url)}</span>
-                  <CopyButton text={database.public_url} />
-                {:else}
-                  <span class="muted">Not published. Set a public port below to reach it from outside the server.</span>
-                {/if}
-              </dd>
-              <dt>Username</dt>
-              <dd class="mono">{creds.username}</dd>
-              <dt>Password</dt>
-              <dd>
-                <span class="mono">{showPasswords ? creds.password : '••••••••'}</span>
-                <CopyButton text={creds.password} />
-              </dd>
-              {#if creds.root_password}
-                <dt>Root password</dt>
-                <dd>
-                  <span class="mono">{showPasswords ? creds.root_password : '••••••••'}</span>
-                  <CopyButton text={creds.root_password} />
-                </dd>
-              {/if}
-              <dt>Database</dt>
-              <dd class="mono">{creds.database_name}</dd>
-            </dl>
-            <p><button onclick={() => (showPasswords = !showPasswords)}>{showPasswords ? 'Hide' : 'Show'} passwords</button></p>
-            <p class="muted">
-              Applications in any project reach it on the internal URL: paste it into an environment variable such as
-              <span class="mono">DATABASE_URL</span>.
-            </p>
-          {/if}
-        {/if}
-        {#if page === '' || page === 'resource-limits'}
+          <General {database} onchange={(d) => (database = d)} />
+        {:else if page === 'resource-limits'}
           {#key formKey}
             <DatabaseForm {database} submitLabel="Save" onsubmit={update} />
           {/key}
@@ -263,25 +215,6 @@
 {/if}
 
 <style>
-  .connect {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    gap: 0.5rem 1rem;
-    align-items: center;
-    margin: 0 0 1rem;
-  }
-  .connect dt {
-    color: var(--muted);
-  }
-  .connect dd {
-    margin: 0;
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    flex-wrap: wrap;
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
   .ok {
     color: var(--ok);
   }

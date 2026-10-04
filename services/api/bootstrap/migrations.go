@@ -59,5 +59,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000044AddDescriptionToEnvironments{},
 		&migrations.M20260930000045AddDeploymentForceRebuild{},
 		&migrations.M20260930000046AddDescriptionToApplications{},
+		&migrations.M20260930000047AddDescriptionToDatabases{},
 	}
 }

@@ -38,6 +38,7 @@
     try {
       const input: DatabaseInput = {
         name,
+        description: start.description,
         version,
         public_port: publicPort.trim() === '' ? null : Number(publicPort),
         resource_limits: {

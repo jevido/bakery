@@ -62,9 +62,11 @@ type databaseJSON struct {
 	EnvironmentID  uint64     `json:"environment_id"`
 	ProjectID      uint64     `json:"project_id"`
 	Name           string     `json:"name"`
+	Description    string     `json:"description"`
 	Slug           string     `json:"slug"`
 	Type           string     `json:"type"`
 	Version        string     `json:"version"`
+	Image          string     `json:"image"`
 	Status         string     `json:"status"`
 	DesiredState   string     `json:"desired_state"`
 	Error          string     `json:"error,omitempty"`
@@ -87,8 +89,8 @@ type databaseJSON struct {
 func toJSON(v app.View, full bool) databaseJSON {
 	out := databaseJSON{
 		ID: v.ID, EnvironmentID: v.EnvironmentID, ProjectID: v.ProjectID,
-		Name: v.Name, Slug: v.Slug, Type: string(v.Type), Version: v.Version,
-		Status: string(v.Status), DesiredState: string(v.DesiredState), Error: v.Error,
+		Name: v.Name, Description: v.Description, Slug: v.Slug, Type: string(v.Type), Version: v.Version,
+		Image: v.ShortImage(), Status: string(v.Status), DesiredState: string(v.DesiredState), Error: v.Error,
 		ResourceLimits:   limitsToJSON(v.ResourceLimits),
 		BackupsSupported: v.Type.Spec().Backups, ScheduledBackup: scheduledBackupToJSON(v.ScheduledBackup),
 		Restoring: v.Restoring,
@@ -118,17 +120,23 @@ func toJSON(v app.View, full bool) databaseJSON {
 }
 
 // databaseRequest is the whole Database as the Owner sets it; type is
-// only read on creation, public_port null (or 0) is none.
+// only read on creation, public_port null (or 0) is none. image, when set,
+// wins over version.
 type databaseRequest struct {
 	Name           string     `json:"name"`
+	Description    string     `json:"description"`
 	Type           string     `json:"type"`
 	Version        string     `json:"version"`
+	Image          string     `json:"image"`
 	PublicPort     *int       `json:"public_port"`
 	ResourceLimits limitsJSON `json:"resource_limits"`
 }
 
 func (r databaseRequest) input() domain.Input {
-	in := domain.Input{Name: r.Name, Type: domain.DatabaseType(r.Type), Version: r.Version, ResourceLimits: r.ResourceLimits.limits()}
+	in := domain.Input{
+		Name: r.Name, Description: r.Description, Type: domain.DatabaseType(r.Type),
+		Version: r.Version, Image: r.Image, ResourceLimits: r.ResourceLimits.limits(),
+	}
 	if r.PublicPort != nil {
 		in.PublicPort = *r.PublicPort
 	}

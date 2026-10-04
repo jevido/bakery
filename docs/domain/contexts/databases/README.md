@@ -20,6 +20,8 @@ backing up Redis and Valkey (see below).
 | Database | One Database type running as the Container `bakery-db-<slug>`, its data in the volume `bakery-db-<id>-data`. |
 | Database type | `postgresql`, `mysql`, `mariadb`, `redis`, `valkey` or `mongodb`, with its image, port, data path and readiness probe. |
 | Database version | The image tag of the Database type, e.g. `18-alpine`. |
+| Image | Coolify's Image field, `<repository>:<Database version>` with the repository as Docker Hub names it (`postgres`, `valkey/valkey`). |
+| Description | Free text about a Database, at most 255 characters, empty for none. |
 | Database credentials | Generated username, password, root password (MySQL/MariaDB) and database name. |
 | Internal URL | The connection URL on the `bakery` network (host `bakery-db-<slug>`). |
 | Public port | Host port the Database is published on; none by default. |
@@ -44,14 +46,14 @@ backing up Redis and Valkey (see below).
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Database | Belongs to one Environment of one Project. Its Database type and Database credentials are fixed at creation; credentials are generated, never typed. Name 1–100 characters; one created without a name gets `<type>-database-<random>` (8 lowercase letters and digits), as Coolify names it. Slug unique among Databases. Database version is a valid image tag. Public port is none or 1024–65535 and unique among Databases. Resource limits: memory 16–65536 MB, CPU 0.1–64 cores, empty is unlimited. Desired state is `running` or `stopped`. Scheduled backup: cron is a valid five-field expression, Retention 1–100, the S3 storage exists, and only a Database type with backups (not Redis, Valkey) has one switched on. |
+| Database | Belongs to one Environment of one Project. Its Database type and Database credentials are fixed at creation; credentials are generated, never typed. Name 1–100 characters; Description at most 255 characters; one created without a name gets `<type>-database-<random>` (8 lowercase letters and digits), as Coolify names it. Slug unique among Databases. Database version is a valid image tag; an Image given instead must name the Database type's repository (with or without `docker.io/` and `library/`, no digest), and its tag becomes the Database version (none is `latest`). Public port is none or 1024–65535 and unique among Databases. Resource limits: memory 16–65536 MB, CPU 0.1–64 cores, empty is unlimited. Desired state is `running` or `stopped`. Scheduled backup: cron is a valid five-field expression, Retention 1–100, the S3 storage exists, and only a Database type with backups (not Redis, Valkey) has one switched on. |
 | Backup execution | Belongs to one Database. Starts `running` and ends once, `succeeded` or `failed`. At most one Backup execution or Restore runs per Database at a time. Only a `running` Database is backed up or restored; only a succeeded Backup execution is restored. |
 | S3 storage | Name 1–100, unique. Endpoint is an http(s) URL without a path; bucket follows S3 naming (3–63 lowercase letters, digits, `-`, `.`); region defaults to `us-east-1`; prefix optional. The secret key is never returned. Cannot be deleted while a Scheduled backup uses it. |
 
 ### Commands
 
 - `CreateDatabase(environment, name, type, version?, public port?, limits?)`: generate credentials, store, start.
-- `UpdateDatabase(name, version, public port, limits)`: store; if version, Public port or limits changed and it should run, Recreate.
+- `UpdateDatabase(name, description, version or image, public port, limits)`: store; if version, Public port or limits changed and it should run, Recreate.
 - `StartDatabase`, `StopDatabase`, `RestartDatabase`: set the desired state and act on the Container.
 - `DeleteDatabase`: remove the Container, then the volume, then the row.
 - `DeleteDatabase` also removes its Backup execution files and rows; objects in S3 storage stay.
@@ -84,6 +86,23 @@ backing up Redis and Valkey (see below).
   Databases.
 
 ## Why it's shaped this way
+
+- **The Image field changes only the tag.** Coolify lets any image be
+  typed. The Bakery knows each Database type's port, data path, environment,
+  readiness probe and dump and restore commands by its image, so another
+  repository would run something those do not fit. The repository stays the
+  Database type's and the API refuses another with an `image` field error;
+  the tag is stored as the Database version, as before.
+- **Credentials are read-only on General.** Coolify's Credentials section
+  edits the values and asks the Owner to change them inside the database
+  first. The Bakery generates them once and its backups, restores and
+  readiness probes rely on them, so General shows them with copy buttons and
+  no Save. A viewer sees "Hidden" in their place and in the URLs.
+- **Public access is the Public port.** Coolify keeps an `is_public` flag
+  and a port and exposes the database through a TCP proxy container with a
+  timeout. The Bakery publishes the Container's port on the host, so Access
+  Public saves the typed Public port and Private clears it; there is no
+  Proxy timeout and no proxy logs. The Bakery keeps no port while private.
 
 - **Its own context, not part of deployments or projects.** A Database has
   no Source, no build, no Route and no Deployments; its lifecycle is
