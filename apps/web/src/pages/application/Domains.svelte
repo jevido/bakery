@@ -12,7 +12,7 @@
   import { api, ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
   import { session } from '../../lib/session.svelte'
-  import type { Application, ApplicationInput, Redirect, RouteSettings, Server } from '../../lib/types'
+  import type { Application, Redirect, RouteSettings, Server } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import Callout from '../../lib/ui/Callout.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
@@ -21,6 +21,7 @@
   import Modal from '../../lib/ui/Modal.svelte'
   import Select from '../../lib/ui/Select.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
+  import { applicationInput } from './applicationInput'
 
   let {
     application,
@@ -81,27 +82,10 @@
   const matches = (d: string) => !search.trim() || d.includes(search.trim().toLowerCase())
   const anyMatch = $derived(domains.some(matches))
 
-  // PATCH replaces the Application's fields; the optional ones left out keep
-  // their current values.
-  function input(list: string[]): ApplicationInput {
-    const a = application
-    return {
-      name: a.name,
-      build_pack: a.build_pack,
-      docker_image: a.docker_image,
-      publish_directory: a.publish_directory,
-      git_url: a.git_url,
-      git_branch: a.git_branch,
-      dockerfile_path: a.dockerfile_path,
-      port: a.port,
-      domains: list,
-    }
-  }
-
   // Saves the list; the API's message, when it refuses, is returned.
   async function saveDomains(list: string[]): Promise<string> {
     try {
-      onchange((await api<{ application: Application }>('PATCH', `/applications/${application.id}`, input(list))).application)
+      onchange((await api<{ application: Application }>('PATCH', `/applications/${application.id}`, { ...applicationInput(application), domains: list })).application)
       return ''
     } catch (err) {
       if (!(err instanceof ApiError)) throw err

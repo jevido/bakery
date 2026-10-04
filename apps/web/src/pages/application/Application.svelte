@@ -23,6 +23,7 @@
   import Domains from './Domains.svelte'
   import General from './General.svelte'
   import Heading, { type Action } from './Heading.svelte'
+  import PersistentStorage from './PersistentStorage.svelte'
 
   let {
     projectId,
@@ -219,8 +220,8 @@
   </div>
 {/snippet}
 
-<!-- Persistent Storage, Healthcheck and Resource Limits are edited in the
-     old form until their pages are ported (tasks 05 and 06). -->
+<!-- Healthcheck and Resource Limits are edited in the old form until their
+     pages are ported (task 06). -->
 {#snippet legacyForm()}
   {#if application}
     {#key application.id}
@@ -335,13 +336,7 @@
               : undefined,
           )}
         {:else if page === 'persistent-storage'}
-          {@render later(
-            'Persistent Storage',
-            application.storages.length > 0
-              ? application.storages.map((s) => `${s.name} at ${s.mount_path}`).join(', ') + '.'
-              : 'No persistent storage.',
-          )}
-          {@render legacyForm()}
+          <PersistentStorage {application} onchange={(a) => (application = a)} />
         {:else if page === 'resource-limits'}
           {@render later(
             'Resource Limits',

@@ -4,7 +4,7 @@
   // Apache-2.0, see NOTICE): a layer card with the title (its helper behind
   // the underlined title), optional actions on the right and the body.
   import type { Snippet } from 'svelte'
-  import Helper from '../../lib/ui/Helper.svelte'
+  import Helper from './Helper.svelte'
 
   let {
     id,

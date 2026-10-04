@@ -1057,6 +1057,122 @@ html:not(.dark) {
   color: var(--color-fg-dim);
 }
 
+.data-table-cell-check {
+  display: flex;
+  justify-content: center;
+  color: #171717;
+}
+
+.dark .data-table-cell-check {
+  color: var(--color-fg);
+}
+
+.data-table-cell-dash {
+  display: flex;
+  justify-content: center;
+  color: #a3a3a3;
+}
+
+.dark .data-table-cell-dash {
+  color: var(--color-fg-faint);
+}
+
+/* Coolify's environment variables table. A Bakery variable has only the
+   Buildtime and Runtime flags, so the grid keeps those two columns. */
+.env-table-grid {
+  grid-template-columns: minmax(14rem, 2.5fr) 4.8rem 4.2rem 3rem;
+}
+
+/* The Bakery's own: shared variables handed down to an Application. */
+.env-table-grid-inherited {
+  grid-template-columns: minmax(14rem, 2.5fr) 7rem 4.8rem 4.2rem;
+}
+
+.environment-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 768px) {
+  .data-table-header.env-table-grid,
+  .data-table-header.env-table-grid-inherited {
+    display: none;
+  }
+
+  .data-table-row.env-table-grid,
+  .data-table-row.env-table-grid-inherited {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .data-table-row.env-table-grid > :not(:first-child):not(:last-child),
+  .data-table-row.env-table-grid-inherited > :not(:first-child):not(:nth-child(2)) {
+    display: none;
+  }
+
+  .data-table-row.env-table-grid > :last-child {
+    display: block;
+    justify-self: end;
+  }
+}
+
+/* Coolify's Persistent storage volumes: Name | Destination | Actions. The
+   Bakery has no volume backups or preview suffix, so those columns go. */
+.volumes-table-grid {
+  grid-template-columns: minmax(9rem, 1.2fr) minmax(6rem, 1fr) 10rem;
+}
+
+.volumes-mobile-label {
+  display: none;
+}
+
+.data-table-row.volumes-table-grid .input {
+  min-height: 2rem;
+  height: 2rem;
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  .data-table-header.volumes-table-grid {
+    display: none;
+  }
+
+  .data-table-row.volumes-table-grid {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.625rem;
+    padding: 0.875rem 1rem;
+    min-height: 0;
+  }
+
+  .data-table-row.volumes-table-grid > * {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .volumes-mobile-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1rem;
+    color: var(--coollabs-subtle);
+  }
+
+  .volumes-cell-name,
+  .volumes-cell-dest {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .volumes-cell-actions {
+    justify-content: flex-start !important;
+  }
+}
+
 /* Coolify's Domains overview. The Bakery has no DNS check, search indexing
    or per-install HTTPS setting, so its grid drops those three columns. */
 .domains-overview-container {

@@ -16,7 +16,7 @@
   import Select from '../../lib/ui/Select.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
-  import SettingsSection from './SettingsSection.svelte'
+  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
 
   let { application }: { application: Application } = $props()
 

@@ -125,17 +125,11 @@
         </section>
       </form>
 
-      <section class="application-settings-section">
-        <div class="application-settings-section-header">
-          <div>
-            <h2>Shared variables</h2>
-            <p>Every application in this project gets these, unless its environment or the application sets the same name.</p>
-          </div>
-        </div>
-        <div class="application-settings-section-body">
-          <EnvironmentVariables path={`/projects/${id}/variables`} description="Values are stored encrypted and apply on the next deploy." />
-        </div>
-      </section>
+      <EnvironmentVariables
+        path={`/projects/${id}/variables`}
+        title="Shared variables"
+        helper="Every application in this project gets these, unless its environment or the application sets the same name."
+      />
 
       {#if session.canWrite}
         <section class="overflow-hidden rounded-[10px] border border-red-300 bg-red-50/80 dark:border-red-500/25 dark:bg-red-500/[0.06]">
