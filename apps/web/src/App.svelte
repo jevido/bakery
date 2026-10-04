@@ -12,7 +12,7 @@
   import Profile from './pages/Profile.svelte'
   import NotFound from './pages/NotFound.svelte'
   import Application from './pages/application/Application.svelte'
-  import Database from './pages/Database.svelte'
+  import Database from './pages/database/Database.svelte'
   import Environment from './pages/Environment.svelte'
   import EnvironmentEdit from './pages/EnvironmentEdit.svelte'
   import NewResource from './pages/NewResource.svelte'
@@ -83,7 +83,7 @@
         type={router.route.type}
         server={router.route.server}
       />
-    {:else if router.route.name === 'project-first-environment-new' || router.route.name === 'application-legacy'}
+    {:else if router.route.name === 'project-first-environment-new' || router.route.name === 'application-legacy' || router.route.name === 'database-legacy'}
       <div class="flex justify-center"><Spinner text="Loading…" /></div>
     {:else if router.route.name === 'application'}
       <Application
@@ -95,7 +95,14 @@
       />
 
     {:else if router.route.name === 'database'}
-      <Database id={router.route.id} />
+      <Database
+        projectId={router.route.projectId}
+        environmentId={router.route.environmentId}
+        id={router.route.id}
+        page={router.route.page}
+        scheduledBackupId={router.route.scheduledBackupId}
+        backupSection={router.route.backupSection}
+      />
     {:else if router.route.name === 'service'}
       <Service id={router.route.id} />
     {:else if router.route.name === 'servers'}

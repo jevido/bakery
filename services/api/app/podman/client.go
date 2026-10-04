@@ -72,10 +72,13 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("podman: %s (%d)", e.Message, e.Status)
 }
 
-// IsNotFound reports whether err is the API's 404.
+// IsNotFound reports whether err is the API's 404, or its 500 for a
+// container removed between the API resolving its name and reading it (a
+// restart replacing the container), which libpod reports with the cause
+// "no such container".
 func IsNotFound(err error) bool {
 	var e *Error
-	return errors.As(err, &e) && e.Status == http.StatusNotFound
+	return errors.As(err, &e) && (e.Status == http.StatusNotFound || e.Cause == "no such container")
 }
 
 // anonymousAuth is base64("{}"). Sent on pulls and builds so the Podman

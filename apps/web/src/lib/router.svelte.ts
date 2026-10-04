@@ -1,7 +1,7 @@
 import { api } from './api'
-import type { Application, Project } from './types'
+import type { Application, Database, Project } from './types'
 
-// Hash router, with Coolify's paths for Projects and Environments: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
+// Hash router, with Coolify's paths for Projects and Environments: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/services/{id}, #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
@@ -18,7 +18,17 @@ export type Route =
   // page is the sub-page slug of Coolify's routes/web.php, '' for General.
   | { name: 'application'; projectId: number; environmentId: number; id: number; page: ApplicationPage; deploymentId: number | null }
   | { name: 'application-legacy'; id: number }
-  | { name: 'database'; id: number }
+  | {
+      name: 'database'
+      projectId: number
+      environmentId: number
+      id: number
+      page: DatabasePage
+      // Set on …/backups/{scheduledBackupId}[/{section}], one Scheduled backup's page.
+      scheduledBackupId: number | null
+      backupSection: ScheduledBackupSection
+    }
+  | { name: 'database-legacy'; id: number }
   | { name: 'service'; id: number }
   | { name: 'servers' }
   | { name: 'server'; id: number }
@@ -60,6 +70,28 @@ function isApplicationPage(s: string): s is ApplicationPage {
 /** The path of an Application's page, or one of its sub-pages. */
 export function applicationPath(a: { project_id: number; environment_id: number; id: number }, page: ApplicationPage = ''): string {
   const base = `/project/${a.project_id}/environment/${a.environment_id}/application/${a.id}`
+  return page ? `${base}/${page}` : base
+}
+
+/** The Database page's sub-pages, by their slug in Coolify's URLs. */
+export const databasePages = ['', 'persistent-storage', 'servers', 'logs', 'backups', 'resource-limits', 'danger'] as const
+export type DatabasePage = (typeof databasePages)[number]
+
+/** A Scheduled backup page's sections, '' for its settings. */
+export const scheduledBackupSections = ['', 's3', 'retention', 'executions', 'danger'] as const
+export type ScheduledBackupSection = (typeof scheduledBackupSections)[number]
+
+function isDatabasePage(s: string): s is DatabasePage {
+  return (databasePages as readonly string[]).includes(s)
+}
+
+function isScheduledBackupSection(s: string): s is ScheduledBackupSection {
+  return (scheduledBackupSections as readonly string[]).includes(s)
+}
+
+/** The path of a Database's page, or one of its sub-pages. */
+export function databasePath(d: { project_id: number; environment_id: number; id: number }, page: DatabasePage = ''): string {
+  const base = `/project/${d.project_id}/environment/${d.environment_id}/database/${d.id}`
   return page ? `${base}/${page}` : base
 }
 
@@ -110,13 +142,22 @@ function parse(hash: string): Route {
           }
         }
         if (parts.length === 5 && parts[4] === 'edit') return { name: 'environment-edit', projectId: id, id: envId }
-        const appId = Number(parts[5])
-        if (parts[4] === 'application' && Number.isInteger(appId)) {
-          const application = { name: 'application', projectId: id, environmentId: envId, id: appId } as const
+        const resourceId = Number(parts[5])
+        if (parts[4] === 'application' && Number.isInteger(resourceId)) {
+          const application = { name: 'application', projectId: id, environmentId: envId, id: resourceId } as const
           const page = parts[6] ?? ''
           if (parts.length <= 7 && isApplicationPage(page)) return { ...application, page, deploymentId: null }
           const deploymentId = Number(parts[7])
           if (parts.length === 8 && page === 'deployment' && Number.isInteger(deploymentId)) return { ...application, page, deploymentId }
+        }
+        if (parts[4] === 'database' && Number.isInteger(resourceId)) {
+          const database = { name: 'database', projectId: id, environmentId: envId, id: resourceId } as const
+          const page = parts[6] ?? ''
+          if (parts.length <= 7 && isDatabasePage(page)) return { ...database, page, scheduledBackupId: null, backupSection: '' }
+          const scheduledBackupId = Number(parts[7])
+          const section = parts[8] ?? ''
+          if (parts.length <= 9 && page === 'backups' && Number.isInteger(scheduledBackupId) && isScheduledBackupSection(section))
+            return { ...database, page, scheduledBackupId, backupSection: section }
         }
       }
     }
@@ -127,7 +168,7 @@ function parse(hash: string): Route {
   }
   if (parts[0] === 'databases' && parts.length === 2) {
     const id = Number(parts[1])
-    if (Number.isInteger(id)) return { name: 'database', id }
+    if (Number.isInteger(id)) return { name: 'database-legacy', id }
   }
   if (parts[0] === 'services' && parts.length === 2) {
     const id = Number(parts[1])
@@ -170,6 +211,15 @@ class Router {
       api<{ application: Application }>('GET', `/applications/${route.id}`)
         .then(({ application }) => {
           if (this.route === route) this.route = redirect(applicationPath(application))
+        })
+        .catch(() => {
+          if (this.route === route) this.route = { name: 'notfound' }
+        })
+    }
+    if (route.name === 'database-legacy') {
+      api<{ database: Database }>('GET', `/databases/${route.id}`)
+        .then(({ database }) => {
+          if (this.route === route) this.route = redirect(databasePath(database))
         })
         .catch(() => {
           if (this.route === route) this.route = { name: 'notfound' }

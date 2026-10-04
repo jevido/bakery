@@ -17,7 +17,7 @@
   import DockerImage from '../lib/new/DockerImage.svelte'
   import PrivateGitRepository from '../lib/new/PrivateGitRepository.svelte'
   import PublicGitRepository from '../lib/new/PublicGitRepository.svelte'
-  import { go, href } from '../lib/router.svelte'
+  import { databasePath, go, href } from '../lib/router.svelte'
   import { session } from '../lib/session.svelte'
   import type { Database, DatabaseType, Environment, Server, Service, ServiceTemplate } from '../lib/types'
   import Callout from '../lib/ui/Callout.svelte'
@@ -264,7 +264,7 @@
     create(`database-${t}`, async () => {
       const { database } = await api<{ database: Database }>('POST', `/environments/${id}/databases`, { type: t })
       toast.success('Database created.')
-      return `/databases/${database.id}`
+      return databasePath(database)
     })
   }
 

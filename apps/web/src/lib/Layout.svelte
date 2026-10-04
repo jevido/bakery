@@ -26,7 +26,7 @@
         label: 'Workspace',
         items: items(
           { label: 'Dashboard', path: '/', icon: 'dashboard', routes: ['dashboard'] },
-          { label: 'Projects', path: '/projects', icon: 'projects', routes: ['projects', 'project', 'project-edit', 'environment', 'environment-edit', 'environment-new', 'application', 'application-legacy', 'database', 'service'] },
+          { label: 'Projects', path: '/projects', icon: 'projects', routes: ['projects', 'project', 'project-edit', 'environment', 'environment-edit', 'environment-new', 'application', 'application-legacy', 'database', 'database-legacy', 'service'] },
         ),
       },
       {
@@ -177,7 +177,7 @@
               </span>
             {/if}
             {#if crumb.summary}
-              <div class="ml-1"><StatusSummary status={crumb.summary} /></div>
+              <div class="ml-1"><StatusSummary status={crumb.summary} title={crumb.summaryTitle} /></div>
             {:else if crumb.status}
               <StatusBadge status={crumb.status.label} type={crumb.status.type} class="ml-1 shrink-0" />
             {/if}
