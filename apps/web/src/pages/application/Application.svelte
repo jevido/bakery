@@ -4,7 +4,6 @@
   // sub-page the URL names. Sub-pages not yet in Coolify's markup still render
   // the components the old tabbed page used.
   import { api, ApiError } from '../../lib/api'
-  import ApplicationForm from '../../lib/ApplicationForm.svelte'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import ContainerLogs from '../../lib/ContainerLogs.svelte'
   import DeployKey from '../../lib/DeployKey.svelte'
@@ -13,7 +12,7 @@
   import Previews from '../../lib/Previews.svelte'
   import { applicationPath, go, href, type ApplicationPage } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
-  import type { Application, ApplicationInput, Deployment, Environment, Server } from '../../lib/types'
+  import type { Application, Deployment, Environment, Server } from '../../lib/types'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
@@ -23,7 +22,10 @@
   import Domains from './Domains.svelte'
   import General from './General.svelte'
   import Heading, { type Action } from './Heading.svelte'
+  import Healthcheck from './Healthcheck.svelte'
   import PersistentStorage from './PersistentStorage.svelte'
+  import ResourceLimits from './ResourceLimits.svelte'
+  import Servers from './Servers.svelte'
 
   let {
     projectId,
@@ -39,7 +41,6 @@
   // The Target server, for its name and, on a Remote server, where DNS must point.
   let server = $state.raw<Server | null>(null)
   let loadError = $state('')
-  let saved = $state(false)
   let deploying = $state(false)
 
   // Coolify's status string from the Application's own Containers, and
@@ -176,13 +177,6 @@
         ],
   )
 
-  async function update(input: ApplicationInput) {
-    saved = false
-    const r = await api<{ application: Application }>('PATCH', `/applications/${id}`, input)
-    application = r.application
-    saved = true
-  }
-
   async function remove() {
     if (!application) return
     await api('DELETE', `/applications/${id}`)
@@ -218,24 +212,6 @@
     {#if text}<p class="mt-2 text-[13px] text-neutral-600 dark:text-fg-dim">{text}</p>{/if}
     <p class="mt-2 text-[13px] text-neutral-500 dark:text-fg-dim">This page is ported in a later task.</p>
   </div>
-{/snippet}
-
-<!-- Healthcheck and Resource Limits are edited in the old form until their
-     pages are ported (task 06). -->
-{#snippet legacyForm()}
-  {#if application}
-    {#key application.id}
-      <div class="mt-6">
-        <ApplicationForm
-          initial={application}
-          submitLabel="Save"
-          domainPlaceholder={`${application.slug}.localhost`}
-          onsubmit={update}
-        />
-      </div>
-    {/key}
-    {#if saved}<p class="ok">Saved. Domains apply at once; everything else on the next deploy.</p>{/if}
-  {/if}
 {/snippet}
 
 {#if loadError}
@@ -329,23 +305,13 @@
         {:else if page === 'preview-deployments'}
           <Previews applicationId={application.id} onchange={() => loadDeployments().catch(() => {})} />
         {:else if page === 'servers'}
-          {@render later(
-            'Servers',
-            server
-              ? `Runs on ${server.name}${server.kind === 'remote' ? `; its domains must point at ${server.host}, where this server's proxy serves them` : ''}.`
-              : undefined,
-          )}
+          <Servers {server} {status} />
         {:else if page === 'persistent-storage'}
           <PersistentStorage {application} onchange={(a) => (application = a)} />
         {:else if page === 'resource-limits'}
-          {@render later(
-            'Resource Limits',
-            `Memory: ${application.resource_limits.memory_mb ? `${application.resource_limits.memory_mb} MB` : 'unlimited'}, CPU: ${application.resource_limits.cpus ?? 'unlimited'}.`,
-          )}
-          {@render legacyForm()}
+          <ResourceLimits {application} onchange={(a) => (application = a)} />
         {:else if page === 'healthcheck'}
-          {@render later('Healthcheck')}
-          {@render legacyForm()}
+          <Healthcheck {application} {status} onchange={(a) => (application = a)} />
         {:else if page === 'rollback'}
           {@render later('Rollback', 'Roll back from a finished Deployment under Deployment Logs.')}
         {:else if page === 'advanced'}
@@ -375,8 +341,5 @@
     margin: 0;
     min-width: 0;
     overflow-wrap: anywhere;
-  }
-  .ok {
-    color: var(--ok);
   }
 </style>
