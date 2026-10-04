@@ -299,7 +299,17 @@
         {:else if page === 'advanced'}
           <Advanced {application} />
         {:else if page === 'danger' && session.canWrite}
-          <Danger {application} />
+          <Danger
+            label="application"
+            name={application.name}
+            url={`/applications/${application.id}`}
+            checkboxes={[
+              { id: 'delete_volumes', label: 'Permanently delete all volumes associated with this resource.', checked: true },
+              // In place of Coolify's Docker cleanup.
+              { id: 'delete_images', label: 'Remove the images its deployments built or pulled.', checked: true },
+            ]}
+            back={`/project/${application.project_id}/environment/${application.environment_id}`}
+          />
         {:else}
           <div class="chrome">
             <h2 class="text-[15px]! font-semibold! text-black dark:text-fg">Not available</h2>

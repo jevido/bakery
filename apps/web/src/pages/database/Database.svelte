@@ -5,12 +5,13 @@
   import { api, ApiError } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import { databaseTypeLabel } from '../../lib/databaseTypes'
-  import { databasePath, go, href, type DatabasePage, type ScheduledBackupSection } from '../../lib/router.svelte'
+  import { databasePath, href, type DatabasePage, type ScheduledBackupSection } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
   import type { Database, DatabaseInput, Environment, Server } from '../../lib/types'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
+  import Danger from '../application/Danger.svelte'
   import PersistentStorage from '../application/PersistentStorage.svelte'
   import ResourceLimits from '../application/ResourceLimits.svelte'
   import RuntimeLogs from '../application/RuntimeLogs.svelte'
@@ -109,16 +110,6 @@
     database = r.database
   }
 
-  async function remove() {
-    if (!database) return
-    const ok = confirm(
-      `Delete ${database.name}? Its container, all its data and its backups on this server are removed; copies in S3 storage stay. This cannot be undone.`,
-    )
-    if (!ok) return
-    await api('DELETE', `/databases/${id}`)
-    go(`/project/${projectId}/environment/${environmentId}`)
-  }
-
   // Projects › Project › Environment › Database, with its status.
   const crumbs = $derived(
     database && environment ? { project: environment.project_name ?? 'Project', environment: environment.name, name: database.name } : null,
@@ -185,7 +176,6 @@
       <div class="grid min-w-0 gap-8 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
         <ConfigurationSidebar {database} {page} />
 
-        <!-- Until Danger Zone is ported, the old tab's contents render here. -->
         <div class="min-w-0">
           {#if page === ''}
             <General {database} onchange={(d) => (database = d)} />
@@ -207,9 +197,17 @@
           {:else if page === 'backups' && database.backups_supported}
             <Backups {database} />
           {:else if page === 'danger' && session.canWrite}
-            <h2>Danger zone</h2>
-            <p class="muted">Deleting removes the container, the data volume and the backups on this server. Copies in S3 storage stay.</p>
-            <button class="danger" onclick={remove}>Delete database</button>
+            <!-- Coolify calls a Database a "resource" here. Its network,
+                 configuration and Docker cleanup checkboxes have nothing
+                 behind them for a Database. -->
+            <Danger
+              label="resource"
+              name={database.name}
+              url={`/databases/${database.id}`}
+              checkboxes={[{ id: 'delete_volumes', label: 'Permanently delete all volumes associated with this resource.', checked: true }]}
+              notes={['Its Backup executions on this server are removed; copies in S3 storage stay.']}
+              back={`/project/${projectId}/environment/${environmentId}`}
+            />
           {:else}
             <div class="chrome">
               <h2 class="text-[15px]! font-semibold! text-black dark:text-fg">Not available</h2>

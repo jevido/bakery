@@ -312,7 +312,7 @@ func TestDeleteBackupAndDatabase(t *testing.T) {
 	if len(e.files.names()) != 1 || len(e.bucket.keys()) != 2 {
 		t.Fatalf("after delete backup: files %v objects %v", e.files.names(), e.bucket.keys())
 	}
-	if err := e.s.Delete(ctx, v.ID); err != nil {
+	if err := e.s.Delete(ctx, v.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	// Local Backups go with the Database; S3 copies stay.
@@ -595,7 +595,7 @@ func TestManyScheduledBackups(t *testing.T) {
 	}
 
 	// Deleting the Database deletes its Scheduled backups.
-	if err := e.s.Delete(ctx, v.ID); err != nil {
+	if err := e.s.Delete(ctx, v.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if l, _ := e.store.ScheduledBackups(ctx, v.ID); len(l) != 0 {

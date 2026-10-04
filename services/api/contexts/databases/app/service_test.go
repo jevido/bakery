@@ -334,8 +334,12 @@ func (f *fakeRuntime) Recreate(_ context.Context, d domain.Database) error {
 	f.record("recreate", d.ID, true)
 	return nil
 }
-func (f *fakeRuntime) Remove(_ context.Context, d domain.Database) error {
-	f.record("remove", d.ID, false)
+func (f *fakeRuntime) Remove(_ context.Context, d domain.Database, volume bool) error {
+	call := "remove"
+	if !volume {
+		call = "remove keeping volume"
+	}
+	f.record(call, d.ID, false)
 	return nil
 }
 func (f *fakeRuntime) Status(_ context.Context, d domain.Database) (domain.Status, string, error) {
@@ -517,7 +521,7 @@ func TestStopStartDeleteAndInUse(t *testing.T) {
 	if v, _ := s.Get(ctx, v.ID); v.Status != domain.StatusRunning {
 		t.Fatalf("after start: %s", v.Status)
 	}
-	if err := s.Delete(ctx, v.ID); err != nil {
+	if err := s.Delete(ctx, v.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if _, found, _ := store.Get(ctx, v.ID); found {
@@ -531,6 +535,22 @@ func TestStopStartDeleteAndInUse(t *testing.T) {
 	}
 	if _, err := s.Get(ctx, v.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("get deleted: %v", err)
+	}
+}
+
+func TestDeleteKeepingTheVolume(t *testing.T) {
+	ctx := context.Background()
+	s, store, rt := newTestService()
+	v, _ := s.Create(ctx, 7, domain.Input{Name: "x", Type: domain.PostgreSQL})
+	s.Wait()
+	if err := s.Delete(ctx, v.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, _ := store.Get(ctx, v.ID); found {
+		t.Fatal("still stored")
+	}
+	if got := rt.Calls(); !equal(got, []string{"start", "remove keeping volume"}) {
+		t.Fatalf("calls %v", got)
 	}
 }
 

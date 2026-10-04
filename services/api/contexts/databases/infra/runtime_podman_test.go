@@ -60,7 +60,7 @@ func TestPostgresLifecycle(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	d := testDatabase(t, 990101, domain.PostgreSQL)
-	defer r.Remove(context.Background(), d)
+	defer r.Remove(context.Background(), d, true)
 
 	if s, _, err := r.Status(ctx, d); err != nil || s != domain.StatusMissing {
 		t.Fatalf("before start: %s %v", s, err)
@@ -111,10 +111,18 @@ func TestPostgresLifecycle(t *testing.T) {
 		t.Fatal("logs of a stopped database")
 	}
 
-	if err := r.Remove(ctx, d); err != nil {
+	// Keeping the volume leaves it, with its data, until it is removed.
+	if err := r.Remove(ctx, d, false); err != nil {
 		t.Fatal(err)
 	}
 	vols, err := r.Podman.ListVolumes(ctx, map[string]string{"bakery.database": "990101"})
+	if err != nil || len(vols) != 1 {
+		t.Fatalf("kept volume: %v %v", vols, err)
+	}
+	if err := r.Remove(ctx, d, true); err != nil {
+		t.Fatal(err)
+	}
+	vols, err = r.Podman.ListVolumes(ctx, map[string]string{"bakery.database": "990101"})
 	if err != nil || len(vols) != 0 {
 		t.Fatalf("volumes left: %v %v", vols, err)
 	}
@@ -125,7 +133,7 @@ func TestRedisRuns(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	d := testDatabase(t, 990102, domain.Redis)
-	defer r.Remove(context.Background(), d)
+	defer r.Remove(context.Background(), d, true)
 	if err := r.Start(ctx, d); err != nil {
 		t.Fatal(err)
 	}

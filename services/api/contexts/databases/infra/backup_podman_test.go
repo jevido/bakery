@@ -20,7 +20,7 @@ func TestPostgresBackupAndRestore(t *testing.T) {
 	defer cancel()
 	d := testDatabase(t, 990201, domain.PostgreSQL)
 	d.Slug = "test-backup-postgresql"
-	defer r.Remove(context.Background(), d)
+	defer r.Remove(context.Background(), d, true)
 	if err := r.Start(ctx, d); err != nil {
 		t.Fatal(err)
 	}

@@ -71,8 +71,8 @@ type Runtime interface {
 	Start(ctx context.Context, d domain.Database) error
 	Stop(ctx context.Context, d domain.Database) error
 	Recreate(ctx context.Context, d domain.Database) error
-	// Remove removes the Container and the volume.
-	Remove(ctx context.Context, d domain.Database) error
+	// Remove removes the Container and, when volume is true, the volume.
+	Remove(ctx context.Context, d domain.Database, volume bool) error
 	Status(ctx context.Context, d domain.Database) (domain.Status, string, error)
 	Logs(ctx context.Context, d domain.Database, follow bool, tail int, out func(stream, line string)) (bool, error)
 	// Dump runs the Database's DumpCommand in its Container, writing its
@@ -420,16 +420,21 @@ func (s *Service) Stop(ctx context.Context, id uint64) (View, error) {
 	return s.view(ctx, d)
 }
 
-// Delete removes the Container, the volume with all data, the Database's
-// Backup execution files and rows, its Scheduled backups, and the Database.
-// Its S3 objects stay.
-func (s *Service) Delete(ctx context.Context, id uint64) error {
+// Delete removes the Container, the volume with all data unless
+// deleteVolume is false, the Database's Backup execution files and rows, its
+// Scheduled backups, and the Database. Its S3 objects stay. A kept volume is
+// never reattached: volume names carry the Database's id, which no other
+// Database gets.
+func (s *Service) Delete(ctx context.Context, id uint64, deleteVolume bool) error {
 	d, err := s.get(ctx, id)
 	if err != nil {
 		return err
 	}
 	s.endJob(id)
-	if err := s.now(ctx, d, s.runtime.Remove); err != nil {
+	remove := func(ctx context.Context, d domain.Database) error {
+		return s.runtime.Remove(ctx, d, deleteVolume)
+	}
+	if err := s.now(ctx, d, remove); err != nil {
 		return err
 	}
 	if s.Files != nil {

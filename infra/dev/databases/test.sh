@@ -4,9 +4,10 @@
 # Postgres keeps its data across stop/start and a Public port change; the
 # Public URL answers from the host until the Public port is removed; a
 # Project with a Database cannot be deleted; deleting a Database removes its
-# Container and volume. With RESTART_API=1 it also removes a Database's
-# Container by hand, restarts `task dev` (detached) and waits for the API to
-# start the Database again. Needs `task dev` running.
+# Container and volume, or only its Container with delete_volumes=false.
+# With RESTART_API=1 it also removes a Database's Container by hand,
+# restarts `task dev` (detached) and waits for the API to start the
+# Database again. Needs `task dev` running.
 set -euo pipefail
 
 KEEP_FORGEJO=1 # this test does not use Forgejo
@@ -138,13 +139,23 @@ if [ -n "${RESTART_API:-}" ]; then
 	echo "ok: started again on boot"
 fi
 
-say "Deleting removes Container and volume"
+say "Deleting removes Container and volume, or keeps the volume when asked"
+# Asked over the rootless socket's libpod API, as The Bakery itself does.
+SOCK=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock
+volume_exists() { [ "$(curl -s -o /dev/null -w '%{http_code}' --unix-socket "$SOCK" "http://d/v5.0.0/libpod/volumes/$1/exists")" = 204 ]; }
 for type in "${!ID[@]}"; do
 	id=${ID[$type]}
 	name=$(container "$id")
-	[ "$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -X DELETE "$API/api/databases/$id")" = 204 ] || fail "deleting $type"
+	flags=
+	[ "$type" = redis ] && flags='?delete_volumes=false'
+	[ "$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -X DELETE "$API/api/databases/$id$flags")" = 204 ] || fail "deleting $type"
 	podman container exists "$name" && fail "$type container left"
-	podman volume exists "bakery-db-$id-data" && fail "$type volume left"
+	if [ -n "$flags" ]; then
+		volume_exists "bakery-db-$id-data" || fail "$type volume not kept"
+		curl -sf -o /dev/null --unix-socket "$SOCK" -X DELETE "http://d/v5.0.0/libpod/volumes/bakery-db-$id-data" || fail "removing kept $type volume"
+	else
+		volume_exists "bakery-db-$id-data" && fail "$type volume left"
+	fi
 done
 DBS=()
 echo "ok: nothing left"

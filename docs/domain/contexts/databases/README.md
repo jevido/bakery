@@ -56,7 +56,7 @@ backing up Redis and Valkey (see below).
 - `CreateDatabase(environment, name, type, version?, public port?, limits?)`: generate credentials, store, start.
 - `UpdateDatabase(name, description, version or image, public port, limits)`: store; if version, Public port or limits changed and it should run, Recreate.
 - `StartDatabase`, `StopDatabase`, `RestartDatabase`: set the desired state and act on the Container.
-- `DeleteDatabase`: remove the Container, then the volume, then the row.
+- `DeleteDatabase(database, delete volumes?)`: remove the Container, then the volume (unless delete volumes is off), then the row.
 - `DeleteDatabase` also removes its Backup execution files and rows and its Scheduled backups; objects in S3 storage stay.
 - `CreateDatabase` of a Database type with backups also adds its first Scheduled backup: off, `0 3 * * *`, Retention 7.
 - `CreateScheduledBackup(database, enabled, cron, retention, s3 storage?)`, `UpdateScheduledBackup(...)`: validate and store; switching it on remembers when, so it first fires at the next time after that.
@@ -116,6 +116,14 @@ backing up Redis and Valkey (see below).
   Resource limits hold, on the same page as the Application's. Coolify's CPU
   set, CPU weight, memory reservation, swap and swappiness are left out.
   Saving recreates the Container with the new limits.
+- **Danger Zone offers only "delete volumes".** Coolify's Danger Zone, the
+  same one the Application has, also offers deleting connected networks and
+  configuration files and a Docker cleanup; a Database here has no network,
+  file or image of its own to remove, so only the volume checkbox is shown,
+  ticked by default as in Coolify. A kept volume is left for the Owner to
+  copy data out of by hand: The Bakery never reattaches it, because volume
+  names carry the Database's id and no new Database gets that id. Local
+  Backup executions go with the Database either way, as before.
 
 - **Its own context, not part of deployments or projects.** A Database has
   no Source, no build, no Route and no Deployments; its lifecycle is

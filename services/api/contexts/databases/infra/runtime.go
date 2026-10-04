@@ -118,9 +118,10 @@ func (r Runtime) Recreate(ctx context.Context, d domain.Database) error {
 	return r.Start(ctx, d)
 }
 
-// Remove removes the Container and then the volume, with all its data.
-func (r Runtime) Remove(ctx context.Context, d domain.Database) error {
-	if err := r.Stop(ctx, d); err != nil {
+// Remove removes the Container and then, when volume is true, the volume
+// with all its data.
+func (r Runtime) Remove(ctx context.Context, d domain.Database, volume bool) error {
+	if err := r.Stop(ctx, d); err != nil || !volume {
 		return err
 	}
 	return r.Podman.RemoveVolume(ctx, domain.VolumeName(d.ID))
