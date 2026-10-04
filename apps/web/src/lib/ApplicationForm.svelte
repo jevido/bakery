@@ -9,34 +9,20 @@
     initial,
     submitLabel,
     domainPlaceholder = '<slug>.localhost',
-    server,
-    buildPack,
     onsubmit,
     oncancel,
   }: {
-    initial?: ApplicationInput & { registry_username?: string; has_registry_password?: boolean; server_id?: number }
+    initial: ApplicationInput & { registry_username?: string; has_registry_password?: boolean; server_id: number }
     submitLabel: string
     domainPlaceholder?: string
-    /** Creating: the Server picked on the New Resource page, and the card's build pack. */
-    server?: number
-    buildPack?: BuildPack
     onsubmit: (input: ApplicationInput) => Promise<void>
     oncancel?: () => void
   } = $props()
 
-  // The form edits its own copy; `initial` only seeds it (the parent remounts
-  // the form with {#key} when it should start over).
-  const start = untrack(() => initial) ?? {
-    name: '',
-    build_pack: untrack(() => buildPack) ?? ('dockerfile' as BuildPack),
-    docker_image: '',
-    publish_directory: '.',
-    git_url: '',
-    git_branch: 'main',
-    dockerfile_path: 'Dockerfile',
-    port: 3000,
-    domains: [] as string[],
-  }
+  // Edits an existing Application; the create pages under lib/new/ create
+  // one. The form edits its own copy; `initial` only seeds it (the parent
+  // remounts the form with {#key} when it should start over).
+  const start = untrack(() => initial)
   const packs: { value: BuildPack; label: string; hint: string }[] = [
     { value: 'dockerfile', label: 'Dockerfile', hint: 'Build the Dockerfile in the repository.' },
     { value: 'nixpacks', label: 'Nixpacks', hint: 'Nixpacks detects the language and builds it; no Dockerfile needed.' },
@@ -62,15 +48,11 @@
   let storages = $state((start.storages ?? []).map((s: Storage) => ({ key: nextKey++, ...s })))
   const limits: ResourceLimits = start.resource_limits ?? { memory_mb: null, cpus: null }
   // The Target server is chosen once, when the application is created.
-  const creating = untrack(() => initial) === undefined
   let servers = $state.raw<Server[]>([])
-  let server_id = $state(untrack(() => initial?.server_id ?? server) ?? 0)
+  const server_id = start.server_id
   const currentServer = $derived(servers.find((s) => s.id === server_id))
   api<{ servers: Server[] }>('GET', '/servers')
-    .then((r) => {
-      servers = r.servers
-      if (server_id === 0) server_id = r.servers.find((s) => s.kind === 'local')?.id ?? 0
-    })
+    .then((r) => (servers = r.servers))
     .catch(() => {})
   let memoryMB = $state(limits.memory_mb == null ? '' : String(limits.memory_mb))
   let cpus = $state(limits.cpus == null ? '' : String(limits.cpus))
@@ -123,7 +105,6 @@
           cpus: cpus.trim() === '' ? null : Number(cpus),
         },
       }
-      if (creating && server_id !== 0) input.server_id = server_id
       if (build_pack === 'dockerimage') input.registry_credentials = { username: registryUsername, password: registryPassword }
       await onsubmit(input)
       registryPassword = ''
@@ -154,33 +135,13 @@
     <p class="muted">{packs.find((p) => p.value === build_pack)?.hint}</p>
     {#if errors.build_pack}<small class="error">{errors.build_pack}</small>{/if}
   </fieldset>
-  {#if servers.length > 1 || !creating}
-    <fieldset>
-      <legend>Server</legend>
-      {#if creating}
-        <label class="field">
-          <span>Where it is built and runs</span>
-          <select bind:value={server_id} aria-invalid={errors.server_id ? 'true' : undefined}>
-            {#each servers as s (s.id)}
-              <option value={s.id}>
-                {s.name}{s.kind === 'remote' ? ` (${s.host})` : ''}{s.status !== 'reachable' ? ` · ${s.status}` : ''}
-              </option>
-            {/each}
-          </select>
-        </label>
-        {#if currentServer && currentServer.status !== 'reachable'}
-          <p class="muted">This server is {currentServer.status}; validate it on its page, or the deploy will fail.</p>
-        {/if}
-        <p class="muted">The server cannot be changed once the application exists.</p>
-      {:else}
-        <p>
-          {currentServer?.name ?? `server ${server_id}`}{currentServer?.kind === 'remote' ? ` (${currentServer.host})` : ''}
-          <span class="muted">· cannot be changed</span>
-        </p>
-      {/if}
-      {#if errors.server_id}<small class="error">{errors.server_id}</small>{/if}
-    </fieldset>
-  {/if}
+  <fieldset>
+    <legend>Server</legend>
+    <p>
+      {currentServer?.name ?? `server ${server_id}`}{currentServer?.kind === 'remote' ? ` (${currentServer.host})` : ''}
+      <span class="muted">· cannot be changed</span>
+    </p>
+  </fieldset>
   {#if fromGit}
     <Field
       label="Git repository (https:// for public, SSH for private)"
@@ -311,14 +272,6 @@
 </form>
 
 <style>
-  .field {
-    display: grid;
-    gap: 0.3rem;
-  }
-  .field span {
-    font-size: 0.8rem;
-    color: var(--muted);
-  }
   .form {
     display: grid;
     gap: 0.8rem;

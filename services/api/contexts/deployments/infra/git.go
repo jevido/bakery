@@ -25,10 +25,13 @@ type Git struct {
 
 // Clone runs a shallow single-branch clone. The URL and branch are
 // arguments, never shell text; `--` ends the options so neither can be read
-// as one. Only https is allowed for an https URL and only ssh for an SSH
-// URL, submodules included.
+// as one. Only the URL's own protocol is allowed (https, http, or ssh for an
+// SSH URL), submodules included.
 func (g Git) Clone(ctx context.Context, req app.CloneRequest, out func(stream, line string)) (app.Commit, error) {
 	protocol := "https"
+	if strings.HasPrefix(req.URL, "http://") {
+		protocol = "http"
+	}
 	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=/bin/false", "GCM_INTERACTIVE=never")
 	var knownHostsFile, storedLines string
 	if req.DeployKey != "" {

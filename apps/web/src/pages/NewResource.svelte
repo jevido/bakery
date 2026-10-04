@@ -11,24 +11,15 @@
   // cards, KeyDB, Dragonfly and ClickHouse, Destinations, build servers, the
   // PostgreSQL image picker and "Connect an existing PostgreSQL database".
   import { api, ApiError } from '../lib/api'
-  import ApplicationForm from '../lib/ApplicationForm.svelte'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import Icon from '../lib/Icon.svelte'
+  import DockerCompose from '../lib/new/DockerCompose.svelte'
+  import DockerImage from '../lib/new/DockerImage.svelte'
+  import PrivateGitRepository from '../lib/new/PrivateGitRepository.svelte'
+  import PublicGitRepository from '../lib/new/PublicGitRepository.svelte'
   import { go, href } from '../lib/router.svelte'
-  import ServiceForm from '../lib/ServiceForm.svelte'
   import { session } from '../lib/session.svelte'
-  import type {
-    Application,
-    ApplicationInput,
-    BuildPack,
-    Database,
-    DatabaseType,
-    Environment,
-    Server,
-    Service,
-    ServiceInput,
-    ServiceTemplate,
-  } from '../lib/types'
+  import type { Database, DatabaseType, Environment, Server, Service, ServiceTemplate } from '../lib/types'
   import Callout from '../lib/ui/Callout.svelte'
   import Empty from '../lib/ui/Empty.svelte'
   import Spinner from '../lib/ui/Spinner.svelte'
@@ -45,7 +36,7 @@
 
   type ResourceType = 'all' | 'applications' | 'databases' | 'services'
   type Card = { id: string; name: string; description: string; logo: string; docs: string; website?: string }
-  type ApplicationCard = Card & { source: 'Git source' | 'Docker source'; buildPack: BuildPack }
+  type ApplicationCard = Card & { source: 'Git source' | 'Docker source' }
 
   // Select.php's cards, in its order, with what The Bakery can create.
   const gitBasedApplications: ApplicationCard[] = [
@@ -56,7 +47,6 @@
       logo: 'svgs/resources/public-repo.svg',
       docs: 'https://git-scm.com/docs',
       source: 'Git source',
-      buildPack: 'dockerfile',
     },
     {
       id: 'private-deploy-key',
@@ -66,7 +56,6 @@
       logo: 'svgs/resources/deploy-key.svg',
       docs: 'https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys',
       source: 'Git source',
-      buildPack: 'dockerfile',
     },
   ]
   const dockerBasedApplications: ApplicationCard[] = [
@@ -77,7 +66,6 @@
       logo: 'svgs/resources/docker-compose.svg',
       docs: 'https://docs.podman.io/en/latest/markdown/podman-compose.1.html',
       source: 'Docker source',
-      buildPack: 'dockerimage',
     },
     {
       id: 'docker-image',
@@ -86,7 +74,6 @@
       logo: 'svgs/resources/docker-image.svg',
       docs: 'https://docs.podman.io/en/latest/markdown/podman-pull.1.html',
       source: 'Docker source',
-      buildPack: 'dockerimage',
     },
   ]
   const databases: (Card & { id: DatabaseType })[] = [
@@ -289,16 +276,6 @@
     })
   }
 
-  async function addApplication(input: ApplicationInput) {
-    const { application } = await api<{ application: Application }>('POST', `/environments/${id}/applications`, input)
-    go(`/applications/${application.id}`)
-  }
-
-  async function addService(input: ServiceInput) {
-    const { service } = await api<{ service: Service }>('POST', `/environments/${id}/services`, input)
-    go(`/services/${service.id}`)
-  }
-
   function onkeydown(e: KeyboardEvent) {
     // "/" jumps to the search box, as the Blade's @keydown.window.slash.
     const target = e.target as HTMLElement
@@ -307,14 +284,19 @@
     searchInput?.focus()
   }
 
-  const crumbs = $derived(environment ? { project: environment.project_name ?? '', environment: environment.name } : null)
+  // On a create page "New resource" leads back to the chooser.
+  const crumbs = $derived(
+    environment
+      ? { project: environment.project_name ?? '', environment: environment.name, card: step === 'create' ? card?.name : undefined, base }
+      : null,
+  )
   $effect(() => {
     if (crumbs)
       breadcrumb.set(
         { label: 'Projects', href: href('/projects') },
         { label: crumbs.project, href: href(`/project/${projectId}`) },
         { label: crumbs.environment, href: href(`/project/${projectId}/environment/${id}`) },
-        { label: 'New resource' },
+        ...(crumbs.card ? [{ label: 'New resource', href: href(crumbs.base) }, { label: crumbs.card }] : [{ label: 'New resource' }]),
       )
   })
 
@@ -624,22 +606,16 @@
           </div>
         </div>
       </section>
+    {:else if step === 'create' && card}
+      {#if card.id === 'public'}
+        <PublicGitRepository environmentId={id} server={server!} />
+      {:else if card.id === 'private-deploy-key'}
+        <PrivateGitRepository environmentId={id} server={server!} />
+      {:else if card.id === 'docker-image'}
+        <DockerImage environmentId={id} server={server!} />
+      {:else}
+        <DockerCompose environmentId={id} />
+      {/if}
     {/if}
   </div>
-  {#if step === 'create' && card}
-    <!-- The create pages of Coolify's Application cards come next; until then
-         each card opens the form The Bakery had, outside .chrome so it keeps
-         its legacy styles. -->
-    <div class="chrome mb-4 flex items-center justify-between gap-3">
-      <h2 class="text-[15px] font-semibold text-black dark:text-fg">{card.name}</h2>
-      <a class="button" href={href(base)}>Back</a>
-    </div>
-    {#if card.id === 'docker-compose-empty'}
-      <ServiceForm onsubmit={addService} />
-    {:else}
-      {#key `${card.id}-${server}`}
-        <ApplicationForm submitLabel="Create application" server={server ?? undefined} buildPack={card.buildPack} onsubmit={addApplication} />
-      {/key}
-    {/if}
-  {/if}
 {/if}

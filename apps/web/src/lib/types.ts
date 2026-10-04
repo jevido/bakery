@@ -303,9 +303,6 @@ export type ServiceTemplate = {
   tags: string[]
 }
 
-/** Either a template key or a compose file. */
-export type ServiceInput = { name: string; template?: string; compose?: string }
-
 export type ServerStatus = 'unvalidated' | 'reachable' | 'unreachable'
 
 export type ServerCheck = {

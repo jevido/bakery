@@ -1,6 +1,7 @@
 <script lang="ts">
   // Coolify's forms/input (resources/views/components/forms/input.blade.php):
   // label row, `input`, the password eye, and the validation message.
+  import type { Snippet } from 'svelte'
   import type { HTMLInputAttributes } from 'svelte/elements'
   import Icon from '../Icon.svelte'
   import FieldError from './FieldError.svelte'
@@ -10,7 +11,7 @@
   type Props = Omit<HTMLInputAttributes, 'value'> & {
     value?: string | number | null
     label?: string
-    helper?: string
+    helper?: string | Snippet
     error?: string
     /** Show the eye that reveals a password. */
     allowToPeak?: boolean

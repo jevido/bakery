@@ -309,7 +309,7 @@ func (in ApplicationInput) Normalize() (ApplicationInput, error) {
 	in.GitURL = strings.TrimSpace(in.GitURL)
 	in.GitBranch = strings.TrimSpace(in.GitBranch)
 	in.DockerfilePath = strings.TrimSpace(in.DockerfilePath)
-	in.DockerImage = strings.TrimSpace(in.DockerImage)
+	in.DockerImage = QualifyDockerImage(strings.TrimSpace(in.DockerImage))
 	in.PublishDirectory = strings.TrimSpace(in.PublishDirectory)
 	if in.BuildPack == "" {
 		in.BuildPack = Dockerfile
@@ -450,8 +450,9 @@ func (a Application) PrimaryDomain() string {
 	return a.Domains[0]
 }
 
-// checkGitURL allows https URLs without credentials and SSH URLs, nothing
-// else: the deployment worker clones where the API runs, and a file:// URL,
+// checkGitURL allows http(s) URLs without credentials and SSH URLs, nothing
+// else (Coolify allows http:// too, for a Git server without TLS): the
+// deployment worker clones where the API runs, and a file:// URL,
 // an ext:: transport or a local path would let an Application read or run
 // things there.
 func checkGitURL(raw string) error {
@@ -462,8 +463,8 @@ func checkGitURL(raw string) error {
 		return nil
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
-		return invalid("git_url", "git URL must be https://… without credentials, or an SSH URL like git@host:owner/repo.git")
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil {
+		return invalid("git_url", "git URL must be https://… or http://… without credentials, or an SSH URL like git@host:owner/repo.git")
 	}
 	return nil
 }
@@ -502,9 +503,28 @@ func checkRepositoryPath(field, what, p string) error {
 	return nil
 }
 
-// checkDockerImage asks for a Docker image that names its registry: a
-// short name like nginx resolves differently per server (Podman's
-// unqualified-search-registries) and may prompt.
+// QualifyDockerImage names the registry of a short Docker image reference the
+// way Docker does: nginx is docker.io/library/nginx and traefik/whoami is
+// docker.io/traefik/whoami. Podman would instead try its
+// unqualified-search-registries, which differ per server and may prompt. A
+// first part with a dot or a colon, or localhost, already is a registry.
+func QualifyDockerImage(ref string) string {
+	if ref == "" || strings.HasPrefix(ref, "-") {
+		return ref
+	}
+	host, _, found := strings.Cut(ref, "/")
+	switch {
+	case !found:
+		return "docker.io/library/" + ref
+	case strings.ContainsAny(host, ".:") || host == "localhost":
+		return ref
+	default:
+		return "docker.io/" + ref
+	}
+}
+
+// checkDockerImage asks for a Docker image that names its registry (see
+// QualifyDockerImage).
 func checkDockerImage(ref string) error {
 	switch {
 	case ref == "":

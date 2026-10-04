@@ -198,7 +198,7 @@
     {#if application.deploy_key_public}
       <DeployKey {application} onchange={(a) => (application = a)} />
     {:else}
-      <p class="muted">A public https repository needs no key. For a private one, use its SSH URL (git@host:owner/repo.git) under General.</p>
+      <p class="muted">A public repository needs no key. For a private one, use its SSH URL (git@host:owner/repo.git) under General.</p>
     {/if}
     <Webhook applicationId={application.id} />
   {:else if tab === 'general'}

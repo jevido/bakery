@@ -91,7 +91,9 @@ reaches an Application (routing).
 - **The dashboard domain is reserved through configuration, not by asking
   routing.** Projects reads `BAKERY_DASHBOARD_DOMAIN` itself, so it needs no
   dependency on routing to refuse it; both contexts read the same setting.
-- **Git repository URLs must be `https://` or SSH.** The deployment worker clones whatever
+- **Git repository URLs must be `https://`, `http://` or SSH.** `http://`
+  is allowed as Coolify allows it, for a Git server without TLS (a Forgejo
+  on the local network); the clone then allows only that protocol. The deployment worker clones whatever
   URL it is given where the API runs (on the host in development, in the
   API container on a server); a `file://` URL or a local path would let an
   Application read the host's files. Private repositories are reached over
@@ -125,10 +127,13 @@ reaches an Application (routing).
   registries. It is the smallest thing that lets a private image deploy, and
   a leaked credential reaches one Application's image. A shared list per
   registry can come with Teams, when several people manage credentials.
-- **Docker images must name their registry.** On a server, rootless
+- **Docker images are stored with their registry.** On a server, rootless
   Podman resolves a short name like `nginx` through
   `unqualified-search-registries`, which differs per distribution and may
-  prompt; `docker.io/library/nginx:1.27` means the same thing everywhere.
+  prompt. Coolify takes short names as Docker does, so The Bakery accepts
+  them too and stores them qualified the way Docker reads them (`nginx` is
+  `docker.io/library/nginx`, `traefik/whoami` is `docker.io/traefik/whoami`);
+  the stored reference means the same thing on every Server.
 - **Nixpacks, not Railpack, for builds without a Dockerfile.** Railpack
   builds only through BuildKit (its plan is a BuildKit frontend), which
   Podman's builder (Buildah) cannot run, and running BuildKit would mean a
@@ -206,3 +211,16 @@ reaches an Application (routing).
   Local server. A remote Server counts as ready once validated; the Local
   server always does. Cards link to the upstream projects' documentation
   (git, Podman, the database's own), not to Coolify's.
+- **The create pages ask for less than Coolify's.** "Check repository" on
+  the Public Git Repository page checks the URL only: The Bakery has no Git
+  provider API to list branches, so the branch comes from a `/tree/<branch>`
+  link or defaults to `main`. Its build packs are The Bakery's (Nixpacks,
+  Static, Dockerfile); there is no Base directory, no Nixpacks output type
+  and no Docker Compose build pack, since Applications have none of them.
+  The Private Git Repository page does not ask for a Private Key: The Bakery
+  generates a Deploy key per Application, which the Application page shows
+  to add to the repository before the first deploy. The Docker Image page
+  asks for the Port too, since the Proxy needs it before the first deploy.
+  The Docker Compose page creates a Service (Coolify's "Docker Compose
+  Empty"), and its compose file is checked as any Service's: a `build:` or
+  `ports:` key is refused with its line.

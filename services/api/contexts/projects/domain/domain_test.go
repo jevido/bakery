@@ -33,6 +33,7 @@ func TestApplicationInputNormalize(t *testing.T) {
 		{func(i *ApplicationInput) { i.GitURL = "file:///etc" }, "git_url"},
 		{func(i *ApplicationInput) { i.GitURL = "/home/me/repo" }, "git_url"},
 		{func(i *ApplicationInput) { i.GitURL = "https://user:pw@github.com/x/y" }, "git_url"},
+		{func(i *ApplicationInput) { i.GitURL = "git://github.com/x/y" }, "git_url"},
 		{func(i *ApplicationInput) { i.GitBranch = "--upload-pack=x" }, "git_branch"},
 		{func(i *ApplicationInput) { i.DockerfilePath = "../Dockerfile" }, "dockerfile_path"},
 		{func(i *ApplicationInput) { i.DockerfilePath = "/etc/passwd" }, "dockerfile_path"},
@@ -116,7 +117,7 @@ func TestGitURLKinds(t *testing.T) {
 		"file:///etc":                           "",
 		"git://github.com/x/y":                  "",
 		"git@github.com:x/y with space":         "",
-		"http://github.com/x/y":                 "",
+		"http://github.com/x/y":                 "https", // http too, as Coolify
 	} {
 		in := ApplicationInput{Name: "a", GitURL: raw, Port: 80}
 		_, err := in.Normalize()
@@ -203,6 +204,7 @@ func TestCheckEnvironmentVariablesScope(t *testing.T) {
 }
 
 func TestBuildPacks(t *testing.T) {
+	const sha256 = "4e272eef7ec6a7e76b9c521dcf14a3d397f7c3f6d7f3bfbc8a1a4c1d7b5c3e2a"
 	img, err := ApplicationInput{Name: "who", BuildPack: DockerImage, DockerImage: " docker.io/traefik/whoami:v1.10 ",
 		GitURL: "https://github.com/x/y", Port: 80}.Normalize()
 	if err != nil {
@@ -216,7 +218,21 @@ func TestBuildPacks(t *testing.T) {
 			t.Errorf("%s: %v", ref, err)
 		}
 	}
-	for _, ref := range []string{"", "nginx", "nginx:1.27", "library/nginx", "-x/y", "docker.io/a b"} {
+	for ref, want := range map[string]string{
+		"nginx":                  "docker.io/library/nginx",
+		"nginx:1.27":             "docker.io/library/nginx:1.27",
+		"traefik/whoami:v1.10":   "docker.io/traefik/whoami:v1.10",
+		"ghcr.io/me/app:1":       "ghcr.io/me/app:1",
+		"localhost/app":          "localhost/app",
+		"127.0.0.1:4950/me/app":  "127.0.0.1:4950/me/app",
+		"nginx@sha256:" + sha256: "docker.io/library/nginx@sha256:" + sha256,
+	} {
+		got, err := (ApplicationInput{Name: "x", BuildPack: DockerImage, DockerImage: ref, Port: 80}).Normalize()
+		if err != nil || got.DockerImage != want {
+			t.Errorf("%q: got %q, %v; want %q", ref, got.DockerImage, err, want)
+		}
+	}
+	for _, ref := range []string{"", "-x/y", "docker.io/a b"} {
 		if _, err := (ApplicationInput{Name: "x", BuildPack: DockerImage, DockerImage: ref, Port: 80}).Normalize(); field(err) != "docker_image" {
 			t.Errorf("%q: err = %v, want docker_image", ref, err)
 		}
