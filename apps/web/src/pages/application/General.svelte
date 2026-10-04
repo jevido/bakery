@@ -47,8 +47,6 @@
   let name = $state('')
   let description = $state('')
   let buildPack = $state<BuildPack>('dockerfile')
-  let gitUrl = $state('')
-  let gitBranch = $state('')
   let dockerfilePath = $state('')
   let publishDirectory = $state('')
   let image = $state('')
@@ -68,8 +66,6 @@
     name = a.name
     description = a.description ?? ''
     buildPack = a.build_pack
-    gitUrl = a.git_url
-    gitBranch = a.git_branch
     dockerfilePath = a.dockerfile_path
     publishDirectory = a.publish_directory
     ;({ image, tag } = splitImage(a.docker_image ?? ''))
@@ -104,8 +100,6 @@
     name !== application.name ||
       description !== (application.description ?? '') ||
       buildPack !== application.build_pack ||
-      gitUrl !== application.git_url ||
-      gitBranch !== application.git_branch ||
       dockerfilePath !== application.dockerfile_path ||
       publishDirectory !== application.publish_directory ||
       (!gitBased && joinImage(image, tag) !== application.docker_image) ||
@@ -143,8 +137,8 @@
           build_pack: buildPack,
           docker_image: gitBased ? '' : joinImage(image, tag),
           publish_directory: publishDirectory,
-          git_url: gitUrl,
-          git_branch: gitBranch,
+          git_url: application.git_url,
+          git_branch: application.git_branch,
           dockerfile_path: dockerfilePath,
           port: static_ ? 80 : Number(port),
           domains: application.domains,
@@ -271,16 +265,6 @@
           <p class="text-sm text-neutral-500 dark:text-fg-dim">Nothing to build. This application deploys a prebuilt Docker image.</p>
         {:else}
           <div class="grid gap-4 lg:grid-cols-2">
-            <Input
-              label="Git repository"
-              bind:value={gitUrl}
-              error={errors.git_url}
-              required
-              placeholder="https://github.com/you/app or git@github.com:you/app.git"
-              helper="https:// for a public repository, SSH (git@host:owner/repo.git) for a private one with the deploy key under Git Source."
-              disabled={!canUpdate}
-            />
-            <Input label="Branch" bind:value={gitBranch} error={errors.git_branch} placeholder="main" disabled={!canUpdate} />
             {#if buildPack === 'dockerfile'}
               <Input
                 label="Dockerfile location"

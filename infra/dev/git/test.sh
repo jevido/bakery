@@ -16,7 +16,7 @@ cat >"$REPO/Dockerfile" <<'DOCKERFILE'
 FROM docker.io/library/busybox:stable
 COPY index.html /www/index.html
 EXPOSE 8080
-CMD ["httpd", "-f", "-p", "8080", "-h", "/www"]
+CMD ["sh", "-c", "echo serving; echo ready to serve; exec httpd -f -p 8080 -h /www"]
 DOCKERFILE
 commit() { # commit VERSION SUBJECT
 	echo "version $1" >"$REPO/index.html"
@@ -35,6 +35,17 @@ wait_for 300 "the first deployment" deployment_done
 wait_for 30 "version 1 on $PUBLIC_URL" serves 1
 grep -qF '[127.0.0.1]:4952' <<<"$(bakery GET /api/known-hosts)" || fail "host key not remembered"
 echo "ok: deployed version 1 from the private repository"
+
+say "Runtime Logs: the last lines, timestamped"
+CONTAINER=$(bakery GET "/api/applications/$APP_ID/status" | json "d['container']")
+[ -n "$CONTAINER" ] || fail "the status names no running container"
+TAIL=$(curl -sS -b "$JAR" --max-time 10 "$API/api/applications/$APP_ID/logs?lines=1")
+[ "$(grep -c '^event: line' <<<"$TAIL")" = 1 ] || fail "lines=1 sent: $TAIL"
+grep -qE '"line":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+(Z|[+-][0-9:]+) ready to serve"' <<<"$TAIL" || fail "not the timestamped last line: $TAIL"
+grep -q '^event: end' <<<"$TAIL" || fail "without follow the stream did not end: $TAIL"
+ALL=$(curl -sS -b "$JAR" --max-time 10 "$API/api/applications/$APP_ID/logs?lines=-1")
+grep -q ' serving"' <<<"$ALL" || fail "lines=-1 lacks the first line: $ALL"
+echo "ok: $CONTAINER's last line and all lines, each with its time"
 
 say "Webhook: push deploys by itself"
 HOOK=$(bakery GET "/api/applications/$APP_ID/webhook")

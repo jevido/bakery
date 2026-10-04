@@ -16,12 +16,15 @@ import (
 const (
 	pollEvery = 500 * time.Millisecond
 	batch     = 500
+	// Coolify's MAX_LOG_LINES: "all" lines is this many.
+	maxContainerLines = 50000
 )
 
-// ContainerLogs follows the running Container of an Application, handing
-// each line to out, until ctx ends or the Container stops. found is false
-// when the Application has no running Container.
-type ContainerLogs func(ctx context.Context, applicationID uint64, tail int, out func(stream, line string)) (found bool, err error)
+// ContainerLogs reads the last tail lines (all with -1) of the running
+// Container of an Application, handing each line to out; with follow it
+// goes on until ctx ends or the Container stops. found is false when the
+// Application has no running Container.
+type ContainerLogs func(ctx context.Context, applicationID uint64, follow bool, tail int, out func(stream, line string)) (found bool, err error)
 
 // StreamController serves the live logs as server-sent events. Streams also
 // end when shutdown is done, so a stopping API does not wait on open tabs.
@@ -102,9 +105,11 @@ func (c *StreamController) DeploymentLog(ctx contractshttp.Context) contractshtt
 	}
 }
 
-// ContainerLogs follows the Application's running Container: the last 200
-// lines, then new ones. It sends `end` when there is no running Container or
-// it stops (a redeploy replaced it); the client may reconnect then.
+// ContainerLogs sends the Application's running Container's last `lines`
+// lines (100 by default, -1 for all, at most 50,000, as Coolify's Lines
+// field), each prefixed with its time; with `follow=1` it goes on with new
+// ones. It sends `end` when it is done, there is no running Container or it
+// stops (a redeploy replaced it); the client may reconnect then.
 func (c *StreamController) ContainerLogs(ctx contractshttp.Context) contractshttp.Response {
 	id, ok := RouteID(ctx)
 	if !ok {
@@ -117,13 +122,18 @@ func (c *StreamController) ContainerLogs(ctx contractshttp.Context) contractshtt
 		}
 		return respond.ServerError(ctx, err)
 	}
+	lines := ctx.Request().QueryInt("lines", 100)
+	if lines < 0 || lines > maxContainerLines {
+		lines = maxContainerLines
+	}
+	follow := ctx.Request().QueryBool("follow", false)
 	stream, ok := sse.Start(ctx)
 	if !ok {
 		return respond.Error(ctx, contractshttp.StatusInternalServerError, "streaming is not supported")
 	}
 
 	sse.Follow(reqCtx, stream, c.shutdown, func(ctx context.Context, out func(stream, line string)) (bool, error) {
-		return c.containers(ctx, id, 200, out)
+		return c.containers(ctx, id, follow, lines, out)
 	})
 	return nil
 }

@@ -5,17 +5,14 @@
   // the components the old tabbed page used.
   import { api, ApiError } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
-  import ContainerLogs from '../../lib/ContainerLogs.svelte'
-  import DeployKey from '../../lib/DeployKey.svelte'
   import EnvironmentVariables from '../../lib/EnvironmentVariables.svelte'
-  import Previews from '../../lib/Previews.svelte'
   import { applicationPath, go, href, type ApplicationPage } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
   import type { Application, Deployment, Environment, Server } from '../../lib/types'
+  import Callout from '../../lib/ui/Callout.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
-  import Webhook from '../../lib/Webhook.svelte'
   import Advanced from './Advanced.svelte'
   import ConfigurationSidebar from './ConfigurationSidebar.svelte'
   import DeploymentPage from './Deployment.svelte'
@@ -25,9 +22,13 @@
   import Heading, { type Action } from './Heading.svelte'
   import Healthcheck from './Healthcheck.svelte'
   import PersistentStorage from './PersistentStorage.svelte'
+  import Previews from './Previews.svelte'
   import ResourceLimits from './ResourceLimits.svelte'
   import Rollback from './Rollback.svelte'
+  import RuntimeLogs from './RuntimeLogs.svelte'
   import Servers from './Servers.svelte'
+  import Source from './Source.svelte'
+  import Webhooks from './Webhooks.svelte'
 
   let {
     projectId,
@@ -45,9 +46,10 @@
   let loadError = $state('')
   let deploying = $state(false)
 
-  // Coolify's status string from the Application's own Containers, and
-  // whether one (running or not) is there to remove.
-  let appStatus = $state.raw<{ status: string; container_present: boolean } | null>(null)
+  // Coolify's status string from the Application's own Containers, whether
+  // one (running or not) is there to remove, and the running one's name.
+  type ApplicationStatus = { status: string; container_present: boolean; container: string }
+  let appStatus = $state.raw<ApplicationStatus | null>(null)
 
   // The Application's own Deployments; Previews' are listed with them but
   // have their own queue.
@@ -64,7 +66,7 @@
   }
 
   async function loadStatus() {
-    appStatus = await api<{ status: string; container_present: boolean }>('GET', `/applications/${id}/status`)
+    appStatus = await api<ApplicationStatus>('GET', `/applications/${id}/status`)
   }
 
   $effect(() => {
@@ -132,7 +134,7 @@
   async function stop() {
     toast.info('Gracefully stopping application.', 'It could take a while depending on the application.')
     try {
-      appStatus = await api<{ status: string; container_present: boolean }>('POST', `/applications/${id}/stop`)
+      appStatus = await api<ApplicationStatus>('POST', `/applications/${id}/stop`)
     } catch (err) {
       if (!(err instanceof ApiError)) throw err
       toast.error('Application not stopped', err.message)
@@ -254,10 +256,12 @@
 
       <div class="min-w-0">
         {#if application.deploy_key_public && deployments.length === 0 && page !== 'source'}
-          <p class="muted">
-            Private repository: add the deploy key from <a href={href(applicationPath(application, 'source'))}>Git Source</a> to the
-            repository before the first deploy.
-          </p>
+          <div class="chrome mb-6">
+            <Callout title="Deploy key">
+              Private repository: add the deploy key from <a class="underline" href={href(applicationPath(application, 'source'))}>Git Source</a> to the
+              repository before the first deploy.
+            </Callout>
+          </div>
         {/if}
 
         {#if page === ''}
@@ -273,34 +277,13 @@
             <DeploymentHistory {application} {serverNames} />
           {/if}
         {:else if page === 'logs'}
-          <ContainerLogs
-            url={`/api/applications/${application.id}/logs`}
-            empty="No running container. Deploy the application first."
-            stopped="The container stopped (a new deployment may have replaced it)."
-          />
+          <RuntimeLogs applicationId={application.id} container={appStatus ? appStatus.container : null} />
         {:else if page === 'source' && application.build_pack !== 'dockerimage'}
-          <dl class="source">
-            <dt>Git repository</dt>
-            <dd class="mono">{application.git_url}</dd>
-            <dt>Branch</dt>
-            <dd class="mono">{application.git_branch}</dd>
-            {#if application.build_pack === 'static'}
-              <dt>Publish directory</dt>
-              <dd class="mono">{application.publish_directory}</dd>
-            {:else if application.build_pack === 'dockerfile'}
-              <dt>Dockerfile</dt>
-              <dd class="mono">{application.dockerfile_path}</dd>
-            {/if}
-          </dl>
-          {#if application.deploy_key_public}
-            <DeployKey {application} onchange={(a) => (application = a)} />
-          {:else}
-            <p class="muted">A public repository needs no key. For a private one, use its SSH URL (git@host:owner/repo.git) under General.</p>
-          {/if}
+          <Source {application} onchange={(a) => (application = a)} />
         {:else if page === 'webhooks'}
-          <Webhook applicationId={application.id} />
+          <Webhooks {application} />
         {:else if page === 'preview-deployments'}
-          <Previews applicationId={application.id} onchange={() => loadDeployments().catch(() => {})} />
+          <Previews {application} onchange={() => loadDeployments().catch(() => {})} />
         {:else if page === 'servers'}
           <Servers {server} {status} />
         {:else if page === 'persistent-storage'}
@@ -323,20 +306,3 @@
     </div>
   </section>
 {/if}
-
-<style>
-  .source {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    gap: 0.3rem 1rem;
-    margin: 0 0 1rem;
-  }
-  .source dt {
-    color: var(--muted);
-  }
-  .source dd {
-    margin: 0;
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-</style>

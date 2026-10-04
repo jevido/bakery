@@ -205,9 +205,9 @@ func StreamRoutes(r route.Router) {
 	})
 }
 
-// followContainer follows the Application's running Container on its
-// Target server.
-func followContainer(ctx context.Context, applicationID uint64, tail int, out func(stream, line string)) (bool, error) {
+// followContainer reads the Application's running Container on its Target
+// server, each line prefixed with its time, as Coolify's runtime logs are.
+func followContainer(ctx context.Context, applicationID uint64, follow bool, tail int, out func(stream, line string)) (bool, error) {
 	a, err := projects.ApplicationForDeploy(ctx, applicationID)
 	if err != nil {
 		return false, err
@@ -220,7 +220,7 @@ func followContainer(ctx context.Context, applicationID uint64, tail int, out fu
 	if err != nil || !found {
 		return false, err
 	}
-	return true, rt.Podman.Logs(ctx, name, true, tail, func(stream, line string) {
+	return true, rt.Podman.TimestampedLogs(ctx, name, follow, tail, func(stream, line string) {
 		if stream == "stderr" {
 			out("err", line)
 		} else {

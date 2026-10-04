@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -98,6 +99,13 @@ func TestLifecycle(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("logs %q lack %q", got, want)
 		}
+	}
+	var stamped []string
+	if err := c.TimestampedLogs(ctx, id, false, 1, func(_, l string) { stamped = append(stamped, l) }); err != nil {
+		t.Fatalf("TimestampedLogs: %v", err)
+	}
+	if len(stamped) != 1 || !regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2}) `).MatchString(stamped[0]) {
+		t.Fatalf("timestamped tail 1: %q", stamped)
 	}
 	info, err := c.InspectContainer(ctx, id)
 	if err != nil || info.Config.Labels["bakery.test"] != "lifecycle" {

@@ -141,10 +141,12 @@ func (s *Service) Stop(ctx context.Context, applicationID uint64) error {
 }
 
 // ApplicationStatus is what Status reports: Coolify's status string, and
-// whether a Container (running or not) is there to remove.
+// whether a Container (running or not) is there to remove, and the name of
+// the running one, which Runtime Logs shows.
 type ApplicationStatus struct {
 	Status           domain.ApplicationStatus
 	ContainerPresent bool
+	Container        string
 }
 
 // Status reads the Application's own Containers on its Target server and,
@@ -176,7 +178,7 @@ func (s *Service) Status(ctx context.Context, applicationID uint64) (Application
 			health = domain.Unhealthy
 		}
 	}
-	return ApplicationStatus{Status: domain.StatusOf(states, health), ContainerPresent: len(states) > 0}, nil
+	return ApplicationStatus{Status: domain.StatusOf(states, health), ContainerPresent: len(states) > 0, Container: running}, nil
 }
 
 // DeployPreview queues a Deployment of the Application's open Preview

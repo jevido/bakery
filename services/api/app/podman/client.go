@@ -795,7 +795,17 @@ func (w *capped) Write(p []byte) (int, error) {
 // Logs hands a container's output to out line by line ("stdout" or
 // "stderr"). With follow it returns when ctx ends or the container stops.
 func (c *Client) Logs(ctx context.Context, id string, follow bool, tail int, out func(stream, line string)) error {
-	q := url.Values{"stdout": {"true"}, "stderr": {"true"}, "follow": {fmt.Sprint(follow)}}
+	return c.logs(ctx, id, follow, tail, false, out)
+}
+
+// TimestampedLogs is Logs with each line prefixed by the time the
+// container wrote it (RFC 3339 with nanoseconds, then a space).
+func (c *Client) TimestampedLogs(ctx context.Context, id string, follow bool, tail int, out func(stream, line string)) error {
+	return c.logs(ctx, id, follow, tail, true, out)
+}
+
+func (c *Client) logs(ctx context.Context, id string, follow bool, tail int, timestamps bool, out func(stream, line string)) error {
+	q := url.Values{"stdout": {"true"}, "stderr": {"true"}, "follow": {fmt.Sprint(follow)}, "timestamps": {fmt.Sprint(timestamps)}}
 	if tail >= 0 {
 		q.Set("tail", fmt.Sprint(tail))
 	}

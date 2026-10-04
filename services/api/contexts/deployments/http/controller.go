@@ -117,7 +117,7 @@ func (c *Controller) Restart(ctx contractshttp.Context) contractshttp.Response {
 }
 
 func statusJSON(s app.ApplicationStatus) contractshttp.Json {
-	return contractshttp.Json{"status": string(s.Status), "container_present": s.ContainerPresent}
+	return contractshttp.Json{"status": string(s.Status), "container_present": s.ContainerPresent, "container": s.Container}
 }
 
 // Stop stops the Application and answers with its status after.

@@ -336,3 +336,39 @@ Application is (projects) or for the Caddy configuration (routing).
   with the commit beside the tag, and rolls back to a Deployment (which
   also carries its commit and message into the history). Image retention is
   a fixed five, so the page has no "Images to keep" setting.
+- **Runtime Logs are one Container's, read on request or streamed.**
+  Coolify's Runtime Logs list every container of a resource on every
+  server, collapsible, and poll `docker logs -t --tail N` every two seconds
+  while streaming. An Application in The Bakery runs one Container on its
+  Target server, so the page shows that one card; the logs endpoint sends
+  the last Lines (100 by default, -1 for Coolify's 50,000 cap) with
+  Podman's timestamps and ends, or with `follow=1` streams new lines over
+  SSE, keeping the last Lines as Coolify's polling window does. Streaming is
+  off at first, as in Coolify. Coolify's per-preview runtime logs (the
+  `pull_request_id` filter) and its warning for an unreachable server are
+  left out: Previews have no Runtime Logs page yet, and an unreachable
+  Server already fails the status the page waits on.
+- **Git Source has no Commit SHA and no Git source switch.** Coolify's
+  Source page pins a commit and switches between the team's GitHub and
+  GitLab Apps (Sources) or Private Keys. The Bakery always deploys the head
+  of the branch, has no Sources yet, and generates one deploy key per
+  Application, so the page edits the repository and branch (moved there
+  from General, as in Coolify) and shows the deploy key with Regenerate.
+- **One Webhook with one secret for every Git host.** Coolify keeps a
+  manual webhook secret per host (GitHub, GitLab, Bitbucket, Gitea) that
+  the user types. The Bakery's Webhook is one URL with one generated
+  secret, rotated rather than typed, so the Webhooks page shows the same
+  URL and secret under GitHub, GitLab and Gitea / Forgejo, the hosts whose
+  signatures it verifies; Bitbucket is not one of them. Coolify's Deploy
+  webhook (`/api/v1/deploy?uuid=`) belongs to the `/api/v1` API and comes
+  with it.
+- **Previews come from the Webhook, with a fixed URL template.** Coolify
+  loads open pull requests from GitHub's API (Load pull requests) and lets
+  any be configured or deployed, with an editable URL template, a "PR
+  deployment access" choice and per-preview domains, Rebuild and Stop. The
+  Bakery learns of pull requests only from Webhook calls, so it lists the
+  Previews those opened; their domain is always `pr-<n>.<primary Domain>`
+  (see above), forks never get one, and a Preview is redeployed or deleted
+  (Delete asks to type its domain, as Coolify's asks for the preview's
+  name). Stop and Rebuild are left out: a Preview is cheap to delete and
+  comes back on the next push.

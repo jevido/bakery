@@ -481,6 +481,23 @@ html:not(.dark) {
   @apply bg-warning/40 dark:bg-warning/30;
 }
 
+/* Log level color classes */
+@utility log-error {
+  @apply bg-red-500/10 dark:bg-red-500/15;
+}
+
+@utility log-warning {
+  @apply bg-yellow-500/10 dark:bg-yellow-500/15;
+}
+
+@utility log-debug {
+  @apply bg-purple-500/10 dark:bg-purple-500/15;
+}
+
+@utility log-info {
+  @apply bg-blue-500/10 dark:bg-blue-500/15;
+}
+
 @media (min-width: 1024px) {
   .sidebar-collapsed .menu-item {
     justify-content: center;
@@ -1669,3 +1686,133 @@ html:not(.dark) {
   }
 }
 
+/* Runtime log viewer */
+.runtime-log-shell {
+  overflow: visible;
+  border-radius: 8px;
+  background: var(--coollabs-elevated);
+  box-shadow: 0 0 0 1px var(--coollabs-hairline);
+}
+
+.runtime-log-trigger {
+  display: flex;
+  min-height: 2.75rem;
+  cursor: pointer;
+  user-select: none;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 8px;
+  padding: 0.625rem 0.875rem;
+  color: #171717;
+  transition: background-color 0.15s;
+}
+
+.runtime-log-trigger:hover {
+  background: rgba(0, 0, 0, 0.025);
+}
+
+.dark .runtime-log-trigger {
+  color: var(--color-fg);
+}
+
+.dark .runtime-log-trigger:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.runtime-log-trigger h4 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.runtime-log-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: visible;
+  border-radius: 8px;
+  background: var(--coollabs-base);
+  box-shadow: 0 0 0 1px var(--coollabs-fill);
+}
+
+.settings-log-panel .runtime-log-panel {
+  box-shadow: none;
+}
+
+.runtime-log-toolbar {
+  position: relative;
+  z-index: 20;
+  border-bottom-color: var(--coollabs-fill);
+  background: transparent;
+}
+
+.runtime-log-icon-button {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  color: #737373;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+@media (min-width: 640px) {
+  .runtime-log-icon-button {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 6px;
+  }
+}
+
+.runtime-log-icon-button:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #171717;
+}
+
+.dark .runtime-log-icon-button {
+  color: var(--color-fg-faint);
+}
+
+.dark .runtime-log-icon-button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-fg);
+}
+
+.runtime-log-icon-button-active {
+  background: var(--color-coollabs);
+  color: #fff;
+}
+
+.dark .runtime-log-icon-button-active {
+  background: var(--color-coollabs);
+  color: #fff;
+}
+
+.runtime-log-menu {
+  background: var(--coollabs-elevated) !important;
+  opacity: 1 !important;
+}
+
+.runtime-log-viewport {
+  min-height: 12rem;
+  border-radius: 0 0 8px 8px;
+  background: var(--coollabs-elevated);
+  color: #262626;
+}
+
+@media (min-width: 640px) {
+  .runtime-log-viewport {
+    min-height: 18rem;
+  }
+}
+
+.dark .runtime-log-viewport {
+  background: var(--color-log);
+  color: var(--color-fg-dim);
+}
