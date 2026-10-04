@@ -6,3 +6,17 @@ export function portal(node: HTMLElement) {
   document.body.appendChild(node)
   return () => node.remove()
 }
+
+/**
+ * Moves an element into the element `selector` finds, as Livewire's
+ * @teleport does for the Resource headings' actions (into the top bar's
+ * `#resource-action-hud-slot`). The same sibling rule as portal applies.
+ */
+export function portalTo(selector: string) {
+  return (node: HTMLElement) => {
+    const target = document.querySelector(selector)
+    if (!target) return
+    target.appendChild(node)
+    return () => node.remove()
+  }
+}

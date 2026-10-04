@@ -8,6 +8,7 @@
   import Icon, { type IconName } from './Icon.svelte'
   import { href, router } from './router.svelte'
   import { session } from './session.svelte'
+  import StatusBadge from './ui/StatusBadge.svelte'
   import UserMenu from './UserMenu.svelte'
 
   let { children }: { children: Snippet } = $props()
@@ -24,7 +25,7 @@
         label: 'Workspace',
         items: items(
           { label: 'Dashboard', path: '/', icon: 'dashboard', routes: ['dashboard'] },
-          { label: 'Projects', path: '/projects', icon: 'projects', routes: ['projects', 'project', 'application', 'database', 'service'] },
+          { label: 'Projects', path: '/projects', icon: 'projects', routes: ['projects', 'project', 'project-edit', 'environment', 'environment-edit', 'environment-new', 'application', 'application-legacy', 'database', 'service'] },
         ),
       },
       {
@@ -174,9 +175,14 @@
                 {crumb.label}
               </span>
             {/if}
+            {#if crumb.status}
+              <StatusBadge status={crumb.status.label} type={crumb.status.type} class="ml-1 shrink-0" />
+            {/if}
           {/each}
         </nav>
       </div>
+      <!-- Resource actions dock here on desktop (the Application heading's Links and Actions). -->
+      <div id="resource-action-hud-slot" class="hidden shrink-0 items-center xl:flex"></div>
     </div>
   </header>
 

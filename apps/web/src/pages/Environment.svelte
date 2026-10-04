@@ -17,7 +17,7 @@
     typeLabels,
     type ResourceItem,
   } from '../lib/resources'
-  import { href } from '../lib/router.svelte'
+  import { applicationPath, href } from '../lib/router.svelte'
   import { session } from '../lib/session.svelte'
   import type { Database, Deployment, Environment, Server, Service } from '../lib/types'
   import ClientPagination from '../lib/ui/ClientPagination.svelte'
@@ -95,7 +95,7 @@
             fqdn: a.public_url,
             status: latest[i],
             server: serverName(a.server_id),
-            href: href(`/applications/${a.id}`),
+            href: href(applicationPath(a)),
           }),
         ),
         ...d.databases

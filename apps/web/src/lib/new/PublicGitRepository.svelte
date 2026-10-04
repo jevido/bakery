@@ -8,7 +8,7 @@
   // own example repositories; the examples are generic here and the link is
   // left out.
   import { api } from '../api'
-  import { go } from '../router.svelte'
+  import { applicationPath, go } from '../router.svelte'
   import type { Application, BuildPack } from '../types'
   import Button from '../ui/Button.svelte'
   import Input from '../ui/Input.svelte'
@@ -57,7 +57,7 @@
       (e) => (errors = e),
     )
     busy = false
-    if (created) go(`/applications/${created.application.id}`)
+    if (created) go(applicationPath(created.application))
   }
 </script>
 

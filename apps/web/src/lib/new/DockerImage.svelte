@@ -6,7 +6,7 @@
   // Port (Coolify's default, 80), since its proxy needs it before the first
   // deploy; registry credentials stay on the Application page.
   import { api } from '../api'
-  import { go } from '../router.svelte'
+  import { applicationPath, go } from '../router.svelte'
   import type { Application } from '../types'
   import Button from '../ui/Button.svelte'
   import Input from '../ui/Input.svelte'
@@ -61,7 +61,7 @@
       (e) => (errors = e),
     )
     busy = false
-    if (created) go(`/applications/${created.application.id}`)
+    if (created) go(applicationPath(created.application))
   }
 </script>
 

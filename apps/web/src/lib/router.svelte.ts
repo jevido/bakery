@@ -1,7 +1,7 @@
 import { api } from './api'
-import type { Project } from './types'
+import type { Application, Project } from './types'
 
-// Hash router, with Coolify's paths for Projects and Environments: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/applications/{id}, #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
+// Hash router, with Coolify's paths for Projects and Environments: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/databases/{id}, #/services/{id}, #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
@@ -15,7 +15,9 @@ export type Route =
   // #/projects/{id}?new from before Coolify's paths: the New Resource page of
   // the Project's first Environment, found once the Project has loaded.
   | { name: 'project-first-environment-new'; id: number }
-  | { name: 'application'; id: number }
+  // page is the sub-page slug of Coolify's routes/web.php, '' for General.
+  | { name: 'application'; projectId: number; environmentId: number; id: number; page: ApplicationPage; deploymentId: number | null }
+  | { name: 'application-legacy'; id: number }
   | { name: 'database'; id: number }
   | { name: 'service'; id: number }
   | { name: 'servers' }
@@ -30,6 +32,36 @@ export type Route =
   | { name: 'login' }
   | { name: 'dev-components' }
   | { name: 'notfound' }
+
+/** The Application page's sub-pages, by their slug in Coolify's URLs. */
+export const applicationPages = [
+  '',
+  'domains',
+  'advanced',
+  'environment-variables',
+  'persistent-storage',
+  'deployment',
+  'logs',
+  'source',
+  'servers',
+  'webhooks',
+  'preview-deployments',
+  'healthcheck',
+  'rollback',
+  'resource-limits',
+  'danger',
+] as const
+export type ApplicationPage = (typeof applicationPages)[number]
+
+function isApplicationPage(s: string): s is ApplicationPage {
+  return (applicationPages as readonly string[]).includes(s)
+}
+
+/** The path of an Application's page, or one of its sub-pages. */
+export function applicationPath(a: { project_id: number; environment_id: number; id: number }, page: ApplicationPage = ''): string {
+  const base = `/project/${a.project_id}/environment/${a.environment_id}/application/${a.id}`
+  return page ? `${base}/${page}` : base
+}
 
 function parse(hash: string): Route {
   const [path, query = ''] = hash.replace(/^#\/?/, '').split('?', 2)
@@ -78,12 +110,20 @@ function parse(hash: string): Route {
           }
         }
         if (parts.length === 5 && parts[4] === 'edit') return { name: 'environment-edit', projectId: id, id: envId }
+        const appId = Number(parts[5])
+        if (parts[4] === 'application' && Number.isInteger(appId)) {
+          const application = { name: 'application', projectId: id, environmentId: envId, id: appId } as const
+          const page = parts[6] ?? ''
+          if (parts.length <= 7 && isApplicationPage(page)) return { ...application, page, deploymentId: null }
+          const deploymentId = Number(parts[7])
+          if (parts.length === 8 && page === 'deployment' && Number.isInteger(deploymentId)) return { ...application, page, deploymentId }
+        }
       }
     }
   }
   if (parts[0] === 'applications' && parts.length === 2) {
     const id = Number(parts[1])
-    if (Number.isInteger(id)) return { name: 'application', id }
+    if (Number.isInteger(id)) return { name: 'application-legacy', id }
   }
   if (parts[0] === 'databases' && parts.length === 2) {
     const id = Number(parts[1])
@@ -124,6 +164,15 @@ class Router {
         })
         .catch(() => {
           if (this.route === route) this.route = redirect(`/project/${route.id}`)
+        })
+    }
+    if (route.name === 'application-legacy') {
+      api<{ application: Application }>('GET', `/applications/${route.id}`)
+        .then(({ application }) => {
+          if (this.route === route) this.route = redirect(applicationPath(application))
+        })
+        .catch(() => {
+          if (this.route === route) this.route = { name: 'notfound' }
         })
     }
   }

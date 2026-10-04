@@ -6,7 +6,7 @@
   // Bakery generates a Deploy key per Application instead, so the page opens
   // on the repository step and the Application page shows the key to add.
   import { api } from '../api'
-  import { go } from '../router.svelte'
+  import { applicationPath, go } from '../router.svelte'
   import type { Application, BuildPack } from '../types'
   import Button from '../ui/Button.svelte'
   import Input from '../ui/Input.svelte'
@@ -43,7 +43,7 @@
     busy = false
     if (!created) return
     if (created.application.deploy_key_public) toast.info('Add the deploy key to the repository, then deploy.')
-    go(`/applications/${created.application.id}`)
+    go(applicationPath(created.application))
   }
 </script>
 

@@ -11,7 +11,7 @@
   import ApiTokens from './pages/ApiTokens.svelte'
   import Profile from './pages/Profile.svelte'
   import NotFound from './pages/NotFound.svelte'
-  import Application from './pages/Application.svelte'
+  import Application from './pages/application/Application.svelte'
   import Database from './pages/Database.svelte'
   import Environment from './pages/Environment.svelte'
   import EnvironmentEdit from './pages/EnvironmentEdit.svelte'
@@ -83,10 +83,17 @@
         type={router.route.type}
         server={router.route.server}
       />
-    {:else if router.route.name === 'project-first-environment-new'}
+    {:else if router.route.name === 'project-first-environment-new' || router.route.name === 'application-legacy'}
       <div class="flex justify-center"><Spinner text="Loading…" /></div>
     {:else if router.route.name === 'application'}
-      <Application id={router.route.id} />
+      <Application
+        projectId={router.route.projectId}
+        environmentId={router.route.environmentId}
+        id={router.route.id}
+        page={router.route.page}
+        deploymentId={router.route.deploymentId}
+      />
+
     {:else if router.route.name === 'database'}
       <Database id={router.route.id} />
     {:else if router.route.name === 'service'}

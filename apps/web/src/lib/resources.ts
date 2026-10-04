@@ -27,11 +27,11 @@ export const typeLabels: Record<ResourceType, string> = {
 }
 
 /** The state before any `:health` suffix, "unknown" when there is none. */
-export function statusState(item: ResourceItem): string {
+export function statusState(item: Pick<ResourceItem, 'status'>): string {
   return String(item.status || 'unknown').split(':')[0].toLowerCase()
 }
 
-export function statusLabel(item: ResourceItem): string {
+export function statusLabel(item: Pick<ResourceItem, 'status'>): string {
   const state = statusState(item)
   return state.charAt(0).toUpperCase() + state.slice(1)
 }
@@ -43,7 +43,7 @@ export const statusTitle = statusLabel
  * Deployment is running, one in flight (and a Service deploying) is starting,
  * a cancelled one is neutral.
  */
-export function statusTone(item: ResourceItem): StatusType {
+export function statusTone(item: Pick<ResourceItem, 'status'>): StatusType {
   const state = statusState(item)
   if (['running', 'finished'].includes(state)) return 'success'
   if (['starting', 'restarting', 'degraded', 'queued', 'cloning', 'building', 'deploying'].includes(state)) return 'warning'
