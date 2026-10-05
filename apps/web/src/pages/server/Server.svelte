@@ -11,6 +11,7 @@
   import General from './General.svelte'
   import Interim from './Interim.svelte'
   import Navbar from './Navbar.svelte'
+  import PrivateKey from './PrivateKey.svelte'
 
   let { id, page }: { id: number; page: ServerPage } = $props()
 
@@ -53,6 +54,8 @@
       <div class="min-w-0">
         {#if page === ''}
           <General {server} onchange={(s) => (server = s)} />
+        {:else if page === 'private-key'}
+          <PrivateKey {server} onchange={(s) => (server = s)} />
         {:else}
           <Interim {server} {page} onchange={(s) => (server = s)} />
         {/if}

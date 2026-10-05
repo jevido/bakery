@@ -2,7 +2,6 @@
   // The sections of the Server page from before Coolify's look, each under
   // the sidebar item that names it, until that sub-page is ported.
   import { api, ApiError } from '../../lib/api'
-  import CopyButton from '../../lib/CopyButton.svelte'
   import { percent, size } from '../../lib/format'
   import { go, href, type ServerPage } from '../../lib/router.svelte'
   import ServerMeters from '../../lib/ServerMeters.svelte'
@@ -54,14 +53,6 @@
     }
   }
 
-  function forgetHostKey() {
-    if (!confirm('Forget the host key? The next connection trusts whatever key the server then presents.')) return
-    return run('forget', async () => {
-      const r = await api<{ server: Server }>('DELETE', `/servers/${id}/host-key`)
-      onchange(r.server)
-    })
-  }
-
   function cleanUp() {
     return run('cleanup', async () => {
       const r = await api<{ cleanup: Server['last_cleanup'] }>('POST', `/servers/${id}/cleanup`)
@@ -101,27 +92,7 @@
   const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 </script>
 
-{#if page === 'private-key' && server.kind === 'remote' && server.public_key && session.isAdmin}
-  <section class="card">
-    <h2>Private Key</h2>
-    <p class="muted">
-      The Bakery logs in with this key. Add it for <span class="mono">{server.user}</span> on the server, then press Validate:
-    </p>
-    <pre class="mono key" data-testid="private-key">{server.public_key}</pre>
-    <pre class="mono key">echo '{server.public_key}' &gt;&gt; ~/.ssh/authorized_keys</pre>
-    <div class="actions">
-      <CopyButton text={server.public_key} label="Copy public key" />
-      <CopyButton text={`echo '${server.public_key}' >> ~/.ssh/authorized_keys`} label="Copy command" />
-    </div>
-    {#if server.host_key_fingerprint}
-      <p class="muted">
-        Host key <span class="mono" data-testid="host-key">{server.host_key_fingerprint}</span>, pinned on the first connection.
-        <button class="danger" disabled={!!busy} onclick={forgetHostKey}>Forget host key</button>
-      </p>
-    {/if}
-    {#if actionError}<p class="error">{actionError}</p>{/if}
-  </section>
-{:else if page === 'metrics' && server.status === 'reachable'}
+{#if page === 'metrics' && server.status === 'reachable'}
   <section>
     <h2>Usage</h2>
     {#if metrics}
@@ -218,14 +189,5 @@
   }
   section {
     margin-bottom: 1.5rem;
-  }
-  .key {
-    white-space: pre-wrap;
-    word-break: break-all;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.6rem 0.75rem;
-    font-size: 0.85rem;
   }
 </style>
