@@ -3,12 +3,10 @@
   // the sidebar item that names it, until that sub-page is ported.
   import { api, ApiError } from '../../lib/api'
   import CopyButton from '../../lib/CopyButton.svelte'
-  import Field from '../../lib/Field.svelte'
   import { percent, size } from '../../lib/format'
   import { go, href, type ServerPage } from '../../lib/router.svelte'
   import ServerMeters from '../../lib/ServerMeters.svelte'
   import { session } from '../../lib/session.svelte'
-  import StatusBadge from '../../lib/StatusBadge.svelte'
   import type { ContainerMetrics, Metrics, Server } from '../../lib/types'
 
   let { server, page, onchange }: { server: Server; page: ServerPage; onchange: (s: Server) => void } = $props()
@@ -19,13 +17,6 @@
   let busy = $state('')
   let actionError = $state('')
   let cleaned = $state('')
-
-  let editing = $state(false)
-  let name = $state('')
-  let host = $state('')
-  let port = $state('')
-  let user = $state('')
-  let errors = $state<Record<string, string>>({})
 
   async function load() {
     const r = await api<{ server: Server }>('GET', `/servers/${id}`)
@@ -63,13 +54,6 @@
     }
   }
 
-  function validate() {
-    return run('validate', async () => {
-      const r = await api<{ server: Server }>('POST', `/servers/${id}/validate`)
-      onchange(r.server)
-    })
-  }
-
   function forgetHostKey() {
     if (!confirm('Forget the host key? The next connection trusts whatever key the server then presents.')) return
     return run('forget', async () => {
@@ -85,28 +69,6 @@
       await load()
       await loadMetrics()
     })
-  }
-
-  function startEditing(s: Server) {
-    name = s.name
-    host = s.host
-    port = String(s.port)
-    user = s.user
-    errors = {}
-    editing = true
-  }
-
-  async function save(e: SubmitEvent) {
-    e.preventDefault()
-    errors = {}
-    try {
-      const r = await api<{ server: Server }>('PATCH', `/servers/${id}`, { name, description: server.description, host, port: Number(port) || 0, user })
-      onchange(r.server)
-      editing = false
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err
-      errors = Object.keys(err.errors).length ? err.errors : { name: err.message }
-    }
   }
 
   let removeError = $state('')
@@ -137,78 +99,9 @@
   }
 
   const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-  const checkLabels: Record<string, string> = {
-    ssh: 'SSH',
-    socket: 'Podman socket',
-    podman: 'Podman version',
-    linger: 'Linger',
-    ports: 'Ports 80 and 443',
-  }
 </script>
 
-{#if page === ''}
-  <div class="head">
-    <div class="heading">
-      <h2>General</h2>
-      <StatusBadge status={server.status} />
-      <p class="muted mono">{server.kind === 'local' ? 'The machine The Bakery runs on' : `${server.user}@${server.host}:${server.port}`}</p>
-    </div>
-    {#if session.isAdmin}
-      <div class="buttons">
-        <button class="primary" disabled={!!busy} onclick={validate}>{busy === 'validate' ? 'Validating…' : 'Validate'}</button>
-      </div>
-    {/if}
-  </div>
-  {#if actionError}<p class="error">{actionError}</p>{/if}
-
-  <section>
-    <h2>Validation</h2>
-    {#if server.validation.checks.length === 0}
-      <p class="muted">Not validated yet.</p>
-    {:else}
-      <ul class="checks" data-testid="checks">
-        {#each server.validation.checks as c (c.name)}
-          <li class={[c.ok ? 'ok' : c.required ? 'bad' : 'warn']}>
-            <span class="mark" aria-hidden="true">{c.ok ? '✓' : c.required ? '✗' : '!'}</span>
-            <div>
-              <strong>{checkLabels[c.name] ?? c.name}</strong>
-              {#if !c.required}<span class="muted">(not required)</span>{/if}
-              <div class="muted detail">{c.detail}</div>
-            </div>
-          </li>
-        {/each}
-      </ul>
-      {#if server.validation.checked_at}
-        <p class="muted">Checked {when.format(new Date(server.validation.checked_at))}.</p>
-      {/if}
-    {/if}
-  </section>
-
-  {#if server.kind === 'remote' && session.isAdmin}
-    <section>
-      <h2>Settings</h2>
-      {#if editing}
-        <form class="card form" onsubmit={save}>
-          <Field label="Name" bind:value={name} error={errors.name} required />
-          <div class="row">
-            <Field label="Host" bind:value={host} error={errors.host} required />
-            <Field label="SSH port" type="number" bind:value={port} error={errors.port} />
-          </div>
-          <Field label="User" bind:value={user} error={errors.user} required />
-          <p class="muted">A new host, port or user forgets the host key; validate again afterwards.</p>
-          <div class="actions">
-            <button type="button" onclick={() => (editing = false)}>Cancel</button>
-            <button class="primary">Save</button>
-          </div>
-        </form>
-      {:else}
-        <div class="actions">
-          <button onclick={() => startEditing(server)}>Edit</button>
-        </div>
-      {/if}
-    </section>
-  {/if}
-{:else if page === 'private-key' && server.kind === 'remote' && server.public_key && session.isAdmin}
+{#if page === 'private-key' && server.kind === 'remote' && server.public_key && session.isAdmin}
   <section class="card">
     <h2>Private Key</h2>
     <p class="muted">
@@ -318,17 +211,6 @@
     flex-wrap: wrap;
     margin-bottom: 1rem;
   }
-  .heading {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-  }
-  .heading h2,
-  .heading p {
-    margin: 0;
-  }
-  .buttons,
   .actions {
     display: flex;
     gap: 0.5rem;
@@ -345,45 +227,5 @@
     border-radius: 6px;
     padding: 0.6rem 0.75rem;
     font-size: 0.85rem;
-  }
-  .checks {
-    list-style: none;
-    padding: 0;
-    display: grid;
-    gap: 0.5rem;
-  }
-  .checks li {
-    display: flex;
-    gap: 0.6rem;
-  }
-  .mark {
-    font-weight: 700;
-    width: 1rem;
-  }
-  .ok .mark {
-    color: var(--ok);
-  }
-  .bad .mark {
-    color: var(--danger);
-  }
-  .warn .mark {
-    color: var(--warn);
-  }
-  .detail {
-    font-size: 0.85rem;
-    word-break: break-word;
-  }
-  .form {
-    display: grid;
-    gap: 0.8rem;
-    max-width: 32rem;
-  }
-  .form .actions {
-    justify-content: flex-end;
-  }
-  .row {
-    display: grid;
-    grid-template-columns: 1fr 8rem;
-    gap: 0.8rem;
   }
 </style>

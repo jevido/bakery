@@ -8,6 +8,7 @@
   import type { Server } from '../../lib/types'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import ConfigurationSidebar from './ConfigurationSidebar.svelte'
+  import General from './General.svelte'
   import Interim from './Interim.svelte'
   import Navbar from './Navbar.svelte'
 
@@ -50,7 +51,11 @@
     <div class="grid min-w-0 gap-8 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
       <ConfigurationSidebar {server} {page} />
       <div class="min-w-0">
-        <Interim {server} {page} onchange={(s) => (server = s)} />
+        {#if page === ''}
+          <General {server} onchange={(s) => (server = s)} />
+        {:else}
+          <Interim {server} {page} onchange={(s) => (server = s)} />
+        {/if}
       </div>
     </div>
   </section>

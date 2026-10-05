@@ -4,3 +4,7 @@ KbdInteractiveAuthentication no
 PermitRootLogin no
 AllowUsers podman
 AllowStreamLocalForwarding yes
+# Every connection comes from the one dev host, and a Server is validated
+# before its key is authorised: without this, OpenSSH 9.8+ refuses that host
+# for a while after the failed login, so the next validation fails too.
+PerSourcePenalties no
