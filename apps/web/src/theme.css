@@ -1100,6 +1100,12 @@ html:not(.dark) {
   grid-template-columns: minmax(14rem, 2.5fr) 4.8rem 4.2rem 3rem;
 }
 
+/* A Service's variables: the Compose file declares them, so only Managed
+   (generated) tells them apart. */
+.env-table-grid-service {
+  grid-template-columns: minmax(14rem, 2.5fr) 4.8rem 3rem;
+}
+
 /* The Bakery's own: shared variables handed down to an Application. */
 .env-table-grid-inherited {
   grid-template-columns: minmax(14rem, 2.5fr) 7rem 4.8rem 4.2rem;
@@ -1113,11 +1119,13 @@ html:not(.dark) {
 
 @media (max-width: 768px) {
   .data-table-header.env-table-grid,
+  .data-table-header.env-table-grid-service,
   .data-table-header.env-table-grid-inherited {
     display: none;
   }
 
   .data-table-row.env-table-grid,
+  .data-table-row.env-table-grid-service,
   .data-table-row.env-table-grid-inherited {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.75rem;
@@ -1125,11 +1133,13 @@ html:not(.dark) {
   }
 
   .data-table-row.env-table-grid > :not(:first-child):not(:last-child),
+  .data-table-row.env-table-grid-service > :not(:first-child):not(:last-child),
   .data-table-row.env-table-grid-inherited > :not(:first-child):not(:nth-child(2)) {
     display: none;
   }
 
-  .data-table-row.env-table-grid > :last-child {
+  .data-table-row.env-table-grid > :last-child,
+  .data-table-row.env-table-grid-service > :last-child {
     display: block;
     justify-self: end;
   }

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -393,5 +394,23 @@ func TestCreateWithoutAName(t *testing.T) {
 	s.Wait()
 	if err != nil || !regexp.MustCompile(`^docker-compose-[a-z2-7]{8}$`).MatchString(v.Name) || v.Slug != v.Name {
 		t.Fatalf("pasted compose: %v, name %q, slug %q", err, v.Name, v.Slug)
+	}
+}
+
+func TestViewListsComponentVolumes(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := newTestService(&fakeRuntime{})
+	compose := "services:\n  web:\n    image: docker.io/traefik/whoami:v1.10\n    volumes:\n      - data:/data\n      - cache:/cache:ro\n  worker:\n    image: docker.io/traefik/whoami:v1.10\n"
+	v, err := s.Create(ctx, 1, Input{Name: "Volumes", Compose: compose})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Wait()
+	want := []VolumeView{{Name: fmt.Sprintf("bakery-svc-%d-data", v.ID), Path: "/data"}, {Name: fmt.Sprintf("bakery-svc-%d-cache", v.ID), Path: "/cache", ReadOnly: true}}
+	if got := v.Components[0].Volumes; !slices.Equal(got, want) {
+		t.Errorf("web volumes %+v, want %+v", got, want)
+	}
+	if got := v.Components[1].Volumes; len(got) != 0 {
+		t.Errorf("worker volumes %+v", got)
 	}
 }

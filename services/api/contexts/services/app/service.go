@@ -127,6 +127,16 @@ type ComponentView struct {
 	// GeneratedDomain is the Domain The Bakery gives a Public Component,
 	// for the dashboard's Generate domain; "" when not public.
 	GeneratedDomain string
+	// Volumes are the Component's volume mounts from the Compose file.
+	Volumes []VolumeView
+}
+
+// VolumeView is a volume mount with the name of the Podman volume The
+// Bakery creates for it.
+type VolumeView struct {
+	Name     string
+	Path     string
+	ReadOnly bool
 }
 
 // Input is what the Owner creates a Service from.
@@ -452,9 +462,17 @@ func (s *Service) view(ctx context.Context, sv domain.Service) (View, error) {
 	_, busy := s.busy[sv.ID]
 	s.mu.Unlock()
 	v := View{Service: sv, Status: sv.Summarize(statuses, busy), Busy: busy}
+	// A stored Compose file parsed when it was saved, so an error here
+	// only leaves the volumes out.
+	compose, _ := domain.ParseCompose(sv.ComposeFile)
 	first := true
 	for _, c := range sv.Components {
 		cv := ComponentView{Component: c, Status: statuses[c.Name], Detail: details[c.Name]}
+		if spec, ok := compose.Component(c.Name); ok {
+			for _, m := range spec.Volumes {
+				cv.Volumes = append(cv.Volumes, VolumeView{Name: domain.VolumeName(sv.ID, m.Volume), Path: m.Path, ReadOnly: m.ReadOnly})
+			}
+		}
 		if c.Public {
 			cv.GeneratedDomain = domain.DefaultDomain(sv.Slug, c.Name, first, s.domainSuffix)
 			first = false

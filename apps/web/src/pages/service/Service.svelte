@@ -15,8 +15,10 @@
   import Heading, { type Action } from '../application/Heading.svelte'
   import ConfigurationSidebar from './ConfigurationSidebar.svelte'
   import Domains from './Domains.svelte'
+  import EnvironmentVariables from './EnvironmentVariables.svelte'
   import General from './General.svelte'
   import Interim from './Interim.svelte'
+  import PersistentStorage from './PersistentStorage.svelte'
 
   let { projectId, environmentId, id, page }: { projectId: number; environmentId: number; id: number; page: ServicePage } = $props()
 
@@ -169,8 +171,12 @@
           <General {service} {environment} onchange={(s) => (service = s)} />
         {:else if page === 'domains'}
           <Domains {service} onchange={(s) => (service = s)} />
-        {:else if page === 'environment-variables' || page === 'logs'}
-          <Interim {service} {page} onchange={(s) => (service = s)} />
+        {:else if page === 'environment-variables'}
+          <EnvironmentVariables {service} onchange={(s) => (service = s)} />
+        {:else if page === 'storages'}
+          <PersistentStorage {service} />
+        {:else if page === 'logs'}
+          <Interim {service} />
         {:else if page === 'danger' && session.canWrite}
           <Danger
             label="service"

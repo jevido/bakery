@@ -3,11 +3,14 @@
   // resources/views/livewire/project/service/configuration.blade.php,
   // Apache-2.0, see NOTICE): the sub-pages in Coolify's groups, one column on
   // wide screens and a grid of links above the page on narrower ones. Only the
-  // sub-pages The Bakery has something behind are listed.
+  // sub-pages The Bakery has something behind are listed. Under an open
+  // Persistent Storage, one sub-item per Component scrolls to its section.
   import Icon, { type IconName } from '../../lib/Icon.svelte'
   import { href, servicePath, type ServicePage } from '../../lib/router.svelte'
+  import { scrollToSettingsSection } from '../../lib/settingsSection.svelte'
   import { session } from '../../lib/session.svelte'
   import type { Service } from '../../lib/types'
+  import { headline, storageSectionID } from './PersistentStorage.svelte'
 
   let { service, page }: { service: Service; page: ServicePage } = $props()
 
@@ -28,6 +31,14 @@
     ['Observe & troubleshoot', ['Runtime Logs']],
     ['Operations', ['Danger Zone']],
   ]
+
+  // Coolify's $storageSections.
+  const storageSections = $derived(service.components.map((c) => ({ id: storageSectionID(c.name), label: headline(c.name) })))
+  let activeSection = $state('')
+  $effect(() => {
+    void page
+    activeSection = ''
+  })
 
   const grouped = $derived(
     groups
@@ -55,6 +66,22 @@
           <Icon name={item.icon} class="menu-item-icon" />
           <span class="menu-item-label">{item.label}</span>
         </a>
+        {#if item.page === 'storages' && page === 'storages' && storageSections.length > 0}
+          <div class="nav-children hidden flex-col gap-0.5 py-1 xl:flex">
+            {#each storageSections as section (section.id)}
+              <button
+                type="button"
+                class={['menu-subitem', activeSection === section.id && 'menu-subitem-active']}
+                onclick={() => {
+                  activeSection = section.id
+                  scrollToSettingsSection(section.id)
+                }}
+              >
+                <span class="menu-item-label truncate text-left" title={section.label}>{section.label}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
       {/each}
     {/each}
   </nav>

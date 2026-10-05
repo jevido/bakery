@@ -286,6 +286,14 @@ export type Component = {
   generated_domain?: string
   status: DatabaseStatus
   detail?: string
+  /** Its volume mounts from the Compose file, named as the Podman volume. */
+  volumes: ComponentVolume[]
+}
+
+export type ComponentVolume = {
+  name: string
+  path: string
+  read_only: boolean
 }
 
 export type ServiceVariable = {

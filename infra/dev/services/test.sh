@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # End to end: Services. A Service from the whoami template answers through
 # the Proxy; a two-Component compose Service reaches its Postgres by name
-# and keeps its data and generated password across Redeploy; Stop and Start
-# take its Domain away and back; build: is refused with its line; Domains
-# are one namespace with Applications; a Project with a Service cannot be
-# deleted; deleting Services leaves no bakery-svc-* container, network or
-# volume. Needs `task dev`.
+# and lists its volume by its Podman name, and keeps its data and generated
+# password across Redeploy; Stop and Start take its Domain away and back;
+# build: is refused with its line; Domains are one namespace with
+# Applications; a Project with a Service cannot be deleted; deleting
+# Services leaves no bakery-svc-* container, network or volume. Needs
+# `task dev`.
 set -euo pipefail
 
 KEEP_FORGEJO=1 # this test does not use Forgejo
@@ -86,7 +87,12 @@ out=$(podman run --rm --network "bakery-svc-$STACK" docker.io/library/busybox sh
 [[ $out == "PING db ("* ]] || fail "db does not resolve on the Service network: $out"
 STACK_DOMAIN=$(domain "$STACK" 0)
 wait_for 30 "web on $STACK_DOMAIN" test "$(answers "$STACK_DOMAIN")" = 200
-echo "ok: web answers on $STACK_DOMAIN, db resolves by name"
+VOLUME=$(service "$STACK" "['components'][1]['volumes'][0]['name']")
+[ "$VOLUME" = "bakery-svc-$STACK-pgdata" ] || fail "db's volume is listed as $VOLUME"
+[ "$(service "$STACK" "['components'][1]['volumes'][0]['path']")" = /var/lib/postgresql ] || fail "db's volume path"
+[ "$(service "$STACK" "['components'][0]['volumes']")" = "[]" ] || fail "web lists volumes"
+podman volume exists "$VOLUME" || fail "$VOLUME is not in Podman"
+echo "ok: web answers on $STACK_DOMAIN, db resolves by name, its volume is listed"
 
 say "Redeploy keeps data and the generated password"
 [ "$(code -X POST "$API/api/services/$STACK/redeploy")" = 202 ] || fail "redeploy"
