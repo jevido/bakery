@@ -124,6 +124,9 @@ type ComponentView struct {
 	domain.Component
 	Status domain.Status
 	Detail string
+	// GeneratedDomain is the Domain The Bakery gives a Public Component,
+	// for the dashboard's Generate domain; "" when not public.
+	GeneratedDomain string
 }
 
 // Input is what the Owner creates a Service from.
@@ -449,8 +452,14 @@ func (s *Service) view(ctx context.Context, sv domain.Service) (View, error) {
 	_, busy := s.busy[sv.ID]
 	s.mu.Unlock()
 	v := View{Service: sv, Status: sv.Summarize(statuses, busy), Busy: busy}
+	first := true
 	for _, c := range sv.Components {
-		v.Components = append(v.Components, ComponentView{Component: c, Status: statuses[c.Name], Detail: details[c.Name]})
+		cv := ComponentView{Component: c, Status: statuses[c.Name], Detail: details[c.Name]}
+		if c.Public {
+			cv.GeneratedDomain = domain.DefaultDomain(sv.Slug, c.Name, first, s.domainSuffix)
+			first = false
+		}
+		v.Components = append(v.Components, cv)
 	}
 	return v, nil
 }

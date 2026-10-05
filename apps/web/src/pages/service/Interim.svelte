@@ -1,13 +1,12 @@
 <script lang="ts">
   // The Service page's sub-pages as they were on the old tabbed page, until
-  // each is ported to Coolify's markup: Domains, Environment Variables and
-  // Runtime Logs.
+  // each is ported to Coolify's markup: Environment Variables and Runtime
+  // Logs.
   import { api, ApiError } from '../../lib/api'
   import ContainerLogs from '../../lib/ContainerLogs.svelte'
   import CopyButton from '../../lib/CopyButton.svelte'
   import type { ServicePage } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
-  import StatusBadge from '../../lib/StatusBadge.svelte'
   import type { Service } from '../../lib/types'
 
   let { service, page, onchange }: { service: Service; page: ServicePage; onchange: (s: Service) => void } = $props()
@@ -18,33 +17,6 @@
   $effect(() => {
     if (service.busy) pending = false
   })
-
-  // --- Domains, one editor per public Component.
-  let domainDrafts = $state<Record<string, string>>({})
-  let domainErrors = $state<Record<string, string>>({})
-  let domainSaved = $state('')
-
-  function draft(component: string, domains: string[]): string {
-    return domainDrafts[component] ?? domains.join('\n')
-  }
-
-  async function saveDomains(component: string) {
-    domainErrors = {}
-    domainSaved = ''
-    const domains = (domainDrafts[component] ?? '')
-      .split('\n')
-      .map((d) => d.trim())
-      .filter((d) => d !== '')
-    try {
-      const r = await api<{ service: Service }>('PATCH', `/services/${id}`, { domains: { [component]: domains } })
-      onchange(r.service)
-      delete domainDrafts[component]
-      domainSaved = component
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err
-      domainErrors = { [component]: err.errors.domains ?? err.message }
-    }
-  }
 
   // --- Variables: the Owner's are editable, generated ones read-only.
   let revealed = $state<Record<string, boolean>>({})
@@ -72,44 +44,7 @@
 
 {#if pending}<p class="muted">Saved. Redeploy to apply the change.</p>{/if}
 
-{#if page === 'domains'}
-    <div class="components">
-      {#each service.components.filter((c) => c.public) as c (c.name)}
-        <div class="card component">
-          <div class="row">
-            <strong>{c.name}</strong>
-            <StatusBadge status={c.status} />
-            <span class="mono muted">{c.image}</span>
-          </div>
-          {#if c.detail}<p class="error">{c.detail}</p>{/if}
-          {#if c.public}
-            <p>
-              {#each c.domains as d (d)}
-                <a class="mono" href={`https://${d}`} target="_blank" rel="noreferrer">{d}</a>
-              {/each}
-              <span class="muted">→ port {c.port}</span>
-            </p>
-            <label class="domains">
-              <span class="muted">Domains, one per line (the first is the primary one)</span>
-              <textarea
-                readonly={!session.canWrite}
-                rows={Math.max(2, c.domains.length + 1)}
-                value={draft(c.name, c.domains)}
-                oninput={(e) => (domainDrafts[c.name] = e.currentTarget.value)}
-              ></textarea>
-            </label>
-            {#if domainErrors[c.name]}<p class="error">{domainErrors[c.name]}</p>{/if}
-            {#if session.canWrite}<div class="actions">
-              {#if domainSaved === c.name}<span class="ok">Saved.</span>{/if}
-              <button disabled={domainDrafts[c.name] === undefined} onclick={() => saveDomains(c.name)}>Save domains</button>
-            </div>{/if}
-          {/if}
-        </div>
-      {:else}
-        <p class="muted">No component of this service is public.</p>
-      {/each}
-    </div>
-{:else if page === 'environment-variables'}
+{#if page === 'environment-variables'}
     {@const vars = service.variables ?? []}
     {#if vars.length === 0}
       <p class="muted">The compose file uses no variables.</p>
@@ -185,33 +120,7 @@
     justify-content: flex-end;
     margin-top: 0.5rem;
   }
-  .components {
-    display: grid;
-    gap: 0.75rem;
-  }
-  .component {
-    display: grid;
-    gap: 0.5rem;
-  }
-  .component p {
-    margin: 0;
-    display: flex;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-  }
-  .domains {
-    display: grid;
-    gap: 0.3rem;
-  }
-  textarea {
-    font-family: ui-monospace, monospace;
-    font-size: 0.85rem;
-    width: 100%;
-  }
   .small {
     font-size: 0.8rem;
-  }
-  .ok {
-    color: var(--ok);
   }
 </style>

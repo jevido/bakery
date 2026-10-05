@@ -14,6 +14,7 @@
   import Danger from '../application/Danger.svelte'
   import Heading, { type Action } from '../application/Heading.svelte'
   import ConfigurationSidebar from './ConfigurationSidebar.svelte'
+  import Domains from './Domains.svelte'
   import General from './General.svelte'
   import Interim from './Interim.svelte'
 
@@ -166,7 +167,9 @@
       <div class="min-w-0">
         {#if page === ''}
           <General {service} {environment} onchange={(s) => (service = s)} />
-        {:else if page === 'domains' || page === 'environment-variables' || page === 'logs'}
+        {:else if page === 'domains'}
+          <Domains {service} onchange={(s) => (service = s)} />
+        {:else if page === 'environment-variables' || page === 'logs'}
           <Interim {service} {page} onchange={(s) => (service = s)} />
         {:else if page === 'danger' && session.canWrite}
           <Danger

@@ -1263,6 +1263,11 @@ html:not(.dark) {
   column-gap: 0.75rem;
 }
 
+/* A Service's Domains have no redirect column either. */
+.service-domains-overview-grid.is-service {
+  grid-template-columns: minmax(0, 1fr) 5.5rem 6.5rem;
+}
+
 .data-table-row.service-domains-overview-grid {
   padding-block: 0.5rem;
 }

@@ -235,6 +235,9 @@ func TestCreateBringsUpAndRoutes(t *testing.T) {
 	if sv, _, _ := store.Get(ctx, v.ID); sv.Variables[0].Value != "generated-password" {
 		t.Errorf("variables %+v", sv.Variables)
 	}
+	if g := v.Components[0].GeneratedDomain; g != "who-am-i.localhost" {
+		t.Errorf("generated domain %q", g)
+	}
 
 	// A second one with the same name gets its own slug and Domain.
 	v2, err := s.Create(ctx, 1, Input{Name: "Who Am I", Compose: webCompose})

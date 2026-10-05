@@ -282,6 +282,8 @@ export type Component = {
   port: number | null
   domains: string[]
   url?: string
+  /** The Domain Generate domain fills in; public only. */
+  generated_domain?: string
   status: DatabaseStatus
   detail?: string
 }

@@ -29,8 +29,10 @@ type componentJSON struct {
 	Port    *int     `json:"port"`
 	Domains []string `json:"domains"`
 	URL     string   `json:"url,omitempty"`
-	Status  string   `json:"status"`
-	Detail  string   `json:"detail,omitempty"`
+	// GeneratedDomain is what Generate domain fills in; public only.
+	GeneratedDomain string `json:"generated_domain,omitempty"`
+	Status          string `json:"status"`
+	Detail          string `json:"detail,omitempty"`
 }
 
 type variableJSON struct {
@@ -72,7 +74,7 @@ func toJSON(v app.View, full bool) serviceJSON {
 		Components: make([]componentJSON, 0, len(v.Components)),
 	}
 	for _, c := range v.Components {
-		cj := componentJSON{Name: c.Name, Image: c.Image, Public: c.Public, Domains: c.Domains, Status: string(c.Status), Detail: c.Detail}
+		cj := componentJSON{Name: c.Name, Image: c.Image, Public: c.Public, Domains: c.Domains, GeneratedDomain: c.GeneratedDomain, Status: string(c.Status), Detail: c.Detail}
 		if cj.Domains == nil {
 			cj.Domains = []string{}
 		}
