@@ -353,6 +353,8 @@ export type ServerCheck = {
 export type Server = {
   id: number
   name: string
+  /** Until the API sends one, read it as `s.description ?? ''`. */
+  description?: string
   kind: 'local' | 'remote'
   host: string
   port: number

@@ -32,7 +32,7 @@
       {
         label: 'Infrastructure',
         items: items(
-          { label: 'Servers', path: '/servers', icon: 'servers', routes: ['servers', 'server'] },
+          { label: 'Servers', path: '/servers', icon: 'servers', routes: ['servers', 'server-new', 'server'] },
           admin && { label: 'S3 Storage', path: '/storages', icon: 'storages', routes: ['storages'] },
         ),
       },
@@ -183,6 +183,8 @@
             {/if}
           {/each}
         </nav>
+        <!-- A Server page's switcher and status summary dock here, after the breadcrumb. -->
+        <div id="server-topbar-context" class="min-w-0"></div>
       </div>
       <!-- Resource actions dock here on desktop (the Application heading's Links and Actions). -->
       <div id="resource-action-hud-slot" class="hidden shrink-0 items-center xl:flex"></div>

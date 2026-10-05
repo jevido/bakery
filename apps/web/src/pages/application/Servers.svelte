@@ -5,7 +5,7 @@
   // Application is created and has no Destinations yet, so the Additional
   // servers and Add another server sections are left out, and the card names
   // the server's address instead of a Docker network.
-  import { href } from '../../lib/router.svelte'
+  import { href, serverPath } from '../../lib/router.svelte'
   import Icon from '../../lib/Icon.svelte'
   import type { Server } from '../../lib/types'
   import SettingsSection from '../../lib/ui/SettingsSection.svelte'
@@ -60,7 +60,7 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2 sm:justify-end">
-          <a href={href(`/servers/${server.id}`)} class="button">Open server</a>
+          <a href={href(serverPath(server.id))} class="button">Open server</a>
           <StatusBadge status={reachability.label} type={reachability.type} title="Server" />
           {#if status}<StatusSummary {status} align="right" />{/if}
         </div>

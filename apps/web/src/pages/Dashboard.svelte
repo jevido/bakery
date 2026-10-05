@@ -13,7 +13,7 @@
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import Icon from '../lib/Icon.svelte'
   import { projectCounts, type ProjectCounts } from '../lib/projectCounts'
-  import { href } from '../lib/router.svelte'
+  import { href, serverPath } from '../lib/router.svelte'
   import { session } from '../lib/session.svelte'
   import type { Project, Server } from '../lib/types'
   import Empty from '../lib/ui/Empty.svelte'
@@ -157,7 +157,7 @@
         <div class="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {#each servers as server (server.id)}
             {@const status = serverStatus(server)}
-            <a href={href(`/servers/${server.id}`)} aria-label="Open {server.name}" class={card}>
+            <a href={href(serverPath(server.id))} aria-label="Open {server.name}" class={card}>
               <div class="relative z-10 flex min-w-0 items-start gap-3">
                 <div class={[iconBox, 'dark:border-white/[0.1]']}>
                   <Icon name="servers" class="size-4" />

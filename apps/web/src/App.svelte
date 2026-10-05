@@ -19,8 +19,9 @@
   import Project from './pages/Project.svelte'
   import ProjectEdit from './pages/ProjectEdit.svelte'
   import Projects from './pages/Projects.svelte'
-  import Server from './pages/Server.svelte'
-  import Servers from './pages/Servers.svelte'
+  import NewServer from './pages/server/New.svelte'
+  import Server from './pages/server/Server.svelte'
+  import Servers from './pages/server/Servers.svelte'
   import Service from './pages/service/Service.svelte'
   import Settings from './pages/Settings.svelte'
   import Storages from './pages/Storages.svelte'
@@ -107,8 +108,10 @@
       <Service projectId={router.route.projectId} environmentId={router.route.environmentId} id={router.route.id} page={router.route.page} />
     {:else if router.route.name === 'servers'}
       <Servers />
+    {:else if router.route.name === 'server-new'}
+      <NewServer />
     {:else if router.route.name === 'server'}
-      <Server id={router.route.id} />
+      <Server id={router.route.id} page={router.route.page} />
     {:else if router.route.name === 'storages'}
       <Storages />
     {:else if router.route.name === 'settings'}

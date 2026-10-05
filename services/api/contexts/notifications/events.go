@@ -122,7 +122,7 @@ func backupNotification(e databases.BackupExecutionFinished, dashboard string) d
 }
 
 func serverNotification(e servers.ServerHealthChanged, dashboard string, now time.Time) (domain.Notification, bool) {
-	n := domain.Notification{Link: fmt.Sprintf("%s/#/servers/%d", dashboard, e.ServerID), At: now}
+	n := domain.Notification{Link: fmt.Sprintf("%s/#/server/%d", dashboard, e.ServerID), At: now}
 	switch e.Change {
 	case "unreachable":
 		n.Kind = domain.ServerUnreachable

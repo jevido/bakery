@@ -17,7 +17,7 @@
   import DockerImage from '../lib/new/DockerImage.svelte'
   import PrivateGitRepository from '../lib/new/PrivateGitRepository.svelte'
   import PublicGitRepository from '../lib/new/PublicGitRepository.svelte'
-  import { databasePath, go, href, servicePath } from '../lib/router.svelte'
+  import { databasePath, go, href, serverPath, servicePath } from '../lib/router.svelte'
   import { session } from '../lib/session.svelte'
   import type { Database, DatabaseType, Environment, Server, Service, ServiceTemplate } from '../lib/types'
   import Callout from '../lib/ui/Callout.svelte'
@@ -600,7 +600,7 @@
                   <span class="block text-[11px] text-neutral-500 dark:text-fg-faint">Validate this server before it can host resources.</span>
                 </span>
                 <StatusBadge status={s.status === 'unreachable' ? 'Unreachable' : 'Not validated'} type="neutral" />
-                <a href={href(`/servers/${s.id}`)} class="button">Settings</a>
+                <a href={href(serverPath(s.id))} class="button">Settings</a>
               </div>
             {/each}
           </div>

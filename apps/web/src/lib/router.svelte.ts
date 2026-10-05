@@ -1,7 +1,7 @@
 import { api } from './api'
 import type { Application, Database, Project, Service } from './types'
 
-// Hash router, with Coolify's paths for Projects and Environments: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
+// Hash router, with Coolify's paths for Projects and Environments: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
@@ -32,7 +32,8 @@ export type Route =
   | { name: 'service'; projectId: number; environmentId: number; id: number; page: ServicePage }
   | { name: 'service-legacy'; id: number }
   | { name: 'servers' }
-  | { name: 'server'; id: number }
+  | { name: 'server-new' }
+  | { name: 'server'; id: number; page: ServerPage }
   | { name: 'storages' }
   | { name: 'settings' }
   | { name: 'members' }
@@ -110,6 +111,19 @@ export function servicePath(s: { project_id: number; environment_id: number; id:
   return page ? `${base}/${page}` : base
 }
 
+/** A Server's sub-pages, by their slug in Coolify's URLs. */
+export const serverPages = ['', 'private-key', 'resources', 'metrics', 'docker-cleanup', 'danger'] as const
+export type ServerPage = (typeof serverPages)[number]
+
+function isServerPage(s: string): s is ServerPage {
+  return (serverPages as readonly string[]).includes(s)
+}
+
+/** The path of a Server's page, or one of its sub-pages. */
+export function serverPath(id: number, page: ServerPage = ''): string {
+  return page ? `/server/${id}/${page}` : `/server/${id}`
+}
+
 function parse(hash: string): Route {
   const [path, query = ''] = hash.replace(/^#\/?/, '').split('?', 2)
   const flags = new URLSearchParams(query)
@@ -127,8 +141,15 @@ function parse(hash: string): Route {
   if (parts[0] === 'invite' && parts.length === 2) return { name: 'invite', token: parts[1] }
   if (parts[0] === 'servers') {
     if (parts.length === 1) return { name: 'servers' }
+    if (parts.length === 2 && parts[1] === 'new') return { name: 'server-new' }
+    // #/servers/{id} from before Coolify's paths: the id is the same.
     const id = Number(parts[1])
-    if (parts.length === 2 && Number.isInteger(id)) return { name: 'server', id }
+    if (parts.length === 2 && Number.isInteger(id)) return redirect(serverPath(id))
+  }
+  if (parts[0] === 'server') {
+    const id = Number(parts[1])
+    const page = parts[2] ?? ''
+    if (parts.length >= 2 && parts.length <= 3 && Number.isInteger(id) && isServerPage(page)) return { name: 'server', id, page }
   }
   if (parts[0] === 'projects') {
     if (parts.length === 1) return { name: 'projects' }
