@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // FieldError is a broken rule on one input field.
@@ -24,8 +25,9 @@ func invalid(field, format string, args ...any) error {
 	return &FieldError{Field: field, Message: fmt.Sprintf(format, args...)}
 }
 
-// ErrLocalServer is returned when changing or deleting the Local server.
-var ErrLocalServer = errors.New("the local server cannot be changed or deleted")
+// ErrLocalServer is returned when deleting the Local server or changing how
+// it is reached.
+var ErrLocalServer = errors.New("the local server cannot be deleted or reached another way")
 
 // Kind says how a Server is reached.
 type Kind string
@@ -102,7 +104,9 @@ type PrivateKey struct {
 type Server struct {
 	ID   uint64
 	Name string
-	Kind Kind
+	// Description is free text of at most 255 characters, empty for none.
+	Description string
+	Kind        Kind
 	// Host, Port and User are empty on the Local server.
 	Host string
 	Port int
@@ -121,12 +125,14 @@ type Server struct {
 	CreatedAt     time.Time
 }
 
-// Input is what the Owner types for a Remote server.
+// Input is what the Owner types for a Server. Host, Port and User are
+// left empty for the Local server.
 type Input struct {
-	Name string
-	Host string
-	Port int
-	User string
+	Name        string
+	Description string
+	Host        string
+	Port        int
+	User        string
 }
 
 // DefaultPort is the SSH port used when none is given.
@@ -138,18 +144,39 @@ var (
 	userName   = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 )
 
+func checkName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	switch {
+	case name == "":
+		return name, invalid("name", "name is required")
+	case !serverName.MatchString(name):
+		return name, invalid("name", "name is 1–63 letters, digits, spaces, '.', '_' and '-', starting with a letter or digit")
+	}
+	return name, nil
+}
+
+func checkDescription(description string) (string, error) {
+	description = strings.TrimSpace(description)
+	if utf8.RuneCountInString(description) > 255 {
+		return description, invalid("description", "description is at most 255 characters")
+	}
+	return description, nil
+}
+
 func (in Input) normalize() (Input, error) {
-	in.Name = strings.TrimSpace(in.Name)
+	var err error
+	if in.Name, err = checkName(in.Name); err != nil {
+		return in, err
+	}
+	if in.Description, err = checkDescription(in.Description); err != nil {
+		return in, err
+	}
 	in.Host = strings.TrimSpace(in.Host)
 	in.User = strings.TrimSpace(in.User)
 	if in.Port == 0 {
 		in.Port = DefaultPort
 	}
 	switch {
-	case in.Name == "":
-		return in, invalid("name", "name is required")
-	case !serverName.MatchString(in.Name):
-		return in, invalid("name", "name is 1–63 letters, digits, spaces, '.', '_' and '-', starting with a letter or digit")
 	case strings.EqualFold(in.Name, LocalName):
 		return in, invalid("name", "%q is the local server", LocalName)
 	case in.Host == "":
@@ -178,15 +205,16 @@ func NewRemote(in Input, key PrivateKey) (Server, error) {
 	if key.Public == "" || key.Private == "" {
 		return Server{}, errors.New("servers: a Remote server needs a Private key")
 	}
-	return Server{Name: in.Name, Kind: Remote, Host: in.Host, Port: in.Port, User: in.User, Key: key, Status: Unvalidated}, nil
+	return Server{Name: in.Name, Description: in.Description, Kind: Remote, Host: in.Host, Port: in.Port, User: in.User, Key: key, Status: Unvalidated}, nil
 }
 
-// Edit changes a Remote server. A new host, port or user is another
-// machine or account: the Host key is forgotten and the Server must be
-// validated again.
+// Edit changes a Server. The Local server only takes a name and a
+// description: it is always reached through the local socket. On a Remote
+// server a new host, port or user is another machine or account: the Host
+// key is forgotten and the Server must be validated again.
 func (s *Server) Edit(in Input) error {
 	if s.Kind == Local {
-		return ErrLocalServer
+		return s.editLocal(in)
 	}
 	in, err := in.normalize()
 	if err != nil {
@@ -198,7 +226,23 @@ func (s *Server) Edit(in Input) error {
 		s.Validation = Validation{}
 		s.FailedProbes, s.HighDiskUsage = 0, false
 	}
-	s.Name, s.Host, s.Port, s.User = in.Name, in.Host, in.Port, in.User
+	s.Name, s.Description, s.Host, s.Port, s.User = in.Name, in.Description, in.Host, in.Port, in.User
+	return nil
+}
+
+func (s *Server) editLocal(in Input) error {
+	if strings.TrimSpace(in.Host) != "" || in.Port != 0 || strings.TrimSpace(in.User) != "" {
+		return ErrLocalServer
+	}
+	name, err := checkName(in.Name)
+	if err != nil {
+		return err
+	}
+	description, err := checkDescription(in.Description)
+	if err != nil {
+		return err
+	}
+	s.Name, s.Description = name, description
 	return nil
 }
 

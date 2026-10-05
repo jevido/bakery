@@ -8,12 +8,23 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strings"
+	"time"
 )
 
-// Info is what Bakery reads from the service's /info: the host's CPUs and
-// memory, and where Podman keeps its storage.
+// Info is what Bakery reads from the service's /info: the host's operating
+// system, CPUs and memory, how long it has been up, and where Podman keeps
+// its storage.
 type Info struct {
-	CPUs int
+	// Distribution and DistributionVersion name the operating system, e.g.
+	// "debian" and "12".
+	Distribution        string
+	DistributionVersion string
+	Arch                string
+	Kernel              string
+	// Uptime is zero when Podman's answer could not be read.
+	Uptime time.Duration
+	CPUs   int
 	// CPUIdlePercent is the host's idle CPU since boot, as Podman reports it.
 	CPUIdlePercent float64
 	MemTotal       int64
@@ -24,9 +35,16 @@ type Info struct {
 func (c *Client) Info(ctx context.Context) (Info, error) {
 	var out struct {
 		Host struct {
-			CPUs           int   `json:"cpus"`
-			MemTotal       int64 `json:"memTotal"`
-			MemFree        int64 `json:"memFree"`
+			Distribution struct {
+				Distribution string `json:"distribution"`
+				Version      string `json:"version"`
+			} `json:"distribution"`
+			Arch           string `json:"arch"`
+			Kernel         string `json:"kernel"`
+			Uptime         string `json:"uptime"`
+			CPUs           int    `json:"cpus"`
+			MemTotal       int64  `json:"memTotal"`
+			MemFree        int64  `json:"memFree"`
 			CPUUtilization struct {
 				IdlePercent float64 `json:"idlePercent"`
 			} `json:"cpuUtilization"`
@@ -39,9 +57,22 @@ func (c *Client) Info(ctx context.Context) (Info, error) {
 		return Info{}, err
 	}
 	return Info{
+		Distribution: out.Host.Distribution.Distribution, DistributionVersion: out.Host.Distribution.Version,
+		Arch: out.Host.Arch, Kernel: out.Host.Kernel, Uptime: parseUptime(out.Host.Uptime),
 		CPUs: out.Host.CPUs, CPUIdlePercent: out.Host.CPUUtilization.IdlePercent,
 		MemTotal: out.Host.MemTotal, MemFree: out.Host.MemFree, GraphRoot: out.Store.GraphRoot,
 	}, nil
+}
+
+// parseUptime reads libpod's host.uptime, a Go duration with spaces and,
+// past an hour, a note: "52h 3m 1.04s (Approximately 2.17 days)".
+func parseUptime(raw string) time.Duration {
+	raw, _, _ = strings.Cut(raw, "(")
+	d, err := time.ParseDuration(strings.ReplaceAll(strings.TrimSpace(raw), " ", ""))
+	if err != nil || d < 0 {
+		return 0
+	}
+	return d
 }
 
 // DiskUsage is the space Podman's images, containers and volumes take, in

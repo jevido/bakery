@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestMetrics(t *testing.T) {
@@ -37,6 +38,31 @@ func TestMetricsUnreachable(t *testing.T) {
 	_, err := s.Metrics(context.Background(), local.ID)
 	var u *ErrUnreachable
 	if !errors.As(err, &u) {
+		t.Fatalf("err %v", err)
+	}
+}
+
+func TestDetails(t *testing.T) {
+	conn := healthy()
+	s := NewService(newMemStore(), fakeKey, fakeConnector{conn: conn})
+	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	local, _ := s.EnsureLocal(context.Background())
+	d, err := s.Details(context.Background(), local.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.OS != "debian 12" || d.Arch != "amd64" || d.Kernel != "6.1.0-28-amd64" || d.CPUs != 4 || d.Memory != 8<<30 ||
+		d.PodmanVersion != conn.version || !d.UpSince.Equal(now.Add(-2*time.Hour)) {
+		t.Fatalf("%+v", d)
+	}
+	if !conn.closed {
+		t.Fatal("connection left open")
+	}
+	s = NewService(newMemStore(), fakeKey, fakeConnector{err: errors.New("refused")})
+	local, _ = s.EnsureLocal(context.Background())
+	var u *ErrUnreachable
+	if _, err := s.Details(context.Background(), local.ID); !errors.As(err, &u) {
 		t.Fatalf("err %v", err)
 	}
 }

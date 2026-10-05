@@ -22,14 +22,15 @@ Local server. It does not keep a metrics history either.
 
 | Term | Meaning |
 | ---- | ------- |
-| Server | A machine The Bakery runs Containers on. |
-| Local server | The Server The Bakery itself runs on, reached through the rootless Podman socket. Always exists, named `localhost`, and can be neither edited nor deleted. |
+| Server | A machine The Bakery runs Containers on, with a name and an optional description. |
+| Local server | The Server The Bakery itself runs on, reached through the rootless Podman socket. Always exists, named `localhost` until renamed; only its name and description can be edited, and it cannot be deleted. |
 | Remote server | A Server reached over SSH as a given user, whose rootless Podman API socket is tunnelled through that connection. |
 | Private key | The ed25519 key pair The Bakery generates for one Remote server. The Owner adds the public half to the user's `~/.ssh/authorized_keys`; the private half is encrypted at rest. |
 | Host key | The SSH host key of a Remote server, pinned on the first connection and required to match on every later one until the Owner forgets it. |
 | Validation | The checks run against a Server and their outcome: `ssh` (Remote servers only), `podman` (the API answers, version at least 4.4), `socket`, `linger` and `ports` (unprivileged ports from 80; reported, not required). |
 | Server status | `unvalidated` (never checked, or host, port or user changed since), `reachable` (every required check passed) or `unreachable`. |
 | Server metrics | CPU use, memory used and total, and disk used and total of Podman's storage on a Server, read live. |
+| Server details | The operating system, architecture, kernel, CPU cores, memory, Podman version and boot time of a Server, read live from Podman. |
 | Container metrics | CPU and memory use of each Bakery Container on a Server, read live. |
 | Server probe | Every 5 minutes, each Server whose latest Validation passed is connected to and its disk read. Two failures in a row make a Reachable Server Unreachable; one success makes an Unreachable one Reachable again. *High disk usage* is raised at 90 % used and cleared below 85 %. |
 | Cleanup | Freeing disk on a Server: dangling Bakery images and build layers, and Image retention for the Applications on it. Daily and on demand. |
@@ -41,13 +42,15 @@ Local server. It does not keep a metrics history either.
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Server | The name is unique (1–63 characters); host, port and user together are unique. The Local server always exists and can be neither edited nor deleted. Changing host, port or user clears the Host key and makes the Server `unvalidated`. A pinned Host key only changes through Forget host key. The Server status follows its latest Validation or Server probe. Only a probe that changes the status or the high disk usage flag announces anything. |
+| Server | The name is unique (1–63 characters); the description is at most 255 characters; host, port and user together are unique. The Local server always exists, takes no host, port or user, and cannot be deleted. Changing host, port or user clears the Host key and makes the Server `unvalidated`. A pinned Host key only changes through Forget host key. The Server status follows its latest Validation or Server probe. Only a probe that changes the status or the high disk usage flag announces anything. |
 
 ### Commands
 
-- `Add(name, host, port, user)`: a Remote server with a new Private key,
-  `unvalidated`.
-- `Edit(server, name, host, port, user)`, `Delete(server)`: Remote servers only.
+- `Add(name, description, host, port, user)`: a Remote server with a new
+  Private key, `unvalidated`.
+- `Edit(server, name, description, host, port, user)`: on the Local server
+  only the name and description.
+- `Delete(server)`: Remote servers only.
   Delete is refused while a registered check says the Server is still in
   use (an Application targets it).
 - `Validate(server)`: connects, runs the checks, records the Validation and
@@ -58,6 +61,7 @@ Local server. It does not keep a metrics history either.
   passed (one that failed it stays as it is until validated again), every 5 minutes
   (`BAKERY_SERVER_PROBE_INTERVAL`).
 - `Metrics(server)`: Server metrics and Container metrics, live.
+- `Details(server)`: Server details, live.
 - `CleanUp(server)`: runs Cleanup and records when it ran and how much it
   reclaimed.
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/servers/domain"
 )
@@ -42,7 +43,7 @@ func (f *fakeConnection) PruneDanglingImages(context.Context) (int64, error) {
 	return 10, nil
 }
 func (f *fakeConnection) HostInfo(context.Context) (HostInfo, error) {
-	return HostInfo{CPUs: 4, MemTotal: 8 << 30, MemFree: 2 << 30, GraphRoot: "/var/lib/containers"}, nil
+	return HostInfo{Distribution: "debian", DistributionVersion: "12", Arch: "amd64", Kernel: "6.1.0-28-amd64", Uptime: 2 * time.Hour, CPUs: 4, MemTotal: 8 << 30, MemFree: 2 << 30, GraphRoot: "/var/lib/containers"}, nil
 }
 func (f *fakeConnection) CPUPercent(context.Context) (float64, error) {
 	if f.cpuErr != nil {

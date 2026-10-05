@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -35,14 +36,60 @@ func TestNewRemote(t *testing.T) {
 
 func TestLocalServerIsFixed(t *testing.T) {
 	s := NewLocal()
-	if err := s.Edit(Input{Name: "x", Host: "h", User: "u"}); !errors.Is(err, ErrLocalServer) {
-		t.Errorf("edit: %v", err)
+	for _, in := range []Input{
+		{Name: "x", Host: "h", User: "u"},
+		{Name: "x", Port: 22},
+		{Name: "x", User: "u"},
+	} {
+		if err := s.Edit(in); !errors.Is(err, ErrLocalServer) {
+			t.Errorf("edit %+v: %v", in, err)
+		}
+	}
+	if s.Name != LocalName {
+		t.Errorf("a refused edit renamed it to %q", s.Name)
 	}
 	if err := s.CanDelete(); !errors.Is(err, ErrLocalServer) {
 		t.Errorf("delete: %v", err)
 	}
 	if err := s.ForgetHostKey(); !errors.Is(err, ErrLocalServer) {
 		t.Errorf("forget: %v", err)
+	}
+}
+
+func TestEditLocalNameAndDescription(t *testing.T) {
+	s := NewLocal()
+	if err := s.Edit(Input{Name: " main box ", Description: "  the one we run on  "}); err != nil {
+		t.Fatal(err)
+	}
+	if s.Name != "main box" || s.Description != "the one we run on" || s.Kind != Local {
+		t.Fatalf("%+v", s)
+	}
+	var fe *FieldError
+	if err := s.Edit(Input{Name: ""}); !errors.As(err, &fe) || fe.Field != "name" {
+		t.Errorf("empty name: %v", err)
+	}
+	if err := s.Edit(Input{Name: "x", Description: strings.Repeat("é", 256)}); !errors.As(err, &fe) || fe.Field != "description" {
+		t.Errorf("long description: %v", err)
+	}
+	if s.Name != "main box" {
+		t.Error("a refused edit changed the Server")
+	}
+}
+
+func TestDescription(t *testing.T) {
+	s, err := NewRemote(Input{Name: "a", Description: "  web  ", Host: "h", User: "u"}, key)
+	if err != nil || s.Description != "web" {
+		t.Fatalf("new: %v, %q", err, s.Description)
+	}
+	if err := s.Edit(Input{Name: "a", Description: strings.Repeat("é", 255), Host: "h", User: "u"}); err != nil {
+		t.Fatal(err)
+	}
+	var fe *FieldError
+	if _, err := NewRemote(Input{Name: "a", Description: strings.Repeat("x", 256), Host: "h", User: "u"}, key); !errors.As(err, &fe) || fe.Field != "description" {
+		t.Errorf("long description: %v", err)
+	}
+	if err := s.Edit(Input{Name: "a", Host: "h", User: "u"}); err != nil || s.Description != "" {
+		t.Fatalf("clear: %v, %q", err, s.Description)
 	}
 }
 

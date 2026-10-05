@@ -9,12 +9,18 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/servers/domain"
 )
 
-// HostInfo is the Server's CPUs, memory and where Podman stores its data.
+// HostInfo is the Server's operating system, CPUs, memory, how long it has
+// been up and where Podman stores its data.
 type HostInfo struct {
-	CPUs      int
-	MemTotal  int64
-	MemFree   int64
-	GraphRoot string
+	Distribution        string
+	DistributionVersion string
+	Arch                string
+	Kernel              string
+	Uptime              time.Duration
+	CPUs                int
+	MemTotal            int64
+	MemFree             int64
+	GraphRoot           string
 }
 
 // PodmanDiskUsage is what Podman's images, containers and volumes take.
@@ -72,6 +78,31 @@ func (s *Service) Metrics(ctx context.Context, id uint64) (domain.Metrics, error
 		err = nil
 	}
 	return m, err
+}
+
+// Details reads the Server's operating system and hardware, live.
+func (s *Service) Details(ctx context.Context, id uint64) (domain.Details, error) {
+	srv, err := s.Get(ctx, id)
+	if err != nil {
+		return domain.Details{}, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, metricsTimeout)
+	defer cancel()
+	conn, err := s.connector.Connect(ctx, srv)
+	if err != nil {
+		return domain.Details{}, &ErrUnreachable{Reason: err.Error()}
+	}
+	defer conn.Close()
+	info, err := conn.HostInfo(ctx)
+	if err != nil {
+		return domain.Details{}, &ErrUnreachable{Reason: err.Error()}
+	}
+	version, err := conn.PodmanVersion(ctx)
+	if err != nil {
+		return domain.Details{}, &ErrUnreachable{Reason: err.Error()}
+	}
+	return domain.NewDetails(info.Distribution, info.DistributionVersion, info.Arch, info.Kernel,
+		info.CPUs, info.MemTotal, version, info.Uptime, s.now()), nil
 }
 
 func readMetrics(ctx context.Context, o Observer, now time.Time) (domain.Metrics, error) {

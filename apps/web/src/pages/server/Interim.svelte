@@ -100,7 +100,7 @@
     e.preventDefault()
     errors = {}
     try {
-      const r = await api<{ server: Server }>('PATCH', `/servers/${id}`, { name, host, port: Number(port) || 0, user })
+      const r = await api<{ server: Server }>('PATCH', `/servers/${id}`, { name, description: server.description, host, port: Number(port) || 0, user })
       onchange(r.server)
       editing = false
     } catch (err) {

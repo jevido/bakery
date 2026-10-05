@@ -15,8 +15,10 @@ KEEP_FORGEJO=1 # this test does not use Forgejo
 REMOTE=(podman compose -f "$ROOT/infra/dev/compose.yml" --profile remote)
 STAND_IN=bakery-dev-remote-1
 SERVER_ID=""
+LOCAL_RESTORE="" # the Local server's name and description, as JSON, while the test changes them
 
 e2e_cleanup_hook() {
+	if [ -n "$LOCAL_RESTORE" ]; then bakery PATCH "/api/servers/$LOCAL_ID" "$LOCAL_RESTORE" >/dev/null; fi
 	if [ -n "$SERVER_ID" ]; then bakery DELETE "/api/servers/$SERVER_ID" >/dev/null; fi
 	"${REMOTE[@]}" rm -sf remote >/dev/null 2>&1
 }
@@ -45,6 +47,21 @@ LOCAL_ID=$(bakery GET /api/servers | json "next(s['id'] for s in d['servers'] if
 [ "$(bakery GET "/api/servers/$LOCAL_ID/metrics" | json "d['server']['cpus'] > 0 and d['server']['disk_total_bytes'] > 0")" = True ] ||
 	fail "local metrics are missing"
 [ "$(code -X DELETE "$API/api/servers/$LOCAL_ID")" = 409 ] || fail "the local server could be deleted"
+# details NAME ID: the Server details carry what the Server overview shows.
+details() {
+	bakery GET "/api/servers/$2/details" >"$WORK/details.json"
+	[ "$(json "all(d['details'][k] for k in ('os','arch','kernel','podman_version','up_since')) and d['details']['cpus'] > 0 and d['details']['memory_bytes'] > 0" <"$WORK/details.json")" = True ] ||
+		fail "$1 details are missing: $(cat "$WORK/details.json")"
+}
+details local "$LOCAL_ID"
+LOCAL_NAME=$(server "$LOCAL_ID" "['name']")
+LOCAL_RESTORE=$(bakery GET "/api/servers/$LOCAL_ID" | json "json.dumps({k: d['server'][k] for k in ('name', 'description')})")
+bakery PATCH "/api/servers/$LOCAL_ID" "{\"name\":\"$LOCAL_NAME\",\"description\":\"  e2e $RUN  \"}" >/dev/null
+[ "$(server "$LOCAL_ID" "['description']")" = "e2e $RUN" ] || fail "the local server's description was not saved"
+[ "$(code -X PATCH -H 'Content-Type: application/json' -d "{\"name\":\"$LOCAL_NAME\",\"host\":\"10.0.0.1\",\"user\":\"x\"}" "$API/api/servers/$LOCAL_ID")" = 409 ] ||
+	fail "the local server took a host"
+bakery PATCH "/api/servers/$LOCAL_ID" "$LOCAL_RESTORE" >/dev/null
+LOCAL_RESTORE=""
 
 say "The Remote server stand-in"
 start_stand_in
@@ -62,6 +79,10 @@ bakery POST "/api/servers/$SERVER_ID/validate" >/dev/null
 FINGERPRINT=$(server "$SERVER_ID" "['host_key_fingerprint']")
 [ -n "$FINGERPRINT" ] || fail "no host key pinned"
 [ "$(check "$SERVER_ID" podman "['detail']" | cut -d' ' -f1)" = Podman ] || fail "no Podman version"
+bakery PATCH "/api/servers/$SERVER_ID" "{\"name\":\"$RUN\",\"description\":\"the stand-in\",\"host\":\"127.0.0.1\",\"port\":4972,\"user\":\"podman\"}" >/dev/null
+[ "$(server "$SERVER_ID" "['description']")" = "the stand-in" ] || fail "the remote server's description was not saved"
+[ "$(server "$SERVER_ID" "['status']")" = reachable ] || fail "describing the server dropped its validation"
+details remote "$SERVER_ID"
 
 say "Metrics, with a Bakery container on it"
 as_podman "podman run -d --name bakery-e2e-sleeper --label bakery.managed=true --label bakery.test=true docker.io/library/busybox:1.36 sleep 600" >/dev/null

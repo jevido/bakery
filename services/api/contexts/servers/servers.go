@@ -133,6 +133,7 @@ func Routes(r route.Router) {
 		r.Get("/api/servers", c.List)
 		r.Get("/api/servers/{id}", c.Show)
 		r.Get("/api/servers/{id}/metrics", c.Metrics)
+		r.Get("/api/servers/{id}/details", c.Details)
 	})
 	r.Middleware(identity.Auth, identity.Admin).Group(func(r route.Router) {
 		r.Post("/api/servers", c.Create)

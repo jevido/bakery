@@ -67,16 +67,17 @@ document; list them here when people outside the context use them too.
 | Git host token | deployments | An access token for the git host, stored encrypted on the Webhook, that lets The Bakery write the Preview comment. A Secret. | Deploy key, API token |
 | Auto-deploy | deployments | Whether a verified push to the Application's branch queues a Deployment. On by default. | Redeploy |
 | Known host | deployments | A git host's SSH host key, remembered on the first clone from that host and required to match on every later one. | Host key (Servers) |
-| Server | servers | A machine The Bakery runs Containers on: the Local server, through the rootless Podman socket, or a Remote server over SSH. Applications run on their Target server; Databases and Services still run on the Local server. | Proxy |
+| Server | servers | A machine The Bakery runs Containers on: the Local server, through the rootless Podman socket, or a Remote server over SSH. It has a name and an optional description (free text, at most 255 characters). Applications run on their Target server; Databases and Services still run on the Local server. | Proxy |
 | Target server | projects, deployments, routing | The Server an Application's Images are built on and its Containers run on. Chosen when the Application is added and fixed afterwards; the Local server when none was chosen. | Server connection |
 | Server connection | servers | A pooled way for other contexts to reach one Server: its Podman API and any unix socket on it. One SSH connection per Remote server, redialled when it drops. | Validation |
-| Local server | servers | The Server The Bakery itself runs on (`localhost`). Always exists; can be neither edited nor deleted. | Remote server |
+| Local server | servers | The Server The Bakery itself runs on (named `localhost` until renamed). Always exists; only its name and description can be edited, and it cannot be deleted. | Remote server |
 | Remote server | servers | A Server reached over SSH as a given user, its rootless Podman socket tunnelled through that connection. | Local server |
 | Private key | servers | The SSH key pair The Bakery generates for one Remote server. The Owner adds the public half to the user's `authorized_keys`; the private half is encrypted at rest. | Deploy key |
 | Host key | servers | A Remote server's SSH host key, pinned on the first connection and required to match on every later one until the Owner forgets it. | Known host (git hosts) |
 | Validation | servers | The checks run against a Server (`ssh`, `podman`, `socket`, `linger`, `ports`) and their outcome; it sets the Server status, as does the Server probe. | Healthcheck, Server probe |
 | Server status | servers | `unvalidated`, `reachable` (every required check passed) or `unreachable`. | Container state |
 | Server metrics | servers | CPU, memory and disk use of a Server, read live from Podman. | Container metrics |
+| Server details | servers | The operating system, architecture, kernel, CPU cores, memory, Podman version and boot time of a Server, read live from Podman. | Server metrics |
 | Container metrics | servers | CPU and memory use of each Bakery Container on a Server, read live. | Server metrics, Container logs |
 | Server probe | servers | The check every 5 minutes of every Server whose latest Validation passed: can The Bakery reach it, and how full is its disk. Two failed probes in a row make a Reachable Server Unreachable, one good probe makes it Reachable again; *high disk usage* is raised at 90 % used and cleared below 85 %. Only a change is announced. | Healthcheck, Validation |
 | Cleanup | servers | Freeing a Server's disk: dangling Bakery images and build layers, plus Image retention for the Applications that run on it. Daily and on demand. | Delete |

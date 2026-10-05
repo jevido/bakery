@@ -43,6 +43,7 @@ type cleanupJSON struct {
 type serverJSON struct {
 	ID          uint64         `json:"id"`
 	Name        string         `json:"name"`
+	Description string         `json:"description"`
 	Kind        string         `json:"kind"`
 	Host        string         `json:"host"`
 	Port        int            `json:"port"`
@@ -67,7 +68,7 @@ func cleanupToJSON(c domain.Cleanup) cleanupJSON {
 
 func toJSON(s domain.Server, full bool) serverJSON {
 	out := serverJSON{
-		ID: s.ID, Name: s.Name, Kind: string(s.Kind), Host: s.Host, Port: s.Port, User: s.User,
+		ID: s.ID, Name: s.Name, Description: s.Description, Kind: string(s.Kind), Host: s.Host, Port: s.Port, User: s.User,
 		Status: string(s.Status), Validation: validationJSON{Checks: []checkJSON{}},
 		LastCleanup: cleanupToJSON(s.LastCleanup), CreatedAt: s.CreatedAt,
 	}
@@ -97,14 +98,15 @@ func fingerprint(hostKey string) string {
 }
 
 type serverRequest struct {
-	Name string `json:"name"`
-	Host string `json:"host"`
-	Port int    `json:"port"`
-	User string `json:"user"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	User        string `json:"user"`
 }
 
 func (r serverRequest) input() domain.Input {
-	return domain.Input{Name: r.Name, Host: r.Host, Port: r.Port, User: r.User}
+	return domain.Input{Name: r.Name, Description: r.Description, Host: r.Host, Port: r.Port, User: r.User}
 }
 
 func id(ctx contractshttp.Context) (uint64, bool) {
@@ -258,6 +260,35 @@ func (c *Controller) Metrics(ctx contractshttp.Context) contractshttp.Response {
 		},
 		"containers": containers,
 	})
+}
+
+type detailsJSON struct {
+	OS            string     `json:"os"`
+	Arch          string     `json:"arch"`
+	Kernel        string     `json:"kernel"`
+	CPUs          int        `json:"cpus"`
+	MemoryBytes   int64      `json:"memory_bytes"`
+	PodmanVersion string     `json:"podman_version"`
+	UpSince       *time.Time `json:"up_since"`
+}
+
+func (c *Controller) Details(ctx contractshttp.Context) contractshttp.Response {
+	sid, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	d, err := c.service.Details(ctx.Context(), sid)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out := detailsJSON{
+		OS: d.OS, Arch: d.Arch, Kernel: d.Kernel, CPUs: d.CPUs, MemoryBytes: d.Memory, PodmanVersion: d.PodmanVersion,
+	}
+	if !d.UpSince.IsZero() {
+		at := d.UpSince.UTC()
+		out.UpSince = &at
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"details": out})
 }
 
 func (c *Controller) CleanUp(ctx contractshttp.Context) contractshttp.Response {

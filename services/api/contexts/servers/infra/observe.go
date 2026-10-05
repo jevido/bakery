@@ -32,7 +32,11 @@ func (o observer) HostInfo(ctx context.Context) (app.HostInfo, error) {
 	if err != nil {
 		return app.HostInfo{}, err
 	}
-	h := app.HostInfo{CPUs: info.CPUs, MemTotal: info.MemTotal, MemFree: info.MemFree, GraphRoot: info.GraphRoot}
+	h := app.HostInfo{
+		Distribution: info.Distribution, DistributionVersion: info.DistributionVersion,
+		Arch: info.Arch, Kernel: info.Kernel, Uptime: info.Uptime,
+		CPUs: info.CPUs, MemTotal: info.MemTotal, MemFree: info.MemFree, GraphRoot: info.GraphRoot,
+	}
 	// Podman's memFree leaves out the page cache the kernel gives back on
 	// demand, so a busy server would always look full; MemAvailable does not.
 	if raw, err := o.readProc(ctx, "/proc/meminfo"); err == nil {

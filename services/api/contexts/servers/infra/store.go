@@ -19,6 +19,7 @@ import (
 type serverRecord struct {
 	ID                   uint64 `gorm:"primaryKey"`
 	Name                 string
+	Description          string
 	Kind                 string
 	Host                 string
 	Port                 int
@@ -70,7 +71,7 @@ func toRecord(s domain.Server) (serverRecord, error) {
 		return serverRecord{}, err
 	}
 	rec := serverRecord{
-		ID: s.ID, Name: s.Name, Kind: string(s.Kind), Host: s.Host, Port: s.Port, UserName: s.User,
+		ID: s.ID, Name: s.Name, Description: s.Description, Kind: string(s.Kind), Host: s.Host, Port: s.Port, UserName: s.User,
 		PublicKey: s.Key.Public, PrivateKeyEncrypted: private, HostKey: s.HostKey,
 		Status: string(s.Status), Validation: string(raw), LastCleanupReclaimed: s.LastCleanup.Reclaimed,
 		FailedProbes: s.FailedProbes, HighDiskUsage: s.HighDiskUsage,
@@ -91,7 +92,7 @@ func (r serverRecord) toDomain() (domain.Server, error) {
 		}
 	}
 	s := domain.Server{
-		ID: r.ID, Name: r.Name, Kind: domain.Kind(r.Kind), Host: r.Host, Port: r.Port, User: r.UserName,
+		ID: r.ID, Name: r.Name, Description: r.Description, Kind: domain.Kind(r.Kind), Host: r.Host, Port: r.Port, User: r.UserName,
 		Key: domain.PrivateKey{Public: r.PublicKey, Private: private}, HostKey: r.HostKey,
 		Status: domain.Status(r.Status), LastCleanup: domain.Cleanup{Reclaimed: r.LastCleanupReclaimed},
 		FailedProbes: r.FailedProbes, HighDiskUsage: r.HighDiskUsage,
@@ -171,7 +172,7 @@ func (s Store) Save(ctx context.Context, srv domain.Server) error {
 		return err
 	}
 	_, err = s.query(ctx).Model(&serverRecord{}).Where("id", srv.ID).Update(map[string]any{
-		"name": rec.Name, "host": rec.Host, "port": rec.Port, "user_name": rec.UserName,
+		"name": rec.Name, "description": rec.Description, "host": rec.Host, "port": rec.Port, "user_name": rec.UserName,
 		"host_key": rec.HostKey, "status": rec.Status, "validation": rec.Validation,
 		"last_cleanup_at": rec.LastCleanupAt, "last_cleanup_reclaimed": rec.LastCleanupReclaimed,
 		"failed_probes": rec.FailedProbes, "high_disk_usage": rec.HighDiskUsage,

@@ -353,8 +353,7 @@ export type ServerCheck = {
 export type Server = {
   id: number
   name: string
-  /** Until the API sends one, read it as `s.description ?? ''`. */
-  description?: string
+  description: string
   kind: 'local' | 'remote'
   host: string
   port: number
@@ -379,6 +378,17 @@ export type ServerMetrics = {
   containers_bytes: number
   volumes_bytes: number
   read_at: string
+}
+
+/** Read live from the Server's Podman; `up_since` is null when unknown. */
+export type ServerDetails = {
+  os: string
+  arch: string
+  kernel: string
+  cpus: number
+  memory_bytes: number
+  podman_version: string
+  up_since: string | null
 }
 
 export type ContainerMetrics = {

@@ -42,7 +42,7 @@
     return () => clearTimeout(timer)
   })
 
-  const rows = $derived((servers ?? []).map((s) => ({ server: s, description: s.description ?? '', status: serverStatus(s) })))
+  const rows = $derived((servers ?? []).map((s) => ({ server: s, description: s.description, status: serverStatus(s) })))
   const filtered = $derived(
     rows.filter((r) => !query || [r.server.name, r.description, r.status.label].some((v) => v.toLowerCase().includes(query))),
   )
