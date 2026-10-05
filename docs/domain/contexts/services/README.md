@@ -145,3 +145,58 @@ None published yet.
   Service Applications and Service Databases, guessed from the image name,
   and gives the two different pages. The Bakery runs every entry the same way
   and does not model that split; one word for one thing.
+- **The sidebar lists only what The Bakery has behind it.** Coolify's
+  Service sidebar also has Backups and Import Backup (its per-volume backups
+  of a Service Database), Terminal, Scheduled Tasks, Webhooks, Resource
+  Operations (clone and move) and Tags. The Bakery backs up Databases only,
+  has no terminal, no scheduled tasks, no deploy webhook for a Service, no
+  clone or move between Environments and no tags yet; each gets its sidebar
+  item when it exists.
+- **No Network section.** Coolify lets a Service choose whether its
+  containers join the predefined network. Here only Public Components join
+  `bakery` and the rest stay on the Service's own network (see above);
+  making it a choice would change that rule, not port a page.
+- **No configuration checker.** Coolify compares the running containers
+  with the saved Compose file and asks for a restart when they differ.
+  The Bakery says so once, in the toast after a save: the change applies on
+  the next Restart.
+- **No per-Component page.** Coolify opens each Service Application or
+  Service Database on a page of its own with a human name, a description,
+  the image and advanced settings (gzip, strip prefix, log drain, restart
+  limits). A Component here is one compose entry and nothing more: its
+  card and modal on General show its image, status and Domains and edit
+  nothing, its image changes in the Compose file, and its Domains are on
+  the Domains page. The card has no per-Component Restart, as there is no
+  use case for one. Details shows only what has a value: no Server (a
+  Service runs on the local Server) and no Stack Sub-Resources (Components
+  have no ids of their own).
+- **The Actions menu is Deploy, Restart, Restart (pull latest) and Stop**,
+  mapped onto start, restart, redeploy (which pulls every image) and stop.
+  Force Deploy, Force Cleanup Containers and Remove container are left out:
+  a stopped Service has no containers left to clean up or remove.
+- **General has no "Preview generated Compose" or "Validate".** The
+  Compose file is parsed and checked when it is saved, and refused with the
+  line that fails; nothing is generated from it that the Owner would need
+  to preview.
+- **A running Service shows Running, not "Running (no healthcheck)".** A
+  Service is called running only once every Component's container is up
+  and past its own healthcheck when it has one, so its pill is green as a
+  healthy Database's is.
+- **Domains are hostnames, nothing more.** Coolify's Domains page also
+  checks DNS, offers Cloudflare and suggested Domains, warns about a
+  missing port and sets HTTP → HTTPS, search engine indexing and the www
+  redirect. Here a Domain is a hostname served over HTTPS on its
+  Component's port, so those have nothing behind them. Generate domain
+  gives the Component's default Domain from the API, so the rule stays in
+  one place.
+- **Environment Variables are the Compose file's, one at a time.** A
+  Service's variable names come from its Compose file, so the page has no
+  Add variable, no Delete and no Developer view (a `.env` textarea could
+  only change values the row dialog already changes). Each row saves on
+  its own; generated values are marked Managed and never edited; the
+  filter adds one option per Component, as Coolify's does.
+- **Persistent Storage is read-only, per Component.** Volumes are the
+  Compose file's named volumes, shown with their Podman volume name and
+  mount path; adding or removing one is a Compose file change.
+- **Runtime Logs read once like a Database's**, with the same lines
+  choice, one card per Component.
