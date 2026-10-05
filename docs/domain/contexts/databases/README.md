@@ -123,7 +123,36 @@ backing up Redis and Valkey (see below).
   ticked by default as in Coolify. A kept volume is left for the Owner to
   copy data out of by hand: The Bakery never reattaches it, because volume
   names carry the Database's id and no new Database gets that id. Local
-  Backup executions go with the Database either way, as before.
+  Backup executions go with the Database either way, as before. Its button
+  says "Delete resource", Coolify's own word for a standalone database.
+- **The sidebar lists only what The Bakery has behind it.** Coolify's
+  Database sidebar also has Environment Variables, Import Backup, Terminal,
+  Webhooks, Healthcheck, Resource Operations, Metrics and Tags. A Database
+  here has no environment variables of its own to edit, no upload to import,
+  no terminal, no deploy webhook (it is never deployed), a fixed readiness
+  probe instead of a Healthcheck setting, no clone or move between
+  Environments, no metrics and no tags; each is a missing feature, built
+  later or never, and gets its sidebar item when it exists. A Restore of the
+  Database's own Backup executions is on the Executions section of its
+  Scheduled backup instead of Import Backup.
+- **No configuration checker.** Coolify compares the running container
+  with the saved settings and offers a restart when they differ. Here every
+  saved change recreates the Container at once, so the two never differ.
+- **General has only the fields The Bakery has a setting for.** Coolify's
+  General also has custom Docker options, port mappings, initialisation
+  arguments and scripts, custom configuration files (`postgresql.conf`,
+  `redis.conf` and so on), and the log drain toggle. The
+  Bakery runs each Database type with its image's defaults and its one
+  published port, so those sections are left out until a setting exists.
+- **Valkey uses Redis's page.** Coolify has no Valkey; its General page is
+  Redis's (password, no username) with Valkey's name and image.
+- **A Scheduled backup's settings are Enabled, Frequency, S3 storage and
+  Retention by count.** Coolify also offers which databases inside the
+  server to dump (or all of them), a timeout, a missing-backup alert, turning
+  the local copy off, and Retention by days and by total size, locally and on
+  S3 apart. The Bakery dumps the one database it created, always keeps a
+  local copy first (an upload can fail), and keeps the last "Backups to
+  keep" Backup executions; Timezone is shown and is always UTC.
 
 - **Its own context, not part of deployments or projects.** A Database has
   no Source, no build, no Route and no Deployments; its lifecycle is

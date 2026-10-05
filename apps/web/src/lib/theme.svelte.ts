@@ -37,7 +37,3 @@ class ThemeState {
 }
 
 export const theme = new ThemeState()
-
-export function setTheme(value: Theme) {
-  theme.set(value)
-}

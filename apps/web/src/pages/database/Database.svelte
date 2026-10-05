@@ -114,7 +114,9 @@
   const crumbs = $derived(
     database && environment ? { project: environment.project_name ?? 'Project', environment: environment.name, name: database.name } : null,
   )
-  const status = $derived(database?.status ?? null)
+  // A running Database has passed its readiness probe, The Bakery's
+  // healthcheck, so it reads as Coolify's `running:healthy`.
+  const status = $derived(database ? (database.status === 'running' ? 'running:healthy' : database.status) : null)
   $effect(() => {
     if (crumbs)
       breadcrumb.set(
@@ -133,7 +135,7 @@
 {:else}
   <Heading
     name={database.name}
-    status={database.status}
+    status={status ?? database.status}
     detail={`${databaseTypeLabel(database.type)} ${database.version}`}
     error={database.error}
     stopped={database.desired_state === 'stopped'}
