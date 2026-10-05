@@ -26,7 +26,7 @@
         label: 'Workspace',
         items: items(
           { label: 'Dashboard', path: '/', icon: 'dashboard', routes: ['dashboard'] },
-          { label: 'Projects', path: '/projects', icon: 'projects', routes: ['projects', 'project', 'project-edit', 'environment', 'environment-edit', 'environment-new', 'application', 'application-legacy', 'database', 'database-legacy', 'service'] },
+          { label: 'Projects', path: '/projects', icon: 'projects', routes: ['projects', 'project', 'project-edit', 'environment', 'environment-edit', 'environment-new', 'application', 'application-legacy', 'database', 'database-legacy', 'service', 'service-legacy'] },
         ),
       },
       {

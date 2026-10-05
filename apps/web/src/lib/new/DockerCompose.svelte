@@ -7,7 +7,7 @@
   // the Component a Domain instead of Coolify's `ports:`, which The Bakery
   // refuses.
   import { api } from '../api'
-  import { go } from '../router.svelte'
+  import { go, servicePath } from '../router.svelte'
   import type { Service } from '../types'
   import Button from '../ui/Button.svelte'
   import Textarea from '../ui/Textarea.svelte'
@@ -33,7 +33,7 @@
     busy = false
     if (!created) return
     toast.success('Service created.')
-    go(`/services/${created.service.id}`)
+    go(servicePath(created.service))
   }
 </script>
 

@@ -21,7 +21,7 @@
   import Projects from './pages/Projects.svelte'
   import Server from './pages/Server.svelte'
   import Servers from './pages/Servers.svelte'
-  import Service from './pages/Service.svelte'
+  import Service from './pages/service/Service.svelte'
   import Settings from './pages/Settings.svelte'
   import Storages from './pages/Storages.svelte'
   import Notifications from './pages/Notifications.svelte'
@@ -83,7 +83,7 @@
         type={router.route.type}
         server={router.route.server}
       />
-    {:else if router.route.name === 'project-first-environment-new' || router.route.name === 'application-legacy' || router.route.name === 'database-legacy'}
+    {:else if router.route.name === 'project-first-environment-new' || router.route.name === 'application-legacy' || router.route.name === 'database-legacy' || router.route.name === 'service-legacy'}
       <div class="flex justify-center"><Spinner text="Loading…" /></div>
     {:else if router.route.name === 'application'}
       <Application
@@ -104,7 +104,7 @@
         backupSection={router.route.backupSection}
       />
     {:else if router.route.name === 'service'}
-      <Service id={router.route.id} />
+      <Service projectId={router.route.projectId} environmentId={router.route.environmentId} id={router.route.id} page={router.route.page} />
     {:else if router.route.name === 'servers'}
       <Servers />
     {:else if router.route.name === 'server'}

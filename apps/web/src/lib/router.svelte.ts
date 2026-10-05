@@ -1,7 +1,7 @@
 import { api } from './api'
-import type { Application, Database, Project } from './types'
+import type { Application, Database, Project, Service } from './types'
 
-// Hash router, with Coolify's paths for Projects and Environments: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/services/{id}, #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
+// Hash router, with Coolify's paths for Projects and Environments: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/{id}, #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
@@ -29,7 +29,8 @@ export type Route =
       backupSection: ScheduledBackupSection
     }
   | { name: 'database-legacy'; id: number }
-  | { name: 'service'; id: number }
+  | { name: 'service'; projectId: number; environmentId: number; id: number; page: ServicePage }
+  | { name: 'service-legacy'; id: number }
   | { name: 'servers' }
   | { name: 'server'; id: number }
   | { name: 'storages' }
@@ -92,6 +93,20 @@ function isScheduledBackupSection(s: string): s is ScheduledBackupSection {
 /** The path of a Database's page, or one of its sub-pages. */
 export function databasePath(d: { project_id: number; environment_id: number; id: number }, page: DatabasePage = ''): string {
   const base = `/project/${d.project_id}/environment/${d.environment_id}/database/${d.id}`
+  return page ? `${base}/${page}` : base
+}
+
+/** The Service page's sub-pages, by their slug in Coolify's URLs. */
+export const servicePages = ['', 'domains', 'environment-variables', 'storages', 'logs', 'danger'] as const
+export type ServicePage = (typeof servicePages)[number]
+
+function isServicePage(s: string): s is ServicePage {
+  return (servicePages as readonly string[]).includes(s)
+}
+
+/** The path of a Service's page, or one of its sub-pages. */
+export function servicePath(s: { project_id: number; environment_id: number; id: number }, page: ServicePage = ''): string {
+  const base = `/project/${s.project_id}/environment/${s.environment_id}/service/${s.id}`
   return page ? `${base}/${page}` : base
 }
 
@@ -159,6 +174,10 @@ function parse(hash: string): Route {
           if (parts.length <= 9 && page === 'backups' && Number.isInteger(scheduledBackupId) && isScheduledBackupSection(section))
             return { ...database, page, scheduledBackupId, backupSection: section }
         }
+        if (parts[4] === 'service' && Number.isInteger(resourceId)) {
+          const page = parts[6] ?? ''
+          if (parts.length <= 7 && isServicePage(page)) return { name: 'service', projectId: id, environmentId: envId, id: resourceId, page }
+        }
       }
     }
   }
@@ -172,7 +191,7 @@ function parse(hash: string): Route {
   }
   if (parts[0] === 'services' && parts.length === 2) {
     const id = Number(parts[1])
-    if (Number.isInteger(id)) return { name: 'service', id }
+    if (Number.isInteger(id)) return { name: 'service-legacy', id }
   }
   return { name: 'notfound' }
 }
@@ -220,6 +239,15 @@ class Router {
       api<{ database: Database }>('GET', `/databases/${route.id}`)
         .then(({ database }) => {
           if (this.route === route) this.route = redirect(databasePath(database))
+        })
+        .catch(() => {
+          if (this.route === route) this.route = { name: 'notfound' }
+        })
+    }
+    if (route.name === 'service-legacy') {
+      api<{ service: Service }>('GET', `/services/${route.id}`)
+        .then(({ service }) => {
+          if (this.route === route) this.route = redirect(servicePath(service))
         })
         .catch(() => {
           if (this.route === route) this.route = { name: 'notfound' }

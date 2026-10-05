@@ -17,7 +17,7 @@
     typeLabels,
     type ResourceItem,
   } from '../lib/resources'
-  import { applicationPath, databasePath, href } from '../lib/router.svelte'
+  import { applicationPath, databasePath, href, servicePath } from '../lib/router.svelte'
   import { session } from '../lib/session.svelte'
   import type { Database, Deployment, Environment, Server, Service } from '../lib/types'
   import ClientPagination from '../lib/ui/ClientPagination.svelte'
@@ -125,7 +125,7 @@
               fqdn: x.components.find((c) => c.public && c.url)?.url ?? '',
               status: x.status,
               server: serverName(local),
-              href: href(`/services/${x.id}`),
+              href: href(servicePath(x)),
             }),
           ),
       ],

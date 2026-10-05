@@ -10,7 +10,8 @@
   // Apache-2.0, see NOTICE): on phones the name, the status, the Links pill and a
   // full-width Actions menu above the page; on desktop the Links and Actions are
   // moved into the top bar's resource slot, where the breadcrumb shows the name
-  // and status. Actions is shown only to those who may deploy.
+  // and status. Actions is shown only to those who may deploy. The Service page
+  // (project/service/heading.blade.php) uses it too, with `resource="service"`.
   import Icon from '../../lib/Icon.svelte'
   import StatusSummary from '../../lib/ui/StatusSummary.svelte'
   import { portalTo } from '../../lib/ui/portal'
@@ -22,6 +23,8 @@
     status,
     actions,
     mobileActions = actions,
+    resource = 'application',
+    error = '',
   }: {
     name: string
     urls: string[]
@@ -31,7 +34,13 @@
     actions: Action[]
     /** The phone menu, which Coolify orders a little differently. */
     mobileActions?: Action[]
+    /** A Service's heading reuses this one with its own words. */
+    resource?: 'application' | 'service'
+    /** The last failure, as a line under the heading. */
+    error?: string
   } = $props()
+
+  const statusTitle = $derived(resource === 'service' ? 'Service status' : 'Application status')
 
   let mobileOpen = $state(false)
   let desktopOpen = $state(false)
@@ -76,11 +85,13 @@
     <div class="flex min-w-0 flex-col items-start gap-2">
       <h1 class="max-w-full min-w-0 truncate text-[24px]! leading-7! font-semibold! tracking-tight! text-black dark:text-fg">{name}</h1>
       <div class="relative flex w-full min-w-0 items-center gap-2">
-        {#if status}<StatusSummary {status} align="right" />{/if}
-        <Links {urls} compact />
+        {#if status}<StatusSummary {status} title={statusTitle} containerName={resource === 'service' ? 'Containers' : 'Container'} align="right" />{/if}
+        <Links {urls} {resource} compact />
       </div>
     </div>
   </div>
+
+  {#if error}<p class="mb-3 text-[13px] text-error">{error}</p>{/if}
 
   {#if actions.length > 0}
     <div class="w-full xl:hidden">
@@ -110,7 +121,7 @@
   <div class="hidden w-full items-center xl:flex xl:w-auto" {@attach portalTo('#resource-action-hud-slot')}>
     <div class="flex w-full min-w-0 items-center justify-start gap-1 overflow-visible xl:w-auto xl:justify-end">
       <div class="flex shrink-0 items-center gap-0.5">
-        <div class="shrink-0"><Links {urls} /></div>
+        <div class="shrink-0"><Links {urls} {resource} /></div>
         {#if actions.length > 0}
           <div class="relative" bind:this={desktopMenu}>
             <button
