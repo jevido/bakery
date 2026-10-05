@@ -256,10 +256,11 @@ func (r Runtime) Statuses(ctx context.Context, s domain.Service) (map[string]dom
 	return statuses, details, nil
 }
 
-// Logs hands a Component's output to out; with follow until ctx ends or the
-// Container stops. found is false when it has no Container.
+// Logs hands a Component's output to out, each line prefixed with the time
+// it was written; with follow until ctx ends or the Container stops. found
+// is false when it has no Container.
 func (r Runtime) Logs(ctx context.Context, s domain.Service, component string, follow bool, tail int, out func(stream, line string)) (bool, error) {
-	err := r.Podman.Logs(ctx, domain.ContainerName(s.ID, component), follow, tail, out)
+	err := r.Podman.TimestampedLogs(ctx, domain.ContainerName(s.ID, component), follow, tail, out)
 	if podman.IsNotFound(err) {
 		return false, nil
 	}

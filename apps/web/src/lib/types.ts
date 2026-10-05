@@ -286,6 +286,8 @@ export type Component = {
   generated_domain?: string
   status: DatabaseStatus
   detail?: string
+  /** The name of its Container, as its Runtime Logs card shows it. */
+  container: string
   /** Its volume mounts from the Compose file, named as the Podman volume. */
   volumes: ComponentVolume[]
 }

@@ -33,6 +33,9 @@ type componentJSON struct {
 	GeneratedDomain string `json:"generated_domain,omitempty"`
 	Status          string `json:"status"`
 	Detail          string `json:"detail,omitempty"`
+	// Container is the name of the Component's Container, as its Runtime
+	// Logs card shows it.
+	Container string `json:"container"`
 	// Volumes name the Podman volume behind each mount.
 	Volumes []volumeJSON `json:"volumes"`
 }
@@ -82,7 +85,7 @@ func toJSON(v app.View, full bool) serviceJSON {
 		Components: make([]componentJSON, 0, len(v.Components)),
 	}
 	for _, c := range v.Components {
-		cj := componentJSON{Name: c.Name, Image: c.Image, Public: c.Public, Domains: c.Domains, GeneratedDomain: c.GeneratedDomain, Status: string(c.Status), Detail: c.Detail}
+		cj := componentJSON{Name: c.Name, Image: c.Image, Public: c.Public, Domains: c.Domains, GeneratedDomain: c.GeneratedDomain, Status: string(c.Status), Detail: c.Detail, Container: domain.ContainerName(v.ID, c.Name)}
 		if cj.Domains == nil {
 			cj.Domains = []string{}
 		}

@@ -17,8 +17,8 @@
   import Domains from './Domains.svelte'
   import EnvironmentVariables from './EnvironmentVariables.svelte'
   import General from './General.svelte'
-  import Interim from './Interim.svelte'
   import PersistentStorage from './PersistentStorage.svelte'
+  import RuntimeLogs from './RuntimeLogs.svelte'
 
   let { projectId, environmentId, id, page }: { projectId: number; environmentId: number; id: number; page: ServicePage } = $props()
 
@@ -176,7 +176,7 @@
         {:else if page === 'storages'}
           <PersistentStorage {service} />
         {:else if page === 'logs'}
-          <Interim {service} />
+          <RuntimeLogs {service} />
         {:else if page === 'danger' && session.canWrite}
           <Danger
             label="service"

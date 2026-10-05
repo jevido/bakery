@@ -549,8 +549,9 @@ func (s *Service) Recover(ctx context.Context) error {
 	return nil
 }
 
-// Logs follows a Component's Container; found is false without one.
-func (s *Service) Logs(ctx context.Context, id uint64, component string, tail int, out func(stream, line string)) (bool, error) {
+// Logs reads the last tail lines of a Component's Container, timestamped,
+// and with follow goes on with new ones; found is false without one.
+func (s *Service) Logs(ctx context.Context, id uint64, component string, follow bool, tail int, out func(stream, line string)) (bool, error) {
 	sv, err := s.get(ctx, id)
 	if err != nil {
 		return false, err
@@ -558,5 +559,5 @@ func (s *Service) Logs(ctx context.Context, id uint64, component string, tail in
 	if _, ok := sv.Component(component); !ok {
 		return false, ErrNotFound
 	}
-	return s.runtime.Logs(ctx, sv, component, true, tail, out)
+	return s.runtime.Logs(ctx, sv, component, follow, tail, out)
 }

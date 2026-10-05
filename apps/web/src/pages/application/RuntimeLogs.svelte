@@ -5,9 +5,9 @@
   // viewer, its Lines field, refresh, stream, timestamps, colors, level
   // filter, follow, fullscreen, copy, download and find in logs. Coolify
   // polls `docker logs` every two seconds while streaming; here the logs URL
-  // (`/api/applications/{id}/logs` or `/api/databases/{id}/logs`) sends the
-  // last lines and, with `follow=1`, goes on with new ones as server-sent
-  // events.
+  // (`/api/applications/{id}/logs`, `/api/databases/{id}/logs` or
+  // `/api/services/{id}/components/{name}/logs`) sends the last lines and,
+  // with `follow=1`, goes on with new ones as server-sent events.
   import { untrack } from 'svelte'
   import type { Attachment } from 'svelte/attachments'
   import Icon from '../../lib/Icon.svelte'
@@ -19,11 +19,14 @@
   let {
     url,
     container,
+    expandByDefault = true,
   }: {
     /** The Container logs endpoint, without a query. */
     url: string
     /** The running Container's name; '' when none runs, null while unknown. */
     container: string | null
+    /** Coolify opens the card only when it is the resource's one Container. */
+    expandByDefault?: boolean
   } = $props()
 
   type Level = 'error' | 'warning' | 'debug' | 'info'
@@ -34,7 +37,7 @@
 
   let lines = $state.raw<Line[]>([])
   let loading = $state(false)
-  let expanded = $state(true)
+  let expanded = $state(untrack(() => expandByDefault))
   let streaming = $state(false)
   let showTimestamps = $state(true)
   let numberOfLines = $state(100)
