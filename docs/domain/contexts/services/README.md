@@ -65,8 +65,9 @@ Refused, naming the line and key: `build`, `ports`, bind mounts and
 - `StartService`, `StopService`, `RestartService`: set the desired state
   and act on the Containers.
 - `RedeployService`: Up, pulling every image again.
-- `DeleteService`: drop its Service routes, remove its Containers, its
-  network and its volumes, then the row.
+- `DeleteService(service, delete volumes?)`: drop its Service routes,
+  remove its Containers, its network and (unless delete volumes is off) its
+  volumes, then the row.
 - `Recover()`: at API start, bring Up (without pulling) every Service that
   should run and has a Component Container missing.
 
@@ -117,6 +118,14 @@ None published yet.
 - **Volumes are kept until the Service is deleted**, across Stop,
   Redeploy and Compose changes; a volume the Compose file no longer names
   stays until then too, so a typo never deletes data.
+- **Danger Zone offers only "delete volumes".** Coolify's Danger Zone also
+  offers keeping the connected networks, keeping configuration files and a
+  Docker cleanup. A Service's network is its own (nothing else joins it), so
+  it always goes; a Service has no files on the server and builds no images,
+  so the other two have nothing behind them. The volume checkbox starts
+  ticked, as Coolify's does. Kept volumes are left for the Owner to copy data
+  out of by hand: The Bakery never reattaches them, because their names carry
+  the Service's id and no new Service gets that id.
 - **Domains are one namespace with Applications.** projects owns
   Application Domains, services owns Service Domains; each asks the other
   through a published check instead of reading its tables. The unique

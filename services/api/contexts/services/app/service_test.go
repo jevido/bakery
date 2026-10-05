@@ -138,6 +138,8 @@ type fakeRuntime struct {
 	pulls   int
 	downs   int
 	removed []uint64
+	// Services removed with their volumes kept.
+	kept    []uint64
 	release chan struct{}
 	upErr   error
 }
@@ -164,10 +166,13 @@ func (f *fakeRuntime) Down(context.Context, domain.Service) error {
 	f.downs++
 	return nil
 }
-func (f *fakeRuntime) Remove(_ context.Context, s domain.Service) error {
+func (f *fakeRuntime) Remove(_ context.Context, s domain.Service, volumes bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.removed = append(f.removed, s.ID)
+	if !volumes {
+		f.kept = append(f.kept, s.ID)
+	}
 	return nil
 }
 func (f *fakeRuntime) Statuses(_ context.Context, s domain.Service) (map[string]domain.Status, map[string]string, error) {
@@ -335,11 +340,21 @@ func TestBusyAndStop(t *testing.T) {
 	if sv, _, _ = store.Get(ctx, v.ID); sv.LastError != "" {
 		t.Errorf("recover did not clear the error: %q", sv.LastError)
 	}
-	if err := s.Delete(ctx, v.ID); err != nil {
+	if err := s.Delete(ctx, v.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, found, _ := store.Get(ctx, v.ID); found || !slices.Contains(rt.removed, v.ID) {
-		t.Errorf("delete left it: removed %v", rt.removed)
+	if _, found, _ := store.Get(ctx, v.ID); found || !slices.Contains(rt.removed, v.ID) || slices.Contains(rt.kept, v.ID) {
+		t.Errorf("delete left it: removed %v kept %v", rt.removed, rt.kept)
+	}
+
+	// With delete_volumes off the Service goes and its volumes stay.
+	w, _ := s.Create(ctx, 1, Input{Name: "y", Compose: webCompose})
+	s.Wait()
+	if err := s.Delete(ctx, w.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, _ := store.Get(ctx, w.ID); found || !slices.Contains(rt.kept, w.ID) {
+		t.Errorf("delete keeping volumes: removed %v kept %v", rt.removed, rt.kept)
 	}
 }
 

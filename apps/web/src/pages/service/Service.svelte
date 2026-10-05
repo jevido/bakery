@@ -178,11 +178,14 @@
         {:else if page === 'logs'}
           <RuntimeLogs {service} />
         {:else if page === 'danger' && session.canWrite}
+          <!-- Coolify's network, configuration and Docker cleanup checkboxes
+               are left out: a Service's network is its own and always goes,
+               and it has no files or built images on the server. -->
           <Danger
             label="service"
             name={service.name}
             url={`/services/${service.id}`}
-            checkboxes={[]}
+            checkboxes={[{ id: 'delete_volumes', label: 'Permanently delete all volumes associated with this resource.', checked: true }]}
             back={`/project/${projectId}/environment/${environmentId}`}
           />
         {:else}

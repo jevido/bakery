@@ -211,13 +211,13 @@ func (r Runtime) Down(ctx context.Context, s domain.Service) error {
 	return r.removeOthers(ctx, s.ID, nil)
 }
 
-// Remove removes the Containers, the network and every volume of the
-// Service, with all their data.
-func (r Runtime) Remove(ctx context.Context, s domain.Service) error {
+// Remove removes the Containers, the network and, when withVolumes is true,
+// every volume of the Service with all their data.
+func (r Runtime) Remove(ctx context.Context, s domain.Service, withVolumes bool) error {
 	if err := r.Down(ctx, s); err != nil {
 		return err
 	}
-	if err := r.Podman.RemoveNetwork(ctx, domain.NetworkName(s.ID)); err != nil {
+	if err := r.Podman.RemoveNetwork(ctx, domain.NetworkName(s.ID)); err != nil || !withVolumes {
 		return err
 	}
 	volumes, err := r.Podman.ListVolumes(ctx, labels(s.ID))

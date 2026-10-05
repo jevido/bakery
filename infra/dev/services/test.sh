@@ -5,7 +5,8 @@
 # password across Redeploy; Stop and Start take its Domain away and back;
 # build: is refused with its line; Domains are one namespace with
 # Applications; a Project with a Service cannot be deleted; deleting
-# Services leaves no bakery-svc-* container, network or volume. Needs
+# Services leaves no bakery-svc-* container, network or volume, except the
+# volume of the one deleted with delete_volumes=false. Needs
 # `task dev`.
 set -euo pipefail
 
@@ -126,15 +127,24 @@ APP_DOMAIN=$(echo "$APP" | json "d['application']['domains'][0]")
 [ "$(code -X DELETE "$API/api/projects/$PROJECT_ID")" = 409 ] || fail "a project with services was deleted"
 echo "ok: 422 for build:, domains are shared, 409 for the project"
 
-say "Deleting Services leaves nothing"
+say "Deleting Services leaves nothing, or only the volumes when asked"
+# Asked over the rootless socket's libpod API, as The Bakery itself does.
+SOCK=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock
+volume_exists() { [ "$(curl -s -o /dev/null -w '%{http_code}' --unix-socket "$SOCK" "http://d/v5.0.0/libpod/volumes/$1/exists")" = 204 ]; }
 for id in "${SVCS[@]}"; do
-	[ "$(code -X DELETE "$API/api/services/$id")" = 204 ] || fail "deleting service $id"
+	flags=
+	[ "$id" = "$STACK" ] && flags='?delete_volumes=false'
+	[ "$(code -X DELETE "$API/api/services/$id$flags")" = 204 ] || fail "deleting service $id"
 	[ -z "$(podman ps -a --filter "label=bakery.service=$id" -q)" ] || fail "containers of service $id left"
 	[ -z "$(podman network ls --filter "label=bakery.service=$id" -q)" ] || fail "network of service $id left"
+	if [ -n "$flags" ]; then
+		volume_exists "$VOLUME" || fail "$VOLUME not kept"
+		curl -sf -o /dev/null --unix-socket "$SOCK" -X DELETE "http://d/v5.0.0/libpod/volumes/$VOLUME" || fail "removing kept $VOLUME"
+	fi
 	[ -z "$(podman volume ls --filter "label=bakery.service=$id" -q)" ] || fail "volumes of service $id left"
 done
 SVCS=()
 [ "$(answers "$WHOAMI_DOMAIN")" != 200 ] || fail "a deleted service still answers"
-echo "ok: no containers, networks or volumes left"
+echo "ok: no containers, networks or volumes left; a kept volume stays until removed"
 echo
 echo "PASS"

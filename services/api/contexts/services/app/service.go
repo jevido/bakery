@@ -43,8 +43,9 @@ type Runtime interface {
 	Up(ctx context.Context, s domain.Service, resolved domain.Compose, pull bool) error
 	// Down removes the Containers; volumes stay.
 	Down(ctx context.Context, s domain.Service) error
-	// Remove removes the Containers, the network and the volumes.
-	Remove(ctx context.Context, s domain.Service) error
+	// Remove removes the Containers, the network and, when volumes is true,
+	// the volumes.
+	Remove(ctx context.Context, s domain.Service, volumes bool) error
 	Statuses(ctx context.Context, s domain.Service) (map[string]domain.Status, map[string]string, error)
 	Logs(ctx context.Context, s domain.Service, component string, follow bool, tail int, out func(stream, line string)) (bool, error)
 }
@@ -436,9 +437,11 @@ func (s *Service) Stop(ctx context.Context, id uint64) (View, error) {
 	return s.view(ctx, sv)
 }
 
-// Delete drops the Service routes, removes the Containers, the network and
-// the volumes with all data, then the Service.
-func (s *Service) Delete(ctx context.Context, id uint64) error {
+// Delete drops the Service routes, removes the Containers, the network and,
+// unless deleteVolumes is false, the volumes with all data, then the
+// Service. Kept volumes are never reattached: their names carry the
+// Service's id, which no other Service gets.
+func (s *Service) Delete(ctx context.Context, id uint64, deleteVolumes bool) error {
 	sv, err := s.get(ctx, id)
 	if err != nil {
 		return err
@@ -447,7 +450,7 @@ func (s *Service) Delete(ctx context.Context, id uint64) error {
 	if err := s.routes.Drop(ctx, id); err != nil {
 		return err
 	}
-	if err := s.runtime.Remove(ctx, sv); err != nil {
+	if err := s.runtime.Remove(ctx, sv, deleteVolumes); err != nil {
 		return err
 	}
 	return s.store.Delete(ctx, id)

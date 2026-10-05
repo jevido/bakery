@@ -47,7 +47,7 @@ func TestRuntimeUpAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.ID = testServiceID
-	t.Cleanup(func() { r.Remove(context.Background(), s) })
+	t.Cleanup(func() { r.Remove(context.Background(), s, true) })
 	resolved, err := s.Resolved()
 	if err != nil {
 		t.Fatal(err)
@@ -85,10 +85,20 @@ func TestRuntimeUpAndRemove(t *testing.T) {
 		t.Errorf("after Down: %v", statuses)
 	}
 
-	if err := r.Remove(ctx, s); err != nil {
+	// Keeping the volumes removes the Containers and the network only.
+	if err := r.Remove(ctx, s, false); err != nil {
 		t.Fatal(err)
 	}
 	l := labels(s.ID)
+	if list, _ := c.ListContainers(ctx, l); len(list) != 0 {
+		t.Errorf("containers left with volumes kept: %v", list)
+	}
+	if list, _ := c.ListVolumes(ctx, l); len(list) == 0 {
+		t.Error("volumes not kept")
+	}
+	if err := r.Remove(ctx, s, true); err != nil {
+		t.Fatal(err)
+	}
 	if list, _ := c.ListContainers(ctx, l); len(list) != 0 {
 		t.Errorf("containers left: %v", list)
 	}
@@ -113,7 +123,7 @@ func TestRuntimeReportsAComponentThatExits(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.ID = testServiceID + 1
-	t.Cleanup(func() { r.Remove(context.Background(), s) })
+	t.Cleanup(func() { r.Remove(context.Background(), s, true) })
 	resolved, _ := s.Resolved()
 	err = r.Up(ctx, s, resolved, false)
 	if err == nil || !strings.Contains(err.Error(), "exited with code 3") || !strings.Contains(err.Error(), "no config") {

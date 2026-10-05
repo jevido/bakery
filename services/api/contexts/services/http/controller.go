@@ -299,7 +299,8 @@ func (c *Controller) Delete(ctx contractshttp.Context) contractshttp.Response {
 	if !ok {
 		return notFound(ctx)
 	}
-	if err := c.service.Delete(ctx.Context(), sid); err != nil {
+	// Coolify's delete_volumes, on by default as its checkbox is.
+	if err := c.service.Delete(ctx.Context(), sid, ctx.Request().QueryBool("delete_volumes", true)); err != nil {
 		return fail(ctx, err)
 	}
 	return ctx.Response().NoContent()
