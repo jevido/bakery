@@ -10,8 +10,10 @@
   import ConfigurationSidebar from './ConfigurationSidebar.svelte'
   import General from './General.svelte'
   import Interim from './Interim.svelte'
+  import Metrics from './Metrics.svelte'
   import Navbar from './Navbar.svelte'
   import PrivateKey from './PrivateKey.svelte'
+  import Resources from './Resources.svelte'
 
   let { id, page }: { id: number; page: ServerPage } = $props()
 
@@ -56,6 +58,10 @@
           <General {server} onchange={(s) => (server = s)} />
         {:else if page === 'private-key'}
           <PrivateKey {server} onchange={(s) => (server = s)} />
+        {:else if page === 'resources'}
+          <Resources {server} />
+        {:else if page === 'metrics'}
+          <Metrics {server} />
         {:else}
           <Interim {server} {page} onchange={(s) => (server = s)} />
         {/if}

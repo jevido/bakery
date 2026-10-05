@@ -76,8 +76,12 @@
     deployments = []
     appStatus = null
     loadError = ''
+    // The person may have moved on while it was on its way; a late answer
+    // must not send them back.
+    let gone = false
     api<{ application: Application }>('GET', `/applications/${id}`)
       .then((r) => {
+        if (gone) return
         const a = r.application
         // A link with another Project or Environment in it still opens the
         // Application, at its own path.
@@ -95,7 +99,10 @@
         loadStatus().catch(() => {})
         return loadDeployments()
       })
-      .catch((e) => (loadError = e.message))
+      .catch((e) => {
+        if (!gone) loadError = e.message
+      })
+    return () => (gone = true)
   })
 
   // Keeps the Deployments and the status current: quickly while a Deployment

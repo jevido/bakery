@@ -5,7 +5,7 @@
  * lists as they are. Left out: apexcharts, the custom-color theme, the terminal
  * and Monaco styles, and tailwind-scrollbar.
  */
-@import 'tailwindcss';
+@import "tailwindcss";
 
 @plugin '@tailwindcss/forms';
 
@@ -13,10 +13,14 @@
 
 @theme {
   /* fontsource names the variable fonts "Geist Variable" and "Geist Mono Variable". */
-  --font-sans: 'Geist Variable', 'Geist Sans', Inter, sans-serif;
-  --font-mono: 'Geist Mono Variable', 'Geist Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  --font-geist-sans: 'Geist Variable', 'Geist Sans', Inter, sans-serif;
-  --font-logs: 'Geist Mono Variable', 'Geist Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  --font-sans: "Geist Variable", "Geist Sans", Inter, sans-serif;
+  --font-mono:
+    "Geist Mono Variable", "Geist Mono", "SFMono-Regular", Consolas,
+    "Liberation Mono", Menlo, monospace;
+  --font-geist-sans: "Geist Variable", "Geist Sans", Inter, sans-serif;
+  --font-logs:
+    "Geist Mono Variable", "Geist Mono", "SFMono-Regular", Consolas,
+    "Liberation Mono", Menlo, monospace;
 
   --color-base: oklch(17.3% 0 0);
   --color-warning: oklch(88.13% 0.1507 91.7);
@@ -62,7 +66,8 @@
   --color-nav-active: oklch(20.46% 0 0);
   --color-log: oklch(15.91% 0 0);
 
-  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.55), 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-modal:
+    0 24px 64px rgba(0, 0, 0, 0.55), 0 4px 16px rgba(0, 0, 0, 0.4);
   --shadow-dropdown: 0 4px 12px rgb(0 0 0 / 0.12), 0 2px 4px rgb(0 0 0 / 0.08);
 
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
@@ -219,7 +224,8 @@ html:not(.dark) {
 .button,
 .icon-button,
 .app-tab {
-  transition-property: color, background-color, border-color, box-shadow, transform;
+  transition-property:
+    color, background-color, border-color, box-shadow, transform;
   transition-timing-function: var(--ease-out);
   transition-duration: 120ms;
 }
@@ -249,7 +255,7 @@ html:not(.dark) {
 
 /* Reserve space for a visibility toggle or copy button inside an input. */
 .input.input-with-password-toggle,
-.input[type='password'],
+.input[type="password"],
 .input.input-with-copy-button {
   padding-right: 2.5rem;
 }
@@ -607,7 +613,9 @@ html:not(.dark) {
 }
 
 .button:not(:disabled):focus-visible {
-  box-shadow: var(--button-depth), 0 0 0 1px var(--color-accent);
+  box-shadow:
+    var(--button-depth),
+    0 0 0 1px var(--color-accent);
 }
 
 .button.button-error {
@@ -639,7 +647,8 @@ html:not(.dark) {
   }
 }
 
-.application-settings-section > :is(header, .application-settings-section-header) {
+.application-settings-section
+  > :is(header, .application-settings-section-header) {
   display: flex;
   min-height: 3rem;
   flex-wrap: wrap;
@@ -653,7 +662,9 @@ html:not(.dark) {
   color: var(--coollabs-subtle);
 }
 
-.application-settings-section > :is(header, .application-settings-section-header) :is(h2, h3) {
+.application-settings-section
+  > :is(header, .application-settings-section-header)
+  :is(h2, h3) {
   font-size: 0.875rem;
   font-weight: 500;
   line-height: 1.25rem;
@@ -661,7 +672,10 @@ html:not(.dark) {
   color: oklch(40% 0 0);
 }
 
-.dark .application-settings-section > :is(header, .application-settings-section-header) :is(h2, h3) {
+.dark
+  .application-settings-section
+  > :is(header, .application-settings-section-header)
+  :is(h2, h3) {
   color: var(--color-fg-dim);
 }
 
@@ -719,7 +733,7 @@ html:not(.dark) {
 }
 
 .application-settings-section.is-section-highlight::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   z-index: 5;
@@ -787,7 +801,11 @@ html:not(.dark) {
   min-height: 100dvh;
   display: flex;
   background:
-    radial-gradient(circle at 50% 0%, color-mix(in oklab, var(--color-coollabs) 9%, transparent), transparent 34rem),
+    radial-gradient(
+      circle at 50% 0%,
+      color-mix(in oklab, var(--color-coollabs) 9%, transparent),
+      transparent 34rem
+    ),
     var(--coollabs-canvas);
   color: #171717;
 }
@@ -1134,7 +1152,8 @@ html:not(.dark) {
 
   .data-table-row.env-table-grid > :not(:first-child):not(:last-child),
   .data-table-row.env-table-grid-service > :not(:first-child):not(:last-child),
-  .data-table-row.env-table-grid-inherited > :not(:first-child):not(:nth-child(2)) {
+  .data-table-row.env-table-grid-inherited
+    > :not(:first-child):not(:nth-child(2)) {
     display: none;
   }
 
@@ -1152,9 +1171,56 @@ html:not(.dark) {
 }
 
 .backup-executions-table-grid {
-  grid-template-columns: 6.5rem minmax(7rem, 0.8fr) minmax(14rem, 1.5fr) 7rem 5rem 4rem minmax(8rem, 1fr) 5rem;
+  grid-template-columns: 6.5rem minmax(7rem, 0.8fr) minmax(
+      14rem,
+      1.5fr
+    ) 7rem 5rem 4rem minmax(8rem, 1fr) 5rem;
   gap: 0.75rem;
   min-width: 66rem;
+}
+
+.server-resources-managed-table-grid {
+  grid-template-columns: minmax(10rem, 1.3fr) minmax(8rem, 1fr) minmax(
+      8rem,
+      1fr
+    ) 8rem 9.5rem;
+}
+
+@media (max-width: 900px) {
+  .server-resources-managed-table-grid {
+    grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 0.8fr) 8rem 9.5rem;
+  }
+
+  .server-resources-managed-table-grid > :nth-child(3) {
+    display: none;
+  }
+}
+
+.server-containers-table-grid {
+  grid-template-columns: minmax(10rem, 1.5fr) minmax(8rem, 1fr) 5rem 8rem;
+}
+
+/* Name and Status only on a phone, as Coolify's. */
+@media (max-width: 640px) {
+  .server-resources-managed-table-grid {
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 0.75rem;
+  }
+
+  .server-resources-managed-table-grid > :nth-child(2),
+  .server-resources-managed-table-grid > :nth-child(3),
+  .server-resources-managed-table-grid > :nth-child(4) {
+    display: none;
+  }
+
+  .server-containers-table-grid {
+    grid-template-columns: minmax(0, 1fr) 4rem 6rem;
+    column-gap: 0.75rem;
+  }
+
+  .server-containers-table-grid > :nth-child(2) {
+    display: none;
+  }
 }
 
 .backup-executions-table-scroll {
@@ -1167,7 +1233,10 @@ html:not(.dark) {
 
 @media (max-width: 900px) {
   .backup-executions-table-grid {
-    grid-template-columns: 7.5rem minmax(9rem, 0.8fr) minmax(14rem, 1.5fr) 8rem 6rem minmax(9rem, auto);
+    grid-template-columns: 7.5rem minmax(9rem, 0.8fr) minmax(
+        14rem,
+        1.5fr
+      ) 8rem 6rem minmax(9rem, auto);
   }
 
   .backup-executions-table-grid > :nth-child(6),
@@ -1305,7 +1374,7 @@ html:not(.dark) {
 
   .data-table-row.service-domains-overview-grid {
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: 'domain actions' 'summary summary';
+    grid-template-areas: "domain actions" "summary summary";
     gap: 0.625rem 0.75rem;
     padding: 0.875rem;
   }
@@ -1339,7 +1408,7 @@ html:not(.dark) {
   .service-domain-mobile-summary > span:not(:last-child)::after {
     margin-left: 0.75rem;
     color: var(--coollabs-line);
-    content: '·';
+    content: "·";
   }
 
   .service-domain-actions {
@@ -1363,7 +1432,10 @@ html:not(.dark) {
 
 .deployment-table-grid {
   min-width: 59rem;
-  grid-template-columns: 7.5rem minmax(7rem, 0.8fr) minmax(12rem, 1.7fr) minmax(8rem, 0.9fr) 6.5rem minmax(7rem, 0.8fr);
+  grid-template-columns: 7.5rem minmax(7rem, 0.8fr) minmax(12rem, 1.7fr) minmax(
+      8rem,
+      0.9fr
+    ) 6.5rem minmax(7rem, 0.8fr);
 }
 
 @media (min-width: 1024px) {
@@ -1512,12 +1584,16 @@ html:not(.dark) {
   gap: 0.5rem;
 }
 
-.logs-settings-section > :is(header, .application-settings-section-header) > div:first-child {
+.logs-settings-section
+  > :is(header, .application-settings-section-header)
+  > div:first-child {
   min-width: 0;
   flex: 1 1 auto;
 }
 
-.logs-settings-section > :is(header, .application-settings-section-header) > div:nth-child(2) {
+.logs-settings-section
+  > :is(header, .application-settings-section-header)
+  > div:nth-child(2) {
   width: auto !important;
   flex-shrink: 0;
   margin-left: auto;
@@ -1594,14 +1670,30 @@ html:not(.dark) {
 }
 
 .logs-viewer-cancel-btn {
-  border-color: color-mix(in oklab, var(--color-error, #ef4444) 55%, transparent) !important;
-  background: color-mix(in oklab, var(--color-error, #ef4444) 10%, transparent) !important;
+  border-color: color-mix(
+    in oklab,
+    var(--color-error, #ef4444) 55%,
+    transparent
+  ) !important;
+  background: color-mix(
+    in oklab,
+    var(--color-error, #ef4444) 10%,
+    transparent
+  ) !important;
   color: color-mix(in oklab, var(--color-error, #f87171) 90%, white) !important;
 }
 
 .logs-viewer-cancel-btn:hover {
-  border-color: color-mix(in oklab, var(--color-error, #ef4444) 75%, transparent) !important;
-  background: color-mix(in oklab, var(--color-error, #ef4444) 18%, transparent) !important;
+  border-color: color-mix(
+    in oklab,
+    var(--color-error, #ef4444) 75%,
+    transparent
+  ) !important;
+  background: color-mix(
+    in oklab,
+    var(--color-error, #ef4444) 18%,
+    transparent
+  ) !important;
 }
 
 .logs-viewer-btn,
@@ -1619,7 +1711,9 @@ html:not(.dark) {
   justify-content: center;
   border-radius: 0.5rem;
   color: var(--color-neutral-500);
-  transition: color 0.15s, background-color 0.15s;
+  transition:
+    color 0.15s,
+    background-color 0.15s;
 }
 
 .logs-viewer-btn:hover {
@@ -1836,7 +1930,9 @@ html:not(.dark) {
   justify-content: center;
   border-radius: 0.5rem;
   color: #737373;
-  transition: color 0.15s, background-color 0.15s;
+  transition:
+    color 0.15s,
+    background-color 0.15s;
 }
 
 @media (min-width: 640px) {

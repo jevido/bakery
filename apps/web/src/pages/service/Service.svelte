@@ -35,8 +35,12 @@
   $effect(() => {
     service = null
     loadError = ''
+    // The person may have moved on while it was on its way; a late answer
+    // must not send them back.
+    let gone = false
     api<{ service: Service }>('GET', `/services/${id}`)
       .then(({ service: s }) => {
+        if (gone) return
         // A link with another Project or Environment in it still opens the
         // Service, at its own path.
         if (s.project_id !== projectId || s.environment_id !== environmentId) {
@@ -48,7 +52,10 @@
           .then((e) => (environment = e.environment))
           .catch(() => {})
       })
-      .catch((e) => (loadError = e.message))
+      .catch((e) => {
+        if (!gone) loadError = e.message
+      })
+    return () => (gone = true)
   })
 
   // Quickly while an action runs, slower otherwise so a crash shows up.

@@ -53,8 +53,12 @@
   $effect(() => {
     database = null
     loadError = ''
+    // The person may have moved on while it was on its way; a late answer
+    // must not send them back.
+    let gone = false
     api<{ database: Database }>('GET', `/databases/${id}`)
       .then(({ database: d }) => {
+        if (gone) return
         // A link with another Project or Environment in it still opens the
         // Database, at its own path.
         if (d.project_id !== projectId || d.environment_id !== environmentId) {
@@ -70,7 +74,10 @@
           .then((s) => (server = s.servers.find((x) => x.kind === 'local') ?? null))
           .catch(() => {})
       })
-      .catch((e) => (loadError = e.message))
+      .catch((e) => {
+        if (!gone) loadError = e.message
+      })
+    return () => (gone = true)
   })
 
   // Quickly while it is starting, slower otherwise so a crash shows up.
