@@ -20,6 +20,7 @@ type serviceRecord struct {
 	EnvironmentID uint64
 	ProjectID     uint64
 	Name          string
+	Description   string
 	Slug          string
 	ComposeFile   string
 	TemplateKey   string
@@ -83,7 +84,7 @@ func decrypt(s string) (string, error) {
 func toRecord(s domain.Service) serviceRecord {
 	return serviceRecord{
 		ID: s.ID, EnvironmentID: s.EnvironmentID, ProjectID: s.ProjectID,
-		Name: s.Name, Slug: s.Slug, ComposeFile: s.ComposeFile, TemplateKey: s.TemplateKey,
+		Name: s.Name, Description: s.Description, Slug: s.Slug, ComposeFile: s.ComposeFile, TemplateKey: s.TemplateKey,
 		DesiredState: string(s.DesiredState), LastError: s.LastError,
 	}
 }
@@ -110,7 +111,7 @@ func (st Store) Save(ctx context.Context, s domain.Service) error {
 	rec := toRecord(s)
 	return facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		if _, err := tx.Model(&serviceRecord{}).Where("id", s.ID).Update(map[string]any{
-			"name": rec.Name, "compose_file": rec.ComposeFile, "desired_state": rec.DesiredState, "last_error": rec.LastError,
+			"name": rec.Name, "description": rec.Description, "compose_file": rec.ComposeFile, "desired_state": rec.DesiredState, "last_error": rec.LastError,
 		}); err != nil {
 			return err
 		}
@@ -187,7 +188,7 @@ func (st Store) withParts(ctx context.Context, recs []serviceRecord) ([]domain.S
 		index[r.ID] = i
 		out[i] = domain.Service{
 			ID: r.ID, EnvironmentID: r.EnvironmentID, ProjectID: r.ProjectID,
-			Name: r.Name, Slug: r.Slug, ComposeFile: r.ComposeFile, TemplateKey: r.TemplateKey,
+			Name: r.Name, Description: r.Description, Slug: r.Slug, ComposeFile: r.ComposeFile, TemplateKey: r.TemplateKey,
 			DesiredState: domain.DesiredState(r.DesiredState), LastError: r.LastError,
 		}
 	}

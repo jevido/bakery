@@ -211,3 +211,38 @@ func TestGeneratedName(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestDescribe(t *testing.T) {
+	s := Service{Name: "x"}
+	if err := s.Describe("  my stack  "); err != nil || s.Description != "my stack" {
+		t.Fatalf("describe: %v, %q", err, s.Description)
+	}
+	// 255 characters is the limit, counted in runes, not bytes.
+	if err := s.Describe(strings.Repeat("é", 255)); err != nil {
+		t.Fatalf("255 runes: %v", err)
+	}
+	var fe *FieldError
+	if err := s.Describe(strings.Repeat("é", 256)); !errors.As(err, &fe) || fe.Field != "description" {
+		t.Fatalf("256 runes: %v", err)
+	}
+	if s.Description != strings.Repeat("é", 255) {
+		t.Fatal("a refused description changed the Service")
+	}
+	if err := s.Describe(""); err != nil || s.Description != "" {
+		t.Fatalf("clear: %v", err)
+	}
+}
+
+func TestVariableComponents(t *testing.T) {
+	c, err := ParseCompose(twoComponents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := VariableComponents(c)
+	if !slices.Equal(got["SERVICE_PASSWORD_DB"], []string{"web", "db"}) {
+		t.Fatalf("SERVICE_PASSWORD_DB: %v", got["SERVICE_PASSWORD_DB"])
+	}
+	if !slices.Equal(got["GREETING"], []string{"web"}) || !slices.Equal(got["TOKEN"], []string{"web"}) {
+		t.Fatalf("web only: %v", got)
+	}
+}

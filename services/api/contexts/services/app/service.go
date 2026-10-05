@@ -135,10 +135,11 @@ type Input struct {
 
 // Change is what the Owner changes; nil fields stay.
 type Change struct {
-	Name      *string
-	Compose   *string
-	Domains   map[string][]string
-	Variables map[string]string
+	Name        *string
+	Description *string
+	Compose     *string
+	Domains     map[string][]string
+	Variables   map[string]string
 }
 
 func (s *Service) get(ctx context.Context, id uint64) (domain.Service, error) {
@@ -256,6 +257,11 @@ func (s *Service) Update(ctx context.Context, id uint64, ch Change) (View, error
 	}
 	if ch.Name != nil {
 		if err := sv.Rename(*ch.Name); err != nil {
+			return View{}, err
+		}
+	}
+	if ch.Description != nil {
+		if err := sv.Describe(*ch.Description); err != nil {
 			return View{}, err
 		}
 	}

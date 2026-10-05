@@ -103,6 +103,23 @@ func Variables(c Compose) []VariableRef {
 	return out
 }
 
+// VariableComponents names, for each variable, the Components whose
+// fields refer to it, in Compose file order.
+func VariableComponents(c Compose) map[string][]string {
+	out := map[string][]string{}
+	for _, comp := range c.Components {
+		for _, v := range componentStrings(comp) {
+			_ = expand(v, func(name, _ string, _ bool) (string, bool) {
+				if !slices.Contains(out[name], comp.Name) {
+					out[name] = append(out[name], comp.Name)
+				}
+				return "", true
+			})
+		}
+	}
+	return out
+}
+
 // componentStrings is every field interpolation applies to, environment in
 // key order so the result is stable.
 func componentStrings(s ComponentSpec) []string {

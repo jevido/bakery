@@ -40,6 +40,8 @@ type variableJSON struct {
 	// one the Owner sets.
 	Magic   string  `json:"magic"`
 	Default *string `json:"default"`
+	// Components are the Components that use the variable.
+	Components []string `json:"components"`
 	// Hidden says Value was left out for a viewer.
 	Hidden bool `json:"hidden,omitempty"`
 }
@@ -49,6 +51,7 @@ type serviceJSON struct {
 	EnvironmentID uint64          `json:"environment_id"`
 	ProjectID     uint64          `json:"project_id"`
 	Name          string          `json:"name"`
+	Description   string          `json:"description"`
 	Slug          string          `json:"slug"`
 	TemplateKey   string          `json:"template,omitempty"`
 	Status        string          `json:"status"`
@@ -64,7 +67,7 @@ type serviceJSON struct {
 func toJSON(v app.View, full bool) serviceJSON {
 	out := serviceJSON{
 		ID: v.ID, EnvironmentID: v.EnvironmentID, ProjectID: v.ProjectID,
-		Name: v.Name, Slug: v.Slug, TemplateKey: v.TemplateKey,
+		Name: v.Name, Description: v.Description, Slug: v.Slug, TemplateKey: v.TemplateKey,
 		Status: string(v.Status), DesiredState: string(v.DesiredState), Busy: v.Busy, LastError: v.LastError,
 		Components: make([]componentJSON, 0, len(v.Components)),
 	}
@@ -84,8 +87,15 @@ func toJSON(v app.View, full bool) serviceJSON {
 		compose := v.ComposeFile
 		out.Compose = &compose
 		vars := make([]variableJSON, 0, len(v.Variables))
+		users := map[string][]string{}
+		if c, err := domain.ParseCompose(v.ComposeFile); err == nil {
+			users = domain.VariableComponents(c)
+		}
 		for _, va := range v.Variables {
-			vj := variableJSON{Name: va.Name, Value: va.Value, Magic: string(va.Magic)}
+			vj := variableJSON{Name: va.Name, Value: va.Value, Magic: string(va.Magic), Components: users[va.Name]}
+			if vj.Components == nil {
+				vj.Components = []string{}
+			}
 			if va.HasDefault {
 				def := va.Default
 				vj.Default = &def
@@ -214,10 +224,11 @@ func (c *Controller) Show(ctx contractshttp.Context) contractshttp.Response {
 }
 
 type updateRequest struct {
-	Name      *string             `json:"name"`
-	Compose   *string             `json:"compose"`
-	Domains   map[string][]string `json:"domains"`
-	Variables map[string]string   `json:"variables"`
+	Name        *string             `json:"name"`
+	Description *string             `json:"description"`
+	Compose     *string             `json:"compose"`
+	Domains     map[string][]string `json:"domains"`
+	Variables   map[string]string   `json:"variables"`
 }
 
 func (c *Controller) Update(ctx contractshttp.Context) contractshttp.Response {
@@ -229,7 +240,7 @@ func (c *Controller) Update(ctx contractshttp.Context) contractshttp.Response {
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	v, err := c.service.Update(ctx.Context(), sid, app.Change{Name: req.Name, Compose: req.Compose, Domains: req.Domains, Variables: req.Variables})
+	v, err := c.service.Update(ctx.Context(), sid, app.Change{Name: req.Name, Description: req.Description, Compose: req.Compose, Domains: req.Domains, Variables: req.Variables})
 	return one(ctx, contractshttp.StatusOK, v, err)
 }
 

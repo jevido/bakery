@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // FieldError is a broken rule on one input field.
@@ -67,8 +68,10 @@ type Service struct {
 	EnvironmentID uint64
 	ProjectID     uint64
 	Name          string
-	Slug          string
-	ComposeFile   string
+	// Description is free text of at most 255 characters, empty for none.
+	Description string
+	Slug        string
+	ComposeFile string
 	// TemplateKey is the Service template it was created from, or "".
 	TemplateKey  string
 	DesiredState DesiredState
@@ -90,6 +93,14 @@ func checkName(name string) (string, error) {
 		return name, invalid("name", "name is at most 100 characters")
 	}
 	return name, nil
+}
+
+func checkDescription(description string) (string, error) {
+	description = strings.TrimSpace(description)
+	if utf8.RuneCountInString(description) > 255 {
+		return description, invalid("description", "description is at most 255 characters")
+	}
+	return description, nil
 }
 
 // NewService parses the Compose file, gives each Public Component its
@@ -114,6 +125,16 @@ func (s *Service) Rename(name string) error {
 		return err
 	}
 	s.Name = name
+	return nil
+}
+
+// Describe changes the description.
+func (s *Service) Describe(description string) error {
+	description, err := checkDescription(description)
+	if err != nil {
+		return err
+	}
+	s.Description = description
 	return nil
 }
 

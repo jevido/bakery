@@ -18,6 +18,7 @@ serving Domains (routing does, through Service routes).
 | Term | Meaning |
 | ---- | ------- |
 | Service | A Compose file run as a set of Containers in one Environment, with a name and a Slug. |
+| Description | Free text about a Service, at most 255 characters, empty for none. |
 | Compose file | The `compose.yml` text a Service is made of, in the subset The Bakery supports. |
 | Component | One entry under the Compose file's `services:`, run as the Container `bakery-svc-<service id>-<name>`. The Bakery's word, so "service" never means two things. |
 | Public Component | A Component whose environment names `SERVICE_FQDN_<NAME>_<PORT>` or `SERVICE_URL_<NAME>_<PORT>`: it has a port and 1–10 Domains, and the Proxy serves it. |
@@ -38,7 +39,7 @@ serving Domains (routing does, through Service routes).
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Service | Belongs to one Environment of one Project. Name 1–100 characters; one created without a name gets its Service template's name, or `docker-compose-<random>` (8 lowercase letters and digits) for a pasted Compose file, as Coolify names it. Slug lowercase `[a-z0-9-]`, unique among Services. The Compose file parses under the supported subset (see below) and has 1–20 Components; Component names match `^[a-z0-9][a-z0-9_-]{0,62}$`; `depends_on` names existing Components without cycles. A Public Component has a port 1–65535 and 1–10 Domains, the first primary, each a lowercase hostname, listed once, unique across The Bakery (Application Domains included) and never the dashboard domain. Service variable names match `^[A-Za-z_][A-Za-z0-9_]*$`; every variable the Compose file refers to has a value or a default. Magic variables are generated once, never set by the Owner, and kept when the Compose file changes while it still refers to them. Desired state is `running` or `stopped`. |
+| Service | Belongs to one Environment of one Project. Name 1–100 characters; Description at most 255 characters; one created without a name gets its Service template's name, or `docker-compose-<random>` (8 lowercase letters and digits) for a pasted Compose file, as Coolify names it. Slug lowercase `[a-z0-9-]`, unique among Services. The Compose file parses under the supported subset (see below) and has 1–20 Components; Component names match `^[a-z0-9][a-z0-9_-]{0,62}$`; `depends_on` names existing Components without cycles. A Public Component has a port 1–65535 and 1–10 Domains, the first primary, each a lowercase hostname, listed once, unique across The Bakery (Application Domains included) and never the dashboard domain. Service variable names match `^[A-Za-z_][A-Za-z0-9_]*$`; every variable the Compose file refers to has a value or a default. Magic variables are generated once, never set by the Owner, and kept when the Compose file changes while it still refers to them. Desired state is `running` or `stopped`. |
 
 The supported Compose subset, per Component: `image` (required),
 `command`, `entrypoint`, `environment` (map or list), `volumes` (named
@@ -57,7 +58,7 @@ Refused, naming the line and key: `build`, `ports`, bind mounts and
   variables, give Public Components their default Domains, store, Up.
 - `CreateServiceFromTemplate(environment, template, name?)`: the same with
   the template's Compose file.
-- `UpdateService(name?, compose?, domains?, variables?)`: validate and
+- `UpdateService(name?, description?, compose?, domains?, variables?)`: validate and
   store; a changed Compose file keeps Service variables' values and
   Components' Domains by name. Domains of a running Service move at once;
   Compose and variable changes apply on the next Up.

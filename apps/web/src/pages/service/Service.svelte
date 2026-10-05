@@ -14,6 +14,7 @@
   import Danger from '../application/Danger.svelte'
   import Heading, { type Action } from '../application/Heading.svelte'
   import ConfigurationSidebar from './ConfigurationSidebar.svelte'
+  import General from './General.svelte'
   import Interim from './Interim.svelte'
 
   let { projectId, environmentId, id, page }: { projectId: number; environmentId: number; id: number; page: ServicePage } = $props()
@@ -163,7 +164,9 @@
       <ConfigurationSidebar {service} {page} />
 
       <div class="min-w-0">
-        {#if page === '' || page === 'domains' || page === 'environment-variables' || page === 'logs'}
+        {#if page === ''}
+          <General {service} {environment} onchange={(s) => (service = s)} />
+        {:else if page === 'domains' || page === 'environment-variables' || page === 'logs'}
           <Interim {service} {page} onchange={(s) => (service = s)} />
         {:else if page === 'danger' && session.canWrite}
           <Danger
