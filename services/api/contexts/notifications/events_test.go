@@ -13,11 +13,11 @@ import (
 func TestDeploymentNotification(t *testing.T) {
 	at := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	n := deploymentNotification(deployments.DeploymentFinished{
-		ApplicationID: 3, ApplicationSlug: "shop", Reason: "build failed: exit status 1", Branch: "main",
+		GuildID: 2, ApplicationID: 3, ApplicationSlug: "shop", Reason: "build failed: exit status 1", Branch: "main",
 		CommitSHA: "0123456789abcdef", CommitMessage: "Fix the login", Trigger: "webhook", FinishedAt: at,
 	}, "https://bakery.example.com")
 	want := domain.Notification{
-		Kind: domain.DeploymentFailure, Title: "Deployment of shop failed",
+		GuildID: 2, Kind: domain.DeploymentFailure, Title: "Deployment of shop failed",
 		Body: "build failed: exit status 1\nBranch main, commit 0123456789ab: Fix the login\nStarted by a push.",
 		Link: "https://bakery.example.com/#/applications/3", At: at,
 	}

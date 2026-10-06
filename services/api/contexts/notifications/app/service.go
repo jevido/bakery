@@ -16,12 +16,14 @@ var ErrNotFound = errors.New("not found")
 
 // Store keeps Notification channels.
 type Store interface {
-	Channels(ctx context.Context) ([]domain.Channel, error)
+	// Channels lists the Guild's channels, oldest first; guildID 0 lists
+	// every Guild's.
+	Channels(ctx context.Context, guildID uint64) ([]domain.Channel, error)
 	Channel(ctx context.Context, id uint64) (domain.Channel, bool, error)
 	CreateChannel(ctx context.Context, c domain.Channel) (domain.Channel, error)
 	SaveChannel(ctx context.Context, c domain.Channel) error
 	DeleteChannel(ctx context.Context, id uint64) error
-	ChannelNameTaken(ctx context.Context, name string, exceptID uint64) (bool, error)
+	ChannelNameTaken(ctx context.Context, guildID uint64, name string, exceptID uint64) (bool, error)
 	CreateDeliveries(ctx context.Context, ds []domain.Delivery) ([]domain.Delivery, error)
 	// ClaimDue returns pending Deliveries due at now and postpones them by
 	// lease, so no one else sends them meanwhile.
@@ -51,8 +53,16 @@ func NewService(store Store, sender Sender, mailer Mailer) *Service {
 	return &Service{store: store, sender: sender, mailer: mailer, Log: func(string, ...any) {}, Now: time.Now, Poll: 5 * time.Second, wake: make(chan struct{}, 1)}
 }
 
-func (s *Service) Channels(ctx context.Context) ([]domain.Channel, error) {
-	return s.store.Channels(ctx)
+// Channels lists the Guild's channels.
+func (s *Service) Channels(ctx context.Context, guildID uint64) ([]domain.Channel, error) {
+	return s.store.Channels(ctx, guildID)
+}
+
+// ChannelInGuild reports whether the channel exists and belongs to the
+// Guild.
+func (s *Service) ChannelInGuild(ctx context.Context, id, guildID uint64) (bool, error) {
+	c, found, err := s.store.Channel(ctx, id)
+	return found && c.GuildID == guildID, err
 }
 
 func (s *Service) Channel(ctx context.Context, id uint64) (domain.Channel, error) {
@@ -64,7 +74,7 @@ func (s *Service) Channel(ctx context.Context, id uint64) (domain.Channel, error
 }
 
 func (s *Service) checkName(ctx context.Context, c domain.Channel) error {
-	taken, err := s.store.ChannelNameTaken(ctx, c.Name, c.ID)
+	taken, err := s.store.ChannelNameTaken(ctx, c.GuildID, c.Name, c.ID)
 	if err != nil {
 		return err
 	}
@@ -74,11 +84,13 @@ func (s *Service) checkName(ctx context.Context, c domain.Channel) error {
 	return nil
 }
 
-func (s *Service) AddChannel(ctx context.Context, in domain.Input) (domain.Channel, error) {
+// AddChannel adds a channel to the Guild.
+func (s *Service) AddChannel(ctx context.Context, guildID uint64, in domain.Input) (domain.Channel, error) {
 	c, err := domain.NewChannel(in)
 	if err != nil {
 		return c, err
 	}
+	c.GuildID = guildID
 	if err := s.checkName(ctx, c); err != nil {
 		return c, err
 	}

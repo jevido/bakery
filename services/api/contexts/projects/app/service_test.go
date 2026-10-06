@@ -248,7 +248,7 @@ func TestTargetServer(t *testing.T) {
 	store := &fakeStore{}
 	s := NewService(store, fakeKey, "example.com", "")
 	s.LocalServer = func(context.Context) (uint64, error) { return 1, nil }
-	s.ServerExists = func(_ context.Context, id uint64) (bool, error) { return id == 1 || id == 7, nil }
+	s.ServerUsable = func(_ context.Context, id, _ uint64) (bool, error) { return id == 1 || id == 7, nil }
 	in := domain.ApplicationInput{Name: "web", GitURL: "https://example.com/r.git", Port: 80}
 
 	if a, err := s.CreateApplication(ctx, 1, in); err != nil || a.ServerID != 0 {

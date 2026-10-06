@@ -56,7 +56,7 @@ func (s *Service) CleanUp(ctx context.Context, id uint64) (domain.Cleanup, error
 
 // CleanUpAll cleans up every Reachable Server, reporting failures.
 func (s *Service) CleanUpAll(ctx context.Context) error {
-	servers, err := s.store.List(ctx)
+	servers, err := s.store.List(ctx, 0)
 	if err != nil {
 		return err
 	}

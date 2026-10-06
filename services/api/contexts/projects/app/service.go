@@ -74,16 +74,17 @@ type Service struct {
 	onDeleting       []func(ctx context.Context, projectID uint64) (bool, error)
 	onEnvDeleting    []func(ctx context.Context, environmentID uint64) (bool, error)
 	onDomainCheck    []func(ctx context.Context, domain string) (bool, error)
-	// ServerExists and LocalServer are servers' Exists and LocalID, asked
+	// ServerUsable and LocalServer are servers' UsableBy and LocalID, asked
 	// when an Application is created with a Target server; nil allows only
 	// the Local server.
-	ServerExists func(ctx context.Context, id uint64) (bool, error)
+	ServerUsable func(ctx context.Context, id, guildID uint64) (bool, error)
 	LocalServer  func(ctx context.Context) (uint64, error)
 }
 
 // targetServer checks the Target server an Application is created with and
-// returns it as stored: the Local server, by its id or as 0, is 0.
-func (s *Service) targetServer(ctx context.Context, id uint64) (uint64, error) {
+// returns it as stored: the Local server, by its id or as 0, is 0. Any
+// other must be one of the Guild's own Servers.
+func (s *Service) targetServer(ctx context.Context, id, guildID uint64) (uint64, error) {
 	if id == 0 {
 		return 0, nil
 	}
@@ -96,10 +97,10 @@ func (s *Service) targetServer(ctx context.Context, id uint64) (uint64, error) {
 			return 0, nil
 		}
 	}
-	if s.ServerExists == nil {
+	if s.ServerUsable == nil {
 		return 0, &domain.FieldError{Field: "server_id", Message: "no such server"}
 	}
-	ok, err := s.ServerExists(ctx, id)
+	ok, err := s.ServerUsable(ctx, id, guildID)
 	if err != nil {
 		return 0, err
 	}
@@ -256,7 +257,7 @@ func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, i
 	if err != nil {
 		return domain.Application{}, err
 	}
-	server, err := s.targetServer(ctx, in.ServerID)
+	server, err := s.targetServer(ctx, in.ServerID, env.GuildID)
 	if err != nil {
 		return domain.Application{}, err
 	}

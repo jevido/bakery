@@ -16,7 +16,15 @@ type fakeStore struct {
 	deliveries []domain.Delivery
 }
 
-func (f *fakeStore) Channels(context.Context) ([]domain.Channel, error) { return f.channels, nil }
+func (f *fakeStore) Channels(_ context.Context, guildID uint64) ([]domain.Channel, error) {
+	var out []domain.Channel
+	for _, c := range f.channels {
+		if guildID == 0 || c.GuildID == guildID {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
 func (f *fakeStore) Channel(_ context.Context, id uint64) (domain.Channel, bool, error) {
 	for _, c := range f.channels {
 		if c.ID == id {
@@ -32,7 +40,7 @@ func (f *fakeStore) CreateChannel(_ context.Context, c domain.Channel) (domain.C
 }
 func (f *fakeStore) SaveChannel(context.Context, domain.Channel) error { return nil }
 func (f *fakeStore) DeleteChannel(context.Context, uint64) error       { return nil }
-func (f *fakeStore) ChannelNameTaken(context.Context, string, uint64) (bool, error) {
+func (f *fakeStore) ChannelNameTaken(context.Context, uint64, string, uint64) (bool, error) {
 	return false, nil
 }
 func (f *fakeStore) CreateDeliveries(_ context.Context, ds []domain.Delivery) ([]domain.Delivery, error) {
@@ -98,6 +106,7 @@ func setup(t *testing.T) (*Service, *fakeStore, *fakeSender, *time.Time) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		c.GuildID = 1
 		_, _ = store.CreateChannel(context.Background(), c)
 	}
 	sender := &fakeSender{failing: map[uint64]int{}, sent: map[uint64]int{}}
@@ -113,7 +122,11 @@ func TestNotifyOnlySubscribed(t *testing.T) {
 	if len(store.deliveries) != 0 {
 		t.Fatalf("nobody subscribes, got %v", store.deliveries)
 	}
-	s.Notify(context.Background(), domain.Notification{Kind: domain.DeploymentFailure, Title: "x"})
+	s.Notify(context.Background(), domain.Notification{GuildID: 2, Kind: domain.DeploymentFailure, Title: "x"})
+	if len(store.deliveries) != 0 {
+		t.Fatalf("another guild's event reached guild 1's channel: %v", store.deliveries)
+	}
+	s.Notify(context.Background(), domain.Notification{GuildID: 1, Kind: domain.DeploymentFailure, Title: "x"})
 	if len(store.deliveries) != 1 || store.deliveries[0].ChannelID != 1 {
 		t.Fatalf("got %+v", store.deliveries)
 	}

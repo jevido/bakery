@@ -43,7 +43,7 @@ func (g Git) Clone(ctx context.Context, req app.CloneRequest, out func(stream, l
 		defer os.RemoveAll(dir)
 		keyFile := filepath.Join(dir, "deploy_key")
 		knownHostsFile = filepath.Join(dir, "known_hosts")
-		if storedLines, err = g.KnownHosts.Lines(ctx); err != nil {
+		if storedLines, err = g.KnownHosts.Lines(ctx, req.GuildID); err != nil {
 			return app.Commit{}, fmt.Errorf("reading the known hosts: %w", err)
 		}
 		key := req.DeployKey
@@ -72,7 +72,7 @@ func (g Git) Clone(ctx context.Context, req app.CloneRequest, out func(stream, l
 	if req.DeployKey != "" && err == nil {
 		// accept-new wrote the keys of a host seen for the first time.
 		if b, rerr := os.ReadFile(knownHostsFile); rerr == nil && string(b) != storedLines {
-			if rerr := g.KnownHosts.Remember(ctx, string(b)); rerr != nil {
+			if rerr := g.KnownHosts.Remember(ctx, req.GuildID, string(b)); rerr != nil {
 				return app.Commit{}, fmt.Errorf("remembering the host key: %w", rerr)
 			}
 			out(domain.StreamInfo, "Trusted the SSH host key of "+sshHost(req.URL)+" on first use")

@@ -42,19 +42,19 @@ type memKnownHosts struct {
 	lines string
 }
 
-func (m *memKnownHosts) Lines(context.Context) (string, error) {
+func (m *memKnownHosts) Lines(context.Context, uint64) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.lines, nil
 }
-func (m *memKnownHosts) Remember(_ context.Context, lines string) error {
+func (m *memKnownHosts) Remember(_ context.Context, _ uint64, lines string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.lines = lines
 	return nil
 }
-func (m *memKnownHosts) List(context.Context) ([]domain.KnownHost, error) { return nil, nil }
-func (m *memKnownHosts) Forget(context.Context, uint64) (bool, error)     { return false, nil }
+func (m *memKnownHosts) List(context.Context, uint64) ([]domain.KnownHost, error) { return nil, nil }
+func (m *memKnownHosts) Forget(context.Context, uint64, uint64) (bool, error)     { return false, nil }
 
 // Runs a throwaway sshd + git container (bakery-test-sshgit on 127.0.0.1:4958)
 // and clones a repository from it with a Deploy key: first use trusts the
@@ -124,7 +124,7 @@ exec /usr/sbin/sshd -D -e -p 22`
 	out := func(_, line string) { log = append(log, line) }
 	clone := func(k string) (app.Commit, error) {
 		log = nil
-		return g.Clone(ctx, app.CloneRequest{URL: url, Branch: "main", Dir: filepath.Join(t.TempDir(), "c"), DeployKey: k}, out)
+		return g.Clone(ctx, app.CloneRequest{GuildID: 1, URL: url, Branch: "main", Dir: filepath.Join(t.TempDir(), "c"), DeployKey: k}, out)
 	}
 
 	c, err := clone(key.Private)

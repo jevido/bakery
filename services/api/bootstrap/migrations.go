@@ -73,5 +73,9 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000058DropRoleFromUsers{},
 		&migrations.M20260930000059AddGuildToInvitations{},
 		&migrations.M20260930000060AddGuildToProjects{},
+		&migrations.M20260930000061AddGuildToServers{},
+		&migrations.M20260930000062AddGuildToS3Storages{},
+		&migrations.M20260930000063AddGuildToNotificationChannels{},
+		&migrations.M20260930000064AddGuildToKnownHosts{},
 	}
 }

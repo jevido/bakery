@@ -41,13 +41,15 @@ func NewService(store Store, logs Logs, applications Applications, knownHosts Kn
 	return &Service{store: store, logs: logs, applications: applications, knownHosts: knownHosts, previews: previews, Log: func(string, ...any) {}, wake: make(chan struct{}, 1), running: map[uint64]context.CancelCauseFunc{}}
 }
 
-func (s *Service) KnownHosts(ctx context.Context) ([]domain.KnownHost, error) {
-	return s.knownHosts.List(ctx)
+// KnownHosts lists the Guild's Known hosts.
+func (s *Service) KnownHosts(ctx context.Context, guildID uint64) ([]domain.KnownHost, error) {
+	return s.knownHosts.List(ctx, guildID)
 }
 
-// ForgetKnownHost lets the next clone from the host trust its key again.
-func (s *Service) ForgetKnownHost(ctx context.Context, id uint64) error {
-	found, err := s.knownHosts.Forget(ctx, id)
+// ForgetKnownHost lets the Guild's next clone from the host trust its key
+// again; another Guild's Known host is ErrNotFound.
+func (s *Service) ForgetKnownHost(ctx context.Context, guildID, id uint64) error {
+	found, err := s.knownHosts.Forget(ctx, guildID, id)
 	if err == nil && !found {
 		err = ErrNotFound
 	}

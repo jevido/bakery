@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # End to end: Guilds keep to themselves. The Owner is in the first Guild,
 # "Default", and in a second Guild made for the test; what is made in the
-# second (a Project with an Application, a Database and a Service) is not
+# second (a Project with an Application, a Database and a Service, a Remote
+# server, an S3 storage, a Notification channel and a Known host) is not
 # listed, readable or changeable from the first, with a Session or an API
-# token, and the other way round. Needs `task dev` running (API on
+# token, and the other way round. Every Guild sees the Local server, and
+# only the Instance admin changes it. Needs `task dev` running (API on
 # 127.0.0.1:4910) and the dev Postgres (`task db:up`).
 set -euo pipefail
 
@@ -14,7 +16,12 @@ KEEP_FORGEJO=1
 
 PSQL=(podman compose -f "$ROOT/infra/dev/compose.yml" exec -T postgres psql -U bakery -d bakery -tAq)
 GUILD_B="" B_PROJECT_ID="" B_APP_ID="" B_DB_ID="" B_SERVICE_ID="" TOKEN_IDS=()
+B_SERVER_ID="" B_STORAGE_ID="" B_CHANNEL_ID="" A_CHANNEL_ID=""
 e2e_cleanup_hook() {
+	[ -z "$B_SERVER_ID" ] || in_b DELETE "/api/servers/$B_SERVER_ID" >/dev/null
+	[ -z "$B_STORAGE_ID" ] || in_b DELETE "/api/s3-storages/$B_STORAGE_ID" >/dev/null
+	[ -z "$B_CHANNEL_ID" ] || in_b DELETE "/api/notification-channels/$B_CHANNEL_ID" >/dev/null
+	[ -z "$A_CHANNEL_ID" ] || bakery DELETE "/api/notification-channels/$A_CHANNEL_ID" >/dev/null
 	[ -z "$B_SERVICE_ID" ] || in_b DELETE "/api/services/$B_SERVICE_ID" >/dev/null
 	[ -z "$B_DB_ID" ] || in_b DELETE "/api/databases/$B_DB_ID" >/dev/null
 	[ -z "$B_APP_ID" ] || in_b DELETE "/api/applications/$B_APP_ID" >/dev/null
@@ -22,7 +29,7 @@ e2e_cleanup_hook() {
 	local id
 	for id in "${TOKEN_IDS[@]}"; do curl -s -b "$JAR" -b "bakery_guild=${id%:*}" -X DELETE "$API/api/api-tokens/${id#*:}" >/dev/null; done
 	if [ -n "$GUILD_B" ]; then
-		"${PSQL[@]}" -c "DELETE FROM memberships WHERE guild_id = $GUILD_B; DELETE FROM guilds WHERE id = $GUILD_B" >/dev/null
+		"${PSQL[@]}" -c "DELETE FROM known_hosts WHERE guild_id = $GUILD_B; DELETE FROM invitations WHERE guild_id = $GUILD_B; DELETE FROM memberships WHERE guild_id = $GUILD_B; DELETE FROM guilds WHERE id = $GUILD_B" >/dev/null
 	fi
 }
 
@@ -127,5 +134,75 @@ expect "the first Guild's token cannot read the second Guild's Application" 404 
 expect "the first Guild's token does not list it" False "$(with "$A_TOKEN" GET /api/projects >/dev/null; body "any(p['id']==$B_PROJECT_ID for p in d['projects'])")"
 expect "the second Guild's token reads its Project" 200 "$(with "$B_TOKEN" GET "/api/projects/$B_PROJECT_ID")"
 expect "the second Guild's token cannot read the first Guild's Project" 404 "$(with "$B_TOKEN" GET "/api/projects/$A_PROJECT_ID")"
+
+say "The second Guild gets a Remote server, an S3 storage, a Notification channel and a Known host"
+B_SERVER_ID=$(in_b POST /api/servers "{\"name\":\"$RUN\",\"host\":\"203.0.113.7\",\"user\":\"bakery\"}" | json "d['server']['id']")
+B_STORAGE_ID=$(in_b POST /api/s3-storages "{\"name\":\"$RUN\",\"endpoint\":\"http://127.0.0.1:4960\",\"bucket\":\"bakery-backups\",\"access_key\":\"a\",\"secret_key\":\"s\"}" | json "d['s3_storage']['id']")
+B_CHANNEL_ID=$(in_b POST /api/notification-channels "{\"name\":\"$RUN\",\"kind\":\"webhook\",\"settings\":{\"url\":\"http://127.0.0.1:4988/hook\"}}" | json "d['channel']['id']")
+B_HOST_ID=$("${PSQL[@]}" -c "INSERT INTO known_hosts (guild_id, host, keys, created_at, updated_at) VALUES ($GUILD_B, '$RUN.example', '$RUN.example ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl', now(), now()) RETURNING id" | head -1)
+LOCAL_ID=$(in_b GET /api/servers | json "[s['id'] for s in d['servers'] if s['kind']=='local'][0]")
+expect "the second Guild lists the Local server and its own" "['local', 'remote']" "$(in_b GET /api/servers | json "sorted(s['kind'] for s in d['servers'] if s['kind']=='local' or s['id']==$B_SERVER_ID)")"
+expect "the second Guild lists its S3 storage" True "$(in_b GET /api/s3-storages | json "any(s['id']==$B_STORAGE_ID for s in d['s3_storages'])")"
+expect "the second Guild lists its channel" True "$(in_b GET /api/notification-channels | json "any(c['id']==$B_CHANNEL_ID for c in d['channels'])")"
+expect "the second Guild lists its Known host" True "$(in_b GET /api/known-hosts | json "any(h['id']==$B_HOST_ID for h in d['known_hosts'])")"
+
+say "The first Guild does not see them"
+expect "the Remote server is absent from the first Guild's Servers" False "$(bakery GET /api/servers | json "any(s['id']==$B_SERVER_ID for s in d['servers'])")"
+expect "the first Guild still lists the Local server" True "$(bakery GET /api/servers | json "any(s['id']==$LOCAL_ID for s in d['servers'])")"
+expect "the S3 storage is absent from the first Guild's" False "$(bakery GET /api/s3-storages | json "any(s['id']==$B_STORAGE_ID for s in d['s3_storages'])")"
+expect "the channel is absent from the first Guild's" False "$(bakery GET /api/notification-channels | json "any(c['id']==$B_CHANNEL_ID for c in d['channels'])")"
+expect "the Known host is absent from the first Guild's" False "$(bakery GET /api/known-hosts | json "any(h['id']==$B_HOST_ID for h in d['known_hosts'])")"
+for route in \
+	"GET /api/servers/$B_SERVER_ID" \
+	"GET /api/servers/$B_SERVER_ID/metrics" \
+	"GET /api/servers/$B_SERVER_ID/details" \
+	"PATCH /api/servers/$B_SERVER_ID" \
+	"POST /api/servers/$B_SERVER_ID/validate" \
+	"POST /api/servers/$B_SERVER_ID/cleanup" \
+	"DELETE /api/servers/$B_SERVER_ID/host-key" \
+	"DELETE /api/servers/$B_SERVER_ID" \
+	"PATCH /api/s3-storages/$B_STORAGE_ID" \
+	"DELETE /api/s3-storages/$B_STORAGE_ID" \
+	"GET /api/notification-channels/$B_CHANNEL_ID" \
+	"PATCH /api/notification-channels/$B_CHANNEL_ID" \
+	"POST /api/notification-channels/$B_CHANNEL_ID/test" \
+	"GET /api/notification-channels/$B_CHANNEL_ID/deliveries" \
+	"DELETE /api/notification-channels/$B_CHANNEL_ID" \
+	"DELETE /api/known-hosts/$B_HOST_ID"; do
+	expect "$route from the first Guild" 404 "$(status_in "$GUILD_A" "${route% *}" "${route#* }" '{}')"
+done
+expect "testing the second Guild's S3 storage from the first" 404 "$(status_in "$GUILD_A" POST /api/s3-storages/check "{\"id\":$B_STORAGE_ID,\"name\":\"x\",\"endpoint\":\"http://127.0.0.1:4960\",\"bucket\":\"bakery-backups\",\"access_key\":\"a\"}")"
+A_PROJECT_ENV=$(bakery GET "/api/projects/$A_PROJECT_ID" | json "d['project']['environments'][0]['id']")
+expect "an Application of the first Guild cannot target the second Guild's Server" 422 "$(status_in "$GUILD_A" POST "/api/environments/$A_PROJECT_ENV/applications" "{\"name\":\"$RUN-x\",\"build_pack\":\"dockerimage\",\"docker_image\":\"ghcr.io/traefik/whoami:v1.10\",\"port\":80,\"server_id\":$B_SERVER_ID}")"
+expect "a Scheduled backup of the second Guild cannot use the first Guild's S3 storage" 422 "$(
+	A_STORAGE_ID=$(bakery POST /api/s3-storages "{\"name\":\"$RUN-a\",\"endpoint\":\"http://127.0.0.1:4960\",\"bucket\":\"bakery-backups\",\"access_key\":\"a\",\"secret_key\":\"s\"}" | json "d['s3_storage']['id']")
+	status_in "$GUILD_B" POST "/api/databases/$B_DB_ID/scheduled-backups" "{\"cron\":\"0 3 * * *\",\"retention\":7,\"s3_storage_id\":$A_STORAGE_ID}"
+	bakery DELETE "/api/s3-storages/$A_STORAGE_ID" >/dev/null
+)"
+expect "the same names are free in the first Guild" 201 "$(status_in "$GUILD_A" POST /api/servers "{\"name\":\"$RUN\",\"host\":\"203.0.113.7\",\"user\":\"bakery\"}")"
+bakery DELETE "/api/servers/$(body "d['server']['id']")" >/dev/null
+expect "the second Guild still reads its Server" 200 "$(status_in "$GUILD_B" GET "/api/servers/$B_SERVER_ID")"
+
+say "A guild's events reach only its own channels"
+A_CHANNEL_ID=$(bakery POST /api/notification-channels "{\"name\":\"$RUN-a\",\"kind\":\"webhook\",\"settings\":{\"url\":\"http://127.0.0.1:4988/hook\"},\"event_kinds\":[\"backup_success\",\"backup_failure\"]}" | json "d['channel']['id']")
+in_b PATCH "/api/notification-channels/$B_CHANNEL_ID" "{\"name\":\"$RUN\",\"kind\":\"webhook\",\"settings\":{\"url\":\"http://127.0.0.1:4988/hook\"},\"event_kinds\":[\"backup_success\",\"backup_failure\"]}" >/dev/null
+wait_for 60 "the second Guild's Database runs" sh -c "curl -s -b '$JAR' -b 'bakery_guild=$GUILD_B' '$API/api/databases/$B_DB_ID' | grep -q '\"status\":\"running\"'"
+in_b POST "/api/databases/$B_DB_ID/backup-executions" '{}' >/dev/null
+wait_for 60 "the second Guild's channel hears of the Backup execution" sh -c "curl -s -b '$JAR' -b 'bakery_guild=$GUILD_B' '$API/api/notification-channels/$B_CHANNEL_ID/deliveries' | grep -q 'Backup of'"
+expect "the first Guild's channel did not" 0 "$(bakery GET "/api/notification-channels/$A_CHANNEL_ID/deliveries" | json "len(d['deliveries'])")"
+
+say "Every Guild uses the Local server; only the Instance admin changes it"
+LOCAL_NAME=$(in_b GET "/api/servers/$LOCAL_ID" | json "d['server']['name']")
+expect "the Instance admin renames it from the second Guild" 200 "$(status_in "$GUILD_B" PATCH "/api/servers/$LOCAL_ID" "{\"name\":\"$LOCAL_NAME\",\"description\":\"\"}")"
+ADMIN_TOKEN=$(in_b POST /api/invitations "{\"email\":\"admin-$RUN@example.com\",\"role\":\"admin\"}" | json "d['path'].rsplit('/', 1)[1]")
+ADMIN_JAR="$WORK/admin"
+curl -s -o /dev/null -c "$ADMIN_JAR" -H 'Content-Type: application/json' -X POST "$API/api/invitations/by-token/$ADMIN_TOKEN/accept" -d '{"name":"Admin","password":"correct horse battery"}'
+as_admin() { curl -s --max-time 10 -o "$WORK/body" -w '%{http_code}' -b "$ADMIN_JAR" -X "$1" "$API$2" -H 'Content-Type: application/json' -d "${3:-{\}}"; }
+expect "another admin of the second Guild reads the Local server" 200 "$(as_admin GET "/api/servers/$LOCAL_ID")"
+expect "but may not change it" 403 "$(as_admin PATCH "/api/servers/$LOCAL_ID" "{\"name\":\"$LOCAL_NAME\"}")"
+expect "with the reason" "the local server is the instance's" "$(body "d['message']")"
+expect "nor clean it up" 403 "$(as_admin POST "/api/servers/$LOCAL_ID/cleanup")"
+expect "and sees only the second Guild's Containers on it" True "$(as_admin GET "/api/servers/$LOCAL_ID/metrics" >/dev/null; body "all(c['owner'] in ('proxy',) or (c['owner']=='database' and c['owner_id']=='$B_DB_ID') or (c['owner']=='service' and c['owner_id']=='$B_SERVICE_ID') or (c['owner']=='application' and c['owner_id']=='$B_APP_ID') for c in d['containers'])")"
+expect "they still change the second Guild's own Server" 200 "$(as_admin PATCH "/api/servers/$B_SERVER_ID" "{\"name\":\"$RUN\",\"host\":\"203.0.113.8\",\"user\":\"bakery\"}")"
 
 say "Guilds keep to themselves"

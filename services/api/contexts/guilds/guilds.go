@@ -56,6 +56,10 @@ func Owns(name string, belongs func(ctx context.Context, id, guildID uint64) (bo
 // Current is the id of the Guild the request acts in, after Auth.
 func Current(ctx contractshttp.Context) uint64 { return guildshttp.Current(ctx) }
 
+// InstanceAdmin reports, after Auth, whether the request comes from the
+// Instance admin, who runs the installation (the Local server among it).
+func InstanceAdmin(ctx contractshttp.Context) bool { return guildshttp.InstanceAdmin(ctx) }
+
 // RoleOf is the Role the request acts with in the Current guild: "viewer",
 // "member" or "admin".
 func RoleOf(ctx contractshttp.Context) string { return string(guildshttp.RoleOf(ctx)) }

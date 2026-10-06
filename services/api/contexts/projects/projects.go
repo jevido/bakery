@@ -26,9 +26,10 @@ func svc() *app.Service {
 	if service == nil {
 		cfg := facades.Config()
 		service = app.NewService(infra.Store{}, infra.NewDeployKey, cfg.GetString("bakery.domain_suffix", "localhost"), cfg.GetString("bakery.dashboard.domain"))
-		service.ServerExists = servers.Exists
+		service.ServerUsable = servers.UsableBy
 		service.LocalServer = servers.LocalID
 		servers.OnServerDeleting(infra.Store{}.ServerInUse)
+		servers.OnContainerOwner("application", ApplicationInGuild)
 	}
 	return service
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/projects"
 	"github.com/jevido/bakery/services/api/contexts/routing"
+	"github.com/jevido/bakery/services/api/contexts/servers"
 	"github.com/jevido/bakery/services/api/contexts/services/app"
 	serviceshttp "github.com/jevido/bakery/services/api/contexts/services/http"
 	"github.com/jevido/bakery/services/api/contexts/services/infra"
@@ -70,6 +71,7 @@ func svc() *app.Service {
 		projects.OnProjectDeleting(service.InUse)
 		projects.OnEnvironmentDeleting(service.InUseInEnvironment)
 		projects.OnDomainCheck(service.DomainInUse)
+		servers.OnContainerOwner("service", serviceBelongs)
 	})
 	return service
 }
@@ -79,17 +81,20 @@ var (
 	projectInGuild     = guilds.Owns("project", projects.ProjectInGuild)
 	// serviceInGuild answers 404 for an {id} Service whose Environment is
 	// outside the Current guild.
-	serviceInGuild = guilds.Owns("service", func(ctx context.Context, id, guildID uint64) (bool, error) {
-		envID, err := svc().EnvironmentOf(ctx, id)
-		if errors.Is(err, app.ErrNotFound) {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		return projects.EnvironmentInGuild(ctx, envID, guildID)
-	})
+	serviceInGuild = guilds.Owns("service", serviceBelongs)
 )
+
+// serviceBelongs reports whether the Service's Environment is in the Guild.
+func serviceBelongs(ctx context.Context, id, guildID uint64) (bool, error) {
+	envID, err := svc().EnvironmentOf(ctx, id)
+	if errors.Is(err, app.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return projects.EnvironmentInGuild(ctx, envID, guildID)
+}
 
 // Routes registers the services API, all behind guilds.Auth, every route
 // keyed by an Environment, Project or Service answering 404 outside the

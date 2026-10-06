@@ -140,6 +140,7 @@ func (s Store) FailRunningBackupExecutions(ctx context.Context, reason string, a
 
 type s3StorageRecord struct {
 	ID                 uint64 `gorm:"primaryKey"`
+	GuildID            uint64
 	Name               string
 	Endpoint           string
 	Region             string
@@ -155,7 +156,7 @@ func (s3StorageRecord) TableName() string { return "s3_storages" }
 func (r s3StorageRecord) toDomain() (domain.S3Storage, error) {
 	secret, err := decrypt(r.SecretKeyEncrypted)
 	return domain.S3Storage{
-		ID: r.ID, Name: r.Name, Endpoint: r.Endpoint, Region: r.Region, Bucket: r.Bucket,
+		ID: r.ID, GuildID: r.GuildID, Name: r.Name, Endpoint: r.Endpoint, Region: r.Region, Bucket: r.Bucket,
 		Prefix: r.Prefix, AccessKey: r.AccessKey, SecretKey: secret,
 	}, err
 }
@@ -163,15 +164,15 @@ func (r s3StorageRecord) toDomain() (domain.S3Storage, error) {
 func toS3StorageRecord(st domain.S3Storage) (s3StorageRecord, error) {
 	secret, err := encrypt(st.SecretKey)
 	return s3StorageRecord{
-		ID: st.ID, Name: st.Name, Endpoint: st.Endpoint, Region: st.Region, Bucket: st.Bucket,
+		ID: st.ID, GuildID: st.GuildID, Name: st.Name, Endpoint: st.Endpoint, Region: st.Region, Bucket: st.Bucket,
 		Prefix: st.Prefix, AccessKey: st.AccessKey, SecretKeyEncrypted: secret,
 	}, err
 }
 
-// S3Storages lists every S3 storage by name.
-func (s Store) S3Storages(ctx context.Context) ([]domain.S3Storage, error) {
+// S3Storages lists the Guild's S3 storages by name.
+func (s Store) S3Storages(ctx context.Context, guildID uint64) ([]domain.S3Storage, error) {
 	var recs []s3StorageRecord
-	if err := s.query(ctx).Order("name").Find(&recs); err != nil {
+	if err := s.query(ctx).Where("guild_id", guildID).Order("name").Find(&recs); err != nil {
 		return nil, err
 	}
 	out := make([]domain.S3Storage, len(recs))
@@ -198,10 +199,10 @@ func (s Store) S3Storage(ctx context.Context, id uint64) (domain.S3Storage, bool
 	return st, err == nil, err
 }
 
-// S3StorageNameTaken reports whether an S3 storage other than exceptID has
-// the name.
-func (s Store) S3StorageNameTaken(ctx context.Context, name string, exceptID uint64) (bool, error) {
-	n, err := s.query(ctx).Model(&s3StorageRecord{}).Where("name", name).Where("id <> ?", exceptID).Count()
+// S3StorageNameTaken reports whether another of the Guild's S3 storages
+// than exceptID has the name.
+func (s Store) S3StorageNameTaken(ctx context.Context, guildID uint64, name string, exceptID uint64) (bool, error) {
+	n, err := s.query(ctx).Model(&s3StorageRecord{}).Where("guild_id", guildID).Where("name", name).Where("id <> ?", exceptID).Count()
 	return n > 0, err
 }
 

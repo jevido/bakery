@@ -16,10 +16,12 @@ import (
 
 type Controller struct {
 	service *app.Service
+	// guild is the Current guild of a request.
+	guild func(ctx contractshttp.Context) uint64
 }
 
-func NewController(service *app.Service) *Controller {
-	return &Controller{service: service}
+func NewController(service *app.Service, guild func(ctx contractshttp.Context) uint64) *Controller {
+	return &Controller{service: service, guild: guild}
 }
 
 // settingsJSON is a channel's settings as shown: no secret ever, only
@@ -193,7 +195,7 @@ func (c *Controller) EventKinds(ctx contractshttp.Context) contractshttp.Respons
 }
 
 func (c *Controller) List(ctx contractshttp.Context) contractshttp.Response {
-	list, err := c.service.Channels(ctx.Context())
+	list, err := c.service.Channels(ctx.Context(), c.guild(ctx))
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -209,7 +211,7 @@ func (c *Controller) Create(ctx contractshttp.Context) contractshttp.Response {
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	ch, err := c.service.AddChannel(ctx.Context(), req.input())
+	ch, err := c.service.AddChannel(ctx.Context(), c.guild(ctx), req.input())
 	return one(ctx, contractshttp.StatusCreated, ch, err)
 }
 

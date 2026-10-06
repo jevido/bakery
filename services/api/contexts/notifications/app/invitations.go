@@ -43,11 +43,12 @@ If you did not expect this, ignore this email.`, by, inv.Guild, inv.Role, inv.Li
 }
 
 // SendInvitation emails the Invitation's link to the invited person
-// through the enabled email channel with the lowest id. Without one it answers
+// through the inviting Guild's enabled email channel with the lowest id.
+// Without one it answers
 // false and no error. It is no Delivery: it goes to a person, not to the
 // channel's recipients.
 func (s *Service) SendInvitation(ctx context.Context, inv Invitation) (bool, error) {
-	channels, err := s.store.Channels(ctx)
+	channels, err := s.store.Channels(ctx, inv.GuildID)
 	if err != nil {
 		return false, err
 	}

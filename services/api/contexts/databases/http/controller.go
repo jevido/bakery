@@ -15,10 +15,12 @@ import (
 
 type Controller struct {
 	service *app.Service
+	// guild is the Current guild of a request.
+	guild func(ctx contractshttp.Context) uint64
 }
 
-func NewController(service *app.Service) *Controller {
-	return &Controller{service: service}
+func NewController(service *app.Service, guild func(ctx contractshttp.Context) uint64) *Controller {
+	return &Controller{service: service, guild: guild}
 }
 
 // limitsJSON is null for unlimited, like an Application's.

@@ -21,14 +21,15 @@ const (
 	sending = 4
 )
 
-// Notify records a Delivery of n for every enabled channel subscribed to
-// its Event kind and wakes the dispatcher. It never fails the caller: what goes
+// Notify records a Delivery of n for every enabled channel of its Guild (of
+// every Guild for GuildID 0) subscribed to its Event kind and wakes the
+// dispatcher. It never fails the caller: what goes
 // wrong is logged.
 func (s *Service) Notify(ctx context.Context, n domain.Notification) {
 	if n.At.IsZero() {
 		n.At = s.Now()
 	}
-	channels, err := s.store.Channels(ctx)
+	channels, err := s.store.Channels(ctx, n.GuildID)
 	if err != nil {
 		s.Log("notifications: %s: reading channels: %v", n.Kind, err)
 		return

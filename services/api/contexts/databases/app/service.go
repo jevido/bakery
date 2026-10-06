@@ -56,9 +56,10 @@ type Store interface {
 	FailRunningBackupExecutions(ctx context.Context, reason string, at time.Time) (int64, error)
 
 	// S3 storages; the secret key is encrypted by the Store.
-	S3Storages(ctx context.Context) ([]domain.S3Storage, error)
+	// S3Storages lists the Guild's S3 storages by name.
+	S3Storages(ctx context.Context, guildID uint64) ([]domain.S3Storage, error)
 	S3Storage(ctx context.Context, id uint64) (domain.S3Storage, bool, error)
-	S3StorageNameTaken(ctx context.Context, name string, exceptID uint64) (bool, error)
+	S3StorageNameTaken(ctx context.Context, guildID uint64, name string, exceptID uint64) (bool, error)
 	S3StorageInUse(ctx context.Context, id uint64) (bool, error)
 	CreateS3Storage(ctx context.Context, st domain.S3Storage) (domain.S3Storage, error)
 	SaveS3Storage(ctx context.Context, st domain.S3Storage) error
@@ -88,6 +89,7 @@ type Runtime interface {
 type Environment struct {
 	ID        uint64
 	ProjectID uint64
+	GuildID   uint64
 }
 
 // Environments looks up an Environment, returning ErrNotFound for an

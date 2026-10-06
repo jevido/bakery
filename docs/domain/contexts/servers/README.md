@@ -23,7 +23,7 @@ Local server. It does not keep a metrics history either.
 | Term | Meaning |
 | ---- | ------- |
 | Server | A machine The Bakery runs Containers on, with a name and an optional description. |
-| Local server | The Server The Bakery itself runs on, reached through the rootless Podman socket. Always exists, named `localhost` until renamed; only its name and description can be edited, and it cannot be deleted. |
+| Local server | The Server The Bakery itself runs on, reached through the rootless Podman socket. Always exists, named `localhost` until renamed; only its name and description can be edited, only by the Instance admin, and it cannot be deleted. It belongs to no Guild: every Guild sees it and deploys to it. |
 | Remote server | A Server reached over SSH as a given user, whose rootless Podman API socket is tunnelled through that connection. |
 | Private key | The ed25519 key pair The Bakery generates for one Remote server. An admin adds the public half to the user's `~/.ssh/authorized_keys`; the private half is encrypted at rest. |
 | Host key | The SSH host key of a Remote server, pinned on the first connection and required to match on every later one until an admin forgets it. |
@@ -31,7 +31,7 @@ Local server. It does not keep a metrics history either.
 | Server status | `unvalidated` (never checked, or host, port or user changed since), `reachable` (every required check passed) or `unreachable`. |
 | Server metrics | CPU use, memory used and total, and disk used and total of Podman's storage on a Server, read live. |
 | Server details | The operating system, architecture, kernel, CPU cores, memory, Podman version and boot time of a Server, read live from Podman. |
-| Container metrics | CPU and memory use of each Bakery Container on a Server, read live. |
+| Container metrics | CPU and memory use of each Bakery Container on a Server, read live. On the Local server a Member sees only their Current guild's Containers and the Proxy; the Instance admin sees all. |
 | Server probe | Every 5 minutes, each Server whose latest Validation passed is connected to and its disk read. Two failures in a row make a Reachable Server Unreachable; one success makes an Unreachable one Reachable again. *High disk usage* is raised at 90 % used and cleared below 85 %. |
 | Cleanup | Freeing disk on a Server: dangling Bakery images and build layers, and Image retention for the Applications on it. Daily and on demand. |
 | Server connection | What other contexts get from `Connect(server)`: the Server's Podman client and a way to open a unix socket on it. Pooled: one SSH connection per Remote server, redialled when it drops, dropped when the Server is edited, deleted or its Host key forgotten. |
@@ -42,14 +42,15 @@ Local server. It does not keep a metrics history either.
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Server | The name is unique (1–63 characters); the description is at most 255 characters; host, port and user together are unique. The Local server always exists, takes no host, port or user, and cannot be deleted. Changing host, port or user clears the Host key and makes the Server `unvalidated`. A pinned Host key only changes through Forget host key. The Server status follows its latest Validation or Server probe. Only a probe that changes the status or the high disk usage flag announces anything. |
+| Server | A Remote server belongs to one Guild, the Local server to none. The name (1–63 characters) is unique among the Guild's Servers and the Local server, and `localhost` is the Local server's in every Guild; the description is at most 255 characters; host, port and user together are unique within a Guild (another Guild may reach the same machine with its own key). The Local server always exists, takes no host, port or user, and cannot be deleted. Changing host, port or user clears the Host key and makes the Server `unvalidated`. A pinned Host key only changes through Forget host key. The Server status follows its latest Validation or Server probe. Only a probe that changes the status or the high disk usage flag announces anything. |
 
 ### Commands
 
-- `Add(name, description, host, port, user)`: a Remote server with a new
-  Private key, `unvalidated`.
+- `List(guild)`: the Local server, then the Guild's Remote servers.
+- `Add(guild, name, description, host, port, user)`: a Remote server of the
+  Guild with a new Private key, `unvalidated`.
 - `Edit(server, name, description, host, port, user)`: on the Local server
-  only the name and description.
+  only the name and description, and only by the Instance admin.
 - `Delete(server)`: Remote servers only.
   Delete is refused while a registered check says the Server is still in
   use (an Application targets it).
@@ -63,11 +64,12 @@ Local server. It does not keep a metrics history either.
 - `Metrics(server)`: Server metrics and Container metrics, live.
 - `Details(server)`: Server details, live.
 - `CleanUp(server)`: runs Cleanup and records when it ran and how much it
-  reclaimed.
+  reclaimed. On the Local server only the Instance admin runs it by hand.
 
 ### Domain events
 
-- `ServerHealthChanged { server, name, change, reason, disk used, disk total }`,
+- `ServerHealthChanged { server, guild, name, change, reason, disk used, disk total }`
+  (guild 0 for the Local server),
   change being `unreachable`, `reachable` or `server_disk_usage`: a Server
   probe changed what is known about a Server. Registered with
   `OnServerHealthChanged(f)`.
@@ -75,15 +77,34 @@ Local server. It does not keep a metrics history either.
 ## Integration
 
 - **Publishes:** `Connect(server)` (a Server connection; 0 is the Local
-  server; a changed Host key refuses as Validate does), `LocalID()`,
-  `Exists(server)`, `OnServerDeleting(check)` (projects: a Server Applications
+  server; a changed Host key refuses as Validate does; the Server probe and
+  deployments' workers reach any Guild's), `LocalID()`,
+  `UsableBy(server, guild)` (projects' Target server check, and every
+  servers route keyed by an id, which answers 404 outside the Current guild),
+  `OnContainerOwner(kind, inGuild)` (projects, databases and services tell
+  whose a Container is), `OnServerDeleting(check)` (projects: a Server Applications
   target is not deleted) `OnCleanup(retention)` (deployments registers its
   Image retention, called with the Server's id during every Cleanup) and
   `OnServerHealthChanged(f)` (notifications).
-- **Consumes:** the auth middleware from guilds. Nothing else: servers
-  imports no other context, so every context may depend on it.
+- **Consumes:** the auth middlewares from guilds (`Auth`, `Admin`, `Owns`,
+  `Current`, `InstanceAdmin`). Nothing else: servers imports no other
+  context, so every context may depend on it.
 
 ## Why it's shaped this way
+
+- **The Local server is the installation's, not a Guild's.** Every Guild
+  needs somewhere to deploy before it adds a Server of its own, and there is
+  only one machine The Bakery runs on. So the Local server belongs to no
+  Guild: every Guild sees and deploys to it, while its name, description and
+  Cleanup belong to the Instance admin, who runs the installation. Its
+  Container metrics are filtered per Guild so one Guild does not watch
+  another's Containers. Coolify gives its root team the localhost server;
+  The Bakery shares it instead, because a Guild there cannot bring its own
+  first machine any other way.
+- **The same machine may be a Server in two Guilds.** Names and addresses
+  are unique within a Guild only. Refusing an address another Guild uses
+  would tell one Guild what another runs on; each Guild reaches the machine
+  with its own Private key.
 
 - **Its own context, not part of deployments.** Deployments, Databases,
   Services and the Proxy will all run on Servers, and a Server has a

@@ -37,11 +37,17 @@ func svc() *app.Service {
 	return service
 }
 
-// Routes registers the Notification channels API, admins only: channels
-// hold credentials of other systems.
+// channelInGuild answers 404 for a route whose {id} channel is another
+// Guild's.
+var channelInGuild = guilds.Owns("notification-channel", func(ctx context.Context, id, guildID uint64) (bool, error) {
+	return svc().ChannelInGuild(ctx, id, guildID)
+})
+
+// Routes registers the Current guild's Notification channels API, admins
+// only: channels hold credentials of other systems.
 func Routes(r route.Router) {
-	c := notificationshttp.NewController(svc())
-	r.Middleware(guilds.Auth, guilds.Admin).Group(func(r route.Router) {
+	c := notificationshttp.NewController(svc(), guilds.Current)
+	r.Middleware(guilds.Auth, channelInGuild, guilds.Admin).Group(func(r route.Router) {
 		r.Get("/api/notification-event-kinds", c.EventKinds)
 		r.Get("/api/notification-channels", c.List)
 		r.Post("/api/notification-channels", c.Create)

@@ -9,7 +9,10 @@ import (
 
 // S3Storage is an S3-compatible bucket Backup executions are uploaded to.
 type S3Storage struct {
-	ID        uint64
+	ID uint64
+	// GuildID is the Guild the S3 storage belongs to; only its Databases
+	// back up to it.
+	GuildID   uint64
 	Name      string
 	Endpoint  string
 	Region    string

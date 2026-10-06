@@ -33,16 +33,16 @@ func (o *oneServer) Get(_ context.Context, id uint64) (domain.Server, bool, erro
 	s, ok := o.servers[id]
 	return s, ok, nil
 }
-func (o *oneServer) List(context.Context) ([]domain.Server, error) { return nil, nil }
+func (o *oneServer) List(context.Context, uint64) ([]domain.Server, error) { return nil, nil }
 func (o *oneServer) Save(_ context.Context, s domain.Server) error {
 	o.servers[s.ID] = s
 	return nil
 }
 func (o *oneServer) Delete(context.Context, uint64) error { return nil }
-func (o *oneServer) NameTaken(context.Context, string, uint64) (bool, error) {
+func (o *oneServer) NameTaken(context.Context, uint64, string, uint64) (bool, error) {
 	return false, nil
 }
-func (o *oneServer) AddressTaken(context.Context, string, int, string, uint64) (bool, error) {
+func (o *oneServer) AddressTaken(context.Context, uint64, string, int, string, uint64) (bool, error) {
 	return false, nil
 }
 func (o *oneServer) Local(context.Context) (domain.Server, bool, error) {
@@ -66,7 +66,7 @@ func TestValidateStandIn(t *testing.T) {
 	local := podman.New(podman.DefaultSocket())
 	ctx := context.Background()
 	s := app.NewService(&oneServer{servers: map[uint64]domain.Server{}}, NewPrivateKey, Connector{Local: local, LocalSocket: podman.DefaultSocket()})
-	srv, err := s.Add(ctx, domain.Input{Name: "stand-in", Host: "127.0.0.1", Port: 4972, User: "podman"})
+	srv, err := s.Add(ctx, 1, domain.Input{Name: "stand-in", Host: "127.0.0.1", Port: 4972, User: "podman"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestPoolStandIn(t *testing.T) {
 	local := podman.New(podman.DefaultSocket())
 	ctx := context.Background()
 	s := app.NewService(&oneServer{servers: map[uint64]domain.Server{}}, NewPrivateKey, Connector{Local: local, LocalSocket: podman.DefaultSocket()})
-	srv, err := s.Add(ctx, domain.Input{Name: "stand-in", Host: "127.0.0.1", Port: 4972, User: "podman"})
+	srv, err := s.Add(ctx, 1, domain.Input{Name: "stand-in", Host: "127.0.0.1", Port: 4972, User: "podman"})
 	if err != nil {
 		t.Fatal(err)
 	}

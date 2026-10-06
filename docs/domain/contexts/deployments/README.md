@@ -51,7 +51,7 @@ Application is (projects) or for the Caddy configuration (routing).
 | Deployment | Belongs to the Application itself or to one of its Previews. Status only moves forward: `queued` → `cloning` → `building` → `starting` → `finished` (a `dockerimage` Deployment moves from `cloning` straight on to `building` without cloning), and any active status → `failed` (with an error) or `cancelled`. A Rollback moves from `queued` straight to `starting`; it names its source Deployment, which is `finished`, of the same Application, and whose Image still exists. An Application has at most one queued Deployment of its own and one per Preview, and at most one running Deployment in all; a queued one is only picked up once the Application has no running one, and a new Deploy while one is already queued (for the same Preview) is refused. A Preview Deployment cannot be rolled back to: a Preview always builds its head. Its log is append-only and ordered. |
 | Webhook | One per Application, with a secret and Auto-deploy on or off. A call is accepted only with a valid signature for that secret (HMAC-SHA256 of the body for GitHub, Gitea and Forgejo; the token for GitLab). Only a push to the Application's branch, with Auto-deploy on, queues a Deployment. Only a Pull request event, with Previews on, whose head is a branch of the same repository and whose base is the Application's branch, opens, deploys or closes a Preview. |
 | Preview | One per Application and Preview number. `open` → `closed`, and back to `open` when the Pull request is reopened. Only an open Preview is deployed. Closing it removes its Containers, Volumes, Images and Preview route on its Server; a closed Preview has nothing left running. Never for a `dockerimage` Application. |
-| Known host | One per host (and port). The first clone from a host records its keys; every later clone must see the same ones, or the Deployment fails. Only an admin can forget a host. |
+| Known host | One per Guild and host (and port). The first clone from a host in a Guild records its keys; every later clone of that Guild's Applications must see the same ones, or the Deployment fails. Only an admin of the Guild can list or forget it. |
 
 ### Commands
 
@@ -123,10 +123,11 @@ Application is (projects) or for the Caddy configuration (routing).
 ## Integration
 
 - **Publishes:** the Deployment and its log over HTTP (JSON and SSE), and
-  `OnDeploymentFinished` (notifications).
+  `OnDeploymentFinished` (notifications), carrying the Application's Guild.
 - **Consumes:** `projects.ApplicationInGuild` (through `guilds.Owns`), so every route keyed by an Application or a Deployment answers 404 outside the Current guild (the Webhook endpoint is found by its secret, in any Guild); `projects.ApplicationForDeploy` (the snapshot is taken once, at
   the start of a Deployment, so editing the Application mid-build does not
-  change what is being built; it carries the Deploy key for SSH Git repositories);
+  change what is being built; it carries the Deploy key for SSH Git repositories
+  and the Guild, whose Known hosts the clone trusts);
   `routing.SwitchRoute` (with the Target server); `ApplicationDeleted` (the
   Webhook goes too, and Containers, and the volumes and Images unless the
   event says to keep them, are removed on every Server the Application's
@@ -191,7 +192,9 @@ Application is (projects) or for the Caddy configuration (routing).
   container has no persistent home, so a `known_hosts` file would be
   forgotten on every upgrade, and not checking host keys at all would let
   anyone in the middle serve their own code. A changed key fails the
-  Deployment with a reason until an admin forgets the host.
+  Deployment with a reason until an admin forgets the host. They are per
+  Guild: one Guild's admin forgetting a host, or its first clone trusting
+  one, decides nothing for another Guild.
 - **Webhook payloads must be JSON.** The signature covers the raw body, and
   a form-encoded body is parsed by the HTTP layer before the Webhook sees it,
   so its original bytes are gone. Every supported git host can send JSON

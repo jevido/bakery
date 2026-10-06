@@ -14,6 +14,7 @@ import (
 
 type knownHostRecord struct {
 	ID        uint64 `gorm:"primaryKey"`
+	GuildID   uint64
 	Host      string
 	Keys      string
 	CreatedAt time.Time
@@ -25,9 +26,9 @@ func (knownHostRecord) TableName() string { return "known_hosts" }
 // KnownHosts stores Known hosts in the known_hosts table.
 type KnownHosts struct{}
 
-func (KnownHosts) Lines(ctx context.Context) (string, error) {
+func (KnownHosts) Lines(ctx context.Context, guildID uint64) (string, error) {
 	var recs []knownHostRecord
-	if err := facades.Orm().WithContext(ctx).Query().OrderBy("id").Find(&recs); err != nil {
+	if err := facades.Orm().WithContext(ctx).Query().Where("guild_id", guildID).OrderBy("id").Find(&recs); err != nil {
 		return "", err
 	}
 	var b strings.Builder
@@ -41,7 +42,7 @@ func (KnownHosts) Lines(ctx context.Context) (string, error) {
 // Remember groups the lines by host and adds each line a host does not have
 // yet. A host's existing keys are never replaced: that is what ForgetKnownHost
 // is for.
-func (k KnownHosts) Remember(ctx context.Context, lines string) error {
+func (k KnownHosts) Remember(ctx context.Context, guildID uint64, lines string) error {
 	byHost := map[string][]string{}
 	for _, line := range strings.Split(lines, "\n") {
 		line = strings.TrimSpace(line)
@@ -54,12 +55,12 @@ func (k KnownHosts) Remember(ctx context.Context, lines string) error {
 	q := facades.Orm().WithContext(ctx).Query()
 	for host, add := range byHost {
 		var recs []knownHostRecord
-		if err := q.Where("host", host).Find(&recs); err != nil {
+		if err := q.Where("guild_id", guildID).Where("host", host).Find(&recs); err != nil {
 			return err
 		}
 		if len(recs) == 0 {
 			now := time.Now()
-			if err := q.Create(&knownHostRecord{Host: host, Keys: strings.Join(add, "\n"), CreatedAt: now, UpdatedAt: now}); err != nil {
+			if err := q.Create(&knownHostRecord{GuildID: guildID, Host: host, Keys: strings.Join(add, "\n"), CreatedAt: now, UpdatedAt: now}); err != nil {
 				return err
 			}
 			continue
@@ -92,9 +93,9 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-func (KnownHosts) List(ctx context.Context) ([]domain.KnownHost, error) {
+func (KnownHosts) List(ctx context.Context, guildID uint64) ([]domain.KnownHost, error) {
 	var recs []knownHostRecord
-	if err := facades.Orm().WithContext(ctx).Query().OrderBy("host").Find(&recs); err != nil {
+	if err := facades.Orm().WithContext(ctx).Query().Where("guild_id", guildID).OrderBy("host").Find(&recs); err != nil {
 		return nil, err
 	}
 	out := make([]domain.KnownHost, len(recs))
@@ -121,8 +122,8 @@ func fingerprints(keys string) []string {
 	return out
 }
 
-func (KnownHosts) Forget(ctx context.Context, id uint64) (bool, error) {
-	res, err := facades.Orm().WithContext(ctx).Query().Where("id", id).Delete(&knownHostRecord{})
+func (KnownHosts) Forget(ctx context.Context, guildID, id uint64) (bool, error) {
+	res, err := facades.Orm().WithContext(ctx).Query().Where("guild_id", guildID).Where("id", id).Delete(&knownHostRecord{})
 	if err != nil {
 		return false, err
 	}

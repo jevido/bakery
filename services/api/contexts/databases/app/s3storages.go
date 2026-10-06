@@ -15,8 +15,16 @@ var ErrS3StorageInUse = errors.New("a database's backup schedule uses this S3 st
 // checkTimeout bounds one connection test.
 const checkTimeout = 15 * time.Second
 
-func (s *Service) S3Storages(ctx context.Context) ([]domain.S3Storage, error) {
-	return s.store.S3Storages(ctx)
+// S3Storages lists the Guild's S3 storages by name.
+func (s *Service) S3Storages(ctx context.Context, guildID uint64) ([]domain.S3Storage, error) {
+	return s.store.S3Storages(ctx, guildID)
+}
+
+// S3StorageInGuild reports whether the S3 storage exists and belongs to the
+// Guild.
+func (s *Service) S3StorageInGuild(ctx context.Context, id, guildID uint64) (bool, error) {
+	st, found, err := s.store.S3Storage(ctx, id)
+	return found && st.GuildID == guildID, err
 }
 
 func (s *Service) s3Storage(ctx context.Context, id uint64) (domain.S3Storage, error) {
@@ -28,7 +36,7 @@ func (s *Service) s3Storage(ctx context.Context, id uint64) (domain.S3Storage, e
 }
 
 func (s *Service) checkS3Name(ctx context.Context, st domain.S3Storage) error {
-	taken, err := s.store.S3StorageNameTaken(ctx, st.Name, st.ID)
+	taken, err := s.store.S3StorageNameTaken(ctx, st.GuildID, st.Name, st.ID)
 	if err != nil {
 		return err
 	}
@@ -38,11 +46,13 @@ func (s *Service) checkS3Name(ctx context.Context, st domain.S3Storage) error {
 	return nil
 }
 
-func (s *Service) CreateS3Storage(ctx context.Context, in domain.S3Input) (domain.S3Storage, error) {
+// CreateS3Storage adds an S3 storage to the Guild.
+func (s *Service) CreateS3Storage(ctx context.Context, guildID uint64, in domain.S3Input) (domain.S3Storage, error) {
 	st, err := domain.NewS3Storage(in)
 	if err != nil {
 		return st, err
 	}
+	st.GuildID = guildID
 	if err := s.checkS3Name(ctx, st); err != nil {
 		return st, err
 	}
@@ -79,14 +89,17 @@ func (s *Service) DeleteS3Storage(ctx context.Context, id uint64) error {
 }
 
 // CheckS3Storage tests whether Bakery reaches the bucket with the input,
-// before it is saved. With id, an empty secret key means the stored one.
-// The returned error is the storage's answer; a broken input is a
-// FieldError.
-func (s *Service) CheckS3Storage(ctx context.Context, id uint64, in domain.S3Input) (connErr error, err error) {
+// before it is saved. With id, an empty secret key means the stored one,
+// which must be the Guild's (else ErrNotFound). The returned error is the
+// storage's answer; a broken input is a FieldError.
+func (s *Service) CheckS3Storage(ctx context.Context, guildID, id uint64, in domain.S3Input) (connErr error, err error) {
 	var st domain.S3Storage
 	if id != 0 {
 		if st, err = s.s3Storage(ctx, id); err != nil {
 			return nil, err
+		}
+		if st.GuildID != guildID {
+			return nil, ErrNotFound
 		}
 	}
 	if err := st.Update(in); err != nil {

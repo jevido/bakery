@@ -24,7 +24,7 @@ const probing = 4
 // passed: it reads the Server metrics (which needs a connection) and
 // records the outcome, calling OnHealthChanged for what changed.
 func (s *Service) ProbeAll(ctx context.Context) error {
-	servers, err := s.store.List(ctx)
+	servers, err := s.store.List(ctx, 0)
 	if err != nil {
 		return err
 	}

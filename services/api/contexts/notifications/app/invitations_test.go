@@ -42,7 +42,12 @@ func TestSendInvitation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		c.GuildID = 1
 		_, _ = store.CreateChannel(context.Background(), c)
+	}
+	// Another Guild's email channel never sends this Guild's Invitations.
+	if sent, err := s.SendInvitation(context.Background(), Invitation{Email: "x@example.com", GuildID: 2}); sent || err != nil {
+		t.Fatalf("through another guild's channel: %v %v", sent, err)
 	}
 	// A disabled email channel is passed over.
 	store.channels[1].Enabled = false

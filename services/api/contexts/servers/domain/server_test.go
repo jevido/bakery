@@ -9,7 +9,7 @@ import (
 var key = PrivateKey{Public: "ssh-ed25519 AAAA bakery@x", Private: "-----BEGIN OPENSSH PRIVATE KEY-----"}
 
 func TestNewRemote(t *testing.T) {
-	s, err := NewRemote(Input{Name: " web 1 ", Host: "203.0.113.10", User: "bakery"}, key)
+	s, err := NewRemote(1, Input{Name: " web 1 ", Host: "203.0.113.10", User: "bakery"}, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,11 +25,11 @@ func TestNewRemote(t *testing.T) {
 		{Name: "a", Host: "h", User: "Root!"},
 	} {
 		var fe *FieldError
-		if _, err := NewRemote(in, key); !errors.As(err, &fe) {
+		if _, err := NewRemote(1, in, key); !errors.As(err, &fe) {
 			t.Errorf("%+v: err %v, want a FieldError", in, err)
 		}
 	}
-	if _, err := NewRemote(Input{Name: "a", Host: "h", User: "u"}, PrivateKey{}); err == nil {
+	if _, err := NewRemote(1, Input{Name: "a", Host: "h", User: "u"}, PrivateKey{}); err == nil {
 		t.Error("no key accepted")
 	}
 }
@@ -77,7 +77,7 @@ func TestEditLocalNameAndDescription(t *testing.T) {
 }
 
 func TestDescription(t *testing.T) {
-	s, err := NewRemote(Input{Name: "a", Description: "  web  ", Host: "h", User: "u"}, key)
+	s, err := NewRemote(1, Input{Name: "a", Description: "  web  ", Host: "h", User: "u"}, key)
 	if err != nil || s.Description != "web" {
 		t.Fatalf("new: %v, %q", err, s.Description)
 	}
@@ -85,7 +85,7 @@ func TestDescription(t *testing.T) {
 		t.Fatal(err)
 	}
 	var fe *FieldError
-	if _, err := NewRemote(Input{Name: "a", Description: strings.Repeat("x", 256), Host: "h", User: "u"}, key); !errors.As(err, &fe) || fe.Field != "description" {
+	if _, err := NewRemote(1, Input{Name: "a", Description: strings.Repeat("x", 256), Host: "h", User: "u"}, key); !errors.As(err, &fe) || fe.Field != "description" {
 		t.Errorf("long description: %v", err)
 	}
 	if err := s.Edit(Input{Name: "a", Host: "h", User: "u"}); err != nil || s.Description != "" {
@@ -94,7 +94,7 @@ func TestDescription(t *testing.T) {
 }
 
 func TestEditAddressForgetsHostKey(t *testing.T) {
-	s, _ := NewRemote(Input{Name: "a", Host: "h", User: "u"}, key)
+	s, _ := NewRemote(1, Input{Name: "a", Host: "h", User: "u"}, key)
 	s.RecordValidation(Validation{Checks: []Check{{Name: CheckSSH, OK: true, Required: true}}}, "ssh-ed25519 HOST")
 	if s.HostKey == "" || s.Status != Reachable {
 		t.Fatalf("%+v", s)
@@ -114,7 +114,7 @@ func TestEditAddressForgetsHostKey(t *testing.T) {
 }
 
 func TestRecordValidation(t *testing.T) {
-	s, _ := NewRemote(Input{Name: "a", Host: "h", User: "u"}, key)
+	s, _ := NewRemote(1, Input{Name: "a", Host: "h", User: "u"}, key)
 	s.RecordValidation(Validation{Checks: []Check{
 		{Name: CheckSSH, OK: true, Required: true},
 		{Name: CheckPorts, OK: false},

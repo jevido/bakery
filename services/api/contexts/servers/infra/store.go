@@ -18,6 +18,7 @@ import (
 
 type serverRecord struct {
 	ID                   uint64 `gorm:"primaryKey"`
+	GuildID              *uint64
 	Name                 string
 	Description          string
 	Kind                 string
@@ -71,7 +72,7 @@ func toRecord(s domain.Server) (serverRecord, error) {
 		return serverRecord{}, err
 	}
 	rec := serverRecord{
-		ID: s.ID, Name: s.Name, Description: s.Description, Kind: string(s.Kind), Host: s.Host, Port: s.Port, UserName: s.User,
+		ID: s.ID, GuildID: guildRef(s.GuildID), Name: s.Name, Description: s.Description, Kind: string(s.Kind), Host: s.Host, Port: s.Port, UserName: s.User,
 		PublicKey: s.Key.Public, PrivateKeyEncrypted: private, HostKey: s.HostKey,
 		Status: string(s.Status), Validation: string(raw), LastCleanupReclaimed: s.LastCleanup.Reclaimed,
 		FailedProbes: s.FailedProbes, HighDiskUsage: s.HighDiskUsage,
@@ -92,7 +93,7 @@ func (r serverRecord) toDomain() (domain.Server, error) {
 		}
 	}
 	s := domain.Server{
-		ID: r.ID, Name: r.Name, Description: r.Description, Kind: domain.Kind(r.Kind), Host: r.Host, Port: r.Port, User: r.UserName,
+		ID: r.ID, GuildID: guildID(r.GuildID), Name: r.Name, Description: r.Description, Kind: domain.Kind(r.Kind), Host: r.Host, Port: r.Port, User: r.UserName,
 		Key: domain.PrivateKey{Public: r.PublicKey, Private: private}, HostKey: r.HostKey,
 		Status: domain.Status(r.Status), LastCleanup: domain.Cleanup{Reclaimed: r.LastCleanupReclaimed},
 		FailedProbes: r.FailedProbes, HighDiskUsage: r.HighDiskUsage,
@@ -149,10 +150,15 @@ func (s Store) Get(ctx context.Context, id uint64) (domain.Server, bool, error) 
 	return srv, err == nil, err
 }
 
-// List returns every Server, the Local server first, then oldest first.
-func (s Store) List(ctx context.Context) ([]domain.Server, error) {
+// List returns the Local server first, then the Guild's Remote servers
+// oldest first; guildID 0 lists every Server.
+func (s Store) List(ctx context.Context, guildID uint64) ([]domain.Server, error) {
 	var recs []serverRecord
-	if err := s.query(ctx).OrderByRaw("kind = 'local' DESC, id").Find(&recs); err != nil {
+	q := s.query(ctx)
+	if guildID != 0 {
+		q = q.Where("guild_id IS NULL OR guild_id = ?", guildID)
+	}
+	if err := q.OrderByRaw("kind = 'local' DESC, id").Find(&recs); err != nil {
 		return nil, err
 	}
 	out := make([]domain.Server, len(recs))
@@ -186,16 +192,21 @@ func (s Store) Delete(ctx context.Context, id uint64) error {
 }
 
 // NameTaken reports whether a Server other than exceptID has the name
-// (ignoring case).
-func (s Store) NameTaken(ctx context.Context, name string, exceptID uint64) (bool, error) {
-	n, err := s.query(ctx).Model(&serverRecord{}).Where("lower(name) = lower(?)", name).Where("id <> ?", exceptID).Count()
+// (ignoring case) among the Guild's and the Local server; guildID 0 looks at
+// every Server.
+func (s Store) NameTaken(ctx context.Context, guildID uint64, name string, exceptID uint64) (bool, error) {
+	q := s.query(ctx).Model(&serverRecord{}).Where("lower(name) = lower(?)", name).Where("id <> ?", exceptID)
+	if guildID != 0 {
+		q = q.Where("guild_id IS NULL OR guild_id = ?", guildID)
+	}
+	n, err := q.Count()
 	return n > 0, err
 }
 
-// AddressTaken reports whether a Server other than exceptID is reached as
-// the same user on the same host and port.
-func (s Store) AddressTaken(ctx context.Context, host string, port int, user string, exceptID uint64) (bool, error) {
-	n, err := s.query(ctx).Model(&serverRecord{}).Where("lower(host) = lower(?)", host).Where("port", port).
+// AddressTaken reports whether another of the Guild's Servers than
+// exceptID is reached as the same user on the same host and port.
+func (s Store) AddressTaken(ctx context.Context, guildID uint64, host string, port int, user string, exceptID uint64) (bool, error) {
+	n, err := s.query(ctx).Model(&serverRecord{}).Where("guild_id", guildID).Where("lower(host) = lower(?)", host).Where("port", port).
 		Where("user_name", user).Where("id <> ?", exceptID).Count()
 	return n > 0, err
 }
@@ -211,6 +222,21 @@ func (s Store) Local(ctx context.Context) (domain.Server, bool, error) {
 	}
 	srv, err := rec.toDomain()
 	return srv, err == nil, err
+}
+
+// guildRef is the guild_id column of a Server: NULL for the Local server.
+func guildRef(id uint64) *uint64 {
+	if id == 0 {
+		return nil
+	}
+	return &id
+}
+
+func guildID(ref *uint64) uint64 {
+	if ref == nil {
+		return 0
+	}
+	return *ref
 }
 
 func createdAt(t orm.Timestamps) time.Time {

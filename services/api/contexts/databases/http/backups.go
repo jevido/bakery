@@ -340,7 +340,7 @@ func oneS3(ctx contractshttp.Context, status int, st domain.S3Storage, err error
 }
 
 func (c *Controller) S3Storages(ctx contractshttp.Context) contractshttp.Response {
-	list, err := c.service.S3Storages(ctx.Context())
+	list, err := c.service.S3Storages(ctx.Context(), c.guild(ctx))
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -356,7 +356,7 @@ func (c *Controller) CreateS3Storage(ctx contractshttp.Context) contractshttp.Re
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	st, err := c.service.CreateS3Storage(ctx.Context(), req.input())
+	st, err := c.service.CreateS3Storage(ctx.Context(), c.guild(ctx), req.input())
 	return oneS3(ctx, contractshttp.StatusCreated, st, err)
 }
 
@@ -392,7 +392,7 @@ func (c *Controller) CheckS3Storage(ctx contractshttp.Context) contractshttp.Res
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	connErr, err := c.service.CheckS3Storage(ctx.Context(), req.ID, req.input())
+	connErr, err := c.service.CheckS3Storage(ctx.Context(), c.guild(ctx), req.ID, req.input())
 	if err != nil {
 		return fail(ctx, err)
 	}

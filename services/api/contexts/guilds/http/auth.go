@@ -184,6 +184,9 @@ func Current(ctx contractshttp.Context) uint64 { return placeOf(ctx).guild.ID }
 // none).
 func RoleOf(ctx contractshttp.Context) domain.Role { return placeOf(ctx).role }
 
+// InstanceAdmin reports whether the request comes from the Instance admin.
+func InstanceAdmin(ctx contractshttp.Context) bool { return placeOf(ctx).principal.InstanceAdmin }
+
 // MemberID is the Member the request comes from.
 func MemberID(ctx contractshttp.Context) uint64 { return placeOf(ctx).principal.MemberID }
 

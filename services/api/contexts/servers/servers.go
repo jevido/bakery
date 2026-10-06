@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"net"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
+	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/route"
 
 	"github.com/jevido/bakery/services/api/app/facades"
@@ -99,17 +101,18 @@ func LocalID(ctx context.Context) (uint64, error) {
 	return srv.ID, err
 }
 
-// Exists reports whether the Server exists; 0 (the Local server) always
-// does.
-func Exists(ctx context.Context, id uint64) (bool, error) {
+// UsableBy reports whether the Server exists and the Guild may see it and
+// deploy to it: the Local server (0 or its id) or one of the Guild's own.
+// It is also the check behind every servers route keyed by an id.
+func UsableBy(ctx context.Context, id, guildID uint64) (bool, error) {
 	if id == 0 {
 		return true, nil
 	}
-	_, err := svc().Get(ctx, id)
+	srv, err := svc().Get(ctx, id)
 	if errors.Is(err, app.ErrNotFound) {
 		return false, nil
 	}
-	return err == nil, err
+	return err == nil && srv.UsableBy(guildID), err
 }
 
 // OnServerDeleting registers a check asked before a Server is deleted: while
@@ -124,18 +127,63 @@ func OnCleanup(retention func(ctx context.Context, serverID uint64) (int64, erro
 	svc().Retention = retention
 }
 
-// Routes registers the servers API behind guilds.Auth. Every Member may
-// list the Servers (to pick a Target server) and see their usage; only
-// admins change them.
-func Routes(r route.Router) {
+// OnContainerOwner registers, for one kind of Container owner
+// ("application", "database" or "service"), whether the one with this id
+// belongs to the Guild. The Local server's usage shows a Member only their
+// Current guild's Containers (and the proxy); an owner kind nobody
+// registered is shown to the Instance admin only.
+func OnContainerOwner(owner string, inGuild func(ctx context.Context, id, guildID uint64) (bool, error)) {
+	ownersMu.Lock()
+	defer ownersMu.Unlock()
+	owners[owner] = inGuild
+}
+
+var (
+	ownersMu sync.Mutex
+	owners   = map[string]func(ctx context.Context, id, guildID uint64) (bool, error){}
+)
+
+// seesContainer reports whether the request may see a Container on the
+// Local server: the Instance admin sees all of them, everyone else the
+// proxy and their Current guild's.
+func seesContainer(ctx contractshttp.Context, owner, ownerID string) (bool, error) {
+	if guilds.InstanceAdmin(ctx) || owner == "proxy" {
+		return true, nil
+	}
+	ownersMu.Lock()
+	inGuild := owners[owner]
+	ownersMu.Unlock()
+	id, err := strconv.ParseUint(ownerID, 10, 64)
+	if inGuild == nil || err != nil {
+		return false, nil
+	}
+	return inGuild(ctx.Context(), id, guilds.Current(ctx))
+}
+
+func controller() *servershttp.Controller {
 	c := servershttp.NewController(svc())
-	r.Middleware(guilds.Auth).Group(func(r route.Router) {
+	c.Guild = guilds.Current
+	c.InstanceAdmin = guilds.InstanceAdmin
+	c.SeesContainer = seesContainer
+	return c
+}
+
+// inGuild answers 404 for a route whose {id} Server is another Guild's.
+var inGuild = guilds.Owns("server", UsableBy)
+
+// Routes registers the servers API behind guilds.Auth: the Current guild's
+// Servers and the Local server. Every Member may list them (to pick a Target
+// server) and see their usage; only admins change them, and only the
+// Instance admin changes the Local server.
+func Routes(r route.Router) {
+	c := controller()
+	r.Middleware(guilds.Auth, inGuild).Group(func(r route.Router) {
 		r.Get("/api/servers", c.List)
 		r.Get("/api/servers/{id}", c.Show)
 		r.Get("/api/servers/{id}/metrics", c.Metrics)
 		r.Get("/api/servers/{id}/details", c.Details)
 	})
-	r.Middleware(guilds.Auth, guilds.Admin).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, inGuild, guilds.Admin).Group(func(r route.Router) {
 		r.Post("/api/servers", c.Create)
 		r.Patch("/api/servers/{id}", c.Update)
 		r.Delete("/api/servers/{id}", c.Delete)
@@ -147,8 +195,8 @@ func Routes(r route.Router) {
 // longer than the request timeout allows (a Validation up to 30 s, a
 // Cleanup minutes), behind guilds.Auth and guilds.Admin.
 func LongRoutes(r route.Router) {
-	c := servershttp.NewController(svc())
-	r.Middleware(guilds.Auth, guilds.Admin).Group(func(r route.Router) {
+	c := controller()
+	r.Middleware(guilds.Auth, inGuild, guilds.Admin).Group(func(r route.Router) {
 		r.Post("/api/servers/{id}/validate", c.Validate)
 		r.Post("/api/servers/{id}/cleanup", c.CleanUp)
 	})
@@ -229,7 +277,10 @@ func probe(ctx context.Context, s *app.Service) {
 
 // ServerHealthChanged is what a Server probe found changed about a Server.
 type ServerHealthChanged struct {
-	ServerID   uint64
+	ServerID uint64
+	// GuildID is the Guild the Server belongs to; 0 for the Local server,
+	// which concerns every Guild.
+	GuildID    uint64
 	ServerName string
 	// Change is "unreachable", "reachable" or "server_disk_usage".
 	Change string
@@ -255,7 +306,7 @@ func OnServerHealthChanged(f func(ctx context.Context, e ServerHealthChanged)) {
 
 func publishHealthChanged(_ context.Context, h app.HealthChanged) {
 	e := ServerHealthChanged{
-		ServerID: h.Server.ID, ServerName: h.Server.Name, Change: string(h.Change),
+		ServerID: h.Server.ID, GuildID: h.Server.GuildID, ServerName: h.Server.Name, Change: string(h.Change),
 		Reason: h.Reason, DiskUsed: h.DiskUsed, DiskTotal: h.DiskTotal,
 	}
 	healthMu.Lock()

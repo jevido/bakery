@@ -18,10 +18,12 @@ type Controller struct {
 	service *app.Service
 	// isNotFound recognises projects' "no such application".
 	isNotFound func(error) bool
+	// guild is the Current guild of a request.
+	guild func(ctx contractshttp.Context) uint64
 }
 
-func NewController(service *app.Service, isNotFound func(error) bool) *Controller {
-	return &Controller{service: service, isNotFound: isNotFound}
+func NewController(service *app.Service, isNotFound func(error) bool, guild func(ctx contractshttp.Context) uint64) *Controller {
+	return &Controller{service: service, isNotFound: isNotFound, guild: guild}
 }
 
 // LocalServer returns the Local server's id, shown where a Deployment's
@@ -332,7 +334,7 @@ type knownHostJSON struct {
 }
 
 func (c *Controller) KnownHosts(ctx contractshttp.Context) contractshttp.Response {
-	hosts, err := c.service.KnownHosts(ctx.Context())
+	hosts, err := c.service.KnownHosts(ctx.Context(), c.guild(ctx))
 	if err != nil {
 		return c.fail(ctx, err)
 	}
@@ -351,7 +353,7 @@ func (c *Controller) ForgetKnownHost(ctx contractshttp.Context) contractshttp.Re
 	if !ok {
 		return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
 	}
-	if err := c.service.ForgetKnownHost(ctx.Context(), id); err != nil {
+	if err := c.service.ForgetKnownHost(ctx.Context(), c.guild(ctx), id); err != nil {
 		return c.fail(ctx, err)
 	}
 	return ctx.Response().NoContent()

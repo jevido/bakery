@@ -18,6 +18,7 @@ import (
 
 type channelRecord struct {
 	ID                uint64 `gorm:"primaryKey"`
+	GuildID           uint64
 	Name              string
 	Kind              string
 	SettingsEncrypted string
@@ -41,7 +42,7 @@ func toRecord(c domain.Channel) (channelRecord, error) {
 	for i, k := range c.EventKinds {
 		kinds[i] = string(k)
 	}
-	return channelRecord{ID: c.ID, Name: c.Name, Kind: string(c.Kind), SettingsEncrypted: enc, EventKinds: strings.Join(kinds, ","), Enabled: c.Enabled}, nil
+	return channelRecord{ID: c.ID, GuildID: c.GuildID, Name: c.Name, Kind: string(c.Kind), SettingsEncrypted: enc, EventKinds: strings.Join(kinds, ","), Enabled: c.Enabled}, nil
 }
 
 func (r channelRecord) toDomain() (domain.Channel, error) {
@@ -49,7 +50,7 @@ func (r channelRecord) toDomain() (domain.Channel, error) {
 	if err != nil {
 		return domain.Channel{}, err
 	}
-	c := domain.Channel{ID: r.ID, Name: r.Name, Kind: domain.Kind(r.Kind), Enabled: r.Enabled, CreatedAt: createdAt(r.Timestamps)}
+	c := domain.Channel{ID: r.ID, GuildID: r.GuildID, Name: r.Name, Kind: domain.Kind(r.Kind), Enabled: r.Enabled, CreatedAt: createdAt(r.Timestamps)}
 	if err := json.Unmarshal([]byte(raw), &c.Settings); err != nil {
 		return domain.Channel{}, err
 	}
@@ -76,9 +77,15 @@ func (Store) query(ctx context.Context) contractsorm.Query {
 	return facades.Orm().WithContext(ctx).Query()
 }
 
-func (s Store) Channels(ctx context.Context) ([]domain.Channel, error) {
+// Channels lists the Guild's channels, oldest first; guildID 0 lists every
+// Guild's.
+func (s Store) Channels(ctx context.Context, guildID uint64) ([]domain.Channel, error) {
 	var recs []channelRecord
-	if err := s.query(ctx).Order("id").Find(&recs); err != nil {
+	q := s.query(ctx)
+	if guildID != 0 {
+		q = q.Where("guild_id", guildID)
+	}
+	if err := q.Order("id").Find(&recs); err != nil {
 		return nil, err
 	}
 	out := make([]domain.Channel, len(recs))
@@ -134,9 +141,9 @@ func (s Store) DeleteChannel(ctx context.Context, id uint64) error {
 	return err
 }
 
-// ChannelNameTaken reports whether a channel other than exceptID has the
-// name (ignoring case).
-func (s Store) ChannelNameTaken(ctx context.Context, name string, exceptID uint64) (bool, error) {
-	n, err := s.query(ctx).Model(&channelRecord{}).Where("lower(name) = lower(?)", name).Where("id <> ?", exceptID).Count()
+// ChannelNameTaken reports whether another of the Guild's channels than
+// exceptID has the name (ignoring case).
+func (s Store) ChannelNameTaken(ctx context.Context, guildID uint64, name string, exceptID uint64) (bool, error) {
+	n, err := s.query(ctx).Model(&channelRecord{}).Where("guild_id", guildID).Where("lower(name) = lower(?)", name).Where("id <> ?", exceptID).Count()
 	return n > 0, err
 }

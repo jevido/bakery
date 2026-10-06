@@ -18,7 +18,7 @@ func TestCleanUp(t *testing.T) {
 		return 90, errors.New("one image failed")
 	}
 	local, _ := s.EnsureLocal(ctx)
-	remote, _ := s.Add(ctx, domain.Input{Name: "web", Host: "10.0.0.1", User: "bakery"})
+	remote, _ := s.Add(ctx, 1, domain.Input{Name: "web", Host: "10.0.0.1", User: "bakery"})
 
 	c, err := s.CleanUp(ctx, local.ID)
 	if err != nil || c.Reclaimed != 100 || c.At.IsZero() {

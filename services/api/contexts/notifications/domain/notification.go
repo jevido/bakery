@@ -5,9 +5,12 @@ import "time"
 // Notification is a message about one thing that happened, as a publisher
 // hands it over. It is not stored on its own; its Deliveries are.
 type Notification struct {
-	Kind  EventKind
-	Title string
-	Body  string
+	// GuildID is the Guild whose channels get it; 0 is every Guild's (the
+	// Local server's health concerns them all).
+	GuildID uint64
+	Kind    EventKind
+	Title   string
+	Body    string
 	// Link points into the dashboard; may be empty.
 	Link string
 	At   time.Time

@@ -41,10 +41,11 @@ adapt to.
 | routing | services | customer/supplier | `routing.SetServiceRoutes(serviceID, routes)` after a Service is Up, `routing.DropServiceRoutes(serviceID)` before it is deleted |
 | servers | deployments | customer/supplier | `servers.Connect(serverID)` gives the Server connection every step of a Deployment runs through; deployments registers its Image retention with `servers.OnCleanup`, called with the Server's id during every Cleanup |
 | servers | routing | customer/supplier | `servers.Connect(serverID)` to run and configure the Proxy of a Remote server |
-| servers | projects | customer/supplier | `servers.Exists(id)` when an Application is created with a Target server; projects registers `servers.OnServerDeleting` so a Server Applications target is not deleted |
-| deployments | notifications | published language | `deployments.OnDeploymentFinished { deployment, application, slug, succeeded, reason, branch, commit, trigger, rollback }`: a Deployment ended succeeded or failed (not cancelled, not failed by a restart) |
-| databases | notifications | published language | `databases.OnBackupExecutionFinished { backup execution, database, name, type, succeeded, reason, trigger, size, off-site }`: a Backup execution ended (not one failed by a restart) |
-| servers | notifications | published language | `servers.OnServerHealthChanged { server, name, change, reason, disk used/total }`: a Server probe found a Server unreachable, reachable again, or its disk usage high |
+| servers | projects | customer/supplier | `servers.UsableBy(id, guild)` when an Application is created with a Target server (the Local server or one of the Application's Guild); projects registers `servers.OnServerDeleting` so a Server Applications target is not deleted |
+| projects, databases, services | servers | customer/supplier | Each registers `servers.OnContainerOwner(kind, inGuild)` for its Containers (`application`, `database`, `service`), so the Local server's Container metrics show a Member only their Current guild's |
+| deployments | notifications | published language | `deployments.OnDeploymentFinished { deployment, guild, application, slug, succeeded, reason, branch, commit, trigger, rollback }`: a Deployment ended succeeded or failed (not cancelled, not failed by a restart) |
+| databases | notifications | published language | `databases.OnBackupExecutionFinished { backup execution, guild, database, name, type, succeeded, reason, trigger, size, off-site }`: a Backup execution ended (not one failed by a restart) |
+| servers | notifications | published language | `servers.OnServerHealthChanged { server, guild, name, change, reason, disk used/total }`: a Server probe found a Server unreachable, reachable again, or its disk usage high; guild is 0 for the Local server, which concerns every Guild |
 | guilds | notifications | customer/supplier | `guilds.OnInvitationCreated { guild, email, role, invited by, link, expires }`, called synchronously; notifications answers whether it emailed the link |
 
 ## External systems
@@ -84,7 +85,7 @@ flowchart LR
   guilds --> servers
   servers -->|Connect, OnCleanup| deployments
   servers -->|Connect| routing
-  servers -->|Exists, OnServerDeleting| projects
+  servers -->|UsableBy, OnServerDeleting| projects
   guilds -->|OnInvitationCreated| notifications
   deployments -->|OnDeploymentFinished| notifications
   databases -->|OnBackupExecutionFinished| notifications

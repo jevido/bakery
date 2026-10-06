@@ -18,10 +18,15 @@ import (
 // into Notifications.
 func subscribe() {
 	deployments.OnDeploymentFinished(func(ctx context.Context, e deployments.DeploymentFinished) {
-		svc().Notify(ctx, deploymentNotification(e, DashboardURL()))
+		// An Application that could not be read has no Guild to tell.
+		if e.GuildID != 0 {
+			svc().Notify(ctx, deploymentNotification(e, DashboardURL()))
+		}
 	})
 	databases.OnBackupExecutionFinished(func(ctx context.Context, e databases.BackupExecutionFinished) {
-		svc().Notify(ctx, backupNotification(e, DashboardURL()))
+		if e.GuildID != 0 {
+			svc().Notify(ctx, backupNotification(e, DashboardURL()))
+		}
 	})
 	guilds.OnInvitationCreated(func(ctx context.Context, e guilds.InvitationCreated) (bool, error) {
 		return svc().SendInvitation(ctx, app.Invitation(e))
@@ -49,10 +54,11 @@ func deploymentNotification(e deployments.DeploymentFinished, dashboard string) 
 		name += fmt.Sprintf(" (preview of pull request #%d)", e.Preview)
 	}
 	n := domain.Notification{
-		Kind:  domain.DeploymentSuccess,
-		Title: "Deployment of " + name + " succeeded",
-		Link:  fmt.Sprintf("%s/#/applications/%d", dashboard, e.ApplicationID),
-		At:    e.FinishedAt,
+		GuildID: e.GuildID,
+		Kind:    domain.DeploymentSuccess,
+		Title:   "Deployment of " + name + " succeeded",
+		Link:    fmt.Sprintf("%s/#/applications/%d", dashboard, e.ApplicationID),
+		At:      e.FinishedAt,
 	}
 	var body []string
 	if !e.Succeeded {
@@ -98,10 +104,11 @@ func size(n int64) string {
 
 func backupNotification(e databases.BackupExecutionFinished, dashboard string) domain.Notification {
 	n := domain.Notification{
-		Kind:  domain.BackupSuccess,
-		Title: "Backup of " + e.DatabaseName + " succeeded",
-		Link:  fmt.Sprintf("%s/#/databases/%d", dashboard, e.DatabaseID),
-		At:    e.FinishedAt,
+		GuildID: e.GuildID,
+		Kind:    domain.BackupSuccess,
+		Title:   "Backup of " + e.DatabaseName + " succeeded",
+		Link:    fmt.Sprintf("%s/#/databases/%d", dashboard, e.DatabaseID),
+		At:      e.FinishedAt,
 	}
 	trigger := "A scheduled backup"
 	if e.Trigger == "manual" {
@@ -122,7 +129,8 @@ func backupNotification(e databases.BackupExecutionFinished, dashboard string) d
 }
 
 func serverNotification(e servers.ServerHealthChanged, dashboard string, now time.Time) (domain.Notification, bool) {
-	n := domain.Notification{Link: fmt.Sprintf("%s/#/server/%d", dashboard, e.ServerID), At: now}
+	// The Local server (GuildID 0) concerns every Guild.
+	n := domain.Notification{GuildID: e.GuildID, Link: fmt.Sprintf("%s/#/server/%d", dashboard, e.ServerID), At: now}
 	switch e.Change {
 	case "unreachable":
 		n.Kind = domain.ServerUnreachable

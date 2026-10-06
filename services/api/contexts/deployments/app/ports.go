@@ -125,8 +125,11 @@ type LogWriter interface {
 // Application is what a Deployment needs to know about its Application,
 // snapshotted once at the start.
 type Application struct {
-	ID   uint64
-	Slug string
+	ID uint64
+	// GuildID is the Guild the Application belongs to; its Known hosts are
+	// that Guild's.
+	GuildID uint64
+	Slug    string
 	// BuildPack is one of the BuildPack* constants.
 	BuildPack string
 	// DockerImage is what the dockerimage pack pulls; it has no Git repository.
@@ -198,6 +201,8 @@ type Commit struct {
 // CloneRequest is what a clone needs. DeployKey is the private key for an
 // SSH URL, empty for https.
 type CloneRequest struct {
+	// GuildID is whose Known hosts the clone trusts and records.
+	GuildID   uint64
 	URL       string
 	Branch    string
 	Dir       string
@@ -211,15 +216,16 @@ type Cloner interface {
 	Clone(ctx context.Context, req CloneRequest, out func(stream, line string)) (Commit, error)
 }
 
-// KnownHosts keeps the SSH host keys of git hosts.
+// KnownHosts keeps the SSH host keys of git hosts, per Guild: a host one
+// Guild trusted is not trusted for another.
 type KnownHosts interface {
-	// Lines returns every stored known_hosts line.
-	Lines(ctx context.Context) (string, error)
-	// Remember adds known_hosts lines, merged per host.
-	Remember(ctx context.Context, lines string) error
-	List(ctx context.Context) ([]domain.KnownHost, error)
-	// Forget removes a host, reporting whether it existed.
-	Forget(ctx context.Context, id uint64) (bool, error)
+	// Lines returns every known_hosts line the Guild stored.
+	Lines(ctx context.Context, guildID uint64) (string, error)
+	// Remember adds known_hosts lines to the Guild's, merged per host.
+	Remember(ctx context.Context, guildID uint64, lines string) error
+	List(ctx context.Context, guildID uint64) ([]domain.KnownHost, error)
+	// Forget removes one of the Guild's hosts, reporting whether it existed.
+	Forget(ctx context.Context, guildID, id uint64) (bool, error)
 }
 
 // Planner writes a Dockerfile for a clone that has none (Nixpacks).

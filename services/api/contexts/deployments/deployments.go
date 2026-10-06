@@ -81,7 +81,7 @@ func applications(ctx context.Context, id uint64) (app.Application, error) {
 		storages[i] = app.Storage(st)
 	}
 	return app.Application{
-		ID: s.ID, Slug: s.Slug, BuildPack: s.BuildPack, DockerImage: s.DockerImage, PublishDirectory: s.PublishDirectory,
+		ID: s.ID, GuildID: s.GuildID, Slug: s.Slug, BuildPack: s.BuildPack, DockerImage: s.DockerImage, PublishDirectory: s.PublishDirectory,
 		RegistryUsername: s.RegistryUsername, RegistryPassword: s.RegistryPassword,
 		GitURL: s.GitURL, GitBranch: s.GitBranch,
 		ServerID: s.ServerID, DockerfilePath: s.DockerfilePath, Port: s.Port, Domains: s.Domains, BuildVariables: s.BuildVariables, RuntimeVariables: s.RuntimeVariables, DeployKey: s.DeployKey,
@@ -186,7 +186,7 @@ func isApplicationNotFound(err error) bool { return errors.Is(err, projects.ErrN
 // hosts call without a Session (the signature is its authentication; it is
 // found by its secret, in whatever Guild).
 func Routes(r route.Router) {
-	c := deploymentshttp.NewController(svc(), isApplicationNotFound)
+	c := deploymentshttp.NewController(svc(), isApplicationNotFound, guilds.Current)
 	wc := deploymentshttp.NewWebhookController(webhooks, isApplicationNotFound)
 	r.Post("/api/webhooks/applications/{id}", wc.Receive)
 	// The Webhook answers with its secret, even after a change.
@@ -318,7 +318,10 @@ func splitList(s string) []string {
 // cancelled one, or one failed because a restart interrupted it, is not
 // announced.
 type DeploymentFinished struct {
-	DeploymentID    uint64
+	DeploymentID uint64
+	// GuildID is the Guild the Application belongs to; 0 when it could not
+	// be read.
+	GuildID         uint64
 	ApplicationID   uint64
 	ApplicationSlug string
 	// Preview is the Preview number of a Preview Deployment, else 0.
@@ -349,9 +352,9 @@ func OnDeploymentFinished(f func(ctx context.Context, e DeploymentFinished)) {
 	onFinished = append(onFinished, f)
 }
 
-func publishFinished(_ context.Context, d domain.Deployment, slug string) {
+func publishFinished(_ context.Context, d domain.Deployment, a app.Application) {
 	e := DeploymentFinished{
-		DeploymentID: d.ID, ApplicationID: d.ApplicationID, ApplicationSlug: slug, Preview: d.Preview,
+		DeploymentID: d.ID, GuildID: a.GuildID, ApplicationID: d.ApplicationID, ApplicationSlug: a.Slug, Preview: d.Preview,
 		Succeeded: d.Status == domain.Finished, Reason: d.Error, Branch: d.Branch,
 		CommitSHA: d.CommitSHA, CommitMessage: d.CommitMessage, Trigger: string(d.Trigger),
 		Rollback: d.Trigger == domain.TriggerRollback, FinishedAt: time.Now(),

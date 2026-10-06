@@ -102,8 +102,11 @@ type PrivateKey struct {
 
 // Server is a machine Bakery runs Containers on.
 type Server struct {
-	ID   uint64
-	Name string
+	ID uint64
+	// GuildID is the Guild a Remote server belongs to; 0 for the Local
+	// server, which is the installation's and every Guild may deploy to.
+	GuildID uint64
+	Name    string
 	// Description is free text of at most 255 characters, empty for none.
 	Description string
 	Kind        Kind
@@ -197,7 +200,7 @@ func NewLocal() Server {
 }
 
 // NewRemote validates the input for a Remote server reached with key.
-func NewRemote(in Input, key PrivateKey) (Server, error) {
+func NewRemote(guildID uint64, in Input, key PrivateKey) (Server, error) {
 	in, err := in.normalize()
 	if err != nil {
 		return Server{}, err
@@ -205,7 +208,7 @@ func NewRemote(in Input, key PrivateKey) (Server, error) {
 	if key.Public == "" || key.Private == "" {
 		return Server{}, errors.New("servers: a Remote server needs a Private key")
 	}
-	return Server{Name: in.Name, Description: in.Description, Kind: Remote, Host: in.Host, Port: in.Port, User: in.User, Key: key, Status: Unvalidated}, nil
+	return Server{GuildID: guildID, Name: in.Name, Description: in.Description, Kind: Remote, Host: in.Host, Port: in.Port, User: in.User, Key: key, Status: Unvalidated}, nil
 }
 
 // Edit changes a Server. The Local server only takes a name and a
@@ -244,6 +247,12 @@ func (s *Server) editLocal(in Input) error {
 	}
 	s.Name, s.Description = name, description
 	return nil
+}
+
+// UsableBy reports whether the Guild may see the Server and deploy to it:
+// the Local server, or one of its own Remote servers.
+func (s Server) UsableBy(guildID uint64) bool {
+	return s.Kind == Local || s.GuildID == guildID
 }
 
 // RefID is how other contexts name the Server: 0 for the Local server, so

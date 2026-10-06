@@ -154,7 +154,7 @@ func newBackupEnv(t *testing.T) (*backupEnv, View, domain.S3Storage) {
 		t.Fatal(err)
 	}
 	s.Wait()
-	st, _ := store.CreateS3Storage(ctx, domain.S3Storage{Name: "garage", Bucket: "b", Prefix: "p"})
+	st, _ := store.CreateS3Storage(ctx, domain.S3Storage{GuildID: 1, Name: "garage", Bucket: "b", Prefix: "p"})
 	return e, v, st
 }
 
@@ -467,11 +467,25 @@ func TestS3Storages(t *testing.T) {
 	ctx := context.Background()
 	in := domain.S3Input{Name: "garage", Endpoint: "http://127.0.0.1:4960", Bucket: "bakery-backups", AccessKey: "a", SecretKey: "s"}
 	var fe *domain.FieldError
-	if _, err := e.s.CreateS3Storage(ctx, in); !errors.As(err, &fe) || fe.Field != "name" {
+	if _, err := e.s.CreateS3Storage(ctx, 1, in); !errors.As(err, &fe) || fe.Field != "name" {
 		t.Fatalf("duplicate name: %v", err)
 	}
+	// Another Guild has its own names, and its storages are not this one's.
+	theirs, err := e.s.CreateS3Storage(ctx, 2, in)
+	if err != nil {
+		t.Fatalf("same name in another guild: %v", err)
+	}
+	if list, _ := e.s.S3Storages(ctx, 1); len(list) != 1 || list[0].ID != st.ID {
+		t.Fatalf("guild 1 lists %+v", list)
+	}
+	if _, err := e.s.CheckS3Storage(ctx, 1, theirs.ID, in); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("check another guild's: %v", err)
+	}
+	if _, err := e.s.CreateScheduledBackup(ctx, v.ID, domain.ScheduledBackupInput{Cron: "0 3 * * *", Retention: 7, S3StorageID: theirs.ID}); !errors.As(err, &fe) || fe.Field != "scheduled_backup.s3_storage_id" {
+		t.Fatalf("a schedule with another guild's storage: %v", err)
+	}
 	in.Name = "other"
-	other, err := e.s.CreateS3Storage(ctx, in)
+	other, err := e.s.CreateS3Storage(ctx, 1, in)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -479,10 +493,10 @@ func TestS3Storages(t *testing.T) {
 	if got, err := e.s.UpdateS3Storage(ctx, other.ID, in); err != nil || got.SecretKey != "s" {
 		t.Fatalf("update keeps secret: %+v %v", got, err)
 	}
-	if connErr, err := e.s.CheckS3Storage(ctx, other.ID, in); connErr != nil || err != nil {
+	if connErr, err := e.s.CheckS3Storage(ctx, 1, other.ID, in); connErr != nil || err != nil {
 		t.Fatalf("check: %v %v", connErr, err)
 	}
-	if _, err := e.s.CheckS3Storage(ctx, 0, in); !errors.As(err, &fe) || fe.Field != "secret_key" {
+	if _, err := e.s.CheckS3Storage(ctx, 1, 0, in); !errors.As(err, &fe) || fe.Field != "secret_key" {
 		t.Fatalf("check without a secret: %v", err)
 	}
 	setSchedule(t, e, v.ID, domain.ScheduledBackupInput{Cron: "0 3 * * *", Retention: 7, S3StorageID: st.ID})

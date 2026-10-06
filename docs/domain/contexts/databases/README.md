@@ -47,9 +47,9 @@ backing up Redis and Valkey (see below).
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Database | Belongs to one Environment of one Project. Its Database type and Database credentials are fixed at creation; credentials are generated, never typed. Name 1–100 characters; Description at most 255 characters; one created without a name gets `<type>-database-<random>` (8 lowercase letters and digits), as Coolify names it. Slug unique among Databases. Database version is a valid image tag; an Image given instead must name the Database type's repository (with or without `docker.io/` and `library/`, no digest), and its tag becomes the Database version (none is `latest`). Public port is none or 1024–65535 and unique among Databases. Resource limits: memory 16–65536 MB, CPU 0.1–64 cores, empty is unlimited. Desired state is `running` or `stopped`. |
-| Scheduled backup | Belongs to one Database, of a Database type with backups (not Redis, Valkey). Cron is a valid five-field expression or shortcut, Retention 1–100, the S3 storage exists. Switching it on remembers when; it first fires at the next time after that. Cannot be deleted while one of its Backup executions runs. |
+| Scheduled backup | Belongs to one Database, of a Database type with backups (not Redis, Valkey). Cron is a valid five-field expression or shortcut, Retention 1–100, the S3 storage exists and belongs to the Database's Guild. Switching it on remembers when; it first fires at the next time after that. Cannot be deleted while one of its Backup executions runs. |
 | Backup execution | Belongs to one Scheduled backup of one Database, and takes that Scheduled backup's S3 storage when it starts. Starts `running` and ends once, `succeeded` or `failed`. At most one Backup execution or Restore runs per Database at a time. Only a `running` Database is backed up or restored; only a succeeded Backup execution is restored. |
-| S3 storage | Name 1–100, unique. Endpoint is an http(s) URL without a path; bucket follows S3 naming (3–63 lowercase letters, digits, `-`, `.`); region defaults to `us-east-1`; prefix optional. The secret key is never returned. Cannot be deleted while a Scheduled backup uses it. |
+| S3 storage | Belongs to one Guild. Name 1–100, unique within the Guild. Endpoint is an http(s) URL without a path; bucket follows S3 naming (3–63 lowercase letters, digits, `-`, `.`); region defaults to `us-east-1`; prefix optional. The secret key is never returned. Cannot be deleted while a Scheduled backup uses it. |
 
 ### Commands
 
@@ -81,11 +81,13 @@ backing up Redis and Valkey (see below).
   log stream, `scheduled-backups` and `backup-executions`,
   `/api/scheduled-backups/{id}` with its `backup-executions`, and
   `/api/backup-executions/{id}` with its download and restore) for the
-  dashboard, and `OnBackupExecutionFinished` (notifications).
+  dashboard (S3 storages only the Current guild's: listed, changed and
+  tested there, 404 for another Guild's), and `OnBackupExecutionFinished`
+  (notifications), carrying the Database's Guild.
 - **Talks to:** S3-compatible storage (AWS S3, Garage, and the like) over
   its HTTP API, for S3 storages.
 - **Consumes:** `projects.EnvironmentInGuild` and `projects.ProjectInGuild` (through `guilds.Owns`), so every route keyed by an Environment, Project, Database, Scheduled backup or Backup execution answers 404 outside the Current guild; `projects.Environment(id)` to place a new Database (and
-  learn its Project), translated into its own `Environment`; registers
+  learn its Project and Guild), translated into its own `Environment`; registers
   `projects.OnProjectDeleting`, answering "in use" while the Project has
   Databases.
 

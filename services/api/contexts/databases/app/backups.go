@@ -499,13 +499,22 @@ func (s *Service) oldestScheduledBackup(ctx context.Context, d domain.Database) 
 	return s.store.CreateScheduledBackup(ctx, sb)
 }
 
-func (s *Service) checkS3Storage(ctx context.Context, id uint64) error {
+// checkS3Storage refuses an S3 storage that does not exist or is not of
+// the Database's Guild.
+func (s *Service) checkS3Storage(ctx context.Context, d domain.Database, id uint64) error {
 	if id == 0 {
 		return nil
 	}
-	_, found, err := s.store.S3Storage(ctx, id)
+	st, found, err := s.store.S3Storage(ctx, id)
 	if err != nil {
 		return err
+	}
+	if found {
+		env, err := s.environments(ctx, d.EnvironmentID)
+		if err != nil {
+			return err
+		}
+		found = st.GuildID == env.GuildID
 	}
 	if !found {
 		return &domain.FieldError{Field: "scheduled_backup.s3_storage_id", Message: "that S3 storage does not exist"}
@@ -550,7 +559,7 @@ func (s *Service) CreateScheduledBackup(ctx context.Context, databaseID uint64, 
 	if err != nil {
 		return ScheduledBackupView{}, err
 	}
-	if err := s.checkS3Storage(ctx, sb.S3StorageID); err != nil {
+	if err := s.checkS3Storage(ctx, d, sb.S3StorageID); err != nil {
 		return ScheduledBackupView{}, err
 	}
 	if sb, err = s.store.CreateScheduledBackup(ctx, sb); err != nil {
@@ -561,14 +570,14 @@ func (s *Service) CreateScheduledBackup(ctx context.Context, databaseID uint64, 
 
 // UpdateScheduledBackup replaces what the Owner sets on a Scheduled backup.
 func (s *Service) UpdateScheduledBackup(ctx context.Context, id uint64, in domain.ScheduledBackupInput) (ScheduledBackupView, error) {
-	sb, _, err := s.scheduledBackup(ctx, id)
+	sb, d, err := s.scheduledBackup(ctx, id)
 	if err != nil {
 		return ScheduledBackupView{}, err
 	}
 	if err := sb.Update(in, s.Now()); err != nil {
 		return ScheduledBackupView{}, err
 	}
-	if err := s.checkS3Storage(ctx, sb.S3StorageID); err != nil {
+	if err := s.checkS3Storage(ctx, d, sb.S3StorageID); err != nil {
 		return ScheduledBackupView{}, err
 	}
 	if err := s.store.SaveScheduledBackup(ctx, sb); err != nil {

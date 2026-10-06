@@ -34,7 +34,7 @@ each channel; an audit log is something else.
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Notification channel | The name is unique (1–63 characters). The settings are valid for the Channel kind: URLs are `http` or `https`; an email channel has a host, a port, a security mode (`none`, `starttls`, `tls`), a from address and at least one recipient; Telegram has a bot token and a chat id, and its topics are digits, each for a known Event kind; Pushover has a user key and an API token; ntfy a server URL and a topic. An email channel's timeout is 1–300 seconds (empty means 30) and its EHLO domain a host name. It may be subscribed to no Event kind, as in Coolify; then only a Test reaches it. A secret setting left empty on a change keeps its stored value. A new channel is enabled; a disabled one gets no Deliveries and cannot be tested. |
+| Notification channel | Belongs to one Guild. The name is unique within the Guild (1–63 characters). The settings are valid for the Channel kind: URLs are `http` or `https`; an email channel has a host, a port, a security mode (`none`, `starttls`, `tls`), a from address and at least one recipient; Telegram has a bot token and a chat id, and its topics are digits, each for a known Event kind; Pushover has a user key and an API token; ntfy a server URL and a topic. An email channel's timeout is 1–300 seconds (empty means 30) and its EHLO domain a host name. It may be subscribed to no Event kind, as in Coolify; then only a Test reaches it. A secret setting left empty on a change keeps its stored value. A new channel is enabled; a disabled one gets no Deliveries and cannot be tested. |
 | Delivery | Belongs to one Notification channel and goes when it goes. Attempts only grow, at most 3; after the third failure it is `failed` for good. Retries are 10 s after the first attempt and 60 s after the second. |
 
 ### Commands
@@ -44,11 +44,13 @@ each channel; an audit log is something else.
 - `TestChannel(channel, recipient?)` [admin]: sends a Test notification
   at once and answers with the outcome. Refused for a disabled channel. An
   email channel sends it to the recipient when one is given, else to its own.
-- `Notify(notification)`: a Delivery per enabled Notification channel
-  subscribed to its Event kind, sent in the background. Never fails the caller.
+- `Notify(notification)`: a Delivery per enabled Notification channel of the
+  Notification's Guild subscribed to its Event kind, sent in the background.
+  A Notification about the Local server (Guild 0) goes to every Guild's
+  channels. Never fails the caller.
 - `SendInvitation(invitation)`: the Invitation's link by email to the invited
-  person, through the enabled email channel with the lowest id; reports
-  whether it was sent.
+  person, through the inviting Guild's enabled email channel with the lowest
+  id; reports whether it was sent.
 
 ### Domain events
 
@@ -58,7 +60,8 @@ None published.
 
 - **Publishes:** the Notification channels API
   (`/api/notification-channels` and its Test and Deliveries) for the
-  dashboard, admin-only; `notifications.Start(ctx)` (the dispatcher, and the
+  dashboard, admin-only and only the Current guild's (404 for another
+  Guild's channel); `notifications.Start(ctx)` (the dispatcher, and the
   subscriptions below). Nothing calls into it: it hears what the others
   announce.
 - **Consumes**, each translated into a Notification in this context's words:
@@ -69,7 +72,11 @@ None published.
   - `databases.OnBackupExecutionFinished` (succeeded or failed; not those failed by a
     restart) → `backup_failure` / `backup_success`.
   - `servers.OnServerHealthChanged` (a Server probe changed something) →
-    `server_unreachable`, `server_reachable` or `server_disk_usage`.
+    `server_unreachable`, `server_reachable` or `server_disk_usage`, to the
+    Server's Guild, or to every Guild for the Local server.
+  - Every event carries the Guild of what it is about, and only that Guild's
+    channels hear of it; a Deployment or Backup execution whose Guild cannot
+    be read any more is not announced.
   - `guilds.OnInvitationCreated` → an email to the invited person, whose
     outcome guilds reports back to the inviting admin.
   - The auth middlewares from guilds.
@@ -77,6 +84,10 @@ None published.
   servers and webhook receivers, each over its own small sender.
 
 ## Why it's shaped this way
+
+- **The Local server's health goes to every Guild.** It belongs to no Guild
+  but every Guild deploys to it, so its going down concerns them all. Each
+  Guild still chooses, per channel, whether it hears of server events.
 
 - **A context of its own, generic.** What goes wrong lives in four contexts;
   none of them should know about Discord. Each announces what happened in its

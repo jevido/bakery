@@ -17,6 +17,14 @@ import (
 
 type Controller struct {
 	service *app.Service
+	// Guild is the Current guild of the request.
+	Guild func(ctx contractshttp.Context) uint64
+	// InstanceAdmin reports whether the request comes from the Instance
+	// admin, the only one who changes or cleans up the Local server.
+	InstanceAdmin func(ctx contractshttp.Context) bool
+	// SeesContainer reports whether the request may see a Container on the
+	// Local server, by its owner.
+	SeesContainer func(ctx contractshttp.Context, owner, ownerID string) (bool, error)
 }
 
 func NewController(service *app.Service) *Controller {
@@ -142,7 +150,7 @@ func one(ctx contractshttp.Context, status int, s domain.Server, err error) cont
 }
 
 func (c *Controller) List(ctx contractshttp.Context) contractshttp.Response {
-	list, err := c.service.List(ctx.Context())
+	list, err := c.service.List(ctx.Context(), c.Guild(ctx))
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -158,7 +166,7 @@ func (c *Controller) Create(ctx contractshttp.Context) contractshttp.Response {
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	s, err := c.service.Add(ctx.Context(), req.input())
+	s, err := c.service.Add(ctx.Context(), c.Guild(ctx), req.input())
 	return one(ctx, contractshttp.StatusCreated, s, err)
 }
 
@@ -171,10 +179,26 @@ func (c *Controller) Show(ctx contractshttp.Context) contractshttp.Response {
 	return one(ctx, contractshttp.StatusOK, s, err)
 }
 
+// localRefused answers 403 when the Server is the Local server and the
+// request is not the Instance admin's; ok is false when it answered.
+func (c *Controller) localRefused(ctx contractshttp.Context, sid uint64) (contractshttp.Response, bool) {
+	s, err := c.service.Get(ctx.Context(), sid)
+	if err != nil {
+		return fail(ctx, err), false
+	}
+	if s.Kind == domain.Local && !c.InstanceAdmin(ctx) {
+		return respond.Error(ctx, contractshttp.StatusForbidden, "the local server is the instance's"), false
+	}
+	return nil, true
+}
+
 func (c *Controller) Update(ctx contractshttp.Context) contractshttp.Response {
 	sid, ok := id(ctx)
 	if !ok {
 		return notFound(ctx)
+	}
+	if r, ok := c.localRefused(ctx, sid); !ok {
+		return r
 	}
 	var req serverRequest
 	if err := ctx.Request().Bind(&req); err != nil {
@@ -244,13 +268,27 @@ func (c *Controller) Metrics(ctx contractshttp.Context) contractshttp.Response {
 	if err != nil {
 		return fail(ctx, err)
 	}
+	srv, err := c.service.Get(ctx.Context(), sid)
+	if err != nil {
+		return fail(ctx, err)
+	}
 	s := m.Server
-	containers := make([]containerMetricsJSON, len(m.Containers))
-	for i, ct := range m.Containers {
-		containers[i] = containerMetricsJSON{
+	containers := []containerMetricsJSON{}
+	for _, ct := range m.Containers {
+		// Every Guild deploys to the Local server: show only its own there.
+		if srv.Kind == domain.Local {
+			seen, err := c.SeesContainer(ctx, ct.Owner, ct.OwnerID)
+			if err != nil {
+				return fail(ctx, err)
+			}
+			if !seen {
+				continue
+			}
+		}
+		containers = append(containers, containerMetricsJSON{
 			Name: ct.Name, Owner: ct.Owner, OwnerID: ct.OwnerID,
 			CPUPercent: ct.CPUPercent, MemoryUsed: ct.MemUsed, MemoryLimit: ct.MemLimit,
-		}
+		})
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{
 		"server": serverMetricsJSON{
@@ -295,6 +333,9 @@ func (c *Controller) CleanUp(ctx contractshttp.Context) contractshttp.Response {
 	sid, ok := id(ctx)
 	if !ok {
 		return notFound(ctx)
+	}
+	if r, ok := c.localRefused(ctx, sid); !ok {
+		return r
 	}
 	cl, err := c.service.CleanUp(ctx.Context(), sid)
 	if err != nil {

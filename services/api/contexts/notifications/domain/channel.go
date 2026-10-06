@@ -171,7 +171,10 @@ func (s Settings) DisplayFromName() string {
 
 // Channel is a Notification channel, the aggregate root.
 type Channel struct {
-	ID         uint64
+	ID uint64
+	// GuildID is the Guild the channel belongs to: it hears only of what
+	// concerns that Guild.
+	GuildID    uint64
 	Name       string
 	Kind       Kind
 	Settings   Settings

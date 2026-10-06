@@ -21,6 +21,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/databases/infra"
 	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/projects"
+	"github.com/jevido/bakery/services/api/contexts/servers"
 )
 
 var (
@@ -38,7 +39,7 @@ func environments(ctx context.Context, id uint64) (app.Environment, error) {
 	if errors.Is(err, projects.ErrNotFound) {
 		return app.Environment{}, app.ErrNotFound
 	}
-	return app.Environment{ID: e.ID, ProjectID: e.ProjectID}, err
+	return app.Environment{ID: e.ID, ProjectID: e.ProjectID, GuildID: e.GuildID}, err
 }
 
 // publicHost is the host Public URLs name.
@@ -67,6 +68,7 @@ func svc() *app.Service {
 		service.BackupExecutionFinished = publishBackupExecutionFinished
 		projects.OnProjectDeleting(service.InUse)
 		projects.OnEnvironmentDeleting(service.InUseInEnvironment)
+		servers.OnContainerOwner("database", belongs(service.EnvironmentOfDatabase))
 	})
 	return service
 }
@@ -74,7 +76,13 @@ func svc() *app.Service {
 // inGuild answers 404 for a route whose {id} Environment (through the id
 // lookup) is outside the Current guild.
 func inGuild(name string, environmentOf func(ctx context.Context, id uint64) (uint64, error)) contractshttp.Middleware {
-	return guilds.Owns(name, func(ctx context.Context, id, guildID uint64) (bool, error) {
+	return guilds.Owns(name, belongs(environmentOf))
+}
+
+// belongs reports whether the Environment of the id (through the lookup)
+// is in the Guild.
+func belongs(environmentOf func(ctx context.Context, id uint64) (uint64, error)) func(ctx context.Context, id, guildID uint64) (bool, error) {
+	return func(ctx context.Context, id, guildID uint64) (bool, error) {
 		envID, err := environmentOf(ctx, id)
 		if errors.Is(err, app.ErrNotFound) {
 			return false, nil
@@ -83,7 +91,7 @@ func inGuild(name string, environmentOf func(ctx context.Context, id uint64) (ui
 			return false, err
 		}
 		return projects.EnvironmentInGuild(ctx, envID, guildID)
-	})
+	}
 }
 
 var (
@@ -95,6 +103,9 @@ var (
 	scheduledBackupInGuild = inGuild("scheduled-backup", func(ctx context.Context, id uint64) (uint64, error) {
 		return svc().EnvironmentOfScheduledBackup(ctx, id)
 	})
+	s3StorageInGuild = guilds.Owns("s3-storage", func(ctx context.Context, id, guildID uint64) (bool, error) {
+		return svc().S3StorageInGuild(ctx, id, guildID)
+	})
 	backupExecutionInGuild = inGuild("backup-execution", func(ctx context.Context, id uint64) (uint64, error) {
 		return svc().EnvironmentOfBackupExecution(ctx, id)
 	})
@@ -105,7 +116,7 @@ var (
 // answering 404 outside the Current guild; listing S3 storages also needs
 // guilds.Secrets, changing them guilds.Admin.
 func Routes(r route.Router) {
-	c := databaseshttp.NewController(svc())
+	c := databaseshttp.NewController(svc(), guilds.Current)
 	r.Middleware(guilds.Auth, environmentInGuild).Post("/api/environments/{id}/databases", c.Create)
 	r.Middleware(guilds.Auth, projectInGuild).Get("/api/projects/{id}/databases", c.ForProject)
 	r.Middleware(guilds.Auth, databaseInGuild).Group(func(r route.Router) {
@@ -139,7 +150,7 @@ func Routes(r route.Router) {
 	r.Middleware(guilds.Auth, guilds.Secrets).Group(func(r route.Router) {
 		r.Get("/api/s3-storages", c.S3Storages)
 	})
-	r.Middleware(guilds.Auth, guilds.Admin).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, s3StorageInGuild, guilds.Admin).Group(func(r route.Router) {
 		r.Post("/api/s3-storages", c.CreateS3Storage)
 		r.Post("/api/s3-storages/check", c.CheckS3Storage)
 		r.Patch("/api/s3-storages/{id}", c.UpdateS3Storage)
@@ -209,10 +220,13 @@ func schedule(ctx context.Context, s *app.Service) {
 // is not announced.
 type BackupExecutionFinished struct {
 	BackupExecutionID uint64
-	DatabaseID        uint64
-	DatabaseName      string
-	Type              string
-	Succeeded         bool
+	// GuildID is the Guild the Database belongs to; 0 when its Environment
+	// is gone.
+	GuildID      uint64
+	DatabaseID   uint64
+	DatabaseName string
+	Type         string
+	Succeeded    bool
 	// Reason is why it failed.
 	Reason string
 	// Trigger is "manual" or "scheduled".
@@ -236,9 +250,13 @@ func OnBackupExecutionFinished(f func(ctx context.Context, e BackupExecutionFini
 	onBackupExecutionFinished = append(onBackupExecutionFinished, f)
 }
 
-func publishBackupExecutionFinished(_ context.Context, d domain.Database, b domain.BackupExecution) {
+func publishBackupExecutionFinished(ctx context.Context, d domain.Database, b domain.BackupExecution) {
+	env, err := environments(ctx, d.EnvironmentID)
+	if err != nil && !errors.Is(err, app.ErrNotFound) {
+		facades.Log().Errorf("databases: the guild of database %d: %v", d.ID, err)
+	}
 	e := BackupExecutionFinished{
-		BackupExecutionID: b.ID, DatabaseID: d.ID, DatabaseName: d.Name, Type: string(d.Type),
+		BackupExecutionID: b.ID, GuildID: env.GuildID, DatabaseID: d.ID, DatabaseName: d.Name, Type: string(d.Type),
 		Succeeded: b.Status == domain.ExecutionSucceeded, Reason: b.Error, Trigger: string(b.Trigger),
 		SizeBytes: b.SizeBytes, OffSite: b.S3, FinishedAt: b.FinishedAt,
 	}

@@ -911,8 +911,8 @@ func TestFinishedHearsFinishedAndFailedNotCancelled(t *testing.T) {
 	}
 	listen := func(s *setup) *[]heard {
 		var got []heard
-		s.worker.Finished = func(_ context.Context, d domain.Deployment, slug string) {
-			got = append(got, heard{d.Status, d.Error, slug})
+		s.worker.Finished = func(_ context.Context, d domain.Deployment, a Application) {
+			got = append(got, heard{d.Status, d.Error, a.Slug})
 		}
 		return &got
 	}

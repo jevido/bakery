@@ -35,9 +35,9 @@ type Worker struct {
 	Poll time.Duration
 	Log  func(format string, args ...any)
 	// Finished, when set, hears of every Deployment that ended finished or
-	// failed (not cancelled), after it was saved, with the Application's
-	// Slug (empty when the Application could not be read).
-	Finished func(ctx context.Context, d domain.Deployment, slug string)
+	// failed (not cancelled), after it was saved, with the Application
+	// (zero when it could not be read).
+	Finished func(ctx context.Context, d domain.Deployment, a Application)
 	now      func() time.Time
 	sleep    func(ctx context.Context, d time.Duration) error
 }
@@ -118,8 +118,8 @@ func (w *Worker) run(parent context.Context, d domain.Deployment) {
 	info := func(format string, args ...any) { log.Line(domain.StreamInfo, fmt.Sprintf(format, args...)) }
 	started := w.now()
 
-	var slug string
-	err := w.steps(ctx, &d, &slug, log, info)
+	var a Application
+	err := w.steps(ctx, &d, &a, log, info)
 	// Saving the outcome must not be cut short by the Deployment's own
 	// timeout or a shutdown.
 	saveCtx, cancelSave := context.WithTimeout(context.WithoutCancel(parent), 10*time.Second)
@@ -152,16 +152,16 @@ func (w *Worker) run(parent context.Context, d domain.Deployment) {
 		w.commentPreview(saveCtx, d, info)
 	}
 	if w.Finished != nil && (d.Status == domain.Finished || d.Status == domain.Failed) {
-		w.Finished(saveCtx, d, slug)
+		w.Finished(saveCtx, d, a)
 	}
 }
 
-func (w *Worker) steps(ctx context.Context, d *domain.Deployment, slug *string, log LogWriter, info func(string, ...any)) error {
+func (w *Worker) steps(ctx context.Context, d *domain.Deployment, read *Application, log LogWriter, info func(string, ...any)) error {
 	app, err := w.service.applications(ctx, d.ApplicationID)
 	if err != nil {
 		return fmt.Errorf("reading the application: %w", err)
 	}
-	*slug = app.Slug
+	*read = app
 	branch := app.GitBranch
 	if d.Preview != 0 {
 		if app.BuildPack == BuildPackDockerImage {
@@ -226,7 +226,7 @@ func (w *Worker) steps(ctx context.Context, d *domain.Deployment, slug *string, 
 		return err
 	}
 	info("Cloning %s (branch %s)", app.GitURL, branch)
-	commit, err := w.cloner.Clone(ctx, CloneRequest{URL: app.GitURL, Branch: branch, Dir: dir, DeployKey: app.DeployKey}, log.Line)
+	commit, err := w.cloner.Clone(ctx, CloneRequest{GuildID: app.GuildID, URL: app.GitURL, Branch: branch, Dir: dir, DeployKey: app.DeployKey}, log.Line)
 	if err != nil {
 		return fmt.Errorf("clone failed: %w", err)
 	}

@@ -27,12 +27,17 @@ type InUse func(ctx context.Context, serverID uint64) (bool, error)
 type Store interface {
 	Create(ctx context.Context, s domain.Server) (domain.Server, error)
 	Get(ctx context.Context, id uint64) (domain.Server, bool, error)
-	// List returns the Local server first, then oldest first.
-	List(ctx context.Context) ([]domain.Server, error)
+	// List returns the Local server first, then the Guild's Remote servers
+	// oldest first; guildID 0 lists every Server.
+	List(ctx context.Context, guildID uint64) ([]domain.Server, error)
 	Save(ctx context.Context, s domain.Server) error
 	Delete(ctx context.Context, id uint64) error
-	NameTaken(ctx context.Context, name string, exceptID uint64) (bool, error)
-	AddressTaken(ctx context.Context, host string, port int, user string, exceptID uint64) (bool, error)
+	// NameTaken looks at the Guild's Servers and the Local server; guildID
+	// 0 (the Local server's own name) at every Server.
+	NameTaken(ctx context.Context, guildID uint64, name string, exceptID uint64) (bool, error)
+	// AddressTaken looks at the Guild's Servers only: another Guild may
+	// reach the same machine with its own key.
+	AddressTaken(ctx context.Context, guildID uint64, host string, port int, user string, exceptID uint64) (bool, error)
 	Local(ctx context.Context) (domain.Server, bool, error)
 }
 
@@ -99,8 +104,9 @@ func (s *Service) EnsureLocal(ctx context.Context) (domain.Server, error) {
 	return s.store.Create(ctx, domain.NewLocal())
 }
 
-func (s *Service) List(ctx context.Context) ([]domain.Server, error) {
-	return s.store.List(ctx)
+// List returns the Servers the Guild may use: the Local server and its own.
+func (s *Service) List(ctx context.Context, guildID uint64) ([]domain.Server, error) {
+	return s.store.List(ctx, guildID)
 }
 
 func (s *Service) Get(ctx context.Context, id uint64) (domain.Server, error) {
@@ -112,14 +118,14 @@ func (s *Service) Get(ctx context.Context, id uint64) (domain.Server, error) {
 }
 
 func (s *Service) checkUnique(ctx context.Context, srv domain.Server) error {
-	taken, err := s.store.NameTaken(ctx, srv.Name, srv.ID)
+	taken, err := s.store.NameTaken(ctx, srv.GuildID, srv.Name, srv.ID)
 	if err != nil {
 		return err
 	}
 	if taken {
 		return &domain.FieldError{Field: "name", Message: "another server has this name"}
 	}
-	taken, err = s.store.AddressTaken(ctx, srv.Host, srv.Port, srv.User, srv.ID)
+	taken, err = s.store.AddressTaken(ctx, srv.GuildID, srv.Host, srv.Port, srv.User, srv.ID)
 	if err != nil {
 		return err
 	}
@@ -129,17 +135,17 @@ func (s *Service) checkUnique(ctx context.Context, srv domain.Server) error {
 	return nil
 }
 
-// Add creates a Remote server with a new Private key.
-func (s *Service) Add(ctx context.Context, in domain.Input) (domain.Server, error) {
+// Add creates a Remote server of the Guild with a new Private key.
+func (s *Service) Add(ctx context.Context, guildID uint64, in domain.Input) (domain.Server, error) {
 	// Validate the input before spending a key on it.
-	if _, err := domain.NewRemote(in, domain.PrivateKey{Public: "-", Private: "-"}); err != nil {
+	if _, err := domain.NewRemote(guildID, in, domain.PrivateKey{Public: "-", Private: "-"}); err != nil {
 		return domain.Server{}, err
 	}
 	key, err := s.newKey("bakery@" + in.Name)
 	if err != nil {
 		return domain.Server{}, err
 	}
-	srv, err := domain.NewRemote(in, key)
+	srv, err := domain.NewRemote(guildID, in, key)
 	if err != nil {
 		return domain.Server{}, err
 	}

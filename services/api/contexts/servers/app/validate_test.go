@@ -87,7 +87,7 @@ func healthy() *fakeConnection {
 func validate(t *testing.T, c fakeConnector) domain.Server {
 	t.Helper()
 	s := NewService(newMemStore(), fakeKey, c)
-	srv, err := s.Add(context.Background(), domain.Input{Name: "web", Host: "10.0.0.1", User: "bakery"})
+	srv, err := s.Add(context.Background(), 1, domain.Input{Name: "web", Host: "10.0.0.1", User: "bakery"})
 	if err != nil {
 		t.Fatal(err)
 	}

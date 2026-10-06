@@ -237,12 +237,14 @@ func (m *memStore) FailRunningBackupExecutions(_ context.Context, reason string,
 	}
 	return n, nil
 }
-func (m *memStore) S3Storages(context.Context) ([]domain.S3Storage, error) {
+func (m *memStore) S3Storages(_ context.Context, guildID uint64) ([]domain.S3Storage, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []domain.S3Storage
 	for _, st := range m.storages {
-		out = append(out, st)
+		if st.GuildID == guildID {
+			out = append(out, st)
+		}
 	}
 	slices.SortFunc(out, func(a, b domain.S3Storage) int { return cmp.Compare(a.Name, b.Name) })
 	return out, nil
@@ -253,11 +255,11 @@ func (m *memStore) S3Storage(_ context.Context, id uint64) (domain.S3Storage, bo
 	st, ok := m.storages[id]
 	return st, ok, nil
 }
-func (m *memStore) S3StorageNameTaken(_ context.Context, name string, exceptID uint64) (bool, error) {
+func (m *memStore) S3StorageNameTaken(_ context.Context, guildID uint64, name string, exceptID uint64) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, st := range m.storages {
-		if st.Name == name && st.ID != exceptID {
+		if st.GuildID == guildID && st.Name == name && st.ID != exceptID {
 			return true, nil
 		}
 	}
@@ -404,7 +406,7 @@ func newTestService() (*Service, *memStore, *fakeRuntime) {
 		if id != 7 {
 			return Environment{}, ErrNotFound
 		}
-		return Environment{ID: 7, ProjectID: 3}, nil
+		return Environment{ID: 7, ProjectID: 3, GuildID: 1}, nil
 	}
 	s := NewService(store, rt, envs, "db.example.com")
 	return s, store, rt
