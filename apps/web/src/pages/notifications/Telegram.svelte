@@ -9,7 +9,7 @@
   let props: KindPageProps = $props()
 </script>
 
-<ChannelPage kind="telegram" title="Telegram" description="Deliver team notifications through a Telegram bot and chat." threaded {...props}>
+<ChannelPage kind="telegram" title="Telegram" description="Deliver guild notifications through a Telegram bot and chat." threaded {...props}>
   {#snippet fields({ form, errors, channel })}
     <div class="grid gap-4 lg:grid-cols-2">
       <Input

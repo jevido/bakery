@@ -12,7 +12,7 @@ import (
 )
 
 // Runtime runs Database Containers with Podman. A Database that should run
-// has a Container; one the Owner stopped has none (its data stays in the
+// has a Container; one a Member stopped has none (its data stays in the
 // volume), so podman-restart.service, which starts every container with
 // restart policy always after a reboot, cannot bring it back by accident.
 type Runtime struct {

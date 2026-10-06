@@ -168,8 +168,9 @@ None published.
     other pages' shape: its fields, Enable/Disable, Send test and the
     events grid.
   - Email has its own Recipients field instead of sending to the team's
-    members: The Bakery's members are not a Team yet (goal Order 6,
-    Teams). There is no "Email service" system-wide/team select, no "Copy
+    members: a channel names whom it mails, so a Guild can reach an on-call
+    address or a few of its Members; mailing every Member of the Guild is
+    not offered yet. There is no "Email service" system-wide/team select, no "Copy
     from instance settings" and no Resend: The Bakery has no instance SMTP
     settings to copy from or fall back to (goal Order 6, instance Settings:
     SMTP and Resend).

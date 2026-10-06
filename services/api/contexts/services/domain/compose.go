@@ -123,7 +123,7 @@ var (
 	envName       = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
-// Keys a Component may not have, with the reason given to the Owner.
+// Keys a Component may not have, with the reason given to a Member.
 var refusedKeys = map[string]string{
 	"build":          "building images is not supported; use image:",
 	"ports":          "host ports are not supported; a Component is reached through its Domains (SERVICE_FQDN_<NAME>_<PORT>)",

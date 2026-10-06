@@ -23,7 +23,7 @@ type S3Storage struct {
 	SecretKey string
 }
 
-// S3Input is what the Owner types; an empty SecretKey on update keeps the
+// S3Input is what a Member types; an empty SecretKey on update keeps the
 // current one.
 type S3Input struct {
 	Name, Endpoint, Region, Bucket, Prefix, AccessKey, SecretKey string

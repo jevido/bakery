@@ -215,6 +215,12 @@ concerned, which the Instance admin always is.
   what the Guild's git sources were trusted with and mean nothing outside it,
   so they are deleted with it. The foreign keys enforce both: a resource
   made between the check and the delete still refuses it.
+  Paperclip deletes a company with everything in it in one go; a Guild's
+  Applications, Databases and backups run and live on Servers, so each goes
+  by its own deliberate delete first.
+- **The guild switcher is Coolify's until the look changes.** It leads the
+  top bar's breadcrumb, where Coolify's team switcher sits. Paperclip's
+  guild rail replaces it when the dashboard takes Paperclip's shell.
 - **Every Role reads the Guild's General and Members pages.** As in Coolify,
   whose team pages every member of the team sees; only admins see and make
   Invitations and change anything.

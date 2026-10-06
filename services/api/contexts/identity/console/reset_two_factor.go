@@ -13,8 +13,8 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/identity/app"
 )
 
-// ResetTwoFactor switches a Member's two-factor off, the Owner's
-// included: nobody outranks the Owner in the dashboard.
+// ResetTwoFactor switches a Member's two-factor off, the Instance admin's
+// included: nobody outranks the Instance admin in the dashboard.
 type ResetTwoFactor struct {
 	Service *app.Service
 }

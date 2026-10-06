@@ -61,7 +61,7 @@
   </div>
 
   {#if !session.isAdmin}
-    <p class="text-sm text-neutral-500 dark:text-fg-dim">Only an Admin or the Owner adds servers.</p>
+    <p class="text-sm text-neutral-500 dark:text-fg-dim">Only an admin of this guild adds servers.</p>
   {:else if !selected}
     <div class="application-settings-form flex flex-col gap-6">
       <section class="application-settings-section">

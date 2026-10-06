@@ -112,7 +112,7 @@ func NewService(store Store, runtime Runtime, routes Routes, environments Enviro
 // SetTemplates gives the Service its catalog of templates.
 func (s *Service) SetTemplates(list []domain.Template) { s.catalog = list }
 
-// View is a Service as the Owner sees it.
+// View is a Service as a Member sees it.
 type View struct {
 	domain.Service
 	Status     domain.ServiceStatus
@@ -140,14 +140,14 @@ type VolumeView struct {
 	ReadOnly bool
 }
 
-// Input is what the Owner creates a Service from.
+// Input is what a Member creates a Service from.
 type Input struct {
 	Name        string
 	Compose     string
 	TemplateKey string
 }
 
-// Change is what the Owner changes; nil fields stay.
+// Change is what a Member changes; nil fields stay.
 type Change struct {
 	Name        *string
 	Description *string

@@ -53,7 +53,7 @@ var (
 	// ErrNotFound is a Server that does not exist.
 	ErrNotFound = app.ErrNotFound
 	// ErrHostKeyChanged is a Remote server presenting another host key than
-	// the pinned one; nothing is sent to it until the Owner forgets it.
+	// the pinned one; nothing is sent to it until a Member forgets it.
 	ErrHostKeyChanged = errors.New("the server's host key changed")
 	// ErrNotValidated is a Remote server that was never validated, so its
 	// host key is not known yet.

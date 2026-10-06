@@ -16,7 +16,7 @@ type ScheduledBackup struct {
 	DatabaseID uint64
 	Enabled    bool
 	// Cron is a five-field cron expression or one of Coolify's shortcuts
-	// (daily, @hourly…), kept as the Owner typed it.
+	// (daily, @hourly…), kept as a Member typed it.
 	Cron      string
 	Retention int
 	// S3StorageID is the S3 storage Backup executions are uploaded to; 0 is local
@@ -27,7 +27,7 @@ type ScheduledBackup struct {
 	EnabledAt time.Time
 }
 
-// ScheduledBackupInput is what the Owner sets on a Scheduled backup.
+// ScheduledBackupInput is what a Member sets on a Scheduled backup.
 type ScheduledBackupInput struct {
 	Enabled     bool
 	Cron        string
@@ -92,7 +92,7 @@ func NewScheduledBackup(d Database, in ScheduledBackupInput, now time.Time) (Sch
 	return s, s.Update(in, now)
 }
 
-// Update replaces what the Owner sets. Switching it on at now remembers
+// Update replaces what a Member sets. Switching it on at now remembers
 // now; saving it again while on keeps when it was switched on.
 func (s *ScheduledBackup) Update(in ScheduledBackupInput, now time.Time) error {
 	in.Cron = strings.TrimSpace(in.Cron)

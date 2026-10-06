@@ -128,7 +128,7 @@ reaches an Application (routing).
 - **Registry credentials belong to the Application**, not to a list of
   registries. It is the smallest thing that lets a private image deploy, and
   a leaked credential reaches one Application's image. A shared list per
-  registry can come with Teams, when several people manage credentials.
+  registry can come per Guild, when several people manage credentials.
 - **Docker images are stored with their registry.** On a server, rootless
   Podman resolves a short name like `nginx` through
   `unqualified-search-registries`, which differs per distribution and may

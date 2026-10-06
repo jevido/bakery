@@ -63,7 +63,7 @@ func scheduledBackupViewToJSON(v app.ScheduledBackupView) scheduledBackupJSON {
 	return out
 }
 
-// scheduledBackupRequest is a Scheduled backup as the Owner sets it.
+// scheduledBackupRequest is a Scheduled backup as a Member sets it.
 type scheduledBackupRequest struct {
 	Enabled     bool    `json:"enabled"`
 	Cron        string  `json:"cron"`

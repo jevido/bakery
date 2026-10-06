@@ -283,7 +283,7 @@ func (st Store) SetLastError(ctx context.Context, id uint64, msg string) error {
 	return err
 }
 
-// SetDesiredState stores what the Owner asked the Service to be.
+// SetDesiredState stores what a Member asked the Service to be.
 func (st Store) SetDesiredState(ctx context.Context, id uint64, state domain.DesiredState) error {
 	_, err := st.query(ctx).Model(&serviceRecord{}).Where("id", id).Update("desired_state", string(state))
 	return err

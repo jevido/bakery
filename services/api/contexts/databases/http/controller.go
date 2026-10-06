@@ -125,7 +125,7 @@ func toJSON(v app.View, full bool) databaseJSON {
 	return out
 }
 
-// databaseRequest is the whole Database as the Owner sets it; type is
+// databaseRequest is the whole Database as a Member sets it; type is
 // only read on creation, public_port null (or 0) is none. image, when set,
 // wins over version.
 type databaseRequest struct {

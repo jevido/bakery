@@ -270,7 +270,7 @@ type DeployKey struct {
 	Private string
 }
 
-// ApplicationInput is what the Owner fills in. Empty optional fields get
+// ApplicationInput is what a Member fills in. Empty optional fields get
 // their defaults in Normalize.
 type ApplicationInput struct {
 	Name string

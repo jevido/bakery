@@ -8,7 +8,7 @@
   let props: KindPageProps = $props()
 </script>
 
-<ChannelPage kind="pushover" title="Pushover" description="Deliver team alerts through your Pushover application." {...props}>
+<ChannelPage kind="pushover" title="Pushover" description="Deliver guild alerts through your Pushover application." {...props}>
   {#snippet fields({ form, errors, channel })}
     <div class="grid gap-4 lg:grid-cols-2">
       <Input

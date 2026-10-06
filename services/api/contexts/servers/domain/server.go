@@ -128,7 +128,7 @@ type Server struct {
 	CreatedAt     time.Time
 }
 
-// Input is what the Owner types for a Server. Host, Port and User are
+// Input is what a Member types for a Server. Host, Port and User are
 // left empty for the Local server.
 type Input struct {
 	Name        string

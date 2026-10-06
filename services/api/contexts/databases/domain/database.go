@@ -24,7 +24,7 @@ func invalid(field, format string, args ...any) error {
 	return &FieldError{Field: field, Message: fmt.Sprintf(format, args...)}
 }
 
-// DesiredState is what the Owner asked a Database to be.
+// DesiredState is what a Member asked a Database to be.
 type DesiredState string
 
 const (
@@ -92,7 +92,7 @@ type Database struct {
 	DesiredState   DesiredState
 }
 
-// Input is what the Owner chooses. Database type is only read on creation.
+// Input is what a Member chooses. Database type is only read on creation.
 type Input struct {
 	Name        string
 	Description string

@@ -40,7 +40,7 @@ func newSecret() (string, error) {
 }
 
 // Webhook returns the Application's Webhook, creating it (Auto-deploy on,
-// fresh secret) the first time the Owner asks for it.
+// fresh secret) the first time a Member asks for it.
 func (w *Webhooks) Webhook(ctx context.Context, applicationID uint64) (domain.Webhook, error) {
 	if _, err := w.service.applications(ctx, applicationID); err != nil {
 		return domain.Webhook{}, err

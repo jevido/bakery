@@ -105,7 +105,7 @@ func shellQuote(s string) string {
 }
 
 // sshFailure turns the ssh line that explains a failed clone into a reason
-// the Owner can act on, or returns "".
+// a Member can act on, or returns "".
 func sshFailure(line string) string {
 	switch {
 	case strings.Contains(line, "REMOTE HOST IDENTIFICATION HAS CHANGED"), strings.Contains(line, "Host key verification failed"):

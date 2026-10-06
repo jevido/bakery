@@ -6,7 +6,7 @@
   // (lib/EnvironmentVariables.svelte). A Service's variables are the ones its
   // Compose file declares, so there is no Add and no delete, and a variable
   // has no Buildtime, Runtime, Literal or Multiline setting. Generated ones
-  // are Managed and locked; the Owner's are edited in the row's dialog. Left
+  // are Managed and locked; a Member's are edited in the row's dialog. Left
   // out: the Developer view.
   import { api, ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'

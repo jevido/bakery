@@ -7,7 +7,7 @@
   // only what The Bakery has: no Network section, no "Preview generated
   // Compose" or "Validate" (the Compose file is checked when it is saved), and
   // a Component's modal that shows instead of edits, since its image lives in
-  // the Compose file. Name, description and the Owner's variables save
+  // the Compose file. Name, description and a Member's variables save
   // together through the unsaved bar, as Coolify's one form does.
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'

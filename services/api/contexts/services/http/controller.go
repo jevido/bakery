@@ -50,7 +50,7 @@ type variableJSON struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
 	// Magic is the kind of Magic variable ("password", "user", …), "" for
-	// one the Owner sets.
+	// one a Member sets.
 	Magic   string  `json:"magic"`
 	Default *string `json:"default"`
 	// Components are the Components that use the variable.

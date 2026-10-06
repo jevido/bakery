@@ -138,7 +138,7 @@
 <div id="service-domains-section" class="domains-overview-container chrome flex flex-col gap-4">
   {#if !canUpdate}
     <Callout type="danger" title="Insufficient permissions">
-      You don't have permission to manage domains. Contact your team administrator for access.
+      You don't have permission to manage domains. Contact your guild's admin for access.
     </Callout>
   {/if}
 

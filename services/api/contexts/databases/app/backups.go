@@ -260,7 +260,7 @@ func (s *Service) upload(ctx context.Context, d domain.Database, b domain.Backup
 func (s *Service) prune(d domain.Database, sb domain.ScheduledBackup) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	// The Owner may have changed the Retention while the dump ran.
+	// A Member may have changed the Retention while the dump ran.
 	if cur, found, err := s.store.ScheduledBackup(ctx, sb.ID); err == nil && found {
 		sb = cur
 	}
@@ -568,7 +568,7 @@ func (s *Service) CreateScheduledBackup(ctx context.Context, databaseID uint64, 
 	return s.scheduledBackupView(ctx, sb)
 }
 
-// UpdateScheduledBackup replaces what the Owner sets on a Scheduled backup.
+// UpdateScheduledBackup replaces what a Member sets on a Scheduled backup.
 func (s *Service) UpdateScheduledBackup(ctx context.Context, id uint64, in domain.ScheduledBackupInput) (ScheduledBackupView, error) {
 	sb, d, err := s.scheduledBackup(ctx, id)
 	if err != nil {
@@ -636,7 +636,7 @@ func (s *Service) nextBackup(ctx context.Context, sb domain.ScheduledBackup) (ti
 // due at the same time, a Restore) stays due and starts on a later Tick. A
 // due Backup execution that cannot start for another reason (the Database
 // is stopped) is recorded as a failed scheduled Backup execution, so the
-// Owner sees why a run was missed, and the schedule waits for its next time.
+// Member sees why a run was missed, and the schedule waits for its next time.
 func (s *Service) Tick(ctx context.Context, now time.Time) error {
 	list, err := s.store.EnabledScheduledBackups(ctx)
 	if err != nil {

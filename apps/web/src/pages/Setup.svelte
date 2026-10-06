@@ -1,6 +1,6 @@
 <script lang="ts">
   // Coolify's auth/register.blade.php for the first user: here it creates
-  // the Owner. "Password again" is checked here; the API takes one password.
+  // the Instance admin. "Password again" is checked here; the API takes one password.
   import { api, ApiError } from '../lib/api'
   import Icon from '../lib/Icon.svelte'
   import { session, type Account } from '../lib/session.svelte'
@@ -47,11 +47,11 @@
   }
 </script>
 
-<AuthShell description="Create the Owner account for this instance.">
+<AuthShell description="Create the Instance admin account for this instance.">
   <div class="flex flex-col gap-4">
     <AuthAlert type="warning">
       <p class="font-medium">Full instance access</p>
-      <p class="mt-0.5 text-black/70 dark:text-white/70">This first account becomes the Owner.</p>
+      <p class="mt-0.5 text-black/70 dark:text-white/70">This first account becomes the Instance admin.</p>
     </AuthAlert>
     {#if message}<AuthAlert type="error"><p>{message}</p></AuthAlert>{/if}
     <form class="flex flex-col gap-4" onsubmit={submit}>

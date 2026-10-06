@@ -96,7 +96,7 @@ type Environment struct {
 // unknown one.
 type Environments func(ctx context.Context, id uint64) (Environment, error)
 
-// View is a Database as the Owner sees it: with its status and URLs.
+// View is a Database as a Member sees it: with its status and URLs.
 type View struct {
 	domain.Database
 	Status domain.Status

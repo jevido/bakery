@@ -8,7 +8,7 @@
   let props: KindPageProps = $props()
 </script>
 
-<ChannelPage kind="ntfy" title="ntfy" description="Send team notifications to an ntfy topic." {...props}>
+<ChannelPage kind="ntfy" title="ntfy" description="Send guild notifications to an ntfy topic." {...props}>
   {#snippet fields({ form, errors, channel })}
     <div class="grid gap-4 lg:grid-cols-2">
       <Input

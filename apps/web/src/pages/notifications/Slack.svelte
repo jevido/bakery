@@ -8,7 +8,7 @@
   let props: KindPageProps = $props()
 </script>
 
-<ChannelPage kind="slack" title="Slack" description="Send team notifications to Slack through an incoming webhook." {...props}>
+<ChannelPage kind="slack" title="Slack" description="Send guild notifications to Slack through an incoming webhook." {...props}>
   {#snippet fields({ form, errors, channel })}
     <div class="grid gap-4 lg:grid-cols-2">
       <div class="lg:col-span-2">

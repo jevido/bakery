@@ -18,7 +18,7 @@ const (
 	Starting Status = "starting"
 	Finished Status = "finished"
 	Failed   Status = "failed"
-	// Cancelled is final, like Finished and Failed: the Owner stopped it.
+	// Cancelled is final, like Finished and Failed: a Member stopped it.
 	Cancelled Status = "cancelled"
 )
 

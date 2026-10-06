@@ -21,7 +21,7 @@ func invalid(field, format string, args ...any) error {
 	return &FieldError{Field: field, Message: fmt.Sprintf(format, args...)}
 }
 
-// DesiredState is what the Owner asked a Service to be.
+// DesiredState is what a Member asked a Service to be.
 type DesiredState string
 
 const (
@@ -51,7 +51,7 @@ func (c Component) PrimaryDomain() string {
 }
 
 // Variable is a Service variable. Magic ones (Generated kinds only) are
-// filled in once by Bakery; the Owner sets the others, and an empty Value
+// filled in once by Bakery; a Member sets the others, and an empty Value
 // with a Default means the Default.
 type Variable struct {
 	Name       string
@@ -288,7 +288,7 @@ func (s Service) checkDomains() error {
 	return nil
 }
 
-// SetVariable sets a Service variable the Owner owns; Magic ones are
+// SetVariable sets a Service variable a Member owns; Magic ones are
 // Bakery's.
 func (s *Service) SetVariable(name, value string) error {
 	i := slices.IndexFunc(s.Variables, func(v Variable) bool { return v.Name == name })
@@ -305,7 +305,7 @@ func (s *Service) SetVariable(name, value string) error {
 }
 
 // Values is every variable's value for Interpolate: stored ones (an unset
-// Owner variable with a default is left out, so the default applies) and
+// variable a Member set with a default is left out, so the default applies) and
 // SERVICE_FQDN_*/SERVICE_URL_* from the Public Components' primary Domains.
 func (s Service) Values() map[string]string {
 	out := map[string]string{}
