@@ -12,7 +12,7 @@ task web:check   # svelte-check, tsc, build
 
 - `src/lib/router.svelte.ts` is a small hash router (`#/projects`,
   `#/project/:id`, `#/project/:id/environment/:envId`,
-  `#/project/:id/environment/:envId/application/:appId[/:page]`, `#/members`, `#/api-tokens`,
+  `#/project/:id/environment/:envId/application/:appId[/:page]`, `#/members`, `#/security/api-tokens`,
   `#/invite/:token`, …). An Invitation link opens `#/invite/:token` for
   anyone, signed in or not.
 - `src/lib/session.svelte.ts` knows the signed-in Member and their Role;

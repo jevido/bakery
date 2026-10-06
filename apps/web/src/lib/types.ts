@@ -471,3 +471,18 @@ export type Delivery = {
   created_at: string
   sent_at: string | null
 }
+
+/** What an API token may do, as Coolify's Sanctum abilities. */
+export type Permission = 'root' | 'write' | 'deploy' | 'read' | 'read:sensitive'
+
+export type ApiToken = {
+  id: number
+  /** Coolify's "Description". */
+  name: string
+  permissions: Permission[]
+  read_only: boolean
+  created_at: string
+  last_used_at: string | null
+  /** null is Never. */
+  expires_at: string | null
+}

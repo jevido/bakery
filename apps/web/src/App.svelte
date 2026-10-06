@@ -8,7 +8,6 @@
   import Invite from './pages/Invite.svelte'
   import Dashboard from './pages/Dashboard.svelte'
   import Members from './pages/Members.svelte'
-  import ApiTokens from './pages/ApiTokens.svelte'
   import Profile from './pages/Profile.svelte'
   import NotFound from './pages/NotFound.svelte'
   import Application from './pages/application/Application.svelte'
@@ -26,6 +25,7 @@
   import Settings from './pages/Settings.svelte'
   import Storages from './pages/Storages.svelte'
   import Notifications from './pages/notifications/Notifications.svelte'
+  import Security from './pages/security/Security.svelte'
   import Setup from './pages/Setup.svelte'
   import AuthAlert from './lib/ui/AuthAlert.svelte'
   import AuthShell from './lib/ui/AuthShell.svelte'
@@ -120,8 +120,8 @@
       <Members />
     {:else if router.route.name === 'notifications'}
       <Notifications page={router.route.page} />
-    {:else if router.route.name === 'api-tokens'}
-      <ApiTokens />
+    {:else if router.route.name === 'security'}
+      <Security page={router.route.page} />
     {:else if router.route.name === 'profile'}
       <Profile />
     {:else if router.route.name === 'dev-components' && devComponents}

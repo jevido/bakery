@@ -41,7 +41,7 @@
         items: items(
           admin && { label: 'Members', path: '/members', icon: 'teams', routes: ['members'] },
           admin && { label: 'Notifications', path: '/notifications', icon: 'notifications', routes: ['notifications'] },
-          { label: 'Keys & Tokens', path: '/api-tokens', icon: 'keys', routes: ['api-tokens'] },
+          { label: 'Keys & Tokens', path: '/security/api-tokens', icon: 'keys', routes: ['security'] },
           admin && { label: 'Settings', path: '/settings', icon: 'settings', routes: ['settings'] },
         ),
       },

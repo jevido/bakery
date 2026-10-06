@@ -1,7 +1,7 @@
 import { api } from './api'
 import type { Application, Database, Project, Service } from './types'
 
-// Hash router, with Coolify's paths for Projects, Environments, Resources and Servers: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/members, #/notifications/{kind} (its pages are notificationPages; #/notifications opens Email in place), #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
+// Hash router, with Coolify's paths for Projects, Environments, Resources and Servers: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/members, #/notifications/{kind} (its pages are notificationPages; #/notifications opens Email in place), #/security/{page} (its pages are securityPages; #/security and #/api-tokens open API Tokens in place), #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
@@ -38,7 +38,7 @@ export type Route =
   | { name: 'settings' }
   | { name: 'members' }
   | { name: 'notifications'; page: NotificationPage }
-  | { name: 'api-tokens' }
+  | { name: 'security'; page: SecurityPage }
   | { name: 'profile' }
   | { name: 'invite'; token: string }
   | { name: 'login' }
@@ -137,6 +137,19 @@ export function notificationPath(page: NotificationPage): string {
   return `/notifications/${page}`
 }
 
+/** The Keys & Tokens pages, by their slug in Coolify's URLs; The Bakery has only API Tokens. */
+export const securityPages = ['api-tokens'] as const
+export type SecurityPage = (typeof securityPages)[number]
+
+function isSecurityPage(s: string): s is SecurityPage {
+  return (securityPages as readonly string[]).includes(s)
+}
+
+/** The path of a Keys & Tokens page. */
+export function securityPath(page: SecurityPage): string {
+  return `/security/${page}`
+}
+
 function parse(hash: string): Route {
   const [path, query = ''] = hash.replace(/^#\/?/, '').split('?', 2)
   const flags = new URLSearchParams(query)
@@ -152,7 +165,12 @@ function parse(hash: string): Route {
     if (parts.length === 1) return redirect(notificationPath('email'))
     if (parts.length === 2 && isNotificationPage(parts[1])) return { name: 'notifications', page: parts[1] }
   }
-  if (parts[0] === 'api-tokens' && parts.length === 1) return { name: 'api-tokens' }
+  if (parts[0] === 'security') {
+    if (parts.length === 1) return redirect(securityPath('api-tokens'))
+    if (parts.length === 2 && isSecurityPage(parts[1])) return { name: 'security', page: parts[1] }
+  }
+  // #/api-tokens was the page's path before it took Coolify's.
+  if (parts[0] === 'api-tokens' && parts.length === 1) return redirect(securityPath('api-tokens'))
   // #/account was the page's name before it took Coolify's; old links still open it.
   if ((parts[0] === 'profile' || parts[0] === 'account') && parts.length === 1) return { name: 'profile' }
   if (parts[0] === 'invite' && parts.length === 2) return { name: 'invite', token: parts[1] }
