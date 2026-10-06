@@ -95,14 +95,14 @@ func TestAPITokens(t *testing.T) {
 	ctx := context.Background()
 	s, owner, now := setUpOwner(t)
 
-	tok, value, err := s.CreateAPIToken(ctx, owner.ID, guild, domain.RoleAdmin, "ci deploy", nil, nil)
+	tok, value, err := s.CreateAPIToken(ctx, owner.ID, guild, domain.MemberPermissions{"administrator"}, "ci deploy", nil, nil)
 	if err != nil || !strings.HasPrefix(value, "bky_") || len(value) < 40 || !tok.ReadOnly() || tok.ExpiresAt != nil {
 		t.Fatalf("create: %+v %v", tok, err)
 	}
-	if _, _, err := s.CreateAPIToken(ctx, owner.ID, guild, domain.RoleAdmin, "ci deploy", nil, nil); !errors.Is(err, ErrTokenNameTaken) {
+	if _, _, err := s.CreateAPIToken(ctx, owner.ID, guild, domain.MemberPermissions{"administrator"}, "ci deploy", nil, nil); !errors.Is(err, ErrTokenNameTaken) {
 		t.Errorf("same name: %v", err)
 	}
-	if _, _, err := s.CreateAPIToken(ctx, owner.ID, guild+1, domain.RoleAdmin, "ci deploy", nil, nil); err != nil {
+	if _, _, err := s.CreateAPIToken(ctx, owner.ID, guild+1, domain.MemberPermissions{"administrator"}, "ci deploy", nil, nil); err != nil {
 		t.Errorf("same name in another Guild: %v", err)
 	}
 	m, got, err := s.Authenticate(ctx, value)
@@ -138,12 +138,12 @@ func TestAPITokenExpiry(t *testing.T) {
 	s, owner, now := setUpOwner(t)
 
 	week := 7
-	tok, value, err := s.CreateAPIToken(ctx, owner.ID, guild, domain.RoleAdmin, "a week", []domain.Permission{domain.PermissionRoot}, &week)
+	tok, value, err := s.CreateAPIToken(ctx, owner.ID, guild, domain.MemberPermissions{"administrator"}, "a week", []domain.Permission{domain.PermissionRoot}, &week)
 	if err != nil || tok.ExpiresAt == nil || !tok.ExpiresAt.Equal(now.AddDate(0, 0, 7)) {
 		t.Fatalf("create: %+v %v", tok, err)
 	}
 	odd := 3
-	if _, _, err := s.CreateAPIToken(ctx, owner.ID, guild, domain.RoleAdmin, "three days", nil, &odd); !errors.Is(err, ErrInvalidExpiry) {
+	if _, _, err := s.CreateAPIToken(ctx, owner.ID, guild, domain.MemberPermissions{"administrator"}, "three days", nil, &odd); !errors.Is(err, ErrInvalidExpiry) {
 		t.Errorf("3 days: %v", err)
 	}
 
@@ -165,10 +165,10 @@ func TestAPITokenRoleCaps(t *testing.T) {
 	ctx := context.Background()
 	s, _, _ := setUpOwner(t)
 	dev, _ := s.CreateMember(ctx, "Dev", "dev@example.com", "correct horse")
-	if _, _, err := s.CreateAPIToken(ctx, dev.ID, guild, domain.RoleMember, "root", []domain.Permission{domain.PermissionRoot}, nil); !errors.Is(err, domain.ErrRoleCannotGrant) {
+	if _, _, err := s.CreateAPIToken(ctx, dev.ID, guild, domain.MemberPermissions{"view_resources", "see_secrets", "deploy", "manage_applications"}, "root", []domain.Permission{domain.PermissionRoot}, nil); !errors.Is(err, domain.ErrCannotGrant) {
 		t.Errorf("member granting root: %v", err)
 	}
-	if _, _, err := s.CreateAPIToken(ctx, dev.ID, guild, domain.RoleMember, "deploy", []domain.Permission{domain.PermissionDeploy}, nil); err != nil {
+	if _, _, err := s.CreateAPIToken(ctx, dev.ID, guild, domain.MemberPermissions{"view_resources", "see_secrets", "deploy", "manage_applications"}, "deploy", []domain.Permission{domain.PermissionDeploy}, nil); err != nil {
 		t.Errorf("member granting deploy: %v", err)
 	}
 }
@@ -176,8 +176,8 @@ func TestAPITokenRoleCaps(t *testing.T) {
 func TestRevokeAPITokensIn(t *testing.T) {
 	ctx := context.Background()
 	s, owner, _ := setUpOwner(t)
-	_, here, _ := s.CreateAPIToken(ctx, owner.ID, guild, domain.RoleAdmin, "here", nil, nil)
-	_, there, _ := s.CreateAPIToken(ctx, owner.ID, guild+1, domain.RoleAdmin, "there", nil, nil)
+	_, here, _ := s.CreateAPIToken(ctx, owner.ID, guild, domain.MemberPermissions{"administrator"}, "here", nil, nil)
+	_, there, _ := s.CreateAPIToken(ctx, owner.ID, guild+1, domain.MemberPermissions{"administrator"}, "there", nil, nil)
 	if err := s.RevokeAPITokensIn(ctx, owner.ID, guild); err != nil {
 		t.Fatal(err)
 	}

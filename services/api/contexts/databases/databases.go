@@ -118,43 +118,47 @@ var (
 // Routes registers the databases API behind guilds.Auth, every route keyed
 // by an Environment, Project, Database, Scheduled backup or Backup execution
 // answering 404 outside the Current guild; listing S3 storages also needs
-// guilds.Secrets, changing them guilds.Admin.
+// see_secrets, changing them manage_servers; other changes need
+// manage_applications, deploy actions deploy.
 func Routes(r route.Router) {
 	c := databaseshttp.NewController(svc(), guilds.Current)
-	r.Middleware(guilds.Auth, environmentInGuild).Post("/api/environments/{id}/databases", c.Create)
+	r.Middleware(guilds.Auth, environmentInGuild, guilds.Can("manage_applications")).Post("/api/environments/{id}/databases", c.Create)
 	r.Middleware(guilds.Auth, projectInGuild).Get("/api/projects/{id}/databases", c.ForProject)
 	r.Middleware(guilds.Auth, databaseInGuild).Group(func(r route.Router) {
 		r.Get("/api/databases/{id}", c.Show)
+		r.Get("/api/databases/{id}/backup-executions", c.BackupExecutions)
+		r.Get("/api/databases/{id}/scheduled-backups", c.ScheduledBackups)
+	})
+	r.Middleware(guilds.Auth, databaseInGuild, guilds.Can("manage_applications")).Group(func(r route.Router) {
 		r.Patch("/api/databases/{id}", c.Update)
 		r.Delete("/api/databases/{id}", c.Delete)
-		r.Get("/api/databases/{id}/backup-executions", c.BackupExecutions)
 		r.Post("/api/databases/{id}/backup-executions", c.BackUp)
-		r.Get("/api/databases/{id}/scheduled-backups", c.ScheduledBackups)
 		r.Post("/api/databases/{id}/scheduled-backups", c.CreateScheduledBackup)
 	})
 	r.Middleware(guilds.Auth, scheduledBackupInGuild).Group(func(r route.Router) {
 		r.Get("/api/scheduled-backups/{id}", c.ShowScheduledBackup)
+		r.Get("/api/scheduled-backups/{id}/backup-executions", c.ScheduledBackupExecutions)
+	})
+	r.Middleware(guilds.Auth, scheduledBackupInGuild, guilds.Can("manage_applications")).Group(func(r route.Router) {
 		r.Patch("/api/scheduled-backups/{id}", c.UpdateScheduledBackup)
 		r.Delete("/api/scheduled-backups/{id}", c.DeleteScheduledBackup)
-		r.Get("/api/scheduled-backups/{id}/backup-executions", c.ScheduledBackupExecutions)
 		r.Post("/api/scheduled-backups/{id}/backup-executions", c.BackUpScheduledBackup)
 	})
-	r.Middleware(guilds.Auth, backupExecutionInGuild).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, backupExecutionInGuild, guilds.Can("manage_applications")).Group(func(r route.Router) {
 		r.Post("/api/backup-executions/{id}/restore", c.Restore)
 		r.Delete("/api/backup-executions/{id}", c.DeleteBackupExecution)
 	})
 	// Coolify's deploy actions: an API token needs deploy for them.
-	r.Middleware(guilds.Deploy, databaseInGuild).Group(func(r route.Router) {
+	r.Middleware(guilds.Deploy, databaseInGuild, guilds.Can("deploy")).Group(func(r route.Router) {
 		r.Post("/api/databases/{id}/start", c.Start)
 		r.Post("/api/databases/{id}/stop", c.Stop)
 		r.Post("/api/databases/{id}/restart", c.Restart)
 	})
 	// Members pick an S3 storage for a Scheduled backup, so they may list
-	// them (no secret keys are shown); only admins change them.
-	r.Middleware(guilds.Auth, guilds.Secrets).Group(func(r route.Router) {
-		r.Get("/api/s3-storages", c.S3Storages)
-	})
-	r.Middleware(guilds.Auth, s3StorageInGuild, guilds.Admin).Group(func(r route.Router) {
+	// them (no secret keys are shown, but the list stays behind see_secrets
+	// as it was); changing them needs manage_servers.
+	r.Middleware(guilds.Auth, guilds.Can("see_secrets")).Get("/api/s3-storages", c.S3Storages)
+	r.Middleware(guilds.Auth, s3StorageInGuild, guilds.Can("manage_servers")).Group(func(r route.Router) {
 		r.Post("/api/s3-storages", c.CreateS3Storage)
 		r.Post("/api/s3-storages/check", c.CheckS3Storage)
 		r.Patch("/api/s3-storages/{id}", c.UpdateS3Storage)
@@ -169,7 +173,7 @@ func Routes(r route.Router) {
 func StreamRoutes(r route.Router) {
 	c := databaseshttp.NewStreamController(svc(), shutdown)
 	r.Middleware(guilds.Auth, databaseInGuild).Get("/api/databases/{id}/logs", c.Logs)
-	r.Middleware(guilds.Auth, guilds.Secrets, backupExecutionInGuild).Get("/api/backup-executions/{id}/download", c.Download)
+	r.Middleware(guilds.Auth, backupExecutionInGuild, guilds.Can("see_secrets")).Get("/api/backup-executions/{id}/download", c.Download)
 }
 
 // Recover starts, in the background, every Database that should run and has

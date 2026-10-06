@@ -58,18 +58,19 @@ func (c *Controller) APITokens(ctx contractshttp.Context) contractshttp.Response
 type apiTokenRequest struct {
 	Name string `json:"name"`
 	// Permissions absent means the request predates them: ReadOnly then
-	// picks read, or else the most the Role may grant.
+	// picks read, or else the most the Member's Permissions may grant.
 	Permissions *[]domain.Permission `json:"permissions"`
 	ReadOnly    bool                 `json:"read_only"`
 	// ExpiresInDays absent or null is Never.
 	ExpiresInDays *int `json:"expires_in_days"`
 }
 
-// grantable is every Permission role may put on a token.
-func grantable(role domain.Role) []domain.Permission {
+// grantable is every Token permission a Member with these Permissions may
+// put on a token.
+func grantable(member domain.MemberPermissions) []domain.Permission {
 	var out []domain.Permission
 	for _, p := range domain.Permissions {
-		if role.MayGrant(p) {
+		if member.MayGrant(p) {
 			out = append(out, p)
 		}
 	}
@@ -93,17 +94,18 @@ func (c *Controller) CreateAPIToken(ctx contractshttp.Context) contractshttp.Res
 		permissions = *req.Permissions
 	case req.ReadOnly:
 		permissions = []domain.Permission{domain.PermissionRead}
-	case g.role.IsAdmin():
+	case g.permissions.MayGrant(domain.PermissionRoot):
 		permissions = []domain.Permission{domain.PermissionRoot}
 	default:
-		// root capped to the Role, so an old script's token does what it did.
-		permissions = grantable(g.role)
+		// root capped to the Permissions, so an old script's token does
+		// what it did.
+		permissions = grantable(g.permissions)
 	}
-	t, value, err := c.service.CreateAPIToken(ctx.Context(), id, g.guildID, g.role, req.Name, permissions, req.ExpiresInDays)
+	t, value, err := c.service.CreateAPIToken(ctx.Context(), id, g.guildID, g.permissions, req.Name, permissions, req.ExpiresInDays)
 	switch {
 	case errors.Is(err, domain.ErrInvalidTokenName), errors.Is(err, app.ErrTokenNameTaken):
 		return respond.Invalid(ctx, "name", err.Error())
-	case errors.Is(err, domain.ErrUnknownPermission), errors.Is(err, domain.ErrRoleCannotGrant):
+	case errors.Is(err, domain.ErrUnknownPermission), errors.Is(err, domain.ErrCannotGrant):
 		return respond.Invalid(ctx, "permissions", err.Error())
 	case errors.Is(err, app.ErrInvalidExpiry), errors.Is(err, domain.ErrTokenExpiryPassed):
 		return respond.Invalid(ctx, "expires_in_days", err.Error())
@@ -133,17 +135,16 @@ func (c *Controller) RevokeAPIToken(ctx contractshttp.Context) contractshttp.Res
 	return ctx.Response().NoContent()
 }
 
-// APITokenPermissions answers which Permissions the signed-in Member may put
-// on a token in the Current guild.
+// APITokenPermissions answers which Token permissions the signed-in Member
+// may put on a token in the Current guild.
 func (c *Controller) APITokenPermissions(ctx contractshttp.Context) contractshttp.Response {
 	g, ok := guildOf(ctx)
 	if !ok {
 		return noGuild(ctx)
 	}
-	role := g.role
 	out := make([]contractshttp.Json, len(domain.Permissions))
 	for i, p := range domain.Permissions {
-		out[i] = contractshttp.Json{"name": p, "allowed": role.MayGrant(p)}
+		out[i] = contractshttp.Json{"name": p, "allowed": g.permissions.MayGrant(p)}
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"permissions": out})
 }

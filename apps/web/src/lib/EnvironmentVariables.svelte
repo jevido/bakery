@@ -85,7 +85,7 @@
       loadError = ''
     })
     // Variable values are Secrets; a viewer's request would be refused.
-    if (!session.canSeeSecrets) return
+    if (!session.can('see_secrets')) return
     load().catch((e) => (loadError = e.message))
   })
 
@@ -294,12 +294,12 @@
 <div class="chrome flex flex-col gap-4">
   <SettingsSection id="environment-variables-section" {title} {helper}>
     {#snippet actions()}
-      {#if session.canWrite && loaded}
+      {#if session.can('manage_applications') && loaded}
         <Button onclick={switchView}>{view === 'normal' ? 'Developer view' : 'Normal view'}</Button>
       {/if}
     {/snippet}
-    {#if !session.canSeeSecrets}
-      <p class="text-sm text-neutral-500 dark:text-fg-dim">Values are hidden (only admins can view).</p>
+    {#if !session.can('see_secrets')}
+      <p class="text-sm text-neutral-500 dark:text-fg-dim">Values are hidden (they need the See secrets permission).</p>
     {:else if view === 'normal'}
       <p class="text-sm text-neutral-500 dark:text-fg-dim">
         Manage this resource's environment variables below. Values are stored encrypted and apply on the next deploy.
@@ -337,7 +337,7 @@
     {/if}
   </SettingsSection>
 
-  {#if session.canSeeSecrets && view === 'normal'}
+  {#if session.can('see_secrets') && view === 'normal'}
     <div class="table-toolbar mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
       <div class="w-full min-w-0 flex-1 sm:max-w-md">
         <div class="table-search relative w-full min-w-0">
@@ -451,7 +451,7 @@
             {/each}
           {/snippet}
         </TableDropdown>
-        {#if session.canWrite}
+        {#if session.can('manage_applications')}
           <button type="button" class="button button-highlighted" onclick={openAdd}>
             <Icon name="plus" class="size-3.5" />
             Add
@@ -516,7 +516,7 @@
           <Empty
             size="sm"
             title="No environment variables"
-            description={session.canWrite ? 'Add your first variable with the + Add button above.' : undefined}
+            description={session.can('manage_applications') ? 'Add your first variable with the + Add button above.' : undefined}
             icon="variables"
           />
         {/if}
@@ -557,7 +557,7 @@
   {/if}
 </div>
 
-{#if session.canWrite}
+{#if session.can('manage_applications')}
   <Modal title="New Environment Variable" variant="none" closeOutside={false} bind:open={adding}>
     <form class="flex w-full flex-col gap-4" onsubmit={submitAdd}>
       <Input placeholder="NODE_ENV" label="Name" required bind:value={name} />

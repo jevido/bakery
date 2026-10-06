@@ -146,11 +146,11 @@
     detail={`${databaseTypeLabel(database.type)} ${database.version}`}
     error={database.error}
     stopped={database.desired_state === 'stopped'}
-    canWrite={session.canWrite}
+    canDeploy={session.can('deploy')}
     {busy}
     onstart={() => act('start')}
   />
-  {#if session.canWrite}
+  {#if session.can('deploy')}
     <div class="hidden" aria-hidden="true">
       <ConfirmationModal
         title="Confirm Database Restart?"
@@ -205,7 +205,7 @@
             <RuntimeLogs url={`/api/databases/${database.id}/logs`} container={database.status === 'stopped' ? '' : database.container} />
           {:else if page === 'backups' && database.backups_supported}
             <Backups {database} />
-          {:else if page === 'danger' && session.canWrite}
+          {:else if page === 'danger' && session.can('manage_applications')}
             <!-- Coolify calls a Database a "resource" here. Its network,
                  configuration and Docker cleanup checkboxes have nothing
                  behind them for a Database. -->

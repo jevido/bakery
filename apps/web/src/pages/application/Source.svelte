@@ -23,7 +23,7 @@
 
   let { application, onchange }: { application: Application; onchange: (a: Application) => void } = $props()
 
-  const canUpdate = $derived(session.canWrite)
+  const canUpdate = $derived(session.can('manage_applications'))
 
   let gitUrl = $state('')
   let gitBranch = $state('')

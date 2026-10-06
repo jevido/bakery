@@ -11,8 +11,8 @@
     const r = await api<{ known_hosts: KnownHost[] }>('GET', '/known-hosts')
     hosts = r.known_hosts
   }
-  // Everything here is for admins; the API refuses the rest.
-  if (session.isAdmin) load().catch((e) => (error = e.message))
+  // Everything here needs manage_servers; the API refuses the rest.
+  if (session.can('manage_servers')) load().catch((e) => (error = e.message))
 
   async function forget(h: KnownHost) {
     if (!confirm(`Forget the host key of ${h.host}? The next clone trusts whatever key it then presents.`)) return
@@ -27,8 +27,8 @@
 
 <h1>Settings</h1>
 
-{#if !session.isAdmin}
-  <p class="muted">Settings are managed by admins.</p>
+{#if !session.can('manage_servers')}
+  <p class="muted">Settings need the Manage servers permission.</p>
 {:else}
 
 <h2>Known hosts</h2>

@@ -46,7 +46,7 @@
     webhook = null
     load().catch((err) => toast.error('Previews not loaded', err.message))
     // The switch and token live on the Webhook, which carries its secret.
-    if (session.canSeeSecrets) {
+    if (session.can('see_secrets')) {
       api<{ webhook: Webhook }>('GET', `/applications/${application.id}/webhook`)
         .then((r) => (webhook = r.webhook))
         .catch(() => {})
@@ -123,7 +123,7 @@
 <div class="chrome flex flex-col gap-6">
   <SettingsSection id="preview-settings-section" title="Preview settings" helper="Automatic pull request deployments and who can trigger them.">
     {#snippet actions()}
-      {#if session.canWrite && webhook}
+      {#if session.can('manage_applications') && webhook}
         {#if webhook.previews}
           <Button loading={toggling} onclick={togglePreviewDeployments}>Disable preview deployments</Button>
         {:else}
@@ -147,10 +147,10 @@
             <span class="text-[12px] text-neutral-500 dark:text-fg-dim">Git host token</span>
             <span class="flex items-center gap-2">
               <span class="text-[12px] font-medium text-neutral-900 dark:text-fg" data-testid="token-saved">Saved</span>
-              {#if session.canWrite}<Button loading={savingToken} onclick={() => saveToken('')}>Remove</Button>{/if}
+              {#if session.can('manage_applications')}<Button loading={savingToken} onclick={() => saveToken('')}>Remove</Button>{/if}
             </span>
           </div>
-        {:else if session.canWrite}
+        {:else if session.can('manage_applications')}
           <form
             class="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
             onsubmit={(e) => {
@@ -241,7 +241,7 @@
               </a>
             {/if}
 
-            {#if session.canWrite}
+            {#if (session.can('deploy') || session.can('manage_applications'))}
               <TableDropdown role="menu" panelClass="w-52! min-w-52!">
                 {#snippet trigger({ open, toggle })}
                   <button type="button" class="button gap-1.5" title="Preview actions" aria-expanded={open} aria-haspopup="menu" onclick={toggle}>
@@ -280,7 +280,7 @@
             {/if}
           </div>
 
-          {#if session.canWrite}
+          {#if session.can('manage_applications')}
             <div class="hidden" aria-hidden="true">
               <ConfirmationModal
                 title="Delete preview deployment?"

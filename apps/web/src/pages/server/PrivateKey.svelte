@@ -64,7 +64,7 @@
   {:else}
     <SettingsSection id="server-private-keys-section" title="Private key" helper="The SSH key The Bakery uses to connect to this server." flush>
       {#snippet actions()}
-        {#if session.isAdmin}
+        {#if session.can('manage_servers')}
           <Button loading={checking} onclick={checkConnection} data-testid="check-connection">
             {#if !checking}<Icon name="refresh" class="size-3.5" />{/if}
             Check connection
@@ -72,7 +72,7 @@
         {/if}
       {/snippet}
 
-      {#if !session.isAdmin}
+      {#if !session.can('manage_servers')}
         <p class="px-4 py-4 text-sm text-neutral-500 dark:text-fg-dim" data-testid="private-key-admin-only">
           Only an admin can see this server's key.
         </p>

@@ -39,8 +39,8 @@ func guildFailure(ctx contractshttp.Context, err error) contractshttp.Response {
 	return respond.ServerError(ctx, err)
 }
 
-// Guilds lists the Guilds the Member may switch to, with their former
-// role in each (wireRole): every Guild for the Instance admin.
+// Guilds lists the Guilds the Member may switch to, with their Permissions
+// and former role in each (wireRole): every Guild for the Instance admin.
 func (c *Controller) Guilds(ctx contractshttp.Context) contractshttp.Response {
 	p := placeOf(ctx)
 	places, err := c.service.GuildsFor(ctx.Context(), p.principal.MemberID, p.principal.InstanceAdmin)
@@ -53,7 +53,7 @@ func (c *Controller) Guilds(ctx contractshttp.Context) contractshttp.Response {
 func guildsJSON(places []app.Place) []guildJSON {
 	out := make([]guildJSON, len(places))
 	for i, pl := range places {
-		out[i] = guildJSON{ID: pl.Guild.ID, Name: pl.Guild.Name, Role: wireRole(pl.Permissions)}
+		out[i] = guildJSON{ID: pl.Guild.ID, Name: pl.Guild.Name, Role: wireRole(pl.Permissions), Permissions: pl.Permissions.Keys()}
 	}
 	return out
 }
@@ -66,12 +66,13 @@ func (c *Controller) CreateGuild(ctx contractshttp.Context) contractshttp.Respon
 		return respond.BadBody(ctx)
 	}
 	g, err := c.service.CreateGuild(ctx.Context(), req.Name, req.Description, MemberID(ctx))
+	admin := domain.Of(domain.PermissionAdministrator)
 	if err != nil {
 		return guildFailure(ctx, err)
 	}
 	SetCurrent(ctx, g.ID)
 	return ctx.Response().Json(contractshttp.StatusCreated, contractshttp.Json{
-		"guild": guildJSON{ID: g.ID, Name: g.Name, Role: wireRole(domain.Of(domain.PermissionAdministrator))},
+		"guild": guildJSON{ID: g.ID, Name: g.Name, Role: wireRole(admin), Permissions: admin.Keys()},
 	})
 }
 

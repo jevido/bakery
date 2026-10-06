@@ -102,15 +102,15 @@ func serviceBelongs(ctx context.Context, id, guildID uint64) (bool, error) {
 func Routes(r route.Router) {
 	c := serviceshttp.NewController(svc())
 	r.Middleware(guilds.Auth).Get("/api/service-templates", c.Templates)
-	r.Middleware(guilds.Auth, environmentInGuild).Post("/api/environments/{id}/services", c.Create)
+	r.Middleware(guilds.Auth, environmentInGuild, guilds.Can("manage_applications")).Post("/api/environments/{id}/services", c.Create)
 	r.Middleware(guilds.Auth, projectInGuild).Get("/api/projects/{id}/services", c.ForProject)
-	r.Middleware(guilds.Auth, serviceInGuild).Group(func(r route.Router) {
-		r.Get("/api/services/{id}", c.Show)
+	r.Middleware(guilds.Auth, serviceInGuild).Get("/api/services/{id}", c.Show)
+	r.Middleware(guilds.Auth, serviceInGuild, guilds.Can("manage_applications")).Group(func(r route.Router) {
 		r.Patch("/api/services/{id}", c.Update)
 		r.Delete("/api/services/{id}", c.Delete)
 	})
 	// Coolify's deploy actions: an API token needs deploy for them.
-	r.Middleware(guilds.Deploy, serviceInGuild).Group(func(r route.Router) {
+	r.Middleware(guilds.Deploy, serviceInGuild, guilds.Can("deploy")).Group(func(r route.Router) {
 		r.Post("/api/services/{id}/start", c.Start)
 		r.Post("/api/services/{id}/stop", c.Stop)
 		r.Post("/api/services/{id}/restart", c.Restart)

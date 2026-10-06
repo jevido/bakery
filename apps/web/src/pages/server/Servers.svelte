@@ -73,7 +73,7 @@
 <div class="chrome application-settings-form w-full">
   <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
     <h1 class="min-w-0 text-[24px]! leading-7! font-semibold! tracking-tight!">Servers</h1>
-    {#if session.isAdmin}
+    {#if session.can('manage_servers')}
       <div class="flex flex-wrap items-center gap-2">
         <a href={href('/servers/new')} class="button button-highlighted w-fit shrink-0 whitespace-nowrap">
           <Icon name="plus" class="size-3.5" />

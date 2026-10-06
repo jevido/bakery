@@ -1,5 +1,5 @@
-// Package http exposes guilds over HTTP: the Auth, Deploy, Admin and Secrets
-// middlewares every context's routes sit behind, `GET /api/me`, and the
+// Package http exposes guilds over HTTP: the Auth and Can middlewares every
+// context's routes sit behind, `GET /api/me`, and the
 // Members and Invitations of the Current guild.
 package http
 
@@ -25,20 +25,24 @@ const GuildCookie = "bakery_guild"
 type placeKey struct{}
 
 // place is who a request comes from, the Guild it acts in (zero when none)
-// and the Permissions there.
+// and the Permissions there, already capped by an API token's Token
+// permissions (effective).
 type place struct {
 	principal   identity.Principal
 	guild       domain.Guild
 	permissions domain.Permissions
+	// held are the Member's own Permissions, before an API token's cap.
+	held domain.Permissions
 }
 
 // Auth lets a request through only from a Member (identity.Authenticate)
 // acting in a Guild: the API token's Guild, or for a Session the Guild in
 // GuildCookie when the Member may act there, else their first. The
 // Permissions are their Membership's there, every one for the Instance
-// admin, read on every request so a changed Role counts at once. Without
-// manage_applications a request is refused anything but reading, and an
-// API token anything its Token permissions do not cover.
+// admin, read on every request so a changed Role counts at once, and capped
+// by an API token's Token permissions (effective). Reading needs
+// view_resources; an API token is refused anything its Token permissions do
+// not cover by method. Every change names its Permission with Can.
 type Auth struct {
 	Service *app.Service
 	// Deploy is for Coolify's deploy actions (deploy, restart, stop, start,
@@ -83,14 +87,15 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 			_ = respond.Error(ctx, contractshttp.StatusForbidden, "Missing required permissions: "+string(need)).Abort()
 			return
 		}
-		if reason := refusal(method, pl.Permissions); found && reason != "" {
-			_ = respond.Error(ctx, contractshttp.StatusForbidden, reason).Abort()
-			return
-		}
 	}
-	ctx.WithValue(placeKey{}, place{principal: p, guild: pl.Guild, permissions: pl.Permissions})
+	perms := effective(p, pl.Permissions)
+	if found && !a.SelfService && !a.Guildless && reads(ctx.Request().Method()) && !perms.Has(domain.PermissionViewResources) {
+		_ = refuse(ctx, p, pl.Permissions, domain.PermissionViewResources)
+		return
+	}
+	ctx.WithValue(placeKey{}, place{principal: p, guild: pl.Guild, permissions: perms, held: pl.Permissions})
 	if found {
-		identity.ActIn(ctx, pl.Guild.ID, wireRole(pl.Permissions))
+		identity.ActIn(ctx, pl.Guild.ID, pl.Permissions.Expand().Keys())
 	}
 	ctx.Request().Next()
 }
@@ -134,7 +139,7 @@ func cookieGuild(ctx contractshttp.Context) uint64 {
 // method: read to read, deploy on a deploy route, write for other changes.
 func required(method string, deploy bool) identity.Permission {
 	switch {
-	case method == contractshttp.MethodGet || method == contractshttp.MethodHead:
+	case reads(method):
 		return identity.PermissionRead
 	case deploy:
 		return identity.PermissionDeploy
@@ -143,46 +148,84 @@ func required(method string, deploy bool) identity.Permission {
 	}
 }
 
-// refusal is why these Permissions may not make a request with this
-// method, or "".
-func refusal(method string, perms domain.Permissions) string {
-	if method == contractshttp.MethodGet || method == contractshttp.MethodHead || perms.Has(domain.PermissionManageApplications) {
-		return ""
-	}
-	return "your role cannot change this"
+func reads(method string) bool {
+	return method == contractshttp.MethodGet || method == contractshttp.MethodHead
 }
 
-// Admin lets only requests with administrator in the Current guild through.
-// It runs after Auth.
-type Admin struct{}
+// changes are the Permissions that change something, which an API token
+// keeps only with write or root.
+var changes = domain.AllPermissions.Without(domain.Of(domain.PermissionAdministrator, domain.PermissionViewResources, domain.PermissionSeeSecrets, domain.PermissionDeploy))
 
-func (Admin) Signature() string { return "guilds.admin" }
-
-func (Admin) Handle(ctx contractshttp.Context) {
-	if !PermissionsOf(ctx).Has(domain.PermissionAdministrator) {
-		_ = respond.Error(ctx, contractshttp.StatusForbidden, "only admins can do this").Abort()
-		return
+// effective is what a request may do with the Member's Permissions: all of
+// them with a Session; with an API token only what its Token permissions
+// cover: see_secrets with read:sensitive, deploy with deploy, the other
+// changes with write, administrator only with root.
+func effective(p identity.Principal, perms domain.Permissions) domain.Permissions {
+	if !p.Token {
+		return perms
 	}
-	ctx.Request().Next()
+	out := perms.Expand()
+	if !p.Allows(identity.PermissionRoot) {
+		out = out.Without(domain.Of(domain.PermissionAdministrator))
+	}
+	if !p.Allows(identity.PermissionReadSensitive) {
+		out = out.Without(domain.Of(domain.PermissionSeeSecrets))
+	}
+	if !p.Allows(identity.PermissionDeploy) {
+		out = out.Without(domain.Of(domain.PermissionDeploy))
+	}
+	if !p.Allows(identity.PermissionWrite) {
+		out = out.Without(changes)
+	}
+	return out
 }
 
-// Secrets keeps requests without see_secrets, and API tokens without
-// read:sensitive, away from routes that return Secrets. It runs after Auth.
-type Secrets struct{}
+// refuse answers 403 for a request without need: in Coolify's words when
+// the Member holds it but their API token does not carry it, else naming the
+// Permission.
+func refuse(ctx contractshttp.Context, p identity.Principal, held domain.Permissions, need domain.Permission) error {
+	if p.Token && held.Has(need) {
+		return respond.Error(ctx, contractshttp.StatusForbidden, "Missing required permissions: "+string(tokenPermission(need))).Abort()
+	}
+	return respond.Error(ctx, contractshttp.StatusForbidden, "you need the "+need.Name()+" permission").Abort()
+}
 
-func (Secrets) Signature() string { return "guilds.secrets" }
+// tokenPermission is the Token permission that lets an API token use need.
+func tokenPermission(need domain.Permission) identity.Permission {
+	switch need {
+	case domain.PermissionAdministrator:
+		return identity.PermissionRoot
+	case domain.PermissionViewResources:
+		return identity.PermissionRead
+	case domain.PermissionSeeSecrets:
+		return identity.PermissionReadSensitive
+	case domain.PermissionDeploy:
+		return identity.PermissionDeploy
+	}
+	return identity.PermissionWrite
+}
 
-func (Secrets) Handle(ctx contractshttp.Context) {
+// Can lets only requests that may use Permission in the Current guild
+// through (403). It runs after Auth.
+type Can struct {
+	Permission domain.Permission
+}
+
+func (c Can) Signature() string { return "guilds.can." + c.Permission.Key() }
+
+func (c Can) Handle(ctx contractshttp.Context) {
 	p := placeOf(ctx)
-	if !p.permissions.Has(domain.PermissionSeeSecrets) {
-		_ = respond.Error(ctx, contractshttp.StatusForbidden, "your role cannot see secrets").Abort()
-		return
-	}
-	if !p.principal.Allows(identity.PermissionReadSensitive) {
-		_ = respond.Error(ctx, contractshttp.StatusForbidden, "Missing required permissions: "+string(identity.PermissionReadSensitive)).Abort()
+	if !p.permissions.Has(c.Permission) {
+		_ = refuse(ctx, p.principal, p.held, c.Permission)
 		return
 	}
 	ctx.Request().Next()
+}
+
+// Allows reports whether the request may use perm in the Current guild,
+// for a handler whose answer differs by Permission.
+func Allows(ctx contractshttp.Context, perm domain.Permission) bool {
+	return placeOf(ctx).permissions.Has(perm)
 }
 
 func placeOf(ctx contractshttp.Context) place {
@@ -216,13 +259,6 @@ func InstanceAdmin(ctx contractshttp.Context) bool { return placeOf(ctx).princip
 
 // MemberID is the Member the request comes from.
 func MemberID(ctx contractshttp.Context) uint64 { return placeOf(ctx).principal.MemberID }
-
-// CanSeeSecrets reports whether the request may be answered with Secrets:
-// it has see_secrets and its API token, if any, carries read:sensitive.
-func CanSeeSecrets(ctx contractshttp.Context) bool {
-	p := placeOf(ctx)
-	return p.permissions.Has(domain.PermissionSeeSecrets) && p.principal.Allows(identity.PermissionReadSensitive)
-}
 
 // Owns answers 404 when the route's {id} names something that is not in the
 // Current guild; Belongs is asked by the context that owns it. A malformed

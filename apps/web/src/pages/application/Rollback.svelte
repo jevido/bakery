@@ -106,7 +106,7 @@
                 ({image.deployment.commit_sha.slice(0, 7)}){/if}
             </p>
           </div>
-          {#if session.canWrite}
+          {#if session.can('deploy')}
             {#if image.current}
               <Button disabled title="This image is currently running.">Rollback</Button>
             {:else}

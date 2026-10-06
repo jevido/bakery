@@ -55,8 +55,8 @@ made in, a Session in the one its `bakery_guild` cookie names (else the
 Member's first). Each Member holds Roles per Guild (seeded `Admin`,
 `Member` and `Viewer`, plus the Base role `@everyone`); their Permissions
 are the union of those Roles' (every Permission for the Instance admin
-Setup creates), and `guilds.Auth`, `guilds.Admin` and `guilds.Secrets`
-enforce them on every route; admins invite people with
+Setup creates), and `guilds.Auth` and `guilds.Can(permission)` enforce
+them on every route; Members with `manage_members` invite people with
 `POST /api/invitations`, which answers a link that is good once, for 7
 days. `task access:test` checks it all end to end.
 

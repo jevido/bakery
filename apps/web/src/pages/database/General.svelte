@@ -51,7 +51,7 @@
   const hiddenValue = 'Hidden (viewers cannot see it)'
   const urlHelper = 'The Bakery generated the credentials in this URL when it created the database; they never change.'
 
-  const canUpdate = $derived(session.canWrite)
+  const canUpdate = $derived(session.can('manage_applications'))
 
   let name = $state('')
   let description = $state('')

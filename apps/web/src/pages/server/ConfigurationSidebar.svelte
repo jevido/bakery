@@ -22,7 +22,7 @@
         { label: 'Resources', page: 'resources', icon: 'projects', group: 'Platform' },
         { label: 'Docker Cleanup', page: 'docker-cleanup', icon: 'broom', group: 'Operations', visible: isFunctional(server) },
         { label: 'Metrics', page: 'metrics', icon: 'graph', group: 'Operations', visible: isFunctional(server) },
-        { label: 'Danger', page: 'danger', icon: 'shield-alert', group: 'Danger zone', visible: server.kind === 'remote' && session.isAdmin },
+        { label: 'Danger', page: 'danger', icon: 'shield-alert', group: 'Danger zone', visible: server.kind === 'remote' && session.can('manage_servers') },
       ] satisfies Item[] as Item[]
     ).filter((i) => i.visible ?? true),
   )

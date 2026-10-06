@@ -116,7 +116,7 @@
       <h2>Executions</h2>
       <p>Review generated archives, storage availability, and backup output.</p>
     </div>
-    {#if session.canWrite}
+    {#if session.can('manage_applications')}
       <div class="flex flex-wrap items-center gap-2">
         <Button loading={cleaning} onclick={cleanupFailed}>Clean failed backups</Button>
       </div>
@@ -189,7 +189,7 @@
                 {#if b.s3}<StatusBadge label="S3" status="Available" type="success" />{/if}
               </div>
               <div class="flex items-center justify-end gap-1">
-                {#if session.canWrite}
+                {#if session.can('manage_applications')}
                   {#if b.status === 'succeeded'}
                     <a
                       class="icon-button shrink-0"

@@ -161,7 +161,7 @@ func one(ctx contractshttp.Context, status int, v app.View, err error) contracts
 		return fail(ctx, err)
 	}
 	out := toJSON(v, true)
-	if !guilds.CanSeeSecrets(ctx) && out.Variables != nil {
+	if !guilds.Allows(ctx, "see_secrets") && out.Variables != nil {
 		for i := range *out.Variables {
 			(*out.Variables)[i].Value, (*out.Variables)[i].Hidden = "", true
 		}

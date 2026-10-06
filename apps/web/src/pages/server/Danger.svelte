@@ -64,7 +64,7 @@
             <p>Type the server name in the confirmation dialog to continue.</p>
           </div>
         </div>
-        {#if session.isAdmin}
+        {#if session.can('manage_servers')}
           <div class="shrink-0">
             <ConfirmationModal
               title="Confirm Server Deletion?"

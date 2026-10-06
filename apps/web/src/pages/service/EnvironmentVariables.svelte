@@ -74,7 +74,7 @@
   let saving = $state(false)
 
   const editingVar = $derived<ServiceVariable | undefined>(vars.find((v) => v.name === editingName))
-  const canEditValue = $derived(session.canWrite && !!editingVar && !editingVar.magic && !editingVar.hidden)
+  const canEditValue = $derived(session.can('manage_applications') && !!editingVar && !editingVar.magic && !editingVar.hidden)
   const dirty = $derived(canEditValue && value !== editingVar?.value)
 
   function openEdit(v: ServiceVariable) {

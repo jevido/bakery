@@ -30,7 +30,7 @@
   async function load() {
     const [m, i] = await Promise.all([
       api<{ members: Member[] }>('GET', '/members'),
-      session.isAdmin ? api<{ invitations: Invitation[] }>('GET', '/invitations') : { invitations: [] },
+      session.can('manage_members') ? api<{ invitations: Invitation[] }>('GET', '/invitations') : { invitations: [] },
     ])
     members = m.members
     invitations = i.invitations
@@ -39,7 +39,7 @@
 
   /** Whether the signed-in person may change this Member: an admin, not for the Instance admin, not for themselves. */
   function manageable(m: Member): boolean {
-    return session.isAdmin && !m.instance_admin && m.id !== session.member?.id
+    return session.can('manage_members') && !m.instance_admin && m.id !== session.member?.id
   }
 
   async function invite(e: SubmitEvent) {
@@ -111,7 +111,7 @@
 
 <h2>Members</h2>
 
-{#if session.isAdmin}
+{#if session.can('manage_members')}
 <form class="card form" onsubmit={invite}>
   <h2>Invite someone</h2>
   <div class="row">
@@ -185,7 +185,7 @@
     </tbody>
   </table>
 
-  {#if session.isAdmin}
+  {#if session.can('manage_members')}
   <h2>Open invitations</h2>
   {#if invitations.length === 0}
     <p class="muted">None. An invitation stays here until it is accepted, revoked or expires.</p>

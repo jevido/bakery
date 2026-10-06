@@ -60,7 +60,7 @@
     {/if}
   </div>
 
-  {#if !session.isAdmin}
+  {#if !session.can('manage_servers')}
     <p class="text-sm text-neutral-500 dark:text-fg-dim">Only an admin of this guild adds servers.</p>
   {:else if !selected}
     <div class="application-settings-form flex flex-col gap-6">

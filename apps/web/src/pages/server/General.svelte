@@ -28,7 +28,7 @@
   let { server, onchange }: { server: Server; onchange: (s: Server) => void } = $props()
 
   // Only the Instance admin changes the Local server, which every Guild shares.
-  const canUpdate = $derived(session.isAdmin && (server.kind === 'remote' || session.instanceAdmin))
+  const canUpdate = $derived(session.can('manage_servers') && (server.kind === 'remote' || session.instanceAdmin))
   const remote = $derived(server.kind === 'remote')
   const functional = $derived(isFunctional(server))
 

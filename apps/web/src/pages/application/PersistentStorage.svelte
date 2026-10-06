@@ -33,7 +33,7 @@
     helper?: string
   } = $props()
 
-  const canUpdate = $derived(session.canWrite && !!onsave)
+  const canUpdate = $derived(session.can('manage_applications') && !!onsave)
 
   // The rows being edited, as typed; reset whenever the saved list changes.
   let forms = $state<Storage[]>([])

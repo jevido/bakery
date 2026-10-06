@@ -22,7 +22,7 @@
     { label: 'Environment Variables', page: 'environment-variables', icon: 'variables' },
     { label: 'Persistent Storage', page: 'storages', icon: 'storages' },
     { label: 'Runtime Logs', page: 'logs', icon: 'unordered-list' },
-    { label: 'Danger Zone', page: 'danger', icon: 'shield-alert', visible: session.canWrite },
+    { label: 'Danger Zone', page: 'danger', icon: 'shield-alert', visible: session.can('manage_applications') },
   ])
   const items = $derived(all.filter((i) => i.visible ?? true))
 

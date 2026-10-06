@@ -8,8 +8,8 @@
 
 <h1>S3 Storage</h1>
 
-{#if !session.isAdmin}
-  <p class="muted">S3 storages are managed by admins.</p>
+{#if !session.can('manage_servers')}
+  <p class="muted">Managing S3 storages needs the Manage servers permission.</p>
 {:else}
   <S3Storages />
 {/if}

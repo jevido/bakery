@@ -51,7 +51,7 @@ var channelInGuild = guilds.Owns("notification-channel", func(ctx context.Contex
 // only: channels hold credentials of other systems.
 func Routes(r route.Router) {
 	c := notificationshttp.NewController(svc(), guilds.Current)
-	r.Middleware(guilds.Auth, channelInGuild, guilds.Admin).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, channelInGuild, guilds.Can("manage_notifications")).Group(func(r route.Router) {
 		r.Get("/api/notification-event-kinds", c.EventKinds)
 		r.Get("/api/notification-channels", c.List)
 		r.Post("/api/notification-channels", c.Create)

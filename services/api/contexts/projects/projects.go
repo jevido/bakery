@@ -41,21 +41,24 @@ func svc() *app.Service {
 // ErrNotFound is returned for an Application that does not exist.
 var ErrNotFound = app.ErrNotFound
 
-// Routes registers the projects API, all behind guilds.Auth.
+// Routes registers the projects API, all behind guilds.Auth; changes need
+// manage_applications, reading variables see_secrets.
 func Routes(r route.Router) {
 	c := projectshttp.NewController(svc(), servers.LocalID, guilds.Current)
 	r.Middleware(guilds.Auth).Group(func(r route.Router) {
 		r.Get("/api/projects", c.ListProjects)
-		r.Post("/api/projects", c.CreateProject)
 		r.Get("/api/projects/{id}", c.ShowProject)
+		r.Get("/api/environments/{id}", c.ShowEnvironment)
+		r.Get("/api/applications/{id}", c.ShowApplication)
+	})
+	r.Middleware(guilds.Auth, guilds.Can("manage_applications")).Group(func(r route.Router) {
+		r.Post("/api/projects", c.CreateProject)
 		r.Patch("/api/projects/{id}", c.UpdateProject)
 		r.Delete("/api/projects/{id}", c.DeleteProject)
 		r.Post("/api/projects/{id}/environments", c.CreateEnvironment)
-		r.Get("/api/environments/{id}", c.ShowEnvironment)
 		r.Patch("/api/environments/{id}", c.UpdateEnvironment)
 		r.Delete("/api/environments/{id}", c.DeleteEnvironment)
 		r.Post("/api/environments/{id}/applications", c.CreateApplication)
-		r.Get("/api/applications/{id}", c.ShowApplication)
 		r.Patch("/api/applications/{id}", c.UpdateApplication)
 		r.Delete("/api/applications/{id}", c.DeleteApplication)
 		r.Post("/api/applications/{id}/deploy-key", c.RegenerateDeployKey)
@@ -64,7 +67,7 @@ func Routes(r route.Router) {
 		r.Put("/api/environments/{id}/variables", c.ReplaceEnvironmentSharedVariables)
 	})
 	// Variable values are Secrets.
-	r.Middleware(guilds.Auth, guilds.Secrets).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, guilds.Can("see_secrets")).Group(func(r route.Router) {
 		r.Get("/api/applications/{id}/environment-variables", c.ShowEnvironmentVariables)
 		r.Get("/api/projects/{id}/variables", c.ShowProjectSharedVariables)
 		r.Get("/api/environments/{id}/variables", c.ShowEnvironmentSharedVariables)

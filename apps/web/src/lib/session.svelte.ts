@@ -5,12 +5,34 @@ export type Member = { id: number; name: string; email: string; role: Role; two_
 /** A Member as sign-in and the Profile answer them: the Role is per Guild, so only /me has it. */
 export type Account = Omit<Member, 'role' | 'instance_admin'>
 
-/** A Guild the signed-in Member may switch to, with their Role there. */
-export type GuildPlace = { id: number; name: string; role: Exclude<Role, 'owner'> }
+/** A Permission's wire key, from the glossary's fixed list. */
+export type Permission =
+  | 'administrator'
+  | 'view_resources'
+  | 'see_secrets'
+  | 'deploy'
+  | 'manage_applications'
+  | 'manage_servers'
+  | 'manage_notifications'
+  | 'manage_guild'
+  | 'manage_members'
+  | 'manage_roles'
+  | 'hire_agents'
+  | 'approve'
+  | 'manage_budgets'
+
+/** A Guild the signed-in Member may switch to, with their former role and Permissions there. */
+export type GuildPlace = { id: number; name: string; role: Exclude<Role, 'owner'>; permissions: Permission[] }
 /** The Guild the Session acts in. */
 export type CurrentGuild = { id: number; name: string }
 
-type Me = { member: Member; guild: CurrentGuild | null; guilds: GuildPlace[]; instance_admin: boolean }
+type Me = {
+  member: Member
+  guild: CurrentGuild | null
+  guilds: GuildPlace[]
+  instance_admin: boolean
+  permissions: Permission[]
+}
 
 type State = 'loading' | 'setup' | 'signed-out' | 'signed-in'
 
@@ -24,12 +46,13 @@ class Session {
   /** Whether the Member runs the installation (the Local server among it). */
   instanceAdmin = $state(false)
 
-  /** Whether the signed-in Role may change anything (not a viewer). */
-  canWrite = $derived(this.member !== null && this.member.role !== 'viewer')
-  /** Whether the signed-in Role may read Secrets. */
-  canSeeSecrets = $derived(this.canWrite)
-  /** Whether the signed-in Role manages Servers, S3 storages, Known hosts and Members. */
-  isAdmin = $derived(this.member?.role === 'admin' || this.member?.role === 'owner')
+  /** The Member's Permissions in the Current guild. */
+  permissions = $state.raw<Permission[]>([])
+
+  /** Whether the Member may use p in the Current guild; administrator allows everything. */
+  can(p: Permission): boolean {
+    return this.permissions.includes('administrator') || this.permissions.includes(p)
+  }
 
   /** Works out which screen to show: Setup, Login or the dashboard. */
   async load() {
@@ -72,6 +95,7 @@ class Session {
     this.guild = me.guild
     this.guilds = me.guilds
     this.instanceAdmin = me.instance_admin
+    this.permissions = me.permissions
     this.state = 'signed-in'
   }
 
@@ -80,6 +104,7 @@ class Session {
     this.guild = null
     this.guilds = []
     this.instanceAdmin = false
+    this.permissions = []
     this.state = 'signed-out'
   }
 

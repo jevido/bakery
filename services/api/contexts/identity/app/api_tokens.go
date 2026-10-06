@@ -43,10 +43,10 @@ type APITokens interface {
 }
 
 // CreateAPIToken makes a token for the Member in the Guild and returns its
-// value, which is never shown again. role, the Member's current Role in that
-// Guild, caps the Permissions; expiresInDays is nil for a token that never
-// expires.
-func (s *Service) CreateAPIToken(ctx context.Context, memberID, guildID uint64, role domain.Role, name string, permissions []domain.Permission, expiresInDays *int) (domain.APIToken, string, error) {
+// value, which is never shown again. member, the Member's current
+// Permissions in that Guild, caps the Token permissions; expiresInDays is
+// nil for a token that never expires.
+func (s *Service) CreateAPIToken(ctx context.Context, memberID, guildID uint64, member domain.MemberPermissions, name string, permissions []domain.Permission, expiresInDays *int) (domain.APIToken, string, error) {
 	if _, err := s.CurrentMember(ctx, memberID); err != nil {
 		return domain.APIToken{}, "", err
 	}
@@ -59,7 +59,7 @@ func (s *Service) CreateAPIToken(ctx context.Context, memberID, guildID uint64, 
 		at := now.AddDate(0, 0, *expiresInDays)
 		expiresAt = &at
 	}
-	t, err := domain.NewAPIToken(memberID, guildID, role, name, permissions, expiresAt, now)
+	t, err := domain.NewAPIToken(memberID, guildID, member, name, permissions, expiresAt, now)
 	if err != nil {
 		return domain.APIToken{}, "", err
 	}

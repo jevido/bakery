@@ -75,7 +75,7 @@
         <Spinner text="Loading…" />
       {:else if projects.length === 0}
         <Empty title="No projects yet" description="Use New project to create your first deployment workspace." icon="projects" size="sm">
-          {#if session.canWrite}
+          {#if session.can('manage_applications')}
             <a href={href('/projects')} class="button button-highlighted">
               <Icon name="plus" class="size-3.5" />
               New project
@@ -109,7 +109,7 @@
                 </p>
 
                 <div class="relative z-10 flex shrink-0 items-center gap-0.5">
-                  {#if c?.firstEnvironment && session.canWrite}
+                  {#if c?.firstEnvironment && session.can('manage_applications')}
                     <a
                       href={href(`/project/${project.id}/environment/${c.firstEnvironment}/new`)}
                       class="flex size-6.5 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg"
@@ -119,7 +119,7 @@
                       <Icon name="plus" class="size-3" />
                     </a>
                   {/if}
-                  {#if session.canWrite}
+                  {#if session.can('manage_applications')}
                     <a
                       href={href(`/project/${project.id}/edit`)}
                       class="flex size-6.5 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg"
@@ -146,7 +146,7 @@
         <Spinner text="Loading…" />
       {:else if servers.length === 0}
         <Empty title="No servers yet" description="Connect infrastructure for your deployments." icon="servers" size="sm">
-          {#if session.isAdmin}
+          {#if session.can('manage_servers')}
             <a href={href('/servers')} class="button button-highlighted">
               <Icon name="plus" class="size-3.5" />
               New server

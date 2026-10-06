@@ -24,7 +24,7 @@
 
   let { service, onchange }: { service: Service; onchange: (s: Service) => void } = $props()
 
-  const canUpdate = $derived(session.canWrite)
+  const canUpdate = $derived(session.can('manage_applications'))
   const publicComponents = $derived(service.components.filter((c) => c.public))
   const privateComponents = $derived(service.components.filter((c) => !c.public))
   const domainCount = $derived(publicComponents.reduce((n, c) => n + c.domains.length, 0))

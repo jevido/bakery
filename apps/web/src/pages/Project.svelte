@@ -84,8 +84,8 @@
   }
 
   const environmentHref = (env: Environment) => href(`/project/${id}/environment/${env.id}`)
-  const addResourceHref = (env: Environment) => (session.canWrite ? href(`/project/${id}/environment/${env.id}/new`) : null)
-  const settingsHref = (env: Environment) => (session.canWrite ? href(`/project/${id}/environment/${env.id}/edit`) : null)
+  const addResourceHref = (env: Environment) => (session.can('manage_applications') ? href(`/project/${id}/environment/${env.id}/new`) : null)
+  const settingsHref = (env: Environment) => (session.can('manage_applications') ? href(`/project/${id}/environment/${env.id}/edit`) : null)
 
   // New Environment.
   let creating = $state(false)
@@ -135,7 +135,7 @@
         </p>
       </div>
 
-      {#if session.canWrite}
+      {#if session.can('manage_applications')}
         <div class="flex w-fit shrink-0 items-center gap-2">
           <a href={href(`/project/${id}/edit`)} class="button" title="Project settings" aria-label="Open settings for {project.name}">
             <Icon name="settings" class="size-3.5" />

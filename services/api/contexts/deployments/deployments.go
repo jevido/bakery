@@ -180,8 +180,9 @@ func publicURL(d string, serverID uint64) string {
 func isApplicationNotFound(err error) bool { return errors.Is(err, projects.ErrNotFound) }
 
 // Routes registers the deployments API behind guilds.Auth (Known hosts
-// also behind guilds.Admin, the Webhook with its secret behind
-// guilds.Secrets), every route keyed by an Application or a Deployment
+// behind manage_servers, the Webhook with its secret behind see_secrets,
+// changes behind manage_applications, deploy actions behind deploy), every
+// route keyed by an Application or a Deployment
 // answering 404 outside the Current guild, and the Webhook endpoint git
 // hosts call without a Session (the signature is its authentication; it is
 // found by its secret, in whatever Guild).
@@ -190,33 +191,34 @@ func Routes(r route.Router) {
 	wc := deploymentshttp.NewWebhookController(webhooks, isApplicationNotFound)
 	r.Post("/api/webhooks/applications/{id}", wc.Receive)
 	// The Webhook answers with its secret, even after a change.
-	r.Middleware(guilds.Auth, guilds.Secrets, applicationInGuild).Group(func(r route.Router) {
-		r.Get("/api/applications/{id}/webhook", wc.Show)
-	})
-	r.Middleware(guilds.Auth, guilds.Admin).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, applicationInGuild, guilds.Can("see_secrets")).Get("/api/applications/{id}/webhook", wc.Show)
+	// Known hosts were the admins' alone, reading them as well.
+	r.Middleware(guilds.Auth, guilds.Can("manage_servers")).Group(func(r route.Router) {
 		r.Get("/api/known-hosts", c.KnownHosts)
 		r.Delete("/api/known-hosts/{id}", c.ForgetKnownHost)
 	})
 	r.Middleware(guilds.Auth, applicationInGuild).Group(func(r route.Router) {
-		r.Patch("/api/applications/{id}/webhook", wc.Update)
-		r.Post("/api/applications/{id}/webhook/secret", wc.RotateSecret)
 		r.Get("/api/applications/{id}/status", c.Status)
 		r.Get("/api/applications/{id}/previews", c.Previews)
-		r.Delete("/api/applications/{id}/previews/{number}", c.DeletePreview)
 		r.Get("/api/applications/{id}/deployments", c.List)
 		r.Get("/api/applications/{id}/images", c.Images)
+	})
+	r.Middleware(guilds.Auth, applicationInGuild, guilds.Can("manage_applications")).Group(func(r route.Router) {
+		r.Patch("/api/applications/{id}/webhook", wc.Update)
+		r.Post("/api/applications/{id}/webhook/secret", wc.RotateSecret)
+		r.Delete("/api/applications/{id}/previews/{number}", c.DeletePreview)
 	})
 	r.Middleware(guilds.Auth, deploymentInGuild).Group(func(r route.Router) {
 		r.Get("/api/deployments/{id}", c.Show)
 	})
 	// Coolify's deploy actions: an API token needs deploy for them.
-	r.Middleware(guilds.Deploy, applicationInGuild).Group(func(r route.Router) {
+	r.Middleware(guilds.Deploy, applicationInGuild, guilds.Can("deploy")).Group(func(r route.Router) {
 		r.Post("/api/applications/{id}/deploy", c.Deploy)
 		r.Post("/api/applications/{id}/restart", c.Restart)
 		r.Post("/api/applications/{id}/stop", c.Stop)
 		r.Post("/api/applications/{id}/previews/{number}/deploy", c.DeployPreview)
 	})
-	r.Middleware(guilds.Deploy, deploymentInGuild).Group(func(r route.Router) {
+	r.Middleware(guilds.Deploy, deploymentInGuild, guilds.Can("deploy")).Group(func(r route.Router) {
 		r.Post("/api/deployments/{id}/cancel", c.Cancel)
 		r.Post("/api/deployments/{id}/rollback", c.Rollback)
 	})

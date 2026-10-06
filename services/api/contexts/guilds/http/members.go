@@ -52,10 +52,12 @@ type guildJSON struct {
 	ID   uint64 `json:"id"`
 	Name string `json:"name"`
 	Role string `json:"role,omitempty"`
+	// Permissions are the wire keys of the Member's Permissions there.
+	Permissions []string `json:"permissions"`
 }
 
-// Me is the signed-in Member with their former role in the Current guild and the
-// Guilds they may switch to.
+// Me is the signed-in Member with their Permissions (and former role) in
+// the Current guild and the Guilds they may switch to.
 func (c *Controller) Me(ctx contractshttp.Context) contractshttp.Response {
 	p := placeOf(ctx)
 	m, found, err := identity.MemberByID(ctx.Context(), p.principal.MemberID)
@@ -72,11 +74,12 @@ func (c *Controller) Me(ctx contractshttp.Context) contractshttp.Response {
 	guilds := guildsJSON(places)
 	var current *guildJSON
 	if p.guild.ID != 0 {
-		current = &guildJSON{ID: p.guild.ID, Name: p.guild.Name}
+		current = &guildJSON{ID: p.guild.ID, Name: p.guild.Name, Permissions: p.permissions.Keys()}
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{
 		"member":         toJSON(m, wireRole(p.permissions)),
 		"role":           wireRole(p.permissions),
+		"permissions":    p.permissions.Keys(),
 		"instance_admin": m.InstanceAdmin,
 		"guild":          current,
 		"guilds":         guilds,

@@ -300,7 +300,7 @@
               </div>
               <div class="logs-viewer-end">
                 <!-- deployment-navbar.blade.php: Cancel deployment while it is queued or running. -->
-                {#if running && session.canWrite}
+                {#if running && session.can('deploy')}
                   <div class="logs-viewer-deployment-actions">
                     <div class="flex flex-wrap items-center justify-end gap-2">
                       <Button variant="error" class="logs-viewer-deployment-btn logs-viewer-cancel-btn" loading={cancelling} onclick={cancel}

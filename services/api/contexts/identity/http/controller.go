@@ -28,7 +28,7 @@ type Principal struct {
 	MemberID      uint64
 	InstanceAdmin bool
 	// Token is the API token that authenticated the request, nil for a
-	// Session (which may do everything its Role may).
+	// Session (which may do everything its Member's Permissions allow).
 	Token *domain.APIToken
 }
 
@@ -39,11 +39,11 @@ func (p Principal) Allows(perm domain.Permission) bool {
 
 type guildKey struct{}
 
-// place is the Guild a request acts in and the Member's Role there, as
-// guilds told it with ActIn.
+// place is the Guild a request acts in and the Member's Permissions there,
+// as guilds told it with ActIn.
 type place struct {
-	guildID uint64
-	role    domain.Role
+	guildID     uint64
+	permissions domain.MemberPermissions
 }
 
 type Controller struct {
@@ -268,10 +268,10 @@ func MemberID(ctx contractshttp.Context) (uint64, bool) {
 	return p.MemberID, ok
 }
 
-// ActIn records the Guild the request acts in and the Member's Role there,
-// for the routes identity serves inside a Guild (API tokens).
-func ActIn(ctx contractshttp.Context, guildID uint64, role domain.Role) {
-	ctx.WithValue(guildKey{}, place{guildID: guildID, role: role})
+// ActIn records the Guild the request acts in and the Member's Permissions
+// there, for the routes identity serves inside a Guild (API tokens).
+func ActIn(ctx contractshttp.Context, guildID uint64, permissions domain.MemberPermissions) {
+	ctx.WithValue(guildKey{}, place{guildID: guildID, permissions: permissions})
 }
 
 // guildOf is what ActIn recorded; false when nothing did.

@@ -41,7 +41,7 @@
   $effect(() => {
     void database.id
     load().catch((e) => (loadError = e.message))
-    if (session.canSeeSecrets) {
+    if (session.can('see_secrets')) {
       api<{ s3_storages: S3Storage[] }>('GET', '/s3-storages')
         .then((r) => (storages = r.s3_storages))
         .catch(() => {})
@@ -119,7 +119,7 @@
     helper="Automate database backups and track the latest execution for each schedule."
   >
     {#snippet actions()}
-      {#if session.canWrite}
+      {#if session.can('manage_applications')}
         <Modal title="New Scheduled Backup" bind:open={adding} onclose={() => (addErrors = {})}>
           {#snippet trigger(show)}
             <Button variant="highlighted" onclick={show}>+ Add</Button>

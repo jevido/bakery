@@ -17,7 +17,7 @@
 
   let { guild, onchange }: { guild: GuildDetails; onchange: (g: GuildDetails) => void } = $props()
 
-  const canUpdate = $derived(session.isAdmin)
+  const canUpdate = $derived(session.can('manage_guild'))
 
   let name = $state(untrack(() => guild.name))
   let description = $state(untrack(() => guild.description))

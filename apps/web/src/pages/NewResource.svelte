@@ -165,7 +165,7 @@
     environment = null
     loadError = ''
     // A viewer has no create rights: the Environment page instead.
-    if (!session.canWrite) {
+    if (!session.can('manage_applications')) {
       location.replace(href(`/project/${projectId}/environment/${id}`))
       return
     }

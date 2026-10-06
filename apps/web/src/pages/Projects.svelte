@@ -91,9 +91,9 @@
 
   const addResourceHref = (p: Project) => {
     const first = counts[p.id]?.firstEnvironment
-    return first && session.canWrite ? href(`/project/${p.id}/environment/${first}/new`) : null
+    return first && session.can('manage_applications') ? href(`/project/${p.id}/environment/${first}/new`) : null
   }
-  const settingsHref = (p: Project) => (session.canWrite ? href(`/project/${p.id}/edit`) : null)
+  const settingsHref = (p: Project) => (session.can('manage_applications') ? href(`/project/${p.id}/edit`) : null)
 
   // New Project.
   let creating = $state(false)
@@ -132,7 +132,7 @@
 <div class="chrome application-settings-form w-full">
   <header class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
     <h1 class="min-w-0 truncate text-[24px]! leading-7! font-semibold! tracking-tight!">Projects</h1>
-    {#if session.canWrite}
+    {#if session.can('manage_applications')}
       <div class="w-fit shrink-0">
         <Modal title="New Project" bind:open={creating}>
           {#snippet trigger(show)}

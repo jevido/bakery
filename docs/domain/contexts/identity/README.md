@@ -39,7 +39,7 @@ context.
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Member | Email is a valid address and unique; name is not empty; password has at least 12 characters and is only stored hashed. Exactly one Member is the Instance admin, and the Instance admin is never removed. Two-factor authentication only counts for sign-in when `on`; its secret is stored only encrypted and Recovery codes only hashed; an Authenticator code is accepted only for a time step later than the last one accepted. A new password has at least 12 characters and needs the current one. |
-| API token | Name (the "Description") is 3–255 characters when made and unique per Member; belongs to one Member and one Guild and is removed with either; only the SHA-256 of its value is stored, and the value is shown once. Its Token permissions are known ones, never empty (none means `read`), `root` stands alone, `read:sensitive` brings `read`. The Member's Role in that Guild caps what it may be given: `root` only by an admin, `write`, `deploy` and `read:sensitive` only by a Role that may change things, a viewer only `read` (this becomes the Member's Permissions in that Guild with the Roles phase; see guilds). An expiry is in the future when set; from then on the token no longer authenticates. |
+| API token | Name (the "Description") is 3–255 characters when made and unique per Member; belongs to one Member and one Guild and is removed with either; only the SHA-256 of its value is stored, and the value is shown once. Its Token permissions are known ones, never empty (none means `read`), `root` stands alone, `read:sensitive` brings `read`. The Member's Permissions in that Guild cap what it may be given: `root` only with `administrator`, `write` only with `manage_applications`, `deploy` only with `deploy`, `read:sensitive` only with `see_secrets`, `read` always (refused with 422 `your permissions cannot grant <permission>`). An expiry is in the future when set; from then on the token no longer authenticates. |
 
 ### Commands
 
@@ -48,7 +48,7 @@ Who may run each is in brackets.
 - `Setup(name, email, password)` [anyone, once]: creates the Instance admin and, through guilds, the first Guild; refused with a conflict once an Instance admin exists.
 - `Login(email, password)` [anyone]: returns a Session; a wrong email or password gives the same error.
 - `Logout()` [any Member]: clears the Session cookie.
-- `CurrentMember(principal)` [any Member]: the signed-in Member; guilds adds their Role in the Current guild.
+- `CurrentMember(principal)` [any Member]: the signed-in Member; guilds adds their Permissions in the Current guild.
 - `CreateMember(name, email, password)` [guilds, when an Invitation to a new email is accepted].
 - `CreateAPIToken(name, permissions, expires in days)` [any Member, with a Session]: made in the Current guild; returns the value once. The expiry is 7, 30, 60, 90 or 365 days, or none (Never). `GET /api/api-tokens/permissions` answers which Token permissions the Member may grant.
 - `RevokeAPIToken(id)` [the token's Member].
@@ -81,8 +81,9 @@ Who may run each is in brackets.
     starting, stopping and restarting Databases and Services, redeploying
     Services), and answering 403 `Missing required permissions:
     <permission>`; every other context's routes sit behind those.
-  - `identity.ActIn(ctx, guild, role)`: guilds tells identity's routes that
-    work inside a Guild (API tokens) the Current guild and the Role there.
+  - `identity.ActIn(ctx, guild, permissions)`: guilds tells identity's
+    routes that work inside a Guild (API tokens) the Current guild and the
+    wire keys of the Member's Permissions there.
   - `identity.APITokenRoutes(r)`: those routes, which guilds registers
     inside its own middlewares.
   - `identity.Members(ctx, ids)`, `identity.MemberByID(ctx, id)` and
@@ -118,11 +119,11 @@ Who may run each is in brackets.
   conflict. The table is still called `users`, and a unique partial index
   backs "exactly one Instance admin".
 - **Teams are Guilds, in their own context.** Who someone is stays here;
-  where they act and with which Role is
+  where they act and with which Permissions is
   [guilds](../guilds/README.md), which explains the split.
 - **Authenticate reads the Member from the database on every request.** The
-  JWT and the API token only name the Member; their Role comes from the
-  Membership row in guilds, so demoting or removing someone takes effect at
+  JWT and the API token only name the Member; their Permissions come from
+  the Roles on their Membership in guilds, so demoting or removing someone takes effect at
   once instead of when the JWT expires.
 - **API tokens are random (`bky_` + 32 bytes base62) and stored as
   SHA-256.** A slow hash is for low-entropy passwords; a 256-bit random
@@ -131,13 +132,14 @@ Who may run each is in brackets.
   made with an API token cannot create or revoke tokens, so a leaked token
   cannot mint more.
 - **Token permissions are Coolify's abilities, capped by the Member's
-  current Role.** Coolify refuses to create a token that exceeds the
+  current Permissions.** Coolify refuses to create a token that exceeds the
   creator's role and then trusts the token; The Bakery also refuses at
   creation, and on every request the token acts with its Member's *current*
-  Role besides its Token permissions, so demoting a Member narrows their tokens at
-  once. That is how the read-only tokens made before Token permissions keep doing
+  Permissions besides its Token permissions, so taking a Role away narrows
+  their tokens at once. That is how the read-only tokens made before Token permissions keep doing
   exactly what they did: they became `read`, every other token `root`, and
-  `root` on a member's or viewer's token is still only what that Role may.
+  `root` on a member's or viewer's token is still only what their
+  Permissions allow.
   A consequence: a `read` token of an admin reads admin-only lists (Members,
   Known hosts, Notification channels, all without Secrets), where the old
   read-only token acted as a viewer. Coolify's read token does the same.

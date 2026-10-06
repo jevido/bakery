@@ -25,7 +25,7 @@
     onchange,
   }: { application: Application; status: string | null; onchange: (a: Application) => void } = $props()
 
-  const canUpdate = $derived(session.canWrite)
+  const canUpdate = $derived(session.can('manage_applications'))
   const saved = $derived(application.health_check)
 
   let path = $state('')

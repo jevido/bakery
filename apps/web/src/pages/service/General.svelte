@@ -35,7 +35,7 @@
 
   const hiddenValue = 'Hidden (viewers cannot see it)'
   const appliesOnRestart = 'The change applies on the next Restart.'
-  const canUpdate = $derived(session.canWrite)
+  const canUpdate = $derived(session.can('manage_applications'))
 
   // --- Service details and Service configuration: one form.
   let name = $state('')

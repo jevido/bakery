@@ -255,7 +255,7 @@
           in {environment.project_name}
         </p>
       </div>
-      {#if session.canWrite}
+      {#if session.can('manage_applications')}
         <div class="flex w-fit shrink-0 items-center gap-2">
           <a
             href={href(`/project/${projectId}/environment/${id}/edit`)}
@@ -276,7 +276,7 @@
 
     {#if resources.length === 0}
       <Empty title="No resources yet" description="Add an application, database, or service to this environment." icon="layers">
-        {#if session.canWrite}
+        {#if session.can('manage_applications')}
           <a href={newHref} class="button">
             <Icon name="plus" class="size-3.5" />
             Add resource

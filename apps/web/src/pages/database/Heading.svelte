@@ -16,7 +16,7 @@
     detail,
     error,
     stopped,
-    canWrite,
+    canDeploy,
     busy,
     onstart,
   }: {
@@ -29,7 +29,7 @@
     error?: string
     /** Coolify offers Start for an exited Database; The Bakery for one meant to be stopped. */
     stopped: boolean
-    canWrite: boolean
+    canDeploy: boolean
     busy: boolean
     onstart: () => void
   } = $props()
@@ -59,7 +59,7 @@
   <p class="mb-3 text-[13px] text-neutral-500 dark:text-fg-dim">{detail}</p>
   {#if error}<p class="mb-3 text-[13px] text-error">{error}</p>{/if}
 
-  {#if canWrite}
+  {#if canDeploy}
     <div class="w-full xl:hidden">
       <div class="relative mb-3" bind:this={menu}>
         <button type="button" class="button w-full justify-between" onclick={() => (open = !open)} aria-expanded={open} aria-haspopup="menu">
@@ -121,7 +121,7 @@
   <!-- Moved into the top bar; never this component's first or last node. -->
   <div class="hidden w-full items-center xl:flex xl:w-auto" {@attach portalTo('#resource-action-hud-slot')}>
     <div class="flex w-auto min-w-0 items-center justify-end gap-1 overflow-visible">
-      {#if canWrite}
+      {#if canDeploy}
         <div class="flex shrink-0 items-center gap-0.5">
           {#if stopped}
             <button type="button" class="button button-highlighted" disabled={busy} onclick={onstart}>Start</button>

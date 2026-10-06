@@ -31,10 +31,12 @@ var service = func() *app.Service {
 
 var controller = identityhttp.NewController(service)
 
-// Permission is what an API token may do: Coolify's abilities.
+// Permission is a Token permission: what an API token may do, Coolify's
+// abilities.
 type Permission string
 
 const (
+	PermissionRoot          Permission = "root"
 	PermissionRead          Permission = "read"
 	PermissionReadSensitive Permission = "read:sensitive"
 	PermissionWrite         Permission = "write"
@@ -55,7 +57,8 @@ type Principal struct {
 
 // Allows reports whether the request may do what perm covers as far as its
 // API token goes: a Session always may, a token when it carries perm or
-// root. The Role in the Guild limits both further; that is guilds' check.
+// root. The Member's Permissions in the Guild limit both further; that is
+// guilds' check.
 func (p Principal) Allows(perm Permission) bool {
 	if !p.Token {
 		return true
@@ -91,10 +94,10 @@ func Authenticate(ctx contractshttp.Context) (Principal, bool) {
 }
 
 // ActIn tells identity's routes served inside a Guild (API tokens) which
-// Guild the request acts in and the Member's Role
-// there ("viewer", "member" or "admin").
-func ActIn(ctx contractshttp.Context, guildID uint64, role string) {
-	identityhttp.ActIn(ctx, guildID, domain.Role(role))
+// Guild the request acts in and the wire keys of the Member's Permissions
+// there, administrator spelled out as every one.
+func ActIn(ctx contractshttp.Context, guildID uint64, permissions []string) {
+	identityhttp.ActIn(ctx, guildID, domain.MemberPermissions(permissions))
 }
 
 // Member is a person who may sign in, as other contexts see them.

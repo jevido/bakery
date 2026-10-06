@@ -16,16 +16,18 @@ var (
 	ErrInvalidTokenName  = errors.New("description must be 3 to 255 characters")
 	ErrUnknownPermission = errors.New("permission must be root, write, deploy, read or read:sensitive")
 	ErrTokenExpiryPassed = errors.New("expiry must be in the future")
-	// ErrRoleCannotGrant is wrapped with the Permission's name.
-	ErrRoleCannotGrant = errors.New("your role cannot grant")
+	// ErrCannotGrant is wrapped with the Token permission's name.
+	ErrCannotGrant = errors.New("your permissions cannot grant")
 )
 
 // Permission is what a request made with an API token may do, in Coolify's
-// abilities. The Member's current Role in the token's Guild caps it as well.
+// abilities. The Member's current Permissions in the token's Guild cap it as
+// well.
 type Permission string
 
 const (
-	// PermissionRoot allows everything the Member's Role in the Guild does.
+	// PermissionRoot allows everything the Member's Permissions in the Guild
+	// do.
 	PermissionRoot Permission = "root"
 	// PermissionWrite allows changes (any method but GET and HEAD) other
 	// than deploy actions.
@@ -49,19 +51,6 @@ func ParsePermission(s string) (Permission, error) {
 		return "", ErrUnknownPermission
 	}
 	return p, nil
-}
-
-// MayGrant reports whether a Member with role may put p on a token: root
-// needs an admin, a viewer only reads.
-func (r Role) MayGrant(p Permission) bool {
-	switch p {
-	case PermissionRoot:
-		return r.IsAdmin()
-	case PermissionRead:
-		return true
-	default:
-		return r.CanWrite()
-	}
 }
 
 // NormalisePermissions leaves permissions as Coolify's token form does:
@@ -100,9 +89,9 @@ type APIToken struct {
 	CreatedAt  time.Time
 }
 
-// NewAPIToken validates a new API token of a Member with memberRole in the
-// Guild, which caps the Permissions it may carry.
-func NewAPIToken(memberID, guildID uint64, memberRole Role, name string, permissions []Permission, expiresAt *time.Time, now time.Time) (APIToken, error) {
+// NewAPIToken validates a new API token of a Member with these Permissions
+// in the Guild, which cap the Token permissions it may carry.
+func NewAPIToken(memberID, guildID uint64, member MemberPermissions, name string, permissions []Permission, expiresAt *time.Time, now time.Time) (APIToken, error) {
 	name = strings.TrimSpace(name)
 	if n := utf8.RuneCountInString(name); n < 3 || n > 255 {
 		return APIToken{}, ErrInvalidTokenName
@@ -112,8 +101,8 @@ func NewAPIToken(memberID, guildID uint64, memberRole Role, name string, permiss
 		return APIToken{}, err
 	}
 	for _, p := range permissions {
-		if !memberRole.MayGrant(p) {
-			return APIToken{}, fmt.Errorf("%w %s", ErrRoleCannotGrant, p)
+		if !member.MayGrant(p) {
+			return APIToken{}, fmt.Errorf("%w %s", ErrCannotGrant, p)
 		}
 	}
 	if expiresAt != nil && !expiresAt.After(now) {

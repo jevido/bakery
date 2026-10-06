@@ -37,7 +37,7 @@
     onchange: (s: ScheduledBackup) => void
   } = $props()
 
-  const canUpdate = $derived(session.canWrite)
+  const canUpdate = $derived(session.can('manage_applications'))
   const running = $derived(database.status === 'running')
 
   let frequency = $state(untrack(() => sb.cron))
@@ -171,7 +171,7 @@
   {#if storages && storages.length === 0}
     <SettingsSection id="s3-storage-section" title="S3 storage" helper="Send backup archives to a validated object storage destination." flush>
       <Empty title="No validated S3 storage" description="Add and validate an S3 storage destination before enabling remote backups." icon="storages">
-        {#if session.isAdmin}<a class="button" href={href('/storages')}>Open S3 storage</a>{/if}
+        {#if session.can('manage_servers')}<a class="button" href={href('/storages')}>Open S3 storage</a>{/if}
       </Empty>
     </SettingsSection>
   {:else}

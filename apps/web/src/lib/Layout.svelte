@@ -20,7 +20,6 @@
 
   // Coolify's sections and order, holding only the pages The Bakery has.
   let sections = $derived.by((): Section[] => {
-    const admin = session.isAdmin
     const items = (...list: (Item | false)[]) => list.filter((i): i is Item => i !== false)
     return [
       {
@@ -34,16 +33,16 @@
         label: 'Infrastructure',
         items: items(
           { label: 'Servers', path: '/servers', icon: 'servers', routes: ['servers', 'server-new', 'server'] },
-          admin && { label: 'S3 Storage', path: '/storages', icon: 'storages', routes: ['storages'] },
+          session.can('manage_servers') && { label: 'S3 Storage', path: '/storages', icon: 'storages', routes: ['storages'] },
         ),
       },
       {
         label: 'Manage',
         items: items(
           { label: 'Guild', path: '/guild', icon: 'teams', routes: ['guild', 'guild-new'] },
-          admin && { label: 'Notifications', path: '/notifications', icon: 'notifications', routes: ['notifications'] },
+          session.can('manage_notifications') && { label: 'Notifications', path: '/notifications', icon: 'notifications', routes: ['notifications'] },
           { label: 'Keys & Tokens', path: '/security/api-tokens', icon: 'keys', routes: ['security'] },
-          admin && { label: 'Settings', path: '/settings', icon: 'settings', routes: ['settings'] },
+          session.can('manage_servers') && { label: 'Settings', path: '/settings', icon: 'settings', routes: ['settings'] },
         ),
       },
     ]

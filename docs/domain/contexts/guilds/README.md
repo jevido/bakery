@@ -132,49 +132,64 @@ that touches a Role or a Member also follows the hierarchy above.
 
 ## Integration
 
-The middlewares below work out the request's Permissions from the
-Member's Roles, but still stand for the former `viewer`/`member`/`admin`
-checks; task 03 of the Roles phase replaces them with one check by
-Permission (`guilds.Can(permission)`), and this list changes with it.
+Every check asks for a Permission by its wire key, never for a Role. A
+request's Permissions are its Member's in the Current guild (every one for
+the Instance admin), and for an API token only what its Token permissions
+cover: `see_secrets` with `read:sensitive`, `deploy` with `deploy`, the
+other changes with `write`, `administrator` only with `root`.
 
 - **Publishes:**
   - `guilds.Auth`: the request comes from a Member (by `identity.Authenticate`)
     with a Membership in the Current guild, or from the Instance admin;
-    without `manage_applications` there it is refused (403) on anything but
-    GET and HEAD. An API
-    token's Permissions apply as identity describes them.
+    GET and HEAD need `view_resources` there (403 `you need the View
+    resources permission`), and an API token is refused what its Token
+    permissions do not cover by method, as identity describes them. It
+    refuses no change by itself: every change route names its Permission
+    with `guilds.Can`.
   - `guilds.Deploy`: `guilds.Auth` for Coolify's deploy actions, where an
-    API token needs `deploy` instead of `write`.
-  - `guilds.Admin`: only `administrator` in the Current guild.
-  - `guilds.Secrets`: `see_secrets` in the Current guild, and
-    `read:sensitive` for an API token, for GETs that return Secrets.
-  - `guilds.CanSeeSecrets(ctx)`: for a response that mixes Secrets with
-    fields a viewer may see.
+    API token needs the `deploy` Token permission instead of `write`.
+  - `guilds.Can(permission)`: after `guilds.Auth`, only requests that may
+    use that Permission in the Current guild (403 `you need the <Name>
+    permission`, the glossary's name; for an API token whose Member holds
+    it but whose Token permissions do not cover it, Coolify's `Missing
+    required permissions: <token permission>`). An unknown key panics at
+    boot. Changes in projects, routing, databases (not S3 storages),
+    services and deployments need `manage_applications`, deploy actions
+    `deploy`, GETs that return Secrets `see_secrets`; Servers, S3 storages
+    and Known hosts `manage_servers` (Known hosts for reading too, as they
+    were admin-only); Notification channels `manage_notifications`, reads
+    included; the Current guild's General `manage_guild`, deleting it
+    `administrator`, Members and Invitations `manage_members`.
+  - `guilds.Allows(ctx, permission)`: the same question inside a handler
+    whose answer differs by Permission, e.g. Secrets in a response a
+    viewer may also read.
   - `guilds.Owns(name, belongs)`: after `guilds.Auth`, 404 for a route
     whose `{id}` names something outside the Current guild; `belongs(id,
     guild)` is the owning context's check (e.g. `projects.ApplicationInGuild`).
   - `guilds.Current(ctx) uint64`: the Current guild's id, which every other
     context stores on what it creates (or reaches through something that
     does) and filters every list and read by.
-  - `guilds.RoleOf(ctx)`: the Role the request acts with there.
   - `guilds.OnGuildDeleting(kind, f)` and `guilds.OnInvitationCreated(f)`:
     see Domain events. Projects, servers, databases (S3 storages) and
     notifications register `OnGuildDeleting`.
-- **Serves:** `GET /api/me` (the Member, their Role in the Current guild,
-  `instance_admin`, the Current `guild` and every Guild they may switch to
-  with their Role there). The Guilds, with a Session only and also for a
-  Member in no Guild: `GET /api/guilds` (every Guild they may switch to,
-  with their Role), `POST /api/guilds` (`{"name", "description"}`; 201, and
+- **Serves:** `GET /api/me` (the Member, their `permissions` in the Current
+  guild as wire keys, `administrator` meaning every one, the former `role`
+  derived from them for scripts, `instance_admin`, the Current `guild` and
+  every Guild they may switch to with their `permissions` and `role`
+  there). The Guilds, with a Session only and also for a Member in no
+  Guild: `GET /api/guilds` (every Guild they may switch to, with their
+  `permissions` and `role`), `POST /api/guilds` (`{"name", "description"}`; 201, and
   it becomes the Current guild) and `POST /api/guilds/{id}/switch` (204; 404
   for a Guild they may not act in). The Current guild:
   `GET /api/guilds/current` (`name`, `description` and `blocking`, what
-  keeps it from being deleted) for every Role, `PATCH /api/guilds/current`
-  (`{"name", "description"}`) and `DELETE /api/guilds/current` (204, or 409
-  with `blocking`) for admins. The Members of the Current guild:
-  `GET /api/members` for every Role, and for admins
-  `PATCH /api/members/{id}` (`{"role"}`), `DELETE /api/members/{id}` and
+  keeps it from being deleted) for every Member, `PATCH /api/guilds/current`
+  (`{"name", "description"}`) with `manage_guild` and `DELETE
+  /api/guilds/current` (204, or 409 with `blocking`) with `administrator`.
+  The Members of the Current guild: `GET /api/members` for every Member,
+  and with `manage_members` `PATCH /api/members/{id}` (`{"role"}`), `DELETE /api/members/{id}` and
   `DELETE /api/members/{id}/two-factor`. On the wire the Instance admin's `role` reads `owner`, with
-  `instance_admin: true`. The Invitations of the Current guild, for admins:
+  `instance_admin: true`. The Invitations of the Current guild, with
+  `manage_members`:
   `GET /api/invitations`, `POST /api/invitations` (`{"email", "role"}`) and
   `DELETE /api/invitations/{id}`; another Guild's id answers 404. Open to
   anyone with the link: `GET /api/invitations/by-token/{token}` (the
@@ -244,9 +259,10 @@ Permission (`guilds.Can(permission)`), and this list changes with it.
   identity's, but only make sense in a Current guild, which identity cannot
   work out without importing guilds. So identity publishes
   them as route groups, guilds registers them behind its own middlewares
-  and hands the Current guild and Role over with `identity.ActIn`. The
-  Role that caps a new API token's Permissions is the one guilds found for
-  that very request.
+  and hands the Current guild and the Member's Permissions there (wire
+  keys, `administrator` spelled out as every one) over with
+  `identity.ActIn`. The Permissions that cap a new API token's Token
+  permissions are the ones guilds found for that very request.
 - **A Member in no Guild keeps their account.** Removing a Membership
   leaves the Member and their other Memberships; with none left, signing in
   still works but every Guild-bound request answers 403 `you are in no

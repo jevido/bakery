@@ -174,7 +174,7 @@ func one(ctx contractshttp.Context, status int, v app.View, err error) contracts
 		return fail(ctx, err)
 	}
 	out := toJSON(v, true)
-	if !guilds.CanSeeSecrets(ctx) {
+	if !guilds.Allows(ctx, "see_secrets") {
 		out.Credentials, out.InternalURL, out.PublicURL = nil, "", nil
 		out.SecretsHidden = true
 	}

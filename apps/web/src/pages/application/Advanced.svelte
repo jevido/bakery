@@ -23,7 +23,7 @@
   type HeaderRow = { key: number; name: string; value: string }
 
   const gitBased = $derived(application.build_pack !== 'dockerimage')
-  const canUpdate = $derived(session.canWrite)
+  const canUpdate = $derived(session.can('manage_applications'))
 
   let webhook = $state.raw<Webhook | null>(null)
   let routing = $state.raw<RouteSettings | null>(null)
@@ -51,7 +51,7 @@
       })
       .catch((e) => toast.error('Proxy settings not loaded', e.message))
     // The Webhook comes with its secret, which a viewer may not read.
-    if (session.canSeeSecrets)
+    if (session.can('see_secrets'))
       api<{ webhook: Webhook }>('GET', `/applications/${id}/webhook`)
         .then((r) => (webhook = r.webhook))
         .catch(() => {})
@@ -102,7 +102,7 @@
   {#if gitBased}
     <SettingsSection id="advanced-deployment-section" title="Deployment" helper="Automatic deployments from Git webhooks.">
       <div class="grid w-full gap-4 sm:grid-cols-2">
-        {#if session.canSeeSecrets}
+        {#if session.can('see_secrets')}
           <Select
             label="Auto deploy"
             value={webhook ? String(webhook.auto_deploy) : ''}

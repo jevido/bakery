@@ -38,6 +38,34 @@ var permissionKeys = []string{
 	"approve", "manage_budgets",
 }
 
+// permissionNames are the glossary's names, in the same order.
+var permissionNames = []string{
+	"Administrator", "View resources", "See secrets", "Deploy",
+	"Manage applications", "Manage servers", "Manage notifications",
+	"Manage guild", "Manage members", "Manage roles", "Hire agents",
+	"Approve", "Manage budgets",
+}
+
+// ParsePermission reads one Permission from its wire key;
+// ErrUnknownPermission for a key that is not on the list.
+func ParsePermission(key string) (Permission, error) {
+	for i, known := range permissionKeys {
+		if key == known {
+			return Permission(1) << i, nil
+		}
+	}
+	return 0, ErrUnknownPermission
+}
+
+// Name is the Permission's name in the glossary, "" for no single known
+// Permission.
+func (p Permission) Name() string {
+	if p.Key() == "" {
+		return ""
+	}
+	return permissionNames[bits.TrailingZeros64(uint64(p))]
+}
+
 // Key is the Permission's wire key, "" for no single known Permission.
 func (p Permission) Key() string {
 	if bits.OnesCount64(uint64(p)) != 1 || p >= endOfPermissions {
@@ -67,6 +95,19 @@ func (s Permissions) Has(p Permission) bool {
 	return s&Permissions(PermissionAdministrator) != 0 || s&Permissions(p) == Permissions(p)
 }
 
+// Expand is the set with administrator spelled out as every Permission,
+// so taking Permissions away from it means something.
+func (s Permissions) Expand() Permissions {
+	if s&Permissions(PermissionAdministrator) != 0 {
+		return AllPermissions
+	}
+	return s
+}
+
+// Without is s with every Permission in o taken away. Take administrator
+// away from an Expand-ed set, or the rest still counts as granted.
+func (s Permissions) Without(o Permissions) Permissions { return s &^ o }
+
 // Union is every Permission in s or o.
 func (s Permissions) Union(o Permissions) Permissions { return s | o }
 
@@ -87,17 +128,11 @@ func (s Permissions) Keys() []string {
 func ParsePermissions(keys []string) (Permissions, error) {
 	var out Permissions
 	for _, k := range keys {
-		found := false
-		for i, known := range permissionKeys {
-			if k == known {
-				out |= 1 << i
-				found = true
-				break
-			}
+		p, err := ParsePermission(k)
+		if err != nil {
+			return 0, err
 		}
-		if !found {
-			return 0, ErrUnknownPermission
-		}
+		out |= Permissions(p)
 	}
 	return out, nil
 }

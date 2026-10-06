@@ -41,7 +41,7 @@
   })
 
   const project = $derived(resources?.project)
-  const dirty = $derived(!!project && session.canWrite && (name !== project.name || description !== (project.description ?? '')))
+  const dirty = $derived(!!project && session.can('manage_applications') && (name !== project.name || description !== (project.description ?? '')))
   const empty = $derived(
     !!resources &&
       resources.databases.length === 0 &&
@@ -108,7 +108,7 @@
           save()
         }}
       >
-        {#if session.canWrite}
+        {#if session.can('manage_applications')}
           <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
         {/if}
         <section class="application-settings-section">
@@ -119,8 +119,8 @@
             </div>
           </div>
           <div class="application-settings-section-body grid gap-4 sm:grid-cols-2">
-            <Input label="Name" bind:value={name} error={errors.name} disabled={!session.canWrite} />
-            <Input label="Description" bind:value={description} error={errors.description} disabled={!session.canWrite} />
+            <Input label="Name" bind:value={name} error={errors.name} disabled={!session.can('manage_applications')} />
+            <Input label="Description" bind:value={description} error={errors.description} disabled={!session.can('manage_applications')} />
           </div>
         </section>
       </form>
@@ -131,7 +131,7 @@
         helper="Every application in this project gets these, unless its environment or the application sets the same name."
       />
 
-      {#if session.canWrite}
+      {#if session.can('manage_applications')}
         <section class="overflow-hidden rounded-[10px] border border-red-300 bg-red-50/80 dark:border-red-500/25 dark:bg-red-500/[0.06]">
           <div class="flex items-start justify-between gap-4 px-5 py-4">
             <div>

@@ -87,10 +87,8 @@ func Routes(r route.Router) {
 	c := routinghttp.NewController(svc(), func(ctx contractshttp.Context, id uint64) (bool, error) {
 		return projects.ApplicationInGuild(ctx.Context(), id, guilds.Current(ctx))
 	})
-	r.Middleware(guilds.Auth).Group(func(r route.Router) {
-		r.Get("/api/applications/{id}/routing", c.ShowSettings)
-		r.Put("/api/applications/{id}/routing", c.ReplaceSettings)
-	})
+	r.Middleware(guilds.Auth).Get("/api/applications/{id}/routing", c.ShowSettings)
+	r.Middleware(guilds.Auth, guilds.Can("manage_applications")).Put("/api/applications/{id}/routing", c.ReplaceSettings)
 }
 
 // Init wires routing's event handlers. Call once at start.

@@ -29,7 +29,7 @@
     onchange,
   }: { application: Application; server: Server | null; onchange: (a: Application) => void } = $props()
 
-  const canUpdate = $derived(session.canWrite)
+  const canUpdate = $derived(session.can('manage_applications'))
   const domains = $derived(application.domains)
 
   let routing = $state.raw<RouteSettings | null>(null)

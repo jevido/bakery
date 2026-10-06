@@ -25,27 +25,6 @@ func TestWireRole(t *testing.T) {
 	}
 }
 
-func TestRefusal(t *testing.T) {
-	cases := []struct {
-		method string
-		perms  domain.Permissions
-		refuse bool
-	}{
-		{"GET", viewer, false},
-		{"HEAD", viewer, false},
-		{"POST", viewer, true},
-		{"PATCH", viewer, true},
-		{"DELETE", viewer, true},
-		{"POST", member, false},
-		{"DELETE", admin, false},
-	}
-	for _, c := range cases {
-		if got := refusal(c.method, c.perms) != ""; got != c.refuse {
-			t.Errorf("%s as %s: refused=%v, want %v", c.method, wireRole(c.perms), got, c.refuse)
-		}
-	}
-}
-
 func TestRequiredPermission(t *testing.T) {
 	cases := []struct {
 		method string
@@ -65,16 +44,50 @@ func TestRequiredPermission(t *testing.T) {
 	}
 }
 
-func TestATokensPermissionsAndRoleBothCount(t *testing.T) {
-	deploy := identity.TokenPrincipal(1, 2, identity.PermissionDeploy)
-	if deploy.Allows(identity.PermissionRead) || !deploy.Allows(identity.PermissionDeploy) {
-		t.Error("a deploy token only deploys")
+func TestEffectivePermissions(t *testing.T) {
+	session := identity.Principal{MemberID: 1}
+	token := func(ps ...identity.Permission) identity.Principal { return identity.TokenPrincipal(1, 2, ps...) }
+	cases := []struct {
+		name      string
+		principal identity.Principal
+		member    domain.Permissions
+		want      domain.Permissions
+	}{
+		{"a Session keeps the viewer's", session, viewer, viewer},
+		{"a Session keeps administrator as it is", session, admin, admin},
+		{"a viewer's root token", token("root"), viewer, viewer},
+		{"an admin's root token", token("root"), admin, domain.AllPermissions},
+		{"a member's read token", token("read"), member, viewer},
+		{"a member's read:sensitive token", token("read", "read:sensitive"), member,
+			domain.Of(domain.PermissionViewResources, domain.PermissionSeeSecrets)},
+		{"a member's write token", token("write"), member,
+			domain.Of(domain.PermissionViewResources, domain.PermissionManageApplications)},
+		{"a member's deploy token", token("deploy"), member,
+			domain.Of(domain.PermissionViewResources, domain.PermissionDeploy)},
+		{"a viewer's write token", token("write", "deploy", "read:sensitive"), viewer, viewer},
+		{"an admin's write token loses administrator", token("write", "deploy", "read:sensitive"), admin,
+			domain.AllPermissions.Without(domain.Of(domain.PermissionAdministrator))},
+		{"an admin's read token", token("read"), admin, viewer},
 	}
-	if refusal("POST", viewer) == "" {
-		t.Error("a viewer's token with deploy still cannot change anything")
+	for _, c := range cases {
+		if got := effective(c.principal, c.member); got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got.Keys(), c.want.Keys())
+		}
 	}
-	p := place{principal: identity.TokenPrincipal(1, 2, "root"), permissions: viewer}
-	if p.permissions.Has(domain.PermissionSeeSecrets) && p.principal.Allows(identity.PermissionReadSensitive) {
-		t.Error("a viewer's root token sees Secrets")
+}
+
+func TestTokenPermissionOfAPermission(t *testing.T) {
+	cases := map[domain.Permission]identity.Permission{
+		domain.PermissionAdministrator:      identity.PermissionRoot,
+		domain.PermissionViewResources:      identity.PermissionRead,
+		domain.PermissionSeeSecrets:         identity.PermissionReadSensitive,
+		domain.PermissionDeploy:             identity.PermissionDeploy,
+		domain.PermissionManageApplications: identity.PermissionWrite,
+		domain.PermissionManageServers:      identity.PermissionWrite,
+	}
+	for p, want := range cases {
+		if got := tokenPermission(p); got != want {
+			t.Errorf("%s: %s, want %s", p.Key(), got, want)
+		}
 	}
 }

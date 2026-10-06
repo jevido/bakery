@@ -178,8 +178,8 @@ var inGuild = guilds.Owns("server", UsableBy)
 
 // Routes registers the servers API behind guilds.Auth: the Current guild's
 // Servers and the Local server. Every Member may list them (to pick a Target
-// server) and see their usage; only admins change them, and only the
-// Instance admin changes the Local server.
+// server) and see their usage; changing them needs manage_servers, and only
+// the Instance admin changes the Local server.
 func Routes(r route.Router) {
 	c := controller()
 	r.Middleware(guilds.Auth, inGuild).Group(func(r route.Router) {
@@ -188,7 +188,7 @@ func Routes(r route.Router) {
 		r.Get("/api/servers/{id}/metrics", c.Metrics)
 		r.Get("/api/servers/{id}/details", c.Details)
 	})
-	r.Middleware(guilds.Auth, inGuild, guilds.Admin).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, inGuild, guilds.Can("manage_servers")).Group(func(r route.Router) {
 		r.Post("/api/servers", c.Create)
 		r.Patch("/api/servers/{id}", c.Update)
 		r.Delete("/api/servers/{id}", c.Delete)
@@ -198,10 +198,10 @@ func Routes(r route.Router) {
 
 // LongRoutes registers Validate and Clean up, which talk to a Server for
 // longer than the request timeout allows (a Validation up to 30 s, a
-// Cleanup minutes), behind guilds.Auth and guilds.Admin.
+// Cleanup minutes), behind guilds.Auth and manage_servers.
 func LongRoutes(r route.Router) {
 	c := controller()
-	r.Middleware(guilds.Auth, inGuild, guilds.Admin).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, inGuild, guilds.Can("manage_servers")).Group(func(r route.Router) {
 		r.Post("/api/servers/{id}/validate", c.Validate)
 		r.Post("/api/servers/{id}/cleanup", c.CleanUp)
 	})

@@ -167,7 +167,7 @@
   // Application is exited, and the phone menu lists them in its own order.
   const busy = $derived(deploying || queued)
   const actions = $derived<Action[]>(
-    !session.canWrite || !status
+    !session.can('deploy') || !status
       ? []
       : exited
         ? [
@@ -190,7 +190,7 @@
           ],
   )
   const mobileActions = $derived<Action[]>(
-    !session.canWrite || !status || exited
+    !session.can('deploy') || !status || exited
       ? actions
       : [
           { label: 'Deploy', icon: 'refresh', run: deploy, disabled: busy },
@@ -225,7 +225,7 @@
   <div class="chrome"><Spinner text="Loading…" /></div>
 {:else}
   <Heading name={application.name} urls={application.public_urls} {status} {actions} {mobileActions} />
-  {#if session.canWrite}
+  {#if session.can('deploy')}
     <div class="hidden" aria-hidden="true">
       <ConfirmationModal
         title={exited ? 'Confirm Container Removal?' : 'Confirm Application Stopping?'}
@@ -305,7 +305,7 @@
           <Rollback {application} />
         {:else if page === 'advanced'}
           <Advanced {application} />
-        {:else if page === 'danger' && session.canWrite}
+        {:else if page === 'danger' && session.can('manage_applications')}
           <Danger
             label="application"
             name={application.name}

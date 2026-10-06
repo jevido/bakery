@@ -42,7 +42,7 @@
   }
 
   const gitBased = $derived(application.build_pack !== 'dockerimage')
-  const canUpdate = $derived(session.canWrite)
+  const canUpdate = $derived(session.can('manage_applications'))
 
   let name = $state('')
   let description = $state('')

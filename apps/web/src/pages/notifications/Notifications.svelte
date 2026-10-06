@@ -49,7 +49,7 @@
   // Each page reads the channels afresh; another tab may have changed them.
   $effect(() => {
     void page
-    if (session.isAdmin) load().catch((e) => (error = e.message))
+    if (session.can('manage_notifications')) load().catch((e) => (error = e.message))
   })
 
   const kindProps = $derived<KindPageProps | null>(
@@ -105,8 +105,8 @@
     </aside>
 
     <div class="min-w-0">
-      {#if !session.isAdmin}
-        <Empty title="Only admins can manage notifications" description="Ask an admin of this instance to change where The Bakery sends notifications." icon="notifications" />
+      {#if !session.can('manage_notifications')}
+        <Empty title="Notifications need the Manage notifications permission" description="Ask someone in this guild who has it to change where The Bakery sends notifications." icon="notifications" />
       {:else if error}
         <p class="text-sm text-error">{error}</p>
       {:else if !kindProps}

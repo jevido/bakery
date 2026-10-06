@@ -28,30 +28,6 @@ func TestNewMember(t *testing.T) {
 	}
 }
 
-func TestRoleRights(t *testing.T) {
-	cases := []struct {
-		role           Role
-		write, isAdmin bool
-	}{
-		{RoleViewer, false, false},
-		{RoleMember, true, false},
-		{RoleAdmin, true, true},
-	}
-	for _, c := range cases {
-		if c.role.CanWrite() != c.write || c.role.IsAdmin() != c.isAdmin {
-			t.Errorf("%s: write=%v admin=%v", c.role, c.role.CanWrite(), c.role.IsAdmin())
-		}
-	}
-	if _, err := ParseRole("admin"); err != nil {
-		t.Error(err)
-	}
-	for _, s := range []string{"Admin", "owner"} {
-		if _, err := ParseRole(s); !errors.Is(err, ErrInvalidRole) {
-			t.Errorf("ParseRole(%s): %v", s, err)
-		}
-	}
-}
-
 func TestSessionCounts(t *testing.T) {
 	var m Member
 	if !m.SessionCounts(time.Unix(1, 0)) {

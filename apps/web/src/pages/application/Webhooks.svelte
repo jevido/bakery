@@ -26,7 +26,7 @@
   $effect(() => {
     webhook = null
     // The Webhook comes with its secret, which a viewer may not read.
-    if (!session.canSeeSecrets) return
+    if (!session.can('see_secrets')) return
     api<{ webhook: Webhook }>('GET', `/applications/${application.id}/webhook`)
       .then((r) => (webhook = r.webhook))
       .catch((err) => toast.error('Webhook not loaded', err.message))
@@ -77,7 +77,7 @@
               <Icon name="external-link" class="size-3.5" />
             </a>
           {/if}
-          {#if session.canWrite && session.canSeeSecrets}
+          {#if session.can('manage_applications') && session.can('see_secrets')}
             <ConfirmationModal
               title="Rotate webhook secret?"
               buttonTitle="Rotate"
@@ -102,7 +102,7 @@
             </div>
             <div class="grid gap-4 md:grid-cols-2">
               <CopyButton label="Webhook URL" text={url} testid="webhook-url" />
-              {#if session.canSeeSecrets}
+              {#if session.can('see_secrets')}
                 <Input
                   type="password"
                   label="Webhook secret"

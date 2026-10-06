@@ -29,7 +29,7 @@
     applied: string
   } = $props()
 
-  const canUpdate = $derived(session.canWrite)
+  const canUpdate = $derived(session.can('manage_applications'))
   const saved = $derived(limits)
   const savedCpus = $derived(saved.cpus == null ? '0' : String(saved.cpus))
   const savedMemory = $derived(saved.memory_mb == null ? '0' : `${saved.memory_mb}m`)

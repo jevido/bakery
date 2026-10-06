@@ -42,7 +42,7 @@
       <div class="min-w-0">
         <h4 class="text-sm font-semibold text-red-700 dark:text-red-300">Delete guild</h4>
         <div class="mt-2 max-w-2xl space-y-2 text-[13px] leading-5 text-red-700/80 dark:text-red-300/80" data-testid="guild-danger">
-          {#if !session.isAdmin}
+          {#if !session.can('administrator')}
             <p>Only guild admins can delete this guild.</p>
           {:else if guild.blocking.length === 0}
             <p>
@@ -69,7 +69,7 @@
         </div>
       </div>
       <div class="shrink-0">
-        {#if session.isAdmin && guild.blocking.length === 0}
+        {#if session.can('administrator') && guild.blocking.length === 0}
           <ConfirmationModal
             title="Confirm Guild Deletion?"
             buttonTitle="Delete guild"

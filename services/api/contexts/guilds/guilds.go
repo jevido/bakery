@@ -1,6 +1,6 @@
 // Package guilds is what other contexts, the router and bootstrap may use
-// from the guilds context: the Auth, Deploy, Admin, Secrets and Owns
-// middlewares, Current and CanSeeSecrets, the routes, the
+// from the guilds context: the Auth, Deploy, Can and Owns middlewares,
+// Current and Allows, the routes, the
 // InvitationCreated event, the OnGuildDeleting check, and Boot. Nothing else in contexts/guilds is for
 // outside use.
 package guilds
@@ -24,28 +24,42 @@ import (
 var service = app.NewService(infra.Guilds{}, infra.Memberships{}, infra.Roles{}, infra.Invitations{}, members{})
 
 // Auth refuses requests that come from no Member (401), from a Member in no
-// Guild (403 `you are in no guild`), and anything but reading without
-// manage_applications in the Current guild (403). An API token acts in the Guild it was made in,
+// Guild (403 `you are in no guild`), reading without view_resources in the
+// Current guild (403), and an API token anything its Token permissions do
+// not cover by method (403). An API token acts in the Guild it was made in,
 // a Session in the one its `bakery_guild` cookie names (else the Member's
-// first).
+// first). Changes are refused only by Can, so every change route names its
+// Permission.
 var Auth contractshttp.Middleware = guildshttp.Auth{Service: service}
 
 // Deploy is Auth for Coolify's deploy actions (deploy, restart, stop,
-// start, cancel, rollback): an API token needs the deploy Permission there
-// instead of write.
+// start, cancel, rollback): an API token needs the deploy Token permission
+// there instead of write. The deploy Permission is Can's.
 var Deploy contractshttp.Middleware = guildshttp.Auth{Service: service, Deploy: true}
 
-// Admin, after Auth, lets only requests with administrator in the Current
-// guild through (403).
-var Admin contractshttp.Middleware = guildshttp.Admin{}
+// Can, after Auth, lets only requests that may use the Permission with
+// this wire key (the glossary's list, e.g. "manage_servers") in the Current
+// guild through (403 `you need the <Name> permission`). An unknown key
+// panics, at boot where routes are registered.
+func Can(permission string) contractshttp.Middleware {
+	return guildshttp.Can{Permission: mustPermission(permission)}
+}
 
-// Secrets, after Auth, keeps requests without see_secrets and API tokens
-// without read:sensitive away from routes that return Secrets (403).
-var Secrets contractshttp.Middleware = guildshttp.Secrets{}
+// Allows reports, after Auth, whether the request may use the Permission
+// with this wire key in the Current guild, an API token's cap included; for
+// a handler whose answer differs by Permission (e.g. Secrets in a response
+// a viewer may also read).
+func Allows(ctx contractshttp.Context, permission string) bool {
+	return guildshttp.Allows(ctx, mustPermission(permission))
+}
 
-// CanSeeSecrets reports whether the request may be answered with Secrets;
-// for a response that mixes Secrets with what a viewer may see.
-func CanSeeSecrets(ctx contractshttp.Context) bool { return guildshttp.CanSeeSecrets(ctx) }
+func mustPermission(key string) domain.Permission {
+	p, err := domain.ParsePermission(key)
+	if err != nil {
+		panic("guilds: unknown permission " + key)
+	}
+	return p
+}
 
 // Owns, after Auth, answers 404 for a route whose {id} names something
 // outside the Current guild. belongs is the owning context's check, e.g.
@@ -83,11 +97,9 @@ func Routes(r route.Router) {
 	// Coolify.
 	r.Middleware(Auth).Get("/api/guilds/current", c.CurrentGuild)
 	r.Middleware(Auth).Get("/api/members", c.Members)
-	r.Middleware(Auth, Admin).Group(func(r route.Router) {
-		r.Patch("/api/guilds/current", c.UpdateCurrentGuild)
-		r.Delete("/api/guilds/current", c.DeleteCurrentGuild)
-	})
-	r.Middleware(Auth, Admin).Group(func(r route.Router) {
+	r.Middleware(Auth, Can("manage_guild")).Patch("/api/guilds/current", c.UpdateCurrentGuild)
+	r.Middleware(Auth, Can("administrator")).Delete("/api/guilds/current", c.DeleteCurrentGuild)
+	r.Middleware(Auth, Can("manage_members")).Group(func(r route.Router) {
 		r.Patch("/api/members/{id}", c.ChangeRole)
 		r.Delete("/api/members/{id}", c.RemoveMember)
 		r.Delete("/api/members/{id}/two-factor", c.ResetTwoFactor)
