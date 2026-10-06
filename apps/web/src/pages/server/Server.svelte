@@ -8,8 +8,9 @@
   import type { Server } from '../../lib/types'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import ConfigurationSidebar from './ConfigurationSidebar.svelte'
+  import Danger from './Danger.svelte'
+  import DockerCleanup from './DockerCleanup.svelte'
   import General from './General.svelte'
-  import Interim from './Interim.svelte'
   import Metrics from './Metrics.svelte'
   import Navbar from './Navbar.svelte'
   import PrivateKey from './PrivateKey.svelte'
@@ -62,8 +63,10 @@
           <Resources {server} />
         {:else if page === 'metrics'}
           <Metrics {server} />
-        {:else}
-          <Interim {server} {page} onchange={(s) => (server = s)} />
+        {:else if page === 'docker-cleanup'}
+          <DockerCleanup {server} onchange={(s) => (server = s)} />
+        {:else if page === 'danger'}
+          <Danger {server} />
         {/if}
       </div>
     </div>

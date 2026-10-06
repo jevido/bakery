@@ -3,29 +3,18 @@
   // app/Livewire/Server/Resources.php; Apache-2.0, see NOTICE), the Managed
   // tab only: every Application, Database and Service on this Server with its
   // Project, Environment, type and status, searchable and paged.
-  import { api } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
-  import { statusLabel, statusTitle, statusTone, typeLabels, type ResourceType } from '../../lib/resources'
-  import { applicationPath, databasePath, href, servicePath } from '../../lib/router.svelte'
-  import type { Database, Deployment, Project, Server, Service } from '../../lib/types'
+  import { statusLabel, statusTitle, statusTone, typeLabels } from '../../lib/resources'
+  import type { Server } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import ClientPagination from '../../lib/ui/ClientPagination.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
   import SettingsSection from '../../lib/ui/SettingsSection.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import { serverResources, type Row } from './resources'
 
   let { server }: { server: Server } = $props()
-
-  type Row = {
-    key: string
-    name: string
-    project: string
-    environment: string
-    type: ResourceType
-    status: string
-    href: string
-  }
 
   let rows = $state.raw<Row[] | null>(null)
   let loadError = $state('')
@@ -34,75 +23,10 @@
   let page = $state(1)
   let pageSize = $state(10)
 
-  // Composed from the dashboard API's Projects (the list leaves their
-  // Environments out, a single Project has them); Databases and Services run
-  // on the Local server only.
-  async function load(target: Server): Promise<Row[]> {
-    const { projects } = await api<{ projects: Project[] }>('GET', '/projects')
-    const local = target.kind === 'local'
-    const perProject = await Promise.all(
-      projects.map(async ({ id }) => {
-        const { project: p } = await api<{ project: Project }>('GET', `/projects/${id}`)
-        const environments = p.environments ?? []
-        const envName = (id: number) => environments.find((e) => e.id === id)?.name ?? ''
-        const applications = environments.flatMap((e) => e.applications).filter((a) => a.server_id === target.id)
-        const [databases, services, statuses] = await Promise.all([
-          local ? api<{ databases: Database[] }>('GET', `/projects/${p.id}/databases`).then((r) => r.databases) : [],
-          local ? api<{ services: Service[] }>('GET', `/projects/${p.id}/services`).then((r) => r.services) : [],
-          // An Application's status is its latest own Deployment's state, as
-          // the Environment page shows it.
-          Promise.all(
-            applications.map((a) =>
-              api<{ deployments: Deployment[] }>('GET', `/applications/${a.id}/deployments`)
-                .then((r) => r.deployments.find((x) => x.preview === 0)?.status ?? '')
-                .catch(() => ''),
-            ),
-          ),
-        ])
-        return [
-          ...applications.map(
-            (a, i): Row => ({
-              key: `application-${a.id}`,
-              name: a.name,
-              project: p.name,
-              environment: envName(a.environment_id),
-              type: 'application',
-              status: statuses[i],
-              href: href(applicationPath(a)),
-            }),
-          ),
-          ...databases.map(
-            (d): Row => ({
-              key: `database-${d.id}`,
-              name: d.name,
-              project: p.name,
-              environment: envName(d.environment_id),
-              type: 'database',
-              status: d.status,
-              href: href(databasePath(d)),
-            }),
-          ),
-          ...services.map(
-            (s): Row => ({
-              key: `service-${s.id}`,
-              name: s.name,
-              project: p.name,
-              environment: envName(s.environment_id),
-              type: 'service',
-              status: s.status,
-              href: href(servicePath(s)),
-            }),
-          ),
-        ]
-      }),
-    )
-    return perProject.flat().sort((a, b) => a.name.localeCompare(b.name))
-  }
-
   async function refresh() {
     refreshing = true
     try {
-      rows = await load(server)
+      rows = await serverResources(server)
       loadError = ''
     } catch (e) {
       loadError = e instanceof Error ? e.message : String(e)
