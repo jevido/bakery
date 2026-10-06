@@ -197,9 +197,11 @@ secrets (variables, database credentials, webhook secrets, backups) and
 changes nothing, a **member** also adds, changes and deploys applications,
 databases and services, and an **admin** also manages servers, S3 storage,
 known hosts and members. Changing someone's role or removing them counts
-at once. Under **API tokens** anyone creates tokens for scripts, sent as
-`Authorization: Bearer bky_…`, with their own role or read-only; a token is
-shown once. `task access:test` runs this end to end.
+at once. Under **Keys & Tokens** anyone creates API tokens for scripts,
+sent as `Authorization: Bearer bky_…`, with an expiry and the permissions
+the token needs (root, write, deploy, read, read sensitive data), never more
+than their role allows; a token is shown once. `task access:test` runs this
+end to end.
 
 ### Profile and two-factor authentication
 

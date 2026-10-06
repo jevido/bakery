@@ -46,7 +46,7 @@ an Application's Deployments run on its Target server, served by that
 Server's own Proxy, whose admin API is a unix socket opened over SSH.
 
 Members sign in with a Session cookie (the dashboard) or send an API token
-as `Authorization: Bearer bky_…` (scripts; made under API tokens in the
+as `Authorization: Bearer bky_…` (scripts; made under Keys & Tokens in the
 dashboard or `POST /api/api-tokens` with `{name, permissions,
 expires_in_days}`; Coolify's permissions `root`, `write`, `deploy`, `read`
 and `read:sensitive` limit what a token may do, and `{name, read_only}`

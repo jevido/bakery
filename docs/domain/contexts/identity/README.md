@@ -161,6 +161,24 @@ Who may run each is in brackets.
   matter to them, and the prefix keeps leaked tokens recognisable. The
   Description stays unique per Member, which Coolify does not require, so a
   Member can tell their tokens apart.
+- **Keys & Tokens has only API Tokens.** Coolify's Keys & Tokens layout
+  also lists Private Keys, Cloud Tokens and Cloud-Init Scripts. The Bakery
+  keeps SSH keys per Server and per Application, so there is no shared
+  Private Key resource to list yet; it comes with the goal's "what Coolify
+  has and The Bakery does not" step. Cloud Tokens and Cloud-Init Scripts
+  provision servers at a cloud provider, which is not part of The Bakery.
+  The menu shows only what exists rather than dead links.
+- **No "API disabled" state.** Coolify can switch its API off in instance
+  Settings and then shows "API access is turned off" instead of the page.
+  The Bakery's dashboard is itself an API client, so the API is always on;
+  an instance switch for the token API can come with instance Settings.
+- **The API Tokens page differs from Coolify's in small ways.** The
+  Description is cleared after a create, because a second token with the
+  same Description is refused (above). The page size is remembered under
+  `bakery.page-size.api-tokens`. A viewer sees the same form with only
+  Read to choose, since Coolify has no viewer. The page lists only the
+  signed-in Member's own tokens, so each row has Revoke, as Coolify's rows
+  do for their owner.
 - **Own TOTP code, no library.** RFC 6238 is a few dozen lines on
   `crypto/hmac` and `encoding/base32`, fits the domain's no-I/O rule (the
   time and the randomness are passed in) and is checked against the RFC's
