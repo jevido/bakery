@@ -16,6 +16,11 @@ default.webp, gitea.svg, n8n.png, umami.svg and uptime-kuma.svg (in
 apps/web/public/svgs/). The products they show are trademarks of their
 owners. resources/valkey.svg is The Bakery's own.
 
+The Notifications pages use discord.svg, telegram.svg, slack.svg and
+pushover.svg, copied unchanged from Coolify v4.3.23's public/svgs/ under the
+same license (in apps/web/public/svgs/). Discord, Telegram, Slack and
+Pushover are trademarks of their owners.
+
 The dashboard uses the Geist and Geist Mono fonts, Copyright 2024 The Geist
 Project Authors (https://github.com/vercel/geist-font), licensed under the
 SIL Open Font License, Version 1.1.

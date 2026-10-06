@@ -25,7 +25,7 @@
   import Service from './pages/service/Service.svelte'
   import Settings from './pages/Settings.svelte'
   import Storages from './pages/Storages.svelte'
-  import Notifications from './pages/Notifications.svelte'
+  import Notifications from './pages/notifications/Notifications.svelte'
   import Setup from './pages/Setup.svelte'
   import AuthAlert from './lib/ui/AuthAlert.svelte'
   import AuthShell from './lib/ui/AuthShell.svelte'
@@ -119,7 +119,7 @@
     {:else if router.route.name === 'members'}
       <Members />
     {:else if router.route.name === 'notifications'}
-      <Notifications />
+      <Notifications page={router.route.page} />
     {:else if router.route.name === 'api-tokens'}
       <ApiTokens />
     {:else if router.route.name === 'profile'}

@@ -1,7 +1,7 @@
 import { api } from './api'
 import type { Application, Database, Project, Service } from './types'
 
-// Hash router, with Coolify's paths for Projects, Environments, Resources and Servers: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/members, #/notifications, #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
+// Hash router, with Coolify's paths for Projects, Environments, Resources and Servers: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/members, #/notifications/{kind} (its pages are notificationPages; #/notifications opens Email in place), #/api-tokens, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
@@ -37,7 +37,7 @@ export type Route =
   | { name: 'storages' }
   | { name: 'settings' }
   | { name: 'members' }
-  | { name: 'notifications' }
+  | { name: 'notifications'; page: NotificationPage }
   | { name: 'api-tokens' }
   | { name: 'profile' }
   | { name: 'invite'; token: string }
@@ -124,6 +124,19 @@ export function serverPath(id: number, page: ServerPage = ''): string {
   return page ? `/server/${id}/${page}` : `/server/${id}`
 }
 
+/** The Notifications pages, one per Channel kind, by their slug in Coolify's URLs; ntfy is The Bakery's own. */
+export const notificationPages = ['email', 'discord', 'telegram', 'slack', 'pushover', 'webhook', 'ntfy'] as const
+export type NotificationPage = (typeof notificationPages)[number]
+
+function isNotificationPage(s: string): s is NotificationPage {
+  return (notificationPages as readonly string[]).includes(s)
+}
+
+/** The path of a Notifications page. */
+export function notificationPath(page: NotificationPage): string {
+  return `/notifications/${page}`
+}
+
 function parse(hash: string): Route {
   const [path, query = ''] = hash.replace(/^#\/?/, '').split('?', 2)
   const flags = new URLSearchParams(query)
@@ -134,7 +147,11 @@ function parse(hash: string): Route {
   if (parts[0] === 'storages' && parts.length === 1) return { name: 'storages' }
   if (parts[0] === 'settings' && parts.length === 1) return { name: 'settings' }
   if (parts[0] === 'members' && parts.length === 1) return { name: 'members' }
-  if (parts[0] === 'notifications' && parts.length === 1) return { name: 'notifications' }
+  if (parts[0] === 'notifications') {
+    // Coolify's sidebar link opens the Email page.
+    if (parts.length === 1) return redirect(notificationPath('email'))
+    if (parts.length === 2 && isNotificationPage(parts[1])) return { name: 'notifications', page: parts[1] }
+  }
   if (parts[0] === 'api-tokens' && parts.length === 1) return { name: 'api-tokens' }
   // #/account was the page's name before it took Coolify's; old links still open it.
   if ((parts[0] === 'profile' || parts[0] === 'account') && parts.length === 1) return { name: 'profile' }

@@ -694,6 +694,35 @@ html:not(.dark) {
   padding: 1rem;
 }
 
+/* Coolify's settings-layout header below xl (Notifications and the other
+   settings pages): the page title and its description above the sidebar. */
+.settings-mobile-header {
+  margin-bottom: 1.25rem;
+}
+
+.settings-mobile-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.75rem;
+  letter-spacing: -0.025em;
+  color: #000000;
+}
+
+.dark .settings-mobile-title {
+  color: #ffffff;
+}
+
+.settings-mobile-description {
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  color: #737373;
+}
+
+.dark .settings-mobile-description {
+  color: var(--coollabs-subtle);
+}
+
 /* Flush layer-card body (lists and other full-bleed content). */
 .application-settings-section-body.is-flush {
   padding: 0;

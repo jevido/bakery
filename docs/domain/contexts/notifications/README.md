@@ -127,3 +127,15 @@ None published.
   Deliveries were migrated, but a webhook receiver that matched on the old
   names in the payload's `event` field must match the new ones. `ntfy` is a Channel kind Coolify does not
   have; it costs one small sender and is popular with self-hosters.
+- **One page per Channel kind, with a picker only when a kind has several
+  channels.** The Notifications pages are Coolify's, at its URLs
+  (`#/notifications/{kind}`, ntfy last): a kind's page edits its one channel
+  exactly as Coolify's page edits its settings row. When a kind has two or
+  more channels a picker (their names, Add channel, Delete) sits above the
+  page; with one, Add channel and Delete sit at its foot, so the page itself
+  stays Coolify's and the several-channels case stays reachable. A kind with
+  no channel shows the empty form: saving it stores the channel disabled,
+  as Coolify saves settings without turning a channel on, and Enable stores
+  it enabled, named after its kind. An event toggled in the events grid is
+  saved at once, as Coolify's are, from the stored settings, so other edits
+  not yet saved stay unsaved. The recent Deliveries sit below the events grid.
