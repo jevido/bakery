@@ -17,13 +17,13 @@ context.
 
 | Term | Meaning |
 | ---- | ------- |
-| Member | A person who may sign in: name, email and password hash. Their Role is per Guild, on a Membership. |
-| Instance admin | The Member Setup creates (formerly the Owner). Exactly one. |
+| Member | A person who may sign in: name, email and password hash. What they may do is per Guild, from the Roles on their Membership (see guilds). |
+| Instance admin | The Member Setup creates (formerly the Owner). Exactly one. guilds gives them every Permission in every Guild, just below its Guild Master. |
 | Setup | Creating the Instance admin and the first Guild. Only possible while no Instance admin exists. |
 | Session | A signed JWT in the HttpOnly cookie `bakery_session`, naming a Member. |
-| API token | A named `bky_…` secret of one Member, made in one Guild and working only there, sent as `Authorization: Bearer`, with its Permissions and an optional expiry. |
-| Permission | What a request made with an API token may do: `root` (everything the Member's Role in the token's Guild may), `write` (changes other than deploy actions), `deploy` (deploy, restart, stop, start, cancel, rollback), `read` (reading without Secrets), `read:sensitive` (reading Secrets too). |
-| Principal | Who a request is from: a Member, whether they are the Instance admin, and, when an API token sent it, the token's Guild and Permissions. guilds adds the Role the request acts with (always the Member's current one in the Current guild). |
+| API token | A named `bky_…` secret of one Member, made in one Guild and working only there, sent as `Authorization: Bearer`, with its Token permissions and an optional expiry. |
+| Token permission | What a request made with an API token may do, capped by the Member's Permissions in the token's Guild: `root` (everything those Permissions allow), `write` (changes other than deploy actions), `deploy` (deploy, restart, stop, start, cancel, rollback), `read` (reading without Secrets), `read:sensitive` (reading Secrets too). In code the type is still `identity.Permission`; it is this Token permission, never guilds' Permission of a Role. The dashboard and the wire keep the word `permissions`. |
+| Principal | Who a request is from: a Member, whether they are the Instance admin, and, when an API token sent it, the token's Guild and Token permissions. guilds adds the Permissions the request acts with (always the Member's current ones in the Current guild). |
 | Secret | A value a viewer may not read (see the glossary). |
 | Profile | A Member's own name, password, Sessions and Two-factor authentication, changed only by that Member. |
 | Two-factor authentication | A TOTP secret on a Member: `off`, `pending` (made, not yet confirmed with a code) or `on`. When on, signing in needs an Authenticator code or a Recovery code after the password. |
@@ -39,7 +39,7 @@ context.
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Member | Email is a valid address and unique; name is not empty; password has at least 12 characters and is only stored hashed. Exactly one Member is the Instance admin, and the Instance admin is never removed. Two-factor authentication only counts for sign-in when `on`; its secret is stored only encrypted and Recovery codes only hashed; an Authenticator code is accepted only for a time step later than the last one accepted. A new password has at least 12 characters and needs the current one. |
-| API token | Name (the "Description") is 3–255 characters when made and unique per Member; belongs to one Member and one Guild and is removed with either; only the SHA-256 of its value is stored, and the value is shown once. Its Permissions are known ones, never empty (none means `read`), `root` stands alone, `read:sensitive` brings `read`. The Member's Role in that Guild caps what it may be given: `root` only by an admin, `write`, `deploy` and `read:sensitive` only by a Role that may change things, a viewer only `read`. An expiry is in the future when set; from then on the token no longer authenticates. |
+| API token | Name (the "Description") is 3–255 characters when made and unique per Member; belongs to one Member and one Guild and is removed with either; only the SHA-256 of its value is stored, and the value is shown once. Its Token permissions are known ones, never empty (none means `read`), `root` stands alone, `read:sensitive` brings `read`. The Member's Role in that Guild caps what it may be given: `root` only by an admin, `write`, `deploy` and `read:sensitive` only by a Role that may change things, a viewer only `read` (this becomes the Member's Permissions in that Guild with the Roles phase; see guilds). An expiry is in the future when set; from then on the token no longer authenticates. |
 
 ### Commands
 
@@ -50,7 +50,7 @@ Who may run each is in brackets.
 - `Logout()` [any Member]: clears the Session cookie.
 - `CurrentMember(principal)` [any Member]: the signed-in Member; guilds adds their Role in the Current guild.
 - `CreateMember(name, email, password)` [guilds, when an Invitation to a new email is accepted].
-- `CreateAPIToken(name, permissions, expires in days)` [any Member, with a Session]: made in the Current guild; returns the value once. The expiry is 7, 30, 60, 90 or 365 days, or none (Never). `GET /api/api-tokens/permissions` answers which Permissions the Member may grant.
+- `CreateAPIToken(name, permissions, expires in days)` [any Member, with a Session]: made in the Current guild; returns the value once. The expiry is 7, 30, 60, 90 or 365 days, or none (Never). `GET /api/api-tokens/permissions` answers which Token permissions the Member may grant.
 - `RevokeAPIToken(id)` [the token's Member].
 - `ChangeName(name)`, `ChangePassword(current, new)`, `SignOutOtherSessions()` [the Member themselves, with a Session]: a new password and signing out elsewhere end every other Session of the Member; the current one gets a fresh Session.
 - `StartTwoFactor()` [the Member, with a Session]: a new secret and its `otpauth://` URI; two-factor becomes pending. Refused while on.
@@ -72,8 +72,8 @@ Who may run each is in brackets.
 - **Publishes:**
   - `identity.Authenticate(ctx)`: the Principal of a request, by API token
     or Session cookie, or 401 (an expired token is 401 like an unknown one).
-    `Principal.Allows(permission)` holds the Permission rules: a Session
-    always, a token when it carries the Permission or `root`. guilds builds
+    `Principal.Allows(permission)` holds the Token permission rules: a Session
+    always, a token when it carries the Token permission or `root`. guilds builds
     its `Auth`, `Deploy`, `Admin` and `Secrets` middlewares on it, asking
     `read` for GET and HEAD and `write` for anything else (`deploy` for
     Coolify's deploy actions: deploying, restarting and stopping
@@ -130,12 +130,12 @@ Who may run each is in brackets.
   prefix makes a leaked token recognisable to secret scanners. A request
   made with an API token cannot create or revoke tokens, so a leaked token
   cannot mint more.
-- **API token Permissions are Coolify's abilities, capped by the Member's
+- **Token permissions are Coolify's abilities, capped by the Member's
   current Role.** Coolify refuses to create a token that exceeds the
   creator's role and then trusts the token; The Bakery also refuses at
   creation, and on every request the token acts with its Member's *current*
-  Role besides its Permissions, so demoting a Member narrows their tokens at
-  once. That is how the read-only tokens made before Permissions keep doing
+  Role besides its Token permissions, so demoting a Member narrows their tokens at
+  once. That is how the read-only tokens made before Token permissions keep doing
   exactly what they did: they became `read`, every other token `root`, and
   `root` on a member's or viewer's token is still only what that Role may.
   A consequence: a `read` token of an admin reads admin-only lists (Members,

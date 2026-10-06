@@ -5,8 +5,9 @@
 
 ## Purpose
 
-Knows *where* a request acts and *with which Role*: the Guilds of this
-installation, each Member's Membership (and its Role) in them, the
+Knows *where* a request acts and *with which Permissions*: the Guilds of
+this installation, their Roles and Guild Master, each Member's Membership
+(and its Roles) in them, the Permission overrides on Projects, the
 Invitations that bring people into a Guild, and the Current guild of every
 request. Every Project, Server (but the Local server), S3 storage,
 Notification channel, Known host and API token belongs to exactly one
@@ -23,11 +24,17 @@ rows and stores the Guild's id on them.
 | Term | Meaning |
 | ---- | ------- |
 | Guild | A group of Members that owns Projects, Servers (all but the Local server), S3 storages, Notification channels, Known hosts and API tokens. Name and optional description. Coolify's Team, Paperclip's Company. |
-| Membership | A Member's place in a Guild, with a Role. At most one per Member and Guild. |
-| Role | `viewer`, `member` or `admin`, per Membership (see the glossary for what each may do). |
-| Instance admin | The Member Setup creates. Acts as `admin` in every Guild and sees every Guild, with or without a Membership. |
+| Membership | A Member's place in a Guild, holding any number of Roles and always the Base role. At most one per Member and Guild. |
+| Role | A named set of Permissions in one Guild, with a color and a Position. Seeded in every Guild: `Admin` (Administrator), `Member` (View resources, See secrets, Deploy, Manage applications), `Viewer` (View resources). Discord's role. |
+| Base role | The Role every Member holds, shown as `@everyone`, at Position 0. Cannot be assigned, removed, renamed or deleted; only its Permissions change. Seeded with none. Discord's `@everyone`. |
+| Position | A Role's place in its Guild's order, higher above lower. A Member's highest Role is the highest-placed Role they hold. |
+| Permission | One of the fixed list in the glossary (`administrator`, `view_resources`, `see_secrets`, `deploy`, `manage_applications`, `manage_servers`, `manage_notifications`, `manage_guild`, `manage_members`, `manage_roles`, `hire_agents`, `approve`, `manage_budgets`). A Member's Permissions in a Guild are the union of their Roles'; `administrator` grants every one. |
+| Guild Master | The one Member of a Guild above every Role, with every Permission, never removable or re-roled; changes only by an accepted Transfer offer. Discord's server owner. |
+| Transfer offer | The Guild Master's offer of the Guild Master to one other Member; accepted, declined, withdrawn or expired after 7 days. |
+| Permission override | On one Project, per Role or per Member: allow, deny or inherit for `view_resources`, `see_secrets`, `deploy` or `manage_applications`. |
+| Instance admin | The Member Setup creates. Acts with every Permission in every Guild, just below its Guild Master, and sees every Guild, with or without a Membership. |
 | Current guild | The Guild a request acts in: the `bakery_guild` cookie for a Session, the Guild an API token was made in for a token. |
-| Invitation | An email and a Role for one Guild, with a link that is good once and for 7 days. |
+| Invitation | An email and the Roles it brings, for one Guild, with a link that is good once and for 7 days. |
 | Guild switcher | Where a Member picks the Current guild among the Guilds they are in (all of them for the Instance admin). |
 
 ## Model
@@ -37,40 +44,82 @@ rows and stores the Guild's id on them.
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Guild | Name is 1–255 characters after trimming; the description is optional, at most 255 characters. Deleted only when it owns nothing: no Projects, Servers, S3 storages or Notification channels (each owning context answers through `OnGuildDeleting`); its Memberships, Invitations, API tokens and Known hosts go with it. |
-| Membership | One per Member and Guild. Role is `viewer`, `member` or `admin`. A Guild keeps at least one `admin` Membership. Nobody changes their own Role or removes their own Membership. The Instance admin's Memberships are never demoted or removed. |
-| Invitation | Belongs to one Guild. Email is valid and not already a Member of this Guild; Role is admin, member or viewer; at most one open Invitation per Guild and email; expires 7 days after it was made; accepted at most once; a revoked or expired one cannot be accepted. Only the hash of its token is stored. |
+| Guild (Guild Master) | Exactly one Guild Master at all times, a Member with a Membership in the Guild. The Guild Master is never removed from the Guild, never re-roled by anyone, cannot leave it, and cannot have their account deleted while they hold it; they transfer it first or delete the Guild. At most one open Transfer offer, to another Member of the Guild who is a person (never an agent); it changes nothing until accepted, can be withdrawn by the Guild Master and declined by its Member, and expires 7 days after it was made. Accepting swaps the Guild Master in one step; both keep their other Roles. |
+| Role | Belongs to one Guild. Name is 1–100 characters after trimming; color is `#rrggbb`; Permissions are from the fixed list. Positions are unique per Guild. The Base role is at Position 0, always exists, and cannot be renamed, deleted, assigned or removed; every other Role sits above it. A Role held by Members can be deleted; they simply stop holding it. |
+| Membership | One per Member and Guild. Holds a set of Roles of its own Guild (never the Base role explicitly; it holds that implicitly). The Instance admin's Memberships are never removed. |
+| Permission overrides | Keyed by one Project of the Guild. Each entry is a Role or a Member, a Permission from `view_resources`, `see_secrets`, `deploy` and `manage_applications`, and allow or deny (inherit is no entry). For a Member on that Project: start from their Guild Permissions; then, over all the Roles they hold, a deny removes the Permission and otherwise an allow adds it; then the Member's own entry, if any, decides. `administrator`, the Instance admin and the Guild Master skip overrides. |
+| Invitation | Belongs to one Guild. Email is valid and not already a Member of this Guild; its Roles are Roles of that Guild below the inviter's highest Role (none means the Base role only); at most one open Invitation per Guild and email; expires 7 days after it was made; accepted at most once; a revoked or expired one cannot be accepted. Only the hash of its token is stored. |
+
+### The hierarchy
+
+- The Guild Master is above every Role and every Member of the Guild. The
+  Instance admin comes next in every Guild, above every Role. Everyone else
+  is placed by their highest Role.
+- A Member can create, edit, delete, reorder, assign or remove only Roles
+  whose Position is below their own highest Role (and with `manage_roles`).
+- A Member can manage, kick or re-role only Members whose highest Role is
+  below their own highest Role (and with the Permission the action needs).
+- Nobody changes their own Roles or removes their own Membership; a Member
+  leaves a Guild instead (but the Guild Master cannot).
+- A Member can give a Role only Permissions they have themselves.
+- An agent holds Roles like any Member and is never placed above the person
+  who hired it.
 
 ### Commands
 
-Who may run each is in brackets; *admin* means an admin of the Guild
-concerned, which the Instance admin always is.
+Who may run each is in brackets, by Permission in the Guild concerned. The
+Guild Master and the Instance admin hold every Permission; every command
+that touches a Role or a Member also follows the hierarchy above.
 
 - `CreateGuild(name, description)` [any Member, with a Session]: the creator
-  gets an `admin` Membership and the new Guild becomes their Current guild;
-  it owns nothing and deploys to the Local server.
-- `RenameGuild(name)`, `ChangeDescription(description)` [admin].
-- `DeleteGuild()` [admin]: refused while the Guild owns anything, naming
+  gets a Membership with the `Admin` Role and is the Guild Master; the Guild
+  gets the seeded Roles and becomes their Current guild; it owns nothing and
+  deploys to the Local server.
+- `RenameGuild(name)`, `ChangeDescription(description)` [`manage_guild`].
+- `DeleteGuild()` [`administrator`]: refused while the Guild owns anything, naming
   what (`projects`, `servers`, `s3 storages`, `notification channels`). The
   first Guild is not special, and a Member may delete their last Guild.
 - `SwitchGuild(guild)` [any Member of that Guild, the Instance admin for any;
   with a Session]: sets the Current guild of the Session.
-- `Invite(email, role)` [admin]: returns the Invitation and its link, once.
-- `RevokeInvitation(id)` [admin].
+- `Invite(email, roles)` [`manage_members`; the Roles below one's own]:
+  returns the Invitation and its link, once.
+- `RevokeInvitation(id)` [`manage_members`].
 - `AcceptInvitation(token, name, password)` [anyone with the link]: when the
   email is new, creates the Member (through identity) with a Membership of
-  the invited Role and signs them in; when a Member already has the email,
+  the invited Roles and signs them in; when a Member already has the email,
   that Member, signed in, gets the Membership (no name or password; without
   their Session it is refused with "sign in as <email> to accept"). Either
   way the invited Guild becomes the Current guild.
-- `ChangeRole(membership, role)` [admin]: never your own.
-- `RemoveMembership(membership)` [admin]: never your own, never the last
-  admin's; the Member keeps their other Memberships, and their API tokens made
-  in this Guild stop working at once.
+- `CreateRole(name, color, permissions)` [`manage_roles`]: placed just
+  above the Base role.
+- `EditRole(role, name, color, permissions)` [`manage_roles`]: only a Role
+  below one's own highest; the Base role's Permissions only.
+- `DeleteRole(role)` [`manage_roles`]: only a Role below one's own highest,
+  never the Base role.
+- `ReorderRoles(order)` [`manage_roles`]: moves only Roles below one's own
+  highest, and only among Positions below it.
+- `AssignRole(membership, role)`, `RemoveRole(membership, role)`
+  [`manage_roles`]: the Role below one's own highest, the Member's highest
+  Role below one's own, never one's own Membership, never the Guild Master's.
+- `RemoveMembership(membership)` [`manage_members`]: never your own, never
+  the Guild Master's or the Instance admin's, only a Member below one's own
+  highest Role; the Member keeps their other Memberships, and their API
+  tokens made in this Guild stop working at once.
+- `ResetMemberTwoFactor(membership)` [`manage_members`]: only a Member below
+  one's own highest Role.
+- `OfferGuildMaster(membership)` [the Guild Master]: to another Member of
+  the Guild who is a person; replaces nothing while an offer is open.
+- `WithdrawOffer()` [the Guild Master].
+- `AcceptOffer()`, `DeclineOffer()` [the Member it was offered to]:
+  accepting makes them the Guild Master in one step.
+- `SetOverride(project, role or member, permission, allow | deny | inherit)`
+  [`manage_roles`]: for a Role or Member below one's own highest.
 
 ### Domain events
 
 - `SetUp` (identity's, consumed): Setup made the Instance admin, and guilds
-  makes the first Guild, "Default", with their `admin` Membership, unless a
+  makes the first Guild, "Default", with the seeded Roles and their
+  Membership holding `Admin`, and makes them its Guild Master, unless a
   Guild exists already.
 
 - `InvitationCreated { guild, email, role, invited by, link, expires }`: an
@@ -82,6 +131,10 @@ concerned, which the Instance admin always is.
   refuses while the Guild still owns something there.
 
 ## Integration
+
+The middlewares below still check today's `viewer`/`member`/`admin`; task 03
+of the Roles phase replaces them with one check by Permission
+(`guilds.Can(permission)`), and this list changes with it.
 
 - **Publishes:**
   - `guilds.Auth`: the request comes from a Member (by `identity.Authenticate`)
@@ -250,3 +303,43 @@ concerned, which the Instance admin always is.
   still works: accepting again as the now existing Member (signed in)
   finishes it. A shared transaction across the two contexts would leak
   identity's persistence into guilds.
+- **Roles and Permissions work like Discord's.** The goal fixes it: a Role
+  is a named, colored set of Permissions at a Position, a Member holds any
+  number of them plus the Base role, and their Permissions are the union.
+  Discord's model is well known, lets a Guild make exactly the access it
+  needs ("Deployer": deploy only) and keeps checks to one question, "does
+  this request have Permission X here?". Code never asks for a Role by name.
+- **Viewer, member and admin are seeded Roles.** Every Guild gets `Admin`,
+  `Member` and `Viewer` with the Permissions that keep the meaning of the
+  fixed roles they replace, and every Membership is moved onto the matching
+  one, so nobody's access changes. They are ordinary Roles from then on:
+  renamed, recolored, changed or deleted like any other.
+- **The Base role starts with no Permissions.** Discord's `@everyone` grants
+  a few by default; here every Member already holds one of the seeded Roles,
+  and giving the Base role anything would widen today's access.
+- **Deny beats allow across Roles in an override.** The goal's rule. Discord
+  does it the other way round (a Role's allow beats another Role's deny); a
+  deny here is meant to hold whichever other Role the Member also has, which
+  is what "this Role must not deploy on this Project" says. The Member's own
+  override still beats both, as in Discord.
+- **Only four Permissions can be overridden per Project.** Those are the
+  ones that mean something inside one Project; Servers, Notification
+  channels, Members and Roles are the Guild's, not a Project's.
+- **The Guild Master is separate from the Instance admin.** The Guild Master
+  is the Guild's own (Discord's server owner); the Instance admin runs the
+  installation. In "Default" the Instance admin becomes the Guild Master,
+  because they made it; in a newer Guild whoever created it is. The Instance
+  admin ranks just below the Guild Master in every Guild, so nothing the
+  Owner could do before Guilds stops working, but a Guild Master is never at
+  their mercy.
+- **The Guild Master changes only by an accepted offer.** A Guild must have
+  exactly one at every moment, so it is never deleted or removed, only
+  swapped, and only with the receiving person's consent, as Discord's
+  ownership transfer asks the new owner. The offer expires after 7 days so a
+  forgotten one cannot be accepted months later.
+- **`administrator` may delete an empty Guild.** Discord lets only the owner
+  delete a server. Today's admins can delete a Guild that owns nothing, and
+  the seeded `Admin` Role keeps that.
+- **A Member can only give Permissions they have.** Discord's rule; without
+  it a `manage_roles` holder could make a Role with `administrator` below
+  their own and hand it out.
