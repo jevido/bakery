@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Holds what the Owner wants to run: Projects, their Environments, the
+Holds what a Guild wants to run: Projects, their Environments, the
 Applications in them, each Application's Environment variables, Healthcheck, Domains, Persistent storage and Resource limits, and the
 Shared variables of Projects and Environments. It is **not**
 responsible for building or running anything (deployments) or for how traffic
@@ -48,7 +48,7 @@ reaches an Application (routing).
 - `CreateApplication(environment, ...)`, `UpdateApplication`, `DeleteApplication`.
 - `ReplaceEnvironmentVariables(application, [name, value, build, runtime])`: the whole set is replaced at once.
 - `ReplaceProjectSharedVariables(project, ...)`, `ReplaceEnvironmentSharedVariables(environment, ...)`: the same, for Shared variables.
-- `RegenerateDeployKey(application)`: a new key pair replaces the old one; the Owner has to add the new public half to the repository.
+- `RegenerateDeployKey(application)`: a new key pair replaces the old one; a member has to add the new public half to the repository.
 
 ### Domain events
 
@@ -72,7 +72,7 @@ reaches an Application (routing).
   domain) and `OnDomainCheck(check)` for services: Application Domains
   and Service Domains are one namespace, and each side asks the other
   before storing one.
-- **Consumes:** the Owner's Session (identity middleware); `servers.Exists`
+- **Consumes:** the auth middlewares from guilds (the signed-in Member and their Role in the Current guild); `servers.Exists`
   when an Application is created with a Target server, and registers
   `servers.OnServerDeleting` so a Server that Applications target is not
   deleted.
@@ -115,7 +115,7 @@ reaches an Application (routing).
   over its Environment's and those over its Project's. That covers the usual
   case (one `DATABASE_URL` per Environment) without a template language;
   references can be added on top later. A name overridden at a lower level
-  takes that level's scope too, so the Owner sees one row per name.
+  takes that level's scope too, so a Member sees one row per name.
 - **The merge happens here, not in deployments.** Deployments gets two plain
   sets (`BuildVariables`, `RuntimeVariables`) and never learns that Projects and
   Environments have variables, so how variables are shared can change
@@ -159,7 +159,7 @@ reaches an Application (routing).
   after the Application id and the storage name, so re-adding the same name
   gets the data back, and a mistaken click cannot delete data. Only deleting
   the Application removes its volumes. Mount paths may not overlap in name
-  only; nesting (`/data` and `/data/cache`) is the Owner's choice.
+  only; nesting (`/data` and `/data/cache`) is allowed.
 - **Resource limits are empty by default**, since a limit too low makes an
   app fail in ways that are hard to read; they take effect from the next
   Deployment (rollbacks included, which read today's settings).
@@ -168,7 +168,7 @@ reaches an Application (routing).
   projects keeps `application_domains` (unique) and asks the Domain checks
   services registers; services asks `DomainInUse` before storing its own.
   Neither reads the other's tables. Cost: two creates racing in the two
-  contexts could both win; with one Owner that is accepted.
+  contexts could both win; that is rare enough to accept.
 - **The Target server is fixed once the Application exists.** Moving an
   Application to another Server means moving its Persistent storage and
   pointing its Domains' DNS elsewhere, which is a feature of its own. The

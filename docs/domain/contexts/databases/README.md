@@ -7,7 +7,7 @@
 
 Runs one-click Databases: a PostgreSQL, MySQL, MariaDB, Redis, Valkey or
 MongoDB in an Environment, reachable by Applications on the `bakery`
-network and, when the Owner wants, from outside on a Public port. Owns the
+network and, when a member wants, from outside on a Public port. Owns the
 Database, its Container and its volume, its Scheduled backups, their Backup
 executions and the S3 storages they are uploaded to. It is **not** responsible for Applications or their
 Deployments, for Projects and Environments (projects owns those), or for
@@ -26,7 +26,7 @@ backing up Redis and Valkey (see below).
 | Internal URL | The connection URL on the `bakery` network (host `bakery-db-<slug>`). |
 | Public port | Host port the Database is published on; none by default. |
 | Public URL | The connection URL through the Public port on the public host. |
-| Desired state | `running` or `stopped`: what the Owner asked for. |
+| Desired state | `running` or `stopped`: what a member asked for. |
 | Database status | What the Container is doing, read from Podman: `starting`, `running`, `stopped`, `exited`, `missing`. |
 | Readiness probe | The Database type's own client run inside the Container (`pg_isready`, `mysqladmin ping`, `redis-cli ping`, `mongosh` ping); `running` means it passed. |
 | Recreate | Stop and remove the Container and create it again from the current settings, with the same volume. |
@@ -98,7 +98,7 @@ backing up Redis and Valkey (see below).
   Database type's and the API refuses another with an `image` field error;
   the tag is stored as the Database version, as before.
 - **Credentials are read-only on General.** Coolify's Credentials section
-  edits the values and asks the Owner to change them inside the database
+  edits the values and asks the person to change them inside the database
   first. The Bakery generates them once and its backups, restores and
   readiness probes rely on them, so General shows them with copy buttons and
   no Save. A viewer sees "Hidden" in their place and in the URLs.
@@ -120,7 +120,7 @@ backing up Redis and Valkey (see below).
   same one the Application has, also offers deleting connected networks and
   configuration files and a Docker cleanup; a Database here has no network,
   file or image of its own to remove, so only the volume checkbox is shown,
-  ticked by default as in Coolify. A kept volume is left for the Owner to
+  ticked by default as in Coolify. A kept volume is left for an admin to
   copy data out of by hand: The Bakery never reattaches it, because volume
   names carry the Database's id and no new Database gets that id. Local
   Backup executions go with the Database either way, as before. Its button
@@ -183,7 +183,7 @@ backing up Redis and Valkey (see below).
   client through the Podman exec API, as Healthchecks are: in development
   the API runs on the host and cannot reach the `bakery` network, and the
   image already carries the right client.
-- **Credentials are generated and shown.** The Owner needs them to connect,
+- **Credentials are generated and shown.** Members need them to connect,
   so unlike Registry credentials they are returned by the API; at rest they
   are encrypted like Environment variables. Redis and Valkey get their password from an
   environment variable read by `sh -c`, so `podman inspect` shows no secret
@@ -215,7 +215,7 @@ backing up Redis and Valkey (see below).
   `sh -c`**, and removes the file afterwards. libpod only takes exec stdin
   over a hijacked connection, which the thin Podman client does not speak.
   Restore is destructive and not preceded by a Backup execution of its own; the
-  dashboard says so and the Owner can press Back up now first. What the
+  dashboard says so and a member can press Back up now first. What the
   last Restore did is kept in memory only: an API restart forgets the note,
   never data.
 - **Local disk always, S3 optionally.** Every Backup execution is written to the

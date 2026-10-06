@@ -13,7 +13,7 @@ channel, a Telegram chat, a Pushover user, an ntfy topic or a webhook. It also e
 Invitation to the person invited.
 
 It does **not** decide what is worth telling: deployments, databases,
-servers and identity announce what happened, and this context only turns
+servers and guilds announce what happened, and this context only turns
 that into a message. It keeps no history beyond the recent Deliveries of
 each channel; an audit log is something else.
 
@@ -39,9 +39,9 @@ each channel; an audit log is something else.
 
 ### Commands
 
-- `AddChannel`, `ChangeChannel`, `DeleteChannel` [admin, owner]. Enabling and
+- `AddChannel`, `ChangeChannel`, `DeleteChannel` [admin]. Enabling and
   disabling is a `ChangeChannel` of its enabled flag.
-- `TestChannel(channel, recipient?)` [admin, owner]: sends a Test notification
+- `TestChannel(channel, recipient?)` [admin]: sends a Test notification
   at once and answers with the outcome. Refused for a disabled channel. An
   email channel sends it to the recipient when one is given, else to its own.
 - `Notify(notification)`: a Delivery per enabled Notification channel
@@ -70,9 +70,9 @@ None published.
     restart) → `backup_failure` / `backup_success`.
   - `servers.OnServerHealthChanged` (a Server probe changed something) →
     `server_unreachable`, `server_reachable` or `server_disk_usage`.
-  - `identity.OnInvitationCreated` → an email to the invited person, whose
-    outcome identity reports back to the inviting admin.
-  - The auth middlewares from identity.
+  - `guilds.OnInvitationCreated` → an email to the invited person, whose
+    outcome guilds reports back to the inviting admin.
+  - The auth middlewares from guilds.
 - **Talks to:** SMTP servers, Discord, Slack, Telegram's Bot API, Pushover's API, ntfy
   servers and webhook receivers, each over its own small sender.
 

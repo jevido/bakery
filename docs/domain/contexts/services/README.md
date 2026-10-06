@@ -6,7 +6,7 @@
 ## Purpose
 
 Runs Services: multi-container software described by a Compose file, from
-a Service template in one click or pasted by the Owner, in an Environment.
+a Service template in one click or pasted by a member, in an Environment.
 Owns the Service, its Components (one Container each), its network, its
 volumes and its Service variables, and the catalog of Service templates.
 It is **not** responsible for building images (a Component always runs an
@@ -22,12 +22,12 @@ serving Domains (routing does, through Service routes).
 | Compose file | The `compose.yml` text a Service is made of, in the subset The Bakery supports. |
 | Component | One entry under the Compose file's `services:`, run as the Container `bakery-svc-<service id>-<name>`. The Bakery's word, so "service" never means two things. |
 | Public Component | A Component whose environment names `SERVICE_FQDN_<NAME>_<PORT>` or `SERVICE_URL_<NAME>_<PORT>`: it has a port and 1–10 Domains, and the Proxy serves it. |
-| Service variable | A `${NAME}` the Compose file refers to, with a value stored encrypted. Set by the Owner, or generated when it is a Magic variable. |
+| Service variable | A `${NAME}` the Compose file refers to, with a value stored encrypted. Set by a member, or generated when it is a Magic variable. |
 | Magic variable | A Service variable The Bakery fills in by itself, following Coolify's template convention: `SERVICE_PASSWORD_<X>`, `SERVICE_PASSWORD_64_<X>`, `SERVICE_USER_<X>`, `SERVICE_BASE64_<X>`, `SERVICE_BASE64_64_<X>` (generated once), `SERVICE_FQDN_<NAME>` and `SERVICE_URL_<NAME>` (a Component's primary Domain, without and with `https://`). |
-| Service template | A named, described Compose file embedded in The Bakery, with Coolify's category and logo, the catalog the Owner picks from on the New Resource page. |
+| Service template | A named, described Compose file embedded in The Bakery, with Coolify's category and logo, the catalog a member picks from on the New Resource page. |
 | Service network | The network `bakery-svc-<service id>`; every Component is on it under its Component name. |
 | Service volume | A named volume of the Compose file, as `bakery-svc-<service id>-<volume>`. |
-| Desired state | `running` or `stopped`: what the Owner asked for. |
+| Desired state | `running` or `stopped`: what a member asked for. |
 | Component status | What a Component's Container is doing, read from Podman: `starting`, `running`, `stopped`, `exited` or `missing`. |
 | Service status | Summed up from its Components: `running` (all run), `stopped`, `deploying` (an action is in progress), `degraded` (some do not run), `failed` (the last action failed, with its reason). |
 | Up | Pull the images, make the network and volumes, and (re)create and start every Component in `depends_on` order, then switch its Service routes. |
@@ -39,7 +39,7 @@ serving Domains (routing does, through Service routes).
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Service | Belongs to one Environment of one Project. Name 1–100 characters; Description at most 255 characters; one created without a name gets its Service template's name, or `docker-compose-<random>` (8 lowercase letters and digits) for a pasted Compose file, as Coolify names it. Slug lowercase `[a-z0-9-]`, unique among Services. The Compose file parses under the supported subset (see below) and has 1–20 Components; Component names match `^[a-z0-9][a-z0-9_-]{0,62}$`; `depends_on` names existing Components without cycles. A Public Component has a port 1–65535 and 1–10 Domains, the first primary, each a lowercase hostname, listed once, unique across The Bakery (Application Domains included) and never the dashboard domain. Service variable names match `^[A-Za-z_][A-Za-z0-9_]*$`; every variable the Compose file refers to has a value or a default. Magic variables are generated once, never set by the Owner, and kept when the Compose file changes while it still refers to them. Desired state is `running` or `stopped`. |
+| Service | Belongs to one Environment of one Project. Name 1–100 characters; Description at most 255 characters; one created without a name gets its Service template's name, or `docker-compose-<random>` (8 lowercase letters and digits) for a pasted Compose file, as Coolify names it. Slug lowercase `[a-z0-9-]`, unique among Services. The Compose file parses under the supported subset (see below) and has 1–20 Components; Component names match `^[a-z0-9][a-z0-9_-]{0,62}$`; `depends_on` names existing Components without cycles. A Public Component has a port 1–65535 and 1–10 Domains, the first primary, each a lowercase hostname, listed once, unique across The Bakery (Application Domains included) and never the dashboard domain. Service variable names match `^[A-Za-z_][A-Za-z0-9_]*$`; every variable the Compose file refers to has a value or a default. Magic variables are generated once, never set by hand, and kept when the Compose file changes while it still refers to them. Desired state is `running` or `stopped`. |
 
 The supported Compose subset, per Component: `image` (required),
 `command`, `entrypoint`, `environment` (map or list), `volumes` (named
@@ -93,7 +93,7 @@ None published yet.
   no Git repository and no build, like a Database, but many Containers, Domains and
   arbitrary images, unlike one. Either host would have to bend its model.
   The name clashes with the repo's `services/` directory; Coolify's word
-  wins because it is the Owner's.
+  wins because it is the one people coming from Coolify know.
 - **Component, not "service", for one compose entry**, so a type called
   Service is always the whole thing.
 - **The Bakery parses the Compose file and runs it through the libpod API**,
@@ -108,7 +108,7 @@ None published yet.
   first things to collide between Services and the first to break on a
   remote Server. Both can come later on purpose.
 - **Magic variables follow Coolify's templates**, so its catalog ports
-  over with small changes and Owners who know Coolify know the names.
+  over with small changes and people who know Coolify know the names.
   Generated values are stored encrypted and never regenerated: a
   database's password must not change under its data.
 - **One network per Service, the Component name as alias**, so compose's
@@ -123,16 +123,16 @@ None published yet.
   Docker cleanup. A Service's network is its own (nothing else joins it), so
   it always goes; a Service has no files on the server and builds no images,
   so the other two have nothing behind them. The volume checkbox starts
-  ticked, as Coolify's does. Kept volumes are left for the Owner to copy data
+  ticked, as Coolify's does. Kept volumes are left for an admin to copy data
   out of by hand: The Bakery never reattaches them, because their names carry
   the Service's id and no new Service gets that id.
 - **Domains are one namespace with Applications.** projects owns
   Application Domains, services owns Service Domains; each asks the other
   through a published check instead of reading its tables. The unique
   indexes stay per table, so a create racing another create in the other
-  context could slip through; with one Owner that is accepted.
+  context could slip through; that is rare enough to accept.
 - **No Deployment history for Services.** A Service is pulled, not built;
-  what the Owner needs is whether it runs and why not. Status is read from
+  what a member needs is whether it runs and why not. Status is read from
   Podman, only the desired state and the last error are stored, as for
   Databases.
 - **Service routes live in routing**, next to Application Routes and
@@ -176,7 +176,7 @@ None published yet.
   a stopped Service has no containers left to clean up or remove.
 - **General has no "Preview generated Compose" or "Validate".** The
   Compose file is parsed and checked when it is saved, and refused with the
-  line that fails; nothing is generated from it that the Owner would need
+  line that fails; nothing is generated from it that anyone would need
   to preview.
 - **A running Service shows Running, not "Running (no healthcheck)".** A
   Service is called running only once every Component's container is up

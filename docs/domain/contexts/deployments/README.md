@@ -23,7 +23,7 @@ Application is (projects) or for the Caddy configuration (routing).
 | Deployment | One attempt on one Server (the Application's Target server when it started), with a status, its trigger, the branch and commit (SHA, subject, author) it built or the Source image (reference with digest) it pulled, its Image and Container. |
 | Source image | The pulled reference with its digest, e.g. `docker.io/traefik/whoami@sha256:…`, recorded by a `dockerimage` Deployment. |
 | Healthcheck | Probed inside the new Container (`curl`, else `wget`) before the Route moves. |
-| Cancelled | The final status of a Deployment the Owner cancelled. |
+| Cancelled | The final status of a Deployment a member cancelled. |
 | Rollback | A Deployment that starts an earlier finished Deployment's Image, skipping clone and build. |
 | Active | A Deployment in `queued`, `cloning`, `building` or `starting`. |
 | Running | A Deployment in `cloning`, `building` or `starting`. |
@@ -51,7 +51,7 @@ Application is (projects) or for the Caddy configuration (routing).
 | Deployment | Belongs to the Application itself or to one of its Previews. Status only moves forward: `queued` → `cloning` → `building` → `starting` → `finished` (a `dockerimage` Deployment moves from `cloning` straight on to `building` without cloning), and any active status → `failed` (with an error) or `cancelled`. A Rollback moves from `queued` straight to `starting`; it names its source Deployment, which is `finished`, of the same Application, and whose Image still exists. An Application has at most one queued Deployment of its own and one per Preview, and at most one running Deployment in all; a queued one is only picked up once the Application has no running one, and a new Deploy while one is already queued (for the same Preview) is refused. A Preview Deployment cannot be rolled back to: a Preview always builds its head. Its log is append-only and ordered. |
 | Webhook | One per Application, with a secret and Auto-deploy on or off. A call is accepted only with a valid signature for that secret (HMAC-SHA256 of the body for GitHub, Gitea and Forgejo; the token for GitLab). Only a push to the Application's branch, with Auto-deploy on, queues a Deployment. Only a Pull request event, with Previews on, whose head is a branch of the same repository and whose base is the Application's branch, opens, deploys or closes a Preview. |
 | Preview | One per Application and Preview number. `open` → `closed`, and back to `open` when the Pull request is reopened. Only an open Preview is deployed. Closing it removes its Containers, Volumes, Images and Preview route on its Server; a closed Preview has nothing left running. Never for a `dockerimage` Application. |
-| Known host | One per host (and port). The first clone from a host records its keys; every later clone must see the same ones, or the Deployment fails. Only the Owner can forget a host. |
+| Known host | One per host (and port). The first clone from a host records its keys; every later clone must see the same ones, or the Deployment fails. Only an admin can forget a host. |
 
 ### Commands
 
@@ -185,13 +185,13 @@ Application is (projects) or for the Caddy configuration (routing).
   a burst of pushes the head is what should run, and the clone stays a
   shallow clone of the branch.
 - **One Webhook endpoint for every git host**, recognised by its headers, so
-  the Owner copies the same URL whatever hosts the repository. The Webhook
+  a member copies the same URL whatever hosts the repository. The Webhook
   belongs here, not in projects: it is a way to start a Deployment.
 - **Known hosts are trusted on first use and kept in the database.** The API
   container has no persistent home, so a `known_hosts` file would be
   forgotten on every upgrade, and not checking host keys at all would let
   anyone in the middle serve their own code. A changed key fails the
-  Deployment with a reason until the Owner forgets the host.
+  Deployment with a reason until an admin forgets the host.
 - **Webhook payloads must be JSON.** The signature covers the raw body, and
   a form-encoded body is parsed by the HTTP layer before the Webhook sees it,
   so its original bytes are gone. Every supported git host can send JSON

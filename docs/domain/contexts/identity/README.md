@@ -5,26 +5,25 @@
 
 ## Purpose
 
-Knows who may use this installation of The Bakery and what each of them may do: the Members,
-each with a Role, the one Owner created by Setup, the Invitations that bring
-in the others, how a request proves who sent it (a Session or an API
-token), and each Member's own Profile, Two-factor authentication included.
-It is **not** responsible for several Teams or OAuth login; those come in
-later phases and will grow this context.
+Knows who may use this installation of The Bakery: the Members, the one
+Instance admin created by Setup, how a request proves who sent it (a Session
+or an API token), and each Member's own Profile, Two-factor authentication
+included. It is **not** responsible for what a Member may do where: Guilds,
+Memberships with their Roles and Invitations belong to
+[guilds](../guilds/README.md). OAuth login comes later and will grow this
+context.
 
 ## Language
 
 | Term | Meaning |
 | ---- | ------- |
-| Member | A person who may sign in: name, email, password hash and Role. |
-| Role | `viewer`, `member`, `admin` or `owner` (see the glossary for what each may do). |
-| Owner | The Member with the `owner` Role. Exactly one, created by Setup. |
-| Setup | Creating the Owner. Only possible while no Owner exists. |
-| Invitation | An email and a Role, with a link that is good once and for 7 days. |
+| Member | A person who may sign in: name, email and password hash. Their Role is per Guild, on a Membership. |
+| Instance admin | The Member Setup creates (formerly the Owner). Exactly one. |
+| Setup | Creating the Instance admin and the first Guild. Only possible while no Instance admin exists. |
 | Session | A signed JWT in the HttpOnly cookie `bakery_session`, naming a Member. |
-| API token | A named `bky_…` secret of one Member, sent as `Authorization: Bearer`, with its Permissions and an optional expiry. |
-| Permission | What a request made with an API token may do: `root` (everything the Member's Role may), `write` (changes other than deploy actions), `deploy` (deploy, restart, stop, start, cancel, rollback), `read` (reading without Secrets), `read:sensitive` (reading Secrets too). |
-| Principal | Who a request is from: a Member, the Role the request acts with (always the Member's current one), and the API token's Permissions when a token sent it. |
+| API token | A named `bky_…` secret of one Member, made in one Guild and working only there, sent as `Authorization: Bearer`, with its Permissions and an optional expiry. |
+| Permission | What a request made with an API token may do: `root` (everything the Member's Role in the token's Guild may), `write` (changes other than deploy actions), `deploy` (deploy, restart, stop, start, cancel, rollback), `read` (reading without Secrets), `read:sensitive` (reading Secrets too). |
+| Principal | Who a request is from: a Member, whether they are the Instance admin, and, when an API token sent it, the token's Guild and Permissions. guilds adds the Role the request acts with (always the Member's current one in the Current guild). |
 | Secret | A value a viewer may not read (see the glossary). |
 | Profile | A Member's own name, password, Sessions and Two-factor authentication, changed only by that Member. |
 | Two-factor authentication | A TOTP secret on a Member: `off`, `pending` (made, not yet confirmed with a code) or `on`. When on, signing in needs an Authenticator code or a Recovery code after the password. |
@@ -39,24 +38,19 @@ later phases and will grow this context.
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Member | Email is a valid address and unique; name is not empty; password has at least 12 characters and is only stored hashed. Exactly one Member is the Owner; the Owner's Role never changes and the Owner is never removed. Nobody changes their own Role or removes themselves. Two-factor authentication only counts for sign-in when `on`; its secret is stored only encrypted and Recovery codes only hashed; an Authenticator code is accepted only for a time step later than the last one accepted. A new password has at least 12 characters and needs the current one. |
-| Invitation | Email is valid and not an existing Member's; Role is admin, member or viewer, never owner; at most one open Invitation per email; expires 7 days after it was made; accepted at most once; a revoked or expired one cannot be accepted. Only the hash of its token is stored. |
-| API token | Name (the "Description") is 3–255 characters when made and unique per Member; belongs to one Member and is removed with them; only the SHA-256 of its value is stored, and the value is shown once. Its Permissions are known ones, never empty (none means `read`), `root` stands alone, `read:sensitive` brings `read`. The Member's Role caps what it may be given: `root` only by admin and owner, `write`, `deploy` and `read:sensitive` only by a Role that may change things, a viewer only `read`. An expiry is in the future when set; from then on the token no longer authenticates. |
+| Member | Email is a valid address and unique; name is not empty; password has at least 12 characters and is only stored hashed. Exactly one Member is the Instance admin, and the Instance admin is never removed. Two-factor authentication only counts for sign-in when `on`; its secret is stored only encrypted and Recovery codes only hashed; an Authenticator code is accepted only for a time step later than the last one accepted. A new password has at least 12 characters and needs the current one. |
+| API token | Name (the "Description") is 3–255 characters when made and unique per Member; belongs to one Member and one Guild and is removed with either; only the SHA-256 of its value is stored, and the value is shown once. Its Permissions are known ones, never empty (none means `read`), `root` stands alone, `read:sensitive` brings `read`. The Member's Role in that Guild caps what it may be given: `root` only by an admin, `write`, `deploy` and `read:sensitive` only by a Role that may change things, a viewer only `read`. An expiry is in the future when set; from then on the token no longer authenticates. |
 
 ### Commands
 
 Who may run each is in brackets.
 
-- `SetupOwner(name, email, password)` [anyone, once]: refused with a conflict once an Owner exists.
+- `Setup(name, email, password)` [anyone, once]: creates the Instance admin and, through guilds, the first Guild; refused with a conflict once an Instance admin exists.
 - `Login(email, password)` [anyone]: returns a Session; a wrong email or password gives the same error.
 - `Logout()` [any Member]: clears the Session cookie.
-- `CurrentMember(principal)` [any Member]: the signed-in Member and Role.
-- `Invite(email, role)` [admin, owner]: returns the Invitation and its link, once.
-- `RevokeInvitation(id)` [admin, owner].
-- `AcceptInvitation(token, name, password)` [anyone with the link]: creates the Member with the invited email and Role and signs them in.
-- `ChangeRole(member, role)` [admin, owner]: never to or from owner, never your own.
-- `RemoveMember(member)` [admin, owner]: never the Owner, never yourself; their Sessions and API tokens stop working at once.
-- `CreateAPIToken(name, permissions, expires in days)` [any Member, with a Session]: returns the value once. The expiry is 7, 30, 60, 90 or 365 days, or none (Never). `GET /api/api-tokens/permissions` answers which Permissions the Member may grant.
+- `CurrentMember(principal)` [any Member]: the signed-in Member; guilds adds their Role in the Current guild.
+- `CreateMember(name, email, password)` [guilds, when an Invitation to a new email is accepted].
+- `CreateAPIToken(name, permissions, expires in days)` [any Member, with a Session]: made in the Current guild; returns the value once. The expiry is 7, 30, 60, 90 or 365 days, or none (Never). `GET /api/api-tokens/permissions` answers which Permissions the Member may grant.
 - `RevokeAPIToken(id)` [the token's Member].
 - `ChangeName(name)`, `ChangePassword(current, new)`, `SignOutOtherSessions()` [the Member themselves, with a Session]: a new password and signing out elsewhere end every other Session of the Member; the current one gets a fresh Session.
 - `StartTwoFactor()` [the Member, with a Session]: a new secret and its `otpauth://` URI; two-factor becomes pending. Refused while on.
@@ -64,41 +58,30 @@ Who may run each is in brackets.
 - `RegenerateRecoveryCodes(code)` [the Member, with a Session]: 10 new Recovery codes; the old ones stop working.
 - `DisableTwoFactor(password, code or Recovery code)` [the Member, with a Session].
 - `LoginTwoFactor(challenge, code or Recovery code)` [anyone holding a Login challenge]: returns a Session; the fifth wrong code ends the challenge.
-- `ResetTwoFactor(member)` [admin, owner]: switches it off for someone locked out and ends their Sessions; never the Owner's, never your own. From the server, `artisan identity:reset-two-factor <email>` does it for anyone, the Owner included.
+- `ResetTwoFactor(member)` [an admin of a Guild the Member is in]: switches it off for someone locked out and ends their Sessions; never the Instance admin's, never your own. From the server, `artisan identity:reset-two-factor <email>` does it for anyone, the Instance admin included.
 
 ### Domain events
 
-- `InvitationCreated { email, role, invited by, link, expires }`: an
-  Invitation was made. Its one subscriber (notifications, with
-  `OnInvitationCreated(f)`) is called synchronously and answers whether it
-  emailed the link, which the invite response reports as `emailed`.
+None of its own. `InvitationCreated` moved to guilds with the Invitations.
 
 ## Integration
 
 - **Publishes:**
-  - `identity.Auth`: the request comes from a Member, by Session cookie or
-    API token; a viewer is refused (403) on anything but GET and HEAD.
-    Every other context's routes sit behind it, so a new route needs at
-    least `member` to change anything. A request with an API token also
-    needs `read` for GET and HEAD and `write` for anything else, or answers
-    403 `Missing required permissions: <permission>`; an expired token is
-    401 like an unknown one.
-  - `identity.Deploy`: `identity.Auth` for Coolify's deploy actions
-    (deploying, restarting and stopping Applications and Previews,
-    cancelling and rolling back Deployments, starting, stopping and
-    restarting Databases and Services, redeploying Services); there an API
-    token needs `deploy` instead of `write`.
-  - `identity.Admin`: only admin and owner; wraps Servers, S3 storages,
-    Known hosts, Members and Invitations.
-  - `identity.Secrets`: member or higher, and `read:sensitive` for an API
-    token, for GETs that return Secrets (and the list of S3 storages, which
-    members pick for a Scheduled backup).
-  - `identity.CanSeeSecrets(ctx)`: for a response that mixes Secrets with
-    fields a viewer (or a token without `read:sensitive`) may see; the
-    controller leaves the Secrets out.
-  - `OnInvitationCreated(f)`: see Domain events.
+  - `identity.Authenticate(ctx)`: the Principal of a request, by Session
+    cookie or API token, or 401. A request with an API token also needs
+    `read` for GET and HEAD and `write` for anything else (`deploy` for
+    Coolify's deploy actions: deploying, restarting and stopping
+    Applications and Previews, cancelling and rolling back Deployments,
+    starting, stopping and restarting Databases and Services, redeploying
+    Services), or answers 403 `Missing required permissions: <permission>`;
+    an expired token is 401 like an unknown one. guilds builds its `Auth`,
+    `Deploy`, `Admin` and `Secrets` middlewares on it, and every other
+    context's routes sit behind those.
+  - `identity.CreateMember(...)`: for guilds, when an Invitation to a new
+    email is accepted.
   Other contexts learn nothing else about Members.
-- **Consumes:** nothing.
+- **Consumes:** nothing. Identity never imports guilds; where Setup needs
+  the first Guild, guilds registers a hook.
 
 ## Why it's shaped this way
 
@@ -109,25 +92,17 @@ Who may run each is in brackets.
   Scripts use an API token in the `Authorization` header instead, which
   works on every route, streams included.
 - **Setup checks and inserts under a table lock.** Two browsers racing through
-  first-run setup must not both create an Owner. `LOCK TABLE users IN
+  first-run setup must not both create an Instance admin. `LOCK TABLE users IN
   EXCLUSIVE MODE` in the Setup transaction serialises them; the second gets a
-  conflict. The table is still called `users`, and a unique partial index on
-  the owner Role backs "exactly one Owner".
-- **One Team per installation, not several.** Every resource already
-  belongs to the installation; a Team > Project hierarchy would touch every
-  context's tables and queries for a feature few self-hosters use. The
-  Members of this installation are its one team; several Teams can be added
-  above it later.
-- **Invitations are links, not emails.** The Bakery sends no email yet. The
-  admin copies the link and sends it however they like.
-- **Roles are enforced by coarse middlewares, not per route checks.** Auth
-  refuses changes by viewers, `Admin` wraps whole admin areas, `Secrets`
-  wraps the GETs that return Secrets. It covers every context with a few
-  lines each, and a new route is safe by default.
-- **Auth reads the Member from the database on every request.** The JWT
-  and the API token only name the Member; the Role comes from the row, so
-  demoting or removing someone takes effect at once instead of when the
-  JWT expires.
+  conflict. The table is still called `users`, and a unique partial index
+  backs "exactly one Instance admin".
+- **Teams are Guilds, in their own context.** Who someone is stays here;
+  where they act and with which Role is
+  [guilds](../guilds/README.md), which explains the split.
+- **Authenticate reads the Member from the database on every request.** The
+  JWT and the API token only name the Member; their Role comes from the
+  Membership row in guilds, so demoting or removing someone takes effect at
+  once instead of when the JWT expires.
 - **API tokens are random (`bky_` + 32 bytes base62) and stored as
   SHA-256.** A slow hash is for low-entropy passwords; a 256-bit random
   token only needs a fast one, which keeps the per-request lookup cheap. The
@@ -207,19 +182,18 @@ Who may run each is in brackets.
   make tokens useless. The two-factor and Profile routes take a Session
   only, so a leaked token can neither switch two-factor off nor change the
   password.
-- **The Owner's lost phone is an artisan command.** Nobody outranks the
-  Owner in the dashboard, and whoever has a shell on the server already
-  controls The Bakery.
-- **The Owner is not transferable yet**, and can be neither demoted nor
-  removed, so an installation can never be left without someone who can
-  manage it.
+- **The Instance admin's lost phone is an artisan command.** Nobody
+  outranks the Instance admin in the dashboard, and whoever has a shell on
+  the server already controls The Bakery.
+- **The Instance admin is not transferable yet**, and can be neither
+  demoted nor removed, so an installation can never be left without someone
+  who can manage it. It is the Member that was the Owner before Guilds.
 - **The `viewer` Role is kept although Coolify has none.** Coolify's Roles
   are owner, admin and member; The Bakery adds viewer for read-only access
   (dashboards on a wall, a read-only API token) without handing out
   Secrets. The Coolify API (`/api/v1`) reports a viewer as a member with
   read-only rights. Members keep their name, as on Coolify's Team page;
-  Teams themselves come in a later phase, until then one installation of The Bakery is one
-  team.
+  Coolify's Teams are Guilds.
 - **Profile, not Account.** The page where a Member changes their own
   name, password, Sessions and Two-factor authentication is Coolify's
   Profile page, so The Bakery calls it Profile too.
