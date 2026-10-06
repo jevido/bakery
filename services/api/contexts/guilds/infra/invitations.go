@@ -32,7 +32,7 @@ func (invitationRecord) TableName() string { return "invitations" }
 
 func (r invitationRecord) toDomain() domain.Invitation {
 	inv := domain.Invitation{
-		ID: r.ID, GuildID: r.GuildID, Email: r.Email, Role: domain.Role(r.Role), CreatedAt: r.CreatedAt,
+		ID: r.ID, GuildID: r.GuildID, Email: r.Email, Role: r.Role, CreatedAt: r.CreatedAt,
 		ExpiresAt: r.ExpiresAt, AcceptedAt: r.AcceptedAt, RevokedAt: r.RevokedAt,
 	}
 	if r.InvitedBy != nil {
@@ -45,7 +45,7 @@ type Invitations struct{}
 
 func (Invitations) Add(ctx context.Context, inv domain.Invitation, tokenHash string) (domain.Invitation, error) {
 	rec := invitationRecord{
-		GuildID: inv.GuildID, Email: inv.Email, Role: string(inv.Role), TokenHash: tokenHash,
+		GuildID: inv.GuildID, Email: inv.Email, Role: inv.Role, TokenHash: tokenHash,
 		ExpiresAt: inv.ExpiresAt, CreatedAt: inv.CreatedAt, UpdatedAt: inv.CreatedAt,
 	}
 	if inv.InvitedBy != 0 {
@@ -123,9 +123,7 @@ func (Invitations) Accept(ctx context.Context, tokenHash string, now time.Time, 
 		if memberID, err = join(inv); err != nil {
 			return err
 		}
-		m := inv.Membership(memberID)
-		if _, err := tx.Exec(`INSERT INTO memberships (guild_id, user_id, role, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?) ON CONFLICT (guild_id, user_id) DO NOTHING`, m.GuildID, m.MemberID, string(m.Role), now, now); err != nil {
+		if err := addMembership(tx, inv, memberID, now); err != nil {
 			return err
 		}
 		accepted = inv
@@ -159,4 +157,24 @@ func isUniqueViolation(err error) bool {
 
 func isForeignKeyViolation(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "23503")
+}
+
+// addMembership gives memberID a Membership in inv's Guild holding the seeded Role
+// inv names, unless they hold one there already.
+func addMembership(tx contractsorm.Query, inv domain.Invitation, memberID uint64, now time.Time) error {
+	role, err := domain.SeededRoleName(inv.Role)
+	if err != nil {
+		return err
+	}
+	var added []uint64
+	if err := tx.Raw(`INSERT INTO memberships (guild_id, user_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?) ON CONFLICT (guild_id, user_id) DO NOTHING RETURNING id`, inv.GuildID, memberID, now, now).Scan(&added); err != nil {
+		return err
+	}
+	if len(added) == 0 {
+		return nil
+	}
+	_, err = tx.Exec(`INSERT INTO membership_roles (membership_id, role_id)
+		SELECT ?, id FROM roles WHERE guild_id = ? AND name = ? AND NOT base`, added[0], inv.GuildID, role)
+	return err
 }

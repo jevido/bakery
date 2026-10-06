@@ -97,9 +97,9 @@ func (m *memInvitations) Accept(ctx context.Context, hash string, now time.Time,
 	if err != nil {
 		return domain.Invitation{}, 0, err
 	}
-	if err := m.store.Add(ctx, inv.Membership(id)); err != nil {
-		return domain.Invitation{}, 0, err
-	}
+	m.store.mu.Lock()
+	m.store.add(inv.GuildID, id, inv.Role)
+	m.store.mu.Unlock()
 	x.inv = inv
 	return inv, id, nil
 }
@@ -119,17 +119,17 @@ func TestInviteANewPerson(t *testing.T) {
 	ctx := context.Background()
 	s, m, now := invitingService(t)
 
-	inv, token, err := s.Invite(ctx, 2, 2, "New@example.com", domain.RoleMember)
+	inv, token, err := s.Invite(ctx, 2, 2, "New@example.com", "member")
 	if err != nil || token == "" || inv.Email != "new@example.com" || inv.GuildID != 2 {
 		t.Fatalf("invite: %+v %q %v", inv, token, err)
 	}
-	if _, _, err := s.Invite(ctx, 2, 2, "new@example.com", domain.RoleViewer); !errors.Is(err, ErrAlreadyInvited) {
+	if _, _, err := s.Invite(ctx, 2, 2, "new@example.com", "viewer"); !errors.Is(err, ErrAlreadyInvited) {
 		t.Errorf("second invite: %v", err)
 	}
-	if _, _, err := s.Invite(ctx, 1, 1, "new@example.com", domain.RoleViewer); err != nil {
+	if _, _, err := s.Invite(ctx, 1, 1, "new@example.com", "viewer"); err != nil {
 		t.Errorf("the same email into another Guild: %v", err)
 	}
-	if _, _, err := s.Invite(ctx, 2, 2, "x@example.com", domain.Role("owner")); !errors.Is(err, domain.ErrInvalidRole) {
+	if _, _, err := s.Invite(ctx, 2, 2, "x@example.com", "owner"); !errors.Is(err, domain.ErrInvalidRole) {
 		t.Errorf("inviting an owner: %v", err)
 	}
 	if _, err := s.InvitationByToken(ctx, "wrong"); !errors.Is(err, ErrInvitationNotFound) {
@@ -148,7 +148,7 @@ func TestInviteANewPerson(t *testing.T) {
 	if err != nil {
 		t.Fatalf("accept: %v", err)
 	}
-	if role, ok, _ := m.RoleOf(ctx, 2, id); !ok || role != domain.RoleMember {
+	if role, ok := m.roleOf(2, id); !ok || role != "member" {
 		t.Errorf("membership: %v %v", role, ok)
 	}
 	if _, _, err := s.AcceptAsNewMember(ctx, token, "New", "correct horse"); !errors.Is(err, domain.ErrInvitationUsed) {
@@ -160,11 +160,11 @@ func TestInviteAnExistingMember(t *testing.T) {
 	ctx := context.Background()
 	s, m, _ := invitingService(t)
 	// Dev (3) is a member of Default and a viewer of Bakers already.
-	if _, _, err := s.Invite(ctx, 2, 2, "dev@example.com", domain.RoleAdmin); !errors.Is(err, ErrAlreadyMember) {
+	if _, _, err := s.Invite(ctx, 2, 2, "dev@example.com", "admin"); !errors.Is(err, ErrAlreadyMember) {
 		t.Errorf("inviting a member of the Guild: %v", err)
 	}
 	// Ann (2) is in Bakers only.
-	_, token, err := s.Invite(ctx, 1, 1, "ann@example.com", domain.RoleViewer)
+	_, token, err := s.Invite(ctx, 1, 1, "ann@example.com", "viewer")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,10 +181,10 @@ func TestInviteAnExistingMember(t *testing.T) {
 	if _, err := s.AcceptAsMember(ctx, token, 2, "ann@example.com"); err != nil {
 		t.Fatalf("accept: %v", err)
 	}
-	if role, ok, _ := m.RoleOf(ctx, 1, 2); !ok || role != domain.RoleViewer {
+	if role, ok := m.roleOf(1, 2); !ok || role != "viewer" {
 		t.Errorf("membership in Default: %v %v", role, ok)
 	}
-	if role, ok, _ := m.RoleOf(ctx, 2, 2); !ok || role != domain.RoleAdmin {
+	if role, ok := m.roleOf(2, 2); !ok || role != "admin" {
 		t.Errorf("Ann's Role in Bakers changed: %v %v", role, ok)
 	}
 }
@@ -192,8 +192,8 @@ func TestInviteAnExistingMember(t *testing.T) {
 func TestInvitationsStayInTheirGuild(t *testing.T) {
 	ctx := context.Background()
 	s, _, now := invitingService(t)
-	bakers, _, _ := s.Invite(ctx, 2, 2, "late@example.com", domain.RoleViewer)
-	revoked, revokedToken, _ := s.Invite(ctx, 2, 2, "gone@example.com", domain.RoleViewer)
+	bakers, _, _ := s.Invite(ctx, 2, 2, "late@example.com", "viewer")
+	revoked, revokedToken, _ := s.Invite(ctx, 2, 2, "gone@example.com", "viewer")
 	if err := s.RevokeInvitation(ctx, 1, bakers.ID); !errors.Is(err, ErrInvitationNotFound) {
 		t.Errorf("revoking another Guild's Invitation: %v", err)
 	}

@@ -7,23 +7,41 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/identity"
 )
 
+var (
+	viewer = domain.Of(domain.PermissionViewResources)
+	member = domain.Of(domain.PermissionViewResources, domain.PermissionSeeSecrets, domain.PermissionDeploy, domain.PermissionManageApplications)
+	admin  = domain.Of(domain.PermissionAdministrator)
+)
+
+func TestWireRole(t *testing.T) {
+	cases := map[string]domain.Permissions{"viewer": viewer, "member": member, "admin": admin}
+	for want, perms := range cases {
+		if got := wireRole(perms); got != want {
+			t.Errorf("%v: %s, want %s", perms.Keys(), got, want)
+		}
+	}
+	if wireRole(0) != "viewer" || wireRole(domain.AllPermissions) != "admin" {
+		t.Error("none reads as viewer, all as admin")
+	}
+}
+
 func TestRefusal(t *testing.T) {
 	cases := []struct {
 		method string
-		role   domain.Role
+		perms  domain.Permissions
 		refuse bool
 	}{
-		{"GET", domain.RoleViewer, false},
-		{"HEAD", domain.RoleViewer, false},
-		{"POST", domain.RoleViewer, true},
-		{"PATCH", domain.RoleViewer, true},
-		{"DELETE", domain.RoleViewer, true},
-		{"POST", domain.RoleMember, false},
-		{"DELETE", domain.RoleAdmin, false},
+		{"GET", viewer, false},
+		{"HEAD", viewer, false},
+		{"POST", viewer, true},
+		{"PATCH", viewer, true},
+		{"DELETE", viewer, true},
+		{"POST", member, false},
+		{"DELETE", admin, false},
 	}
 	for _, c := range cases {
-		if got := refusal(c.method, c.role) != ""; got != c.refuse {
-			t.Errorf("%s as %s: refused=%v, want %v", c.method, c.role, got, c.refuse)
+		if got := refusal(c.method, c.perms) != ""; got != c.refuse {
+			t.Errorf("%s as %s: refused=%v, want %v", c.method, wireRole(c.perms), got, c.refuse)
 		}
 	}
 }
@@ -52,11 +70,11 @@ func TestATokensPermissionsAndRoleBothCount(t *testing.T) {
 	if deploy.Allows(identity.PermissionRead) || !deploy.Allows(identity.PermissionDeploy) {
 		t.Error("a deploy token only deploys")
 	}
-	if refusal("POST", domain.RoleViewer) == "" {
+	if refusal("POST", viewer) == "" {
 		t.Error("a viewer's token with deploy still cannot change anything")
 	}
-	viewer := place{principal: identity.TokenPrincipal(1, 2, "root"), role: domain.RoleViewer}
-	if viewer.role.CanSeeSecrets() && viewer.principal.Allows(identity.PermissionReadSensitive) {
+	p := place{principal: identity.TokenPrincipal(1, 2, "root"), permissions: viewer}
+	if p.permissions.Has(domain.PermissionSeeSecrets) && p.principal.Allows(identity.PermissionReadSensitive) {
 		t.Error("a viewer's root token sees Secrets")
 	}
 }

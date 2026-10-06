@@ -25,19 +25,20 @@ const GuildCookie = "bakery_guild"
 type placeKey struct{}
 
 // place is who a request comes from, the Guild it acts in (zero when none)
-// and the Role there.
+// and the Permissions there.
 type place struct {
-	principal identity.Principal
-	guild     domain.Guild
-	role      domain.Role
+	principal   identity.Principal
+	guild       domain.Guild
+	permissions domain.Permissions
 }
 
 // Auth lets a request through only from a Member (identity.Authenticate)
 // acting in a Guild: the API token's Guild, or for a Session the Guild in
-// GuildCookie when the Member may act there, else their first. The Role is
-// their Membership's there, admin for the Instance admin, read on every
-// request so a changed Role counts at once. A viewer is refused anything but
-// reading, and an API token anything its Permissions do not cover.
+// GuildCookie when the Member may act there, else their first. The
+// Permissions are their Membership's there, every one for the Instance
+// admin, read on every request so a changed Role counts at once. Without
+// manage_applications a request is refused anything but reading, and an
+// API token anything its Token permissions do not cover.
 type Auth struct {
 	Service *app.Service
 	// Deploy is for Coolify's deploy actions (deploy, restart, stop, start,
@@ -82,14 +83,14 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 			_ = respond.Error(ctx, contractshttp.StatusForbidden, "Missing required permissions: "+string(need)).Abort()
 			return
 		}
-		if reason := refusal(method, pl.Role); found && reason != "" {
+		if reason := refusal(method, pl.Permissions); found && reason != "" {
 			_ = respond.Error(ctx, contractshttp.StatusForbidden, reason).Abort()
 			return
 		}
 	}
-	ctx.WithValue(placeKey{}, place{principal: p, guild: pl.Guild, role: pl.Role})
+	ctx.WithValue(placeKey{}, place{principal: p, guild: pl.Guild, permissions: pl.Permissions})
 	if found {
-		identity.ActIn(ctx, pl.Guild.ID, string(pl.Role))
+		identity.ActIn(ctx, pl.Guild.ID, wireRole(pl.Permissions))
 	}
 	ctx.Request().Next()
 }
@@ -142,36 +143,38 @@ func required(method string, deploy bool) identity.Permission {
 	}
 }
 
-// refusal is why a Role may not make a request with this method, or "".
-func refusal(method string, role domain.Role) string {
-	if method == contractshttp.MethodGet || method == contractshttp.MethodHead || role.CanWrite() {
+// refusal is why these Permissions may not make a request with this
+// method, or "".
+func refusal(method string, perms domain.Permissions) string {
+	if method == contractshttp.MethodGet || method == contractshttp.MethodHead || perms.Has(domain.PermissionManageApplications) {
 		return ""
 	}
 	return "your role cannot change this"
 }
 
-// Admin lets only admins of the Current guild through. It runs after Auth.
+// Admin lets only requests with administrator in the Current guild through.
+// It runs after Auth.
 type Admin struct{}
 
 func (Admin) Signature() string { return "guilds.admin" }
 
 func (Admin) Handle(ctx contractshttp.Context) {
-	if !RoleOf(ctx).IsAdmin() {
+	if !PermissionsOf(ctx).Has(domain.PermissionAdministrator) {
 		_ = respond.Error(ctx, contractshttp.StatusForbidden, "only admins can do this").Abort()
 		return
 	}
 	ctx.Request().Next()
 }
 
-// Secrets keeps viewers, and API tokens without read:sensitive, away from
-// routes that return Secrets. It runs after Auth.
+// Secrets keeps requests without see_secrets, and API tokens without
+// read:sensitive, away from routes that return Secrets. It runs after Auth.
 type Secrets struct{}
 
 func (Secrets) Signature() string { return "guilds.secrets" }
 
 func (Secrets) Handle(ctx contractshttp.Context) {
 	p := placeOf(ctx)
-	if !p.role.CanSeeSecrets() {
+	if !p.permissions.Has(domain.PermissionSeeSecrets) {
 		_ = respond.Error(ctx, contractshttp.StatusForbidden, "your role cannot see secrets").Abort()
 		return
 	}
@@ -191,9 +194,22 @@ func placeOf(ctx contractshttp.Context) place {
 // on a Guildless route for someone in none).
 func Current(ctx contractshttp.Context) uint64 { return placeOf(ctx).guild.ID }
 
-// RoleOf is the Role the request acts with in the Current guild ("" when
-// none).
-func RoleOf(ctx contractshttp.Context) domain.Role { return placeOf(ctx).role }
+// PermissionsOf is what the request may do in the Current guild (none
+// before Auth ran or without a Current guild).
+func PermissionsOf(ctx contractshttp.Context) domain.Permissions { return placeOf(ctx).permissions }
+
+// wireRole is the former role ("admin", "member" or "viewer") these
+// Permissions read as where the wire still has one, until the dashboard
+// asks for Permissions itself.
+func wireRole(perms domain.Permissions) string {
+	switch {
+	case perms.Has(domain.PermissionAdministrator):
+		return "admin"
+	case perms.Has(domain.PermissionManageApplications):
+		return "member"
+	}
+	return "viewer"
+}
 
 // InstanceAdmin reports whether the request comes from the Instance admin.
 func InstanceAdmin(ctx contractshttp.Context) bool { return placeOf(ctx).principal.InstanceAdmin }
@@ -202,10 +218,10 @@ func InstanceAdmin(ctx contractshttp.Context) bool { return placeOf(ctx).princip
 func MemberID(ctx contractshttp.Context) uint64 { return placeOf(ctx).principal.MemberID }
 
 // CanSeeSecrets reports whether the request may be answered with Secrets:
-// its Role may see them and its API token, if any, carries read:sensitive.
+// it has see_secrets and its API token, if any, carries read:sensitive.
 func CanSeeSecrets(ctx contractshttp.Context) bool {
 	p := placeOf(ctx)
-	return p.role.CanSeeSecrets() && p.principal.Allows(identity.PermissionReadSensitive)
+	return p.permissions.Has(domain.PermissionSeeSecrets) && p.principal.Allows(identity.PermissionReadSensitive)
 }
 
 // Owns answers 404 when the route's {id} names something that is not in the

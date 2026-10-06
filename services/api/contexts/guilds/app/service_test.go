@@ -14,7 +14,15 @@ type memStore struct {
 	mu          sync.Mutex
 	guilds      []domain.Guild
 	memberships []domain.Membership
+	roles       []domain.Role
 }
+
+// The Permissions of the seeded Roles, for actors in the tests.
+var (
+	viewerPerms = domain.Of(domain.PermissionViewResources)
+	memberPerms = domain.Of(domain.PermissionViewResources, domain.PermissionSeeSecrets, domain.PermissionDeploy, domain.PermissionManageApplications)
+	adminPerms  = domain.Of(domain.PermissionAdministrator)
+)
 
 func (m *memStore) ByID(_ context.Context, id uint64) (domain.Guild, bool, error) {
 	m.mu.Lock()
@@ -42,7 +50,11 @@ func (m *memStore) Create(_ context.Context, g domain.Guild, adminID uint64) (do
 func (m *memStore) create(g domain.Guild, adminID uint64) domain.Guild {
 	g.ID = uint64(len(m.guilds) + 1)
 	m.guilds = append(m.guilds, g)
-	m.memberships = append(m.memberships, domain.Membership{ID: uint64(len(m.memberships) + 1), GuildID: g.ID, MemberID: adminID, Role: domain.RoleAdmin})
+	for _, r := range domain.SeedRoles(g.ID) {
+		r.ID = uint64(len(m.roles) + 1)
+		m.roles = append(m.roles, r)
+	}
+	m.add(g.ID, adminID, "admin")
 	return g
 }
 
@@ -86,15 +98,58 @@ func (m *memStore) ListForMember(_ context.Context, memberID uint64) ([]domain.M
 	return out, nil
 }
 
-func (m *memStore) RoleOf(_ context.Context, guildID, memberID uint64) (domain.Role, bool, error) {
+func (m *memStore) Of(_ context.Context, guildID, memberID uint64) (domain.Membership, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, x := range m.memberships {
 		if x.GuildID == guildID && x.MemberID == memberID {
-			return x.Role, true, nil
+			return x, true, nil
 		}
 	}
-	return "", false, nil
+	return domain.Membership{}, false, nil
+}
+
+func (m *memStore) ForGuild(_ context.Context, guildID uint64) ([]domain.Role, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []domain.Role
+	for _, r := range m.roles {
+		if r.GuildID == guildID {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+// seeded is the id of the seeded Role a former role names in the Guild.
+func (m *memStore) seeded(guildID uint64, former string) uint64 {
+	var roles []domain.Role
+	for _, r := range m.roles {
+		if r.GuildID == guildID {
+			roles = append(roles, r)
+		}
+	}
+	r, _, _ := domain.SeededRole(roles, former)
+	return r.ID
+}
+
+// roleOf is the former role the Member's Roles in the Guild read as, false
+// without a Membership.
+func (m *memStore) roleOf(guildID, memberID uint64) (string, bool) {
+	ms, ok, _ := m.Of(context.Background(), guildID, memberID)
+	if !ok {
+		return "", false
+	}
+	roles, _ := m.ForGuild(context.Background(), guildID)
+	switch p := domain.PermissionsOf(roles, ms); {
+	case p.Has(domain.PermissionAdministrator):
+		return "admin", true
+	case p.Has(domain.PermissionManageApplications):
+		return "member", true
+	case p.Has(domain.PermissionViewResources):
+		return "viewer", true
+	}
+	return "", true
 }
 
 func (m *memStore) ListForGuild(_ context.Context, guildID uint64) ([]domain.Membership, error) {
@@ -109,20 +164,21 @@ func (m *memStore) ListForGuild(_ context.Context, guildID uint64) ([]domain.Mem
 	return out, nil
 }
 
-func (m *memStore) Add(_ context.Context, ms domain.Membership) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// add gives memberID a Membership in the Guild holding the seeded Role a
+// former role names, unless they hold one there already. The caller holds
+// mu or is the only one using m.
+func (m *memStore) add(guildID, memberID uint64, former string) {
 	for _, x := range m.memberships {
-		if x.GuildID == ms.GuildID && x.MemberID == ms.MemberID {
-			return nil
+		if x.GuildID == guildID && x.MemberID == memberID {
+			return
 		}
 	}
-	ms.ID = uint64(len(m.memberships) + 1)
-	m.memberships = append(m.memberships, ms)
-	return nil
+	m.memberships = append(m.memberships, domain.Membership{
+		ID: uint64(len(m.memberships) + 1), GuildID: guildID, MemberID: memberID, RoleIDs: []uint64{m.seeded(guildID, former)},
+	})
 }
 
-func (m *memStore) Change(ctx context.Context, guildID, memberID uint64, to domain.Role, check func([]domain.Membership) error) (domain.Membership, error) {
+func (m *memStore) Change(ctx context.Context, guildID, memberID uint64, to []uint64, remove bool, check func([]domain.Membership) error) (domain.Membership, error) {
 	ms, _ := m.ListForGuild(ctx, guildID)
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -134,12 +190,12 @@ func (m *memStore) Change(ctx context.Context, guildID, memberID uint64, to doma
 		return domain.Membership{}, err
 	}
 	changed := m.memberships[i]
-	if to == "" {
+	if remove {
 		m.memberships = slices.Delete(m.memberships, i, i+1)
 		return changed, nil
 	}
-	m.memberships[i].Role = to
-	changed.Role = to
+	m.memberships[i].RoleIDs = to
+	changed.RoleIDs = to
 	return changed, nil
 }
 
@@ -194,7 +250,7 @@ func newTestService() (*Service, *memStore) {
 func newTestServiceWithMembers() (*Service, *memStore, *memMembers) {
 	m := &memStore{}
 	members := &memMembers{}
-	return NewService(m, m, &memInvitations{store: m}, members), m, members
+	return NewService(m, m, m, &memInvitations{store: m}, members), m, members
 }
 
 func TestMakeFirstGuildOnlyOnce(t *testing.T) {
@@ -209,17 +265,17 @@ func TestMakeFirstGuildOnlyOnce(t *testing.T) {
 	if len(m.guilds) != 1 || m.guilds[0].Name != "Default" {
 		t.Fatalf("guilds = %+v, want one Default", m.guilds)
 	}
-	if r, ok, _ := s.RoleOf(ctx, m.guilds[0].ID, 1); !ok || r != domain.RoleAdmin {
+	if r, ok := m.roleOf(m.guilds[0].ID, 1); !ok || r != "admin" {
 		t.Errorf("Instance admin's Role = %q, %v; want admin", r, ok)
 	}
-	if _, ok, _ := s.RoleOf(ctx, m.guilds[0].ID, 2); ok {
+	if _, ok := m.roleOf(m.guilds[0].ID, 2); ok {
 		t.Error("the second call made a Membership")
 	}
 }
 
 func TestCreateGuildMakesTheCreatorAdmin(t *testing.T) {
 	ctx := context.Background()
-	s, _ := newTestService()
+	s, m := newTestService()
 	if _, err := s.CreateGuild(ctx, " ", "", 7); !errors.Is(err, domain.ErrInvalidName) {
 		t.Fatalf("empty name: err = %v", err)
 	}
@@ -231,7 +287,7 @@ func TestCreateGuildMakesTheCreatorAdmin(t *testing.T) {
 		t.Errorf("name = %q", g.Name)
 	}
 	ms, _ := s.GuildsOf(ctx, 7)
-	if len(ms) != 1 || ms[0].GuildID != g.ID || ms[0].Role != domain.RoleAdmin {
+	if r, _ := m.roleOf(g.ID, 7); len(ms) != 1 || ms[0].GuildID != g.ID || r != "admin" {
 		t.Errorf("memberships = %+v", ms)
 	}
 }
@@ -247,12 +303,12 @@ func twoGuilds(t *testing.T) (*Service, *memStore, *memMembers) {
 	if err := s.MakeFirstGuild(ctx, 1); err != nil {
 		t.Fatal(err)
 	}
-	m.Add(ctx, domain.Membership{GuildID: 1, MemberID: 3, Role: domain.RoleMember})
+	m.add(1, 3, "member")
 	bakers, err := s.CreateGuild(ctx, "Bakers", "", 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.Add(ctx, domain.Membership{GuildID: bakers.ID, MemberID: 3, Role: domain.RoleViewer})
+	m.add(bakers.ID, 3, "viewer")
 	return s, m, members
 }
 
@@ -264,24 +320,24 @@ func TestPlace(t *testing.T) {
 		member                   uint64
 		instanceAdmin            bool
 		tokenGuild, wanted, want uint64
-		role                     domain.Role
+		perms                    domain.Permissions
 	}{
-		{"no cookie: the first Guild", 3, false, 0, 0, 1, domain.RoleMember},
-		{"the cookie's Guild", 3, false, 0, 2, 2, domain.RoleViewer},
-		{"a cookie of a Guild you are not in falls back", 2, false, 0, 1, 2, domain.RoleAdmin},
-		{"a cookie of no Guild falls back", 3, false, 0, 99, 1, domain.RoleMember},
-		{"the Instance admin is admin anywhere", 1, true, 0, 2, 2, domain.RoleAdmin},
-		{"a token acts in its Guild", 3, false, 2, 1, 2, domain.RoleViewer},
-		{"a token never acts elsewhere", 2, false, 1, 2, 0, ""},
-		{"someone in no Guild", 4, false, 0, 1, 0, ""},
+		{"no cookie: the first Guild", 3, false, 0, 0, 1, memberPerms},
+		{"the cookie's Guild", 3, false, 0, 2, 2, viewerPerms},
+		{"a cookie of a Guild you are not in falls back", 2, false, 0, 1, 2, adminPerms},
+		{"a cookie of no Guild falls back", 3, false, 0, 99, 1, memberPerms},
+		{"the Instance admin holds every Permission anywhere", 1, true, 0, 2, 2, domain.AllPermissions},
+		{"a token acts in its Guild", 3, false, 2, 1, 2, viewerPerms},
+		{"a token never acts elsewhere", 2, false, 1, 2, 0, 0},
+		{"someone in no Guild", 4, false, 0, 1, 0, 0},
 	}
 	for _, c := range cases {
 		p, ok, err := s.Place(ctx, c.member, c.instanceAdmin, c.tokenGuild, c.wanted)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if ok != (c.want != 0) || p.Guild.ID != c.want || p.Role != c.role {
-			t.Errorf("%s: %+v %v, want Guild %d as %q", c.name, p, ok, c.want, c.role)
+		if ok != (c.want != 0) || p.Guild.ID != c.want || p.Permissions != c.perms {
+			t.Errorf("%s: %+v %v, want Guild %d with %v", c.name, p, ok, c.want, c.perms.Keys())
 		}
 	}
 }
@@ -292,7 +348,7 @@ func TestTheInstanceAdminWithoutMembershipsActsInTheFirstGuild(t *testing.T) {
 	s.CreateGuild(ctx, "Bakers", "", 2)
 	m.memberships = nil
 	p, ok, _ := s.Place(ctx, 1, true, 0, 0)
-	if !ok || p.Guild.Name != "Bakers" || p.Role != domain.RoleAdmin {
+	if !ok || p.Guild.Name != "Bakers" || p.Permissions != domain.AllPermissions {
 		t.Errorf("%+v %v", p, ok)
 	}
 }
@@ -300,42 +356,42 @@ func TestTheInstanceAdminWithoutMembershipsActsInTheFirstGuild(t *testing.T) {
 func TestChangeRoleAndRemoveMembership(t *testing.T) {
 	ctx := context.Background()
 	s, m, members := twoGuilds(t)
-	if _, err := s.ChangeRole(ctx, 2, 2, domain.RoleAdmin, 3, "owner"); !errors.Is(err, domain.ErrInvalidRole) {
+	if _, err := s.ChangeRole(ctx, 2, 2, adminPerms, 3, "owner"); !errors.Is(err, domain.ErrInvalidRole) {
 		t.Errorf("make owner: %v", err)
 	}
-	if ms, err := s.ChangeRole(ctx, 2, 2, domain.RoleAdmin, 3, domain.RoleMember); err != nil || ms.Role != domain.RoleMember {
+	if ms, err := s.ChangeRole(ctx, 2, 2, adminPerms, 3, "member"); err != nil || !slices.Equal(ms.RoleIDs, []uint64{m.seeded(2, "member")}) {
 		t.Fatalf("admin promotes viewer: %+v %v", ms, err)
 	}
-	if r, _, _ := m.RoleOf(ctx, 1, 3); r != domain.RoleMember {
+	if r, _ := m.roleOf(1, 3); r != "member" {
 		t.Errorf("the Role in another Guild changed: %s", r)
 	}
-	if _, err := s.ChangeRole(ctx, 2, 3, domain.RoleMember, 2, domain.RoleViewer); !errors.Is(err, domain.ErrNotAdmin) {
+	if _, err := s.ChangeRole(ctx, 2, 3, memberPerms, 2, "viewer"); !errors.Is(err, domain.ErrNotAdmin) {
 		t.Errorf("member demotes admin: %v", err)
 	}
-	if _, err := s.ChangeRole(ctx, 2, 2, domain.RoleAdmin, 2, domain.RoleMember); !errors.Is(err, domain.ErrSelf) {
+	if _, err := s.ChangeRole(ctx, 2, 2, adminPerms, 2, "member"); !errors.Is(err, domain.ErrSelf) {
 		t.Errorf("admin demotes self: %v", err)
 	}
-	if _, err := s.ChangeRole(ctx, 1, 1, domain.RoleAdmin, 2, domain.RoleMember); !errors.Is(err, ErrMembershipNotFound) {
+	if _, err := s.ChangeRole(ctx, 1, 1, adminPerms, 2, "member"); !errors.Is(err, ErrMembershipNotFound) {
 		t.Errorf("Ann is not in Default: %v", err)
 	}
-	if _, err := s.ChangeRole(ctx, 1, 3, domain.RoleAdmin, 1, domain.RoleMember); !errors.Is(err, domain.ErrInstanceAdminFixed) {
+	if _, err := s.ChangeRole(ctx, 1, 3, adminPerms, 1, "member"); !errors.Is(err, domain.ErrInstanceAdminFixed) {
 		t.Errorf("demote the Instance admin: %v", err)
 	}
 	// The Instance admin, admin anywhere, takes Ann's admin away: Bakers
 	// would have none.
-	if _, err := s.ChangeRole(ctx, 2, 1, domain.RoleAdmin, 2, domain.RoleMember); !errors.Is(err, domain.ErrLastAdmin) {
+	if _, err := s.ChangeRole(ctx, 2, 1, adminPerms, 2, "member"); !errors.Is(err, domain.ErrLastAdmin) {
 		t.Errorf("demote the last admin: %v", err)
 	}
-	if err := s.RemoveMembership(ctx, 2, 1, domain.RoleAdmin, 2); !errors.Is(err, domain.ErrLastAdmin) {
+	if err := s.RemoveMembership(ctx, 2, 1, adminPerms, 2); !errors.Is(err, domain.ErrLastAdmin) {
 		t.Errorf("remove the last admin: %v", err)
 	}
-	if err := s.RemoveMembership(ctx, 2, 2, domain.RoleAdmin, 3); err != nil {
+	if err := s.RemoveMembership(ctx, 2, 2, adminPerms, 3); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, _ := m.RoleOf(ctx, 2, 3); ok {
+	if _, ok := m.roleOf(2, 3); ok {
 		t.Error("the Membership stayed")
 	}
-	if _, ok, _ := m.RoleOf(ctx, 1, 3); !ok {
+	if _, ok := m.roleOf(1, 3); !ok {
 		t.Error("the Membership in another Guild went too")
 	}
 	if len(members.revoked) != 1 || members.revoked[0] != [2]uint64{3, 2} {
@@ -346,16 +402,16 @@ func TestChangeRoleAndRemoveMembership(t *testing.T) {
 func TestResetTwoFactorOfAMemberOfTheGuild(t *testing.T) {
 	ctx := context.Background()
 	s, _, members := twoGuilds(t)
-	if err := s.ResetTwoFactor(ctx, 2, 2, domain.RoleAdmin, 1); !errors.Is(err, ErrMembershipNotFound) {
+	if err := s.ResetTwoFactor(ctx, 2, 2, adminPerms, 1); !errors.Is(err, ErrMembershipNotFound) {
 		t.Errorf("someone outside the Guild: %v", err)
 	}
-	if err := s.ResetTwoFactor(ctx, 1, 3, domain.RoleMember, 1); !errors.Is(err, domain.ErrNotAdmin) {
+	if err := s.ResetTwoFactor(ctx, 1, 3, memberPerms, 1); !errors.Is(err, domain.ErrNotAdmin) {
 		t.Errorf("a member resets: %v", err)
 	}
-	if err := s.ResetTwoFactor(ctx, 1, 1, domain.RoleAdmin, 1); !errors.Is(err, domain.ErrInstanceAdminFixed) {
+	if err := s.ResetTwoFactor(ctx, 1, 1, adminPerms, 1); !errors.Is(err, domain.ErrInstanceAdminFixed) {
 		t.Errorf("the Instance admin's own: %v", err)
 	}
-	if err := s.ResetTwoFactor(ctx, 2, 2, domain.RoleAdmin, 3); err != nil || len(members.reset) != 1 || members.reset[0] != 3 {
+	if err := s.ResetTwoFactor(ctx, 2, 2, adminPerms, 3); err != nil || len(members.reset) != 1 || members.reset[0] != 3 {
 		t.Errorf("admin resets Dev: %v %v", err, members.reset)
 	}
 }
@@ -364,11 +420,11 @@ func TestGuildsFor(t *testing.T) {
 	ctx := context.Background()
 	s, _, _ := twoGuilds(t)
 	dev, _ := s.GuildsFor(ctx, 3, false)
-	if len(dev) != 2 || dev[0].Role != domain.RoleMember || dev[1].Role != domain.RoleViewer {
+	if len(dev) != 2 || dev[0].Permissions != memberPerms || dev[1].Permissions != viewerPerms {
 		t.Errorf("Dev's Guilds: %+v", dev)
 	}
 	admin, _ := s.GuildsFor(ctx, 1, true)
-	if len(admin) != 2 || admin[1].Guild.Name != "Bakers" || admin[1].Role != domain.RoleAdmin {
+	if len(admin) != 2 || admin[1].Guild.Name != "Bakers" || admin[1].Permissions != domain.AllPermissions {
 		t.Errorf("the Instance admin's Guilds: %+v", admin)
 	}
 }
@@ -437,5 +493,24 @@ func TestCanActIn(t *testing.T) {
 		if got, err := s.CanActIn(ctx, c.guild, c.member, c.admin); err != nil || got != c.want {
 			t.Errorf("CanActIn(%d, %d, %v) = %v, %v; want %v", c.guild, c.member, c.admin, got, err, c.want)
 		}
+	}
+}
+
+func TestPlaceUnitesTheBaseRoleAndEveryRoleHeld(t *testing.T) {
+	ctx := context.Background()
+	s, m, _ := twoGuilds(t)
+	deployer := domain.Role{ID: 99, GuildID: 2, Name: "Deployer", Position: 4, Permissions: domain.Of(domain.PermissionDeploy)}
+	m.roles = append(m.roles, deployer)
+	i := slices.IndexFunc(m.memberships, func(x domain.Membership) bool { return x.GuildID == 2 && x.MemberID == 3 })
+	m.memberships[i].RoleIDs = append(m.memberships[i].RoleIDs, deployer.ID)
+	m.roles[slices.IndexFunc(m.roles, func(r domain.Role) bool { return r.GuildID == 2 && r.Base })].Permissions = domain.Of(domain.PermissionApprove)
+
+	p, ok, err := s.Place(ctx, 3, false, 2, 0)
+	want := viewerPerms.Union(domain.Of(domain.PermissionDeploy, domain.PermissionApprove))
+	if err != nil || !ok || p.Permissions != want {
+		t.Errorf("Dev in Bakers: %v, want %v", p.Permissions.Keys(), want.Keys())
+	}
+	if p.Permissions.Has(domain.PermissionSeeSecrets) {
+		t.Error("Viewer and Deployer see no Secrets")
 	}
 }

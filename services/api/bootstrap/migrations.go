@@ -78,5 +78,8 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000063AddGuildToNotificationChannels{},
 		&migrations.M20260930000064AddGuildToKnownHosts{},
 		&migrations.M20260930000065CascadeKnownHostsWithGuild{},
+		&migrations.M20260930000066CreateRolesTable{},
+		&migrations.M20260930000067CreateMembershipRolesTable{},
+		&migrations.M20260930000068SeedRolesFromMemberships{},
 	}
 }

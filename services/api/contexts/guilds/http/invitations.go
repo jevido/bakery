@@ -23,7 +23,7 @@ type invitationJSON struct {
 }
 
 func invitationToJSON(i domain.Invitation) invitationJSON {
-	return invitationJSON{ID: i.ID, Email: i.Email, Role: string(i.Role), CreatedAt: i.CreatedAt, ExpiresAt: i.ExpiresAt}
+	return invitationJSON{ID: i.ID, Email: i.Email, Role: i.Role, CreatedAt: i.CreatedAt, ExpiresAt: i.ExpiresAt}
 }
 
 // invitationFailure answers the errors of Invitations.
@@ -76,7 +76,7 @@ func (c *Controller) Invite(ctx contractshttp.Context) contractshttp.Response {
 	}
 	guild := placeOf(ctx).guild
 	actor := MemberID(ctx)
-	inv, token, err := c.service.Invite(ctx.Context(), guild.ID, actor, req.Email, domain.Role(req.Role))
+	inv, token, err := c.service.Invite(ctx.Context(), guild.ID, actor, req.Email, req.Role)
 	if err != nil {
 		return invitationFailure(ctx, err)
 	}
@@ -141,7 +141,7 @@ func (c *Controller) InvitationByToken(ctx contractshttp.Context) contractshttp.
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{
 		"invitation": contractshttp.Json{
-			"email": in.Invitation.Email, "role": string(in.Invitation.Role), "expires_at": in.Invitation.ExpiresAt,
+			"email": in.Invitation.Email, "role": in.Invitation.Role, "expires_at": in.Invitation.ExpiresAt,
 		},
 		"guild":           contractshttp.Json{"name": in.Guild.Name},
 		"existing_member": in.ExistingMember,
@@ -201,7 +201,7 @@ func signInToAccept(ctx contractshttp.Context, email string) contractshttp.Respo
 	return respond.Error(ctx, contractshttp.StatusUnauthorized, "sign in as "+email+" to accept")
 }
 
-// accepted answers the Member who accepted inv, with their Role in its
+// accepted answers the Member who accepted inv, with their former role in its
 // Guild, and makes that Guild their Current guild.
 func (c *Controller) accepted(ctx contractshttp.Context, status int, inv domain.Invitation, memberID uint64) contractshttp.Response {
 	m, found, err := identity.MemberByID(ctx.Context(), memberID)
@@ -211,10 +211,10 @@ func (c *Controller) accepted(ctx contractshttp.Context, status int, inv domain.
 	if !found {
 		return respond.Error(ctx, contractshttp.StatusNotFound, "member not found")
 	}
-	role, _, err := c.service.RoleOf(ctx.Context(), inv.GuildID, memberID)
+	perms, _, err := c.service.PermissionsIn(ctx.Context(), inv.GuildID, memberID)
 	if err != nil {
 		return respond.ServerError(ctx, err)
 	}
 	SetCurrent(ctx, inv.GuildID)
-	return ctx.Response().Json(status, contractshttp.Json{"member": toJSON(m, role)})
+	return ctx.Response().Json(status, contractshttp.Json{"member": toJSON(m, wireRole(perms))})
 }

@@ -1,5 +1,5 @@
-// Package infra stores Guilds, Memberships and Invitations with the Goravel
-// ORM.
+// Package infra stores Guilds, their Roles, Memberships and Invitations
+// with the Goravel ORM.
 package infra
 
 import (
@@ -32,14 +32,45 @@ type membershipRecord struct {
 	ID      uint64 `gorm:"primaryKey"`
 	GuildID uint64
 	UserID  uint64
-	Role    string
 	orm.Timestamps
 }
 
 func (membershipRecord) TableName() string { return "memberships" }
 
-func (r membershipRecord) toDomain() domain.Membership {
-	return domain.Membership{ID: r.ID, GuildID: r.GuildID, MemberID: r.UserID, Role: domain.Role(r.Role)}
+// membershipRoleRecord is one Role a Membership holds; the Base role is
+// never stored.
+type membershipRoleRecord struct {
+	MembershipID uint64
+	RoleID       uint64
+}
+
+func (membershipRoleRecord) TableName() string { return "membership_roles" }
+
+type roleRecord struct {
+	ID          uint64 `gorm:"primaryKey"`
+	GuildID     uint64
+	Name        string
+	Color       string
+	Position    int
+	Permissions int64
+	Base        bool
+	orm.Timestamps
+}
+
+func (roleRecord) TableName() string { return "roles" }
+
+func (r roleRecord) toDomain() domain.Role {
+	return domain.Role{
+		ID: r.ID, GuildID: r.GuildID, Name: r.Name, Color: r.Color, Position: r.Position,
+		Permissions: domain.Permissions(r.Permissions), Base: r.Base,
+	}
+}
+
+func toRoleRecord(r domain.Role) roleRecord {
+	return roleRecord{
+		ID: r.ID, GuildID: r.GuildID, Name: r.Name, Color: r.Color, Position: r.Position,
+		Permissions: int64(r.Permissions), Base: r.Base,
+	}
 }
 
 func query(ctx context.Context) contractsorm.Query {
@@ -124,49 +155,85 @@ func (Guilds) Delete(ctx context.Context, id uint64) error {
 	return err
 }
 
+// create stores the Guild, its seeded Roles and adminID's Membership
+// holding Admin.
 func create(tx contractsorm.Query, g domain.Guild, adminID uint64) (guildRecord, error) {
 	rec := guildRecord{Name: g.Name, Description: g.Description}
 	if err := tx.Create(&rec); err != nil {
 		return guildRecord{}, err
 	}
-	m := membershipRecord{GuildID: rec.ID, UserID: adminID, Role: string(domain.RoleAdmin)}
-	return rec, tx.Create(&m)
+	var admin uint64
+	for _, r := range domain.SeedRoles(rec.ID) {
+		rr := toRoleRecord(r)
+		if err := tx.Create(&rr); err != nil {
+			return guildRecord{}, err
+		}
+		if r.Name == domain.AdminRole {
+			admin = rr.ID
+		}
+	}
+	m := membershipRecord{GuildID: rec.ID, UserID: adminID}
+	if err := tx.Create(&m); err != nil {
+		return guildRecord{}, err
+	}
+	return rec, tx.Create(&membershipRoleRecord{MembershipID: m.ID, RoleID: admin})
 }
 
 type Memberships struct{}
 
 func (Memberships) ListForMember(ctx context.Context, memberID uint64) ([]domain.Membership, error) {
-	return list(query(ctx).Where("user_id", memberID).OrderBy("guild_id"))
+	q := query(ctx)
+	return list(q, q.Where("user_id", memberID).OrderBy("guild_id"))
 }
 
 func (Memberships) ListForGuild(ctx context.Context, guildID uint64) ([]domain.Membership, error) {
-	return list(query(ctx).Where("guild_id", guildID).OrderBy("id"))
+	q := query(ctx)
+	return list(q, q.Where("guild_id", guildID).OrderBy("id"))
 }
 
-func list(q contractsorm.Query) ([]domain.Membership, error) {
+func (Memberships) Of(ctx context.Context, guildID, memberID uint64) (domain.Membership, bool, error) {
+	q := query(ctx)
+	ms, err := list(q, q.Where("guild_id", guildID).Where("user_id", memberID))
+	if err != nil || len(ms) == 0 {
+		return domain.Membership{}, false, err
+	}
+	return ms[0], true, nil
+}
+
+// list finds the Memberships q selects and, through tx, the Roles each
+// holds.
+func list(tx, q contractsorm.Query) ([]domain.Membership, error) {
 	var recs []membershipRecord
 	if err := q.Find(&recs); err != nil {
 		return nil, err
 	}
 	out := make([]domain.Membership, len(recs))
+	if len(recs) == 0 {
+		return out, nil
+	}
+	ids := make([]any, len(recs))
+	at := make(map[uint64]int, len(recs))
 	for i, r := range recs {
-		out[i] = r.toDomain()
+		out[i] = domain.Membership{ID: r.ID, GuildID: r.GuildID, MemberID: r.UserID}
+		ids[i], at[r.ID] = r.ID, i
+	}
+	var held []membershipRoleRecord
+	if err := tx.Model(&membershipRoleRecord{}).WhereIn("membership_id", ids).OrderBy("role_id").Find(&held); err != nil {
+		return nil, err
+	}
+	for _, h := range held {
+		i := at[h.MembershipID]
+		out[i].RoleIDs = append(out[i].RoleIDs, h.RoleID)
 	}
 	return out, nil
 }
 
-func (Memberships) Add(ctx context.Context, m domain.Membership) error {
-	_, err := query(ctx).Exec(`INSERT INTO memberships (guild_id, user_id, role, created_at, updated_at)
-		VALUES (?, ?, ?, now(), now()) ON CONFLICT (guild_id, user_id) DO NOTHING`, m.GuildID, m.MemberID, string(m.Role))
-	return err
-}
-
-func (Memberships) Change(ctx context.Context, guildID, memberID uint64, to domain.Role, check func([]domain.Membership) error) (domain.Membership, error) {
+func (Memberships) Change(ctx context.Context, guildID, memberID uint64, to []uint64, remove bool, check func([]domain.Membership) error) (domain.Membership, error) {
 	var changed domain.Membership
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		// Locks the Guild's Memberships, so a concurrent change waits and
 		// then checks what this one left.
-		ms, err := list(tx.Where("guild_id", guildID).OrderBy("id").LockForUpdate())
+		ms, err := list(tx, tx.Where("guild_id", guildID).OrderBy("id").LockForUpdate())
 		if err != nil {
 			return err
 		}
@@ -182,13 +249,20 @@ func (Memberships) Change(ctx context.Context, guildID, memberID uint64, to doma
 		if err := check(ms); err != nil {
 			return err
 		}
-		if to == "" {
+		if remove {
 			_, err = tx.Where("id", changed.ID).Delete(&membershipRecord{})
 			return err
 		}
-		changed.Role = to
-		_, err = tx.Model(&membershipRecord{}).Where("id", changed.ID).Update("role", string(to))
-		return err
+		if _, err := tx.Exec("DELETE FROM membership_roles WHERE membership_id = ?", changed.ID); err != nil {
+			return err
+		}
+		for _, id := range to {
+			if err := tx.Create(&membershipRoleRecord{MembershipID: changed.ID, RoleID: id}); err != nil {
+				return err
+			}
+		}
+		changed.RoleIDs = to
+		return nil
 	})
 	if err != nil {
 		return domain.Membership{}, err
@@ -196,13 +270,16 @@ func (Memberships) Change(ctx context.Context, guildID, memberID uint64, to doma
 	return changed, nil
 }
 
-func (Memberships) RoleOf(ctx context.Context, guildID, memberID uint64) (domain.Role, bool, error) {
-	var rec membershipRecord
-	if err := query(ctx).Where("guild_id", guildID).Where("user_id", memberID).FirstOrFail(&rec); err != nil {
-		if errors.Is(err, frameworkerrors.OrmRecordNotFound) {
-			return "", false, nil
-		}
-		return "", false, err
+type Roles struct{}
+
+func (Roles) ForGuild(ctx context.Context, guildID uint64) ([]domain.Role, error) {
+	var recs []roleRecord
+	if err := query(ctx).Where("guild_id", guildID).OrderBy("position").Find(&recs); err != nil {
+		return nil, err
 	}
-	return domain.Role(rec.Role), true, nil
+	out := make([]domain.Role, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+	}
+	return out, nil
 }

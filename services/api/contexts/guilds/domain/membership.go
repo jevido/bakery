@@ -1,74 +1,56 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"slices"
+)
 
 var (
-	ErrInvalidRole        = errors.New("role must be viewer, member or admin")
 	ErrLastAdmin          = errors.New("a guild keeps at least one admin")
 	ErrNotAdmin           = errors.New("only admins can do this")
 	ErrInstanceAdminFixed = errors.New("the instance admin's role cannot change and they cannot be removed")
 	ErrSelf               = errors.New("you cannot change your own role or remove yourself")
 )
 
-// Role is what a Member may do in one Guild.
-type Role string
-
-const (
-	RoleViewer Role = "viewer"
-	RoleMember Role = "member"
-	RoleAdmin  Role = "admin"
-)
-
-// ParseRole accepts the three Roles by name.
-func ParseRole(s string) (Role, error) {
-	switch r := Role(s); r {
-	case RoleViewer, RoleMember, RoleAdmin:
-		return r, nil
-	}
-	return "", ErrInvalidRole
-}
-
-// CanWrite reports whether the Role may change anything at all.
-func (r Role) CanWrite() bool { return r == RoleMember || r.IsAdmin() }
-
-// CanSeeSecrets reports whether the Role may read Secrets.
-func (r Role) CanSeeSecrets() bool { return r.CanWrite() }
-
-// IsAdmin reports whether the Role manages the Guild's Servers, S3
-// storages, Known hosts and Memberships.
-func (r Role) IsAdmin() bool { return r == RoleAdmin }
-
-// Membership is a Member's place in a Guild.
+// Membership is a Member's place in a Guild: the Roles they hold there
+// besides the Base role, which every Member holds.
 type Membership struct {
 	ID       uint64
 	GuildID  uint64
 	MemberID uint64
-	Role     Role
+	RoleIDs  []uint64
 }
 
-// KeepsAnAdmin checks that a Guild with these Memberships still has an
-// admin after memberID's Role becomes to, or after memberID leaves when to
-// is empty. The caller passes every Membership of one Guild.
-func KeepsAnAdmin(memberships []Membership, memberID uint64, to Role) error {
-	for _, m := range memberships {
-		r := m.Role
-		if m.MemberID == memberID {
-			r = to
+// PermissionsOf is what m allows: the union of the Base role's Permissions
+// and those of every Role m holds. roles are the Guild's Roles.
+func PermissionsOf(roles []Role, m Membership) Permissions {
+	var out Permissions
+	for _, r := range roles {
+		if r.Base || slices.Contains(m.RoleIDs, r.ID) {
+			out = out.Union(r.Permissions)
 		}
-		if r.IsAdmin() {
+	}
+	return out
+}
+
+// KeepsAnAdmin checks that someone in these Memberships of one Guild, as
+// they would be after a change, still holds administrator.
+func KeepsAnAdmin(roles []Role, after []Membership) error {
+	for _, m := range after {
+		if PermissionsOf(roles, m).Has(PermissionAdministrator) {
 			return nil
 		}
 	}
 	return ErrLastAdmin
 }
 
-// CanManage says whether an actor with actorRole in a Guild may change
-// target's Role there, remove target's Membership or reset their
-// two-factor: only an admin, never for the Instance admin, never for
-// themselves.
-func CanManage(actorID uint64, actorRole Role, target Membership, targetIsInstanceAdmin bool) error {
+// CanManage says whether an actor with these Permissions in a Guild may
+// change target's Roles there, remove target's Membership or reset their
+// two-factor: only with manage_members, never for the Instance admin,
+// never for themselves.
+func CanManage(actorID uint64, actor Permissions, target Membership, targetIsInstanceAdmin bool) error {
 	switch {
-	case !actorRole.IsAdmin():
+	case !actor.Has(PermissionManageMembers):
 		return ErrNotAdmin
 	case targetIsInstanceAdmin:
 		return ErrInstanceAdminFixed

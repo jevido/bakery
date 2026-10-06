@@ -52,10 +52,11 @@ expires_in_days}`; Coolify's permissions `root`, `write`, `deploy`, `read`
 and `read:sensitive` limit what a token may do, and `{name, read_only}`
 still works). A request acts in a Guild: an API token in the one it was
 made in, a Session in the one its `bakery_guild` cookie names (else the
-Member's first). Each Member has a Role per Guild (admin, member, viewer;
-the Instance admin Setup creates is admin in every Guild) that
-`guilds.Auth`, `guilds.Admin` and `guilds.Secrets` enforce on every route;
-admins invite people with
+Member's first). Each Member holds Roles per Guild (seeded `Admin`,
+`Member` and `Viewer`, plus the Base role `@everyone`); their Permissions
+are the union of those Roles' (every Permission for the Instance admin
+Setup creates), and `guilds.Auth`, `guilds.Admin` and `guilds.Secrets`
+enforce them on every route; admins invite people with
 `POST /api/invitations`, which answers a link that is good once, for 7
 days. `task access:test` checks it all end to end.
 

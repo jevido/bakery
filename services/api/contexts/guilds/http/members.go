@@ -33,15 +33,15 @@ type memberJSON struct {
 	ID    uint64 `json:"id"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
-	// Role is the Role in the Current guild, "owner" for the Instance
-	// admin.
+	// Role is the former role in the Current guild (wireRole), "owner"
+	// for the Instance admin.
 	Role          string `json:"role"`
 	TwoFactor     bool   `json:"two_factor"`
 	InstanceAdmin bool   `json:"instance_admin"`
 }
 
-func toJSON(m identity.Member, role domain.Role) memberJSON {
-	r := string(role)
+func toJSON(m identity.Member, role string) memberJSON {
+	r := role
 	if m.InstanceAdmin {
 		r = ownerRole
 	}
@@ -54,7 +54,7 @@ type guildJSON struct {
 	Role string `json:"role,omitempty"`
 }
 
-// Me is the signed-in Member with their Role in the Current guild and the
+// Me is the signed-in Member with their former role in the Current guild and the
 // Guilds they may switch to.
 func (c *Controller) Me(ctx contractshttp.Context) contractshttp.Response {
 	p := placeOf(ctx)
@@ -75,8 +75,8 @@ func (c *Controller) Me(ctx contractshttp.Context) contractshttp.Response {
 		current = &guildJSON{ID: p.guild.ID, Name: p.guild.Name}
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{
-		"member":         toJSON(m, p.role),
-		"role":           string(p.role),
+		"member":         toJSON(m, wireRole(p.permissions)),
+		"role":           wireRole(p.permissions),
 		"instance_admin": m.InstanceAdmin,
 		"guild":          current,
 		"guilds":         guilds,
@@ -90,10 +90,14 @@ func (c *Controller) Members(ctx contractshttp.Context) contractshttp.Response {
 	if err != nil {
 		return respond.ServerError(ctx, err)
 	}
-	roles := make(map[uint64]domain.Role, len(ms))
+	guildRoles, err := c.service.RolesIn(ctx.Context(), Current(ctx))
+	if err != nil {
+		return respond.ServerError(ctx, err)
+	}
+	roles := make(map[uint64]string, len(ms))
 	ids := make([]uint64, len(ms))
 	for i, m := range ms {
-		roles[m.MemberID], ids[i] = m.Role, m.MemberID
+		roles[m.MemberID], ids[i] = wireRole(domain.PermissionsOf(guildRoles, m)), m.MemberID
 	}
 	members, err := identity.Members(ctx.Context(), ids)
 	if err != nil {
@@ -119,9 +123,13 @@ func (c *Controller) ChangeRole(ctx contractshttp.Context) contractshttp.Respons
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	ms, err := c.service.ChangeRole(ctx.Context(), Current(ctx), MemberID(ctx), RoleOf(ctx), id, domain.Role(req.Role))
+	ms, err := c.service.ChangeRole(ctx.Context(), Current(ctx), MemberID(ctx), PermissionsOf(ctx), id, req.Role)
 	if err != nil {
 		return membershipFailure(ctx, err)
+	}
+	perms, _, err := c.service.PermissionsIn(ctx.Context(), ms.GuildID, ms.MemberID)
+	if err != nil {
+		return respond.ServerError(ctx, err)
 	}
 	m, found, err := identity.MemberByID(ctx.Context(), ms.MemberID)
 	if err != nil {
@@ -130,7 +138,7 @@ func (c *Controller) ChangeRole(ctx contractshttp.Context) contractshttp.Respons
 	if !found {
 		return respond.Error(ctx, contractshttp.StatusNotFound, "member not found")
 	}
-	return ctx.Response().Success().Json(contractshttp.Json{"member": toJSON(m, ms.Role)})
+	return ctx.Response().Success().Json(contractshttp.Json{"member": toJSON(m, wireRole(perms))})
 }
 
 // RemoveMember takes the Member out of the Current guild.
@@ -139,7 +147,7 @@ func (c *Controller) RemoveMember(ctx contractshttp.Context) contractshttp.Respo
 	if !ok {
 		return respond.Error(ctx, contractshttp.StatusNotFound, "member not found")
 	}
-	if err := c.service.RemoveMembership(ctx.Context(), Current(ctx), MemberID(ctx), RoleOf(ctx), id); err != nil {
+	if err := c.service.RemoveMembership(ctx.Context(), Current(ctx), MemberID(ctx), PermissionsOf(ctx), id); err != nil {
 		return membershipFailure(ctx, err)
 	}
 	return ctx.Response().NoContent()
@@ -152,7 +160,7 @@ func (c *Controller) ResetTwoFactor(ctx contractshttp.Context) contractshttp.Res
 	if !ok {
 		return respond.Error(ctx, contractshttp.StatusNotFound, "member not found")
 	}
-	err := c.service.ResetTwoFactor(ctx.Context(), Current(ctx), MemberID(ctx), RoleOf(ctx), id)
+	err := c.service.ResetTwoFactor(ctx.Context(), Current(ctx), MemberID(ctx), PermissionsOf(ctx), id)
 	switch {
 	case errors.Is(err, domain.ErrInstanceAdminFixed):
 		return respond.Error(ctx, contractshttp.StatusForbidden, "the instance admin's two-factor can only be reset on the server")

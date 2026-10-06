@@ -17,12 +17,13 @@ var (
 	ErrInvitationRevoked = errors.New("this invitation was revoked")
 )
 
-// Invitation is an email invited into a Guild with a Role.
+// Invitation is an email invited into a Guild with a Role, named by the
+// former role it carries ("viewer", "member" or "admin").
 type Invitation struct {
 	ID         uint64
 	GuildID    uint64
 	Email      string
-	Role       Role
+	Role       string
 	InvitedBy  uint64
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
@@ -31,12 +32,12 @@ type Invitation struct {
 }
 
 // NewInvitation validates an Invitation into the Guild made now.
-func NewInvitation(guildID uint64, email string, role Role, invitedBy uint64, now time.Time) (Invitation, error) {
+func NewInvitation(guildID uint64, email string, role string, invitedBy uint64, now time.Time) (Invitation, error) {
 	email = NormalizeEmail(email)
 	if a, err := mail.ParseAddress(email); err != nil || a.Address != email {
 		return Invitation{}, ErrInvalidEmail
 	}
-	if _, err := ParseRole(string(role)); err != nil {
+	if _, err := SeededRoleName(role); err != nil {
 		return Invitation{}, err
 	}
 	return Invitation{
@@ -74,9 +75,4 @@ func (i *Invitation) Accept(now time.Time) error {
 	}
 	i.AcceptedAt = &now
 	return nil
-}
-
-// Membership is the Membership accepting the Invitation gives memberID.
-func (i Invitation) Membership(memberID uint64) Membership {
-	return Membership{GuildID: i.GuildID, MemberID: memberID, Role: i.Role}
 }

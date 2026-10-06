@@ -39,15 +39,17 @@ type Invitations interface {
 	// Accept takes the Invitation in turn (racing accepts of one link wait
 	// for each other), refuses it with the domain's error if it can no
 	// longer be accepted, asks join for the Member who accepts it, and then
-	// stores their Membership (leaving one they hold already as it is) and
-	// marks the Invitation accepted in one transaction.
+	// stores their Membership holding the seeded Role the Invitation names
+	// (leaving one they hold already as it is) and marks the Invitation
+	// accepted in one transaction.
 	Accept(ctx context.Context, tokenHash string, now time.Time, join func(domain.Invitation) (uint64, error)) (domain.Invitation, uint64, error)
 }
 
-// Invite makes an Invitation into the Guild for email with role, and
+// Invite makes an Invitation into the Guild for email with a former role
+// ("viewer", "member" or "admin"), and
 // returns it with the token of its link. The token is only ever known here.
-// Only an admin of the Guild gets here (Admin guards the route).
-func (s *Service) Invite(ctx context.Context, guildID, actorID uint64, email string, role domain.Role) (domain.Invitation, string, error) {
+// Only a Member with administrator gets here (Admin guards the route).
+func (s *Service) Invite(ctx context.Context, guildID, actorID uint64, email string, role string) (domain.Invitation, string, error) {
 	inv, err := domain.NewInvitation(guildID, email, role, actorID, s.Now())
 	if err != nil {
 		return domain.Invitation{}, "", err
@@ -55,7 +57,7 @@ func (s *Service) Invite(ctx context.Context, guildID, actorID uint64, email str
 	if id, found, err := s.members.MemberByEmail(ctx, inv.Email); err != nil {
 		return domain.Invitation{}, "", err
 	} else if found {
-		if _, in, err := s.memberships.RoleOf(ctx, guildID, id); err != nil {
+		if _, in, err := s.memberships.Of(ctx, guildID, id); err != nil {
 			return domain.Invitation{}, "", err
 		} else if in {
 			return domain.Invitation{}, "", ErrAlreadyMember

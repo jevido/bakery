@@ -1,5 +1,5 @@
 // Package app holds the guilds use cases: creating Guilds, finding the
-// Guild a request acts in and the Role a Member holds there, and managing
+// Guild a request acts in and the Permissions a Member holds there, and managing
 // the Memberships and Invitations of a Guild.
 package app
 
@@ -16,8 +16,8 @@ type Guilds interface {
 	ByID(ctx context.Context, id uint64) (domain.Guild, bool, error)
 	// All lists every Guild by id.
 	All(ctx context.Context) ([]domain.Guild, error)
-	// Create stores g and its first admin Membership for adminID in one
-	// transaction.
+	// Create stores g with its seeded Roles (domain.SeedRoles) and a
+	// Membership holding Admin for adminID, in one transaction.
 	Create(ctx context.Context, g domain.Guild, adminID uint64) (domain.Guild, error)
 	// CreateFirstIfNone is Create unless a Guild exists already, in which
 	// case it stores nothing and reports false. The check and the insert are
@@ -31,23 +31,26 @@ type Guilds interface {
 	Delete(ctx context.Context, id uint64) error
 }
 
-// Memberships stores the Memberships.
+// Memberships stores the Memberships with the Roles each holds.
 type Memberships interface {
 	// ListForMember lists the Member's Memberships by Guild id.
 	ListForMember(ctx context.Context, memberID uint64) ([]domain.Membership, error)
 	// ListForGuild lists the Guild's Memberships.
 	ListForGuild(ctx context.Context, guildID uint64) ([]domain.Membership, error)
-	// RoleOf is the Member's Role in the Guild, false without a Membership.
-	RoleOf(ctx context.Context, guildID, memberID uint64) (domain.Role, bool, error)
-	// Add stores m unless the Member holds a Membership in that Guild
-	// already, which it leaves as it is.
-	Add(ctx context.Context, m domain.Membership) error
-	// Change gives memberID's Membership in the Guild the Role to, or
-	// deletes it when to is empty, once check accepts every Membership of
+	// Of is the Member's Membership in the Guild, false without one.
+	Of(ctx context.Context, guildID, memberID uint64) (domain.Membership, bool, error)
+	// Change gives memberID's Membership in the Guild the Roles to, or
+	// deletes it when remove is set, once check accepts every Membership of
 	// the Guild as they are. Check and change are one step, so two admins
 	// demoting each other cannot leave the Guild without one.
 	// ErrMembershipNotFound when memberID holds none there.
-	Change(ctx context.Context, guildID, memberID uint64, to domain.Role, check func([]domain.Membership) error) (domain.Membership, error)
+	Change(ctx context.Context, guildID, memberID uint64, to []uint64, remove bool, check func([]domain.Membership) error) (domain.Membership, error)
+}
+
+// Roles stores the Roles of every Guild.
+type Roles interface {
+	// ForGuild lists the Guild's Roles by Position, the Base role first.
+	ForGuild(ctx context.Context, guildID uint64) ([]domain.Role, error)
 }
 
 // Members is what guilds needs to know and ask of identity's Members.
@@ -66,6 +69,7 @@ type Members interface {
 type Service struct {
 	guilds      Guilds
 	memberships Memberships
+	roles       Roles
 	invitations Invitations
 	members     Members
 	// Now is the clock; time.Now unless a test sets it.
@@ -89,11 +93,12 @@ func (e ErrGuildInUse) Error() string {
 	return "the guild still owns resources; delete them first"
 }
 
-func NewService(guilds Guilds, memberships Memberships, invitations Invitations, members Members) *Service {
-	return &Service{guilds: guilds, memberships: memberships, invitations: invitations, members: members, Now: time.Now}
+func NewService(guilds Guilds, memberships Memberships, roles Roles, invitations Invitations, members Members) *Service {
+	return &Service{guilds: guilds, memberships: memberships, roles: roles, invitations: invitations, members: members, Now: time.Now}
 }
 
-// CreateGuild makes a Guild with creatorID as its admin.
+// CreateGuild makes a Guild with the seeded Roles and creatorID holding
+// Admin.
 func (s *Service) CreateGuild(ctx context.Context, name, description string, creatorID uint64) (domain.Guild, error) {
 	g, err := domain.NewGuild(name, description)
 	if err != nil {
@@ -103,7 +108,7 @@ func (s *Service) CreateGuild(ctx context.Context, name, description string, cre
 }
 
 // MakeFirstGuild makes the installation's first Guild, "Default", with
-// memberID (the Instance admin Setup just created) as its admin; nothing
+// memberID (the Instance admin Setup just created) holding Admin; nothing
 // when a Guild exists already, as after the migration from before Guilds.
 func (s *Service) MakeFirstGuild(ctx context.Context, memberID uint64) error {
 	g, err := domain.NewGuild(domain.FirstGuildName, "")
@@ -119,9 +124,23 @@ func (s *Service) GuildsOf(ctx context.Context, memberID uint64) ([]domain.Membe
 	return s.memberships.ListForMember(ctx, memberID)
 }
 
-// RoleOf is the Member's Role in the Guild, false without a Membership.
-func (s *Service) RoleOf(ctx context.Context, guildID, memberID uint64) (domain.Role, bool, error) {
-	return s.memberships.RoleOf(ctx, guildID, memberID)
+// PermissionsIn is what the Member's Membership in the Guild allows, false
+// without one.
+func (s *Service) PermissionsIn(ctx context.Context, guildID, memberID uint64) (domain.Permissions, bool, error) {
+	m, ok, err := s.memberships.Of(ctx, guildID, memberID)
+	if err != nil || !ok {
+		return 0, false, err
+	}
+	roles, err := s.roles.ForGuild(ctx, guildID)
+	if err != nil {
+		return 0, false, err
+	}
+	return domain.PermissionsOf(roles, m), true, nil
+}
+
+// RolesIn lists the Guild's Roles by Position, the Base role first.
+func (s *Service) RolesIn(ctx context.Context, guildID uint64) ([]domain.Role, error) {
+	return s.roles.ForGuild(ctx, guildID)
 }
 
 // OnGuildDeleting registers a check DeleteGuild asks first: another context
@@ -156,7 +175,7 @@ func (s *Service) Guild(ctx context.Context, id uint64) (domain.Guild, error) {
 	return g, err
 }
 
-// UpdateGuild renames and describes the Guild. Only an admin of the Guild
+// UpdateGuild renames and describes the Guild. Only a Member with administrator
 // gets here (Admin guards the route).
 func (s *Service) UpdateGuild(ctx context.Context, id uint64, name, description string) (domain.Guild, error) {
 	g, err := s.Guild(ctx, id)
@@ -174,7 +193,7 @@ func (s *Service) UpdateGuild(ctx context.Context, id uint64, name, description 
 
 // DeleteGuild deletes the Guild once it owns nothing: ErrGuildInUse names
 // what still blocks it. Its Memberships, Invitations and API tokens go with
-// it. Only an admin of the Guild gets here (Admin guards the route).
+// it. Only a Member with administrator gets here (Admin guards the route).
 func (s *Service) DeleteGuild(ctx context.Context, id uint64) error {
 	if _, err := s.Guild(ctx, id); err != nil {
 		return err

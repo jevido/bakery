@@ -40,68 +40,149 @@ func TestRenameKeepsTheOldNameOnError(t *testing.T) {
 	}
 }
 
-func TestRoleRights(t *testing.T) {
-	cases := []struct {
-		role                    Role
-		write, secrets, isAdmin bool
-	}{
-		{RoleViewer, false, false, false},
-		{RoleMember, true, true, false},
-		{RoleAdmin, true, true, true},
+func TestPermissions(t *testing.T) {
+	member := Of(PermissionViewResources, PermissionSeeSecrets, PermissionDeploy, PermissionManageApplications)
+	if !member.Has(PermissionDeploy) || member.Has(PermissionManageServers) {
+		t.Errorf("member: %v", member.Keys())
 	}
-	for _, c := range cases {
-		if c.role.CanWrite() != c.write || c.role.CanSeeSecrets() != c.secrets || c.role.IsAdmin() != c.isAdmin {
-			t.Errorf("%s: write=%v secrets=%v admin=%v", c.role, c.role.CanWrite(), c.role.CanSeeSecrets(), c.role.IsAdmin())
+	admin := Of(PermissionAdministrator)
+	for p := PermissionAdministrator; p < endOfPermissions; p <<= 1 {
+		if !admin.Has(p) {
+			t.Errorf("administrator lacks %s", p.Key())
+		}
+	}
+	if Permissions(0).Has(PermissionViewResources) {
+		t.Error("no Permissions has view_resources")
+	}
+	if u := Of(PermissionViewResources).Union(Of(PermissionDeploy)); u != Of(PermissionViewResources, PermissionDeploy) {
+		t.Errorf("union = %v", u.Keys())
+	}
+	keys := AllPermissions.Keys()
+	if len(keys) != 13 || keys[0] != "administrator" || keys[12] != "manage_budgets" {
+		t.Errorf("keys = %v", keys)
+	}
+	back, err := ParsePermissions(keys)
+	if err != nil || back != AllPermissions {
+		t.Errorf("round trip = %v, %v", back.Keys(), err)
+	}
+	if got := Permissions(0).Keys(); got == nil || len(got) != 0 {
+		t.Errorf("no keys = %#v", got)
+	}
+	if _, err := ParsePermissions([]string{"deploy", "fly"}); !errors.Is(err, ErrUnknownPermission) {
+		t.Errorf("unknown key: %v", err)
+	}
+	if PermissionDeploy.Key() != "deploy" || Permission(3).Key() != "" {
+		t.Error("Key")
+	}
+}
+
+func TestRoleRenameAndRecolor(t *testing.T) {
+	var r Role
+	if err := r.Rename("  Deployer "); err != nil || r.Name != "Deployer" {
+		t.Errorf("rename: %q, %v", r.Name, err)
+	}
+	for _, n := range []string{" ", strings.Repeat("é", 101)} {
+		if err := r.Rename(n); !errors.Is(err, ErrInvalidRoleName) {
+			t.Errorf("rename %q: %v", n, err)
+		}
+	}
+	if err := r.Recolor("#E74C3C"); err != nil || r.Color != "#e74c3c" {
+		t.Errorf("recolor: %q, %v", r.Color, err)
+	}
+	for _, c := range []string{"red", "#fff", "#gggggg", ""} {
+		if err := r.Recolor(c); !errors.Is(err, ErrInvalidRoleColor) {
+			t.Errorf("recolor %q: %v", c, err)
+		}
+	}
+}
+
+// seeded are a Guild's seeded Roles with ids 1 to 4.
+func seeded() []Role {
+	roles := SeedRoles(7)
+	for i := range roles {
+		roles[i].ID = uint64(i + 1)
+	}
+	return roles
+}
+
+func TestSeededRoles(t *testing.T) {
+	roles := seeded()
+	for _, c := range []struct {
+		former string
+		id     uint64
+	}{{"viewer", 2}, {"member", 3}, {"admin", 4}} {
+		r, ok, err := SeededRole(roles, c.former)
+		if err != nil || !ok || r.ID != c.id {
+			t.Errorf("%s: %+v %v %v", c.former, r, ok, err)
 		}
 	}
 	for _, s := range []string{"owner", "Admin", ""} {
-		if _, err := ParseRole(s); !errors.Is(err, ErrInvalidRole) {
-			t.Errorf("ParseRole(%q): %v", s, err)
+		if _, _, err := SeededRole(roles, s); !errors.Is(err, ErrInvalidRole) {
+			t.Errorf("SeededRole(%q): %v", s, err)
 		}
+	}
+	if _, ok, _ := SeededRole(roles[:2], "admin"); ok {
+		t.Error("found a deleted Admin")
+	}
+}
+
+func TestPermissionsOf(t *testing.T) {
+	roles := seeded()
+	cases := []struct {
+		held                          []uint64
+		write, secrets, isAdmin, view bool
+	}{
+		{nil, false, false, false, false},
+		{[]uint64{2}, false, false, false, true},
+		{[]uint64{3}, true, true, false, true},
+		{[]uint64{4}, true, true, true, true},
+		{[]uint64{2, 3}, true, true, false, true},
+	}
+	for _, c := range cases {
+		p := PermissionsOf(roles, Membership{RoleIDs: c.held})
+		if p.Has(PermissionManageApplications) != c.write || p.Has(PermissionSeeSecrets) != c.secrets ||
+			p.Has(PermissionAdministrator) != c.isAdmin || p.Has(PermissionViewResources) != c.view {
+			t.Errorf("%v: %v", c.held, p.Keys())
+		}
+	}
+	roles[0].Permissions = Of(PermissionViewResources)
+	if !PermissionsOf(roles, Membership{}).Has(PermissionViewResources) {
+		t.Error("the Base role counts for everyone")
 	}
 }
 
 func TestKeepsAnAdmin(t *testing.T) {
-	ms := []Membership{{MemberID: 1, Role: RoleAdmin}, {MemberID: 2, Role: RoleMember}}
-	cases := []struct {
-		member uint64
-		to     Role
-		want   error
-	}{
-		{1, RoleMember, ErrLastAdmin},
-		{1, "", ErrLastAdmin},
-		{2, RoleViewer, nil},
-		{2, "", nil},
-		{2, RoleAdmin, nil},
+	roles := seeded()
+	if err := KeepsAnAdmin(roles, []Membership{{MemberID: 1, RoleIDs: []uint64{3}}}); !errors.Is(err, ErrLastAdmin) {
+		t.Errorf("no admin: %v", err)
 	}
-	for _, c := range cases {
-		if err := KeepsAnAdmin(ms, c.member, c.to); !errors.Is(err, c.want) {
-			t.Errorf("member %d to %q: err = %v, want %v", c.member, c.to, err, c.want)
-		}
+	if err := KeepsAnAdmin(roles, nil); !errors.Is(err, ErrLastAdmin) {
+		t.Errorf("nobody: %v", err)
 	}
-	two := append(ms, Membership{MemberID: 3, Role: RoleAdmin})
-	if err := KeepsAnAdmin(two, 1, ""); err != nil {
-		t.Errorf("a second admin stays: %v", err)
+	if err := KeepsAnAdmin(roles, []Membership{{MemberID: 1, RoleIDs: []uint64{3}}, {MemberID: 2, RoleIDs: []uint64{3, 4}}}); err != nil {
+		t.Errorf("an admin stays: %v", err)
 	}
 }
 
 func TestCanManage(t *testing.T) {
-	dev := Membership{MemberID: 3, Role: RoleMember}
+	dev := Membership{MemberID: 3, RoleIDs: []uint64{3}}
+	admin, member := Of(PermissionAdministrator), Of(PermissionManageApplications)
 	cases := []struct {
 		actor         uint64
-		role          Role
+		perms         Permissions
 		target        Membership
 		instanceAdmin bool
 		want          error
 	}{
-		{1, RoleAdmin, dev, false, nil},
-		{1, RoleMember, dev, false, ErrNotAdmin},
-		{1, RoleAdmin, Membership{MemberID: 2, Role: RoleAdmin}, true, ErrInstanceAdminFixed},
-		{3, RoleAdmin, dev, false, ErrSelf},
+		{1, admin, dev, false, nil},
+		{1, Of(PermissionManageMembers), dev, false, nil},
+		{1, member, dev, false, ErrNotAdmin},
+		{1, admin, Membership{MemberID: 2}, true, ErrInstanceAdminFixed},
+		{3, admin, dev, false, ErrSelf},
 	}
 	for _, c := range cases {
-		if err := CanManage(c.actor, c.role, c.target, c.instanceAdmin); !errors.Is(err, c.want) {
-			t.Errorf("%d (%s) manages %d: %v, want %v", c.actor, c.role, c.target.MemberID, err, c.want)
+		if err := CanManage(c.actor, c.perms, c.target, c.instanceAdmin); !errors.Is(err, c.want) {
+			t.Errorf("%d (%v) manages %d: %v, want %v", c.actor, c.perms.Keys(), c.target.MemberID, err, c.want)
 		}
 	}
 }

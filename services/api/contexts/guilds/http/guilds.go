@@ -39,8 +39,8 @@ func guildFailure(ctx contractshttp.Context, err error) contractshttp.Response {
 	return respond.ServerError(ctx, err)
 }
 
-// Guilds lists the Guilds the Member may switch to, with their Role in
-// each: every Guild for the Instance admin.
+// Guilds lists the Guilds the Member may switch to, with their former
+// role in each (wireRole): every Guild for the Instance admin.
 func (c *Controller) Guilds(ctx contractshttp.Context) contractshttp.Response {
 	p := placeOf(ctx)
 	places, err := c.service.GuildsFor(ctx.Context(), p.principal.MemberID, p.principal.InstanceAdmin)
@@ -53,12 +53,12 @@ func (c *Controller) Guilds(ctx contractshttp.Context) contractshttp.Response {
 func guildsJSON(places []app.Place) []guildJSON {
 	out := make([]guildJSON, len(places))
 	for i, pl := range places {
-		out[i] = guildJSON{ID: pl.Guild.ID, Name: pl.Guild.Name, Role: string(pl.Role)}
+		out[i] = guildJSON{ID: pl.Guild.ID, Name: pl.Guild.Name, Role: wireRole(pl.Permissions)}
 	}
 	return out
 }
 
-// CreateGuild makes a Guild with the Member as its admin and switches the
+// CreateGuild makes a Guild with the Member holding Admin and switches the
 // Session to it.
 func (c *Controller) CreateGuild(ctx contractshttp.Context) contractshttp.Response {
 	var req guildRequest
@@ -71,7 +71,7 @@ func (c *Controller) CreateGuild(ctx contractshttp.Context) contractshttp.Respon
 	}
 	SetCurrent(ctx, g.ID)
 	return ctx.Response().Json(contractshttp.StatusCreated, contractshttp.Json{
-		"guild": guildJSON{ID: g.ID, Name: g.Name, Role: string(domain.RoleAdmin)},
+		"guild": guildJSON{ID: g.ID, Name: g.Name, Role: wireRole(domain.Of(domain.PermissionAdministrator))},
 	})
 }
 

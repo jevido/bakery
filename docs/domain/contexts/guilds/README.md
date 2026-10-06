@@ -132,19 +132,21 @@ that touches a Role or a Member also follows the hierarchy above.
 
 ## Integration
 
-The middlewares below still check today's `viewer`/`member`/`admin`; task 03
-of the Roles phase replaces them with one check by Permission
-(`guilds.Can(permission)`), and this list changes with it.
+The middlewares below work out the request's Permissions from the
+Member's Roles, but still stand for the former `viewer`/`member`/`admin`
+checks; task 03 of the Roles phase replaces them with one check by
+Permission (`guilds.Can(permission)`), and this list changes with it.
 
 - **Publishes:**
   - `guilds.Auth`: the request comes from a Member (by `identity.Authenticate`)
-    with a Membership in the Current guild, or from the Instance admin; a
-    viewer there is refused (403) on anything but GET and HEAD. An API
+    with a Membership in the Current guild, or from the Instance admin;
+    without `manage_applications` there it is refused (403) on anything but
+    GET and HEAD. An API
     token's Permissions apply as identity describes them.
   - `guilds.Deploy`: `guilds.Auth` for Coolify's deploy actions, where an
     API token needs `deploy` instead of `write`.
-  - `guilds.Admin`: only an admin of the Current guild.
-  - `guilds.Secrets`: member or higher in the Current guild, and
+  - `guilds.Admin`: only `administrator` in the Current guild.
+  - `guilds.Secrets`: `see_secrets` in the Current guild, and
     `read:sensitive` for an API token, for GETs that return Secrets.
   - `guilds.CanSeeSecrets(ctx)`: for a response that mixes Secrets with
     fields a viewer may see.
