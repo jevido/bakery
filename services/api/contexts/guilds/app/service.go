@@ -1,10 +1,11 @@
 // Package app holds the guilds use cases: creating Guilds, finding the
 // Guild a request acts in and the Role a Member holds there, and managing
-// the Memberships of a Guild.
+// the Memberships and Invitations of a Guild.
 package app
 
 import (
 	"context"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/guilds/domain"
 )
@@ -45,6 +46,11 @@ type Memberships interface {
 // Members is what guilds needs to know and ask of identity's Members.
 type Members interface {
 	IsInstanceAdmin(ctx context.Context, memberID uint64) (bool, error)
+	// MemberByEmail is the id of the Member with this email.
+	MemberByEmail(ctx context.Context, email string) (uint64, bool, error)
+	// CreateMember stores a new Member for an accepted Invitation;
+	// ErrMemberExists when the email is taken.
+	CreateMember(ctx context.Context, name, email, password string) (uint64, error)
 	// RevokeAPITokens deletes every API token the Member made in the Guild.
 	RevokeAPITokens(ctx context.Context, memberID, guildID uint64) error
 	ResetTwoFactor(ctx context.Context, memberID uint64) error
@@ -53,11 +59,14 @@ type Members interface {
 type Service struct {
 	guilds      Guilds
 	memberships Memberships
+	invitations Invitations
 	members     Members
+	// Now is the clock; time.Now unless a test sets it.
+	Now func() time.Time
 }
 
-func NewService(guilds Guilds, memberships Memberships, members Members) *Service {
-	return &Service{guilds: guilds, memberships: memberships, members: members}
+func NewService(guilds Guilds, memberships Memberships, invitations Invitations, members Members) *Service {
+	return &Service{guilds: guilds, memberships: memberships, invitations: invitations, members: members, Now: time.Now}
 }
 
 // CreateGuild makes a Guild with creatorID as its admin.

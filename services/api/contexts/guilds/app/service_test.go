@@ -127,12 +127,34 @@ func (m *memStore) Change(ctx context.Context, guildID, memberID uint64, to doma
 // memMembers is identity as the tests need it.
 type memMembers struct {
 	instanceAdmin uint64
-	revoked       [][2]uint64
-	reset         []uint64
+	// emails are the Members by email; CreateMember adds to it.
+	emails  map[string]uint64
+	revoked [][2]uint64
+	reset   []uint64
 }
 
 func (m *memMembers) IsInstanceAdmin(_ context.Context, id uint64) (bool, error) {
 	return id == m.instanceAdmin, nil
+}
+
+func (m *memMembers) MemberByEmail(_ context.Context, email string) (uint64, bool, error) {
+	id, found := m.emails[email]
+	return id, found, nil
+}
+
+func (m *memMembers) CreateMember(_ context.Context, _, email, password string) (uint64, error) {
+	if _, found := m.emails[email]; found {
+		return 0, ErrMemberExists
+	}
+	if len(password) < 12 {
+		return 0, errors.New("password too short")
+	}
+	if m.emails == nil {
+		m.emails = map[string]uint64{}
+	}
+	id := uint64(100 + len(m.emails))
+	m.emails[email] = id
+	return id, nil
 }
 
 func (m *memMembers) RevokeAPITokens(_ context.Context, memberID, guildID uint64) error {
@@ -153,7 +175,7 @@ func newTestService() (*Service, *memStore) {
 func newTestServiceWithMembers() (*Service, *memStore, *memMembers) {
 	m := &memStore{}
 	members := &memMembers{}
-	return NewService(m, m, members), m, members
+	return NewService(m, m, &memInvitations{store: m}, members), m, members
 }
 
 func TestMakeFirstGuildOnlyOnce(t *testing.T) {
@@ -203,12 +225,10 @@ func twoGuilds(t *testing.T) (*Service, *memStore, *memMembers) {
 	ctx := context.Background()
 	s, m, members := newTestServiceWithMembers()
 	members.instanceAdmin = 1
-	if err := s.MemberAdded(ctx, 1, true, "admin"); err != nil {
+	if err := s.MakeFirstGuild(ctx, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.MemberAdded(ctx, 3, false, "member"); err != nil {
-		t.Fatal(err)
-	}
+	m.Add(ctx, domain.Membership{GuildID: 1, MemberID: 3, Role: domain.RoleMember})
 	bakers, err := s.CreateGuild(ctx, "Bakers", "", 2)
 	if err != nil {
 		t.Fatal(err)

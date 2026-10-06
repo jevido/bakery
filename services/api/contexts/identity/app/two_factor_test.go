@@ -131,19 +131,15 @@ func TestLoginTwoFactor(t *testing.T) {
 func TestResetTwoFactor(t *testing.T) {
 	ctx := context.Background()
 	s, now, owner := twoFactorService(t)
-	join := func(email string, role domain.Role) domain.Member {
-		_, token, err := s.Invite(ctx, owner.ID, email, role)
-		if err != nil {
-			t.Fatal(err)
-		}
-		m, err := s.AcceptInvitation(ctx, token, "x", "correct horse battery")
+	join := func(email string) domain.Member {
+		m, err := s.CreateMember(ctx, "x", email, "correct horse battery")
 		if err != nil {
 			t.Fatal(err)
 		}
 		return m
 	}
-	admin := join("admin@example.com", domain.RoleAdmin)
-	dev := join("dev@example.com", domain.RoleMember)
+	admin := join("admin@example.com")
+	dev := join("dev@example.com")
 	enrol := func(id uint64) {
 		if _, err := s.StartTwoFactor(ctx, id); err != nil {
 			t.Fatal(err)

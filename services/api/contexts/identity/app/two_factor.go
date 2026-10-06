@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"github.com/jevido/bakery/services/api/app/secret"
 
 	"github.com/jevido/bakery/services/api/contexts/identity/domain"
 )
@@ -126,7 +127,7 @@ func (s *Service) DisableTwoFactor(ctx context.Context, memberID uint64, passwor
 // and uses it up.
 func (s *Service) checkSecondFactor(ctx context.Context, m domain.Member, code, recoveryCode string) error {
 	if code == "" && recoveryCode != "" {
-		used, err := s.members.UseRecoveryCode(ctx, m.ID, hashSecret(domain.NormalizeRecoveryCode(recoveryCode)))
+		used, err := s.members.UseRecoveryCode(ctx, m.ID, secret.Hash(domain.NormalizeRecoveryCode(recoveryCode)))
 		if err != nil {
 			return err
 		}
@@ -160,7 +161,7 @@ func (s *Service) newRecoveryCodes() (codes, hashes []string, err error) {
 	}
 	hashes = make([]string, len(codes))
 	for i, c := range codes {
-		hashes[i] = hashSecret(domain.NormalizeRecoveryCode(c))
+		hashes[i] = secret.Hash(domain.NormalizeRecoveryCode(c))
 	}
 	return codes, hashes, nil
 }

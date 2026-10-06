@@ -1,4 +1,5 @@
-// Package infra stores Guilds and Memberships with the Goravel ORM.
+// Package infra stores Guilds, Memberships and Invitations with the Goravel
+// ORM.
 package infra
 
 import (

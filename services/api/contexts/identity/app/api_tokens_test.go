@@ -163,9 +163,8 @@ func TestAPITokenExpiry(t *testing.T) {
 
 func TestAPITokenRoleCaps(t *testing.T) {
 	ctx := context.Background()
-	s, owner, _ := setUpOwner(t)
-	_, invite, _ := s.Invite(ctx, owner.ID, "dev@example.com", domain.RoleMember)
-	dev, _ := s.AcceptInvitation(ctx, invite, "Dev", "correct horse")
+	s, _, _ := setUpOwner(t)
+	dev, _ := s.CreateMember(ctx, "Dev", "dev@example.com", "correct horse")
 	if _, _, err := s.CreateAPIToken(ctx, dev.ID, guild, domain.RoleMember, "root", []domain.Permission{domain.PermissionRoot}, nil); !errors.Is(err, domain.ErrRoleCannotGrant) {
 		t.Errorf("member granting root: %v", err)
 	}

@@ -1,10 +1,9 @@
 // Package http exposes identity over HTTP: setup, login, logout, Profile,
-// two-factor, API tokens and Invitations, and Authenticate, which guilds'
+// two-factor and API tokens, and Authenticate, which guilds'
 // middlewares (and with them every other route) are built on.
 package http
 
 import (
-	"context"
 	"errors"
 	"strconv"
 	"strings"
@@ -49,9 +48,6 @@ type place struct {
 
 type Controller struct {
 	service *app.Service
-	// Invited, when set, hears of each new Invitation with its link and the
-	// inviting Member's name, and answers whether it emailed the link.
-	Invited func(ctx context.Context, inv domain.Invitation, invitedBy, link string) (emailed bool, err error)
 }
 
 func NewController(service *app.Service) *Controller {
@@ -140,12 +136,20 @@ func (c *Controller) Logout(ctx contractshttp.Context) contractshttp.Response {
 }
 
 func (c *Controller) withSession(ctx contractshttp.Context, status int, m domain.Member) contractshttp.Response {
-	token, err := facades.Auth(ctx).LoginUsingID(m.ID)
-	if err != nil {
+	if err := SignIn(ctx, m.ID); err != nil {
 		return respond.ServerError(ctx, err)
 	}
-	ctx.Response().Cookie(sessionCookie(token, facades.Config().GetInt("jwt.ttl")*60))
 	return ctx.Response().Json(status, contractshttp.Json{"member": toJSON(m)})
+}
+
+// SignIn starts a Session for the Member: the response carries its cookie.
+func SignIn(ctx contractshttp.Context, memberID uint64) error {
+	token, err := facades.Auth(ctx).LoginUsingID(memberID)
+	if err != nil {
+		return err
+	}
+	ctx.Response().Cookie(sessionCookie(token, facades.Config().GetInt("jwt.ttl")*60))
+	return nil
 }
 
 // sessionCookie is host-only and SameSite=Strict: the dashboard reaches the
@@ -198,31 +202,42 @@ func authenticate(service *app.Service, ctx contractshttp.Context) (Principal, b
 		}
 		return Principal{MemberID: m.ID, InstanceAdmin: m.InstanceAdmin, Token: &t}, true
 	}
-	token := ctx.Request().Cookie(SessionCookie)
-	if token == "" {
-		return unauthorized()
-	}
-	payload, err := facades.Auth(ctx).Parse(token)
-	if err != nil {
-		return unauthorized()
-	}
-	id, err := strconv.ParseUint(payload.Key, 10, 64)
-	if err != nil {
-		return unauthorized()
-	}
-	m, err := service.CurrentMember(ctx.Context(), id)
-	if errors.Is(err, app.ErrMemberNotFound) {
-		return unauthorized()
-	}
+	m, found, err := SessionMember(service, ctx)
 	if err != nil {
 		_ = respond.ServerError(ctx, err).Abort()
 		return Principal{}, false
 	}
-	// A password change or "sign out everywhere else" ended it.
-	if !m.SessionCounts(payload.IssuedAt) {
+	if !found {
 		return unauthorized()
 	}
 	return Principal{MemberID: m.ID, InstanceAdmin: m.InstanceAdmin}, true
+}
+
+// SessionMember is the Member whose Session the request carries, without
+// answering anything itself: false when there is no Session that still
+// counts. An API token is not looked at.
+func SessionMember(service *app.Service, ctx contractshttp.Context) (domain.Member, bool, error) {
+	token := ctx.Request().Cookie(SessionCookie)
+	if token == "" {
+		return domain.Member{}, false, nil
+	}
+	payload, err := facades.Auth(ctx).Parse(token)
+	if err != nil {
+		return domain.Member{}, false, nil
+	}
+	id, err := strconv.ParseUint(payload.Key, 10, 64)
+	if err != nil {
+		return domain.Member{}, false, nil
+	}
+	m, err := service.CurrentMember(ctx.Context(), id)
+	if errors.Is(err, app.ErrMemberNotFound) {
+		return domain.Member{}, false, nil
+	}
+	// A password change or "sign out everywhere else" ended it.
+	if err != nil || !m.SessionCounts(payload.IssuedAt) {
+		return domain.Member{}, false, err
+	}
+	return m, true, nil
 }
 
 // Auth is for the routes where a Member manages their own Profile and
@@ -254,7 +269,7 @@ func MemberID(ctx contractshttp.Context) (uint64, bool) {
 }
 
 // ActIn records the Guild the request acts in and the Member's Role there,
-// for the routes identity serves inside a Guild (API tokens, Invitations).
+// for the routes identity serves inside a Guild (API tokens).
 func ActIn(ctx contractshttp.Context, guildID uint64, role domain.Role) {
 	ctx.WithValue(guildKey{}, place{guildID: guildID, role: role})
 }

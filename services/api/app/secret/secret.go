@@ -1,4 +1,7 @@
-package app
+// Package secret makes the random secrets behind links and tokens and the
+// hashes they are stored as. Identity (API tokens) and guilds (Invitation
+// links) both use it.
+package secret
 
 import (
 	"crypto/rand"
@@ -9,9 +12,8 @@ import (
 
 const base62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
-// newSecret is 32 random bytes written in base62, for Invitation links and
-// API tokens.
-func newSecret() (string, error) {
+// New is 32 random bytes written in base62.
+func New() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
@@ -26,9 +28,8 @@ func newSecret() (string, error) {
 	return string(out), nil
 }
 
-// hashSecret is what is stored of a secret: its SHA-256, in hex. The
-// secrets are random, so a fast hash is enough.
-func hashSecret(secret string) string {
-	sum := sha256.Sum256([]byte(secret))
+// Hash is how a secret is stored: only its SHA-256, in hex.
+func Hash(s string) string {
+	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
 }

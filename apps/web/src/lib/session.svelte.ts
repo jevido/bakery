@@ -46,6 +46,13 @@ class Session {
     this.state = 'signed-in'
   }
 
+  /** Asks /me again, after the Current guild (and with it the Role) changed, as accepting an Invitation does. */
+  async refresh() {
+    const { member } = await api<{ member: Member }>('GET', '/me')
+    this.member = member
+    this.state = 'signed-in'
+  }
+
   signedOut() {
     this.member = null
     this.state = 'signed-out'

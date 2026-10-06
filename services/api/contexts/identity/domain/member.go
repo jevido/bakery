@@ -1,5 +1,5 @@
-// Package domain is the identity model: Members, their API tokens,
-// Invitations and Two-factor authentication, and the rules for them.
+// Package domain is the identity model: Members, their API tokens and
+// Two-factor authentication, and the rules for them.
 package domain
 
 import (

@@ -1,13 +1,15 @@
 // Package http exposes guilds over HTTP: the Auth, Deploy, Admin and Secrets
-// middlewares every context's routes sit behind, `GET /api/me` and the
-// Members of the Current guild.
+// middlewares every context's routes sit behind, `GET /api/me`, and the
+// Members and Invitations of the Current guild.
 package http
 
 import (
 	"strconv"
+	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
+	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/app/respond"
 	"github.com/jevido/bakery/services/api/contexts/guilds/app"
 	"github.com/jevido/bakery/services/api/contexts/guilds/domain"
@@ -89,6 +91,21 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 		identity.ActIn(ctx, pl.Guild.ID, string(pl.Role))
 	}
 	ctx.Request().Next()
+}
+
+// SetCurrent makes the Guild the Current guild of the browser's Session from
+// the next request on. Like the Session cookie it is host-only, for the API's
+// paths and SameSite=Strict.
+func SetCurrent(ctx contractshttp.Context, guildID uint64) {
+	ctx.Response().Cookie(contractshttp.Cookie{
+		Name:     GuildCookie,
+		Value:    strconv.FormatUint(guildID, 10),
+		Path:     "/api",
+		MaxAge:   int((400 * 24 * time.Hour).Seconds()),
+		HttpOnly: true,
+		Secure:   facades.Config().GetString("app.env") == "production",
+		SameSite: "strict",
+	})
 }
 
 // cookieGuild is the Guild id GuildCookie names, 0 without a usable one.

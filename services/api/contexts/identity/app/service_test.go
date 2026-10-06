@@ -35,6 +35,13 @@ func (m *memMembers) AddInstanceAdminIfNone(ctx context.Context, o domain.Member
 	return m.add(o), nil
 }
 
+func (m *memMembers) Add(ctx context.Context, o domain.Member) (domain.Member, error) {
+	if _, found, _ := m.ByEmail(ctx, o.Email); found {
+		return domain.Member{}, ErrEmailTaken
+	}
+	return m.add(o), nil
+}
+
 func (m *memMembers) add(x domain.Member) domain.Member {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -76,7 +83,7 @@ func (m *memMembers) ByIDs(_ context.Context, ids []uint64) ([]domain.Member, er
 
 func newTestService() *Service {
 	members := &memMembers{}
-	return NewService(members, &memInvitations{members: members}, &memAPITokens{}, plainHasher{})
+	return NewService(members, &memAPITokens{}, plainHasher{})
 }
 
 type plainHasher struct{}
@@ -102,12 +109,12 @@ func TestSetupOnlyOnce(t *testing.T) {
 	}
 }
 
-func TestSetupMakesTheInstanceAdminAndTellsMemberAdded(t *testing.T) {
+func TestSetupMakesTheInstanceAdminAndTellsSetUpDone(t *testing.T) {
 	ctx := context.Background()
 	s := newTestService()
-	var heard []MemberAdded
-	s.MemberAdded = func(_ context.Context, e MemberAdded) error {
-		heard = append(heard, e)
+	var heard []uint64
+	s.SetUpDone = func(_ context.Context, id uint64) error {
+		heard = append(heard, id)
 		return nil
 	}
 	m, err := s.SetUp(ctx, "Ada", "ada@example.com", "correct horse")
@@ -117,12 +124,12 @@ func TestSetupMakesTheInstanceAdminAndTellsMemberAdded(t *testing.T) {
 	if !m.InstanceAdmin {
 		t.Error("the Member Setup creates is the Instance admin")
 	}
-	if want := (MemberAdded{MemberID: m.ID, InstanceAdmin: true, Role: domain.RoleAdmin}); len(heard) != 1 || heard[0] != want {
-		t.Errorf("MemberAdded heard %v, want [%v]", heard, want)
+	if len(heard) != 1 || heard[0] != m.ID {
+		t.Errorf("SetUpDone heard %v, want [%d]", heard, m.ID)
 	}
 	s.SetUp(ctx, "Bram", "bram@example.com", "correct horse")
 	if len(heard) != 1 {
-		t.Errorf("a refused Setup told MemberAdded: %v", heard)
+		t.Errorf("a refused Setup told SetUpDone: %v", heard)
 	}
 }
 
@@ -237,4 +244,37 @@ func (m *memMembers) RecoveryCodesLeft(_ context.Context, id uint64) (int, error
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.recoveryCodes[id]), nil
+}
+
+func setUpOwner(t *testing.T) (*Service, domain.Member, *time.Time) {
+	t.Helper()
+	s := newTestService()
+	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	s.Now = func() time.Time { return now }
+	owner, err := s.SetUp(context.Background(), "Ada", "ada@example.com", "correct horse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s, owner, &now
+}
+
+func TestCreateMember(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := setUpOwner(t)
+	m, err := s.CreateMember(ctx, "Dev", " Dev@Example.com", "correct horse")
+	if err != nil || m.InstanceAdmin || m.Email != "dev@example.com" {
+		t.Fatalf("create: %+v %v", m, err)
+	}
+	if _, err := s.CreateMember(ctx, "Ada again", "ADA@example.com", "correct horse"); !errors.Is(err, ErrEmailTaken) {
+		t.Errorf("taken email: %v", err)
+	}
+	if _, err := s.CreateMember(ctx, "Short", "short@example.com", "short"); !errors.Is(err, domain.ErrPasswordTooShort) {
+		t.Errorf("short password: %v", err)
+	}
+	if _, err := s.Login(ctx, "dev@example.com", "correct horse"); err != nil {
+		t.Errorf("new member cannot log in: %v", err)
+	}
+	if found, ok, err := s.MemberByEmail(ctx, "DEV@example.com "); err != nil || !ok || found.ID != m.ID {
+		t.Errorf("by email: %+v %v %v", found, ok, err)
+	}
 }

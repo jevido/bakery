@@ -71,5 +71,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000056CreateFirstGuild{},
 		&migrations.M20260930000057AddGuildToAPITokens{},
 		&migrations.M20260930000058DropRoleFromUsers{},
+		&migrations.M20260930000059AddGuildToInvitations{},
 	}
 }

@@ -62,13 +62,10 @@ Who may run each is in brackets.
 
 ### Domain events
 
-- `MemberAdded { member, instance admin, role }`: a Member was just stored,
-  the Instance admin by Setup or someone who accepted an Invitation (with
-  its Role). Its one subscriber (guilds, with `OnMemberAdded(f)`) is called
-  synchronously and makes the first Guild, or gives the new Member their
-  Membership; its error fails the request, though the Member stays.
-
-`InvitationCreated` moved to guilds with the Invitations.
+- `SetUp { instance admin }`: Setup just stored the Instance admin. Its one
+  subscriber (guilds, with `OnSetUp(f)`) is called synchronously and makes
+  the first Guild; its error fails the request, though the Instance admin
+  stays.
 
 ## Integration
 
@@ -85,22 +82,26 @@ Who may run each is in brackets.
     Services), and answering 403 `Missing required permissions:
     <permission>`; every other context's routes sit behind those.
   - `identity.ActIn(ctx, guild, role)`: guilds tells identity's routes that
-    work inside a Guild (API tokens, Invitations) the Current guild and the
-    Role there.
-  - `identity.APITokenRoutes(r)` and `identity.InvitationRoutes(r)`: those
-    routes, which guilds registers inside its own middlewares.
-  - `identity.Members(ctx, ids)` and `identity.MemberByID(ctx, id)`: name,
-    email, two-factor on or off and the Instance admin flag, for guilds'
-    Members page and `GET /api/me`.
+    work inside a Guild (API tokens) the Current guild and the Role there.
+  - `identity.APITokenRoutes(r)`: those routes, which guilds registers
+    inside its own middlewares.
+  - `identity.Members(ctx, ids)`, `identity.MemberByID(ctx, id)` and
+    `identity.MemberByEmail(ctx, email)`: name, email, two-factor on or off
+    and the Instance admin flag, for guilds' Members page, `GET /api/me` and
+    Invitations.
   - `identity.ResetTwoFactor(ctx, member)` and
     `identity.RevokeAPITokens(ctx, member, guild)`: for guilds, which
     decides who may.
-  - `identity.CreateMember(...)`: for guilds, when an Invitation to a new
-    email is accepted.
-  - `identity.OnMemberAdded(f)`: see Domain events.
+  - `identity.CreateMember(...)` and `identity.SignIn(ctx, member)` (the
+    Session cookie on the response): for guilds, when an Invitation to a
+    new email is accepted.
+  - `identity.SessionMember(ctx)`: who the Session cookie is for, without
+    answering 401 itself, for guilds when an existing Member accepts an
+    Invitation.
+  - `identity.OnSetUp(f)`: see Domain events.
   Other contexts learn nothing else about Members.
-- **Consumes:** nothing. Identity never imports guilds; where a new Member
-  needs a Guild, guilds subscribes to `MemberAdded`, and where identity's
+- **Consumes:** nothing. Identity never imports guilds; where the first
+  Member needs a Guild, guilds subscribes to `SetUp`, and where identity's
   routes need the Current guild, guilds hands it over with `ActIn`.
 
 ## Why it's shaped this way

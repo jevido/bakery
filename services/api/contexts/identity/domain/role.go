@@ -6,7 +6,7 @@ var ErrInvalidRole = errors.New("role must be viewer, member or admin")
 
 // Role is what a Member may do in the Guild a request acts in. Guilds holds
 // the Roles; identity is told the one that counts and uses it only to cap
-// an API token's Permissions and for the Role an Invitation offers.
+// an API token's Permissions.
 type Role string
 
 const (

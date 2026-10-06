@@ -56,7 +56,9 @@ concerned, which the Instance admin always is.
 - `AcceptInvitation(token, name, password)` [anyone with the link]: when the
   email is new, creates the Member (through identity) with a Membership of
   the invited Role and signs them in; when a Member already has the email,
-  that Member, signed in, gets the Membership.
+  that Member, signed in, gets the Membership (no name or password; without
+  their Session it is refused with "sign in as <email> to accept"). Either
+  way the invited Guild becomes the Current guild.
 - `ChangeRole(membership, role)` [admin]: never your own.
 - `RemoveMembership(membership)` [admin]: never your own, never the last
   admin's; the Member keeps their other Memberships, and their API tokens made
@@ -64,10 +66,9 @@ concerned, which the Instance admin always is.
 
 ### Domain events
 
-- `MemberAdded` (identity's, consumed): Setup made the Instance admin, and
-  guilds makes the first Guild, "Default", with their `admin` Membership,
-  unless a Guild exists already; or someone accepted an Invitation, and
-  guilds gives them a Membership with its Role.
+- `SetUp` (identity's, consumed): Setup made the Instance admin, and guilds
+  makes the first Guild, "Default", with their `admin` Membership, unless a
+  Guild exists already.
 
 - `InvitationCreated { guild, email, role, invited by, link, expires }`: an
   Invitation was made. Its one subscriber (notifications, with
@@ -102,15 +103,22 @@ concerned, which the Instance admin always is.
   `GET /api/members`, `PATCH /api/members/{id}` (`{"role"}`),
   `DELETE /api/members/{id}` and `DELETE /api/members/{id}/two-factor`, all
   for admins. On the wire the Instance admin's `role` reads `owner`, with
-  `instance_admin: true`.
+  `instance_admin: true`. The Invitations of the Current guild, for admins:
+  `GET /api/invitations`, `POST /api/invitations` (`{"email", "role"}`) and
+  `DELETE /api/invitations/{id}`; another Guild's id answers 404. Open to
+  anyone with the link: `GET /api/invitations/by-token/{token}` (the
+  Invitation, its `guild` and `existing_member`) and
+  `POST /api/invitations/by-token/{token}/accept`.
 - **Consumes:** identity's `identity.Authenticate(ctx)` (a Principal: the
   Member, whether they are the Instance admin, and for an API token its
-  Guild and Permissions), `identity.ActIn`, identity's API token and
-  Invitation routes (registered behind guilds' middlewares),
-  `identity.Members`, `identity.ResetTwoFactor`,
-  `identity.RevokeAPITokens`, `identity.OnMemberAdded(f)` and
-  `identity.CreateMember(...)` when an Invitation to a new email is
-  accepted. Identity never imports guilds.
+  Guild and Permissions), `identity.ActIn`, identity's API token routes
+  (registered behind guilds' middlewares), `identity.Members`,
+  `identity.MemberByID`, `identity.MemberByEmail`,
+  `identity.ResetTwoFactor`, `identity.RevokeAPITokens`,
+  `identity.OnSetUp(f)`, and for an accepted Invitation
+  `identity.SessionMember(ctx)` (who is signed in, without answering 401),
+  `identity.CreateMember(...)` and `identity.SignIn(ctx, member)`. Identity
+  never imports guilds.
 
 ## Why it's shaped this way
 
@@ -157,13 +165,13 @@ concerned, which the Instance admin always is.
   neutral and renamed on the Guild's General page.
 - **The first Guild is made after Setup, not in its transaction.** Identity
   cannot hand its transaction to a context it does not know, so guilds hears
-  `MemberAdded` once the Instance admin is stored and makes "Default" under a
+  `SetUp` once the Instance admin is stored and makes "Default" under a
   table lock, only when no Guild exists. An installation from before Guilds
   gets "Default" from a migration instead, with every Member's Role (the
   Owner's as admin).
-- **identity's Guild-bound routes are registered by guilds.** API tokens and
-  Invitations are identity's, but only make sense in a Current guild, which
-  identity cannot work out without importing guilds. So identity publishes
+- **identity's Guild-bound routes are registered by guilds.** API tokens are
+  identity's, but only make sense in a Current guild, which identity cannot
+  work out without importing guilds. So identity publishes
   them as route groups, guilds registers them behind its own middlewares
   and hands the Current guild and Role over with `identity.ActIn`. The
   Role that caps a new API token's Permissions is the one guilds found for
@@ -182,3 +190,18 @@ concerned, which the Instance admin always is.
 - **A Guild keeps an admin, checked under a row lock.** Changing or
   removing a Membership locks every Membership of the Guild first, so two
   admins demoting each other at once cannot leave it with none.
+- **Invitations are guilds', and an existing Member accepts one while signed
+  in.** An Invitation brings someone into one Guild, so it belongs where the
+  Memberships are. Coolify's invitee already has an account; The Bakery's
+  may not, so a new email still picks a name and password on the link's
+  page. An email that already has a Member must not be taken over by
+  whoever holds the link, so that Member's own Session is required, and the
+  link's page sends them through sign-in and back.
+- **Accepting is one transaction for the Membership and the Invitation, not
+  for the new Member.** Identity stores a new Member in its own
+  transaction, called while guilds holds the Invitation's row lock; the
+  Membership and "accepted" are written together after it. If that last
+  step fails, the person has an account but no Membership and the link
+  still works: accepting again as the now existing Member (signed in)
+  finishes it. A shared transaction across the two contexts would leak
+  identity's persistence into guilds.

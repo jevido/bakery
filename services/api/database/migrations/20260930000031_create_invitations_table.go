@@ -6,7 +6,8 @@ import (
 	"github.com/jevido/bakery/services/api/app/facades"
 )
 
-// M20260930000031CreateInvitationsTable holds the Invitations (identity):
+// M20260930000031CreateInvitationsTable holds the Invitations (identity, now
+// guilds):
 // only a hash of each link's token, and at most one open Invitation per
 // email.
 type M20260930000031CreateInvitationsTable struct{}

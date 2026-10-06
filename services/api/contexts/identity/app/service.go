@@ -16,6 +16,7 @@ var (
 	ErrSetupDone      = errors.New("setup is already done")
 	ErrBadCredentials = errors.New("email or password is wrong")
 	ErrMemberNotFound = errors.New("member not found")
+	ErrEmailTaken     = errors.New("someone with this email is already a member")
 )
 
 // Members stores the Members.
@@ -26,6 +27,9 @@ type Members interface {
 	// already (ErrSetupDone). The check and the insert are one step, so
 	// racing Setups cannot both win.
 	AddInstanceAdminIfNone(ctx context.Context, m domain.Member) (domain.Member, error)
+	// Add stores a Member who is not the Instance admin; ErrEmailTaken when
+	// the email is.
+	Add(ctx context.Context, m domain.Member) (domain.Member, error)
 	ByEmail(ctx context.Context, email string) (domain.Member, bool, error)
 	ByID(ctx context.Context, id uint64) (domain.Member, bool, error)
 	// ByIDs lists the Members with these ids that exist, in no order.
@@ -64,39 +68,21 @@ type Hasher interface {
 }
 
 type Service struct {
-	members     Members
-	invitations Invitations
-	apiTokens   APITokens
-	hasher      Hasher
+	members   Members
+	apiTokens APITokens
+	hasher    Hasher
 	// Now is the clock; time.Now unless a test sets it.
 	Now func() time.Time
 	// Random is where secrets come from; crypto/rand unless a test sets it.
 	Random io.Reader
-	// MemberAdded, when set, hears of each new Member right after they were
-	// stored: the Instance admin after Setup (guilds makes the first Guild),
-	// or someone who accepted an Invitation, with its Role (guilds gives
-	// them a Membership). An error fails the request, though the Member
-	// stays.
-	MemberAdded func(ctx context.Context, e MemberAdded) error
+	// SetUpDone, when set, hears of the Instance admin right after Setup
+	// stored them (guilds makes the first Guild). An error fails the
+	// request, though the Instance admin stays.
+	SetUpDone func(ctx context.Context, instanceAdminID uint64) error
 }
 
-// MemberAdded is a Member just stored.
-type MemberAdded struct {
-	MemberID      uint64
-	InstanceAdmin bool
-	// Role is the one an Invitation offered; admin for the Instance admin.
-	Role domain.Role
-}
-
-func (s *Service) memberAdded(ctx context.Context, e MemberAdded) error {
-	if s.MemberAdded == nil {
-		return nil
-	}
-	return s.MemberAdded(ctx, e)
-}
-
-func NewService(members Members, invitations Invitations, apiTokens APITokens, hasher Hasher) *Service {
-	return &Service{members: members, invitations: invitations, apiTokens: apiTokens, hasher: hasher, Now: time.Now, Random: rand.Reader}
+func NewService(members Members, apiTokens APITokens, hasher Hasher) *Service {
+	return &Service{members: members, apiTokens: apiTokens, hasher: hasher, Now: time.Now, Random: rand.Reader}
 }
 
 func (s *Service) now() time.Time { return s.Now() }
@@ -107,7 +93,7 @@ func (s *Service) SetupNeeded(ctx context.Context) (bool, error) {
 	return !exists, err
 }
 
-// SetUp creates the Instance admin, once, and then lets MemberAdded make the
+// SetUp creates the Instance admin, once, and then lets SetUpDone make the
 // first Guild.
 func (s *Service) SetUp(ctx context.Context, name, email, password string) (domain.Member, error) {
 	admin, err := domain.NewMember(name, email, password)
@@ -128,7 +114,29 @@ func (s *Service) SetUp(ctx context.Context, name, email, password string) (doma
 	if err != nil {
 		return domain.Member{}, err
 	}
-	return admin, s.memberAdded(ctx, MemberAdded{MemberID: admin.ID, InstanceAdmin: true, Role: domain.RoleAdmin})
+	if s.SetUpDone != nil {
+		err = s.SetUpDone(ctx, admin.ID)
+	}
+	return admin, err
+}
+
+// CreateMember stores a new Member, who is not the Instance admin, with the
+// name and password they picked: someone accepting an Invitation (guilds
+// gives them the Membership).
+func (s *Service) CreateMember(ctx context.Context, name, email, password string) (domain.Member, error) {
+	m, err := domain.NewMember(name, email, password)
+	if err != nil {
+		return domain.Member{}, err
+	}
+	if m.PasswordHash, err = s.hasher.Make(password); err != nil {
+		return domain.Member{}, err
+	}
+	return s.members.Add(ctx, m)
+}
+
+// MemberByEmail finds a Member by email, compared as stored.
+func (s *Service) MemberByEmail(ctx context.Context, email string) (domain.Member, bool, error) {
+	return s.members.ByEmail(ctx, domain.NormalizeEmail(email))
 }
 
 // Login checks the credentials. A wrong email and a wrong password give the

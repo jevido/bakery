@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"strconv"
 	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -145,4 +146,9 @@ func (c *Controller) APITokenPermissions(ctx contractshttp.Context) contractshtt
 		out[i] = contractshttp.Json{"name": p, "allowed": role.MayGrant(p)}
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"permissions": out})
+}
+
+func routeID(ctx contractshttp.Context) (uint64, bool) {
+	v, err := strconv.ParseUint(ctx.Request().Route("id"), 10, 64)
+	return v, err == nil
 }

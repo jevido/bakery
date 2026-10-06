@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"github.com/jevido/bakery/services/api/app/secret"
 	"slices"
 	"strings"
 	"time"
@@ -62,12 +63,12 @@ func (s *Service) CreateAPIToken(ctx context.Context, memberID, guildID uint64, 
 	if err != nil {
 		return domain.APIToken{}, "", err
 	}
-	secret, err := newSecret()
+	raw, err := secret.New()
 	if err != nil {
 		return domain.APIToken{}, "", err
 	}
-	value := domain.APITokenPrefix + secret
-	t, err = s.apiTokens.Add(ctx, t, hashSecret(value))
+	value := domain.APITokenPrefix + raw
+	t, err = s.apiTokens.Add(ctx, t, secret.Hash(value))
 	return t, value, err
 }
 
@@ -98,7 +99,7 @@ func (s *Service) Authenticate(ctx context.Context, value string) (domain.Member
 	if !strings.HasPrefix(value, domain.APITokenPrefix) {
 		return domain.Member{}, domain.APIToken{}, ErrInvalidAPIToken
 	}
-	t, found, err := s.apiTokens.ByHash(ctx, hashSecret(value))
+	t, found, err := s.apiTokens.ByHash(ctx, secret.Hash(value))
 	if err != nil {
 		return domain.Member{}, domain.APIToken{}, err
 	}

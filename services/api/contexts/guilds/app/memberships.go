@@ -154,25 +154,3 @@ func (s *Service) ResetTwoFactor(ctx context.Context, guildID, actorID uint64, a
 	}
 	return s.members.ResetTwoFactor(ctx, memberID)
 }
-
-// MemberAdded answers identity's MemberAdded: the Instance admin Setup made
-// gets the first Guild; someone who accepted an Invitation gets a
-// Membership with its Role in the first Guild (Invitations name their
-// Guild once guilds owns them).
-func (s *Service) MemberAdded(ctx context.Context, memberID uint64, instanceAdmin bool, role string) error {
-	if instanceAdmin {
-		return s.MakeFirstGuild(ctx, memberID)
-	}
-	r, err := domain.ParseRole(role)
-	if err != nil {
-		return err
-	}
-	all, err := s.guilds.All(ctx)
-	if err != nil {
-		return err
-	}
-	if len(all) == 0 {
-		return errors.New("there is no guild to join")
-	}
-	return s.memberships.Add(ctx, domain.Membership{GuildID: all[0].ID, MemberID: memberID, Role: r})
-}

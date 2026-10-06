@@ -5,7 +5,7 @@
   // buttons.
   import { api, ApiError } from '../lib/api'
   import Icon from '../lib/Icon.svelte'
-  import { go } from '../lib/router.svelte'
+  import { go, takeReturnAfterLogin } from '../lib/router.svelte'
   import { session, type Account } from '../lib/session.svelte'
   import AuthAlert from '../lib/ui/AuthAlert.svelte'
   import AuthShell from '../lib/ui/AuthShell.svelte'
@@ -81,9 +81,9 @@
     message = ''
   }
 
-  function signedIn(member: Account) {
-    session.signedIn(member)
-    go('/')
+  async function signedIn(member: Account) {
+    await session.signedIn(member)
+    go(takeReturnAfterLogin() ?? '/')
   }
 
   function focus(el: HTMLElement) {

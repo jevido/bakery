@@ -259,10 +259,10 @@ say "An Invitation is emailed with a link that works"
 INVITEE="dev-$RUN@example.com"
 OUT=$(bakery POST /api/invitations "{\"email\":\"$INVITEE\",\"role\":\"member\"}")
 [ "$(json "d['emailed']" <<<"$OUT")" = True ] || fail "not emailed: $OUT"
-mails 1 "$INVITEE" "invited you to The Bakery"
+mails 1 "$INVITEE" "invited you to Default on The Bakery"
 MESSAGE=$(curl -s "$MAILPIT/api/v1/messages?limit=500" | json "[m['ID'] for m in d['messages'] if any(t['Address']=='$INVITEE' for t in m['To'])][0]")
-[ "$(curl -s "$MAILPIT/api/v1/message/$MESSAGE" | json "'invited you to The Bakery as member' in d['Text'] and d['From']['Name'] == 'Ops $RUN'")" = True ] ||
-	fail "the invitation email does not read The Bakery"
+[ "$(curl -s "$MAILPIT/api/v1/message/$MESSAGE" | json "'invited you to Default on The Bakery as member' in d['Text'] and d['From']['Name'] == 'Ops $RUN'")" = True ] ||
+	fail "the invitation email does not name the guild"
 TOKEN=$(curl -s "$MAILPIT/api/v1/message/$MESSAGE" | json "__import__('re').search(r'#/invite/([A-Za-z0-9]+)', d['Text']).group(1)")
 [ "$(curl -s -o /dev/null -w '%{http_code}' "$API/api/invitations/by-token/$TOKEN")" = 200 ] || fail "the emailed link does not open"
 [ "$(mail_count "$OPS" "invited you")" = 0 ] ||

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End to end: Members, Roles, Invitations and API tokens. The Owner invites
-# a member and a viewer, each Role is held to what it may do, API tokens act
+# a member and a viewer (and later someone who already has an account), each Role is held to what it may do, API tokens act
 # as their Member within their Permissions (read, read:sensitive, write,
 # deploy, root) until they expire, and a Member removed from the Guild keeps
 # their account but their Session reaches nothing and their tokens stop
@@ -69,6 +69,8 @@ M_TOKEN=$(invite "member-$RUN@example.com" member)
 V_TOKEN=$(invite "viewer-$RUN@example.com" viewer)
 expect "the link shows who is invited" 200 "$(as "$WORK/anon" GET "/api/invitations/by-token/$M_TOKEN")"
 expect "the link names the Role" member "$(body "d['invitation']['role']")"
+expect "the link names the guild" "Default" "$(body "d['guild']['name']")"
+expect "a new email has no Member yet" False "$(body "d['existing_member']")"
 expect "member accepts" 201 "$(join "$M_TOKEN" "$MEMBER" Member)"
 MEMBER_IDS+=("$(body "d['member']['id']")")
 expect "viewer accepts" 201 "$(join "$V_TOKEN" "$VIEWER" Viewer)"
@@ -189,5 +191,17 @@ expect "the removed member's Session reaches nothing" 403 "$(as "$MEMBER" GET /a
 expect "because they are in no guild" "you are in no guild" "$(body "d['message']")"
 expect "they keep their account" "None []" "$(as "$MEMBER" GET /api/me >/dev/null; body "d['guild'], d['guilds']")"
 expect "the removed member's tokens stop working" 401 "$(with "$READ" GET /api/projects)"
+
+say "Inviting someone who already has an account"
+expect "inviting a Member of the guild is refused" 422 "$(as "$JAR" POST /api/invitations "{\"email\":\"viewer-$RUN@example.com\",\"role\":\"member\"}")"
+BACK=$(invite "member-$RUN@example.com" viewer)
+expect "the link knows the email has a Member" True "$(as "$WORK/anon" GET "/api/invitations/by-token/$BACK" >/dev/null; body "d['existing_member']")"
+expect "accepting without their Session is refused" 401 "$(join "$BACK" "$WORK/anon" Nobody)"
+expect "it says whom to sign in as" "sign in as member-$RUN@example.com to accept" "$(body "d['message']")"
+expect "accepting as someone else is refused" 403 "$(join "$BACK" "$VIEWER" Viewer)"
+expect "they accept with their Session" 200 "$(as "$MEMBER" POST "/api/invitations/by-token/$BACK/accept" '{}')"
+expect "they are back, with the invited Role" "Default viewer" "$(as "$MEMBER" GET /api/me >/dev/null; body "d['guild']['name'], d['role']")"
+expect "and list the guild" "['Default']" "$(body "[g['name'] for g in d['guilds']]")"
+expect "the link works once" 410 "$(as "$MEMBER" POST "/api/invitations/by-token/$BACK/accept" '{}')"
 
 say "PASS"

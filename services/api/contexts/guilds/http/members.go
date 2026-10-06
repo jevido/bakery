@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"errors"
 	"strconv"
 
@@ -14,6 +15,10 @@ import (
 
 type Controller struct {
 	service *app.Service
+	// Invited, when set, hears of each new Invitation with its Guild, the
+	// inviting Member's name and its link, and answers whether it emailed
+	// the link.
+	Invited func(ctx context.Context, inv domain.Invitation, guild domain.Guild, invitedBy, link string) (emailed bool, err error)
 }
 
 func NewController(service *app.Service) *Controller {

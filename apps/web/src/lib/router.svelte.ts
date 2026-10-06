@@ -318,6 +318,21 @@ export function go(path: string) {
   location.hash = path
 }
 
+// Where Login goes after a successful sign-in, for a page that sent someone
+// there to come back (an Invitation for an existing Member).
+const returnKey = 'bakery.return-after-login'
+
+export function returnAfterLogin(path: string) {
+  sessionStorage.setItem(returnKey, path)
+}
+
+/** The path returnAfterLogin stored, once; null when there is none. */
+export function takeReturnAfterLogin(): string | null {
+  const path = sessionStorage.getItem(returnKey)
+  sessionStorage.removeItem(returnKey)
+  return path
+}
+
 export function href(path: string): string {
   return '#' + path
 }

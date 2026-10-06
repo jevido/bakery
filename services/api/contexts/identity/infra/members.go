@@ -88,6 +88,17 @@ func (o Members) AddInstanceAdminIfNone(ctx context.Context, m domain.Member) (d
 	return rec.toDomain(), nil
 }
 
+func (o Members) Add(ctx context.Context, m domain.Member) (domain.Member, error) {
+	rec := userRecord{Name: m.Name, Email: m.Email, Password: m.PasswordHash}
+	if err := o.query(ctx).Create(&rec); err != nil {
+		if isUniqueViolation(err) {
+			return domain.Member{}, app.ErrEmailTaken
+		}
+		return domain.Member{}, err
+	}
+	return rec.toDomain(), nil
+}
+
 func (o Members) ByEmail(ctx context.Context, email string) (domain.Member, bool, error) {
 	return first(o.query(ctx).Where("email", email))
 }

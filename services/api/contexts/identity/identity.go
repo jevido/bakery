@@ -1,7 +1,7 @@
 // Package identity is what other contexts and the router may use from the
 // identity context: Authenticate and the Principal it finds, the Members
-// guilds lists, the routes, the MemberAdded and InvitationCreated events
-// and the artisan Commands. Nothing else in contexts/identity is for
+// guilds lists and the new ones it creates for Invitations, SignIn, the
+// routes, the SetUp event and the artisan Commands. Nothing else in contexts/identity is for
 // outside use.
 package identity
 
@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	contractsconsole "github.com/goravel/framework/contracts/console"
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -25,16 +24,12 @@ import (
 )
 
 var service = func() *app.Service {
-	s := app.NewService(infra.Members{}, infra.Invitations{}, infra.APITokens{}, infra.Hasher{})
-	s.MemberAdded = publishMemberAdded
+	s := app.NewService(infra.Members{}, infra.APITokens{}, infra.Hasher{})
+	s.SetUpDone = publishSetUp
 	return s
 }()
 
-var controller = func() *identityhttp.Controller {
-	c := identityhttp.NewController(service)
-	c.Invited = publishInvitation
-	return c
-}()
+var controller = identityhttp.NewController(service)
 
 // Permission is what an API token may do: Coolify's abilities.
 type Permission string
@@ -95,8 +90,8 @@ func Authenticate(ctx contractshttp.Context) (Principal, bool) {
 	return out, true
 }
 
-// ActIn tells identity's routes served inside a Guild (API tokens,
-// Invitations) which Guild the request acts in and the Member's Role
+// ActIn tells identity's routes served inside a Guild (API tokens) which
+// Guild the request acts in and the Member's Role
 // there ("viewer", "member" or "admin").
 func ActIn(ctx contractshttp.Context, guildID uint64, role string) {
 	identityhttp.ActIn(ctx, guildID, domain.Role(role))
@@ -141,6 +136,51 @@ func MemberByID(ctx context.Context, id uint64) (Member, bool, error) {
 	return ms[0], true, nil
 }
 
+// MemberByEmail is the Member with this email (compared as identity stores
+// emails); false when there is none.
+func MemberByEmail(ctx context.Context, email string) (Member, bool, error) {
+	m, found, err := service.MemberByEmail(ctx, email)
+	if err != nil || !found {
+		return Member{}, false, err
+	}
+	return MemberByID(ctx, m.ID)
+}
+
+// The reasons CreateMember refuses a new Member.
+var (
+	ErrInvalidName      = domain.ErrInvalidName
+	ErrInvalidEmail     = domain.ErrInvalidEmail
+	ErrPasswordTooShort = domain.ErrPasswordTooShort
+	ErrEmailTaken       = app.ErrEmailTaken
+)
+
+// CreateMember stores a new Member (not the Instance admin) with the name
+// and password they picked, for someone accepting an Invitation; the
+// Membership is the caller's.
+func CreateMember(ctx context.Context, name, email, password string) (Member, error) {
+	m, err := service.CreateMember(ctx, name, email, password)
+	if err != nil {
+		return Member{}, err
+	}
+	return Member{ID: m.ID, Name: m.Name, Email: m.Email}, nil
+}
+
+// SignIn starts a Session for the Member: the response carries its cookie.
+func SignIn(ctx contractshttp.Context, memberID uint64) error {
+	return identityhttp.SignIn(ctx, memberID)
+}
+
+// SessionMember is the Member whose Session the request carries, answering
+// nothing itself; false without a Session that still counts. API tokens
+// are not looked at.
+func SessionMember(ctx contractshttp.Context) (Member, bool, error) {
+	m, found, err := identityhttp.SessionMember(service, ctx)
+	if err != nil || !found {
+		return Member{}, false, err
+	}
+	return Member{ID: m.ID, Name: m.Name, Email: m.Email, TwoFactor: m.TwoFactor.On(), InstanceAdmin: m.InstanceAdmin}, true, nil
+}
+
 // ErrTwoFactorOff is ResetTwoFactor's answer for a Member whose two-factor
 // is off.
 var ErrTwoFactorOff = app.ErrTwoFactorOff
@@ -160,8 +200,8 @@ func RevokeAPITokens(ctx context.Context, memberID, guildID uint64) error {
 	return service.RevokeAPITokensIn(ctx, memberID, guildID)
 }
 
-// Routes registers setup, login, logout, an Invitation link (all open) and
-// a Member's own Profile and two-factor (a Session only).
+// Routes registers setup, login, logout (all open) and a Member's own
+// Profile and two-factor (a Session only).
 func Routes(r route.Router) {
 	c := controller
 	r.Get("/api/setup", c.SetupStatus)
@@ -169,8 +209,6 @@ func Routes(r route.Router) {
 	r.Post("/api/login", c.Login)
 	r.Post("/api/login/two-factor", c.LoginTwoFactor)
 	r.Post("/api/logout", c.Logout)
-	r.Get("/api/invitations/by-token/{token}", c.InvitationByToken)
-	r.Post("/api/invitations/by-token/{token}/accept", c.AcceptInvitation)
 	r.Middleware(identityhttp.Auth{Service: service}).Group(func(r route.Router) {
 		r.Patch("/api/me", c.ChangeName)
 		r.Post("/api/me/password", c.ChangePassword)
@@ -194,87 +232,33 @@ func APITokenRoutes(r route.Router) {
 	r.Delete("/api/api-tokens/{id}", c.RevokeAPIToken)
 }
 
-// InvitationRoutes registers listing, making and revoking Invitations. The
-// caller wraps them in a middleware that lets only admins through (guilds).
-func InvitationRoutes(r route.Router) {
-	c := controller
-	r.Get("/api/invitations", c.Invitations)
-	r.Post("/api/invitations", c.Invite)
-	r.Delete("/api/invitations/{id}", c.RevokeInvitation)
-}
-
 // Commands are identity's artisan commands.
 func Commands() []contractsconsole.Command {
 	return []contractsconsole.Command{identityconsole.ResetTwoFactor{Service: service}}
 }
 
-// MemberAdded is a Member just stored: the Instance admin by Setup, or
-// someone who accepted an Invitation.
-type MemberAdded struct {
-	MemberID      uint64
-	InstanceAdmin bool
-	// Role is the Invitation's ("admin", "member" or "viewer"); admin for
-	// the Instance admin.
-	Role string
-}
-
 var (
-	addedMu sync.Mutex
-	onAdded func(ctx context.Context, e MemberAdded) error
+	setUpMu sync.Mutex
+	onSetUp func(ctx context.Context, instanceAdminID uint64) error
 )
 
-// OnMemberAdded registers the one subscriber of MemberAdded (guilds: the
-// first Guild after Setup, a Membership after an accepted Invitation). Its
-// error fails the request; the Member stays.
-func OnMemberAdded(f func(ctx context.Context, e MemberAdded) error) {
-	addedMu.Lock()
-	defer addedMu.Unlock()
-	onAdded = f
+// OnSetUp registers the one subscriber of Setup having stored the Instance
+// admin (guilds: the first Guild). Its error fails the request; the
+// Instance admin stays.
+func OnSetUp(f func(ctx context.Context, instanceAdminID uint64) error) {
+	setUpMu.Lock()
+	defer setUpMu.Unlock()
+	onSetUp = f
 }
 
-func publishMemberAdded(ctx context.Context, e app.MemberAdded) error {
-	addedMu.Lock()
-	f := onAdded
-	addedMu.Unlock()
+func publishSetUp(ctx context.Context, instanceAdminID uint64) error {
+	setUpMu.Lock()
+	f := onSetUp
+	setUpMu.Unlock()
 	if f == nil {
 		return nil
 	}
-	return f(ctx, MemberAdded{MemberID: e.MemberID, InstanceAdmin: e.InstanceAdmin, Role: string(e.Role)})
-}
-
-// InvitationCreated is an Invitation just made, with its link: the only
-// moment the link is known.
-type InvitationCreated struct {
-	Email string
-	// Role is "admin", "member" or "viewer".
-	Role      string
-	InvitedBy string
-	Link      string
-	ExpiresAt time.Time
-}
-
-var (
-	invitedMu sync.Mutex
-	onInvited func(ctx context.Context, e InvitationCreated) (emailed bool, err error)
-)
-
-// OnInvitationCreated registers the one subscriber of InvitationCreated.
-// It is called while the invite request waits, and answers whether it
-// emailed the link (false without an error: there is no way to email).
-func OnInvitationCreated(f func(ctx context.Context, e InvitationCreated) (emailed bool, err error)) {
-	invitedMu.Lock()
-	defer invitedMu.Unlock()
-	onInvited = f
-}
-
-func publishInvitation(ctx context.Context, inv domain.Invitation, invitedBy, link string) (bool, error) {
-	invitedMu.Lock()
-	f := onInvited
-	invitedMu.Unlock()
-	if f == nil {
-		return false, nil
-	}
-	return f(ctx, InvitationCreated{Email: inv.Email, Role: string(inv.Role), InvitedBy: invitedBy, Link: link, ExpiresAt: inv.ExpiresAt})
+	return f(ctx, instanceAdminID)
 }
 
 func first(instanceAdmin bool) int {
