@@ -9,7 +9,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 
 	"github.com/jevido/bakery/services/api/app/respond"
-	"github.com/jevido/bakery/services/api/contexts/identity"
+	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/services/app"
 	"github.com/jevido/bakery/services/api/contexts/services/domain"
 )
@@ -161,7 +161,7 @@ func one(ctx contractshttp.Context, status int, v app.View, err error) contracts
 		return fail(ctx, err)
 	}
 	out := toJSON(v, true)
-	if !identity.CanSeeSecrets(ctx) && out.Variables != nil {
+	if !guilds.CanSeeSecrets(ctx) && out.Variables != nil {
 		for i := range *out.Variables {
 			(*out.Variables)[i].Value, (*out.Variables)[i].Hidden = "", true
 		}

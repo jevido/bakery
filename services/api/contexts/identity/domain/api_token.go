@@ -21,11 +21,11 @@ var (
 )
 
 // Permission is what a request made with an API token may do, in Coolify's
-// abilities. The Member's current Role caps it as well.
+// abilities. The Member's current Role in the token's Guild caps it as well.
 type Permission string
 
 const (
-	// PermissionRoot allows everything the Member's Role does.
+	// PermissionRoot allows everything the Member's Role in the Guild does.
 	PermissionRoot Permission = "root"
 	// PermissionWrite allows changes (any method but GET and HEAD) other
 	// than deploy actions.
@@ -85,11 +85,13 @@ func NormalisePermissions(permissions []Permission) ([]Permission, error) {
 	return slices.Compact(out), nil
 }
 
-// APIToken is a named secret of one Member for scripts. Its value is never
+// APIToken is a named secret of one Member for scripts, acting in the Guild
+// it was made in. Its value is never
 // part of it: only a hash is stored, and the value is shown once.
 type APIToken struct {
 	ID          uint64
 	MemberID    uint64
+	GuildID     uint64
 	Name        string
 	Permissions []Permission
 	// ExpiresAt is nil for a token that never expires.
@@ -98,9 +100,9 @@ type APIToken struct {
 	CreatedAt  time.Time
 }
 
-// NewAPIToken validates a new API token of a Member with memberRole, which
-// caps the Permissions it may carry.
-func NewAPIToken(memberID uint64, memberRole Role, name string, permissions []Permission, expiresAt *time.Time, now time.Time) (APIToken, error) {
+// NewAPIToken validates a new API token of a Member with memberRole in the
+// Guild, which caps the Permissions it may carry.
+func NewAPIToken(memberID, guildID uint64, memberRole Role, name string, permissions []Permission, expiresAt *time.Time, now time.Time) (APIToken, error) {
 	name = strings.TrimSpace(name)
 	if n := utf8.RuneCountInString(name); n < 3 || n > 255 {
 		return APIToken{}, ErrInvalidTokenName
@@ -117,7 +119,7 @@ func NewAPIToken(memberID uint64, memberRole Role, name string, permissions []Pe
 	if expiresAt != nil && !expiresAt.After(now) {
 		return APIToken{}, ErrTokenExpiryPassed
 	}
-	return APIToken{MemberID: memberID, Name: name, Permissions: permissions, ExpiresAt: expiresAt, CreatedAt: now}, nil
+	return APIToken{MemberID: memberID, GuildID: guildID, Name: name, Permissions: permissions, ExpiresAt: expiresAt, CreatedAt: now}, nil
 }
 
 // Expired reports whether the token no longer authenticates at now.

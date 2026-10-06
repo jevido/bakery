@@ -15,7 +15,7 @@ import (
 
 	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/app/podman"
-	"github.com/jevido/bakery/services/api/contexts/identity"
+	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/servers/app"
 	servershttp "github.com/jevido/bakery/services/api/contexts/servers/http"
 	"github.com/jevido/bakery/services/api/contexts/servers/infra"
@@ -124,18 +124,18 @@ func OnCleanup(retention func(ctx context.Context, serverID uint64) (int64, erro
 	svc().Retention = retention
 }
 
-// Routes registers the servers API behind identity.Auth. Every Member may
+// Routes registers the servers API behind guilds.Auth. Every Member may
 // list the Servers (to pick a Target server) and see their usage; only
 // admins change them.
 func Routes(r route.Router) {
 	c := servershttp.NewController(svc())
-	r.Middleware(identity.Auth).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth).Group(func(r route.Router) {
 		r.Get("/api/servers", c.List)
 		r.Get("/api/servers/{id}", c.Show)
 		r.Get("/api/servers/{id}/metrics", c.Metrics)
 		r.Get("/api/servers/{id}/details", c.Details)
 	})
-	r.Middleware(identity.Auth, identity.Admin).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, guilds.Admin).Group(func(r route.Router) {
 		r.Post("/api/servers", c.Create)
 		r.Patch("/api/servers/{id}", c.Update)
 		r.Delete("/api/servers/{id}", c.Delete)
@@ -145,10 +145,10 @@ func Routes(r route.Router) {
 
 // LongRoutes registers Validate and Clean up, which talk to a Server for
 // longer than the request timeout allows (a Validation up to 30 s, a
-// Cleanup minutes), behind identity.Auth and identity.Admin.
+// Cleanup minutes), behind guilds.Auth and guilds.Admin.
 func LongRoutes(r route.Router) {
 	c := servershttp.NewController(svc())
-	r.Middleware(identity.Auth, identity.Admin).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, guilds.Admin).Group(func(r route.Router) {
 		r.Post("/api/servers/{id}/validate", c.Validate)
 		r.Post("/api/servers/{id}/cleanup", c.CleanUp)
 	})

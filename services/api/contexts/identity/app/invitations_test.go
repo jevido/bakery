@@ -105,7 +105,7 @@ func setUpOwner(t *testing.T) (*Service, domain.Member, *time.Time) {
 	s := newTestService()
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	s.Now = func() time.Time { return now }
-	owner, err := s.SetupOwner(context.Background(), "Ada", "ada@example.com", "correct horse")
+	owner, err := s.SetUp(context.Background(), "Ada", "ada@example.com", "correct horse")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,17 +126,25 @@ func TestInviteAndAccept(t *testing.T) {
 	if _, _, err := s.Invite(ctx, owner.ID, "ada@example.com", domain.RoleViewer); !errors.Is(err, ErrAlreadyMember) {
 		t.Errorf("inviting a member: %v", err)
 	}
-	if _, _, err := s.Invite(ctx, owner.ID, "x@example.com", domain.RoleOwner); !errors.Is(err, domain.ErrInvitationRole) {
+	if _, _, err := s.Invite(ctx, owner.ID, "x@example.com", domain.Role("owner")); !errors.Is(err, domain.ErrInvitationRole) {
 		t.Errorf("inviting an owner: %v", err)
 	}
 	if _, err := s.InvitationByToken(ctx, "wrong"); !errors.Is(err, ErrInvitationNotFound) {
 		t.Errorf("unknown token: %v", err)
 	}
 
+	var heard []MemberAdded
+	s.MemberAdded = func(_ context.Context, e MemberAdded) error {
+		heard = append(heard, e)
+		return nil
+	}
 	*now = now.Add(time.Hour)
 	m, err := s.AcceptInvitation(ctx, token, "Dev", "correct horse")
-	if err != nil || m.Role != domain.RoleMember || m.Email != "dev@example.com" {
+	if err != nil || m.InstanceAdmin || m.Email != "dev@example.com" {
 		t.Fatalf("accept: %+v %v", m, err)
+	}
+	if want := (MemberAdded{MemberID: m.ID, Role: domain.RoleMember}); len(heard) != 1 || heard[0] != want {
+		t.Errorf("MemberAdded heard %v, want [%v]", heard, want)
 	}
 	if _, err := s.AcceptInvitation(ctx, token, "Dev", "correct horse"); !errors.Is(err, domain.ErrInvitationUsed) {
 		t.Errorf("second accept: %v", err)
@@ -163,39 +171,5 @@ func TestInvitationExpiresAndRevokes(t *testing.T) {
 	}
 	if open, _ := s.OpenInvitations(ctx); len(open) != 0 {
 		t.Errorf("open invitations: %v", open)
-	}
-}
-
-func TestChangeRoleAndRemove(t *testing.T) {
-	ctx := context.Background()
-	s, owner, _ := setUpOwner(t)
-	_, token, _ := s.Invite(ctx, owner.ID, "admin@example.com", domain.RoleAdmin)
-	admin, _ := s.AcceptInvitation(ctx, token, "Admin", "correct horse")
-	_, token, _ = s.Invite(ctx, owner.ID, "dev@example.com", domain.RoleViewer)
-	dev, _ := s.AcceptInvitation(ctx, token, "Dev", "correct horse")
-
-	if m, err := s.ChangeRole(ctx, admin.ID, dev.ID, domain.RoleMember); err != nil || m.Role != domain.RoleMember {
-		t.Fatalf("admin promotes viewer: %+v %v", m, err)
-	}
-	if _, err := s.ChangeRole(ctx, admin.ID, owner.ID, domain.RoleAdmin); !errors.Is(err, domain.ErrOwnerIsFixed) {
-		t.Errorf("admin demotes owner: %v", err)
-	}
-	if _, err := s.ChangeRole(ctx, admin.ID, admin.ID, domain.RoleMember); !errors.Is(err, domain.ErrSelf) {
-		t.Errorf("admin demotes self: %v", err)
-	}
-	if _, err := s.ChangeRole(ctx, owner.ID, dev.ID, domain.RoleOwner); !errors.Is(err, domain.ErrGrantOwner) {
-		t.Errorf("make owner: %v", err)
-	}
-	if _, err := s.ChangeRole(ctx, dev.ID, admin.ID, domain.RoleViewer); !errors.Is(err, domain.ErrNotAdmin) {
-		t.Errorf("member demotes admin: %v", err)
-	}
-	if err := s.RemoveMember(ctx, owner.ID, owner.ID); !errors.Is(err, domain.ErrOwnerIsFixed) {
-		t.Errorf("owner removes self: %v", err)
-	}
-	if err := s.RemoveMember(ctx, admin.ID, dev.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.CurrentMember(ctx, dev.ID); !errors.Is(err, ErrMemberNotFound) {
-		t.Errorf("removed member still found: %v", err)
 	}
 }

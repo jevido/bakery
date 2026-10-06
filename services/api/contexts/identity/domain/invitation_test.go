@@ -12,7 +12,7 @@ func TestNewInvitation(t *testing.T) {
 	if err != nil || i.Email != "dev@example.com" || !i.ExpiresAt.Equal(now.Add(7*24*time.Hour)) {
 		t.Fatalf("got %+v, %v", i, err)
 	}
-	if _, err := NewInvitation("dev@example.com", RoleOwner, 1, now); !errors.Is(err, ErrInvitationRole) {
+	if _, err := NewInvitation("dev@example.com", Role("owner"), 1, now); !errors.Is(err, ErrInvitationRole) {
 		t.Errorf("owner role: %v", err)
 	}
 	if _, err := NewInvitation("nope", RoleMember, 1, now); !errors.Is(err, ErrInvalidEmail) {
@@ -37,33 +37,5 @@ func TestAcceptInvitation(t *testing.T) {
 	revoked.RevokedAt = &now
 	if revoked.Open(now) {
 		t.Error("revoked invitation is open")
-	}
-}
-
-func TestCanManage(t *testing.T) {
-	owner := Member{ID: 1, Role: RoleOwner}
-	admin := Member{ID: 2, Role: RoleAdmin}
-	member := Member{ID: 3, Role: RoleMember}
-	cases := []struct {
-		actor, target Member
-		want          error
-	}{
-		{owner, admin, nil},
-		{admin, member, nil},
-		{admin, owner, ErrOwnerIsFixed},
-		{owner, owner, ErrOwnerIsFixed},
-		{admin, admin, ErrSelf},
-		{member, Member{ID: 4, Role: RoleViewer}, ErrNotAdmin},
-	}
-	for _, c := range cases {
-		if err := CanManage(c.actor, c.target); !errors.Is(err, c.want) {
-			t.Errorf("%s manages %s: %v, want %v", c.actor.Role, c.target.Role, err, c.want)
-		}
-	}
-	if err := CanGrant(admin, RoleOwner); !errors.Is(err, ErrGrantOwner) {
-		t.Errorf("grant owner: %v", err)
-	}
-	if err := CanGrant(admin, RoleAdmin); err != nil {
-		t.Errorf("grant admin: %v", err)
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/jevido/bakery/services/api/app/respond"
 	"github.com/jevido/bakery/services/api/contexts/databases/app"
 	"github.com/jevido/bakery/services/api/contexts/databases/domain"
-	"github.com/jevido/bakery/services/api/contexts/identity"
+	"github.com/jevido/bakery/services/api/contexts/guilds"
 )
 
 type Controller struct {
@@ -172,7 +172,7 @@ func one(ctx contractshttp.Context, status int, v app.View, err error) contracts
 		return fail(ctx, err)
 	}
 	out := toJSON(v, true)
-	if !identity.CanSeeSecrets(ctx) {
+	if !guilds.CanSeeSecrets(ctx) {
 		out.Credentials, out.InternalURL, out.PublicURL = nil, "", nil
 		out.SecretsHidden = true
 	}

@@ -12,7 +12,7 @@ import (
 	"github.com/goravel/framework/contracts/route"
 
 	"github.com/jevido/bakery/services/api/app/facades"
-	"github.com/jevido/bakery/services/api/contexts/identity"
+	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/notifications/app"
 	notificationshttp "github.com/jevido/bakery/services/api/contexts/notifications/http"
 	"github.com/jevido/bakery/services/api/contexts/notifications/infra"
@@ -41,7 +41,7 @@ func svc() *app.Service {
 // hold credentials of other systems.
 func Routes(r route.Router) {
 	c := notificationshttp.NewController(svc())
-	r.Middleware(identity.Auth, identity.Admin).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, guilds.Admin).Group(func(r route.Router) {
 		r.Get("/api/notification-event-kinds", c.EventKinds)
 		r.Get("/api/notification-channels", c.List)
 		r.Post("/api/notification-channels", c.Create)

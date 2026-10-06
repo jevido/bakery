@@ -3,7 +3,7 @@
   // the Owner. "Password again" is checked here; the API takes one password.
   import { api, ApiError } from '../lib/api'
   import Icon from '../lib/Icon.svelte'
-  import { session, type Member } from '../lib/session.svelte'
+  import { session, type Account } from '../lib/session.svelte'
   import AuthAlert from '../lib/ui/AuthAlert.svelte'
   import AuthShell from '../lib/ui/AuthShell.svelte'
   import Button from '../lib/ui/Button.svelte'
@@ -27,7 +27,7 @@
     }
     busy = true
     try {
-      const { member } = await api<{ member: Member }>('POST', '/setup', { name, email, password })
+      const { member } = await api<{ member: Account }>('POST', '/setup', { name, email, password })
       session.signedIn(member)
     } catch (err) {
       if (!(err instanceof ApiError)) throw err

@@ -14,7 +14,7 @@ import (
 	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/app/podman"
 
-	"github.com/jevido/bakery/services/api/contexts/identity"
+	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/projects"
 	"github.com/jevido/bakery/services/api/contexts/routing/app"
 	"github.com/jevido/bakery/services/api/contexts/routing/domain"
@@ -81,10 +81,10 @@ func svc() *app.Service {
 	return service
 }
 
-// Routes registers the Route settings API, behind identity.Auth.
+// Routes registers the Route settings API, behind guilds.Auth.
 func Routes(r route.Router) {
 	c := routinghttp.NewController(svc(), projects.ApplicationExists)
-	r.Middleware(identity.Auth).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth).Group(func(r route.Router) {
 		r.Get("/api/applications/{id}/routing", c.ShowSettings)
 		r.Put("/api/applications/{id}/routing", c.ReplaceSettings)
 	})

@@ -84,3 +84,24 @@ func TestKeepsAnAdmin(t *testing.T) {
 		t.Errorf("a second admin stays: %v", err)
 	}
 }
+
+func TestCanManage(t *testing.T) {
+	dev := Membership{MemberID: 3, Role: RoleMember}
+	cases := []struct {
+		actor         uint64
+		role          Role
+		target        Membership
+		instanceAdmin bool
+		want          error
+	}{
+		{1, RoleAdmin, dev, false, nil},
+		{1, RoleMember, dev, false, ErrNotAdmin},
+		{1, RoleAdmin, Membership{MemberID: 2, Role: RoleAdmin}, true, ErrInstanceAdminFixed},
+		{3, RoleAdmin, dev, false, ErrSelf},
+	}
+	for _, c := range cases {
+		if err := CanManage(c.actor, c.role, c.target, c.instanceAdmin); !errors.Is(err, c.want) {
+			t.Errorf("%d (%s) manages %d: %v, want %v", c.actor, c.role, c.target.MemberID, err, c.want)
+		}
+	}
+}

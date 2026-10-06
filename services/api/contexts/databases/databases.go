@@ -18,7 +18,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/databases/domain"
 	databaseshttp "github.com/jevido/bakery/services/api/contexts/databases/http"
 	"github.com/jevido/bakery/services/api/contexts/databases/infra"
-	"github.com/jevido/bakery/services/api/contexts/identity"
+	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/projects"
 )
 
@@ -70,11 +70,11 @@ func svc() *app.Service {
 	return service
 }
 
-// Routes registers the databases API behind identity.Auth; listing S3
-// storages also needs identity.Secrets, changing them identity.Admin.
+// Routes registers the databases API behind guilds.Auth; listing S3
+// storages also needs guilds.Secrets, changing them guilds.Admin.
 func Routes(r route.Router) {
 	c := databaseshttp.NewController(svc())
-	r.Middleware(identity.Auth).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth).Group(func(r route.Router) {
 		r.Post("/api/environments/{id}/databases", c.Create)
 		r.Get("/api/projects/{id}/databases", c.ForProject)
 		r.Get("/api/databases/{id}", c.Show)
@@ -93,17 +93,17 @@ func Routes(r route.Router) {
 		r.Delete("/api/backup-executions/{id}", c.DeleteBackupExecution)
 	})
 	// Coolify's deploy actions: an API token needs deploy for them.
-	r.Middleware(identity.Deploy).Group(func(r route.Router) {
+	r.Middleware(guilds.Deploy).Group(func(r route.Router) {
 		r.Post("/api/databases/{id}/start", c.Start)
 		r.Post("/api/databases/{id}/stop", c.Stop)
 		r.Post("/api/databases/{id}/restart", c.Restart)
 	})
 	// Members pick an S3 storage for a Scheduled backup, so they may list
 	// them (no secret keys are shown); only admins change them.
-	r.Middleware(identity.Auth, identity.Secrets).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, guilds.Secrets).Group(func(r route.Router) {
 		r.Get("/api/s3-storages", c.S3Storages)
 	})
-	r.Middleware(identity.Auth, identity.Admin).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, guilds.Admin).Group(func(r route.Router) {
 		r.Post("/api/s3-storages", c.CreateS3Storage)
 		r.Post("/api/s3-storages/check", c.CheckS3Storage)
 		r.Patch("/api/s3-storages/{id}", c.UpdateS3Storage)
@@ -112,14 +112,14 @@ func Routes(r route.Router) {
 }
 
 // StreamRoutes registers the log stream and Backup execution downloads, behind
-// identity.Auth but outside the request timeout. A Backup execution holds the
+// guilds.Auth but outside the request timeout. A Backup execution holds the
 // Database's data, so its download is a Secret.
 func StreamRoutes(r route.Router) {
 	c := databaseshttp.NewStreamController(svc(), shutdown)
-	r.Middleware(identity.Auth).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth).Group(func(r route.Router) {
 		r.Get("/api/databases/{id}/logs", c.Logs)
 	})
-	r.Middleware(identity.Auth, identity.Secrets).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, guilds.Secrets).Group(func(r route.Router) {
 		r.Get("/api/backup-executions/{id}/download", c.Download)
 	})
 }

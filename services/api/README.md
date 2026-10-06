@@ -50,9 +50,12 @@ as `Authorization: Bearer bky_…` (scripts; made under Keys & Tokens in the
 dashboard or `POST /api/api-tokens` with `{name, permissions,
 expires_in_days}`; Coolify's permissions `root`, `write`, `deploy`, `read`
 and `read:sensitive` limit what a token may do, and `{name, read_only}`
-still works). Each Member has a Role (owner, admin,
-member, viewer) that `identity.Auth`, `identity.Admin` and
-`identity.Secrets` enforce on every route; admins invite people with
+still works). A request acts in a Guild: an API token in the one it was
+made in, a Session in the one its `bakery_guild` cookie names (else the
+Member's first). Each Member has a Role per Guild (admin, member, viewer;
+the Instance admin Setup creates is admin in every Guild) that
+`guilds.Auth`, `guilds.Admin` and `guilds.Secrets` enforce on every route;
+admins invite people with
 `POST /api/invitations`, which answers a link that is good once, for 7
 days. `task access:test` checks it all end to end.
 
@@ -61,7 +64,7 @@ Other tasks: `task api:check` (gofmt, go vet, go test), `task api:migrate`,
 `task api:test:s3` (the S3 client against Garage).
 Artisan runs as `go run . artisan ...`. `go run . artisan
 identity:reset-two-factor <email>` switches a Member's two-factor
-authentication off (the Owner's included) and signs them out, for someone
+authentication off (the Instance admin's included) and signs them out, for someone
 who lost their phone and their recovery codes. Profile and two-factor are
 under `/api/me` (Session only) and `POST /api/login/two-factor`; `task
 account:test` checks them end to end.

@@ -34,7 +34,8 @@ type Invitations interface {
 }
 
 // Invite makes an Invitation for email with role, and returns it with the
-// token of its link. The token is only ever known here.
+// token of its link. The token is only ever known here. Only an admin of the
+// Current guild gets here (guilds.Admin guards the route).
 func (s *Service) Invite(ctx context.Context, actorID uint64, email string, role domain.Role) (domain.Invitation, string, error) {
 	actor, err := s.CurrentMember(ctx, actorID)
 	if err != nil {
@@ -42,9 +43,6 @@ func (s *Service) Invite(ctx context.Context, actorID uint64, email string, role
 	}
 	inv, err := domain.NewInvitation(email, role, actor.ID, s.now())
 	if err != nil {
-		return domain.Invitation{}, "", err
-	}
-	if err := domain.CanGrant(actor, role); err != nil {
 		return domain.Invitation{}, "", err
 	}
 	if _, found, err := s.members.ByEmail(ctx, inv.Email); err != nil {
@@ -94,18 +92,22 @@ func (s *Service) InvitationByToken(ctx context.Context, token string) (domain.I
 }
 
 // AcceptInvitation creates the invited Member, who picks their name and
-// password, with the email and Role of the Invitation.
+// password, with the email of the Invitation, and lets MemberAdded give
+// them its Role.
 func (s *Service) AcceptInvitation(ctx context.Context, token, name, password string) (domain.Member, error) {
 	inv, err := s.InvitationByToken(ctx, token)
 	if err != nil {
 		return domain.Member{}, err
 	}
-	m, err := domain.NewMember(name, inv.Email, password, inv.Role)
+	m, err := domain.NewMember(name, inv.Email, password)
 	if err != nil {
 		return domain.Member{}, err
 	}
 	if m.PasswordHash, err = s.hasher.Make(password); err != nil {
 		return domain.Member{}, err
 	}
-	return s.invitations.Accept(ctx, hashSecret(token), m, s.now())
+	if m, err = s.invitations.Accept(ctx, hashSecret(token), m, s.now()); err != nil {
+		return domain.Member{}, err
+	}
+	return m, s.memberAdded(ctx, MemberAdded{MemberID: m.ID, Role: inv.Role})
 }

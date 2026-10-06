@@ -26,12 +26,12 @@ func invitationToJSON(i domain.Invitation) invitationJSON {
 	return invitationJSON{ID: i.ID, Email: i.Email, Role: string(i.Role), CreatedAt: i.CreatedAt, ExpiresAt: i.ExpiresAt}
 }
 
-// memberFailure answers the errors of managing Members and Invitations.
+// memberFailure answers the errors of Invitations.
 func memberFailure(ctx contractshttp.Context, err error) contractshttp.Response {
 	switch {
 	case errors.Is(err, domain.ErrInvalidEmail):
 		return respond.Invalid(ctx, "email", err.Error())
-	case errors.Is(err, domain.ErrInvitationRole), errors.Is(err, domain.ErrInvalidRole), errors.Is(err, domain.ErrGrantOwner):
+	case errors.Is(err, domain.ErrInvitationRole):
 		return respond.Invalid(ctx, "role", err.Error())
 	case errors.Is(err, domain.ErrInvalidName):
 		return respond.Invalid(ctx, "name", err.Error())
@@ -39,8 +39,6 @@ func memberFailure(ctx contractshttp.Context, err error) contractshttp.Response 
 		return respond.Invalid(ctx, "password", err.Error())
 	case errors.Is(err, app.ErrAlreadyMember), errors.Is(err, app.ErrAlreadyInvited):
 		return respond.Invalid(ctx, "email", err.Error())
-	case errors.Is(err, domain.ErrNotAdmin), errors.Is(err, domain.ErrOwnerIsFixed), errors.Is(err, domain.ErrSelf):
-		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
 	case errors.Is(err, app.ErrMemberNotFound):
 		return respond.Error(ctx, contractshttp.StatusNotFound, "member not found")
 	case errors.Is(err, app.ErrInvitationNotFound):
@@ -54,55 +52,6 @@ func memberFailure(ctx contractshttp.Context, err error) contractshttp.Response 
 func routeID(ctx contractshttp.Context) (uint64, bool) {
 	v, err := strconv.ParseUint(ctx.Request().Route("id"), 10, 64)
 	return v, err == nil
-}
-
-func (c *Controller) Members(ctx contractshttp.Context) contractshttp.Response {
-	members, err := c.service.AllMembers(ctx.Context())
-	if err != nil {
-		return respond.ServerError(ctx, err)
-	}
-	out := make([]memberJSON, len(members))
-	for i, m := range members {
-		out[i] = toJSON(m)
-	}
-	return ctx.Response().Success().Json(contractshttp.Json{"members": out})
-}
-
-type roleRequest struct {
-	Role string `json:"role"`
-}
-
-func (c *Controller) ChangeRole(ctx contractshttp.Context) contractshttp.Response {
-	id, ok := routeID(ctx)
-	if !ok {
-		return respond.Error(ctx, contractshttp.StatusNotFound, "member not found")
-	}
-	var req roleRequest
-	if err := ctx.Request().Bind(&req); err != nil {
-		return respond.BadBody(ctx)
-	}
-	role, err := domain.ParseRole(req.Role)
-	if err != nil {
-		return memberFailure(ctx, err)
-	}
-	actor, _ := MemberID(ctx)
-	m, err := c.service.ChangeRole(ctx.Context(), actor, id, role)
-	if err != nil {
-		return memberFailure(ctx, err)
-	}
-	return ctx.Response().Success().Json(contractshttp.Json{"member": toJSON(m)})
-}
-
-func (c *Controller) RemoveMember(ctx contractshttp.Context) contractshttp.Response {
-	id, ok := routeID(ctx)
-	if !ok {
-		return respond.Error(ctx, contractshttp.StatusNotFound, "member not found")
-	}
-	actor, _ := MemberID(ctx)
-	if err := c.service.RemoveMember(ctx.Context(), actor, id); err != nil {
-		return memberFailure(ctx, err)
-	}
-	return ctx.Response().NoContent()
 }
 
 func (c *Controller) Invitations(ctx contractshttp.Context) contractshttp.Response {
@@ -211,26 +160,4 @@ func (c *Controller) AcceptInvitation(ctx contractshttp.Context) contractshttp.R
 		return memberFailure(ctx, err)
 	}
 	return c.withSession(ctx, contractshttp.StatusCreated, m)
-}
-
-// ResetTwoFactor switches another Member's two-factor off, for someone
-// locked out.
-func (c *Controller) ResetTwoFactor(ctx contractshttp.Context) contractshttp.Response {
-	id, ok := routeID(ctx)
-	if !ok {
-		return respond.Error(ctx, contractshttp.StatusNotFound, "member not found")
-	}
-	actor, _ := MemberID(ctx)
-	err := c.service.ResetTwoFactor(ctx.Context(), actor, id)
-	switch {
-	case errors.Is(err, domain.ErrOwnerIsFixed):
-		return respond.Error(ctx, contractshttp.StatusForbidden, "the owner's two-factor can only be reset on the server")
-	case errors.Is(err, domain.ErrSelf):
-		return respond.Error(ctx, contractshttp.StatusForbidden, "switch your own two-factor off on your Profile page")
-	case errors.Is(err, app.ErrTwoFactorOff):
-		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
-	case err != nil:
-		return memberFailure(ctx, err)
-	}
-	return ctx.Response().NoContent()
 }

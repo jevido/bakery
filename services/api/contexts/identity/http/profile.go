@@ -42,7 +42,6 @@ func (c *Controller) ChangeName(ctx contractshttp.Context) contractshttp.Respons
 	if r := profileError(ctx, err); r != nil {
 		return r
 	}
-	m.Role = RoleOf(ctx)
 	return ctx.Response().Success().Json(contractshttp.Json{"member": toJSON(m)})
 }
 

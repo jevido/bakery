@@ -5,7 +5,7 @@
   import { api, ApiError } from '../lib/api'
   import Icon from '../lib/Icon.svelte'
   import { go } from '../lib/router.svelte'
-  import { session, type Member, type Role } from '../lib/session.svelte'
+  import { session, type Account, type Role } from '../lib/session.svelte'
   import AuthAlert from '../lib/ui/AuthAlert.svelte'
   import AuthShell from '../lib/ui/AuthShell.svelte'
   import Button from '../lib/ui/Button.svelte'
@@ -39,7 +39,7 @@
     errors = {}
     message = ''
     try {
-      const { member } = await api<{ member: Member }>('POST', `/invitations/by-token/${encodeURIComponent(token)}/accept`, {
+      const { member } = await api<{ member: Account }>('POST', `/invitations/by-token/${encodeURIComponent(token)}/accept`, {
         name,
         password,
       })

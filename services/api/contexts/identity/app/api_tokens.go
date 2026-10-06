@@ -27,22 +27,26 @@ const touchEvery = time.Minute
 
 // APITokens stores the API tokens, by the hash of their value.
 type APITokens interface {
-	// Add stores a new token; a name its Member already uses is
-	// ErrTokenNameTaken.
+	// Add stores a new token; a name its Member already uses in the Guild
+	// is ErrTokenNameTaken.
 	Add(ctx context.Context, t domain.APIToken, hash string) (domain.APIToken, error)
-	ForMember(ctx context.Context, memberID uint64) ([]domain.APIToken, error)
+	// ForMember lists the Member's tokens in the Guild, newest first.
+	ForMember(ctx context.Context, memberID, guildID uint64) ([]domain.APIToken, error)
 	ByHash(ctx context.Context, hash string) (domain.APIToken, bool, error)
-	// Revoke deletes the Member's token, reporting whether there was one.
-	Revoke(ctx context.Context, memberID, id uint64) (bool, error)
+	// Revoke deletes the Member's token in the Guild, reporting whether
+	// there was one.
+	Revoke(ctx context.Context, memberID, guildID, id uint64) (bool, error)
+	// RevokeAll deletes every token the Member made in the Guild.
+	RevokeAll(ctx context.Context, memberID, guildID uint64) error
 	Touch(ctx context.Context, id uint64, now time.Time) error
 }
 
-// CreateAPIToken makes a token for the Member and returns its value, which
-// is never shown again. The Member's current Role caps the Permissions;
-// expiresInDays is nil for a token that never expires.
-func (s *Service) CreateAPIToken(ctx context.Context, memberID uint64, name string, permissions []domain.Permission, expiresInDays *int) (domain.APIToken, string, error) {
-	m, err := s.CurrentMember(ctx, memberID)
-	if err != nil {
+// CreateAPIToken makes a token for the Member in the Guild and returns its
+// value, which is never shown again. role, the Member's current Role in that
+// Guild, caps the Permissions; expiresInDays is nil for a token that never
+// expires.
+func (s *Service) CreateAPIToken(ctx context.Context, memberID, guildID uint64, role domain.Role, name string, permissions []domain.Permission, expiresInDays *int) (domain.APIToken, string, error) {
+	if _, err := s.CurrentMember(ctx, memberID); err != nil {
 		return domain.APIToken{}, "", err
 	}
 	now := s.now()
@@ -54,7 +58,7 @@ func (s *Service) CreateAPIToken(ctx context.Context, memberID uint64, name stri
 		at := now.AddDate(0, 0, *expiresInDays)
 		expiresAt = &at
 	}
-	t, err := domain.NewAPIToken(memberID, m.Role, name, permissions, expiresAt, now)
+	t, err := domain.NewAPIToken(memberID, guildID, role, name, permissions, expiresAt, now)
 	if err != nil {
 		return domain.APIToken{}, "", err
 	}
@@ -67,18 +71,24 @@ func (s *Service) CreateAPIToken(ctx context.Context, memberID uint64, name stri
 	return t, value, err
 }
 
-// APITokensOf lists the Member's tokens, newest first.
-func (s *Service) APITokensOf(ctx context.Context, memberID uint64) ([]domain.APIToken, error) {
-	return s.apiTokens.ForMember(ctx, memberID)
+// APITokensOf lists the Member's tokens in the Guild, newest first.
+func (s *Service) APITokensOf(ctx context.Context, memberID, guildID uint64) ([]domain.APIToken, error) {
+	return s.apiTokens.ForMember(ctx, memberID, guildID)
 }
 
-// RevokeAPIToken deletes one of the Member's own tokens.
-func (s *Service) RevokeAPIToken(ctx context.Context, memberID, id uint64) error {
-	found, err := s.apiTokens.Revoke(ctx, memberID, id)
+// RevokeAPIToken deletes one of the Member's own tokens in the Guild.
+func (s *Service) RevokeAPIToken(ctx context.Context, memberID, guildID, id uint64) error {
+	found, err := s.apiTokens.Revoke(ctx, memberID, guildID, id)
 	if err == nil && !found {
 		err = ErrTokenNotFound
 	}
 	return err
+}
+
+// RevokeAPITokensIn deletes every token the Member made in the Guild, for
+// when they leave it.
+func (s *Service) RevokeAPITokensIn(ctx context.Context, memberID, guildID uint64) error {
+	return s.apiTokens.RevokeAll(ctx, memberID, guildID)
 }
 
 // Authenticate finds the Member an API token belongs to, with the token for

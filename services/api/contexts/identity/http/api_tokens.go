@@ -31,9 +31,19 @@ func apiTokenToJSON(t domain.APIToken) apiTokenJSON {
 	return apiTokenJSON{ID: t.ID, Name: t.Name, Permissions: permissions, ReadOnly: t.ReadOnly(), CreatedAt: t.CreatedAt, LastUsedAt: t.LastUsedAt, ExpiresAt: t.ExpiresAt}
 }
 
+// noGuild answers a route that needs a Guild when the request acts in none;
+// guilds' middleware refuses those first.
+func noGuild(ctx contractshttp.Context) contractshttp.Response {
+	return respond.Error(ctx, contractshttp.StatusForbidden, "you are in no guild")
+}
+
 func (c *Controller) APITokens(ctx contractshttp.Context) contractshttp.Response {
+	g, ok := guildOf(ctx)
+	if !ok {
+		return noGuild(ctx)
+	}
 	id, _ := MemberID(ctx)
-	tokens, err := c.service.APITokensOf(ctx.Context(), id)
+	tokens, err := c.service.APITokensOf(ctx.Context(), id, g.guildID)
 	if err != nil {
 		return respond.ServerError(ctx, err)
 	}
@@ -71,6 +81,10 @@ func (c *Controller) CreateAPIToken(ctx contractshttp.Context) contractshttp.Res
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
+	g, ok := guildOf(ctx)
+	if !ok {
+		return noGuild(ctx)
+	}
 	id, _ := MemberID(ctx)
 	var permissions []domain.Permission
 	switch {
@@ -78,13 +92,13 @@ func (c *Controller) CreateAPIToken(ctx contractshttp.Context) contractshttp.Res
 		permissions = *req.Permissions
 	case req.ReadOnly:
 		permissions = []domain.Permission{domain.PermissionRead}
-	case RoleOf(ctx).IsAdmin():
+	case g.role.IsAdmin():
 		permissions = []domain.Permission{domain.PermissionRoot}
 	default:
 		// root capped to the Role, so an old script's token does what it did.
-		permissions = grantable(RoleOf(ctx))
+		permissions = grantable(g.role)
 	}
-	t, value, err := c.service.CreateAPIToken(ctx.Context(), id, req.Name, permissions, req.ExpiresInDays)
+	t, value, err := c.service.CreateAPIToken(ctx.Context(), id, g.guildID, g.role, req.Name, permissions, req.ExpiresInDays)
 	switch {
 	case errors.Is(err, domain.ErrInvalidTokenName), errors.Is(err, app.ErrTokenNameTaken):
 		return respond.Invalid(ctx, "name", err.Error())
@@ -103,8 +117,12 @@ func (c *Controller) RevokeAPIToken(ctx contractshttp.Context) contractshttp.Res
 	if !ok {
 		return respond.Error(ctx, contractshttp.StatusNotFound, app.ErrTokenNotFound.Error())
 	}
+	g, ok := guildOf(ctx)
+	if !ok {
+		return noGuild(ctx)
+	}
 	id, _ := MemberID(ctx)
-	err := c.service.RevokeAPIToken(ctx.Context(), id, tokenID)
+	err := c.service.RevokeAPIToken(ctx.Context(), id, g.guildID, tokenID)
 	if errors.Is(err, app.ErrTokenNotFound) {
 		return respond.Error(ctx, contractshttp.StatusNotFound, err.Error())
 	}
@@ -115,9 +133,13 @@ func (c *Controller) RevokeAPIToken(ctx contractshttp.Context) contractshttp.Res
 }
 
 // APITokenPermissions answers which Permissions the signed-in Member may put
-// on a token.
+// on a token in the Current guild.
 func (c *Controller) APITokenPermissions(ctx contractshttp.Context) contractshttp.Response {
-	role := RoleOf(ctx)
+	g, ok := guildOf(ctx)
+	if !ok {
+		return noGuild(ctx)
+	}
+	role := g.role
 	out := make([]contractshttp.Json, len(domain.Permissions))
 	for i, p := range domain.Permissions {
 		out[i] = contractshttp.Json{"name": p, "allowed": role.MayGrant(p)}

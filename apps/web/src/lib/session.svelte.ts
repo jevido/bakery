@@ -2,6 +2,8 @@ import { api, ApiError } from './api'
 
 export type Role = 'viewer' | 'member' | 'admin' | 'owner'
 export type Member = { id: number; name: string; email: string; role: Role; two_factor: boolean }
+/** A Member as sign-in and the Profile answer them: the Role is per Guild, so only /me has it. */
+export type Account = Omit<Member, 'role'>
 
 type State = 'loading' | 'setup' | 'signed-out' | 'signed-in'
 
@@ -32,7 +34,14 @@ class Session {
     }
   }
 
-  signedIn(member: Member) {
+  /** Takes the Member a sign-in or a Profile change answered, and their Role in the Current guild from /me. */
+  async signedIn(account: Account) {
+    if (this.member?.id === account.id) {
+      this.member = { ...this.member, ...account }
+      this.state = 'signed-in'
+      return
+    }
+    const { member } = await api<{ member: Member }>('GET', '/me')
     this.member = member
     this.state = 'signed-in'
   }

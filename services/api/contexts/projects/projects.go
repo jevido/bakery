@@ -12,7 +12,7 @@ import (
 	"github.com/goravel/framework/contracts/route"
 
 	"github.com/jevido/bakery/services/api/app/facades"
-	"github.com/jevido/bakery/services/api/contexts/identity"
+	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/projects/app"
 	projectshttp "github.com/jevido/bakery/services/api/contexts/projects/http"
 	"github.com/jevido/bakery/services/api/contexts/projects/infra"
@@ -35,10 +35,10 @@ func svc() *app.Service {
 // ErrNotFound is returned for an Application that does not exist.
 var ErrNotFound = app.ErrNotFound
 
-// Routes registers the projects API, all behind identity.Auth.
+// Routes registers the projects API, all behind guilds.Auth.
 func Routes(r route.Router) {
 	c := projectshttp.NewController(svc(), servers.LocalID)
-	r.Middleware(identity.Auth).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth).Group(func(r route.Router) {
 		r.Get("/api/projects", c.ListProjects)
 		r.Post("/api/projects", c.CreateProject)
 		r.Get("/api/projects/{id}", c.ShowProject)
@@ -58,7 +58,7 @@ func Routes(r route.Router) {
 		r.Put("/api/environments/{id}/variables", c.ReplaceEnvironmentSharedVariables)
 	})
 	// Variable values are Secrets.
-	r.Middleware(identity.Auth, identity.Secrets).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, guilds.Secrets).Group(func(r route.Router) {
 		r.Get("/api/applications/{id}/environment-variables", c.ShowEnvironmentVariables)
 		r.Get("/api/projects/{id}/variables", c.ShowProjectSharedVariables)
 		r.Get("/api/environments/{id}/variables", c.ShowEnvironmentSharedVariables)

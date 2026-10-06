@@ -17,6 +17,7 @@ import (
 type apiTokenRecord struct {
 	ID        uint64 `gorm:"primaryKey"`
 	UserID    uint64
+	GuildID   uint64
 	Name      string
 	TokenHash string
 	// Permissions is comma-separated.
@@ -36,7 +37,7 @@ func (r apiTokenRecord) toDomain() domain.APIToken {
 			permissions = append(permissions, domain.Permission(p))
 		}
 	}
-	return domain.APIToken{ID: r.ID, MemberID: r.UserID, Name: r.Name, Permissions: permissions, ExpiresAt: r.ExpiresAt, LastUsedAt: r.LastUsedAt, CreatedAt: r.CreatedAt}
+	return domain.APIToken{ID: r.ID, MemberID: r.UserID, GuildID: r.GuildID, Name: r.Name, Permissions: permissions, ExpiresAt: r.ExpiresAt, LastUsedAt: r.LastUsedAt, CreatedAt: r.CreatedAt}
 }
 
 type APITokens struct{}
@@ -50,7 +51,7 @@ func (a APITokens) Add(ctx context.Context, t domain.APIToken, hash string) (dom
 	for i, p := range t.Permissions {
 		permissions[i] = string(p)
 	}
-	rec := apiTokenRecord{UserID: t.MemberID, Name: t.Name, TokenHash: hash, Permissions: strings.Join(permissions, ","), ExpiresAt: t.ExpiresAt, CreatedAt: t.CreatedAt, UpdatedAt: t.CreatedAt}
+	rec := apiTokenRecord{UserID: t.MemberID, GuildID: t.GuildID, Name: t.Name, TokenHash: hash, Permissions: strings.Join(permissions, ","), ExpiresAt: t.ExpiresAt, CreatedAt: t.CreatedAt, UpdatedAt: t.CreatedAt}
 	if err := a.query(ctx).Create(&rec); err != nil {
 		if isUniqueViolation(err) {
 			return domain.APIToken{}, app.ErrTokenNameTaken
@@ -60,9 +61,9 @@ func (a APITokens) Add(ctx context.Context, t domain.APIToken, hash string) (dom
 	return rec.toDomain(), nil
 }
 
-func (a APITokens) ForMember(ctx context.Context, memberID uint64) ([]domain.APIToken, error) {
+func (a APITokens) ForMember(ctx context.Context, memberID, guildID uint64) ([]domain.APIToken, error) {
 	var recs []apiTokenRecord
-	if err := a.query(ctx).Where("user_id", memberID).Order("created_at desc").Order("id desc").Find(&recs); err != nil {
+	if err := a.query(ctx).Where("user_id", memberID).Where("guild_id", guildID).Order("created_at desc").Order("id desc").Find(&recs); err != nil {
 		return nil, err
 	}
 	out := make([]domain.APIToken, len(recs))
@@ -83,12 +84,17 @@ func (a APITokens) ByHash(ctx context.Context, hash string) (domain.APIToken, bo
 	return rec.toDomain(), true, nil
 }
 
-func (a APITokens) Revoke(ctx context.Context, memberID, id uint64) (bool, error) {
-	res, err := a.query(ctx).Where("id", id).Where("user_id", memberID).Delete(&apiTokenRecord{})
+func (a APITokens) Revoke(ctx context.Context, memberID, guildID, id uint64) (bool, error) {
+	res, err := a.query(ctx).Where("id", id).Where("user_id", memberID).Where("guild_id", guildID).Delete(&apiTokenRecord{})
 	if err != nil {
 		return false, err
 	}
 	return res.RowsAffected > 0, nil
+}
+
+func (a APITokens) RevokeAll(ctx context.Context, memberID, guildID uint64) error {
+	_, err := a.query(ctx).Where("user_id", memberID).Where("guild_id", guildID).Delete(&apiTokenRecord{})
+	return err
 }
 
 func (a APITokens) Touch(ctx context.Context, id uint64, now time.Time) error {

@@ -10,20 +10,20 @@ import (
 
 func TestNewAPIToken(t *testing.T) {
 	now := time.Now()
-	if tok, err := NewAPIToken(1, RoleOwner, "  ci deploy  ", nil, nil, now); err != nil || tok.Name != "ci deploy" {
+	if tok, err := NewAPIToken(1, 1, RoleAdmin, "  ci deploy  ", nil, nil, now); err != nil || tok.Name != "ci deploy" {
 		t.Fatalf("got %+v, %v", tok, err)
 	}
 	for _, name := range []string{"", "   ", "ci", strings.Repeat("x", 256)} {
-		if _, err := NewAPIToken(1, RoleOwner, name, nil, nil, now); !errors.Is(err, ErrInvalidTokenName) {
+		if _, err := NewAPIToken(1, 1, RoleAdmin, name, nil, nil, now); !errors.Is(err, ErrInvalidTokenName) {
 			t.Errorf("%q: %v", name, err)
 		}
 	}
 	past := now.Add(-time.Second)
-	if _, err := NewAPIToken(1, RoleOwner, "old", nil, &past, now); !errors.Is(err, ErrTokenExpiryPassed) {
+	if _, err := NewAPIToken(1, 1, RoleAdmin, "old", nil, &past, now); !errors.Is(err, ErrTokenExpiryPassed) {
 		t.Errorf("expiry in the past: %v", err)
 	}
 	future := now.Add(time.Hour)
-	if tok, err := NewAPIToken(1, RoleOwner, "new", nil, &future, now); err != nil || !tok.ExpiresAt.Equal(future) {
+	if tok, err := NewAPIToken(1, 1, RoleAdmin, "new", nil, &future, now); err != nil || !tok.ExpiresAt.Equal(future) {
 		t.Errorf("expiry in the future: %+v %v", tok, err)
 	}
 }
@@ -55,7 +55,6 @@ func TestNewAPITokenRoleCaps(t *testing.T) {
 		p    Permission
 		ok   bool
 	}{
-		{RoleOwner, PermissionRoot, true},
 		{RoleAdmin, PermissionRoot, true},
 		{RoleMember, PermissionRoot, false},
 		{RoleMember, PermissionWrite, true},
@@ -66,7 +65,7 @@ func TestNewAPITokenRoleCaps(t *testing.T) {
 		{RoleViewer, PermissionReadSensitive, false},
 		{RoleViewer, PermissionRead, true},
 	} {
-		_, err := NewAPIToken(1, c.role, "token", []Permission{c.p}, nil, now)
+		_, err := NewAPIToken(1, 1, c.role, "token", []Permission{c.p}, nil, now)
 		if c.ok != (err == nil) {
 			t.Errorf("%s granting %s: %v", c.role, c.p, err)
 		}

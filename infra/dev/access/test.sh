@@ -2,8 +2,9 @@
 # End to end: Members, Roles, Invitations and API tokens. The Owner invites
 # a member and a viewer, each Role is held to what it may do, API tokens act
 # as their Member within their Permissions (read, read:sensitive, write,
-# deploy, root) until they expire, and a removed Member's Session and tokens
-# stop working. Needs `task dev` running (API on
+# deploy, root) until they expire, and a Member removed from the Guild keeps
+# their account but their Session reaches nothing and their tokens stop
+# working. Needs `task dev` running (API on
 # 127.0.0.1:4910). No git host: the Application is an image, from ghcr.io
 # (Docker Hub pulls fail on a machine with a stale Docker Hub login).
 set -euo pipefail
@@ -170,6 +171,7 @@ ROOT=$(body "d['token']") ROOT_ID=$(body "d['api_token']['id']")
 expect "root stands alone" root "$(body "','.join(d['api_token']['permissions'])")"
 expect "the root token sees Secrets" 200 "$(with "$ROOT" GET "/api/applications/$APP_ID/environment-variables")"
 expect "the root token reads Known hosts" 200 "$(with "$ROOT" GET /api/known-hosts)"
+expect "the root token lists Members" 200 "$(with "$ROOT" GET /api/members)"
 bakery DELETE "/api/api-tokens/$ROOT_ID" >/dev/null
 podman exec bakery-dev-postgres-1 psql -U bakery -d bakery -tAc "UPDATE api_tokens SET expires_at = now() - interval '1 minute' WHERE id = $DEPLOY_ID" >/dev/null
 expect "an expired token is refused" 401 "$(with "$DEPLOY" POST "/api/applications/$APP_ID/deploy")"
@@ -183,7 +185,9 @@ expect "a made-up token is refused" 401 "$(with "bky_madeup" GET /api/projects)"
 say "Removing a Member"
 MEMBER_ID=${MEMBER_IDS[0]}
 expect "the Owner removes the member" 204 "$(as "$JAR" DELETE "/api/members/$MEMBER_ID")"
-expect "the removed member's Session stops working" 401 "$(as "$MEMBER" GET /api/projects)"
+expect "the removed member's Session reaches nothing" 403 "$(as "$MEMBER" GET /api/projects)"
+expect "because they are in no guild" "you are in no guild" "$(body "d['message']")"
+expect "they keep their account" "None []" "$(as "$MEMBER" GET /api/me >/dev/null; body "d['guild'], d['guilds']")"
 expect "the removed member's tokens stop working" 401 "$(with "$READ" GET /api/projects)"
 
 say "PASS"

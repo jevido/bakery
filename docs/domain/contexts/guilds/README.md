@@ -64,9 +64,10 @@ concerned, which the Instance admin always is.
 
 ### Domain events
 
-- `MemberSetUp` (identity's, consumed): Setup made the Instance admin;
+- `MemberAdded` (identity's, consumed): Setup made the Instance admin, and
   guilds makes the first Guild, "Default", with their `admin` Membership,
-  unless a Guild exists already.
+  unless a Guild exists already; or someone accepted an Invitation, and
+  guilds gives them a Membership with its Role.
 
 - `InvitationCreated { guild, email, role, invited by, link, expires }`: an
   Invitation was made. Its one subscriber (notifications, with
@@ -92,13 +93,24 @@ concerned, which the Instance admin always is.
     fields a viewer may see.
   - `guilds.Current(ctx) uint64`: the Current guild's id, which every other
     context stores on what it creates and filters every list and read by.
+  - `guilds.RoleOf(ctx)`: the Role the request acts with there.
   - `guilds.OnGuildDeleting(f)` and `guilds.OnInvitationCreated(f)`: see
     Domain events.
+- **Serves:** `GET /api/me` (the Member, their Role in the Current guild,
+  `instance_admin`, the Current `guild` and every Guild they may switch to
+  with their Role there), and the Members of the Current guild:
+  `GET /api/members`, `PATCH /api/members/{id}` (`{"role"}`),
+  `DELETE /api/members/{id}` and `DELETE /api/members/{id}/two-factor`, all
+  for admins. On the wire the Instance admin's `role` reads `owner`, with
+  `instance_admin: true`.
 - **Consumes:** identity's `identity.Authenticate(ctx)` (a Principal: the
   Member, whether they are the Instance admin, and for an API token its
-  Guild and Permissions), `identity.OnMemberSetUp(f)` and
-  `identity.CreateMember(...)` when an Invitation
-  to a new email is accepted. Identity never imports guilds.
+  Guild and Permissions), `identity.ActIn`, identity's API token and
+  Invitation routes (registered behind guilds' middlewares),
+  `identity.Members`, `identity.ResetTwoFactor`,
+  `identity.RevokeAPITokens`, `identity.OnMemberAdded(f)` and
+  `identity.CreateMember(...)` when an Invitation to a new email is
+  accepted. Identity never imports guilds.
 
 ## Why it's shaped this way
 
@@ -145,7 +157,28 @@ concerned, which the Instance admin always is.
   neutral and renamed on the Guild's General page.
 - **The first Guild is made after Setup, not in its transaction.** Identity
   cannot hand its transaction to a context it does not know, so guilds hears
-  `MemberSetUp` once the Instance admin is stored and makes "Default" under a
+  `MemberAdded` once the Instance admin is stored and makes "Default" under a
   table lock, only when no Guild exists. An installation from before Guilds
   gets "Default" from a migration instead, with every Member's Role (the
   Owner's as admin).
+- **identity's Guild-bound routes are registered by guilds.** API tokens and
+  Invitations are identity's, but only make sense in a Current guild, which
+  identity cannot work out without importing guilds. So identity publishes
+  them as route groups, guilds registers them behind its own middlewares
+  and hands the Current guild and Role over with `identity.ActIn`. The
+  Role that caps a new API token's Permissions is the one guilds found for
+  that very request.
+- **A Member in no Guild keeps their account.** Removing a Membership
+  leaves the Member and their other Memberships; with none left, signing in
+  still works but every Guild-bound request answers 403 `you are in no
+  guild` and `GET /api/me` answers with no `guild`. Coolify deletes a user
+  only when they leave their last team; The Bakery keeps the person, so
+  another Guild can invite them back without a new account.
+- **The Instance admin reads `owner` on the wire, for now.** The dashboard's
+  Members page and Role labels still know the Owner, whom nobody manages;
+  `GET /api/members` and `GET /api/me` keep that word for the Instance admin
+  (beside `instance_admin: true`) until the dashboard's Guild pages name
+  them Instance admin.
+- **A Guild keeps an admin, checked under a row lock.** Changing or
+  removing a Membership locks every Membership of the Guild first, so two
+  admins demoting each other at once cannot leave it with none.

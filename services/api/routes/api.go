@@ -10,6 +10,7 @@ import (
 	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/contexts/databases"
 	"github.com/jevido/bakery/services/api/contexts/deployments"
+	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/identity"
 	"github.com/jevido/bakery/services/api/contexts/notifications"
 	"github.com/jevido/bakery/services/api/contexts/projects"
@@ -26,6 +27,7 @@ func Api() {
 	facades.Route().Middleware(goravelgin.Timeout(requestTimeout)).Group(func(r route.Router) {
 		r.Get("/api/health", health)
 		identity.Routes(r)
+		guilds.Routes(r)
 		projects.Routes(r)
 		deployments.Routes(r)
 		routing.Routes(r)

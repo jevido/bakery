@@ -13,26 +13,23 @@ import (
 )
 
 var (
-	ErrOwnerExists    = errors.New("setup is already done")
+	ErrSetupDone      = errors.New("setup is already done")
 	ErrBadCredentials = errors.New("email or password is wrong")
 	ErrMemberNotFound = errors.New("member not found")
 )
 
 // Members stores the Members.
 type Members interface {
-	// OwnerExists reports whether an Owner has been set up.
-	OwnerExists(ctx context.Context) (bool, error)
-	// AddOwnerIfNone stores the Owner unless one exists already
-	// (ErrOwnerExists). The check and the insert are one step, so racing
-	// Setups cannot both win.
-	AddOwnerIfNone(ctx context.Context, owner domain.Member) (domain.Member, error)
+	// InstanceAdminExists reports whether Setup has been done.
+	InstanceAdminExists(ctx context.Context) (bool, error)
+	// AddInstanceAdminIfNone stores the Instance admin unless one exists
+	// already (ErrSetupDone). The check and the insert are one step, so
+	// racing Setups cannot both win.
+	AddInstanceAdminIfNone(ctx context.Context, m domain.Member) (domain.Member, error)
 	ByEmail(ctx context.Context, email string) (domain.Member, bool, error)
 	ByID(ctx context.Context, id uint64) (domain.Member, bool, error)
-	// All lists every Member, the Owner first, then by name.
-	All(ctx context.Context) ([]domain.Member, error)
-	SetRole(ctx context.Context, id uint64, role domain.Role) error
-	// Remove deletes the Member, and with them their API tokens.
-	Remove(ctx context.Context, id uint64) error
+	// ByIDs lists the Members with these ids that exist, in no order.
+	ByIDs(ctx context.Context, ids []uint64) ([]domain.Member, error)
 
 	SetName(ctx context.Context, id uint64, name string) error
 	// SetPassword stores a new password hash and ends every Session issued
@@ -75,10 +72,27 @@ type Service struct {
 	Now func() time.Time
 	// Random is where secrets come from; crypto/rand unless a test sets it.
 	Random io.Reader
-	// MemberSetUp, when set, hears of the Instance admin right after Setup
-	// stored them, and makes the first Guild; an error fails the Setup
-	// request, though the Instance admin stays.
-	MemberSetUp func(ctx context.Context, memberID uint64) error
+	// MemberAdded, when set, hears of each new Member right after they were
+	// stored: the Instance admin after Setup (guilds makes the first Guild),
+	// or someone who accepted an Invitation, with its Role (guilds gives
+	// them a Membership). An error fails the request, though the Member
+	// stays.
+	MemberAdded func(ctx context.Context, e MemberAdded) error
+}
+
+// MemberAdded is a Member just stored.
+type MemberAdded struct {
+	MemberID      uint64
+	InstanceAdmin bool
+	// Role is the one an Invitation offered; admin for the Instance admin.
+	Role domain.Role
+}
+
+func (s *Service) memberAdded(ctx context.Context, e MemberAdded) error {
+	if s.MemberAdded == nil {
+		return nil
+	}
+	return s.MemberAdded(ctx, e)
 }
 
 func NewService(members Members, invitations Invitations, apiTokens APITokens, hasher Hasher) *Service {
@@ -87,39 +101,34 @@ func NewService(members Members, invitations Invitations, apiTokens APITokens, h
 
 func (s *Service) now() time.Time { return s.Now() }
 
-// SetupNeeded reports whether no Owner exists yet.
+// SetupNeeded reports whether no Instance admin exists yet.
 func (s *Service) SetupNeeded(ctx context.Context) (bool, error) {
-	exists, err := s.members.OwnerExists(ctx)
+	exists, err := s.members.InstanceAdminExists(ctx)
 	return !exists, err
 }
 
-// SetupOwner creates the Owner, who is the Instance admin, once, and then
-// lets MemberSetUp make the first Guild.
-func (s *Service) SetupOwner(ctx context.Context, name, email, password string) (domain.Member, error) {
-	owner, err := domain.NewMember(name, email, password, domain.RoleOwner)
+// SetUp creates the Instance admin, once, and then lets MemberAdded make the
+// first Guild.
+func (s *Service) SetUp(ctx context.Context, name, email, password string) (domain.Member, error) {
+	admin, err := domain.NewMember(name, email, password)
 	if err != nil {
 		return domain.Member{}, err
 	}
-	if exists, err := s.members.OwnerExists(ctx); err != nil {
+	if exists, err := s.members.InstanceAdminExists(ctx); err != nil {
 		return domain.Member{}, err
 	} else if exists {
-		return domain.Member{}, ErrOwnerExists
+		return domain.Member{}, ErrSetupDone
 	}
-	owner.InstanceAdmin = true
-	owner.PasswordHash, err = s.hasher.Make(password)
+	admin.InstanceAdmin = true
+	admin.PasswordHash, err = s.hasher.Make(password)
 	if err != nil {
 		return domain.Member{}, err
 	}
-	owner, err = s.members.AddOwnerIfNone(ctx, owner)
+	admin, err = s.members.AddInstanceAdminIfNone(ctx, admin)
 	if err != nil {
 		return domain.Member{}, err
 	}
-	if s.MemberSetUp != nil {
-		if err := s.MemberSetUp(ctx, owner.ID); err != nil {
-			return owner, err
-		}
-	}
-	return owner, nil
+	return admin, s.memberAdded(ctx, MemberAdded{MemberID: admin.ID, InstanceAdmin: true, Role: domain.RoleAdmin})
 }
 
 // Login checks the credentials. A wrong email and a wrong password give the

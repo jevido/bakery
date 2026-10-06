@@ -22,7 +22,6 @@ type userRecord struct {
 	Name                     string
 	Email                    string
 	Password                 string
-	Role                     string
 	InstanceAdmin            bool
 	TwoFactorSecretEncrypted *string
 	TwoFactorEnabledAt       *time.Time
@@ -37,7 +36,7 @@ func (userRecord) TableName() string { return "users" }
 // app key changed) reads as two-factor off rather than locking the Member
 // out.
 func (r userRecord) toDomain() domain.Member {
-	m := domain.Member{ID: r.ID, Name: r.Name, Email: r.Email, PasswordHash: r.Password, Role: domain.Role(r.Role), InstanceAdmin: r.InstanceAdmin}
+	m := domain.Member{ID: r.ID, Name: r.Name, Email: r.Email, PasswordHash: r.Password, InstanceAdmin: r.InstanceAdmin}
 	m.TwoFactor.State = domain.TwoFactorOff
 	if r.TwoFactorSecretEncrypted != nil {
 		if plain, err := facades.Crypt().DecryptString(*r.TwoFactorSecretEncrypted); err == nil {
@@ -61,25 +60,25 @@ func (Members) query(ctx context.Context) contractsorm.Query {
 	return facades.Orm().WithContext(ctx).Query()
 }
 
-func (o Members) OwnerExists(ctx context.Context) (bool, error) {
-	n, err := o.query(ctx).Model(&userRecord{}).Where("role", string(domain.RoleOwner)).Count()
+func (o Members) InstanceAdminExists(ctx context.Context) (bool, error) {
+	n, err := o.query(ctx).Model(&userRecord{}).Where("instance_admin", true).Count()
 	return n > 0, err
 }
 
-func (o Members) AddOwnerIfNone(ctx context.Context, owner domain.Member) (domain.Member, error) {
-	rec := userRecord{Name: owner.Name, Email: owner.Email, Password: owner.PasswordHash, Role: string(domain.RoleOwner), InstanceAdmin: true}
+func (o Members) AddInstanceAdminIfNone(ctx context.Context, m domain.Member) (domain.Member, error) {
+	rec := userRecord{Name: m.Name, Email: m.Email, Password: m.PasswordHash, InstanceAdmin: true}
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		// Serialises racing Setups: the second waits here, then sees the
 		// first one's row.
 		if _, err := tx.Exec("LOCK TABLE users IN EXCLUSIVE MODE"); err != nil {
 			return err
 		}
-		n, err := tx.Model(&userRecord{}).Where("role", string(domain.RoleOwner)).Count()
+		n, err := tx.Model(&userRecord{}).Where("instance_admin", true).Count()
 		if err != nil {
 			return err
 		}
 		if n > 0 {
-			return app.ErrOwnerExists
+			return app.ErrSetupDone
 		}
 		return tx.Create(&rec)
 	})
@@ -113,10 +112,12 @@ type Hasher struct{}
 func (Hasher) Make(password string) (string, error) { return facades.Hash().Make(password) }
 func (Hasher) Check(password, hash string) bool     { return facades.Hash().Check(password, hash) }
 
-func (o Members) All(ctx context.Context) ([]domain.Member, error) {
+func (o Members) ByIDs(ctx context.Context, ids []uint64) ([]domain.Member, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
 	var recs []userRecord
-	// The Owner first, then by name.
-	if err := o.query(ctx).OrderByRaw("role = 'owner' DESC, lower(name), id").Find(&recs); err != nil {
+	if err := o.query(ctx).WhereIn("id", toAny(ids)).Find(&recs); err != nil {
 		return nil, err
 	}
 	out := make([]domain.Member, len(recs))
@@ -126,14 +127,12 @@ func (o Members) All(ctx context.Context) ([]domain.Member, error) {
 	return out, nil
 }
 
-func (o Members) SetRole(ctx context.Context, id uint64, role domain.Role) error {
-	_, err := o.query(ctx).Model(&userRecord{}).Where("id", id).Update("role", string(role))
-	return err
-}
-
-func (o Members) Remove(ctx context.Context, id uint64) error {
-	_, err := o.query(ctx).Where("id", id).Delete(&userRecord{})
-	return err
+func toAny(ids []uint64) []any {
+	out := make([]any, len(ids))
+	for i, id := range ids {
+		out[i] = id
+	}
+	return out
 }
 
 func (o Members) update(ctx context.Context, id uint64, values map[string]any) error {

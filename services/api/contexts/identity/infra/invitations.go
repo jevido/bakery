@@ -103,7 +103,7 @@ func (i Invitations) Revoke(ctx context.Context, id uint64, now time.Time) error
 }
 
 func (i Invitations) Accept(ctx context.Context, tokenHash string, m domain.Member, now time.Time) (domain.Member, error) {
-	user := userRecord{Name: m.Name, Email: m.Email, Password: m.PasswordHash, Role: string(m.Role)}
+	user := userRecord{Name: m.Name, Email: m.Email, Password: m.PasswordHash}
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		// The row lock makes two racing accepts of one link take turns; the
 		// second then sees it accepted.

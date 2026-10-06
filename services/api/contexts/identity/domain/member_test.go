@@ -9,20 +9,18 @@ import (
 func TestNewMember(t *testing.T) {
 	cases := []struct {
 		name, email, password string
-		role                  Role
 		want                  error
 	}{
-		{"Ada", " Ada@Example.com ", "correct horse", RoleOwner, nil},
-		{"  ", "ada@example.com", "correct horse", RoleOwner, ErrInvalidName},
-		{"Ada", "not-an-email", "correct horse", RoleOwner, ErrInvalidEmail},
-		{"Ada", "Ada <ada@example.com>", "correct horse", RoleOwner, ErrInvalidEmail},
-		{"Ada", "ada@example.com", "short", RoleOwner, ErrPasswordTooShort},
-		{"Ada", "ada@example.com", "correct horse", Role("root"), ErrInvalidRole},
+		{"Ada", " Ada@Example.com ", "correct horse", nil},
+		{"  ", "ada@example.com", "correct horse", ErrInvalidName},
+		{"Ada", "not-an-email", "correct horse", ErrInvalidEmail},
+		{"Ada", "Ada <ada@example.com>", "correct horse", ErrInvalidEmail},
+		{"Ada", "ada@example.com", "short", ErrPasswordTooShort},
 	}
 	for _, c := range cases {
-		m, err := NewMember(c.name, c.email, c.password, c.role)
+		m, err := NewMember(c.name, c.email, c.password)
 		if !errors.Is(err, c.want) {
-			t.Errorf("NewMember(%q, %q, %q): err = %v, want %v", c.name, c.email, c.role, err, c.want)
+			t.Errorf("NewMember(%q, %q): err = %v, want %v", c.name, c.email, err, c.want)
 		}
 		if err == nil && m.Email != "ada@example.com" {
 			t.Errorf("email not normalised: %q", m.Email)
@@ -32,24 +30,25 @@ func TestNewMember(t *testing.T) {
 
 func TestRoleRights(t *testing.T) {
 	cases := []struct {
-		role                    Role
-		write, secrets, isAdmin bool
+		role           Role
+		write, isAdmin bool
 	}{
-		{RoleViewer, false, false, false},
-		{RoleMember, true, true, false},
-		{RoleAdmin, true, true, true},
-		{RoleOwner, true, true, true},
+		{RoleViewer, false, false},
+		{RoleMember, true, false},
+		{RoleAdmin, true, true},
 	}
 	for _, c := range cases {
-		if c.role.CanWrite() != c.write || c.role.CanSeeSecrets() != c.secrets || c.role.IsAdmin() != c.isAdmin {
-			t.Errorf("%s: write=%v secrets=%v admin=%v", c.role, c.role.CanWrite(), c.role.CanSeeSecrets(), c.role.IsAdmin())
+		if c.role.CanWrite() != c.write || c.role.IsAdmin() != c.isAdmin {
+			t.Errorf("%s: write=%v admin=%v", c.role, c.role.CanWrite(), c.role.IsAdmin())
 		}
 	}
 	if _, err := ParseRole("admin"); err != nil {
 		t.Error(err)
 	}
-	if _, err := ParseRole("Admin"); !errors.Is(err, ErrInvalidRole) {
-		t.Errorf("ParseRole(Admin): %v", err)
+	for _, s := range []string{"Admin", "owner"} {
+		if _, err := ParseRole(s); !errors.Is(err, ErrInvalidRole) {
+			t.Errorf("ParseRole(%s): %v", s, err)
+		}
 	}
 }
 

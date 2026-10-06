@@ -6,7 +6,7 @@
   import { api, ApiError } from '../lib/api'
   import Icon from '../lib/Icon.svelte'
   import { go } from '../lib/router.svelte'
-  import { session, type Member } from '../lib/session.svelte'
+  import { session, type Account } from '../lib/session.svelte'
   import AuthAlert from '../lib/ui/AuthAlert.svelte'
   import AuthShell from '../lib/ui/AuthShell.svelte'
   import Button from '../lib/ui/Button.svelte'
@@ -26,7 +26,7 @@
     busy = true
     message = ''
     try {
-      const r = await api<{ member?: Member; two_factor_required?: boolean }>('POST', '/login', { email, password })
+      const r = await api<{ member?: Account; two_factor_required?: boolean }>('POST', '/login', { email, password })
       if (r.two_factor_required) {
         step = 'code'
         useRecoveryCode = false
@@ -49,7 +49,7 @@
     message = ''
     try {
       const body = useRecoveryCode ? { recovery_code: code } : { code }
-      const { member } = await api<{ member: Member }>('POST', '/login/two-factor', body)
+      const { member } = await api<{ member: Account }>('POST', '/login/two-factor', body)
       signedIn(member)
     } catch (err) {
       if (!(err instanceof ApiError)) throw err
@@ -81,7 +81,7 @@
     message = ''
   }
 
-  function signedIn(member: Member) {
+  function signedIn(member: Account) {
     session.signedIn(member)
     go('/')
   }

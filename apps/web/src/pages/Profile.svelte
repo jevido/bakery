@@ -4,7 +4,7 @@
   import { api, ApiError } from '../lib/api'
   import CopyButton from '../lib/CopyButton.svelte'
   import Field from '../lib/Field.svelte'
-  import { session, type Member } from '../lib/session.svelte'
+  import { session, type Account } from '../lib/session.svelte'
 
   type TwoFactorStatus = { state: 'off' | 'pending' | 'on'; recovery_codes_left: number }
 
@@ -18,7 +18,7 @@
     nameErrors = {}
     nameSaved = false
     try {
-      const { member } = await api<{ member: Member }>('PATCH', '/me', { name })
+      const { member } = await api<{ member: Account }>('PATCH', '/me', { name })
       session.signedIn(member)
       name = member.name
       nameSaved = true
@@ -44,7 +44,7 @@
       return
     }
     try {
-      const { member } = await api<{ member: Member }>('POST', '/me/password', {
+      const { member } = await api<{ member: Account }>('POST', '/me/password', {
         current_password: currentPassword,
         new_password: newPassword,
       })

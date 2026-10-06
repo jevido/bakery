@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 
@@ -77,9 +78,82 @@ func (m *memStore) RoleOf(_ context.Context, guildID, memberID uint64) (domain.R
 	return "", false, nil
 }
 
+func (m *memStore) ListForGuild(_ context.Context, guildID uint64) ([]domain.Membership, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []domain.Membership
+	for _, x := range m.memberships {
+		if x.GuildID == guildID {
+			out = append(out, x)
+		}
+	}
+	return out, nil
+}
+
+func (m *memStore) Add(_ context.Context, ms domain.Membership) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, x := range m.memberships {
+		if x.GuildID == ms.GuildID && x.MemberID == ms.MemberID {
+			return nil
+		}
+	}
+	ms.ID = uint64(len(m.memberships) + 1)
+	m.memberships = append(m.memberships, ms)
+	return nil
+}
+
+func (m *memStore) Change(ctx context.Context, guildID, memberID uint64, to domain.Role, check func([]domain.Membership) error) (domain.Membership, error) {
+	ms, _ := m.ListForGuild(ctx, guildID)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	i := slices.IndexFunc(m.memberships, func(x domain.Membership) bool { return x.GuildID == guildID && x.MemberID == memberID })
+	if i < 0 {
+		return domain.Membership{}, ErrMembershipNotFound
+	}
+	if err := check(ms); err != nil {
+		return domain.Membership{}, err
+	}
+	changed := m.memberships[i]
+	if to == "" {
+		m.memberships = slices.Delete(m.memberships, i, i+1)
+		return changed, nil
+	}
+	m.memberships[i].Role = to
+	changed.Role = to
+	return changed, nil
+}
+
+// memMembers is identity as the tests need it.
+type memMembers struct {
+	instanceAdmin uint64
+	revoked       [][2]uint64
+	reset         []uint64
+}
+
+func (m *memMembers) IsInstanceAdmin(_ context.Context, id uint64) (bool, error) {
+	return id == m.instanceAdmin, nil
+}
+
+func (m *memMembers) RevokeAPITokens(_ context.Context, memberID, guildID uint64) error {
+	m.revoked = append(m.revoked, [2]uint64{memberID, guildID})
+	return nil
+}
+
+func (m *memMembers) ResetTwoFactor(_ context.Context, id uint64) error {
+	m.reset = append(m.reset, id)
+	return nil
+}
+
 func newTestService() (*Service, *memStore) {
+	s, m, _ := newTestServiceWithMembers()
+	return s, m
+}
+
+func newTestServiceWithMembers() (*Service, *memStore, *memMembers) {
 	m := &memStore{}
-	return NewService(m, m), m
+	members := &memMembers{}
+	return NewService(m, m, members), m, members
 }
 
 func TestMakeFirstGuildOnlyOnce(t *testing.T) {
@@ -118,5 +192,144 @@ func TestCreateGuildMakesTheCreatorAdmin(t *testing.T) {
 	ms, _ := s.GuildsOf(ctx, 7)
 	if len(ms) != 1 || ms[0].GuildID != g.ID || ms[0].Role != domain.RoleAdmin {
 		t.Errorf("memberships = %+v", ms)
+	}
+}
+
+// twoGuilds is an installation with the Instance admin (1) in "Default" (1),
+// Ann (2) admin of "Bakers" (2), and Dev (3) a member of Default and a
+// viewer of Bakers.
+func twoGuilds(t *testing.T) (*Service, *memStore, *memMembers) {
+	t.Helper()
+	ctx := context.Background()
+	s, m, members := newTestServiceWithMembers()
+	members.instanceAdmin = 1
+	if err := s.MemberAdded(ctx, 1, true, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MemberAdded(ctx, 3, false, "member"); err != nil {
+		t.Fatal(err)
+	}
+	bakers, err := s.CreateGuild(ctx, "Bakers", "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Add(ctx, domain.Membership{GuildID: bakers.ID, MemberID: 3, Role: domain.RoleViewer})
+	return s, m, members
+}
+
+func TestPlace(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := twoGuilds(t)
+	cases := []struct {
+		name                     string
+		member                   uint64
+		instanceAdmin            bool
+		tokenGuild, wanted, want uint64
+		role                     domain.Role
+	}{
+		{"no cookie: the first Guild", 3, false, 0, 0, 1, domain.RoleMember},
+		{"the cookie's Guild", 3, false, 0, 2, 2, domain.RoleViewer},
+		{"a cookie of a Guild you are not in falls back", 2, false, 0, 1, 2, domain.RoleAdmin},
+		{"a cookie of no Guild falls back", 3, false, 0, 99, 1, domain.RoleMember},
+		{"the Instance admin is admin anywhere", 1, true, 0, 2, 2, domain.RoleAdmin},
+		{"a token acts in its Guild", 3, false, 2, 1, 2, domain.RoleViewer},
+		{"a token never acts elsewhere", 2, false, 1, 2, 0, ""},
+		{"someone in no Guild", 4, false, 0, 1, 0, ""},
+	}
+	for _, c := range cases {
+		p, ok, err := s.Place(ctx, c.member, c.instanceAdmin, c.tokenGuild, c.wanted)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok != (c.want != 0) || p.Guild.ID != c.want || p.Role != c.role {
+			t.Errorf("%s: %+v %v, want Guild %d as %q", c.name, p, ok, c.want, c.role)
+		}
+	}
+}
+
+func TestTheInstanceAdminWithoutMembershipsActsInTheFirstGuild(t *testing.T) {
+	ctx := context.Background()
+	s, m, _ := newTestServiceWithMembers()
+	s.CreateGuild(ctx, "Bakers", "", 2)
+	m.memberships = nil
+	p, ok, _ := s.Place(ctx, 1, true, 0, 0)
+	if !ok || p.Guild.Name != "Bakers" || p.Role != domain.RoleAdmin {
+		t.Errorf("%+v %v", p, ok)
+	}
+}
+
+func TestChangeRoleAndRemoveMembership(t *testing.T) {
+	ctx := context.Background()
+	s, m, members := twoGuilds(t)
+	if _, err := s.ChangeRole(ctx, 2, 2, domain.RoleAdmin, 3, "owner"); !errors.Is(err, domain.ErrInvalidRole) {
+		t.Errorf("make owner: %v", err)
+	}
+	if ms, err := s.ChangeRole(ctx, 2, 2, domain.RoleAdmin, 3, domain.RoleMember); err != nil || ms.Role != domain.RoleMember {
+		t.Fatalf("admin promotes viewer: %+v %v", ms, err)
+	}
+	if r, _, _ := m.RoleOf(ctx, 1, 3); r != domain.RoleMember {
+		t.Errorf("the Role in another Guild changed: %s", r)
+	}
+	if _, err := s.ChangeRole(ctx, 2, 3, domain.RoleMember, 2, domain.RoleViewer); !errors.Is(err, domain.ErrNotAdmin) {
+		t.Errorf("member demotes admin: %v", err)
+	}
+	if _, err := s.ChangeRole(ctx, 2, 2, domain.RoleAdmin, 2, domain.RoleMember); !errors.Is(err, domain.ErrSelf) {
+		t.Errorf("admin demotes self: %v", err)
+	}
+	if _, err := s.ChangeRole(ctx, 1, 1, domain.RoleAdmin, 2, domain.RoleMember); !errors.Is(err, ErrMembershipNotFound) {
+		t.Errorf("Ann is not in Default: %v", err)
+	}
+	if _, err := s.ChangeRole(ctx, 1, 3, domain.RoleAdmin, 1, domain.RoleMember); !errors.Is(err, domain.ErrInstanceAdminFixed) {
+		t.Errorf("demote the Instance admin: %v", err)
+	}
+	// The Instance admin, admin anywhere, takes Ann's admin away: Bakers
+	// would have none.
+	if _, err := s.ChangeRole(ctx, 2, 1, domain.RoleAdmin, 2, domain.RoleMember); !errors.Is(err, domain.ErrLastAdmin) {
+		t.Errorf("demote the last admin: %v", err)
+	}
+	if err := s.RemoveMembership(ctx, 2, 1, domain.RoleAdmin, 2); !errors.Is(err, domain.ErrLastAdmin) {
+		t.Errorf("remove the last admin: %v", err)
+	}
+	if err := s.RemoveMembership(ctx, 2, 2, domain.RoleAdmin, 3); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := m.RoleOf(ctx, 2, 3); ok {
+		t.Error("the Membership stayed")
+	}
+	if _, ok, _ := m.RoleOf(ctx, 1, 3); !ok {
+		t.Error("the Membership in another Guild went too")
+	}
+	if len(members.revoked) != 1 || members.revoked[0] != [2]uint64{3, 2} {
+		t.Errorf("API tokens revoked: %v, want Dev's in Bakers", members.revoked)
+	}
+}
+
+func TestResetTwoFactorOfAMemberOfTheGuild(t *testing.T) {
+	ctx := context.Background()
+	s, _, members := twoGuilds(t)
+	if err := s.ResetTwoFactor(ctx, 2, 2, domain.RoleAdmin, 1); !errors.Is(err, ErrMembershipNotFound) {
+		t.Errorf("someone outside the Guild: %v", err)
+	}
+	if err := s.ResetTwoFactor(ctx, 1, 3, domain.RoleMember, 1); !errors.Is(err, domain.ErrNotAdmin) {
+		t.Errorf("a member resets: %v", err)
+	}
+	if err := s.ResetTwoFactor(ctx, 1, 1, domain.RoleAdmin, 1); !errors.Is(err, domain.ErrInstanceAdminFixed) {
+		t.Errorf("the Instance admin's own: %v", err)
+	}
+	if err := s.ResetTwoFactor(ctx, 2, 2, domain.RoleAdmin, 3); err != nil || len(members.reset) != 1 || members.reset[0] != 3 {
+		t.Errorf("admin resets Dev: %v %v", err, members.reset)
+	}
+}
+
+func TestGuildsFor(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := twoGuilds(t)
+	dev, _ := s.GuildsFor(ctx, 3, false)
+	if len(dev) != 2 || dev[0].Role != domain.RoleMember || dev[1].Role != domain.RoleViewer {
+		t.Errorf("Dev's Guilds: %+v", dev)
+	}
+	admin, _ := s.GuildsFor(ctx, 1, true)
+	if len(admin) != 2 || admin[1].Guild.Name != "Bakers" || admin[1].Role != domain.RoleAdmin {
+		t.Errorf("the Instance admin's Guilds: %+v", admin)
 	}
 }

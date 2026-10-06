@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -16,20 +17,20 @@ type memMembers struct {
 	recoveryCodes map[uint64]map[string]bool
 }
 
-func (m *memMembers) OwnerExists(context.Context) (bool, error) {
+func (m *memMembers) InstanceAdminExists(context.Context) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, x := range m.members {
-		if x.Role == domain.RoleOwner {
+		if x.InstanceAdmin {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-func (m *memMembers) AddOwnerIfNone(ctx context.Context, o domain.Member) (domain.Member, error) {
-	if exists, _ := m.OwnerExists(ctx); exists {
-		return domain.Member{}, ErrOwnerExists
+func (m *memMembers) AddInstanceAdminIfNone(ctx context.Context, o domain.Member) (domain.Member, error) {
+	if exists, _ := m.InstanceAdminExists(ctx); exists {
+		return domain.Member{}, ErrSetupDone
 	}
 	return m.add(o), nil
 }
@@ -61,33 +62,16 @@ func (m *memMembers) ByID(_ context.Context, id uint64) (domain.Member, bool, er
 	return m.find(func(x domain.Member) bool { return x.ID == id })
 }
 
-func (m *memMembers) All(context.Context) ([]domain.Member, error) {
+func (m *memMembers) ByIDs(_ context.Context, ids []uint64) ([]domain.Member, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return append([]domain.Member(nil), m.members...), nil
-}
-
-func (m *memMembers) SetRole(_ context.Context, id uint64, role domain.Role) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for i := range m.members {
-		if m.members[i].ID == id {
-			m.members[i].Role = role
+	var out []domain.Member
+	for _, x := range m.members {
+		if slices.Contains(ids, x.ID) {
+			out = append(out, x)
 		}
 	}
-	return nil
-}
-
-func (m *memMembers) Remove(_ context.Context, id uint64) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for i := range m.members {
-		if m.members[i].ID == id {
-			m.members = append(m.members[:i], m.members[i+1:]...)
-			return nil
-		}
-	}
-	return nil
+	return out, nil
 }
 
 func newTestService() *Service {
@@ -107,45 +91,45 @@ func TestSetupOnlyOnce(t *testing.T) {
 	if needed, _ := s.SetupNeeded(ctx); !needed {
 		t.Fatal("setup should be needed on a fresh install")
 	}
-	if _, err := s.SetupOwner(ctx, "Ada", "ada@example.com", "correct horse"); err != nil {
+	if _, err := s.SetUp(ctx, "Ada", "ada@example.com", "correct horse"); err != nil {
 		t.Fatalf("first setup: %v", err)
 	}
-	if _, err := s.SetupOwner(ctx, "Bram", "bram@example.com", "correct horse"); !errors.Is(err, ErrOwnerExists) {
-		t.Fatalf("second setup: err = %v, want ErrOwnerExists", err)
+	if _, err := s.SetUp(ctx, "Bram", "bram@example.com", "correct horse"); !errors.Is(err, ErrSetupDone) {
+		t.Fatalf("second setup: err = %v, want ErrSetupDone", err)
 	}
 	if needed, _ := s.SetupNeeded(ctx); needed {
 		t.Fatal("setup should not be needed after it ran")
 	}
 }
 
-func TestSetupMakesTheInstanceAdminAndTellsMemberSetUp(t *testing.T) {
+func TestSetupMakesTheInstanceAdminAndTellsMemberAdded(t *testing.T) {
 	ctx := context.Background()
 	s := newTestService()
-	var heard []uint64
-	s.MemberSetUp = func(_ context.Context, id uint64) error {
-		heard = append(heard, id)
+	var heard []MemberAdded
+	s.MemberAdded = func(_ context.Context, e MemberAdded) error {
+		heard = append(heard, e)
 		return nil
 	}
-	m, err := s.SetupOwner(ctx, "Ada", "ada@example.com", "correct horse")
+	m, err := s.SetUp(ctx, "Ada", "ada@example.com", "correct horse")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !m.InstanceAdmin {
 		t.Error("the Member Setup creates is the Instance admin")
 	}
-	if len(heard) != 1 || heard[0] != m.ID {
-		t.Errorf("MemberSetUp heard %v, want [%d]", heard, m.ID)
+	if want := (MemberAdded{MemberID: m.ID, InstanceAdmin: true, Role: domain.RoleAdmin}); len(heard) != 1 || heard[0] != want {
+		t.Errorf("MemberAdded heard %v, want [%v]", heard, want)
 	}
-	s.SetupOwner(ctx, "Bram", "bram@example.com", "correct horse")
+	s.SetUp(ctx, "Bram", "bram@example.com", "correct horse")
 	if len(heard) != 1 {
-		t.Errorf("a refused Setup told MemberSetUp: %v", heard)
+		t.Errorf("a refused Setup told MemberAdded: %v", heard)
 	}
 }
 
 func TestLogin(t *testing.T) {
 	ctx := context.Background()
 	s := newTestService()
-	if _, err := s.SetupOwner(ctx, "Ada", "ada@example.com", "correct horse"); err != nil {
+	if _, err := s.SetUp(ctx, "Ada", "ada@example.com", "correct horse"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Login(ctx, "ADA@example.com", "correct horse"); err != nil {

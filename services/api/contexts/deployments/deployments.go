@@ -21,7 +21,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/deployments/domain"
 	deploymentshttp "github.com/jevido/bakery/services/api/contexts/deployments/http"
 	"github.com/jevido/bakery/services/api/contexts/deployments/infra"
-	"github.com/jevido/bakery/services/api/contexts/identity"
+	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/projects"
 	"github.com/jevido/bakery/services/api/contexts/routing"
 	"github.com/jevido/bakery/services/api/contexts/servers"
@@ -179,9 +179,9 @@ func publicURL(d string, serverID uint64) string {
 
 func isApplicationNotFound(err error) bool { return errors.Is(err, projects.ErrNotFound) }
 
-// Routes registers the deployments API behind identity.Auth (Known hosts
-// also behind identity.Admin, the Webhook with its secret behind
-// identity.Secrets), and the
+// Routes registers the deployments API behind guilds.Auth (Known hosts
+// also behind guilds.Admin, the Webhook with its secret behind
+// guilds.Secrets), and the
 // Webhook endpoint git hosts call without a Session (the signature is its
 // authentication).
 func Routes(r route.Router) {
@@ -189,14 +189,14 @@ func Routes(r route.Router) {
 	wc := deploymentshttp.NewWebhookController(webhooks, isApplicationNotFound)
 	r.Post("/api/webhooks/applications/{id}", wc.Receive)
 	// The Webhook answers with its secret, even after a change.
-	r.Middleware(identity.Auth, identity.Secrets).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, guilds.Secrets).Group(func(r route.Router) {
 		r.Get("/api/applications/{id}/webhook", wc.Show)
 	})
-	r.Middleware(identity.Auth, identity.Admin).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, guilds.Admin).Group(func(r route.Router) {
 		r.Get("/api/known-hosts", c.KnownHosts)
 		r.Delete("/api/known-hosts/{id}", c.ForgetKnownHost)
 	})
-	r.Middleware(identity.Auth).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth).Group(func(r route.Router) {
 		r.Patch("/api/applications/{id}/webhook", wc.Update)
 		r.Post("/api/applications/{id}/webhook/secret", wc.RotateSecret)
 		r.Get("/api/applications/{id}/status", c.Status)
@@ -207,7 +207,7 @@ func Routes(r route.Router) {
 		r.Get("/api/deployments/{id}", c.Show)
 	})
 	// Coolify's deploy actions: an API token needs deploy for them.
-	r.Middleware(identity.Deploy).Group(func(r route.Router) {
+	r.Middleware(guilds.Deploy).Group(func(r route.Router) {
 		r.Post("/api/applications/{id}/deploy", c.Deploy)
 		r.Post("/api/applications/{id}/restart", c.Restart)
 		r.Post("/api/applications/{id}/stop", c.Stop)
@@ -219,12 +219,12 @@ func Routes(r route.Router) {
 
 var shutdown = make(chan struct{})
 
-// StreamRoutes registers the live log streams, behind identity.Auth but
+// StreamRoutes registers the live log streams, behind guilds.Auth but
 // outside the request timeout.
 func StreamRoutes(r route.Router) {
 	isNotFound := func(err error) bool { return errors.Is(err, projects.ErrNotFound) || errors.Is(err, app.ErrNotFound) }
 	c := deploymentshttp.NewStreamController(svc(), followContainer, isNotFound, shutdown)
-	r.Middleware(identity.Auth).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth).Group(func(r route.Router) {
 		r.Get("/api/deployments/{id}/log", c.DeploymentLog)
 		r.Get("/api/applications/{id}/logs", c.ContainerLogs)
 	})

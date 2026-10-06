@@ -10,6 +10,7 @@ import (
 	frameworkerrors "github.com/goravel/framework/errors"
 
 	"github.com/jevido/bakery/services/api/app/facades"
+	"github.com/jevido/bakery/services/api/contexts/guilds/app"
 	"github.com/jevido/bakery/services/api/contexts/guilds/domain"
 )
 
@@ -117,8 +118,16 @@ func create(tx contractsorm.Query, g domain.Guild, adminID uint64) (guildRecord,
 type Memberships struct{}
 
 func (Memberships) ListForMember(ctx context.Context, memberID uint64) ([]domain.Membership, error) {
+	return list(query(ctx).Where("user_id", memberID).OrderBy("guild_id"))
+}
+
+func (Memberships) ListForGuild(ctx context.Context, guildID uint64) ([]domain.Membership, error) {
+	return list(query(ctx).Where("guild_id", guildID).OrderBy("id"))
+}
+
+func list(q contractsorm.Query) ([]domain.Membership, error) {
 	var recs []membershipRecord
-	if err := query(ctx).Where("user_id", memberID).OrderBy("guild_id").Find(&recs); err != nil {
+	if err := q.Find(&recs); err != nil {
 		return nil, err
 	}
 	out := make([]domain.Membership, len(recs))
@@ -126,6 +135,47 @@ func (Memberships) ListForMember(ctx context.Context, memberID uint64) ([]domain
 		out[i] = r.toDomain()
 	}
 	return out, nil
+}
+
+func (Memberships) Add(ctx context.Context, m domain.Membership) error {
+	_, err := query(ctx).Exec(`INSERT INTO memberships (guild_id, user_id, role, created_at, updated_at)
+		VALUES (?, ?, ?, now(), now()) ON CONFLICT (guild_id, user_id) DO NOTHING`, m.GuildID, m.MemberID, string(m.Role))
+	return err
+}
+
+func (Memberships) Change(ctx context.Context, guildID, memberID uint64, to domain.Role, check func([]domain.Membership) error) (domain.Membership, error) {
+	var changed domain.Membership
+	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		// Locks the Guild's Memberships, so a concurrent change waits and
+		// then checks what this one left.
+		ms, err := list(tx.Where("guild_id", guildID).OrderBy("id").LockForUpdate())
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, m := range ms {
+			if m.MemberID == memberID {
+				changed, found = m, true
+			}
+		}
+		if !found {
+			return app.ErrMembershipNotFound
+		}
+		if err := check(ms); err != nil {
+			return err
+		}
+		if to == "" {
+			_, err = tx.Where("id", changed.ID).Delete(&membershipRecord{})
+			return err
+		}
+		changed.Role = to
+		_, err = tx.Model(&membershipRecord{}).Where("id", changed.ID).Update("role", string(to))
+		return err
+	})
+	if err != nil {
+		return domain.Membership{}, err
+	}
+	return changed, nil
 }
 
 func (Memberships) RoleOf(ctx context.Context, guildID, memberID uint64) (domain.Role, bool, error) {

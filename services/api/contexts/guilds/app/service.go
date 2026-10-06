@@ -1,5 +1,6 @@
-// Package app holds the guilds use cases: creating Guilds and finding the
-// Role a Member holds in one.
+// Package app holds the guilds use cases: creating Guilds, finding the
+// Guild a request acts in and the Role a Member holds there, and managing
+// the Memberships of a Guild.
 package app
 
 import (
@@ -26,17 +27,37 @@ type Guilds interface {
 type Memberships interface {
 	// ListForMember lists the Member's Memberships by Guild id.
 	ListForMember(ctx context.Context, memberID uint64) ([]domain.Membership, error)
+	// ListForGuild lists the Guild's Memberships.
+	ListForGuild(ctx context.Context, guildID uint64) ([]domain.Membership, error)
 	// RoleOf is the Member's Role in the Guild, false without a Membership.
 	RoleOf(ctx context.Context, guildID, memberID uint64) (domain.Role, bool, error)
+	// Add stores m unless the Member holds a Membership in that Guild
+	// already, which it leaves as it is.
+	Add(ctx context.Context, m domain.Membership) error
+	// Change gives memberID's Membership in the Guild the Role to, or
+	// deletes it when to is empty, once check accepts every Membership of
+	// the Guild as they are. Check and change are one step, so two admins
+	// demoting each other cannot leave the Guild without one.
+	// ErrMembershipNotFound when memberID holds none there.
+	Change(ctx context.Context, guildID, memberID uint64, to domain.Role, check func([]domain.Membership) error) (domain.Membership, error)
+}
+
+// Members is what guilds needs to know and ask of identity's Members.
+type Members interface {
+	IsInstanceAdmin(ctx context.Context, memberID uint64) (bool, error)
+	// RevokeAPITokens deletes every API token the Member made in the Guild.
+	RevokeAPITokens(ctx context.Context, memberID, guildID uint64) error
+	ResetTwoFactor(ctx context.Context, memberID uint64) error
 }
 
 type Service struct {
 	guilds      Guilds
 	memberships Memberships
+	members     Members
 }
 
-func NewService(guilds Guilds, memberships Memberships) *Service {
-	return &Service{guilds: guilds, memberships: memberships}
+func NewService(guilds Guilds, memberships Memberships, members Members) *Service {
+	return &Service{guilds: guilds, memberships: memberships, members: members}
 }
 
 // CreateGuild makes a Guild with creatorID as its admin.

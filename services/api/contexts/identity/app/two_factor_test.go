@@ -15,7 +15,7 @@ func twoFactorService(t *testing.T) (*Service, *time.Time, domain.Member) {
 	s := newTestService()
 	now := time.Unix(1_800_000_000, 0)
 	s.Now = func() time.Time { return now }
-	m, err := s.SetupOwner(context.Background(), "Ada", "ada@example.com", "correct horse battery")
+	m, err := s.SetUp(context.Background(), "Ada", "ada@example.com", "correct horse battery")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,24 +156,15 @@ func TestResetTwoFactor(t *testing.T) {
 	enrol(admin.ID)
 	enrol(dev.ID)
 
-	if err := s.ResetTwoFactor(ctx, dev.ID, admin.ID); !errors.Is(err, domain.ErrNotAdmin) {
-		t.Errorf("member resets admin: %v", err)
-	}
-	if err := s.ResetTwoFactor(ctx, admin.ID, owner.ID); !errors.Is(err, domain.ErrOwnerIsFixed) {
-		t.Errorf("admin resets owner: %v", err)
-	}
-	if err := s.ResetTwoFactor(ctx, admin.ID, admin.ID); !errors.Is(err, domain.ErrSelf) {
-		t.Errorf("admin resets self: %v", err)
-	}
 	*now = now.Add(2 * time.Second)
-	if err := s.ResetTwoFactor(ctx, admin.ID, dev.ID); err != nil {
+	if err := s.ResetTwoFactor(ctx, dev.ID); err != nil {
 		t.Fatalf("admin resets member: %v", err)
 	}
 	m, _ := s.CurrentMember(ctx, dev.ID)
 	if m.TwoFactor.On() || !m.SessionsValidFrom.Equal(now.Truncate(time.Second)) {
 		t.Errorf("after reset: %+v", m)
 	}
-	if err := s.ResetTwoFactor(ctx, admin.ID, dev.ID); !errors.Is(err, ErrTwoFactorOff) {
+	if err := s.ResetTwoFactor(ctx, dev.ID); !errors.Is(err, ErrTwoFactorOff) {
 		t.Errorf("reset twice: %v", err)
 	}
 	if err := s.ResetTwoFactorByEmail(ctx, " ADA@example.com"); err != nil {

@@ -13,7 +13,7 @@ import (
 
 	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/app/podman"
-	"github.com/jevido/bakery/services/api/contexts/identity"
+	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/projects"
 	"github.com/jevido/bakery/services/api/contexts/routing"
 	"github.com/jevido/bakery/services/api/contexts/services/app"
@@ -74,10 +74,10 @@ func svc() *app.Service {
 	return service
 }
 
-// Routes registers the services API, all behind identity.Auth.
+// Routes registers the services API, all behind guilds.Auth.
 func Routes(r route.Router) {
 	c := serviceshttp.NewController(svc())
-	r.Middleware(identity.Auth).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth).Group(func(r route.Router) {
 		r.Get("/api/service-templates", c.Templates)
 		r.Post("/api/environments/{id}/services", c.Create)
 		r.Get("/api/projects/{id}/services", c.ForProject)
@@ -86,7 +86,7 @@ func Routes(r route.Router) {
 		r.Delete("/api/services/{id}", c.Delete)
 	})
 	// Coolify's deploy actions: an API token needs deploy for them.
-	r.Middleware(identity.Deploy).Group(func(r route.Router) {
+	r.Middleware(guilds.Deploy).Group(func(r route.Router) {
 		r.Post("/api/services/{id}/start", c.Start)
 		r.Post("/api/services/{id}/stop", c.Stop)
 		r.Post("/api/services/{id}/restart", c.Restart)
@@ -94,11 +94,11 @@ func Routes(r route.Router) {
 	})
 }
 
-// StreamRoutes registers the Component log stream, behind identity.Auth
+// StreamRoutes registers the Component log stream, behind guilds.Auth
 // but outside the request timeout.
 func StreamRoutes(r route.Router) {
 	c := serviceshttp.NewStreamController(svc(), shutdown)
-	r.Middleware(identity.Auth).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth).Group(func(r route.Router) {
 		r.Get("/api/services/{id}/components/{component}/logs", c.Logs)
 	})
 }
