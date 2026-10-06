@@ -59,6 +59,11 @@ func TestChannelValidation(t *testing.T) {
 		{"ntfy topic", func() Input { return Input{Name: "n", Kind: Ntfy, Settings: Settings{Topic: "a/b"}} }, "topic"},
 		{"no events", func() Input { in := emailInput(); in.EventKinds = []EventKind{}; return in }, "event_kinds"},
 		{"unknown event", func() Input { in := emailInput(); in.EventKinds = []EventKind{"reboot"}; return in }, "event_kinds"},
+		{"from name", func() Input { in := emailInput(); in.Settings.FromName = "Ops <x>"; return in }, "from_name"},
+		{"timeout low", func() Input { in := emailInput(); in.Settings.Timeout = -1; return in }, "timeout"},
+		{"timeout high", func() Input { in := emailInput(); in.Settings.Timeout = 301; return in }, "timeout"},
+		{"ehlo domain", func() Input { in := emailInput(); in.Settings.EHLODomain = "mail example"; return in }, "ehlo_domain"},
+		{"ehlo hyphen", func() Input { in := emailInput(); in.Settings.EHLODomain = "-mail.example.com"; return in }, "ehlo_domain"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -118,5 +123,46 @@ func TestChangeKeepsSecrets(t *testing.T) {
 	in.Settings.Username = ""
 	if err := e.Change(in); err != nil || e.Settings.Password != "" {
 		t.Errorf("no username kept password %q, %v", e.Settings.Password, err)
+	}
+}
+
+func TestEmailOptionalSettings(t *testing.T) {
+	c, err := NewChannel(emailInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Settings.DisplayFromName() != "The Bakery" || c.Settings.EmailTimeout() != DefaultEmailTimeout || c.Settings.EHLODomain != "" {
+		t.Errorf("defaults %+v", c.Settings)
+	}
+	in := emailInput()
+	in.Settings.FromName, in.Settings.Timeout, in.Settings.EHLODomain = " Ops team ", 5, " mail.example.com "
+	if err := c.Change(in); err != nil {
+		t.Fatal(err)
+	}
+	if c.Settings.DisplayFromName() != "Ops team" || c.Settings.EmailTimeout().Seconds() != 5 || c.Settings.EHLODomain != "mail.example.com" {
+		t.Errorf("got %+v", c.Settings)
+	}
+}
+
+func TestEnabled(t *testing.T) {
+	c, err := NewChannel(emailInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Enabled {
+		t.Fatal("a new channel is disabled")
+	}
+	off := false
+	in := emailInput()
+	in.Enabled = &off
+	if err := c.Change(in); err != nil || c.Enabled {
+		t.Fatalf("enabled %v, %v", c.Enabled, err)
+	}
+	if err := c.Change(emailInput()); err != nil || c.Enabled {
+		t.Errorf("nil enabled changed it: %v, %v", c.Enabled, err)
+	}
+	d, err := NewChannel(in)
+	if err != nil || d.Enabled {
+		t.Errorf("new channel with enabled false: %v, %v", d.Enabled, err)
 	}
 }

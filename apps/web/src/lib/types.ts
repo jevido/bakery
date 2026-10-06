@@ -433,7 +433,12 @@ export type NotificationChannel = {
     username?: string
     has_password: boolean
     from?: string
+    /** The display name in From:; empty means "The Bakery". */
+    from_name?: string
     to?: string[]
+    /** SMTP timeout in seconds; empty means 30. */
+    timeout?: number
+    ehlo_domain?: string
     /** ntfy's server; the other kinds' URLs are secret. */
     url?: string
     /** Of a secret URL, only its host. */
@@ -445,6 +450,8 @@ export type NotificationChannel = {
     has_secret: boolean
   }
   event_kinds: string[]
+  /** A disabled channel gets no Notifications and cannot be tested. */
+  enabled: boolean
   created_at: string
 }
 

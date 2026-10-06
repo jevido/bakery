@@ -15,6 +15,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"net/url"
 	"strconv"
@@ -221,7 +222,7 @@ func emailMessage(st domain.Settings, to []string, subject, body string, now tim
 	id := make([]byte, 12)
 	_, _ = rand.Read(id)
 	domainPart := st.From[strings.LastIndex(st.From, "@")+1:]
-	fmt.Fprintf(&b, "From: The Bakery <%s>\r\n", st.From)
+	fmt.Fprintf(&b, "From: %s\r\n", (&mail.Address{Name: st.DisplayFromName(), Address: st.From}).String())
 	fmt.Fprintf(&b, "To: %s\r\n", strings.Join(to, ", "))
 	fmt.Fprintf(&b, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", subject))
 	fmt.Fprintf(&b, "Date: %s\r\n", now.Format(time.RFC1123Z))
@@ -250,8 +251,10 @@ func (s Senders) Mail(ctx context.Context, c domain.Channel, to []string, subjec
 }
 
 // sendMail sends msg to the recipients through the email channel's SMTP
-// server.
+// server, within the channel's timeout.
 func sendMail(ctx context.Context, st domain.Settings, to []string, msg []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, st.EmailTimeout())
+	defer cancel()
 	addr := net.JoinHostPort(st.Host, strconv.Itoa(st.Port))
 	d := net.Dialer{}
 	var conn net.Conn
@@ -274,6 +277,11 @@ func sendMail(ctx context.Context, st domain.Settings, to []string, msg []byte) 
 		return fmt.Errorf("smtp: %w", err)
 	}
 	defer c.Close()
+	if st.EHLODomain != "" {
+		if err := c.Hello(st.EHLODomain); err != nil {
+			return fmt.Errorf("smtp: ehlo: %w", err)
+		}
+	}
 	if st.Security == domain.SecurityStartTLS {
 		if ok, _ := c.Extension("STARTTLS"); !ok {
 			return errors.New("smtp: the server does not offer STARTTLS; choose security none or tls")

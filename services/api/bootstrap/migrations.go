@@ -63,5 +63,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000048CreateScheduledBackupsTable{},
 		&migrations.M20260930000049AddDescriptionToServices{},
 		&migrations.M20260930000050AddDescriptionToServers{},
+		&migrations.M20260930000051AddEnabledToNotificationChannels{},
 	}
 }

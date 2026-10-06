@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/notifications/domain"
@@ -109,14 +110,37 @@ func (s *Service) DeleteChannel(ctx context.Context, id uint64) error {
 // testTimeout bounds a Test notification, which the admin waits for.
 const testTimeout = 15 * time.Second
 
+// sendTimeout is how long one send to c may take: timeout, or longer when
+// an email channel allows its SMTP conversation more.
+func sendTimeout(c domain.Channel, timeout time.Duration) time.Duration {
+	if c.Kind == domain.Email {
+		return max(timeout, c.Settings.EmailTimeout()+time.Second)
+	}
+	return timeout
+}
+
 // TestChannel sends a Test notification to the channel at once and records
-// it as a Delivery. sendErr is the channel's answer; err is anything else
-// that went wrong.
-func (s *Service) TestChannel(ctx context.Context, id uint64) (sendErr error, err error) {
+// it as a Delivery. An email channel sends it to recipient when one is
+// given, else to its own recipients. sendErr is the channel's answer; err
+// is anything else that went wrong.
+func (s *Service) TestChannel(ctx context.Context, id uint64, recipient string) (sendErr error, err error) {
 	c, err := s.Channel(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	if !c.Enabled {
+		return nil, &domain.FieldError{Field: "enabled", Message: "Enable the channel first."}
+	}
+	if recipient = strings.TrimSpace(recipient); recipient != "" {
+		if c.Kind != domain.Email {
+			return nil, &domain.FieldError{Field: "recipient", Message: "only an email channel sends a test to a recipient"}
+		}
+		if !domain.IsAddress(recipient) {
+			return nil, &domain.FieldError{Field: "recipient", Message: "recipient is an email address"}
+		}
+		c.Settings.To = []string{recipient}
+	}
+	timeout := sendTimeout(c, testTimeout)
 	n := domain.Notification{
 		Kind:  c.EventKinds[0],
 		Title: "Test notification from The Bakery",
@@ -126,13 +150,13 @@ func (s *Service) TestChannel(ctx context.Context, id uint64) (sendErr error, er
 	}
 	d := domain.NewDelivery(c.ID, n, s.Now())
 	// Not due for the dispatcher while this call sends it.
-	d.NextAttemptAt = d.NextAttemptAt.Add(2 * testTimeout)
+	d.NextAttemptAt = d.NextAttemptAt.Add(2 * timeout)
 	ds, err := s.store.CreateDeliveries(ctx, []domain.Delivery{d})
 	if err != nil {
 		return nil, err
 	}
 	d = ds[0]
-	sctx, cancel := context.WithTimeout(ctx, testTimeout)
+	sctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	sendErr = s.sender.Send(sctx, c, n)
 	if sendErr != nil {

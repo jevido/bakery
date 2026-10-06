@@ -172,6 +172,7 @@ type smtpServer struct {
 	addr string
 	mu   sync.Mutex
 	auth string
+	ehlo string
 	from string
 	to   []string
 	data string
@@ -204,6 +205,7 @@ func startSMTP(t *testing.T) *smtpServer {
 			s.mu.Lock()
 			switch {
 			case cmd == "EHLO":
+				s.ehlo = line
 				say("250-test")
 				say("250 AUTH PLAIN")
 			case cmd == "AUTH":
@@ -258,7 +260,10 @@ func TestEmail(t *testing.T) {
 	if srv.auth != "\x00u\x00pw" || srv.from != "MAIL FROM:<bakery@example.com>" || len(srv.to) != 2 {
 		t.Errorf("auth %q from %q to %v", srv.auth, srv.from, srv.to)
 	}
-	for _, want := range []string{"Subject: [The Bakery] Deployment of shop failed\r\n", "To: a@example.com, b@example.com\r\n", "\r\n\r\nbuild failed\r\nhttp://localhost:4930/applications/3\r\n"} {
+	if srv.ehlo != "EHLO localhost" {
+		t.Errorf("ehlo %q, want Go's default", srv.ehlo)
+	}
+	for _, want := range []string{"From: \"The Bakery\" <bakery@example.com>\r\n", "Subject: [The Bakery] Deployment of shop failed\r\n", "To: a@example.com, b@example.com\r\n", "\r\n\r\nbuild failed\r\nhttp://localhost:4930/applications/3\r\n"} {
 		if !strings.Contains(srv.data, want) {
 			t.Errorf("message lacks %q:\n%s", want, srv.data)
 		}
@@ -273,5 +278,26 @@ func TestStartTLSRequired(t *testing.T) {
 	c := domain.Channel{Kind: domain.Email, Settings: domain.Settings{Host: host, Port: p, Security: domain.SecurityStartTLS, From: "b@example.com", To: []string{"a@example.com"}}}
 	if err := (Senders{}).Send(context.Background(), c, failed); err == nil || !strings.Contains(err.Error(), "STARTTLS") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestEmailFromNameAndEHLO(t *testing.T) {
+	srv := startSMTP(t)
+	host, port, _ := net.SplitHostPort(srv.addr)
+	p, _ := strconv.Atoi(port)
+	c := domain.Channel{Kind: domain.Email, Settings: domain.Settings{
+		Host: host, Port: p, Security: domain.SecurityNone, From: "bakery@example.com", To: []string{"a@example.com"},
+		FromName: "Ops", Timeout: 5, EHLODomain: "mail.example.com",
+	}}
+	if err := (Senders{}).Send(context.Background(), c, failed); err != nil {
+		t.Fatal(err)
+	}
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	if srv.ehlo != "EHLO mail.example.com" {
+		t.Errorf("ehlo %q", srv.ehlo)
+	}
+	if !strings.Contains(srv.data, "From: \"Ops\" <bakery@example.com>\r\n") {
+		t.Errorf("message lacks the from name:\n%s", srv.data)
 	}
 }

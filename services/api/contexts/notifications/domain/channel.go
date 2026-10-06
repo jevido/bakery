@@ -109,6 +109,13 @@ type Settings struct {
 	Password string   `json:"password,omitempty"`
 	From     string   `json:"from,omitempty"`
 	To       []string `json:"to,omitempty"`
+	// FromName is the display name in From:; empty means "The Bakery".
+	FromName string `json:"from_name,omitempty"`
+	// Timeout bounds one SMTP conversation, in seconds; 0 means
+	// DefaultEmailTimeout.
+	Timeout int `json:"timeout,omitempty"`
+	// EHLODomain is the host name sent in EHLO; empty keeps Go's default.
+	EHLODomain string `json:"ehlo_domain,omitempty"`
 	// discord, slack, ntfy (the server), webhook
 	URL string `json:"url,omitempty"`
 	// telegram
@@ -129,6 +136,29 @@ func (k Kind) URLIsSecret() bool { return k == Discord || k == Slack || k == Web
 // DefaultNtfyURL is the ntfy server used when none is given.
 const DefaultNtfyURL = "https://ntfy.sh"
 
+// DefaultFromName is the display name of an email channel without one.
+const DefaultFromName = "The Bakery"
+
+// DefaultEmailTimeout bounds an SMTP conversation when the channel sets no
+// timeout.
+const DefaultEmailTimeout = 30 * time.Second
+
+// EmailTimeout is how long one SMTP conversation of the channel may take.
+func (s Settings) EmailTimeout() time.Duration {
+	if s.Timeout <= 0 {
+		return DefaultEmailTimeout
+	}
+	return time.Duration(s.Timeout) * time.Second
+}
+
+// DisplayFromName is the name shown in From:.
+func (s Settings) DisplayFromName() string {
+	if s.FromName == "" {
+		return DefaultFromName
+	}
+	return s.FromName
+}
+
 // Channel is a Notification channel, the aggregate root.
 type Channel struct {
 	ID         uint64
@@ -136,16 +166,20 @@ type Channel struct {
 	Kind       Kind
 	Settings   Settings
 	EventKinds []EventKind
-	CreatedAt  time.Time
+	// Enabled is false for a channel that gets no Notifications.
+	Enabled   bool
+	CreatedAt time.Time
 }
 
 // Input is a channel as typed. Nil EventKinds means the defaults on a new
-// channel and no change on an existing one.
+// channel and no change on an existing one; nil Enabled means enabled on a
+// new channel and no change on an existing one.
 type Input struct {
 	Name       string
 	Kind       Kind
 	Settings   Settings
 	EventKinds []EventKind
+	Enabled    *bool
 }
 
 // NewChannel validates the input into a new channel.
@@ -153,7 +187,7 @@ func NewChannel(in Input) (Channel, error) {
 	if !slices.Contains(Kinds, in.Kind) {
 		return Channel{}, invalid("kind", "kind is one of email, discord, slack, telegram, ntfy or webhook")
 	}
-	c := Channel{Kind: in.Kind}
+	c := Channel{Kind: in.Kind, Enabled: true}
 	if in.EventKinds == nil {
 		in.EventKinds = DefaultEventKinds()
 	}
@@ -193,6 +227,9 @@ func (c *Channel) Change(in Input) error {
 		return err
 	}
 	c.Name, c.Settings, c.EventKinds = name, s, events
+	if in.Enabled != nil {
+		c.Enabled = *in.Enabled
+	}
 	return nil
 }
 
@@ -210,10 +247,15 @@ func (c *Channel) merge(in Settings) (Settings, error) {
 	var s Settings
 	switch c.Kind {
 	case Email:
-		s = Settings{Host: in.Host, Port: in.Port, Security: in.Security, Username: in.Username, Password: in.Password, From: in.From}
+		s = Settings{
+			Host: in.Host, Port: in.Port, Security: in.Security, Username: in.Username, Password: in.Password,
+			From: in.From, FromName: in.FromName, Timeout: in.Timeout, EHLODomain: in.EHLODomain,
+		}
 		trim(&s.Host)
 		trim(&s.Username)
 		trim(&s.From)
+		trim(&s.FromName)
+		trim(&s.EHLODomain)
 		keep(&s.Password, old.Password)
 		if s.Username == "" {
 			s.Password = ""
@@ -235,6 +277,12 @@ func (c *Channel) merge(in Settings) (Settings, error) {
 			return s, invalid("security", "security is none, starttls or tls")
 		case !isAddress(s.From):
 			return s, invalid("from", "from is an email address")
+		case len(s.FromName) > 63 || strings.ContainsAny(s.FromName, "\r\n<>\""):
+			return s, invalid("from_name", "from name is at most 63 characters, without quotes or angle brackets")
+		case s.Timeout != 0 && (s.Timeout < 1 || s.Timeout > 300):
+			return s, invalid("timeout", "timeout is 1–300 seconds")
+		case s.EHLODomain != "" && !isHostName(s.EHLODomain):
+			return s, invalid("ehlo_domain", "EHLO domain is a host name, like mail.example.com")
 		case len(s.To) == 0:
 			return s, invalid("to", "add at least one recipient")
 		}
@@ -288,6 +336,28 @@ func isAddress(s string) bool {
 	a, err := mail.ParseAddress(s)
 	return err == nil && a.Name == "" && a.Address == s
 }
+
+// isHostName says whether s is a DNS host name: dot-separated labels of
+// letters, digits and hyphens, none starting or ending with a hyphen.
+func isHostName(s string) bool {
+	if len(s) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(s, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, r := range label {
+			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-') {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// IsAddress says whether s is a bare email address, like a@example.com.
+func IsAddress(s string) bool { return isAddress(s) }
 
 func checkURL(raw string) error {
 	u, err := url.Parse(raw)

@@ -5,7 +5,9 @@
 # for the channel that asked, a failed Backup and, with the Remote server
 # stand-in running, a Server going down and coming back each reach the
 # channels subscribed to them; a channel that cannot be reached fails after
-# three attempts; an Invitation is emailed with a link that works.
+# three attempts; a disabled channel gets nothing and cannot be tested; an
+# email test goes to a typed recipient with the channel's From name; an
+# Invitation is emailed with a link that works.
 #
 # Needs `task dev` and `task mail:up`. The API is restarted with the
 # Telegram API pointed at the receiver and a 10 s Server probe, and
@@ -126,7 +128,34 @@ r = [json.loads(l) for l in open(log) if json.loads(l)['path'] == path][-1]
 want = 'sha256=' + hmac.new(secret.encode(), r['body'].encode(), hashlib.sha256).hexdigest()
 sys.exit(0 if r['headers'].get('x-bakery-signature') == want else 1)
 PY
+[ "$(curl -s "$MAILPIT/api/v1/message/$(curl -s "$MAILPIT/api/v1/messages?limit=500" | json "[m['ID'] for m in d['messages'] if any(t['Address']=='$OPS' for t in m['To'])][0]")" | json "d['From']['Name']")" = "The Bakery" ] ||
+	fail "an email channel without a From name does not send as The Bakery"
 echo "ok: every kind delivered its test, the webhook is signed"
+
+say "A disabled channel cannot be tested and gets no Notifications"
+channel "{\"name\":\"$RUN-off\",\"kind\":\"webhook\",\"settings\":{\"url\":\"$RECEIVER/off/tok-$RUN\"},\"enabled\":false}"
+OFF=$CHANNEL
+[ "$(bakery GET "/api/notification-channels/$OFF" | json "d['channel']['enabled']")" = False ] || fail "the channel was not created disabled"
+OUT=$(curl -sS -b "$JAR" -X POST -w '\n%{http_code}' "$API/api/notification-channels/$OFF/test")
+if [ "$(tail -n1 <<<"$OUT")" != 422 ] || ! grep -q '"enabled"' <<<"$OUT"; then fail "a disabled channel was tested: $OUT"; fi
+echo "ok: the test of a disabled channel answers 422"
+
+say "An email test goes to a typed recipient, with the From name, timeout and EHLO domain saved"
+EMAIL=${CHANNELS[0]}
+PROBE="probe-$RUN@example.test"
+bakery PATCH "/api/notification-channels/$EMAIL" "{\"name\":\"$RUN-email\",\"settings\":{\"host\":\"127.0.0.1\",\"port\":4980,\"security\":\"none\",\"username\":\"bakery\",\"from\":\"bakery@example.com\",\"from_name\":\"Ops $RUN\",\"timeout\":20,\"ehlo_domain\":\"bakery.example.test\",\"to\":[\"$OPS\"]}}" >/dev/null
+OUT=$(bakery GET "/api/notification-channels/$EMAIL")
+[ "$(json "(d['channel']['enabled'], d['channel']['settings']['from_name'], d['channel']['settings']['timeout'], d['channel']['settings']['ehlo_domain'], d['channel']['settings']['has_password'])" <<<"$OUT")" = "(True, 'Ops $RUN', 20, 'bakery.example.test', True)" ] ||
+	fail "the email settings did not stay: $OUT"
+! grep -q -- "pw-$RUN" <<<"$OUT" || fail "the password is shown"
+[ "$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -X POST -H 'Content-Type: application/json' -d '{"recipient":"nope"}' "$API/api/notification-channels/$EMAIL/test")" = 422 ] ||
+	fail "a test to a bad recipient was sent"
+[ "$(bakery POST "/api/notification-channels/$EMAIL/test" "{\"recipient\":\"$PROBE\"}" | json "d['ok']")" = True ] || fail "the test to $PROBE failed"
+mails 1 "$PROBE" "Test notification from The Bakery"
+[ "$(mail_count "$OPS" "Test notification")" = 1 ] || fail "the typed-recipient test also went to the channel's recipients"
+[ "$(curl -s "$MAILPIT/api/v1/message/$(curl -s "$MAILPIT/api/v1/messages?limit=500" | json "[m['ID'] for m in d['messages'] if any(t['Address']=='$PROBE' for t in m['To'])][0]")" | json "d['From']['Name']")" = "Ops $RUN" ] ||
+	fail "the test does not show the From name"
+echo "ok: sent to $PROBE only, as Ops $RUN"
 
 say "A failed Deployment reaches every channel; a succeeded one only the channel that asked"
 PROJECT_ID=$(bakery POST /api/projects "{\"name\":\"$RUN\"}" | json "d['project']['id']")
@@ -149,6 +178,12 @@ bakery POST "/api/applications/$APP_ID/deploy" >/dev/null
 wait_for 180 "the deployment" deployment_done
 received 1 "r['path']=='/hook/tok-$RUN' and json.loads(r['body'])['event']=='deployment_success'"
 sleep 3
+[ "$(count "r['path']=='/off/tok-$RUN'")" = 0 ] || fail "the disabled channel was notified"
+[ "$(bakery GET "/api/notification-channels/$OFF/deliveries" | json "len(d['deliveries'])")" = 0 ] || fail "the disabled channel has Deliveries"
+bakery PATCH "/api/notification-channels/$OFF" "{\"name\":\"$RUN-off\",\"settings\":{},\"enabled\":true}" >/dev/null
+[ "$(bakery POST "/api/notification-channels/$OFF/test" | json "d['ok']")" = True ] || fail "the enabled channel's test failed"
+received 1 "r['path']=='/off/tok-$RUN'"
+echo "ok: the disabled channel heard nothing; enabled, its test arrives"
 [ "$(count "'Deployment of $APP_SLUG succeeded' in r['body']")" = 1 ] || fail "a channel not subscribed heard of a succeeded deployment"
 echo "ok: failures to all, success only to the webhook"
 
@@ -207,7 +242,7 @@ OUT=$(bakery POST /api/invitations "{\"email\":\"$INVITEE\",\"role\":\"member\"}
 [ "$(json "d['emailed']" <<<"$OUT")" = True ] || fail "not emailed: $OUT"
 mails 1 "$INVITEE" "invited you to The Bakery"
 MESSAGE=$(curl -s "$MAILPIT/api/v1/messages?limit=500" | json "[m['ID'] for m in d['messages'] if any(t['Address']=='$INVITEE' for t in m['To'])][0]")
-[ "$(curl -s "$MAILPIT/api/v1/message/$MESSAGE" | json "'invited you to The Bakery as member' in d['Text'] and d['From']['Name'] == 'The Bakery'")" = True ] ||
+[ "$(curl -s "$MAILPIT/api/v1/message/$MESSAGE" | json "'invited you to The Bakery as member' in d['Text'] and d['From']['Name'] == 'Ops $RUN'")" = True ] ||
 	fail "the invitation email does not read The Bakery"
 TOKEN=$(curl -s "$MAILPIT/api/v1/message/$MESSAGE" | json "__import__('re').search(r'#/invite/([A-Za-z0-9]+)', d['Text']).group(1)")
 [ "$(curl -s -o /dev/null -w '%{http_code}' "$API/api/invitations/by-token/$TOKEN")" = 200 ] || fail "the emailed link does not open"

@@ -71,12 +71,15 @@ type fakeSender struct {
 	mu      sync.Mutex
 	failing map[uint64]int
 	sent    map[uint64]int
+	// last is the channel of the latest send, as the sender saw it.
+	last domain.Channel
 }
 
 func (f *fakeSender) Send(_ context.Context, c domain.Channel, _ domain.Notification) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sent[c.ID]++
+	f.last = c
 	if f.failing[c.ID] > 0 {
 		f.failing[c.ID]--
 		return errors.New("connection refused")
@@ -162,17 +165,58 @@ func TestSucceedsOnSecondAttempt(t *testing.T) {
 func TestTestChannelIsOneAttempt(t *testing.T) {
 	s, store, sender, _ := setup(t)
 	sender.failing[1] = 1
-	sendErr, err := s.TestChannel(context.Background(), 1)
+	sendErr, err := s.TestChannel(context.Background(), 1, "")
 	if err != nil || sendErr == nil {
 		t.Fatalf("sendErr %v, err %v", sendErr, err)
 	}
 	if d := store.deliveries[0]; d.Status != domain.Failed || d.Attempts != 1 {
 		t.Fatalf("%+v", d)
 	}
-	if sendErr, _ := s.TestChannel(context.Background(), 1); sendErr != nil || store.deliveries[1].Status != domain.Sent {
+	if sendErr, _ := s.TestChannel(context.Background(), 1, ""); sendErr != nil || store.deliveries[1].Status != domain.Sent {
 		t.Fatalf("second test: %v %+v", sendErr, store.deliveries[1])
 	}
-	if _, err := s.TestChannel(context.Background(), 9); !errors.Is(err, ErrNotFound) {
+	if _, err := s.TestChannel(context.Background(), 9, ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown channel: %v", err)
+	}
+}
+
+func TestDisabledChannelGetsNothing(t *testing.T) {
+	s, store, sender, _ := setup(t)
+	store.channels[0].Enabled = false
+	s.Notify(context.Background(), domain.Notification{Kind: domain.DeploymentFailure})
+	if len(store.deliveries) != 0 {
+		t.Fatalf("a disabled channel got %+v", store.deliveries)
+	}
+	_, err := s.TestChannel(context.Background(), 1, "")
+	var fe *domain.FieldError
+	if !errors.As(err, &fe) || fe.Field != "enabled" || sender.sent[1] != 0 || len(store.deliveries) != 0 {
+		t.Fatalf("test of a disabled channel: %v, sent %d", err, sender.sent[1])
+	}
+}
+
+func TestTestChannelRecipient(t *testing.T) {
+	s, store, sender, _ := setup(t)
+	var fe *domain.FieldError
+	if _, err := s.TestChannel(context.Background(), 1, "probe@example.test"); !errors.As(err, &fe) || fe.Field != "recipient" {
+		t.Fatalf("recipient on a webhook channel: %v", err)
+	}
+	c, err := domain.NewChannel(domain.Input{Name: "mail", Kind: domain.Email, Settings: domain.Settings{
+		Host: "smtp", Port: 25, Security: domain.SecurityNone, From: "b@example.com", To: []string{"ops@example.com"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _ = store.CreateChannel(context.Background(), c)
+	if _, err := s.TestChannel(context.Background(), c.ID, "not an address"); !errors.As(err, &fe) || fe.Field != "recipient" {
+		t.Fatalf("bad recipient: %v", err)
+	}
+	if sendErr, err := s.TestChannel(context.Background(), c.ID, " probe@example.test "); sendErr != nil || err != nil {
+		t.Fatalf("%v %v", sendErr, err)
+	}
+	if to := sender.last.Settings.To; len(to) != 1 || to[0] != "probe@example.test" {
+		t.Fatalf("sent to %v", to)
+	}
+	if sendErr, err := s.TestChannel(context.Background(), c.ID, ""); sendErr != nil || err != nil || sender.last.Settings.To[0] != "ops@example.com" {
+		t.Fatalf("without a recipient: %v %v %v", sendErr, err, sender.last.Settings.To)
 	}
 }

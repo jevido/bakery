@@ -31,7 +31,10 @@ type settingsJSON struct {
 	Username    string   `json:"username,omitempty"`
 	HasPassword bool     `json:"has_password"`
 	From        string   `json:"from,omitempty"`
+	FromName    string   `json:"from_name,omitempty"`
 	To          []string `json:"to,omitempty"`
+	Timeout     int      `json:"timeout,omitempty"`
+	EHLODomain  string   `json:"ehlo_domain,omitempty"`
 	URL         string   `json:"url,omitempty"`
 	URLHost     string   `json:"url_host,omitempty"`
 	ChatID      string   `json:"chat_id,omitempty"`
@@ -47,6 +50,7 @@ type channelJSON struct {
 	Kind       string       `json:"kind"`
 	Settings   settingsJSON `json:"settings"`
 	EventKinds []string     `json:"event_kinds"`
+	Enabled    bool         `json:"enabled"`
 	CreatedAt  time.Time    `json:"created_at"`
 }
 
@@ -60,13 +64,13 @@ func urlHost(raw string) string {
 
 func toJSON(c domain.Channel) channelJSON {
 	s := c.Settings
-	out := channelJSON{ID: c.ID, Name: c.Name, Kind: string(c.Kind), EventKinds: []string{}, CreatedAt: c.CreatedAt}
+	out := channelJSON{ID: c.ID, Name: c.Name, Kind: string(c.Kind), EventKinds: []string{}, Enabled: c.Enabled, CreatedAt: c.CreatedAt}
 	for _, k := range c.EventKinds {
 		out.EventKinds = append(out.EventKinds, string(k))
 	}
 	j := settingsJSON{
 		Host: s.Host, Port: s.Port, Security: string(s.Security), Username: s.Username, HasPassword: s.Password != "",
-		From: s.From, To: s.To, ChatID: s.ChatID, HasBotToken: s.BotToken != "", Topic: s.Topic,
+		From: s.From, FromName: s.FromName, To: s.To, Timeout: s.Timeout, EHLODomain: s.EHLODomain, ChatID: s.ChatID, HasBotToken: s.BotToken != "", Topic: s.Topic,
 		HasToken: s.Token != "", HasSecret: s.Secret != "",
 	}
 	switch c.Kind {
@@ -82,37 +86,42 @@ func toJSON(c domain.Channel) channelJSON {
 }
 
 type settingsRequest struct {
-	Host     string   `json:"host"`
-	Port     int      `json:"port"`
-	Security string   `json:"security"`
-	Username string   `json:"username"`
-	Password string   `json:"password"`
-	From     string   `json:"from"`
-	To       []string `json:"to"`
-	URL      string   `json:"url"`
-	BotToken string   `json:"bot_token"`
-	ChatID   string   `json:"chat_id"`
-	Topic    string   `json:"topic"`
-	Token    string   `json:"token"`
-	Secret   string   `json:"secret"`
+	Host       string   `json:"host"`
+	Port       int      `json:"port"`
+	Security   string   `json:"security"`
+	Username   string   `json:"username"`
+	Password   string   `json:"password"`
+	From       string   `json:"from"`
+	FromName   string   `json:"from_name"`
+	To         []string `json:"to"`
+	Timeout    int      `json:"timeout"`
+	EHLODomain string   `json:"ehlo_domain"`
+	URL        string   `json:"url"`
+	BotToken   string   `json:"bot_token"`
+	ChatID     string   `json:"chat_id"`
+	Topic      string   `json:"topic"`
+	Token      string   `json:"token"`
+	Secret     string   `json:"secret"`
 }
 
 // channelRequest is a channel as typed. Secrets are write-only: empty
 // keeps the stored one. Missing event_kinds means the defaults on a new
-// channel and no change on an existing one.
+// channel and no change on an existing one; missing enabled means enabled
+// on a new channel and no change on an existing one.
 type channelRequest struct {
 	Name       string          `json:"name"`
 	Kind       string          `json:"kind"`
 	Settings   settingsRequest `json:"settings"`
 	EventKinds *[]string       `json:"event_kinds"`
+	Enabled    *bool           `json:"enabled"`
 }
 
 func (r channelRequest) input() domain.Input {
 	s := r.Settings
 	in := domain.Input{Name: r.Name, Kind: domain.Kind(r.Kind), Settings: domain.Settings{
 		Host: s.Host, Port: s.Port, Security: domain.Security(s.Security), Username: s.Username, Password: s.Password,
-		From: s.From, To: s.To, URL: s.URL, BotToken: s.BotToken, ChatID: s.ChatID, Topic: s.Topic, Token: s.Token, Secret: s.Secret,
-	}}
+		From: s.From, FromName: s.FromName, To: s.To, Timeout: s.Timeout, EHLODomain: s.EHLODomain, URL: s.URL, BotToken: s.BotToken, ChatID: s.ChatID, Topic: s.Topic, Token: s.Token, Secret: s.Secret,
+	}, Enabled: r.Enabled}
 	if r.EventKinds != nil {
 		in.EventKinds = []domain.EventKind{}
 		for _, k := range *r.EventKinds {
@@ -221,7 +230,9 @@ func (c *Controller) Test(ctx contractshttp.Context) contractshttp.Response {
 	if !ok {
 		return notFound(ctx)
 	}
-	sendErr, err := c.service.TestChannel(ctx.Context(), cid)
+	// An email channel's test may go to one typed recipient, given as
+	// {"recipient": "…"}; without a body, to the channel's own.
+	sendErr, err := c.service.TestChannel(ctx.Context(), cid, ctx.Request().Input("recipient"))
 	if err != nil {
 		return fail(ctx, err)
 	}

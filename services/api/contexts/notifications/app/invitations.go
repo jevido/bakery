@@ -40,7 +40,7 @@ If you did not expect this, ignore this email.`, by, inv.Role, inv.Link, inv.Exp
 }
 
 // SendInvitation emails the Invitation's link to the invited person
-// through the email channel with the lowest id. Without one it answers
+// through the enabled email channel with the lowest id. Without one it answers
 // false and no error. It is no Delivery: it goes to a person, not to the
 // channel's recipients.
 func (s *Service) SendInvitation(ctx context.Context, inv Invitation) (bool, error) {
@@ -49,7 +49,7 @@ func (s *Service) SendInvitation(ctx context.Context, inv Invitation) (bool, err
 		return false, err
 	}
 	for _, c := range channels {
-		if c.Kind != domain.Email {
+		if c.Kind != domain.Email || !c.Enabled {
 			continue
 		}
 		subject, body := InvitationEmail(inv)

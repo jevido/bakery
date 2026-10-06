@@ -44,7 +44,14 @@ func TestSendInvitation(t *testing.T) {
 		}
 		_, _ = store.CreateChannel(context.Background(), c)
 	}
+	// A disabled email channel is passed over.
+	store.channels[1].Enabled = false
 	sent, err := s.SendInvitation(context.Background(), inv)
+	if !sent || err != nil || mailer.channel != "second" {
+		t.Fatalf("with ops disabled: sent %v via %q, %v", sent, mailer.channel, err)
+	}
+	store.channels[1].Enabled = true
+	sent, err = s.SendInvitation(context.Background(), inv)
 	if !sent || err != nil {
 		t.Fatalf("sent %v, %v", sent, err)
 	}

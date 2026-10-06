@@ -12,16 +12,17 @@ const (
 	// attemptTimeout bounds one attempt of one Delivery.
 	attemptTimeout = 15 * time.Second
 	// lease is how long a claimed Delivery is left alone by other claims;
-	// longer than an attempt, so it only matters after a crash.
-	lease = 2 * time.Minute
+	// longer than an attempt (an email channel's takes up to 301 s), so it
+	// only matters after a crash.
+	lease = 6 * time.Minute
 	// batch is how many due Deliveries are claimed at once, and sending is
 	// how many of them are sent at the same time.
 	batch   = 20
 	sending = 4
 )
 
-// Notify records a Delivery of n for every channel subscribed to its Event
-// kind and wakes the dispatcher. It never fails the caller: what goes
+// Notify records a Delivery of n for every enabled channel subscribed to
+// its Event kind and wakes the dispatcher. It never fails the caller: what goes
 // wrong is logged.
 func (s *Service) Notify(ctx context.Context, n domain.Notification) {
 	if n.At.IsZero() {
@@ -34,7 +35,7 @@ func (s *Service) Notify(ctx context.Context, n domain.Notification) {
 	}
 	var ds []domain.Delivery
 	for _, c := range channels {
-		if c.Subscribed(n.Kind) {
+		if c.Enabled && c.Subscribed(n.Kind) {
 			ds = append(ds, domain.NewDelivery(c.ID, n, s.Now()))
 		}
 	}
@@ -102,7 +103,7 @@ func (s *Service) attempt(ctx context.Context, d domain.Delivery) {
 		// Deleted meanwhile, and its Deliveries with it.
 		return
 	}
-	actx, cancel := context.WithTimeout(ctx, attemptTimeout)
+	actx, cancel := context.WithTimeout(ctx, sendTimeout(c, attemptTimeout))
 	err = s.sender.Send(actx, c, d.Notification)
 	cancel()
 	if err != nil && ctx.Err() != nil {

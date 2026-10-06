@@ -21,12 +21,12 @@ each channel; an audit log is something else.
 
 | Term | Meaning |
 | ---- | ------- |
-| Notification channel | A named place Notifications go to: a Channel kind, its settings (secrets encrypted) and the Event kinds it is subscribed to. |
-| Channel kind | `email` (SMTP server, from address, recipients), `discord` and `slack` (an incoming webhook URL, a secret), `telegram` (a bot token and a chat id), `ntfy` (a server URL, a topic and optionally a token) or `webhook` (any URL, kept secret, JSON signed with an optional secret). |
+| Notification channel | A named place Notifications go to: a Channel kind, its settings (secrets encrypted), the Event kinds it is subscribed to, and whether it is enabled or disabled. |
+| Channel kind | `email` (SMTP server, from address and optional from name, recipients, an optional timeout and EHLO domain), `discord` and `slack` (an incoming webhook URL, a secret), `telegram` (a bot token and a chat id), `ntfy` (a server URL, a topic and optionally a token) or `webhook` (any URL, kept secret, JSON signed with an optional secret). |
 | Event kind | What a Notification is about: `deployment_failure`, `deployment_success`, `backup_failure`, `backup_success`, `server_unreachable`, `server_reachable`, `server_disk_usage`. A new channel is subscribed to all but the two `_success` ones. |
 | Notification | What a publisher hands over: an Event kind, a title, a body, an optional link into the dashboard and when it happened. Not stored on its own. |
 | Delivery | One Notification sent to one Notification channel: `pending`, `sent` or `failed`, the attempts made (at most 3) and the last error. The 50 newest per channel are kept. |
-| Test notification | A Notification sent at once from a channel's Test button, recorded as a Delivery like any other. |
+| Test notification | A Notification sent at once from a channel's Send test button, recorded as a Delivery like any other. An email channel's can go to one typed recipient instead of its own. |
 
 ## Model
 
@@ -34,19 +34,21 @@ each channel; an audit log is something else.
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Notification channel | The name is unique (1–63 characters). The settings are valid for the Channel kind: URLs are `http` or `https`; an email channel has a host, a port, a security mode (`none`, `starttls`, `tls`), a from address and at least one recipient; Telegram has a bot token and a chat id; ntfy a server URL and a topic. It is subscribed to at least one Event kind. A secret setting left empty on a change keeps its stored value. |
+| Notification channel | The name is unique (1–63 characters). The settings are valid for the Channel kind: URLs are `http` or `https`; an email channel has a host, a port, a security mode (`none`, `starttls`, `tls`), a from address and at least one recipient; Telegram has a bot token and a chat id; ntfy a server URL and a topic. An email channel's timeout is 1–300 seconds (empty means 30) and its EHLO domain a host name. It is subscribed to at least one Event kind. A secret setting left empty on a change keeps its stored value. A new channel is enabled; a disabled one gets no Deliveries and cannot be tested. |
 | Delivery | Belongs to one Notification channel and goes when it goes. Attempts only grow, at most 3; after the third failure it is `failed` for good. Retries are 10 s after the first attempt and 60 s after the second. |
 
 ### Commands
 
-- `AddChannel`, `ChangeChannel`, `DeleteChannel` [admin, owner].
-- `TestChannel(channel)` [admin, owner]: sends a Test notification at once and
-  answers with the outcome.
-- `Notify(notification)`: a Delivery per Notification channel subscribed to
-  its Event kind, sent in the background. Never fails the caller.
+- `AddChannel`, `ChangeChannel`, `DeleteChannel` [admin, owner]. Enabling and
+  disabling is a `ChangeChannel` of its enabled flag.
+- `TestChannel(channel, recipient?)` [admin, owner]: sends a Test notification
+  at once and answers with the outcome. Refused for a disabled channel. An
+  email channel sends it to the recipient when one is given, else to its own.
+- `Notify(notification)`: a Delivery per enabled Notification channel
+  subscribed to its Event kind, sent in the background. Never fails the caller.
 - `SendInvitation(invitation)`: the Invitation's link by email to the invited
-  person, through the email channel with the lowest id; reports whether it
-  was sent.
+  person, through the enabled email channel with the lowest id; reports
+  whether it was sent.
 
 ### Domain events
 
@@ -98,8 +100,8 @@ None published.
   produces does not justify a queue worker to operate.
 - **Only the newest 50 Deliveries per channel** are kept: they answer "did
   it arrive?", not "what happened last month?".
-- **Invitation emails go through the first email channel**, whatever Event
-  kinds it has, to the invited person only. An Invitation is addressed to a
+- **Invitation emails go through the first enabled email channel**, whatever
+  Event kinds it has, to the invited person only. An Invitation is addressed to a
   person, not to a channel's recipients, so it is not a Delivery; a failed
   send leaves the copy-the-link path as before and is logged.
 - **The Telegram API base URL is configurable** (`BAKERY_TELEGRAM_API_URL`)

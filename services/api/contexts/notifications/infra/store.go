@@ -22,6 +22,7 @@ type channelRecord struct {
 	Kind              string
 	SettingsEncrypted string
 	EventKinds        string
+	Enabled           bool
 	orm.Timestamps
 }
 
@@ -40,7 +41,7 @@ func toRecord(c domain.Channel) (channelRecord, error) {
 	for i, k := range c.EventKinds {
 		kinds[i] = string(k)
 	}
-	return channelRecord{ID: c.ID, Name: c.Name, Kind: string(c.Kind), SettingsEncrypted: enc, EventKinds: strings.Join(kinds, ",")}, nil
+	return channelRecord{ID: c.ID, Name: c.Name, Kind: string(c.Kind), SettingsEncrypted: enc, EventKinds: strings.Join(kinds, ","), Enabled: c.Enabled}, nil
 }
 
 func (r channelRecord) toDomain() (domain.Channel, error) {
@@ -48,7 +49,7 @@ func (r channelRecord) toDomain() (domain.Channel, error) {
 	if err != nil {
 		return domain.Channel{}, err
 	}
-	c := domain.Channel{ID: r.ID, Name: r.Name, Kind: domain.Kind(r.Kind), CreatedAt: createdAt(r.Timestamps)}
+	c := domain.Channel{ID: r.ID, Name: r.Name, Kind: domain.Kind(r.Kind), Enabled: r.Enabled, CreatedAt: createdAt(r.Timestamps)}
 	if err := json.Unmarshal([]byte(raw), &c.Settings); err != nil {
 		return domain.Channel{}, err
 	}
@@ -123,7 +124,7 @@ func (s Store) SaveChannel(ctx context.Context, c domain.Channel) error {
 		return err
 	}
 	_, err = s.query(ctx).Model(&channelRecord{}).Where("id", c.ID).Update(map[string]any{
-		"name": rec.Name, "settings_encrypted": rec.SettingsEncrypted, "event_kinds": rec.EventKinds,
+		"name": rec.Name, "settings_encrypted": rec.SettingsEncrypted, "event_kinds": rec.EventKinds, "enabled": rec.Enabled,
 	})
 	return err
 }
