@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # End to end: Members, Roles, Invitations and API tokens. The Owner invites
 # a member and a viewer, each Role is held to what it may do, API tokens act
-# as their Member (or as a viewer when read-only), and a removed Member's
-# Session and tokens stop working. Needs `task dev` running (API on
+# as their Member within their Permissions (read, read:sensitive, write,
+# deploy, root) until they expire, and a removed Member's Session and tokens
+# stop working. Needs `task dev` running (API on
 # 127.0.0.1:4910). No git host: the Application is an image, from ghcr.io
 # (Docker Hub pulls fail on a machine with a stale Docker Hub login).
 set -euo pipefail
@@ -118,20 +119,63 @@ bakery DELETE "/api/projects/$(body "d['project']['id']")" >/dev/null
 bakery PATCH "/api/members/$VIEWER_ID" '{"role":"viewer"}' >/dev/null
 
 say "API tokens"
-expect "member makes a token" 201 "$(as "$MEMBER" POST /api/api-tokens '{"name":"ci"}')"
+expect "member makes a token the old way" 201 "$(as "$MEMBER" POST /api/api-tokens '{"name":"ci full"}')"
 FULL=$(body "d['token']")
-expect "member makes a read-only token" 201 "$(as "$MEMBER" POST /api/api-tokens '{"name":"read","read_only":true}')"
+expect "an old-style token gets what the member's Role may grant" "deploy,read,read:sensitive,write" "$(body "','.join(d['api_token']['permissions'])")"
+expect "member makes a read-only token the old way" 201 "$(as "$MEMBER" POST /api/api-tokens '{"name":"read","read_only":true}')"
 READ=$(body "d['token']")
-FULL_ID=$(as "$MEMBER" GET /api/api-tokens >/dev/null; body "[t['id'] for t in d['api_tokens'] if t['name']=='ci'][0]")
+expect "the old read-only token is read" "read True" "$(body "' '.join(d['api_token']['permissions']), d['api_token']['read_only']")"
+FULL_ID=$(as "$MEMBER" GET /api/api-tokens >/dev/null; body "[t['id'] for t in d['api_tokens'] if t['name']=='ci full'][0]")
 expect "the token lists projects" 200 "$(with "$FULL" GET /api/projects)"
 expect "the token deploys" 201 "$(with "$FULL" POST "/api/applications/$APP_ID/deploy")"
 wait_for 180 "the token's deployment" deployment_done
 echo "ok: the deployment finished"
 expect "the read-only token reads" 200 "$(with "$READ" GET "/api/projects/$PROJECT_ID")"
 expect "the read-only token cannot change anything" 403 "$(with "$READ" POST /api/projects '{"name":"nope"}')"
+expect "the refusal names the Permission" "Missing required permissions: write" "$(body "d['message']")"
 expect "the read-only token sees no Secrets" 403 "$(with "$READ" GET "/api/applications/$APP_ID/environment-variables")"
+expect "the read-only token sees no Database credentials" "None True" "$(with "$READ" GET "/api/databases/$DB_ID" >/dev/null; body "d['database'].get('credentials'), d['database'].get('secrets_hidden')")"
 expect "a token cannot make a token" 403 "$(with "$FULL" POST /api/api-tokens '{"name":"more"}')"
-expect "the token was last used just now" True "$(as "$MEMBER" GET /api/api-tokens >/dev/null; body "[t for t in d['api_tokens'] if t['name']=='ci'][0]['last_used_at'] is not None")"
+expect "the token was last used just now" True "$(as "$MEMBER" GET /api/api-tokens >/dev/null; body "[t for t in d['api_tokens'] if t['name']=='ci full'][0]['last_used_at'] is not None")"
+
+say "API token Permissions"
+expect "member lists what they may grant" "root:False write:True deploy:True read:True read:sensitive:True" "$(as "$MEMBER" GET /api/api-tokens/permissions >/dev/null; body "' '.join(p['name']+':'+str(p['allowed']) for p in d['permissions'])")"
+expect "member may not grant root" 422 "$(as "$MEMBER" POST /api/api-tokens '{"name":"root","permissions":["root"]}')"
+expect "viewer may not grant write" 422 "$(as "$VIEWER" POST /api/api-tokens '{"name":"write","permissions":["write"]}')"
+expect "viewer makes a read token" 201 "$(as "$VIEWER" POST /api/api-tokens '{"name":"viewer read","permissions":["read"]}')"
+expect "an unknown expiry is refused" 422 "$(as "$MEMBER" POST /api/api-tokens '{"name":"odd expiry","expires_in_days":3}')"
+expect "member makes a read:sensitive token" 201 "$(as "$MEMBER" POST /api/api-tokens '{"name":"sensitive","permissions":["read:sensitive"]}')"
+SENSITIVE=$(body "d['token']")
+expect "read:sensitive brings read" "read,read:sensitive" "$(body "','.join(d['api_token']['permissions'])")"
+expect "the read:sensitive token sees Secrets" 200 "$(with "$SENSITIVE" GET "/api/applications/$APP_ID/environment-variables")"
+expect "the read:sensitive token sees Database credentials" True "$(with "$SENSITIVE" GET "/api/databases/$DB_ID" >/dev/null; body "d['database'].get('credentials') is not None")"
+expect "the read:sensitive token cannot change anything" 403 "$(with "$SENSITIVE" PATCH "/api/projects/$PROJECT_ID" "{\"name\":\"$RUN\"}")"
+expect "member makes a write token" 201 "$(as "$MEMBER" POST /api/api-tokens '{"name":"write","permissions":["write"]}')"
+WRITE=$(body "d['token']")
+expect "the write token changes a project" 200 "$(with "$WRITE" PATCH "/api/projects/$PROJECT_ID" "{\"name\":\"$RUN\"}")"
+expect "the write token cannot deploy" 403 "$(with "$WRITE" POST "/api/applications/$APP_ID/deploy")"
+expect "the write token cannot read" 403 "$(with "$WRITE" GET /api/projects)"
+expect "member makes a deploy token expiring in a week" 201 "$(as "$MEMBER" POST /api/api-tokens '{"name":"ci deploy","permissions":["deploy"],"expires_in_days":7}')"
+DEPLOY=$(body "d['token']")
+DEPLOY_ID=$(body "d['api_token']['id']")
+expect "it expires 7 days out" True "$(body "__import__('datetime').datetime.fromisoformat(d['api_token']['expires_at'].replace('Z','+00:00')) - __import__('datetime').datetime.now(__import__('datetime').timezone.utc) > __import__('datetime').timedelta(days=6, hours=23)")"
+expect "the deploy token is listed" True "$(as "$MEMBER" GET /api/api-tokens >/dev/null; body "any(t['id']==$DEPLOY_ID and t['permissions']==['deploy'] and t['expires_at'] for t in d['api_tokens'])")"
+expect "the deploy token deploys" 201 "$(with "$DEPLOY" POST "/api/applications/$APP_ID/deploy")"
+wait_for 180 "the deploy token's deployment" deployment_done
+echo "ok: the deployment finished"
+expect "the deploy token cannot read projects" 403 "$(with "$DEPLOY" GET /api/projects)"
+expect "the deploy token cannot change a project" 403 "$(with "$DEPLOY" PATCH "/api/projects/$PROJECT_ID" "{\"name\":\"$RUN\"}")"
+expect "the Owner makes a root token" 201 "$(as "$JAR" POST /api/api-tokens "{\"name\":\"root $RUN\",\"permissions\":[\"root\",\"read\"]}")"
+ROOT=$(body "d['token']") ROOT_ID=$(body "d['api_token']['id']")
+expect "root stands alone" root "$(body "','.join(d['api_token']['permissions'])")"
+expect "the root token sees Secrets" 200 "$(with "$ROOT" GET "/api/applications/$APP_ID/environment-variables")"
+expect "the root token reads Known hosts" 200 "$(with "$ROOT" GET /api/known-hosts)"
+bakery DELETE "/api/api-tokens/$ROOT_ID" >/dev/null
+podman exec bakery-dev-postgres-1 psql -U bakery -d bakery -tAc "UPDATE api_tokens SET expires_at = now() - interval '1 minute' WHERE id = $DEPLOY_ID" >/dev/null
+expect "an expired token is refused" 401 "$(with "$DEPLOY" POST "/api/applications/$APP_ID/deploy")"
+expect "the expiry is not a Permission refusal" "invalid API token" "$(body "d['message']")"
+
+say "Revoking"
 expect "the member revokes the token" 204 "$(as "$MEMBER" DELETE "/api/api-tokens/$FULL_ID")"
 expect "a revoked token is refused" 401 "$(with "$FULL" GET /api/projects)"
 expect "a made-up token is refused" 401 "$(with "bky_madeup" GET /api/projects)"

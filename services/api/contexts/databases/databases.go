@@ -80,9 +80,6 @@ func Routes(r route.Router) {
 		r.Get("/api/databases/{id}", c.Show)
 		r.Patch("/api/databases/{id}", c.Update)
 		r.Delete("/api/databases/{id}", c.Delete)
-		r.Post("/api/databases/{id}/start", c.Start)
-		r.Post("/api/databases/{id}/stop", c.Stop)
-		r.Post("/api/databases/{id}/restart", c.Restart)
 		r.Get("/api/databases/{id}/backup-executions", c.BackupExecutions)
 		r.Post("/api/databases/{id}/backup-executions", c.BackUp)
 		r.Get("/api/databases/{id}/scheduled-backups", c.ScheduledBackups)
@@ -94,6 +91,12 @@ func Routes(r route.Router) {
 		r.Post("/api/scheduled-backups/{id}/backup-executions", c.BackUpScheduledBackup)
 		r.Post("/api/backup-executions/{id}/restore", c.Restore)
 		r.Delete("/api/backup-executions/{id}", c.DeleteBackupExecution)
+	})
+	// Coolify's deploy actions: an API token needs deploy for them.
+	r.Middleware(identity.Deploy).Group(func(r route.Router) {
+		r.Post("/api/databases/{id}/start", c.Start)
+		r.Post("/api/databases/{id}/stop", c.Stop)
+		r.Post("/api/databases/{id}/restart", c.Restart)
 	})
 	// Members pick an S3 storage for a Scheduled backup, so they may list
 	// them (no secret keys are shown); only admins change them.

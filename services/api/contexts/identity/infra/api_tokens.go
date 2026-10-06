@@ -3,6 +3,7 @@ package infra
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	contractsorm "github.com/goravel/framework/contracts/database/orm"
@@ -14,20 +15,28 @@ import (
 )
 
 type apiTokenRecord struct {
-	ID         uint64 `gorm:"primaryKey"`
-	UserID     uint64
-	Name       string
-	TokenHash  string
-	ReadOnly   bool
-	LastUsedAt *time.Time
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID        uint64 `gorm:"primaryKey"`
+	UserID    uint64
+	Name      string
+	TokenHash string
+	// Permissions is comma-separated.
+	Permissions string
+	ExpiresAt   *time.Time
+	LastUsedAt  *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 func (apiTokenRecord) TableName() string { return "api_tokens" }
 
 func (r apiTokenRecord) toDomain() domain.APIToken {
-	return domain.APIToken{ID: r.ID, MemberID: r.UserID, Name: r.Name, ReadOnly: r.ReadOnly, LastUsedAt: r.LastUsedAt, CreatedAt: r.CreatedAt}
+	var permissions []domain.Permission
+	for _, p := range strings.Split(r.Permissions, ",") {
+		if p != "" {
+			permissions = append(permissions, domain.Permission(p))
+		}
+	}
+	return domain.APIToken{ID: r.ID, MemberID: r.UserID, Name: r.Name, Permissions: permissions, ExpiresAt: r.ExpiresAt, LastUsedAt: r.LastUsedAt, CreatedAt: r.CreatedAt}
 }
 
 type APITokens struct{}
@@ -37,7 +46,11 @@ func (APITokens) query(ctx context.Context) contractsorm.Query {
 }
 
 func (a APITokens) Add(ctx context.Context, t domain.APIToken, hash string) (domain.APIToken, error) {
-	rec := apiTokenRecord{UserID: t.MemberID, Name: t.Name, TokenHash: hash, ReadOnly: t.ReadOnly, CreatedAt: t.CreatedAt, UpdatedAt: t.CreatedAt}
+	permissions := make([]string, len(t.Permissions))
+	for i, p := range t.Permissions {
+		permissions[i] = string(p)
+	}
+	rec := apiTokenRecord{UserID: t.MemberID, Name: t.Name, TokenHash: hash, Permissions: strings.Join(permissions, ","), ExpiresAt: t.ExpiresAt, CreatedAt: t.CreatedAt, UpdatedAt: t.CreatedAt}
 	if err := a.query(ctx).Create(&rec); err != nil {
 		if isUniqueViolation(err) {
 			return domain.APIToken{}, app.ErrTokenNameTaken

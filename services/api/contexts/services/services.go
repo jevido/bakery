@@ -84,6 +84,9 @@ func Routes(r route.Router) {
 		r.Get("/api/services/{id}", c.Show)
 		r.Patch("/api/services/{id}", c.Update)
 		r.Delete("/api/services/{id}", c.Delete)
+	})
+	// Coolify's deploy actions: an API token needs deploy for them.
+	r.Middleware(identity.Deploy).Group(func(r route.Router) {
 		r.Post("/api/services/{id}/start", c.Start)
 		r.Post("/api/services/{id}/stop", c.Stop)
 		r.Post("/api/services/{id}/restart", c.Restart)

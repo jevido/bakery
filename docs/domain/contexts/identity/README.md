@@ -22,8 +22,9 @@ later phases and will grow this context.
 | Setup | Creating the Owner. Only possible while no Owner exists. |
 | Invitation | An email and a Role, with a link that is good once and for 7 days. |
 | Session | A signed JWT in the HttpOnly cookie `bakery_session`, naming a Member. |
-| API token | A named `bky_…` secret of one Member, sent as `Authorization: Bearer`. |
-| Principal | Who a request is from: a Member and the Role the request acts with (the Member's, or viewer for a read-only API token). |
+| API token | A named `bky_…` secret of one Member, sent as `Authorization: Bearer`, with its Permissions and an optional expiry. |
+| Permission | What a request made with an API token may do: `root` (everything the Member's Role may), `write` (changes other than deploy actions), `deploy` (deploy, restart, stop, start, cancel, rollback), `read` (reading without Secrets), `read:sensitive` (reading Secrets too). |
+| Principal | Who a request is from: a Member, the Role the request acts with (always the Member's current one), and the API token's Permissions when a token sent it. |
 | Secret | A value a viewer may not read (see the glossary). |
 | Profile | A Member's own name, password, Sessions and Two-factor authentication, changed only by that Member. |
 | Two-factor authentication | A TOTP secret on a Member: `off`, `pending` (made, not yet confirmed with a code) or `on`. When on, signing in needs an Authenticator code or a Recovery code after the password. |
@@ -40,7 +41,7 @@ later phases and will grow this context.
 | --------- | ---------- |
 | Member | Email is a valid address and unique; name is not empty; password has at least 12 characters and is only stored hashed. Exactly one Member is the Owner; the Owner's Role never changes and the Owner is never removed. Nobody changes their own Role or removes themselves. Two-factor authentication only counts for sign-in when `on`; its secret is stored only encrypted and Recovery codes only hashed; an Authenticator code is accepted only for a time step later than the last one accepted. A new password has at least 12 characters and needs the current one. |
 | Invitation | Email is valid and not an existing Member's; Role is admin, member or viewer, never owner; at most one open Invitation per email; expires 7 days after it was made; accepted at most once; a revoked or expired one cannot be accepted. Only the hash of its token is stored. |
-| API token | Name is 1–64 characters and unique per Member; belongs to one Member and is removed with them; only the SHA-256 of its value is stored, and the value is shown once. |
+| API token | Name (the "Description") is 3–255 characters when made and unique per Member; belongs to one Member and is removed with them; only the SHA-256 of its value is stored, and the value is shown once. Its Permissions are known ones, never empty (none means `read`), `root` stands alone, `read:sensitive` brings `read`. The Member's Role caps what it may be given: `root` only by admin and owner, `write`, `deploy` and `read:sensitive` only by a Role that may change things, a viewer only `read`. An expiry is in the future when set; from then on the token no longer authenticates. |
 
 ### Commands
 
@@ -55,7 +56,7 @@ Who may run each is in brackets.
 - `AcceptInvitation(token, name, password)` [anyone with the link]: creates the Member with the invited email and Role and signs them in.
 - `ChangeRole(member, role)` [admin, owner]: never to or from owner, never your own.
 - `RemoveMember(member)` [admin, owner]: never the Owner, never yourself; their Sessions and API tokens stop working at once.
-- `CreateAPIToken(name, readOnly)` [any Member, with a Session]: returns the value once.
+- `CreateAPIToken(name, permissions, expires in days)` [any Member, with a Session]: returns the value once. The expiry is 7, 30, 60, 90 or 365 days, or none (Never). `GET /api/api-tokens/permissions` answers which Permissions the Member may grant.
 - `RevokeAPIToken(id)` [the token's Member].
 - `ChangeName(name)`, `ChangePassword(current, new)`, `SignOutOtherSessions()` [the Member themselves, with a Session]: a new password and signing out elsewhere end every other Session of the Member; the current one gets a fresh Session.
 - `StartTwoFactor()` [the Member, with a Session]: a new secret and its `otpauth://` URI; two-factor becomes pending. Refused while on.
@@ -78,13 +79,23 @@ Who may run each is in brackets.
   - `identity.Auth`: the request comes from a Member, by Session cookie or
     API token; a viewer is refused (403) on anything but GET and HEAD.
     Every other context's routes sit behind it, so a new route needs at
-    least `member` to change anything.
+    least `member` to change anything. A request with an API token also
+    needs `read` for GET and HEAD and `write` for anything else, or answers
+    403 `Missing required permissions: <permission>`; an expired token is
+    401 like an unknown one.
+  - `identity.Deploy`: `identity.Auth` for Coolify's deploy actions
+    (deploying, restarting and stopping Applications and Previews,
+    cancelling and rolling back Deployments, starting, stopping and
+    restarting Databases and Services, redeploying Services); there an API
+    token needs `deploy` instead of `write`.
   - `identity.Admin`: only admin and owner; wraps Servers, S3 storages,
     Known hosts, Members and Invitations.
-  - `identity.Secrets`: member or higher, for GETs that return Secrets (and
-    the list of S3 storages, which members pick for a Scheduled backup).
+  - `identity.Secrets`: member or higher, and `read:sensitive` for an API
+    token, for GETs that return Secrets (and the list of S3 storages, which
+    members pick for a Scheduled backup).
   - `identity.CanSeeSecrets(ctx)`: for a response that mixes Secrets with
-    fields a viewer may see; the controller leaves the Secrets out.
+    fields a viewer (or a token without `read:sensitive`) may see; the
+    controller leaves the Secrets out.
   - `OnInvitationCreated(f)`: see Domain events.
   Other contexts learn nothing else about Members.
 - **Consumes:** nothing.
@@ -123,6 +134,33 @@ Who may run each is in brackets.
   prefix makes a leaked token recognisable to secret scanners. A request
   made with an API token cannot create or revoke tokens, so a leaked token
   cannot mint more.
+- **API token Permissions are Coolify's abilities, capped by the Member's
+  current Role.** Coolify refuses to create a token that exceeds the
+  creator's role and then trusts the token; The Bakery also refuses at
+  creation, and on every request the token acts with its Member's *current*
+  Role besides its Permissions, so demoting a Member narrows their tokens at
+  once. That is how the read-only tokens made before Permissions keep doing
+  exactly what they did: they became `read`, every other token `root`, and
+  `root` on a member's or viewer's token is still only what that Role may.
+  A consequence: a `read` token of an admin reads admin-only lists (Members,
+  Known hosts, Notification channels, all without Secrets), where the old
+  read-only token acted as a viewer. Coolify's read token does the same.
+- **A member may grant `write`, `deploy` and `read:sensitive`.** Coolify
+  limits its members to read tokens. The Bakery's member Role is the one
+  that changes things, and scripts (CI deploys) are what tokens are for,
+  so a member may give a token what their Role does, except `root`. An old
+  request without `permissions` gets `root` for an admin and everything but
+  `root` for a member, so an old script's token does what it did.
+- **`deploy` is separate from `write`, as in Coolify.** A CI token that
+  only deploys cannot change or delete anything, and cannot even read; a
+  `write` token cannot deploy. Coolify's `write:sensitive`, used on one
+  route of its API and never offered in its UI, is left out until that API
+  arrives.
+- **Token values stay `bky_…`, not Sanctum's `id|secret`.** Coolify's CLI
+  and scripts send the value only as a Bearer, so its format does not
+  matter to them, and the prefix keeps leaked tokens recognisable. The
+  Description stays unique per Member, which Coolify does not require, so a
+  Member can tell their tokens apart.
 - **Own TOTP code, no library.** RFC 6238 is a few dozen lines on
   `crypto/hmac` and `encoding/base32`, fits the domain's no-I/O rule (the
   time and the randomness are passed in) and is checked against the RFC's

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,7 +14,12 @@ var (
 	ErrTokenNameTaken  = errors.New("you already have an API token with this name")
 	ErrTokenNotFound   = errors.New("API token not found")
 	ErrInvalidAPIToken = errors.New("invalid API token")
+	ErrInvalidExpiry   = errors.New("expires in must be 7, 30, 60, 90 or 365 days, or never")
 )
+
+// ExpiryDays are the expiries a new API token may pick, in days, as
+// Coolify's "Expires in" offers them; no expiry is Never.
+var ExpiryDays = []int{7, 30, 60, 90, 365}
 
 // touchEvery is how stale an API token's last use may get before a request
 // writes it again, so a busy script does not write on every request.
@@ -32,9 +38,23 @@ type APITokens interface {
 }
 
 // CreateAPIToken makes a token for the Member and returns its value, which
-// is never shown again.
-func (s *Service) CreateAPIToken(ctx context.Context, memberID uint64, name string, readOnly bool) (domain.APIToken, string, error) {
-	t, err := domain.NewAPIToken(memberID, name, readOnly, s.now())
+// is never shown again. The Member's current Role caps the Permissions;
+// expiresInDays is nil for a token that never expires.
+func (s *Service) CreateAPIToken(ctx context.Context, memberID uint64, name string, permissions []domain.Permission, expiresInDays *int) (domain.APIToken, string, error) {
+	m, err := s.CurrentMember(ctx, memberID)
+	if err != nil {
+		return domain.APIToken{}, "", err
+	}
+	now := s.now()
+	var expiresAt *time.Time
+	if expiresInDays != nil {
+		if !slices.Contains(ExpiryDays, *expiresInDays) {
+			return domain.APIToken{}, "", ErrInvalidExpiry
+		}
+		at := now.AddDate(0, 0, *expiresInDays)
+		expiresAt = &at
+	}
+	t, err := domain.NewAPIToken(memberID, m.Role, name, permissions, expiresAt, now)
 	if err != nil {
 		return domain.APIToken{}, "", err
 	}
@@ -61,31 +81,32 @@ func (s *Service) RevokeAPIToken(ctx context.Context, memberID, id uint64) error
 	return err
 }
 
-// Authenticate finds the Member an API token belongs to and the Role the
-// request acts with. A token of a removed Member is gone with them.
-func (s *Service) Authenticate(ctx context.Context, value string) (domain.Member, domain.Role, error) {
+// Authenticate finds the Member an API token belongs to, with the token for
+// its Permissions. A token of a removed Member is gone with them, and an
+// expired one no longer counts.
+func (s *Service) Authenticate(ctx context.Context, value string) (domain.Member, domain.APIToken, error) {
 	if !strings.HasPrefix(value, domain.APITokenPrefix) {
-		return domain.Member{}, "", ErrInvalidAPIToken
+		return domain.Member{}, domain.APIToken{}, ErrInvalidAPIToken
 	}
 	t, found, err := s.apiTokens.ByHash(ctx, hashSecret(value))
 	if err != nil {
-		return domain.Member{}, "", err
+		return domain.Member{}, domain.APIToken{}, err
 	}
-	if !found {
-		return domain.Member{}, "", ErrInvalidAPIToken
+	now := s.now()
+	if !found || t.Expired(now) {
+		return domain.Member{}, domain.APIToken{}, ErrInvalidAPIToken
 	}
 	m, err := s.CurrentMember(ctx, t.MemberID)
 	if errors.Is(err, ErrMemberNotFound) {
-		return domain.Member{}, "", ErrInvalidAPIToken
+		return domain.Member{}, domain.APIToken{}, ErrInvalidAPIToken
 	}
 	if err != nil {
-		return domain.Member{}, "", err
+		return domain.Member{}, domain.APIToken{}, err
 	}
-	now := s.now()
 	if t.LastUsedAt == nil || now.Sub(*t.LastUsedAt) >= touchEvery {
 		if err := s.apiTokens.Touch(ctx, t.ID, now); err != nil {
-			return domain.Member{}, "", err
+			return domain.Member{}, domain.APIToken{}, err
 		}
 	}
-	return m, t.EffectiveRole(m.Role), nil
+	return m, t, nil
 }

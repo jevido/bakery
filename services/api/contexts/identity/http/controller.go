@@ -27,9 +27,14 @@ type principalKey struct{}
 type principal struct {
 	memberID uint64
 	role     domain.Role
-	// viaAPIToken is set when an API token, not a Session, authenticated
-	// the request.
-	viaAPIToken bool
+	// token is the API token that authenticated the request, nil for a
+	// Session (which may do everything its Role may).
+	token *domain.APIToken
+}
+
+// allows reports whether the request's API token, if any, carries p.
+func (p principal) allows(perm domain.Permission) bool {
+	return p.token == nil || p.token.Allows(perm)
 }
 
 type Controller struct {
@@ -164,7 +169,8 @@ func sessionCookie(value string, maxAge int) contractshttp.Cookie {
 // an API token in the Authorization header, and puts the principal on the
 // context for MemberID, RoleOf and the other middlewares. The Member is read
 // on every request, so a changed Role or a removed Member counts at once. A
-// viewer is refused anything but reading.
+// viewer is refused anything but reading, and an API token anything its
+// Permissions do not cover.
 type Auth struct {
 	Service *app.Service
 	// SelfService is for the routes where a Member manages their own API
@@ -172,6 +178,10 @@ type Auth struct {
 	// with a Session, so a leaked token can neither mint more nor switch
 	// two-factor off.
 	SelfService bool
+	// Deploy is for Coolify's deploy actions (deploy, restart, stop, start,
+	// cancel, rollback): an API token needs the deploy Permission for them
+	// rather than write.
+	Deploy bool
 }
 
 func (Auth) Signature() string { return "identity.auth" }
@@ -182,13 +192,19 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 		return
 	}
 	if a.SelfService {
-		if p.viaAPIToken {
+		if p.token != nil {
 			_ = respond.Error(ctx, contractshttp.StatusForbidden, "this needs a signed-in session, not an API token").Abort()
 			return
 		}
-	} else if reason := refusal(ctx.Request().Method(), p.role); reason != "" {
-		_ = respond.Error(ctx, contractshttp.StatusForbidden, reason).Abort()
-		return
+	} else {
+		if need := a.required(ctx.Request().Method()); !p.allows(need) {
+			_ = respond.Error(ctx, contractshttp.StatusForbidden, "Missing required permissions: "+string(need)).Abort()
+			return
+		}
+		if reason := refusal(ctx.Request().Method(), p.role); reason != "" {
+			_ = respond.Error(ctx, contractshttp.StatusForbidden, reason).Abort()
+			return
+		}
 	}
 	ctx.WithValue(principalKey{}, p)
 	ctx.Request().Next()
@@ -206,7 +222,7 @@ func (a Auth) principal(ctx contractshttp.Context) (principal, bool) {
 			_ = respond.Error(ctx, contractshttp.StatusUnauthorized, "invalid API token").Abort()
 			return principal{}, false
 		}
-		m, role, err := a.Service.Authenticate(ctx.Context(), strings.TrimSpace(value))
+		m, t, err := a.Service.Authenticate(ctx.Context(), strings.TrimSpace(value))
 		if errors.Is(err, app.ErrInvalidAPIToken) {
 			_ = respond.Error(ctx, contractshttp.StatusUnauthorized, "invalid API token").Abort()
 			return principal{}, false
@@ -215,7 +231,8 @@ func (a Auth) principal(ctx contractshttp.Context) (principal, bool) {
 			_ = respond.ServerError(ctx, err).Abort()
 			return principal{}, false
 		}
-		return principal{memberID: m.ID, role: role, viaAPIToken: true}, true
+		// The token never acts above its Member's current Role.
+		return principal{memberID: m.ID, role: m.Role, token: &t}, true
 	}
 	token := ctx.Request().Cookie(SessionCookie)
 	if token == "" {
@@ -244,6 +261,19 @@ func (a Auth) principal(ctx contractshttp.Context) (principal, bool) {
 	return principal{memberID: m.ID, role: m.Role}, true
 }
 
+// required is the Permission an API token needs for a request with this
+// method: read to read, deploy on a deploy route, write for other changes.
+func (a Auth) required(method string) domain.Permission {
+	switch {
+	case method == contractshttp.MethodGet || method == contractshttp.MethodHead:
+		return domain.PermissionRead
+	case a.Deploy:
+		return domain.PermissionDeploy
+	default:
+		return domain.PermissionWrite
+	}
+}
+
 // refusal is why a Role may not make a request with this method, or "".
 func refusal(method string, role domain.Role) string {
 	if method == contractshttp.MethodGet || method == contractshttp.MethodHead || role.CanWrite() {
@@ -265,15 +295,20 @@ func (Admin) Handle(ctx contractshttp.Context) {
 	ctx.Request().Next()
 }
 
-// Secrets keeps viewers away from routes that return Secrets. It runs after
-// Auth.
+// Secrets keeps viewers, and API tokens without read:sensitive, away from
+// routes that return Secrets. It runs after Auth.
 type Secrets struct{}
 
 func (Secrets) Signature() string { return "identity.secrets" }
 
 func (Secrets) Handle(ctx contractshttp.Context) {
-	if !RoleOf(ctx).CanSeeSecrets() {
+	p, _ := ctx.Value(principalKey{}).(principal)
+	if !p.role.CanSeeSecrets() {
 		_ = respond.Error(ctx, contractshttp.StatusForbidden, "your role cannot see secrets").Abort()
+		return
+	}
+	if !p.allows(domain.PermissionReadSensitive) {
+		_ = respond.Error(ctx, contractshttp.StatusForbidden, "Missing required permissions: "+string(domain.PermissionReadSensitive)).Abort()
 		return
 	}
 	ctx.Request().Next()
@@ -289,4 +324,11 @@ func MemberID(ctx contractshttp.Context) (uint64, bool) {
 func RoleOf(ctx contractshttp.Context) domain.Role {
 	p, _ := ctx.Value(principalKey{}).(principal)
 	return p.role
+}
+
+// CanSeeSecrets reports whether the request may be answered with Secrets:
+// its Role may see them and its API token, if any, carries read:sensitive.
+func CanSeeSecrets(ctx contractshttp.Context) bool {
+	p, _ := ctx.Value(principalKey{}).(principal)
+	return p.role.CanSeeSecrets() && p.allows(domain.PermissionReadSensitive)
 }

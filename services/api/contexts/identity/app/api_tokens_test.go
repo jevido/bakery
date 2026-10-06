@@ -84,26 +84,22 @@ func TestAPITokens(t *testing.T) {
 	ctx := context.Background()
 	s, owner, now := setUpOwner(t)
 
-	tok, value, err := s.CreateAPIToken(ctx, owner.ID, "ci", false)
-	if err != nil || !strings.HasPrefix(value, "bky_") || len(value) < 40 {
+	tok, value, err := s.CreateAPIToken(ctx, owner.ID, "ci deploy", nil, nil)
+	if err != nil || !strings.HasPrefix(value, "bky_") || len(value) < 40 || !tok.ReadOnly() || tok.ExpiresAt != nil {
 		t.Fatalf("create: %+v %v", tok, err)
 	}
-	if _, _, err := s.CreateAPIToken(ctx, owner.ID, "ci", true); !errors.Is(err, ErrTokenNameTaken) {
+	if _, _, err := s.CreateAPIToken(ctx, owner.ID, "ci deploy", nil, nil); !errors.Is(err, ErrTokenNameTaken) {
 		t.Errorf("same name: %v", err)
 	}
-	m, role, err := s.Authenticate(ctx, value)
-	if err != nil || m.ID != owner.ID || role != domain.RoleOwner {
-		t.Fatalf("authenticate: %+v %s %v", m, role, err)
+	m, got, err := s.Authenticate(ctx, value)
+	if err != nil || m.ID != owner.ID || m.Role != domain.RoleOwner || got.ID != tok.ID {
+		t.Fatalf("authenticate: %+v %+v %v", m, got, err)
 	}
 	listed, _ := s.APITokensOf(ctx, owner.ID)
 	if len(listed) != 1 || listed[0].LastUsedAt == nil || !listed[0].LastUsedAt.Equal(*now) {
 		t.Errorf("last used not recorded: %+v", listed)
 	}
 
-	_, ro, _ := s.CreateAPIToken(ctx, owner.ID, "read", true)
-	if _, role, _ := s.Authenticate(ctx, ro); role != domain.RoleViewer {
-		t.Errorf("read-only token acts as %s", role)
-	}
 	for _, bad := range []string{"", "bky_nope", strings.TrimPrefix(value, "bky_")} {
 		if _, _, err := s.Authenticate(ctx, bad); !errors.Is(err, ErrInvalidAPIToken) {
 			t.Errorf("%q: %v", bad, err)
@@ -120,12 +116,53 @@ func TestAPITokens(t *testing.T) {
 	}
 }
 
+func TestAPITokenExpiry(t *testing.T) {
+	ctx := context.Background()
+	s, owner, now := setUpOwner(t)
+
+	week := 7
+	tok, value, err := s.CreateAPIToken(ctx, owner.ID, "a week", []domain.Permission{domain.PermissionRoot}, &week)
+	if err != nil || tok.ExpiresAt == nil || !tok.ExpiresAt.Equal(now.AddDate(0, 0, 7)) {
+		t.Fatalf("create: %+v %v", tok, err)
+	}
+	odd := 3
+	if _, _, err := s.CreateAPIToken(ctx, owner.ID, "three days", nil, &odd); !errors.Is(err, ErrInvalidExpiry) {
+		t.Errorf("3 days: %v", err)
+	}
+
+	*now = now.AddDate(0, 0, 7).Add(-time.Second)
+	if _, _, err := s.Authenticate(ctx, value); err != nil {
+		t.Fatalf("just before expiry: %v", err)
+	}
+	listed, _ := s.APITokensOf(ctx, owner.ID)
+	if listed[0].LastUsedAt == nil || !listed[0].LastUsedAt.Equal(*now) {
+		t.Errorf("last used not recorded: %+v", listed)
+	}
+	*now = now.Add(time.Second)
+	if _, _, err := s.Authenticate(ctx, value); !errors.Is(err, ErrInvalidAPIToken) {
+		t.Errorf("expired token: %v", err)
+	}
+}
+
+func TestAPITokenRoleCaps(t *testing.T) {
+	ctx := context.Background()
+	s, owner, _ := setUpOwner(t)
+	_, invite, _ := s.Invite(ctx, owner.ID, "dev@example.com", domain.RoleMember)
+	dev, _ := s.AcceptInvitation(ctx, invite, "Dev", "correct horse")
+	if _, _, err := s.CreateAPIToken(ctx, dev.ID, "root", []domain.Permission{domain.PermissionRoot}, nil); !errors.Is(err, domain.ErrRoleCannotGrant) {
+		t.Errorf("member granting root: %v", err)
+	}
+	if _, _, err := s.CreateAPIToken(ctx, dev.ID, "deploy", []domain.Permission{domain.PermissionDeploy}, nil); err != nil {
+		t.Errorf("member granting deploy: %v", err)
+	}
+}
+
 func TestAPITokenOfRemovedMember(t *testing.T) {
 	ctx := context.Background()
 	s, owner, _ := setUpOwner(t)
 	_, invite, _ := s.Invite(ctx, owner.ID, "dev@example.com", domain.RoleMember)
 	dev, _ := s.AcceptInvitation(ctx, invite, "Dev", "correct horse")
-	_, value, _ := s.CreateAPIToken(ctx, dev.ID, "ci", false)
+	_, value, _ := s.CreateAPIToken(ctx, dev.ID, "ci deploy", []domain.Permission{domain.PermissionWrite}, nil)
 	if err := s.RemoveMember(ctx, owner.ID, dev.ID); err != nil {
 		t.Fatal(err)
 	}

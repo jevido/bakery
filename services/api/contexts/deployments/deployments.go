@@ -199,16 +199,19 @@ func Routes(r route.Router) {
 	r.Middleware(identity.Auth).Group(func(r route.Router) {
 		r.Patch("/api/applications/{id}/webhook", wc.Update)
 		r.Post("/api/applications/{id}/webhook/secret", wc.RotateSecret)
-		r.Post("/api/applications/{id}/deploy", c.Deploy)
-		r.Post("/api/applications/{id}/restart", c.Restart)
-		r.Post("/api/applications/{id}/stop", c.Stop)
 		r.Get("/api/applications/{id}/status", c.Status)
 		r.Get("/api/applications/{id}/previews", c.Previews)
-		r.Post("/api/applications/{id}/previews/{number}/deploy", c.DeployPreview)
 		r.Delete("/api/applications/{id}/previews/{number}", c.DeletePreview)
 		r.Get("/api/applications/{id}/deployments", c.List)
 		r.Get("/api/applications/{id}/images", c.Images)
 		r.Get("/api/deployments/{id}", c.Show)
+	})
+	// Coolify's deploy actions: an API token needs deploy for them.
+	r.Middleware(identity.Deploy).Group(func(r route.Router) {
+		r.Post("/api/applications/{id}/deploy", c.Deploy)
+		r.Post("/api/applications/{id}/restart", c.Restart)
+		r.Post("/api/applications/{id}/stop", c.Stop)
+		r.Post("/api/applications/{id}/previews/{number}/deploy", c.DeployPreview)
 		r.Post("/api/deployments/{id}/cancel", c.Cancel)
 		r.Post("/api/deployments/{id}/rollback", c.Rollback)
 	})

@@ -98,7 +98,7 @@ expect "a member renames themselves" 200 "$(as "$M" PATCH /api/me '{"name":"Mia 
 expect "the new name is theirs" "Mia Member" "$(body "d['member']['name']")"
 expect "an empty name is refused" 422 "$(as "$M" PATCH /api/me '{"name":"  "}')"
 expect "a viewer changes their own Profile too" 200 "$(as "$V" PATCH /api/me '{"name":"Vic Viewer"}')"
-expect "the member makes an API token before two-factor" 201 "$(as "$M" POST /api/api-tokens '{"name":"ci"}')"
+expect "the member makes an API token before two-factor" 201 "$(as "$M" POST /api/api-tokens '{"name":"ci token"}')"
 TOKEN=$(body "d['token']")
 
 say "Switching two-factor on"

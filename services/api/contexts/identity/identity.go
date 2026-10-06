@@ -1,5 +1,5 @@
 // Package identity is what other contexts and the router may use from the
-// identity context: its routes, the Auth, Admin and Secrets middlewares,
+// identity context: its routes, the Auth, Deploy, Admin and Secrets middlewares,
 // CanSeeSecrets, the InvitationCreated event and the artisan Commands.
 // Nothing else in contexts/identity is for outside use.
 package identity
@@ -27,17 +27,22 @@ var service = app.NewService(infra.Members{}, infra.Invitations{}, infra.APIToke
 // viewer (403).
 var Auth contractshttp.Middleware = identityhttp.Auth{Service: service}
 
+// Deploy is Auth for Coolify's deploy actions (deploy, restart, stop,
+// start, cancel, rollback): an API token needs the deploy Permission there
+// instead of write.
+var Deploy contractshttp.Middleware = identityhttp.Auth{Service: service, Deploy: true}
+
 // Admin, after Auth, lets only admins and the Owner through (403).
 var Admin contractshttp.Middleware = identityhttp.Admin{}
 
-// Secrets, after Auth, keeps viewers away from routes that return Secrets
-// (403).
+// Secrets, after Auth, keeps viewers and API tokens without read:sensitive
+// away from routes that return Secrets (403).
 var Secrets contractshttp.Middleware = identityhttp.Secrets{}
 
 // CanSeeSecrets reports whether the request may be answered with Secrets;
 // for a response that mixes Secrets with what a viewer may see.
 func CanSeeSecrets(ctx contractshttp.Context) bool {
-	return identityhttp.RoleOf(ctx).CanSeeSecrets()
+	return identityhttp.CanSeeSecrets(ctx)
 }
 
 // Routes registers setup, login, logout, me, Members and Invitations.
@@ -58,6 +63,7 @@ func Routes(r route.Router) {
 	// Session only.
 	r.Middleware(identityhttp.Auth{Service: service, SelfService: true}).Group(func(r route.Router) {
 		r.Get("/api/api-tokens", c.APITokens)
+		r.Get("/api/api-tokens/permissions", c.APITokenPermissions)
 		r.Post("/api/api-tokens", c.CreateAPIToken)
 		r.Delete("/api/api-tokens/{id}", c.RevokeAPIToken)
 		r.Patch("/api/me", c.ChangeName)

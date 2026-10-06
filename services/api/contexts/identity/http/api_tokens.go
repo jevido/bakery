@@ -12,15 +12,23 @@ import (
 )
 
 type apiTokenJSON struct {
-	ID         uint64     `json:"id"`
-	Name       string     `json:"name"`
+	ID          uint64              `json:"id"`
+	Name        string              `json:"name"`
+	Permissions []domain.Permission `json:"permissions"`
+	// ReadOnly is true when the Permissions are exactly read, for scripts
+	// written before Permissions.
 	ReadOnly   bool       `json:"read_only"`
 	CreatedAt  time.Time  `json:"created_at"`
 	LastUsedAt *time.Time `json:"last_used_at"`
+	ExpiresAt  *time.Time `json:"expires_at"`
 }
 
 func apiTokenToJSON(t domain.APIToken) apiTokenJSON {
-	return apiTokenJSON{ID: t.ID, Name: t.Name, ReadOnly: t.ReadOnly, CreatedAt: t.CreatedAt, LastUsedAt: t.LastUsedAt}
+	permissions := t.Permissions
+	if permissions == nil {
+		permissions = []domain.Permission{}
+	}
+	return apiTokenJSON{ID: t.ID, Name: t.Name, Permissions: permissions, ReadOnly: t.ReadOnly(), CreatedAt: t.CreatedAt, LastUsedAt: t.LastUsedAt, ExpiresAt: t.ExpiresAt}
 }
 
 func (c *Controller) APITokens(ctx contractshttp.Context) contractshttp.Response {
@@ -37,8 +45,24 @@ func (c *Controller) APITokens(ctx contractshttp.Context) contractshttp.Response
 }
 
 type apiTokenRequest struct {
-	Name     string `json:"name"`
-	ReadOnly bool   `json:"read_only"`
+	Name string `json:"name"`
+	// Permissions absent means the request predates them: ReadOnly then
+	// picks read, or else the most the Role may grant.
+	Permissions *[]domain.Permission `json:"permissions"`
+	ReadOnly    bool                 `json:"read_only"`
+	// ExpiresInDays absent or null is Never.
+	ExpiresInDays *int `json:"expires_in_days"`
+}
+
+// grantable is every Permission role may put on a token.
+func grantable(role domain.Role) []domain.Permission {
+	var out []domain.Permission
+	for _, p := range domain.Permissions {
+		if role.MayGrant(p) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // CreateAPIToken answers the token's value, the only time it is shown.
@@ -48,10 +72,26 @@ func (c *Controller) CreateAPIToken(ctx contractshttp.Context) contractshttp.Res
 		return respond.BadBody(ctx)
 	}
 	id, _ := MemberID(ctx)
-	t, value, err := c.service.CreateAPIToken(ctx.Context(), id, req.Name, req.ReadOnly)
+	var permissions []domain.Permission
+	switch {
+	case req.Permissions != nil:
+		permissions = *req.Permissions
+	case req.ReadOnly:
+		permissions = []domain.Permission{domain.PermissionRead}
+	case RoleOf(ctx).IsAdmin():
+		permissions = []domain.Permission{domain.PermissionRoot}
+	default:
+		// root capped to the Role, so an old script's token does what it did.
+		permissions = grantable(RoleOf(ctx))
+	}
+	t, value, err := c.service.CreateAPIToken(ctx.Context(), id, req.Name, permissions, req.ExpiresInDays)
 	switch {
 	case errors.Is(err, domain.ErrInvalidTokenName), errors.Is(err, app.ErrTokenNameTaken):
 		return respond.Invalid(ctx, "name", err.Error())
+	case errors.Is(err, domain.ErrUnknownPermission), errors.Is(err, domain.ErrRoleCannotGrant):
+		return respond.Invalid(ctx, "permissions", err.Error())
+	case errors.Is(err, app.ErrInvalidExpiry), errors.Is(err, domain.ErrTokenExpiryPassed):
+		return respond.Invalid(ctx, "expires_in_days", err.Error())
 	case err != nil:
 		return respond.ServerError(ctx, err)
 	}
@@ -72,4 +112,15 @@ func (c *Controller) RevokeAPIToken(ctx contractshttp.Context) contractshttp.Res
 		return respond.ServerError(ctx, err)
 	}
 	return ctx.Response().NoContent()
+}
+
+// APITokenPermissions answers which Permissions the signed-in Member may put
+// on a token.
+func (c *Controller) APITokenPermissions(ctx contractshttp.Context) contractshttp.Response {
+	role := RoleOf(ctx)
+	out := make([]contractshttp.Json, len(domain.Permissions))
+	for i, p := range domain.Permissions {
+		out[i] = contractshttp.Json{"name": p, "allowed": role.MayGrant(p)}
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"permissions": out})
 }

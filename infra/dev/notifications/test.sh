@@ -113,9 +113,15 @@ echo "ok: seven channels, no secret shown"
 OUT=$(bakery POST /api/api-tokens "{\"name\":\"$RUN\",\"read_only\":true}")
 TOKEN_ID=$(json "d['api_token']['id']" <<<"$OUT")
 READ_ONLY=$(json "d['token']" <<<"$OUT")
-[ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $READ_ONLY" "$API/api/notification-channels")" = 403 ] ||
-	fail "a viewer reads the channels"
-echo "ok: a viewer is refused"
+# A read token acts with its Member's Role (here the Owner's), so it reads
+# the channels, still without their secrets, and changes nothing.
+OUT=$(curl -s -H "Authorization: Bearer $READ_ONLY" "$API/api/notification-channels")
+for secret in "pw-$RUN" "tok-$RUN" "bot-$RUN" "tk-$RUN" "secret-$RUN"; do
+	! grep -q -- "$secret" <<<"$OUT" || fail "a read token sees a secret ($secret)"
+done
+[ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $READ_ONLY" -X DELETE "$API/api/notification-channels/$HOOK")" = 403 ] ||
+	fail "a read token deletes a channel"
+echo "ok: a read token reads no secret and changes nothing"
 
 say "Test each channel"
 for id in "${CHANNELS[@]}"; do
