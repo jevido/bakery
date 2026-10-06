@@ -77,5 +77,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000062AddGuildToS3Storages{},
 		&migrations.M20260930000063AddGuildToNotificationChannels{},
 		&migrations.M20260930000064AddGuildToKnownHosts{},
+		&migrations.M20260930000065CascadeKnownHostsWithGuild{},
 	}
 }

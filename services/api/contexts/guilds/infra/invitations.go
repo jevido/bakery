@@ -156,3 +156,7 @@ func isUniqueViolation(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "23505") || strings.Contains(msg, "duplicate key")
 }
+
+func isForeignKeyViolation(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "23503")
+}

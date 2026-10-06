@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/guilds/domain"
@@ -22,6 +23,12 @@ type Guilds interface {
 	// case it stores nothing and reports false. The check and the insert are
 	// one step, so racing calls cannot both create one.
 	CreateFirstIfNone(ctx context.Context, g domain.Guild, adminID uint64) (domain.Guild, bool, error)
+	// Update stores g's name and description.
+	Update(ctx context.Context, g domain.Guild) error
+	// Delete removes the Guild with its Memberships, Invitations and API
+	// tokens. ErrGuildInUse when something of another context still
+	// belongs to it.
+	Delete(ctx context.Context, id uint64) error
 }
 
 // Memberships stores the Memberships.
@@ -63,6 +70,23 @@ type Service struct {
 	members     Members
 	// Now is the clock; time.Now unless a test sets it.
 	Now func() time.Time
+
+	onDeleting []deletingCheck
+}
+
+type deletingCheck struct {
+	kind  string
+	inUse func(ctx context.Context, guildID uint64) (bool, error)
+}
+
+var ErrGuildNotFound = errors.New("guild not found")
+
+// ErrGuildInUse refuses to delete a Guild that still owns something;
+// Blocking names what, in the words of the contexts that own it.
+type ErrGuildInUse struct{ Blocking []string }
+
+func (e ErrGuildInUse) Error() string {
+	return "the guild still owns resources; delete them first"
 }
 
 func NewService(guilds Guilds, memberships Memberships, invitations Invitations, members Members) *Service {
@@ -98,4 +122,76 @@ func (s *Service) GuildsOf(ctx context.Context, memberID uint64) ([]domain.Membe
 // RoleOf is the Member's Role in the Guild, false without a Membership.
 func (s *Service) RoleOf(ctx context.Context, guildID, memberID uint64) (domain.Role, bool, error) {
 	return s.memberships.RoleOf(ctx, guildID, memberID)
+}
+
+// OnGuildDeleting registers a check DeleteGuild asks first: another context
+// that keeps something of kind (e.g. "projects") in the Guild answers true
+// while it does, and the deletion is refused naming kind.
+func (s *Service) OnGuildDeleting(kind string, inUse func(ctx context.Context, guildID uint64) (bool, error)) {
+	s.onDeleting = append(s.onDeleting, deletingCheck{kind: kind, inUse: inUse})
+}
+
+// Blocking names what still keeps the Guild from being deleted, in the
+// order the checks were registered; empty when nothing does.
+func (s *Service) Blocking(ctx context.Context, guildID uint64) ([]string, error) {
+	out := []string{}
+	for _, c := range s.onDeleting {
+		inUse, err := c.inUse(ctx, guildID)
+		if err != nil {
+			return nil, err
+		}
+		if inUse {
+			out = append(out, c.kind)
+		}
+	}
+	return out, nil
+}
+
+// Guild is the Guild by id.
+func (s *Service) Guild(ctx context.Context, id uint64) (domain.Guild, error) {
+	g, found, err := s.guilds.ByID(ctx, id)
+	if err == nil && !found {
+		err = ErrGuildNotFound
+	}
+	return g, err
+}
+
+// UpdateGuild renames and describes the Guild. Only an admin of the Guild
+// gets here (Admin guards the route).
+func (s *Service) UpdateGuild(ctx context.Context, id uint64, name, description string) (domain.Guild, error) {
+	g, err := s.Guild(ctx, id)
+	if err != nil {
+		return domain.Guild{}, err
+	}
+	if err := g.Rename(name); err != nil {
+		return domain.Guild{}, err
+	}
+	if err := g.ChangeDescription(description); err != nil {
+		return domain.Guild{}, err
+	}
+	return g, s.guilds.Update(ctx, g)
+}
+
+// DeleteGuild deletes the Guild once it owns nothing: ErrGuildInUse names
+// what still blocks it. Its Memberships, Invitations and API tokens go with
+// it. Only an admin of the Guild gets here (Admin guards the route).
+func (s *Service) DeleteGuild(ctx context.Context, id uint64) error {
+	if _, err := s.Guild(ctx, id); err != nil {
+		return err
+	}
+	blocking, err := s.Blocking(ctx, id)
+	if err != nil {
+		return err
+	}
+	if len(blocking) > 0 {
+		return ErrGuildInUse{Blocking: blocking}
+	}
+	return s.guilds.Delete(ctx, id)
+}
+
+// CanActIn reports whether the Member may act in the Guild: they hold a
+// Membership there, or they are the Instance admin.
+func (s *Service) CanActIn(ctx context.Context, guildID, memberID uint64, instanceAdmin bool) (bool, error) {
+	_, ok, err := s.placeIn(ctx, guildID, memberID, instanceAdmin)
+	return ok, err
 }

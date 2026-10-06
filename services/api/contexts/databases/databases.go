@@ -67,6 +67,10 @@ func svc() *app.Service {
 		service.S3 = func(st domain.S3Storage) app.S3Client { return infra.S3{Storage: st} }
 		service.BackupExecutionFinished = publishBackupExecutionFinished
 		projects.OnProjectDeleting(service.InUse)
+		guilds.OnGuildDeleting("s3 storages", func(ctx context.Context, guildID uint64) (bool, error) {
+			sts, err := service.S3Storages(ctx, guildID)
+			return len(sts) > 0, err
+		})
 		projects.OnEnvironmentDeleting(service.InUseInEnvironment)
 		servers.OnContainerOwner("database", belongs(service.EnvironmentOfDatabase))
 	})

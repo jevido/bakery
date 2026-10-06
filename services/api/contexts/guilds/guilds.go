@@ -1,7 +1,7 @@
 // Package guilds is what other contexts, the router and bootstrap may use
 // from the guilds context: the Auth, Deploy, Admin, Secrets and Owns
 // middlewares, Current, RoleOf and CanSeeSecrets, the routes, the
-// InvitationCreated event, and Boot. Nothing else in contexts/guilds is for
+// InvitationCreated event, the OnGuildDeleting check, and Boot. Nothing else in contexts/guilds is for
 // outside use.
 package guilds
 
@@ -64,8 +64,9 @@ func InstanceAdmin(ctx contractshttp.Context) bool { return guildshttp.InstanceA
 // "member" or "admin".
 func RoleOf(ctx contractshttp.Context) string { return string(guildshttp.RoleOf(ctx)) }
 
-// Routes registers `GET /api/me`, an Invitation link (open), the Members
-// and Invitations of the Current guild, and identity's API token routes
+// Routes registers `GET /api/me`, an Invitation link (open), the Guilds
+// (list, create, switch, and the Current guild's General and deletion),
+// the Members and Invitations of the Current guild, and identity's API token routes
 // behind guilds' middlewares.
 func Routes(r route.Router) {
 	c := guildshttp.NewController(service)
@@ -74,8 +75,21 @@ func Routes(r route.Router) {
 	r.Post("/api/invitations/by-token/{token}/accept", c.AcceptInvitation)
 	r.Middleware(guildshttp.Auth{Service: service, Guildless: true}).Get("/api/me", c.Me)
 	r.Middleware(guildshttp.Auth{Service: service, SelfService: true}).Group(identity.APITokenRoutes)
+	// Listing, creating and switching Guilds work in no Guild and for every
+	// Role, but only with a Session: an API token acts in one Guild.
+	r.Middleware(guildshttp.Auth{Service: service, Guildless: true, SelfService: true}).Group(func(r route.Router) {
+		r.Get("/api/guilds", c.Guilds)
+		r.Post("/api/guilds", c.CreateGuild)
+		r.Post("/api/guilds/{id}/switch", c.SwitchGuild)
+	})
+	// Every Role reads its Guild's General page and Members, as in Coolify.
+	r.Middleware(Auth).Get("/api/guilds/current", c.CurrentGuild)
+	r.Middleware(Auth).Get("/api/members", c.Members)
 	r.Middleware(Auth, Admin).Group(func(r route.Router) {
-		r.Get("/api/members", c.Members)
+		r.Patch("/api/guilds/current", c.UpdateCurrentGuild)
+		r.Delete("/api/guilds/current", c.DeleteCurrentGuild)
+	})
+	r.Middleware(Auth, Admin).Group(func(r route.Router) {
 		r.Patch("/api/members/{id}", c.ChangeRole)
 		r.Delete("/api/members/{id}", c.RemoveMember)
 		r.Delete("/api/members/{id}/two-factor", c.ResetTwoFactor)
@@ -83,6 +97,13 @@ func Routes(r route.Router) {
 		r.Post("/api/invitations", c.Invite)
 		r.Delete("/api/invitations/{id}", c.RevokeInvitation)
 	})
+}
+
+// OnGuildDeleting registers a check asked before a Guild is deleted: a
+// context that keeps something of kind (e.g. "projects") in the Guild
+// answers true while it does, and the deletion is refused (409) naming kind.
+func OnGuildDeleting(kind string, inUse func(ctx context.Context, guildID uint64) (bool, error)) {
+	service.OnGuildDeleting(kind, inUse)
 }
 
 // Boot subscribes guilds to what identity announces: Setup's Instance admin

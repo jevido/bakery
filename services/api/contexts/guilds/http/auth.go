@@ -98,11 +98,22 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 // the next request on. Like the Session cookie it is host-only, for the API's
 // paths and SameSite=Strict.
 func SetCurrent(ctx contractshttp.Context, guildID uint64) {
+	guildCookie(ctx, strconv.FormatUint(guildID, 10), int((400 * 24 * time.Hour).Seconds()))
+}
+
+// forgetCurrent removes GuildCookie, so the Session acts in the Member's
+// first Guild again. WithoutCookie would miss it: it clears the cookie for
+// no path, and this one lives on /api.
+func forgetCurrent(ctx contractshttp.Context) {
+	guildCookie(ctx, "", -1)
+}
+
+func guildCookie(ctx contractshttp.Context, value string, maxAge int) {
 	ctx.Response().Cookie(contractshttp.Cookie{
 		Name:     GuildCookie,
-		Value:    strconv.FormatUint(guildID, 10),
+		Value:    value,
 		Path:     "/api",
-		MaxAge:   int((400 * 24 * time.Hour).Seconds()),
+		MaxAge:   maxAge,
 		HttpOnly: true,
 		Secure:   facades.Config().GetString("app.env") == "production",
 		SameSite: "strict",

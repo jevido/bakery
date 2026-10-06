@@ -55,6 +55,25 @@ func (m *memStore) CreateFirstIfNone(_ context.Context, g domain.Guild, adminID 
 	return m.create(g, adminID), true, nil
 }
 
+func (m *memStore) Update(_ context.Context, g domain.Guild) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.guilds {
+		if m.guilds[i].ID == g.ID {
+			m.guilds[i] = g
+		}
+	}
+	return nil
+}
+
+func (m *memStore) Delete(_ context.Context, id uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.guilds = slices.DeleteFunc(m.guilds, func(g domain.Guild) bool { return g.ID == id })
+	m.memberships = slices.DeleteFunc(m.memberships, func(x domain.Membership) bool { return x.GuildID == id })
+	return nil
+}
+
 func (m *memStore) ListForMember(_ context.Context, memberID uint64) ([]domain.Membership, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -351,5 +370,72 @@ func TestGuildsFor(t *testing.T) {
 	admin, _ := s.GuildsFor(ctx, 1, true)
 	if len(admin) != 2 || admin[1].Guild.Name != "Bakers" || admin[1].Role != domain.RoleAdmin {
 		t.Errorf("the Instance admin's Guilds: %+v", admin)
+	}
+}
+
+func TestUpdateGuild(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := twoGuilds(t)
+	g, err := s.UpdateGuild(ctx, 2, "  Pastry  ", "Cakes")
+	if err != nil || g.Name != "Pastry" || g.Description != "Cakes" {
+		t.Fatalf("got %+v, %v", g, err)
+	}
+	if got, _ := s.Guild(ctx, 2); got != g {
+		t.Errorf("stored %+v, want %+v", got, g)
+	}
+	if _, err := s.UpdateGuild(ctx, 2, " ", ""); !errors.Is(err, domain.ErrInvalidName) {
+		t.Errorf("empty name: %v", err)
+	}
+	if _, err := s.UpdateGuild(ctx, 9, "X", ""); !errors.Is(err, ErrGuildNotFound) {
+		t.Errorf("unknown guild: %v", err)
+	}
+}
+
+func TestDeleteGuildOnlyWhenItOwnsNothing(t *testing.T) {
+	ctx := context.Background()
+	s, m, _ := twoGuilds(t)
+	owns := map[uint64]bool{2: true}
+	s.OnGuildDeleting("projects", func(_ context.Context, guildID uint64) (bool, error) { return owns[guildID], nil })
+	s.OnGuildDeleting("servers", func(context.Context, uint64) (bool, error) { return false, nil })
+	s.OnGuildDeleting("s3 storages", func(_ context.Context, guildID uint64) (bool, error) { return owns[guildID], nil })
+
+	var inUse ErrGuildInUse
+	if err := s.DeleteGuild(ctx, 2); !errors.As(err, &inUse) || !slices.Equal(inUse.Blocking, []string{"projects", "s3 storages"}) {
+		t.Fatalf("delete while in use: %v", err)
+	}
+	owns[2] = false
+	if b, _ := s.Blocking(ctx, 2); len(b) != 0 {
+		t.Errorf("blocking %v", b)
+	}
+	if err := s.DeleteGuild(ctx, 2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Guild(ctx, 2); !errors.Is(err, ErrGuildNotFound) {
+		t.Errorf("guild still there: %v", err)
+	}
+	if ms, _ := m.ListForMember(ctx, 3); len(ms) != 1 || ms[0].GuildID != 1 {
+		t.Errorf("memberships of member 3: %+v", ms)
+	}
+	if err := s.DeleteGuild(ctx, 2); !errors.Is(err, ErrGuildNotFound) {
+		t.Errorf("delete twice: %v", err)
+	}
+}
+
+func TestCanActIn(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := twoGuilds(t)
+	for _, c := range []struct {
+		guild, member uint64
+		admin, want   bool
+	}{
+		{1, 3, false, true},
+		{2, 3, false, true},
+		{1, 2, false, false},
+		{2, 1, true, true},
+		{9, 1, true, false},
+	} {
+		if got, err := s.CanActIn(ctx, c.guild, c.member, c.admin); err != nil || got != c.want {
+			t.Errorf("CanActIn(%d, %d, %v) = %v, %v; want %v", c.guild, c.member, c.admin, got, err, c.want)
+		}
 	}
 }

@@ -107,6 +107,23 @@ func (Guilds) CreateFirstIfNone(ctx context.Context, g domain.Guild, adminID uin
 	return rec.toDomain(), true, nil
 }
 
+func (Guilds) Update(ctx context.Context, g domain.Guild) error {
+	_, err := query(ctx).Model(&guildRecord{}).Where("id", g.ID).Update(map[string]any{"name": g.Name, "description": g.Description})
+	return err
+}
+
+// Delete relies on the foreign keys: Memberships, Invitations, API tokens
+// and Known hosts cascade with the Guild, while a Project, Server, S3
+// storage or Notification channel still in it refuses the delete. That
+// closes the gap between DeleteGuild's checks and the delete.
+func (Guilds) Delete(ctx context.Context, id uint64) error {
+	_, err := query(ctx).Where("id", id).Delete(&guildRecord{})
+	if isForeignKeyViolation(err) {
+		return app.ErrGuildInUse{}
+	}
+	return err
+}
+
 func create(tx contractsorm.Query, g domain.Guild, adminID uint64) (guildRecord, error) {
 	rec := guildRecord{Name: g.Name, Description: g.Description}
 	if err := tx.Create(&rec); err != nil {

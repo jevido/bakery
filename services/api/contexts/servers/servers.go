@@ -19,6 +19,7 @@ import (
 	"github.com/jevido/bakery/services/api/app/podman"
 	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/servers/app"
+	"github.com/jevido/bakery/services/api/contexts/servers/domain"
 	servershttp "github.com/jevido/bakery/services/api/contexts/servers/http"
 	"github.com/jevido/bakery/services/api/contexts/servers/infra"
 )
@@ -40,6 +41,10 @@ func svc() *app.Service {
 		service.Forget = pool.Forget
 		service.Log = facades.Log().Errorf
 		service.OnHealthChanged = publishHealthChanged
+		guilds.OnGuildDeleting("servers", func(ctx context.Context, guildID uint64) (bool, error) {
+			all, err := service.List(ctx, guildID)
+			return slices.ContainsFunc(all, func(s domain.Server) bool { return s.GuildID == guildID }), err
+		})
 	})
 	return service
 }

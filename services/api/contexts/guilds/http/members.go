@@ -69,10 +69,7 @@ func (c *Controller) Me(ctx contractshttp.Context) contractshttp.Response {
 	if err != nil {
 		return respond.ServerError(ctx, err)
 	}
-	guilds := make([]guildJSON, len(places))
-	for i, pl := range places {
-		guilds[i] = guildJSON{ID: pl.Guild.ID, Name: pl.Guild.Name, Role: string(pl.Role)}
-	}
+	guilds := guildsJSON(places)
 	var current *guildJSON
 	if p.guild.ID != 0 {
 		current = &guildJSON{ID: p.guild.ID, Name: p.guild.Name}

@@ -33,6 +33,10 @@ func svc() *app.Service {
 		service = app.NewService(infra.Store{}, senders, senders)
 		service.DashboardURL = DashboardURL()
 		service.Log = facades.Log().Errorf
+		guilds.OnGuildDeleting("notification channels", func(ctx context.Context, guildID uint64) (bool, error) {
+			cs, err := service.Channels(ctx, guildID)
+			return len(cs) > 0, err
+		})
 	})
 	return service
 }

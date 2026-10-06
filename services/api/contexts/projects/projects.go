@@ -30,6 +30,10 @@ func svc() *app.Service {
 		service.LocalServer = servers.LocalID
 		servers.OnServerDeleting(infra.Store{}.ServerInUse)
 		servers.OnContainerOwner("application", ApplicationInGuild)
+		guilds.OnGuildDeleting("projects", func(ctx context.Context, guildID uint64) (bool, error) {
+			ps, err := service.Projects(app.InGuild(ctx, guildID))
+			return len(ps) > 0, err
+		})
 	}
 	return service
 }

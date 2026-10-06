@@ -7,7 +7,8 @@
   import Login from './pages/Login.svelte'
   import Invite from './pages/Invite.svelte'
   import Dashboard from './pages/Dashboard.svelte'
-  import Members from './pages/Members.svelte'
+  import Guild from './pages/guild/Guild.svelte'
+  import NewGuild from './pages/guild/New.svelte'
   import Profile from './pages/Profile.svelte'
   import NotFound from './pages/NotFound.svelte'
   import Application from './pages/application/Application.svelte'
@@ -65,7 +66,11 @@
   <Login />
 {:else}
   <Layout>
-    {#if router.route.name === 'dashboard'}
+    <!-- Every page loads again in another Guild: what it shows is that Guild's. -->
+    {#key session.guild?.id}
+    {#if session.guild === null && router.route.name !== 'profile'}
+      <NewGuild noGuild />
+    {:else if router.route.name === 'dashboard'}
       <Dashboard />
     {:else if router.route.name === 'projects'}
       <Projects />
@@ -116,8 +121,10 @@
       <Storages />
     {:else if router.route.name === 'settings'}
       <Settings />
-    {:else if router.route.name === 'members'}
-      <Members />
+    {:else if router.route.name === 'guild'}
+      <Guild page={router.route.page} />
+    {:else if router.route.name === 'guild-new'}
+      <NewGuild />
     {:else if router.route.name === 'notifications'}
       <Notifications page={router.route.page} />
     {:else if router.route.name === 'security'}
@@ -131,6 +138,7 @@
     {:else}
       <NotFound />
     {/if}
+    {/key}
   </Layout>
 {/if}
 

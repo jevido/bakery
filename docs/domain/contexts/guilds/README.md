@@ -36,7 +36,7 @@ rows and stores the Guild's id on them.
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Guild | Name is 1–255 characters after trimming; the description is optional, at most 255 characters. Deleted only when it owns nothing: no Projects, Servers, S3 storages, Notification channels or Known hosts (each owning context answers through `OnGuildDeleting`); its Memberships, open Invitations and API tokens go with it. |
+| Guild | Name is 1–255 characters after trimming; the description is optional, at most 255 characters. Deleted only when it owns nothing: no Projects, Servers, S3 storages or Notification channels (each owning context answers through `OnGuildDeleting`); its Memberships, Invitations, API tokens and Known hosts go with it. |
 | Membership | One per Member and Guild. Role is `viewer`, `member` or `admin`. A Guild keeps at least one `admin` Membership. Nobody changes their own Role or removes their own Membership. The Instance admin's Memberships are never demoted or removed. |
 | Invitation | Belongs to one Guild. Email is valid and not already a Member of this Guild; Role is admin, member or viewer; at most one open Invitation per Guild and email; expires 7 days after it was made; accepted at most once; a revoked or expired one cannot be accepted. Only the hash of its token is stored. |
 
@@ -45,12 +45,15 @@ rows and stores the Guild's id on them.
 Who may run each is in brackets; *admin* means an admin of the Guild
 concerned, which the Instance admin always is.
 
-- `CreateGuild(name, description)` [any Member]: the creator gets an `admin`
-  Membership; the new Guild owns nothing and deploys to the Local server.
+- `CreateGuild(name, description)` [any Member, with a Session]: the creator
+  gets an `admin` Membership and the new Guild becomes their Current guild;
+  it owns nothing and deploys to the Local server.
 - `RenameGuild(name)`, `ChangeDescription(description)` [admin].
-- `DeleteGuild()` [admin]: refused while the Guild owns anything.
-- `SwitchGuild(guild)` [any Member of that Guild, the Instance admin for any]:
-  sets the Current guild of the Session.
+- `DeleteGuild()` [admin]: refused while the Guild owns anything, naming
+  what (`projects`, `servers`, `s3 storages`, `notification channels`). The
+  first Guild is not special, and a Member may delete their last Guild.
+- `SwitchGuild(guild)` [any Member of that Guild, the Instance admin for any;
+  with a Session]: sets the Current guild of the Session.
 - `Invite(email, role)` [admin]: returns the Invitation and its link, once.
 - `RevokeInvitation(id)` [admin].
 - `AcceptInvitation(token, name, password)` [anyone with the link]: when the
@@ -99,14 +102,23 @@ concerned, which the Instance admin always is.
     context stores on what it creates (or reaches through something that
     does) and filters every list and read by.
   - `guilds.RoleOf(ctx)`: the Role the request acts with there.
-  - `guilds.OnGuildDeleting(f)` and `guilds.OnInvitationCreated(f)`: see
-    Domain events.
+  - `guilds.OnGuildDeleting(kind, f)` and `guilds.OnInvitationCreated(f)`:
+    see Domain events. Projects, servers, databases (S3 storages) and
+    notifications register `OnGuildDeleting`.
 - **Serves:** `GET /api/me` (the Member, their Role in the Current guild,
   `instance_admin`, the Current `guild` and every Guild they may switch to
-  with their Role there), and the Members of the Current guild:
-  `GET /api/members`, `PATCH /api/members/{id}` (`{"role"}`),
-  `DELETE /api/members/{id}` and `DELETE /api/members/{id}/two-factor`, all
-  for admins. On the wire the Instance admin's `role` reads `owner`, with
+  with their Role there). The Guilds, with a Session only and also for a
+  Member in no Guild: `GET /api/guilds` (every Guild they may switch to,
+  with their Role), `POST /api/guilds` (`{"name", "description"}`; 201, and
+  it becomes the Current guild) and `POST /api/guilds/{id}/switch` (204; 404
+  for a Guild they may not act in). The Current guild:
+  `GET /api/guilds/current` (`name`, `description` and `blocking`, what
+  keeps it from being deleted) for every Role, `PATCH /api/guilds/current`
+  (`{"name", "description"}`) and `DELETE /api/guilds/current` (204, or 409
+  with `blocking`) for admins. The Members of the Current guild:
+  `GET /api/members` for every Role, and for admins
+  `PATCH /api/members/{id}` (`{"role"}`), `DELETE /api/members/{id}` and
+  `DELETE /api/members/{id}/two-factor`. On the wire the Instance admin's `role` reads `owner`, with
   `instance_admin: true`. The Invitations of the Current guild, for admins:
   `GET /api/invitations`, `POST /api/invitations` (`{"email", "role"}`) and
   `DELETE /api/invitations/{id}`; another Guild's id answers 404. Open to
@@ -186,11 +198,34 @@ concerned, which the Instance admin always is.
   guild` and `GET /api/me` answers with no `guild`. Coolify deletes a user
   only when they leave their last team; The Bakery keeps the person, so
   another Guild can invite them back without a new account.
-- **The Instance admin reads `owner` on the wire, for now.** The dashboard's
-  Members page and Role labels still know the Owner, whom nobody manages;
-  `GET /api/members` and `GET /api/me` keep that word for the Instance admin
-  (beside `instance_admin: true`) until the dashboard's Guild pages name
-  them Instance admin.
+- **The Instance admin reads `owner` on the wire.** `GET /api/members` and
+  `GET /api/me` keep that word for the Instance admin, beside
+  `instance_admin: true`, so scripts written before Guilds keep working; the
+  dashboard's Members page shows them as "Instance admin", with no Role to
+  change.
+- **No personal guild per account.** Coolify gives every user a personal
+  team that cannot be deleted. A Bakery account may be in no Guild at all:
+  it sees only "You are in no guild" with Create guild (Coolify's Select
+  Team page), until it makes one or accepts an Invitation. For the same
+  reason "Default" is not special, and a Member may delete their last Guild.
+- **Known hosts go with their Guild; the rest must go first.** Projects,
+  Servers, S3 storages and Notification channels are things a person made
+  and may still want, so they block deleting the Guild, as Coolify's
+  projects, servers and sources block deleting a team. Known hosts are only
+  what the Guild's git sources were trusted with and mean nothing outside it,
+  so they are deleted with it. The foreign keys enforce both: a resource
+  made between the check and the delete still refuses it.
+- **Every Role reads the Guild's General and Members pages.** As in Coolify,
+  whose team pages every member of the team sees; only admins see and make
+  Invitations and change anything.
+- **Listing, creating and switching Guilds need a Session.** An API token
+  acts in the one Guild it was made in, so it has nothing to switch, and a
+  leaked token cannot make Guilds. Coolify's `/api/v1/teams` comes with that
+  API.
+- **No Admin View and no MCP server setting, yet.** Coolify's team Admin
+  View (every user of the installation, for the instance admin) comes with
+  instance Settings, and its "MCP server" setting on the team's General page
+  with agents reaching the API.
 - **A Guild keeps an admin, checked under a row lock.** Changing or
   removing a Membership locks every Membership of the Guild first, so two
   admins demoting each other at once cannot leave it with none.

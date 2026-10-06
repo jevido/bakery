@@ -5,6 +5,7 @@
   // `.chrome` keeps the legacy element rules in app.css off this markup.
   import type { Snippet } from 'svelte'
   import { breadcrumb } from './breadcrumb.svelte'
+  import GuildSwitcher from './GuildSwitcher.svelte'
   import Icon, { type IconName } from './Icon.svelte'
   import { href, router } from './router.svelte'
   import { session } from './session.svelte'
@@ -39,7 +40,7 @@
       {
         label: 'Manage',
         items: items(
-          admin && { label: 'Members', path: '/members', icon: 'teams', routes: ['members'] },
+          { label: 'Guild', path: '/guild', icon: 'teams', routes: ['guild', 'guild-new'] },
           admin && { label: 'Notifications', path: '/notifications', icon: 'notifications', routes: ['notifications'] },
           { label: 'Keys & Tokens', path: '/security/api-tokens', icon: 'keys', routes: ['security'] },
           admin && { label: 'Settings', path: '/settings', icon: 'settings', routes: ['settings'] },
@@ -161,9 +162,11 @@
     </div>
     <div class="flex h-full min-w-0 flex-1 items-center gap-0.5 border-b border-neutral-200 pr-4 pl-3 dark:border-white/[0.06]">
       <div class="relative flex min-w-0 flex-1 items-center">
+        <!-- The Guild switcher leads the breadcrumb, as Coolify's team switcher does. -->
+        <div class="shrink-0"><GuildSwitcher /></div>
         <nav aria-label="Breadcrumb" class="flex min-w-0 items-center gap-0.5 text-[13px]">
           {#each breadcrumb.crumbs as crumb, i (i)}
-            {#if i > 0}<span class="shrink-0 px-0.5 text-neutral-300 dark:text-fg-faint">/</span>{/if}
+            <span class="shrink-0 px-0.5 text-neutral-300 dark:text-fg-faint">/</span>
             {#if crumb.href}
               <a
                 href={crumb.href}
@@ -255,11 +258,7 @@
       >
         <img src="/favicon.svg" alt="The Bakery" class="h-[18px] w-[18px]" />
       </a>
-      {#if breadcrumb.crumbs.length > 0}
-        <span class="min-w-0 truncate text-[13px] font-semibold text-black dark:text-fg">
-          {breadcrumb.crumbs[breadcrumb.crumbs.length - 1].label}
-        </span>
-      {/if}
+      <GuildSwitcher />
     </div>
     <div class="flex shrink-0 items-center gap-1">
       <UserMenu />

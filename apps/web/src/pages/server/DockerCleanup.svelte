@@ -40,7 +40,7 @@
     helper="Remove unused Podman images and keep disk usage under control."
   >
     {#snippet actions()}
-      {#if session.isAdmin}
+      {#if session.isAdmin && (server.kind === 'remote' || session.instanceAdmin)}
         <ConfirmationModal
           title="Confirm Docker Cleanup?"
           buttonTitle="Run cleanup"

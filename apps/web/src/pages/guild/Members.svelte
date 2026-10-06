@@ -1,14 +1,15 @@
 <script lang="ts">
-  import { breadcrumb } from '../lib/breadcrumb.svelte'
-  import { api, ApiError } from '../lib/api'
-  import CopyButton from '../lib/CopyButton.svelte'
-  import Field from '../lib/Field.svelte'
-  import { session } from '../lib/session.svelte'
-  import type { Invitation, Member, Role } from '../lib/types'
+  // The Current guild's Members: everyone reads the list; admins invite,
+  // change Roles, remove, reset two-factor and see the open Invitations.
+  import { api, ApiError } from '../../lib/api'
+  import CopyButton from '../../lib/CopyButton.svelte'
+  import Field from '../../lib/Field.svelte'
+  import { session } from '../../lib/session.svelte'
+  import type { Invitation, Member, Role } from '../../lib/types'
 
   const grantable: Invitation['role'][] = ['admin', 'member', 'viewer']
   const describe: Record<Role, string> = {
-    owner: 'Everything, and cannot be removed',
+    owner: 'Runs the installation; admin in every guild',
     admin: 'Also manages servers, storage settings and members',
     member: 'Adds, changes and deploys applications, databases and services',
     viewer: 'Reads everything except secrets, changes nothing',
@@ -29,16 +30,16 @@
   async function load() {
     const [m, i] = await Promise.all([
       api<{ members: Member[] }>('GET', '/members'),
-      api<{ invitations: Invitation[] }>('GET', '/invitations'),
+      session.isAdmin ? api<{ invitations: Invitation[] }>('GET', '/invitations') : { invitations: [] },
     ])
     members = m.members
     invitations = i.invitations
   }
-  if (session.isAdmin) load().catch((e) => (loadError = e.message))
+  load().catch((e) => (loadError = e.message))
 
-  /** Whether the signed-in person may change this Member: not the Owner, not themselves. */
+  /** Whether the signed-in person may change this Member: an admin, not for the Instance admin, not for themselves. */
   function manageable(m: Member): boolean {
-    return m.role !== 'owner' && m.id !== session.member?.id
+    return session.isAdmin && !m.instance_admin && m.id !== session.member?.id
   }
 
   async function invite(e: SubmitEvent) {
@@ -106,16 +107,11 @@
   }
 
   const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
-
-  $effect(() => breadcrumb.set({ label: 'Members' }))
 </script>
 
-<h1>Members</h1>
+<h2>Members</h2>
 
-{#if !session.isAdmin}
-  <p class="muted">Members are managed by admins.</p>
-{:else}
-
+{#if session.isAdmin}
 <form class="card form" onsubmit={invite}>
   <h2>Invite someone</h2>
   <div class="row">
@@ -149,6 +145,7 @@
     </div>
   {/if}
 </form>
+{/if}
 
 {#if loadError}
   <p class="error">{loadError}</p>
@@ -167,6 +164,8 @@
               <select value={m.role} aria-label="Role of {m.email}" onchange={(e) => changeRole(m, e.currentTarget.value as Role)}>
                 {#each grantable as r (r)}<option value={r}>{r}</option>{/each}
               </select>
+            {:else if m.instance_admin}
+              Instance admin
             {:else}
               {m.role}
             {/if}
@@ -186,6 +185,7 @@
     </tbody>
   </table>
 
+  {#if session.isAdmin}
   <h2>Open invitations</h2>
   {#if invitations.length === 0}
     <p class="muted">None. An invitation stays here until it is accepted, revoked or expires.</p>
@@ -204,8 +204,7 @@
       </tbody>
     </table>
   {/if}
-{/if}
-
+  {/if}
 {/if}
 
 <style>

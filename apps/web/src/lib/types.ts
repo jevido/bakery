@@ -402,7 +402,16 @@ export type ContainerMetrics = {
 
 export type Metrics = { server: ServerMetrics; containers: ContainerMetrics[] }
 
-export type { Member, Role } from './session.svelte'
+export type { CurrentGuild, GuildPlace, Member, Role } from './session.svelte'
+
+/** The Current guild as its General and Danger Zone pages show it. */
+export type GuildDetails = {
+  id: number
+  name: string
+  description: string
+  /** What still keeps it from being deleted, e.g. "projects". */
+  blocking: string[]
+}
 
 export type Invitation = {
   id: number
