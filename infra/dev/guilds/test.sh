@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# End to end: Guilds keep to themselves. The Owner is in the first Guild,
-# "Default", and in a second Guild made for the test; what is made in the
+# End to end: Guilds keep to themselves. The Owner (the Instance admin) is in
+# the first Guild, "Default", and makes a second one through the API, inviting
+# a new person as its admin and a viewer of "Default" as its member; Roles are
+# per Guild. What is made in the
 # second (a Project with an Application, a Database and a Service, a Remote
 # server, an S3 storage, a Notification channel and a Known host) is not
 # listed, readable or changeable from the first, with a Session or an API
 # token, and the other way round. Every Guild sees the Local server, and
-# only the Instance admin changes it. Needs `task dev` running (API on
+# only the Instance admin changes it. The second Guild cannot be deleted while
+# it owns anything, and can once it is empty. Needs `task dev` running (API on
 # 127.0.0.1:4910) and the dev Postgres (`task db:up`).
 set -euo pipefail
 
@@ -16,8 +19,10 @@ KEEP_FORGEJO=1
 
 PSQL=(podman compose -f "$ROOT/infra/dev/compose.yml" exec -T postgres psql -U bakery -d bakery -tAq)
 GUILD_B="" B_PROJECT_ID="" B_APP_ID="" B_DB_ID="" B_SERVICE_ID="" TOKEN_IDS=()
-B_SERVER_ID="" B_STORAGE_ID="" B_CHANNEL_ID="" A_CHANNEL_ID=""
+B_SERVER_ID="" B_STORAGE_ID="" B_CHANNEL_ID="" A_CHANNEL_ID="" V_PROJECT_ID="" V_APP_ID="" VIEWER_ID=""
 e2e_cleanup_hook() {
+	[ -z "$V_APP_ID" ] || in_b DELETE "/api/applications/$V_APP_ID" >/dev/null
+	[ -z "$V_PROJECT_ID" ] || in_b DELETE "/api/projects/$V_PROJECT_ID" >/dev/null
 	[ -z "$B_SERVER_ID" ] || in_b DELETE "/api/servers/$B_SERVER_ID" >/dev/null
 	[ -z "$B_STORAGE_ID" ] || in_b DELETE "/api/s3-storages/$B_STORAGE_ID" >/dev/null
 	[ -z "$B_CHANNEL_ID" ] || in_b DELETE "/api/notification-channels/$B_CHANNEL_ID" >/dev/null
@@ -28,6 +33,7 @@ e2e_cleanup_hook() {
 	[ -z "$B_PROJECT_ID" ] || in_b DELETE "/api/projects/$B_PROJECT_ID" >/dev/null
 	local id
 	for id in "${TOKEN_IDS[@]}"; do curl -s -b "$JAR" -b "bakery_guild=${id%:*}" -X DELETE "$API/api/api-tokens/${id#*:}" >/dev/null; done
+	[ -z "$VIEWER_ID" ] || bakery DELETE "/api/members/$VIEWER_ID" >/dev/null
 	if [ -n "$GUILD_B" ]; then
 		"${PSQL[@]}" -c "DELETE FROM known_hosts WHERE guild_id = $GUILD_B; DELETE FROM invitations WHERE guild_id = $GUILD_B; DELETE FROM memberships WHERE guild_id = $GUILD_B; DELETE FROM guilds WHERE id = $GUILD_B" >/dev/null
 	fi
@@ -50,6 +56,13 @@ status_in() {
 with() {
 	curl -s -o "$WORK/body" -w '%{http_code}' -H "Authorization: Bearer $1" -X "$2" "$API$3"
 }
+# as JAR METHOD PATH [JSON]: the status code of a request with another
+# Member's Session, keeping the cookies it sets; the body is in $WORK/body.
+as() {
+	local args=(-s --max-time 10 -o "$WORK/body" -w '%{http_code}' -b "$1" -c "$1" -X "$2" "$API$3")
+	if [ $# -ge 4 ]; then args+=(-H 'Content-Type: application/json' -d "$4"); fi
+	curl "${args[@]}"
+}
 body() { json "$1" <"$WORK/body"; }
 expect() { # expect DESCRIPTION WANT GOT
 	[ "$2" = "$3" ] || fail "$1: got $3, want $2 ($(head -c 300 "$WORK/body" 2>/dev/null))"
@@ -58,12 +71,51 @@ expect() { # expect DESCRIPTION WANT GOT
 
 sign_in
 GUILD_A=$(bakery GET /api/me | json "d['guild']['id']")
-OWNER_ID=$(bakery GET /api/me | json "d['member']['id']")
 
-say "A second Guild, with the Owner as its admin (made with SQL until the dashboard can)"
-GUILD_B=$("${PSQL[@]}" -c "INSERT INTO guilds (name, description, created_at, updated_at) VALUES ('$RUN', '', now(), now()) RETURNING id" | head -1)
-"${PSQL[@]}" -c "INSERT INTO memberships (guild_id, user_id, role, created_at, updated_at) VALUES ($GUILD_B, $OWNER_ID, 'admin', now(), now())" >/dev/null
+say "The Instance admin makes a second Guild"
+expect "the Owner creates it" 201 "$(curl -s -o "$WORK/body" -w '%{http_code}' -b "$JAR" -H 'Content-Type: application/json' -X POST "$API/api/guilds" -d "{\"name\":\"$RUN\",\"description\":\"made by the guilds e2e\"}")"
+GUILD_B=$(body "d['guild']['id']")
+expect "as its admin" admin "$(body "d['guild']['role']")"
 expect "the Owner acts in the second Guild" "$GUILD_B" "$(in_b GET /api/me | json "d['guild']['id']")"
+expect "both Guilds are listed" True "$(bakery GET /api/guilds | json "{g['id'] for g in d['guilds']} >= {$GUILD_A, $GUILD_B}")"
+expect "the second Guild owns nothing yet" "[]" "$(in_b GET /api/guilds/current | json "d['guild']['blocking']")"
+expect "it is renamed and described" "$RUN-b described" "$(in_b PATCH /api/guilds/current "{\"name\":\"$RUN-b\",\"description\":\"described\"}" | json "d['guild']['name'] + ' ' + d['guild']['description']")"
+# A copy of the Owner's cookies, so the switching leaves $JAR without a
+# Current guild cookie (in_b and status_in add their own).
+SWITCHER=$WORK/switcher
+cp "$JAR" "$SWITCHER"
+expect "switching to it" 204 "$(as "$SWITCHER" POST "/api/guilds/$GUILD_B/switch")"
+expect "makes it the Session's Current guild" "$GUILD_B" "$(as "$SWITCHER" GET /api/me >/dev/null; body "d['guild']['id']")"
+expect "switching back" 204 "$(as "$SWITCHER" POST "/api/guilds/$GUILD_A/switch")"
+expect "switching to a Guild that does not exist" 404 "$(as "$SWITCHER" POST /api/guilds/999999999/switch)"
+
+say "A viewer of the first Guild and a new person join the second"
+VIEWER=$WORK/viewer NEWCOMER=$WORK/newcomer
+V_INVITE=$(bakery POST /api/invitations "{\"email\":\"viewer-$RUN@example.com\",\"role\":\"viewer\"}" | json "d['path'].rsplit('/', 1)[1]")
+expect "the viewer joins the first Guild" 201 "$(as "$VIEWER" POST "/api/invitations/by-token/$V_INVITE/accept" '{"name":"Viewer","password":"correct horse battery"}')"
+VIEWER_ID=$(as "$VIEWER" GET /api/me >/dev/null; body "d['member']['id']")
+expect "a viewer cannot make a Guild's Invitations" 403 "$(as "$VIEWER" GET /api/invitations)"
+VB_INVITE=$(in_b POST /api/invitations "{\"email\":\"viewer-$RUN@example.com\",\"role\":\"member\"}" | json "d['path'].rsplit('/', 1)[1]")
+expect "the link knows the viewer has an account" True "$(as "$WORK/anon" GET "/api/invitations/by-token/$VB_INVITE" >/dev/null; body "d['existing_member']")"
+expect "the viewer accepts with their Session" 200 "$(as "$VIEWER" POST "/api/invitations/by-token/$VB_INVITE/accept" '{}')"
+expect "and is in both, with a Role in each" "[('Default', 'viewer'), ('$RUN-b', 'member')]" "$(as "$VIEWER" GET /api/guilds >/dev/null; body "sorted((g['name'], g['role']) for g in d['guilds'])")"
+N_INVITE=$(in_b POST /api/invitations "{\"email\":\"newcomer-$RUN@example.com\",\"role\":\"admin\"}" | json "d['path'].rsplit('/', 1)[1]")
+expect "a new person accepts" 201 "$(as "$NEWCOMER" POST "/api/invitations/by-token/$N_INVITE/accept" '{"name":"Newcomer","password":"correct horse battery"}')"
+expect "and is only in the second Guild, as its admin" "[('$RUN-b', 'admin')]" "$(as "$NEWCOMER" GET /api/guilds >/dev/null; body "[(g['name'], g['role']) for g in d['guilds']]")"
+expect "they cannot switch to the first Guild" 404 "$(as "$NEWCOMER" POST "/api/guilds/$GUILD_A/switch")"
+expect "the second Guild lists its three Members" 3 "$(in_b GET /api/members | json "len(d['members'])")"
+
+say "A Role is per Guild"
+expect "the viewer switches to the second Guild" 204 "$(as "$VIEWER" POST "/api/guilds/$GUILD_B/switch")"
+expect "where, as a member, they make a Project" 201 "$(as "$VIEWER" POST /api/projects "{\"name\":\"$RUN-v\"}")"
+V_PROJECT_ID=$(body "d['project']['id']")
+V_ENV_ID=$(as "$VIEWER" GET "/api/projects/$V_PROJECT_ID" >/dev/null; body "d['project']['environments'][0]['id']")
+expect "and an Application" 201 "$(as "$VIEWER" POST "/api/environments/$V_ENV_ID/applications" "{\"name\":\"$RUN-v\",\"build_pack\":\"dockerimage\",\"docker_image\":\"ghcr.io/traefik/whoami:v1.10\",\"port\":80}")"
+V_APP_ID=$(body "d['application']['id']")
+expect "the viewer switches back to the first Guild" 204 "$(as "$VIEWER" POST "/api/guilds/$GUILD_A/switch")"
+expect "where they are still a viewer" viewer "$(as "$VIEWER" GET /api/me >/dev/null; body "d['role']")"
+expect "and are refused a write" 403 "$(as "$VIEWER" POST /api/projects "{\"name\":\"$RUN-nope\"}")"
+expect "and cannot read their own Project of the second Guild" 404 "$(as "$VIEWER" GET "/api/projects/$V_PROJECT_ID")"
 
 say "The second Guild gets a Project with an Application, a Database and a Service"
 B_PROJECT_ID=$(in_b POST /api/projects "{\"name\":\"$RUN\"}" | json "d['project']['id']")
@@ -194,15 +246,31 @@ expect "the first Guild's channel did not" 0 "$(bakery GET "/api/notification-ch
 say "Every Guild uses the Local server; only the Instance admin changes it"
 LOCAL_NAME=$(in_b GET "/api/servers/$LOCAL_ID" | json "d['server']['name']")
 expect "the Instance admin renames it from the second Guild" 200 "$(status_in "$GUILD_B" PATCH "/api/servers/$LOCAL_ID" "{\"name\":\"$LOCAL_NAME\",\"description\":\"\"}")"
-ADMIN_TOKEN=$(in_b POST /api/invitations "{\"email\":\"admin-$RUN@example.com\",\"role\":\"admin\"}" | json "d['path'].rsplit('/', 1)[1]")
-ADMIN_JAR="$WORK/admin"
-curl -s -o /dev/null -c "$ADMIN_JAR" -H 'Content-Type: application/json' -X POST "$API/api/invitations/by-token/$ADMIN_TOKEN/accept" -d '{"name":"Admin","password":"correct horse battery"}'
-as_admin() { curl -s --max-time 10 -o "$WORK/body" -w '%{http_code}' -b "$ADMIN_JAR" -X "$1" "$API$2" -H 'Content-Type: application/json' -d "${3:-{\}}"; }
+as_admin() { as "$NEWCOMER" "$1" "$2" "${3:-{\}}"; }
 expect "another admin of the second Guild reads the Local server" 200 "$(as_admin GET "/api/servers/$LOCAL_ID")"
 expect "but may not change it" 403 "$(as_admin PATCH "/api/servers/$LOCAL_ID" "{\"name\":\"$LOCAL_NAME\"}")"
 expect "with the reason" "the local server is the instance's" "$(body "d['message']")"
 expect "nor clean it up" 403 "$(as_admin POST "/api/servers/$LOCAL_ID/cleanup")"
 expect "and sees only the second Guild's Containers on it" True "$(as_admin GET "/api/servers/$LOCAL_ID/metrics" >/dev/null; body "all(c['owner'] in ('proxy',) or (c['owner']=='database' and c['owner_id']=='$B_DB_ID') or (c['owner']=='service' and c['owner_id']=='$B_SERVICE_ID') or (c['owner']=='application' and c['owner_id']=='$B_APP_ID') for c in d['containers'])")"
 expect "they still change the second Guild's own Server" 200 "$(as_admin PATCH "/api/servers/$B_SERVER_ID" "{\"name\":\"$RUN\",\"host\":\"203.0.113.8\",\"user\":\"bakery\"}")"
+
+say "A Guild is deleted only once it owns nothing"
+expect "deleting the second Guild is refused" 409 "$(status_in "$GUILD_B" DELETE /api/guilds/current)"
+expect "with what it still owns" True "$(body "'projects' in d['blocking']")"
+expect "a member of the second Guild may not delete it" 403 "$(as "$VIEWER" POST "/api/guilds/$GUILD_B/switch" >/dev/null; as "$VIEWER" DELETE /api/guilds/current)"
+for path in "/api/applications/$V_APP_ID" "/api/projects/$V_PROJECT_ID" "/api/services/$B_SERVICE_ID" "/api/databases/$B_DB_ID" "/api/applications/$B_APP_ID" "/api/projects/$B_PROJECT_ID" \
+	"/api/servers/$B_SERVER_ID" "/api/s3-storages/$B_STORAGE_ID" "/api/notification-channels/$B_CHANNEL_ID"; do
+	expect "DELETE $path in the second Guild" 204 "$(status_in "$GUILD_B" DELETE "$path")"
+done
+V_APP_ID="" V_PROJECT_ID="" B_SERVICE_ID="" B_DB_ID="" B_APP_ID="" B_PROJECT_ID="" B_SERVER_ID="" B_STORAGE_ID="" B_CHANNEL_ID=""
+expect "an empty Guild owns nothing" "[]" "$(in_b GET /api/guilds/current | json "d['guild']['blocking']")"
+expect "and is deleted" 204 "$(status_in "$GUILD_B" DELETE /api/guilds/current)"
+TOKEN_IDS=("$GUILD_A:${TOKEN_IDS[0]#*:}")
+GUILD_B_GONE=$GUILD_B GUILD_B=""
+expect "its token stops working" 401 "$(with "$B_TOKEN" GET /api/projects)"
+expect "the viewer is left in the first Guild only" "['Default']" "$(as "$VIEWER" GET /api/guilds >/dev/null; body "[g['name'] for g in d['guilds']]")"
+expect "and acts there again" viewer "$(as "$VIEWER" GET /api/me >/dev/null; body "d['role']")"
+expect "the new person is left in no Guild" "None []" "$(as "$NEWCOMER" GET /api/me >/dev/null; body "d['guild'], d['guilds']")"
+expect "the Owner no longer lists it" False "$(bakery GET /api/guilds | json "any(g['id']==$GUILD_B_GONE for g in d['guilds'])")"
 
 say "Guilds keep to themselves"
