@@ -137,7 +137,7 @@
           bind:value={gitUrl}
           error={errors.git_url}
           required
-          placeholder="https://github.com/coollabsio/coolify-example"
+          placeholder="https://github.com/owner/repository"
           helper="https:// for a public repository, SSH (git@host:owner/repo.git) for a private one, cloned with the deploy key below."
           disabled={!canUpdate}
         />

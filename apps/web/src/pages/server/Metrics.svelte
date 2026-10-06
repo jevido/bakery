@@ -93,11 +93,11 @@
     </SettingsSection>
 
     <SettingsSection id="server-cpu-metrics-section" title="CPU usage" helper="Percentage of available CPU capacity used by this server.">
-      <UsageChart name="CPU" color={cpuColor} samples={cpu} empty="Loading CPU metrics…" />
+      <UsageChart name="CPU" color={cpuColor} samples={cpu} empty={metricsError ? 'No CPU metrics available' : 'Loading CPU metrics…'} />
     </SettingsSection>
 
     <SettingsSection id="server-memory-metrics-section" title="Memory usage" helper="Percentage of physical memory currently used by this server.">
-      <UsageChart name="Memory" color={ramColor} samples={memory} empty="Loading memory metrics…" />
+      <UsageChart name="Memory" color={ramColor} samples={memory} empty={metricsError ? 'No memory metrics available' : 'Loading memory metrics…'} />
     </SettingsSection>
 
     <SettingsSection id="server-containers-metrics-section" title="Containers" helper="What each container The Bakery runs on this server uses now." flush>

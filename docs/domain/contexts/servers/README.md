@@ -138,3 +138,37 @@ Local server. It does not keep a metrics history either.
 - **Private key is per Remote server.** Coolify keeps Private keys as a
   list a Server picks from; The Bakery generates one for each Remote server, so
   a leaked key opens one machine. The word is Coolify's either way.
+- **The Server pages leave out what The Bakery has nothing behind yet.**
+  The pages follow Coolify's Server pages, with these differences:
+  - Proxy pages, Sentinel, cleanup settings and cleanup history, build
+    servers, connection timeout and timezone come with the server settings
+    (goal Order 6). Until then Cleanup runs on its fixed daily schedule and
+    the page shows only Cleanup now and the last run.
+  - Wildcard domain is not a Server setting: generated domains come from
+    `install.sh --domain` (goal Order 5).
+  - Terminal and Destinations (Podman networks) come with goal Order 6.
+  - Swarm is left out by the goal. Transfer, Cloud Token and creating
+    Servers at Hetzner, Vultr or DigitalOcean need accounts at those
+    providers that The Bakery does not manage. Cloudflare Tunnel, CA
+    Certificate, Log Drains, Security (patches, terminal access) and
+    Advanced have nothing behind them in The Bakery; each comes only when
+    an Order 6 server setting needs it.
+  - A Server gets its own generated Private key instead of picking a shared
+    one, until Keys & Tokens gets Private Keys (goal Order 6).
+  - Resources lists managed Resources only, because The Bakery reads only
+    Containers it labelled `bakery.managed=true`; there is no unmanaged
+    containers list.
+  - Deleting a Server is refused while Resources run on it, instead of
+    force-deleting them: removing a Resource is a choice made on its own
+    page.
+  - Coolify's status words are mapped from the three Server statuses:
+    Reachable is "Ready", the others "Validation required".
+  - Metrics show what was read since the page opened, not a stored
+    history (see "Metrics are read live" above).
+  - General reads the Server details live from Podman's `/info` each time
+    the page opens, so there is no "Fetch server details" button and no
+    Compose version (the Podman API does not report one). The Local server
+    has no IP, user or port fields: The Bakery reaches it through the local
+    Podman socket, not SSH. Validation checks what rootless Podman needs
+    (socket, version, linger, the proxy's ports) instead of installing
+    Docker, so the dialog lists those checks and installs nothing.

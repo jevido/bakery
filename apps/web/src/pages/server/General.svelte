@@ -199,7 +199,7 @@
         <Icon name="servers" class="size-4.5" />
       </div>
       <div class="min-w-0">
-        <p class="truncate text-sm font-medium text-neutral-950 dark:text-fg">{server.name}</p>
+        <p class="truncate text-sm font-medium text-neutral-950 dark:text-fg">{remote ? server.name : 'Localhost'}</p>
         <p class="mt-1 text-xs leading-5 text-neutral-500 dark:text-fg-dim">
           {#if functional}
             The server is reachable, validated, and ready to host resources.
@@ -271,9 +271,9 @@
   >
     {#snippet actions()}
       {#if canUpdate}
-        <Button variant={functional ? 'default' : 'highlighted'} onclick={openValidation} data-testid="validate">
+        <Button variant={!remote || functional ? 'default' : 'highlighted'} onclick={openValidation} data-testid="validate">
           <Icon name={functional ? 'refresh' : 'alert-circle'} class="size-3.5" />
-          {functional ? 'Revalidate connection' : 'Validate connection'}
+          {remote && functional ? 'Revalidate connection' : 'Validate connection'}
         </Button>
       {/if}
     {/snippet}
