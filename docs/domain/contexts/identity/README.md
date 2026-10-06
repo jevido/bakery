@@ -62,7 +62,11 @@ Who may run each is in brackets.
 
 ### Domain events
 
-None of its own. `InvitationCreated` moved to guilds with the Invitations.
+- `MemberSetUp { member }`: Setup just stored the Instance admin. Its one
+  subscriber (guilds, with `OnMemberSetUp(f)`) is called synchronously and
+  makes the first Guild; its error fails the Setup request.
+
+`InvitationCreated` moved to guilds with the Invitations.
 
 ## Integration
 
@@ -79,9 +83,10 @@ None of its own. `InvitationCreated` moved to guilds with the Invitations.
     context's routes sit behind those.
   - `identity.CreateMember(...)`: for guilds, when an Invitation to a new
     email is accepted.
+  - `identity.OnMemberSetUp(f)`: see Domain events.
   Other contexts learn nothing else about Members.
 - **Consumes:** nothing. Identity never imports guilds; where Setup needs
-  the first Guild, guilds registers a hook.
+  the first Guild, guilds subscribes to `MemberSetUp`.
 
 ## Why it's shaped this way
 

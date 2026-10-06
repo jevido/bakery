@@ -64,6 +64,10 @@ concerned, which the Instance admin always is.
 
 ### Domain events
 
+- `MemberSetUp` (identity's, consumed): Setup made the Instance admin;
+  guilds makes the first Guild, "Default", with their `admin` Membership,
+  unless a Guild exists already.
+
 - `InvitationCreated { guild, email, role, invited by, link, expires }`: an
   Invitation was made. Its one subscriber (notifications, with
   `OnInvitationCreated(f)`) is called synchronously and answers whether it
@@ -92,7 +96,8 @@ concerned, which the Instance admin always is.
     Domain events.
 - **Consumes:** identity's `identity.Authenticate(ctx)` (a Principal: the
   Member, whether they are the Instance admin, and for an API token its
-  Guild and Permissions) and `identity.CreateMember(...)` when an Invitation
+  Guild and Permissions), `identity.OnMemberSetUp(f)` and
+  `identity.CreateMember(...)` when an Invitation
   to a new email is accepted. Identity never imports guilds.
 
 ## Why it's shaped this way
@@ -138,3 +143,9 @@ concerned, which the Instance admin always is.
   Coolify lets every user create teams; a new Guild owns nothing until its
   admin adds Servers, so creating one gives nobody more reach. "Default" is
   neutral and renamed on the Guild's General page.
+- **The first Guild is made after Setup, not in its transaction.** Identity
+  cannot hand its transaction to a context it does not know, so guilds hears
+  `MemberSetUp` once the Instance admin is stored and makes "Default" under a
+  table lock, only when no Guild exists. An installation from before Guilds
+  gets "Default" from a migration instead, with every Member's Role (the
+  Owner's as admin).

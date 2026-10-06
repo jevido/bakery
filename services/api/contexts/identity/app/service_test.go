@@ -118,6 +118,30 @@ func TestSetupOnlyOnce(t *testing.T) {
 	}
 }
 
+func TestSetupMakesTheInstanceAdminAndTellsMemberSetUp(t *testing.T) {
+	ctx := context.Background()
+	s := newTestService()
+	var heard []uint64
+	s.MemberSetUp = func(_ context.Context, id uint64) error {
+		heard = append(heard, id)
+		return nil
+	}
+	m, err := s.SetupOwner(ctx, "Ada", "ada@example.com", "correct horse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.InstanceAdmin {
+		t.Error("the Member Setup creates is the Instance admin")
+	}
+	if len(heard) != 1 || heard[0] != m.ID {
+		t.Errorf("MemberSetUp heard %v, want [%d]", heard, m.ID)
+	}
+	s.SetupOwner(ctx, "Bram", "bram@example.com", "correct horse")
+	if len(heard) != 1 {
+		t.Errorf("a refused Setup told MemberSetUp: %v", heard)
+	}
+}
+
 func TestLogin(t *testing.T) {
 	ctx := context.Background()
 	s := newTestService()

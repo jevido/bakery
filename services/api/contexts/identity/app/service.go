@@ -75,6 +75,10 @@ type Service struct {
 	Now func() time.Time
 	// Random is where secrets come from; crypto/rand unless a test sets it.
 	Random io.Reader
+	// MemberSetUp, when set, hears of the Instance admin right after Setup
+	// stored them, and makes the first Guild; an error fails the Setup
+	// request, though the Instance admin stays.
+	MemberSetUp func(ctx context.Context, memberID uint64) error
 }
 
 func NewService(members Members, invitations Invitations, apiTokens APITokens, hasher Hasher) *Service {
@@ -89,7 +93,8 @@ func (s *Service) SetupNeeded(ctx context.Context) (bool, error) {
 	return !exists, err
 }
 
-// SetupOwner creates the Owner, once.
+// SetupOwner creates the Owner, who is the Instance admin, once, and then
+// lets MemberSetUp make the first Guild.
 func (s *Service) SetupOwner(ctx context.Context, name, email, password string) (domain.Member, error) {
 	owner, err := domain.NewMember(name, email, password, domain.RoleOwner)
 	if err != nil {
@@ -100,11 +105,21 @@ func (s *Service) SetupOwner(ctx context.Context, name, email, password string) 
 	} else if exists {
 		return domain.Member{}, ErrOwnerExists
 	}
+	owner.InstanceAdmin = true
 	owner.PasswordHash, err = s.hasher.Make(password)
 	if err != nil {
 		return domain.Member{}, err
 	}
-	return s.members.AddOwnerIfNone(ctx, owner)
+	owner, err = s.members.AddOwnerIfNone(ctx, owner)
+	if err != nil {
+		return domain.Member{}, err
+	}
+	if s.MemberSetUp != nil {
+		if err := s.MemberSetUp(ctx, owner.ID); err != nil {
+			return owner, err
+		}
+	}
+	return owner, nil
 }
 
 // Login checks the credentials. A wrong email and a wrong password give the

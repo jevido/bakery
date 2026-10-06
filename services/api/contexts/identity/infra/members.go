@@ -23,6 +23,7 @@ type userRecord struct {
 	Email                    string
 	Password                 string
 	Role                     string
+	InstanceAdmin            bool
 	TwoFactorSecretEncrypted *string
 	TwoFactorEnabledAt       *time.Time
 	TwoFactorLastStep        int64
@@ -36,7 +37,7 @@ func (userRecord) TableName() string { return "users" }
 // app key changed) reads as two-factor off rather than locking the Member
 // out.
 func (r userRecord) toDomain() domain.Member {
-	m := domain.Member{ID: r.ID, Name: r.Name, Email: r.Email, PasswordHash: r.Password, Role: domain.Role(r.Role)}
+	m := domain.Member{ID: r.ID, Name: r.Name, Email: r.Email, PasswordHash: r.Password, Role: domain.Role(r.Role), InstanceAdmin: r.InstanceAdmin}
 	m.TwoFactor.State = domain.TwoFactorOff
 	if r.TwoFactorSecretEncrypted != nil {
 		if plain, err := facades.Crypt().DecryptString(*r.TwoFactorSecretEncrypted); err == nil {
@@ -66,7 +67,7 @@ func (o Members) OwnerExists(ctx context.Context) (bool, error) {
 }
 
 func (o Members) AddOwnerIfNone(ctx context.Context, owner domain.Member) (domain.Member, error) {
-	rec := userRecord{Name: owner.Name, Email: owner.Email, Password: owner.PasswordHash, Role: string(domain.RoleOwner)}
+	rec := userRecord{Name: owner.Name, Email: owner.Email, Password: owner.PasswordHash, Role: string(domain.RoleOwner), InstanceAdmin: true}
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		// Serialises racing Setups: the second waits here, then sees the
 		// first one's row.

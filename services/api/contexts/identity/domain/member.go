@@ -56,7 +56,10 @@ type Member struct {
 	Email        string
 	PasswordHash string
 	Role         Role
-	TwoFactor    TwoFactor
+	// InstanceAdmin marks the one Member Setup created: admin in every
+	// Guild.
+	InstanceAdmin bool
+	TwoFactor     TwoFactor
 	// SessionsValidFrom is the moment before which the Member's Sessions
 	// no longer count; zero when every Session counts.
 	SessionsValidFrom time.Time

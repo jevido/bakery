@@ -65,5 +65,9 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000050AddDescriptionToServers{},
 		&migrations.M20260930000051AddEnabledToNotificationChannels{},
 		&migrations.M20260930000052AddPermissionsAndExpiryToAPITokens{},
+		&migrations.M20260930000053CreateGuildsTable{},
+		&migrations.M20260930000054CreateMembershipsTable{},
+		&migrations.M20260930000055AddInstanceAdminToUsers{},
+		&migrations.M20260930000056CreateFirstGuild{},
 	}
 }

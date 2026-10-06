@@ -1,6 +1,6 @@
 // Package identity is what other contexts and the router may use from the
 // identity context: its routes, the Auth, Deploy, Admin and Secrets middlewares,
-// CanSeeSecrets, the InvitationCreated event and the artisan Commands.
+// CanSeeSecrets, the MemberSetUp and InvitationCreated events and the artisan Commands.
 // Nothing else in contexts/identity is for outside use.
 package identity
 
@@ -20,7 +20,11 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/identity/infra"
 )
 
-var service = app.NewService(infra.Members{}, infra.Invitations{}, infra.APITokens{}, infra.Hasher{})
+var service = func() *app.Service {
+	s := app.NewService(infra.Members{}, infra.Invitations{}, infra.APITokens{}, infra.Hasher{})
+	s.MemberSetUp = publishMemberSetUp
+	return s
+}()
 
 // Auth refuses requests that come from no Member (401), by Session cookie
 // or `Authorization: Bearer <API token>`, and anything but reading from a
@@ -89,6 +93,30 @@ func Routes(r route.Router) {
 // Commands are identity's artisan commands.
 func Commands() []contractsconsole.Command {
 	return []contractsconsole.Command{identityconsole.ResetTwoFactor{Service: service}}
+}
+
+var (
+	setUpMu sync.Mutex
+	onSetUp func(ctx context.Context, memberID uint64) error
+)
+
+// OnMemberSetUp registers the one subscriber that hears of the Instance
+// admin right after Setup stored them (guilds, to make the first Guild).
+// Its error fails the Setup request; the Instance admin stays.
+func OnMemberSetUp(f func(ctx context.Context, memberID uint64) error) {
+	setUpMu.Lock()
+	defer setUpMu.Unlock()
+	onSetUp = f
+}
+
+func publishMemberSetUp(ctx context.Context, memberID uint64) error {
+	setUpMu.Lock()
+	f := onSetUp
+	setUpMu.Unlock()
+	if f == nil {
+		return nil
+	}
+	return f(ctx, memberID)
 }
 
 // InvitationCreated is an Invitation just made, with its link: the only
