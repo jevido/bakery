@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # End to end: Notifications. One channel of every kind (email to Mailpit,
 # the rest to a local receiver standing in for Discord, Slack, Telegram,
-# ntfy and a webhook) passes its Test; a failed Deployment, a succeeded one
+# Pushover, ntfy and a webhook) passes its Test; a failed Deployment, a succeeded one
 # for the channel that asked, a failed Backup and, with the Remote server
 # stand-in running, a Server going down and coming back each reach the
 # channels subscribed to them; a channel that cannot be reached fails after
-# three attempts; a disabled channel gets nothing and cannot be tested; an
+# three attempts; Discord mentions @here on a failure only, Telegram sends
+# a failure to its forum topic, Pushover gets the failure; a disabled channel gets nothing and cannot be tested; an
 # email test goes to a typed recipient with the channel's From name; an
 # Invitation is emailed with a link that works.
 #
 # Needs `task dev` and `task mail:up`. The API is restarted with the
-# Telegram API pointed at the receiver and a 10 s Server probe, and
+# Telegram and Pushover APIs pointed at the receiver and a 10 s Server probe, and
 # restarted as it was at the end. `task remote:up` adds the Server probe.
 set -euo pipefail
 
@@ -82,27 +83,32 @@ channel() { # channel JSON: adds a channel, its id in $CHANNEL and remembered fo
 sign_in
 curl -sf "$MAILPIT/api/v1/messages" -o /dev/null || fail "Mailpit is not running on $MAILPIT (start task mail:up)"
 
-say "Receiver on $RECEIVER, API with the Telegram API there and a 10 s Server probe"
+say "Receiver on $RECEIVER, API with the Telegram and Pushover APIs there and a 10 s Server probe"
 : >"$LOG"
 bun "$ROOT/infra/dev/notifications/receiver.ts" "$LOG" &
 RECEIVER_PID=$!
 wait_for 20 "the receiver" curl -s -o /dev/null "$RECEIVER/ready"
 RESTARTED=1
-restart_api BAKERY_TELEGRAM_API_URL="$RECEIVER/telegram" BAKERY_SERVER_PROBE_INTERVAL=10s
+restart_api BAKERY_TELEGRAM_API_URL="$RECEIVER/telegram" BAKERY_PUSHOVER_API_URL="$RECEIVER/pushover" BAKERY_SERVER_PROBE_INTERVAL=10s
 
 say "One channel of every kind"
 OPS="ops-$RUN@example.com"
 channel "{\"name\":\"$RUN-email\",\"kind\":\"email\",\"settings\":{\"host\":\"127.0.0.1\",\"port\":4980,\"security\":\"none\",\"username\":\"bakery\",\"password\":\"pw-$RUN\",\"from\":\"bakery@example.com\",\"to\":[\"$OPS\"]}}"
-channel "{\"name\":\"$RUN-discord\",\"kind\":\"discord\",\"settings\":{\"url\":\"$RECEIVER/discord/tok-$RUN\"}}"
+channel "{\"name\":\"$RUN-discord\",\"kind\":\"discord\",\"settings\":{\"url\":\"$RECEIVER/discord/tok-$RUN\",\"ping\":true},\"event_kinds\":[\"deployment_failure\",\"deployment_success\"]}"
 channel "{\"name\":\"$RUN-slack\",\"kind\":\"slack\",\"settings\":{\"url\":\"$RECEIVER/slack/tok-$RUN\"}}"
-channel "{\"name\":\"$RUN-telegram\",\"kind\":\"telegram\",\"settings\":{\"bot_token\":\"123:bot-$RUN\",\"chat_id\":\"-100\"}}"
+channel "{\"name\":\"$RUN-telegram\",\"kind\":\"telegram\",\"settings\":{\"bot_token\":\"123:bot-$RUN\",\"chat_id\":\"-100\",\"thread_ids\":{\"deployment_failure\":\"77\"}}}"
+channel "{\"name\":\"$RUN-pushover\",\"kind\":\"pushover\",\"settings\":{\"user_key\":\"user${RUN//-/}\",\"api_token\":\"app${RUN//-/}\"}}"
 channel "{\"name\":\"$RUN-ntfy\",\"kind\":\"ntfy\",\"settings\":{\"url\":\"$RECEIVER/ntfy\",\"topic\":\"bakery\",\"token\":\"tk-$RUN\"}}"
 channel "{\"name\":\"$RUN-hook\",\"kind\":\"webhook\",\"settings\":{\"url\":\"$RECEIVER/hook/tok-$RUN\",\"secret\":\"secret-$RUN\"},\"event_kinds\":[\"deployment_failure\",\"deployment_success\",\"backup_failure\",\"server_unreachable\",\"server_reachable\"]}"
 HOOK=$CHANNEL
-for secret in "pw-$RUN" "tok-$RUN" "bot-$RUN" "tk-$RUN" "secret-$RUN"; do
+for secret in "pw-$RUN" "tok-$RUN" "bot-$RUN" "tk-$RUN" "secret-$RUN" "user${RUN//-/}" "app${RUN//-/}"; do
 	! grep -q -- "$secret" <<<"$(bakery GET /api/notification-channels)" || fail "a secret ($secret) is in the channel list"
 done
-echo "ok: six channels, no secret shown"
+OUT=$(bakery GET /api/notification-channels)
+[ "$(json "[(c['settings']['ping'], c['settings'].get('thread_ids'), c['settings']['has_user_key'], c['settings']['has_api_token']) for c in d['channels'] if c['name'] in ('$RUN-discord','$RUN-telegram','$RUN-pushover')]" <<<"$OUT")" = "[(True, None, False, False), (False, {'deployment_failure': '77'}, False, False), (False, None, True, True)]" ] ||
+	fail "ping, topics or the Pushover keys did not stay: $OUT"
+echo "ok: seven channels, no secret shown"
+
 
 OUT=$(bakery POST /api/api-tokens "{\"name\":\"$RUN\",\"read_only\":true}")
 TOKEN_ID=$(json "d['api_token']['id']" <<<"$OUT")
@@ -118,7 +124,9 @@ done
 mails 1 "$OPS" "Test notification from The Bakery"
 received 1 "r['path']=='/discord/tok-$RUN' and json.loads(r['body'])['content'].startswith('**Test notification from The Bakery**')"
 received 1 "r['path']=='/slack/tok-$RUN' and json.loads(r['body'])['text'].startswith('*Test notification from The Bakery*')"
-received 1 "r['path']=='/telegram/bot123:bot-$RUN/sendMessage' and json.loads(r['body'])['chat_id']=='-100'"
+received 1 "r['path']=='/telegram/bot123:bot-$RUN/sendMessage' and json.loads(r['body'])['chat_id']=='-100' and 'message_thread_id' not in json.loads(r['body'])"
+received 1 "r['path']=='/pushover/1/messages.json' and json.loads(r['body'])['user']=='user${RUN//-/}' and json.loads(r['body'])['title']=='Test notification from The Bakery'"
+[ "$(count "r['path']=='/discord/tok-$RUN' and '@here' in r['body']")" = 0 ] || fail "the Discord test mentions @here"
 received 1 "r['path']=='/ntfy/bakery' and r['headers'].get('title')=='Test notification from The Bakery' and r['headers'].get('authorization')=='Bearer tk-$RUN'"
 received 1 "r['path']=='/hook/tok-$RUN'"
 python3 - "$LOG" "secret-$RUN" "/hook/tok-$RUN" <<'PY' || fail "the webhook signature does not verify"
@@ -167,16 +175,21 @@ APPS+=("$APP_ID $APP_SLUG")
 bakery POST "/api/applications/$APP_ID/deploy" >/dev/null
 FAILED="Deployment of $APP_SLUG failed"
 mails 1 "$OPS" "$FAILED"
-for path in "/discord/tok-$RUN" "/slack/tok-$RUN" "/ntfy/bakery" "/hook/tok-$RUN" "/telegram/bot123:bot-$RUN/sendMessage"; do
+for path in "/discord/tok-$RUN" "/slack/tok-$RUN" "/ntfy/bakery" "/hook/tok-$RUN" "/telegram/bot123:bot-$RUN/sendMessage" "/pushover/1/messages.json"; do
 	received 2 "r['path']=='$path'"
 done
 one "the webhook's failed deployment" "r['path']=='/hook/tok-$RUN' and json.loads(r['body'])['event']=='deployment_failure' and '$FAILED' == json.loads(r['body'])['title'] and json.loads(r['body'])['link'].endswith('/#/applications/$APP_ID')"
 one "ntfy marks a failure" "r['path']=='/ntfy/bakery' and r['headers'].get('title')=='$FAILED' and r['headers'].get('tags')=='warning'"
+one "Discord mentions @here on the failure" "r['path']=='/discord/tok-$RUN' and json.loads(r['body'])['content'].startswith('@here **$FAILED**') and json.loads(r['body'])['allowed_mentions']=={'parse':['everyone']}"
+one "Telegram sends the failure to its topic" "r['path']=='/telegram/bot123:bot-$RUN/sendMessage' and json.loads(r['body']).get('message_thread_id')=='77' and json.loads(r['body'])['text'].startswith('$FAILED')"
+one "Pushover gets the failure" "r['path']=='/pushover/1/messages.json' and json.loads(r['body'])['title']=='$FAILED' and json.loads(r['body'])['token']=='app${RUN//-/}' and json.loads(r['body'])['url'].endswith('/#/applications/$APP_ID') and json.loads(r['body'])['html']==1"
 
 bakery PATCH "/api/applications/$APP_ID" "{\"name\":\"$RUN\",\"docker_image\":\"ghcr.io/traefik/whoami:v1.10\",\"port\":80}" >/dev/null
 bakery POST "/api/applications/$APP_ID/deploy" >/dev/null
 wait_for 180 "the deployment" deployment_done
 received 1 "r['path']=='/hook/tok-$RUN' and json.loads(r['body'])['event']=='deployment_success'"
+received 1 "r['path']=='/discord/tok-$RUN' and 'succeeded' in json.loads(r['body'])['content']"
+one "Discord mentions no one on a success" "r['path']=='/discord/tok-$RUN' and 'succeeded' in json.loads(r['body'])['content'] and '@here' not in r['body']"
 sleep 3
 [ "$(count "r['path']=='/off/tok-$RUN'")" = 0 ] || fail "the disabled channel was notified"
 [ "$(bakery GET "/api/notification-channels/$OFF/deliveries" | json "len(d['deliveries'])")" = 0 ] || fail "the disabled channel has Deliveries"
@@ -184,8 +197,8 @@ bakery PATCH "/api/notification-channels/$OFF" "{\"name\":\"$RUN-off\",\"setting
 [ "$(bakery POST "/api/notification-channels/$OFF/test" | json "d['ok']")" = True ] || fail "the enabled channel's test failed"
 received 1 "r['path']=='/off/tok-$RUN'"
 echo "ok: the disabled channel heard nothing; enabled, its test arrives"
-[ "$(count "'Deployment of $APP_SLUG succeeded' in r['body']")" = 1 ] || fail "a channel not subscribed heard of a succeeded deployment"
-echo "ok: failures to all, success only to the webhook"
+[ "$(count "'Deployment of $APP_SLUG succeeded' in r['body']")" = 2 ] || fail "a channel not subscribed heard of a succeeded deployment"
+echo "ok: failures to all, success only to the webhook and Discord, @here only on the failure"
 
 say "A channel that cannot be reached fails after three attempts, the others are sent"
 channel "{\"name\":\"$RUN-closed\",\"kind\":\"webhook\",\"settings\":{\"url\":\"http://127.0.0.1:4989/closed\"},\"event_kinds\":[\"deployment_failure\"]}"

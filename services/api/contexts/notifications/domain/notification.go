@@ -11,6 +11,10 @@ type Notification struct {
 	// Link points into the dashboard; may be empty.
 	Link string
 	At   time.Time
+	// Test marks a Test notification: like Coolify's, it mentions no one
+	// and goes to no Telegram forum topic. Not stored; a Test is never
+	// retried.
+	Test bool
 }
 
 // Alarming says whether the Event kind is something going wrong, which

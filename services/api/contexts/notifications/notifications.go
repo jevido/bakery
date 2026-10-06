@@ -26,7 +26,10 @@ var (
 func svc() *app.Service {
 	once.Do(func() {
 		cfg := facades.Config()
-		senders := infra.Senders{TelegramAPI: cfg.GetString("bakery.notifications.telegram_api")}
+		senders := infra.Senders{
+			TelegramAPI: cfg.GetString("bakery.notifications.telegram_api"),
+			PushoverAPI: cfg.GetString("bakery.notifications.pushover_api"),
+		}
 		service = app.NewService(infra.Store{}, senders, senders)
 		service.DashboardURL = DashboardURL()
 		service.Log = facades.Log().Errorf

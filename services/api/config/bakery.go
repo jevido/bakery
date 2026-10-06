@@ -59,9 +59,11 @@ func init() {
 		"servers": map[string]any{
 			"probe_interval": config.Env("BAKERY_SERVER_PROBE_INTERVAL", "5m"),
 		},
-		// Telegram's Bot API; only tests point it elsewhere.
+		// Telegram's Bot API and Pushover's API; only tests point them
+		// elsewhere.
 		"notifications": map[string]any{
 			"telegram_api": config.Env("BAKERY_TELEGRAM_API_URL", "https://api.telegram.org"),
+			"pushover_api": config.Env("BAKERY_PUSHOVER_API_URL", "https://api.pushover.net"),
 		},
 		"proxy": map[string]any{
 			"image": config.Env("BAKERY_PROXY_IMAGE", "docker.io/library/caddy:2"),

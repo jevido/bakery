@@ -32,6 +32,8 @@ const sendTimeout = 10 * time.Second
 type Senders struct {
 	// TelegramAPI is the Bot API's base URL, https://api.telegram.org.
 	TelegramAPI string
+	// PushoverAPI is Pushover's base URL, https://api.pushover.net.
+	PushoverAPI string
 	// Client is used for every HTTP kind; nil means one that follows no
 	// redirects (an answer is taken as it comes).
 	Client *http.Client
@@ -56,11 +58,13 @@ func (s Senders) Send(ctx context.Context, c domain.Channel, n domain.Notificati
 	case domain.Email:
 		err = sendEmail(ctx, c.Settings, n)
 	case domain.Discord:
-		err = s.postJSON(ctx, c.Settings.URL, nil, map[string]any{"content": lines("**"+n.Title+"**", n.Body, n.Link)})
+		err = s.postJSON(ctx, c.Settings.URL, nil, discordPayload(c.Settings, n))
 	case domain.Slack:
 		err = s.postJSON(ctx, c.Settings.URL, nil, map[string]any{"text": lines("*"+n.Title+"*", n.Body, n.Link)})
 	case domain.Telegram:
 		err = s.telegram(ctx, c.Settings, n)
+	case domain.Pushover:
+		err = s.pushover(ctx, c.Settings, n)
 	case domain.Ntfy:
 		err = s.ntfy(ctx, c.Settings, n)
 	case domain.Webhook:
@@ -95,7 +99,7 @@ func scrub(msg string, c domain.Channel) string {
 			msg = strings.ReplaceAll(msg, s.URL, u.Scheme+"://"+u.Host+"/…")
 		}
 	}
-	for _, secret := range []string{s.BotToken, s.Token, s.Password, s.Secret} {
+	for _, secret := range []string{s.BotToken, s.Token, s.Password, s.Secret, s.UserKey, s.APIToken} {
 		if len(secret) >= 4 {
 			msg = strings.ReplaceAll(msg, secret, "…")
 		}
@@ -141,14 +145,26 @@ func (s Senders) postJSON(ctx context.Context, target string, headers map[string
 	return err
 }
 
+// discordPayload is n as a Discord message; with Critical event mention on,
+// an alarming one mentions @here, as Coolify's does.
+func discordPayload(st domain.Settings, n domain.Notification) map[string]any {
+	text := lines("**"+n.Title+"**", n.Body, n.Link)
+	if st.Ping && !n.Test && n.Kind.Alarming() {
+		return map[string]any{"content": "@here " + text, "allowed_mentions": map[string]any{"parse": []string{"everyone"}}}
+	}
+	return map[string]any{"content": text}
+}
+
 func (s Senders) telegram(ctx context.Context, st domain.Settings, n domain.Notification) error {
 	base := strings.TrimRight(s.TelegramAPI, "/")
 	if base == "" {
 		base = "https://api.telegram.org"
 	}
-	body, err := json.Marshal(map[string]any{
-		"chat_id": st.ChatID, "text": lines(n.Title, n.Body, n.Link), "disable_web_page_preview": true,
-	})
+	payload := map[string]any{"chat_id": st.ChatID, "text": lines(n.Title, n.Body, n.Link), "disable_web_page_preview": true}
+	if thread := st.ThreadIDs[n.Kind]; thread != "" && !n.Test {
+		payload["message_thread_id"] = thread
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
@@ -160,6 +176,37 @@ func (s Senders) telegram(ctx context.Context, st domain.Settings, n domain.Noti
 	}
 	if json.Unmarshal(answer, &tg) == nil && !tg.OK && tg.Description != "" {
 		return errors.New("telegram: " + tg.Description)
+	}
+	return err
+}
+
+// pushover sends n through Pushover's Messages API as JSON, as Coolify's
+// PushoverChannel does, with the link as the supplementary URL.
+func (s Senders) pushover(ctx context.Context, st domain.Settings, n domain.Notification) error {
+	base := strings.TrimRight(s.PushoverAPI, "/")
+	if base == "" {
+		base = "https://api.pushover.net"
+	}
+	payload := map[string]any{"token": st.APIToken, "user": st.UserKey, "title": n.Title, "message": n.Body}
+	if n.Body == "" {
+		payload["message"] = n.Title
+	}
+	if n.Link != "" {
+		payload["url"] = n.Link
+		payload["html"] = 1
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	answer, err := s.post(ctx, base+"/1/messages.json", "application/json", nil, body)
+	// Pushover explains a refusal in its JSON answer.
+	var po struct {
+		Status int      `json:"status"`
+		Errors []string `json:"errors"`
+	}
+	if json.Unmarshal(answer, &po) == nil && po.Status != 1 && len(po.Errors) > 0 {
+		return errors.New("pushover: " + strings.Join(po.Errors, "; "))
 	}
 	return err
 }

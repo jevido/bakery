@@ -1,4 +1,4 @@
-// Stands in for Discord, Slack, Telegram's Bot API, ntfy and webhook
+// Stands in for Discord, Slack, Telegram's Bot API, Pushover, ntfy and webhook
 // receivers in `task notifications:test`: every request is appended to the
 // file named by the first argument as one JSON line, and answered the way
 // the real service answers a good request. Listens on 127.0.0.1:4988.
@@ -22,6 +22,7 @@ Bun.serve({
       }) + '\n',
     )
     if (url.pathname.includes('/sendMessage')) return Response.json({ ok: true, result: {} })
+    if (url.pathname.endsWith('/1/messages.json')) return Response.json({ status: 1, request: crypto.randomUUID() })
     return new Response(null, { status: 204 })
   },
 })

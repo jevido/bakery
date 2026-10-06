@@ -76,6 +76,55 @@ func TestDiscordAndSlack(t *testing.T) {
 	}
 }
 
+func TestDiscordPing(t *testing.T) {
+	srv, got := capture(t, http.StatusNoContent, "")
+	c := domain.Channel{Kind: domain.Discord, Settings: domain.Settings{URL: srv.URL + "/api/webhooks/1/tok", Ping: true}}
+	if err := (Senders{}).Send(context.Background(), c, failed); err != nil {
+		t.Fatal(err)
+	}
+	m := decode(t, got.body)
+	if !strings.HasPrefix(m["content"].(string), "@here **Deployment of shop failed**") {
+		t.Errorf("content %q", m["content"])
+	}
+	if parse := m["allowed_mentions"].(map[string]any)["parse"].([]any); len(parse) != 1 || parse[0] != "everyone" {
+		t.Errorf("allowed_mentions %v", m["allowed_mentions"])
+	}
+	for _, n := range []domain.Notification{
+		{Kind: domain.DeploymentSuccess, Title: "Deployment of shop succeeded"},
+		{Kind: domain.DeploymentFailure, Title: "Test notification", Test: true},
+	} {
+		if err := (Senders{}).Send(context.Background(), c, n); err != nil {
+			t.Fatal(err)
+		}
+		if m := decode(t, got.body); strings.Contains(m["content"].(string), "@here") || m["allowed_mentions"] != nil {
+			t.Errorf("%s mentions: %v", n.Title, m)
+		}
+	}
+}
+
+func TestPushover(t *testing.T) {
+	srv, got := capture(t, http.StatusOK, `{"status":1,"request":"x"}`)
+	c := domain.Channel{Kind: domain.Pushover, Settings: domain.Settings{UserKey: "user-secret", APIToken: "app-secret"}}
+	if err := (Senders{PushoverAPI: srv.URL + "/"}).Send(context.Background(), c, failed); err != nil {
+		t.Fatal(err)
+	}
+	m := decode(t, got.body)
+	if got.path != "/1/messages.json" || m["token"] != "app-secret" || m["user"] != "user-secret" || m["title"] != "Deployment of shop failed" ||
+		m["message"] != "build failed" || m["url"] != failed.Link || m["html"] != float64(1) {
+		t.Errorf("got %s %v", got.path, m)
+	}
+
+	bad, _ := capture(t, http.StatusBadRequest, `{"user":"invalid","errors":["user identifier is invalid"],"status":0}`)
+	err := (Senders{PushoverAPI: bad.URL}).Send(context.Background(), c, failed)
+	if err == nil || err.Error() != "pushover: user identifier is invalid" {
+		t.Fatalf("got %v", err)
+	}
+	err = (Senders{PushoverAPI: "http://127.0.0.1:1"}).Send(context.Background(), c, failed)
+	if err == nil || strings.Contains(err.Error(), "secret") {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestErrorsHideSecrets(t *testing.T) {
 	srv, _ := capture(t, http.StatusNotFound, `{"message": "Unknown Webhook"}`)
 	c := domain.Channel{Kind: domain.Discord, Settings: domain.Settings{URL: srv.URL + "/api/webhooks/1/secret-token"}}
@@ -114,6 +163,25 @@ func TestTelegram(t *testing.T) {
 	m := decode(t, got.body)
 	if got.path != "/bot123:abc/sendMessage" || m["chat_id"] != "-100" || !strings.HasPrefix(m["text"].(string), "Deployment of shop failed\n") {
 		t.Errorf("got %s %v", got.path, m)
+	}
+
+	if _, ok := m["message_thread_id"]; ok {
+		t.Errorf("a kind without a topic has one: %v", m)
+	}
+	c.Settings.ThreadIDs = map[domain.EventKind]string{domain.DeploymentFailure: "42"}
+	if err := (Senders{TelegramAPI: srv.URL}).Send(context.Background(), c, failed); err != nil {
+		t.Fatal(err)
+	}
+	if m := decode(t, got.body); m["message_thread_id"] != "42" {
+		t.Errorf("topic: %v", m)
+	}
+	test := failed
+	test.Test = true
+	if err := (Senders{TelegramAPI: srv.URL}).Send(context.Background(), c, test); err != nil {
+		t.Fatal(err)
+	}
+	if m := decode(t, got.body); m["message_thread_id"] != nil {
+		t.Errorf("a test went to a topic: %v", m)
 	}
 
 	bad, _ := capture(t, http.StatusBadRequest, `{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}`)

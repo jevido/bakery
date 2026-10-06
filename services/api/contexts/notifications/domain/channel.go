@@ -30,14 +30,16 @@ type Kind string
 const (
 	Email    Kind = "email"
 	Discord  Kind = "discord"
-	Slack    Kind = "slack"
 	Telegram Kind = "telegram"
-	Ntfy     Kind = "ntfy"
+	Slack    Kind = "slack"
+	Pushover Kind = "pushover"
 	Webhook  Kind = "webhook"
+	Ntfy     Kind = "ntfy"
 )
 
-// Kinds are the Channel kinds, in the order the dashboard offers them.
-var Kinds = []Kind{Email, Discord, Slack, Telegram, Ntfy, Webhook}
+// Kinds are the Channel kinds, in the order the dashboard offers them:
+// Coolify's, with ntfy, which Coolify lacks, last.
+var Kinds = []Kind{Email, Discord, Telegram, Slack, Pushover, Webhook, Ntfy}
 
 // EventKind is what a Notification is about.
 type EventKind string
@@ -97,9 +99,9 @@ const (
 )
 
 // Settings are a channel's settings; which fields matter depends on its
-// Kind. Password, BotToken, Token, Secret and, for discord, slack and
-// webhook, URL are secrets: never shown, and kept when a change leaves them
-// empty.
+// Kind. Password, BotToken, Token, Secret, UserKey, APIToken and, for
+// discord, slack and webhook, URL are secrets: never shown, and kept when a
+// change leaves them empty.
 type Settings struct {
 	// email
 	Host     string   `json:"host,omitempty"`
@@ -118,9 +120,17 @@ type Settings struct {
 	EHLODomain string `json:"ehlo_domain,omitempty"`
 	// discord, slack, ntfy (the server), webhook
 	URL string `json:"url,omitempty"`
+	// discord: Ping mentions @here on an alarming Event kind.
+	Ping bool `json:"ping,omitempty"`
 	// telegram
 	BotToken string `json:"bot_token,omitempty"`
 	ChatID   string `json:"chat_id,omitempty"`
+	// ThreadIDs sends an Event kind to a forum topic, by message thread id;
+	// a kind without one goes to the main chat.
+	ThreadIDs map[EventKind]string `json:"thread_ids,omitempty"`
+	// pushover
+	UserKey  string `json:"user_key,omitempty"`
+	APIToken string `json:"api_token,omitempty"`
 	// ntfy
 	Topic string `json:"topic,omitempty"`
 	Token string `json:"token,omitempty"`
@@ -185,7 +195,7 @@ type Input struct {
 // NewChannel validates the input into a new channel.
 func NewChannel(in Input) (Channel, error) {
 	if !slices.Contains(Kinds, in.Kind) {
-		return Channel{}, invalid("kind", "kind is one of email, discord, slack, telegram, ntfy or webhook")
+		return Channel{}, invalid("kind", "kind is one of email, discord, telegram, slack, pushover, webhook or ntfy")
 	}
 	c := Channel{Kind: in.Kind, Enabled: true}
 	if in.EventKinds == nil {
@@ -293,6 +303,9 @@ func (c *Channel) merge(in Settings) (Settings, error) {
 		}
 	case Discord, Slack:
 		s = Settings{URL: in.URL}
+		if c.Kind == Discord {
+			s.Ping = in.Ping
+		}
 		keep(&s.URL, old.URL)
 		if err := checkURL(s.URL); err != nil {
 			return s, err
@@ -306,6 +319,31 @@ func (c *Channel) merge(in Settings) (Settings, error) {
 			return s, invalid("bot_token", "bot token is the token @BotFather gave, like 123456:ABC-DEF…")
 		case s.ChatID == "" || strings.ContainsAny(s.ChatID, " /?#"):
 			return s, invalid("chat_id", "chat id is the numeric id of the chat, or @channelname")
+		}
+		for k, id := range in.ThreadIDs {
+			id = strings.TrimSpace(id)
+			switch {
+			case id == "":
+				continue
+			case !knownEventKind(k):
+				return s, invalid("thread_ids", "unknown event kind %q", k)
+			case !isDigits(id) || len(id) > 19:
+				return s, invalid("thread_ids", "a topic is the message thread id, digits only")
+			}
+			if s.ThreadIDs == nil {
+				s.ThreadIDs = map[EventKind]string{}
+			}
+			s.ThreadIDs[k] = id
+		}
+	case Pushover:
+		s = Settings{UserKey: in.UserKey, APIToken: in.APIToken}
+		keep(&s.UserKey, old.UserKey)
+		keep(&s.APIToken, old.APIToken)
+		switch {
+		case s.UserKey == "" || !isPushoverKey(s.UserKey):
+			return s, invalid("user_key", "user key is the 30 letters and digits on your Pushover dashboard")
+		case s.APIToken == "" || !isPushoverKey(s.APIToken):
+			return s, invalid("api_token", "API token is the 30 letters and digits of your Pushover application")
 		}
 	case Ntfy:
 		s = Settings{URL: strings.TrimRight(strings.TrimSpace(in.URL), "/"), Topic: in.Topic, Token: in.Token}
@@ -330,6 +368,27 @@ func (c *Channel) merge(in Settings) (Settings, error) {
 		}
 	}
 	return s, nil
+}
+
+func isDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return s != ""
+}
+
+// isPushoverKey says whether s looks like a Pushover user key or API
+// token: letters and digits only. Pushover's are 30 long; the length is not
+// checked, so a test stand-in can use its own.
+func isPushoverKey(s string) bool {
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9') {
+			return false
+		}
+	}
+	return len(s) <= 64
 }
 
 func isAddress(s string) bool {

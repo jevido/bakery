@@ -9,7 +9,7 @@ Tell the people running The Bakery when something needs their attention: a
 Deployment or a Backup execution failed, a Server became unreachable or came back, a
 Server's disk usage is high. Each Notification goes to every Notification
 channel subscribed to its Event kind: an email address, a Discord or Slack
-channel, a Telegram chat, an ntfy topic or a webhook. It also emails an
+channel, a Telegram chat, a Pushover user, an ntfy topic or a webhook. It also emails an
 Invitation to the person invited.
 
 It does **not** decide what is worth telling: deployments, databases,
@@ -22,7 +22,7 @@ each channel; an audit log is something else.
 | Term | Meaning |
 | ---- | ------- |
 | Notification channel | A named place Notifications go to: a Channel kind, its settings (secrets encrypted), the Event kinds it is subscribed to, and whether it is enabled or disabled. |
-| Channel kind | `email` (SMTP server, from address and optional from name, recipients, an optional timeout and EHLO domain), `discord` and `slack` (an incoming webhook URL, a secret), `telegram` (a bot token and a chat id), `ntfy` (a server URL, a topic and optionally a token) or `webhook` (any URL, kept secret, JSON signed with an optional secret). |
+| Channel kind | `email` (SMTP server, from address and optional from name, recipients, an optional timeout and EHLO domain), `discord` (an incoming webhook URL, a secret, and whether Critical event mention is on: `@here` on an alarming Event kind), `slack` (an incoming webhook URL, a secret), `telegram` (a bot token, a chat id and optionally a forum topic, a message thread id, per Event kind), `pushover` (a user key and an API token, both secrets), `ntfy` (a server URL, a topic and optionally a token) or `webhook` (any URL, kept secret, JSON signed with an optional secret). |
 | Event kind | What a Notification is about: `deployment_failure`, `deployment_success`, `backup_failure`, `backup_success`, `server_unreachable`, `server_reachable`, `server_disk_usage`. A new channel is subscribed to all but the two `_success` ones. |
 | Notification | What a publisher hands over: an Event kind, a title, a body, an optional link into the dashboard and when it happened. Not stored on its own. |
 | Delivery | One Notification sent to one Notification channel: `pending`, `sent` or `failed`, the attempts made (at most 3) and the last error. The 50 newest per channel are kept. |
@@ -34,7 +34,7 @@ each channel; an audit log is something else.
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Notification channel | The name is unique (1–63 characters). The settings are valid for the Channel kind: URLs are `http` or `https`; an email channel has a host, a port, a security mode (`none`, `starttls`, `tls`), a from address and at least one recipient; Telegram has a bot token and a chat id; ntfy a server URL and a topic. An email channel's timeout is 1–300 seconds (empty means 30) and its EHLO domain a host name. It is subscribed to at least one Event kind. A secret setting left empty on a change keeps its stored value. A new channel is enabled; a disabled one gets no Deliveries and cannot be tested. |
+| Notification channel | The name is unique (1–63 characters). The settings are valid for the Channel kind: URLs are `http` or `https`; an email channel has a host, a port, a security mode (`none`, `starttls`, `tls`), a from address and at least one recipient; Telegram has a bot token and a chat id, and its topics are digits, each for a known Event kind; Pushover has a user key and an API token; ntfy a server URL and a topic. An email channel's timeout is 1–300 seconds (empty means 30) and its EHLO domain a host name. It is subscribed to at least one Event kind. A secret setting left empty on a change keeps its stored value. A new channel is enabled; a disabled one gets no Deliveries and cannot be tested. |
 | Delivery | Belongs to one Notification channel and goes when it goes. Attempts only grow, at most 3; after the third failure it is `failed` for good. Retries are 10 s after the first attempt and 60 s after the second. |
 
 ### Commands
@@ -73,7 +73,7 @@ None published.
   - `identity.OnInvitationCreated` → an email to the invited person, whose
     outcome identity reports back to the inviting admin.
   - The auth middlewares from identity.
-- **Talks to:** SMTP servers, Discord, Slack, Telegram's Bot API, ntfy
+- **Talks to:** SMTP servers, Discord, Slack, Telegram's Bot API, Pushover's API, ntfy
   servers and webhook receivers, each over its own small sender.
 
 ## Why it's shaped this way
@@ -104,9 +104,17 @@ None published.
   Event kinds it has, to the invited person only. An Invitation is addressed to a
   person, not to a channel's recipients, so it is not a Delivery; a failed
   send leaves the copy-the-link path as before and is logged.
-- **The Telegram API base URL is configurable** (`BAKERY_TELEGRAM_API_URL`)
-  only so tests can point it at a local stand-in; the other kinds take full
-  URLs already.
+- **The Telegram and Pushover API base URLs are configurable**
+  (`BAKERY_TELEGRAM_API_URL`, `BAKERY_PUSHOVER_API_URL`) only so tests can
+  point them at a local stand-in; the other kinds take full URLs already.
+- **A Test notification mentions no one and goes to no forum topic**, as
+  Coolify's Test does: it carries the channel's first Event kind only so its
+  Delivery has one.
+- **A Telegram forum topic is set per Event kind**, as Coolify sets one per
+  notification: a Notification of a kind without a topic goes to the main
+  chat. Coolify's topics for Event kinds The Bakery does not have yet
+  (status change, restart limit, scheduled tasks, Docker cleanup, server
+  patching, Traefik) come with those Event kinds.
 - **Notification channels and Deliveries are The Bakery's own.** Coolify keeps
   one settings row per channel kind per team (one Discord, one Slack, ...)
   and no delivery log. The Bakery lets an admin add several named Notification

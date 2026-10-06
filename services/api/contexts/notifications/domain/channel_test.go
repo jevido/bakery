@@ -56,6 +56,17 @@ func TestChannelValidation(t *testing.T) {
 		{"webhook url", func() Input { return Input{Name: "w", Kind: Webhook, Settings: Settings{URL: "https://u:p@x/hook"}} }, "url"},
 		{"telegram token", func() Input { return Input{Name: "t", Kind: Telegram, Settings: Settings{ChatID: "1"}} }, "bot_token"},
 		{"telegram chat", func() Input { return Input{Name: "t", Kind: Telegram, Settings: Settings{BotToken: "1:a"}} }, "chat_id"},
+		{"telegram topic", func() Input {
+			return Input{Name: "t", Kind: Telegram, Settings: Settings{BotToken: "1:a", ChatID: "1", ThreadIDs: map[EventKind]string{DeploymentFailure: "4a"}}}
+		}, "thread_ids"},
+		{"telegram topic kind", func() Input {
+			return Input{Name: "t", Kind: Telegram, Settings: Settings{BotToken: "1:a", ChatID: "1", ThreadIDs: map[EventKind]string{"reboot": "4"}}}
+		}, "thread_ids"},
+		{"pushover user key", func() Input { return Input{Name: "p", Kind: Pushover, Settings: Settings{APIToken: "abc"}} }, "user_key"},
+		{"pushover api token", func() Input { return Input{Name: "p", Kind: Pushover, Settings: Settings{UserKey: "abc"}} }, "api_token"},
+		{"pushover key chars", func() Input {
+			return Input{Name: "p", Kind: Pushover, Settings: Settings{UserKey: "a b", APIToken: "abc"}}
+		}, "user_key"},
 		{"ntfy topic", func() Input { return Input{Name: "n", Kind: Ntfy, Settings: Settings{Topic: "a/b"}} }, "topic"},
 		{"no events", func() Input { in := emailInput(); in.EventKinds = []EventKind{}; return in }, "event_kinds"},
 		{"unknown event", func() Input { in := emailInput(); in.EventKinds = []EventKind{"reboot"}; return in }, "event_kinds"},
@@ -164,5 +175,36 @@ func TestEnabled(t *testing.T) {
 	d, err := NewChannel(in)
 	if err != nil || d.Enabled {
 		t.Errorf("new channel with enabled false: %v, %v", d.Enabled, err)
+	}
+}
+
+func TestDiscordPingTelegramTopicsAndPushoverSecrets(t *testing.T) {
+	d, err := NewChannel(Input{Name: "d", Kind: Discord, Settings: Settings{URL: "https://discord.com/api/webhooks/1/x", Ping: true}})
+	if err != nil || !d.Settings.Ping {
+		t.Fatalf("discord ping: %v %+v", err, d.Settings)
+	}
+	s, err := NewChannel(Input{Name: "s", Kind: Slack, Settings: Settings{URL: "https://hooks.slack.com/x", Ping: true}})
+	if err != nil || s.Settings.Ping {
+		t.Fatalf("slack kept ping: %v %+v", err, s.Settings)
+	}
+
+	tg, err := NewChannel(Input{Name: "t", Kind: Telegram, Settings: Settings{BotToken: "1:a", ChatID: "-100",
+		ThreadIDs: map[EventKind]string{DeploymentFailure: " 42 ", BackupFailure: ""}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tg.Settings.ThreadIDs) != 1 || tg.Settings.ThreadIDs[DeploymentFailure] != "42" {
+		t.Errorf("thread ids %v", tg.Settings.ThreadIDs)
+	}
+
+	p, err := NewChannel(Input{Name: "p", Kind: Pushover, Settings: Settings{UserKey: "user1", APIToken: "token1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Change(Input{Name: "p", Settings: Settings{}}); err != nil {
+		t.Fatal(err)
+	}
+	if p.Settings.UserKey != "user1" || p.Settings.APIToken != "token1" {
+		t.Errorf("pushover secrets not kept: %+v", p.Settings)
 	}
 }

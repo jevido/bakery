@@ -412,7 +412,7 @@ export type Invitation = {
   expires_at: string
 }
 
-export type ChannelKind = 'email' | 'discord' | 'slack' | 'telegram' | 'ntfy' | 'webhook'
+export type ChannelKind = 'email' | 'discord' | 'telegram' | 'slack' | 'pushover' | 'webhook' | 'ntfy'
 
 export type EventKind = {
   kind: string
@@ -443,8 +443,14 @@ export type NotificationChannel = {
     url?: string
     /** Of a secret URL, only its host. */
     url_host?: string
+    /** Discord: mention @here on an alarming Event kind. */
+    ping: boolean
     chat_id?: string
     has_bot_token: boolean
+    /** Telegram: a forum topic (message thread id) per Event kind. */
+    thread_ids?: Record<string, string>
+    has_user_key: boolean
+    has_api_token: boolean
     topic?: string
     has_token: boolean
     has_secret: boolean

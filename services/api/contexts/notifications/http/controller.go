@@ -25,23 +25,27 @@ func NewController(service *app.Service) *Controller {
 // settingsJSON is a channel's settings as shown: no secret ever, only
 // whether one is set, and of a secret URL only its host.
 type settingsJSON struct {
-	Host        string   `json:"host,omitempty"`
-	Port        int      `json:"port,omitempty"`
-	Security    string   `json:"security,omitempty"`
-	Username    string   `json:"username,omitempty"`
-	HasPassword bool     `json:"has_password"`
-	From        string   `json:"from,omitempty"`
-	FromName    string   `json:"from_name,omitempty"`
-	To          []string `json:"to,omitempty"`
-	Timeout     int      `json:"timeout,omitempty"`
-	EHLODomain  string   `json:"ehlo_domain,omitempty"`
-	URL         string   `json:"url,omitempty"`
-	URLHost     string   `json:"url_host,omitempty"`
-	ChatID      string   `json:"chat_id,omitempty"`
-	HasBotToken bool     `json:"has_bot_token"`
-	Topic       string   `json:"topic,omitempty"`
-	HasToken    bool     `json:"has_token"`
-	HasSecret   bool     `json:"has_secret"`
+	Host        string            `json:"host,omitempty"`
+	Port        int               `json:"port,omitempty"`
+	Security    string            `json:"security,omitempty"`
+	Username    string            `json:"username,omitempty"`
+	HasPassword bool              `json:"has_password"`
+	From        string            `json:"from,omitempty"`
+	FromName    string            `json:"from_name,omitempty"`
+	To          []string          `json:"to,omitempty"`
+	Timeout     int               `json:"timeout,omitempty"`
+	EHLODomain  string            `json:"ehlo_domain,omitempty"`
+	URL         string            `json:"url,omitempty"`
+	URLHost     string            `json:"url_host,omitempty"`
+	Ping        bool              `json:"ping"`
+	ChatID      string            `json:"chat_id,omitempty"`
+	HasBotToken bool              `json:"has_bot_token"`
+	ThreadIDs   map[string]string `json:"thread_ids,omitempty"`
+	HasUserKey  bool              `json:"has_user_key"`
+	HasAPIToken bool              `json:"has_api_token"`
+	Topic       string            `json:"topic,omitempty"`
+	HasToken    bool              `json:"has_token"`
+	HasSecret   bool              `json:"has_secret"`
 }
 
 type channelJSON struct {
@@ -71,7 +75,13 @@ func toJSON(c domain.Channel) channelJSON {
 	j := settingsJSON{
 		Host: s.Host, Port: s.Port, Security: string(s.Security), Username: s.Username, HasPassword: s.Password != "",
 		From: s.From, FromName: s.FromName, To: s.To, Timeout: s.Timeout, EHLODomain: s.EHLODomain, ChatID: s.ChatID, HasBotToken: s.BotToken != "", Topic: s.Topic,
-		HasToken: s.Token != "", HasSecret: s.Secret != "",
+		HasToken: s.Token != "", HasSecret: s.Secret != "", Ping: s.Ping, HasUserKey: s.UserKey != "", HasAPIToken: s.APIToken != "",
+	}
+	for k, v := range s.ThreadIDs {
+		if j.ThreadIDs == nil {
+			j.ThreadIDs = map[string]string{}
+		}
+		j.ThreadIDs[string(k)] = v
 	}
 	switch c.Kind {
 	case domain.Ntfy:
@@ -86,22 +96,26 @@ func toJSON(c domain.Channel) channelJSON {
 }
 
 type settingsRequest struct {
-	Host       string   `json:"host"`
-	Port       int      `json:"port"`
-	Security   string   `json:"security"`
-	Username   string   `json:"username"`
-	Password   string   `json:"password"`
-	From       string   `json:"from"`
-	FromName   string   `json:"from_name"`
-	To         []string `json:"to"`
-	Timeout    int      `json:"timeout"`
-	EHLODomain string   `json:"ehlo_domain"`
-	URL        string   `json:"url"`
-	BotToken   string   `json:"bot_token"`
-	ChatID     string   `json:"chat_id"`
-	Topic      string   `json:"topic"`
-	Token      string   `json:"token"`
-	Secret     string   `json:"secret"`
+	Host       string            `json:"host"`
+	Port       int               `json:"port"`
+	Security   string            `json:"security"`
+	Username   string            `json:"username"`
+	Password   string            `json:"password"`
+	From       string            `json:"from"`
+	FromName   string            `json:"from_name"`
+	To         []string          `json:"to"`
+	Timeout    int               `json:"timeout"`
+	EHLODomain string            `json:"ehlo_domain"`
+	URL        string            `json:"url"`
+	Ping       bool              `json:"ping"`
+	BotToken   string            `json:"bot_token"`
+	ChatID     string            `json:"chat_id"`
+	ThreadIDs  map[string]string `json:"thread_ids"`
+	UserKey    string            `json:"user_key"`
+	APIToken   string            `json:"api_token"`
+	Topic      string            `json:"topic"`
+	Token      string            `json:"token"`
+	Secret     string            `json:"secret"`
 }
 
 // channelRequest is a channel as typed. Secrets are write-only: empty
@@ -121,7 +135,14 @@ func (r channelRequest) input() domain.Input {
 	in := domain.Input{Name: r.Name, Kind: domain.Kind(r.Kind), Settings: domain.Settings{
 		Host: s.Host, Port: s.Port, Security: domain.Security(s.Security), Username: s.Username, Password: s.Password,
 		From: s.From, FromName: s.FromName, To: s.To, Timeout: s.Timeout, EHLODomain: s.EHLODomain, URL: s.URL, BotToken: s.BotToken, ChatID: s.ChatID, Topic: s.Topic, Token: s.Token, Secret: s.Secret,
+		Ping: s.Ping, UserKey: s.UserKey, APIToken: s.APIToken,
 	}, Enabled: r.Enabled}
+	for k, v := range s.ThreadIDs {
+		if in.Settings.ThreadIDs == nil {
+			in.Settings.ThreadIDs = map[domain.EventKind]string{}
+		}
+		in.Settings.ThreadIDs[domain.EventKind(k)] = v
+	}
 	if r.EventKinds != nil {
 		in.EventKinds = []domain.EventKind{}
 		for _, k := range *r.EventKinds {

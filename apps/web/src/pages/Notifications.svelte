@@ -8,10 +8,11 @@
   const kinds: { kind: ChannelKind; label: string }[] = [
     { kind: 'email', label: 'Email' },
     { kind: 'discord', label: 'Discord' },
-    { kind: 'slack', label: 'Slack' },
     { kind: 'telegram', label: 'Telegram' },
-    { kind: 'ntfy', label: 'ntfy' },
+    { kind: 'slack', label: 'Slack' },
+    { kind: 'pushover', label: 'Pushover' },
     { kind: 'webhook', label: 'Webhook' },
+    { kind: 'ntfy', label: 'ntfy' },
   ]
   const kindLabel = (k: ChannelKind) => kinds.find((x) => x.kind === k)?.label ?? k
 
@@ -49,6 +50,11 @@
       topic: '',
       token: '',
       secret: '',
+      user_key: '',
+      api_token: '',
+      // Not edited here; carried so a save keeps them.
+      ping: false,
+      thread_ids: {} as Record<string, string>,
       events: eventKinds.filter((e) => e.default).map((e) => e.kind),
     }
   }
@@ -85,6 +91,8 @@
       url: c.kind === 'ntfy' ? (s.url ?? '') : '',
       chat_id: s.chat_id ?? '',
       topic: s.topic ?? '',
+      ping: s.ping,
+      thread_ids: { ...s.thread_ids },
       events: [...c.event_kinds],
     }
   }
@@ -109,6 +117,10 @@
         topic: f.topic,
         token: f.token,
         secret: f.secret,
+        user_key: f.user_key,
+        api_token: f.api_token,
+        ping: f.ping,
+        thread_ids: f.thread_ids,
       },
     }
   }
@@ -320,6 +332,9 @@
       {:else if form.kind === 'telegram'}
         <Field label="Bot token" type="password" bind:value={form.bot_token} error={errors.bot_token} autocomplete="new-password" placeholder={keep || '123456:ABC-DEF…'} required={editing === 'new'} />
         <Field label="Chat id" bind:value={form.chat_id} error={errors.chat_id} placeholder="-1001234567890 or @channel" required />
+      {:else if form.kind === 'pushover'}
+        <Field label="User key" type="password" bind:value={form.user_key} error={errors.user_key} autocomplete="new-password" placeholder={keep} required={editing === 'new'} />
+        <Field label="API token" type="password" bind:value={form.api_token} error={errors.api_token} autocomplete="new-password" placeholder={keep} required={editing === 'new'} />
       {:else if form.kind === 'ntfy'}
         <div class="row">
           <Field label="Server" bind:value={form.url} error={errors.url} placeholder="https://ntfy.sh" />

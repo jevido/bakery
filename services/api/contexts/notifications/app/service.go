@@ -147,6 +147,7 @@ func (s *Service) TestChannel(ctx context.Context, id uint64, recipient string) 
 		Body:  "This is a test of the notification channel \"" + c.Name + "\". If you can read it, it works.",
 		Link:  s.DashboardURL,
 		At:    s.Now(),
+		Test:  true,
 	}
 	d := domain.NewDelivery(c.ID, n, s.Now())
 	// Not due for the dispatcher while this call sends it.
