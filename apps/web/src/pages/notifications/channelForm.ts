@@ -117,11 +117,16 @@ export function payload(f: ChannelForm) {
   }
 }
 
-/** Whether two forms save the same thing: a cleared topic id is no topic id. */
+/**
+ * Whether two forms save the same thing: a cleared topic id is no topic id,
+ * and a number input's value (bound as a number) is its text.
+ */
 export function sameForm(a: ChannelForm, b: ChannelForm): boolean {
   const norm = (f: ChannelForm) =>
     JSON.stringify({
       ...f,
+      port: String(f.port ?? ''),
+      timeout: String(f.timeout ?? ''),
       thread_ids: Object.fromEntries(Object.entries(f.thread_ids).filter(([, v]) => v.trim() !== '').sort()),
       events: [...f.events].sort(),
     })

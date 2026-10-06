@@ -10,8 +10,13 @@
   // disabled, as Coolify saves settings without enabling them; Enable stores
   // it enabled. Toggling an event saves at once, as Coolify's toggleEvent
   // does, but from the stored settings, so unsaved edits stay unsaved.
+  // An email channel's Send test asks for a recipient first, as Coolify's
+  // "Send Test Email" modal does.
   import { untrack, type Snippet } from 'svelte'
   import { api, ApiError } from '../../lib/api'
+  import Button from '../../lib/ui/Button.svelte'
+  import Input from '../../lib/ui/Input.svelte'
+  import Modal from '../../lib/ui/Modal.svelte'
   import type { ChannelKind, EventKind, NotificationChannel } from '../../lib/types'
   import SettingsSection from '../../lib/ui/SettingsSection.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
@@ -31,7 +36,9 @@
     eventKinds,
     onsaved,
     ondeleted,
+    threaded = false,
     fields,
+    more,
   }: {
     kind: ChannelKind
     title: string
@@ -43,18 +50,20 @@
     eventKinds: EventKind[]
     onsaved: (c: NotificationChannel) => void
     ondeleted: (id: number) => void
-    fields: Snippet<
-      [
-        {
-          form: ChannelForm
-          errors: Record<string, string>
-          channel: NotificationChannel | null
-          /** Saves a setting at once (Coolify's instantSave…), leaving other unsaved edits be. */
-          instant: (change: Partial<ChannelForm>) => Promise<void>
-        },
-      ]
-    >
+    /** Telegram: a forum topic per selected Event kind, below the events grid. */
+    threaded?: boolean
+    fields: Snippet<[FieldsArgs]>
+    /** Further sections of the same form, after the first (Email's SMTP server). */
+    more?: Snippet<[FieldsArgs]>
   } = $props()
+
+  type FieldsArgs = {
+    form: ChannelForm
+    errors: Record<string, string>
+    channel: NotificationChannel | null
+    /** Saves a setting at once (Coolify's instantSave…), leaving other unsaved edits be. */
+    instant: (change: Partial<ChannelForm>) => Promise<void>
+  }
 
   const defaults = $derived(eventKinds.filter((e) => e.default).map((e) => e.kind))
 
@@ -64,7 +73,8 @@
   const channel = $derived(selected === 'new' ? null : (channels.find((c) => c.id === selected) ?? channels[0] ?? null))
   const shown = $derived<number | 'new'>(selected === 'new' ? 'new' : (channel?.id ?? 'new'))
 
-  let form = $state<ChannelForm>(blankForm([]))
+  // Opened with the shown channel's form, so the unsaved bar does not flash in.
+  let form = $state<ChannelForm>(untrack(() => (channel ? formOf(channel) : blankForm(defaults))))
   let errors = $state<Record<string, string>>({})
   let saving = $state(false)
   let toggling = $state(false)
@@ -136,14 +146,25 @@
     toast.success('Settings saved.')
   }
 
-  async function test() {
+  let askingRecipient = $state(false)
+  let recipient = $state('')
+  let recipientError = $state('')
+
+  async function test(to?: string) {
     if (!channel) return
     testing = true
+    recipientError = ''
     try {
-      await api('POST', `/notification-channels/${channel.id}/test`)
+      await api('POST', `/notification-channels/${channel.id}/test`, to ? { recipient: to } : undefined)
+      askingRecipient = false
       toast.success('Test notification sent.')
     } catch (err) {
       if (!(err instanceof ApiError)) throw err
+      if (err.errors.recipient) {
+        recipientError = err.errors.recipient
+        return
+      }
+      askingRecipient = false
       toast.error('Test notification failed.', err.message)
     } finally {
       testing = false
@@ -195,6 +216,7 @@
   {/if}
 
   <form
+    id="{kind}-channel-form"
     onsubmit={(e) => {
       e.preventDefault()
       save()
@@ -204,13 +226,33 @@
     <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
     <SettingsSection id="{kind}-settings" {title} helper={description}>
       {#snippet actions()}
-        <ChannelActions enabled={channel?.enabled ?? false} busy={toggling} {testing} ontoggle={toggle} ontest={test} />
+        <ChannelActions
+          enabled={channel?.enabled ?? false}
+          busy={toggling}
+          {testing}
+          ontoggle={toggle}
+          ontest={() => {
+            if (kind !== 'email') return test()
+            recipientError = ''
+            askingRecipient = true
+          }}
+        />
       {/snippet}
       {@render fields({ form, errors, channel, instant })}
     </SettingsSection>
+    {@render more?.({ form, errors, channel, instant })}
   </form>
 
-  <EventGrid channel={kind} {eventKinds} selected={form.events} ontoggle={toggleEvent} />
+  <EventGrid
+    channel={kind}
+    {eventKinds}
+    selected={form.events}
+    ontoggle={toggleEvent}
+    {threaded}
+    bind:threadIds={form.thread_ids}
+    threadErrors={errors.thread_ids}
+    formId="{kind}-channel-form"
+  />
 
   {#if channel}
     <Deliveries channelId={channel.id} {eventKinds} version={deliveriesVersion} />
@@ -220,3 +262,21 @@
     <ChannelPicker {channels} selected={shown} {pendingName} taken={allNames} onselect={(id) => (selected = id)} onadd={add} ondelete={remove} />
   {/if}
 </div>
+
+{#if kind === 'email'}
+  <Modal title="Send Test Email" variant="none" bind:open={askingRecipient}>
+    <form
+      class="flex w-full flex-col gap-4"
+      onsubmit={(e) => {
+        e.preventDefault()
+        test(recipient)
+      }}
+      data-testid="test-email-form"
+    >
+      <Input label="Recipient" type="email" bind:value={recipient} placeholder="test@example.com" required error={recipientError} data-testid="test-recipient" />
+      <div class="flex justify-end border-t border-neutral-200 pt-4 dark:border-white/[0.08]">
+        <Button type="submit" variant="highlighted" loading={testing}>Send email</Button>
+      </div>
+    </form>
+  </Modal>
+{/if}

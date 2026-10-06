@@ -4,6 +4,7 @@
   // the groups The Bakery has events for are drawn: Deployments, Backups and
   // Servers. With `threaded` (Telegram) the Forum topics section follows.
   import type { EventKind } from '../../lib/types'
+  import Input from '../../lib/ui/Input.svelte'
   import SettingsSection from '../../lib/ui/SettingsSection.svelte'
   import EventMultiselect from './EventMultiselect.svelte'
 
@@ -13,6 +14,10 @@
     selected,
     disabled = false,
     ontoggle,
+    threaded = false,
+    threadIds = $bindable({}),
+    threadErrors,
+    formId,
   }: {
     /** The Channel kind, for the ids. */
     channel: string
@@ -20,6 +25,12 @@
     selected: string[]
     disabled?: boolean
     ontoggle: (kind: string) => unknown
+    threaded?: boolean
+    /** Telegram: the forum topic (message thread id) per Event kind. */
+    threadIds?: Record<string, string>
+    threadErrors?: string
+    /** The form the topic inputs belong to, so they save with it. */
+    formId?: string
   } = $props()
 
   const groupOf = (kind: string) => (kind.startsWith('deployment_') ? 'Deployments' : kind.startsWith('backup_') ? 'Backups' : 'Servers')
@@ -34,6 +45,10 @@
       }))
       .filter((g) => g.events.length > 0),
   )
+
+  const threadGroups = $derived(
+    groups.map((g) => ({ label: g.label, events: g.events.filter((e) => e.enabled) })).filter((g) => g.events.length > 0),
+  )
 </script>
 
 <div class="flex flex-col gap-6">
@@ -46,4 +61,45 @@
       {/each}
     </div>
   </SettingsSection>
+
+  {#if threaded}
+    <SettingsSection
+      id="{channel}-forum-topics"
+      title="Forum topics"
+      helper="Optional. Route enabled events to a Telegram forum topic using its message thread ID. Leave blank to post in the main chat."
+    >
+      {#if threadGroups.length === 0}
+        <p class="text-[13px] leading-relaxed text-neutral-500 dark:text-fg-dim">Enable one or more events above to assign forum topic IDs.</p>
+      {:else}
+        <div class="flex flex-col gap-5" data-testid="forum-topics">
+          {#each threadGroups as group (group.label)}
+            <div class="min-w-0">
+              <div class="mb-2 text-[11px] font-medium tracking-wide text-neutral-500 uppercase dark:text-fg-dim">{group.label}</div>
+              <div class="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 dark:divide-white/[0.06] dark:border-white/[0.08]">
+                {#each group.events as event (event.kind)}
+                  <div class="grid gap-2 px-3.5 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,14rem)] sm:items-center sm:gap-4">
+                    <div class="min-w-0">
+                      <div class="truncate text-[13px] font-medium text-black dark:text-fg">{event.label}</div>
+                      <div class="text-[11px] text-neutral-500 dark:text-fg-dim">Topic ID</div>
+                    </div>
+                    <Input
+                      type="password"
+                      bind:value={() => threadIds[event.kind] ?? '', (v) => (threadIds = { ...threadIds, [event.kind]: v })}
+                      placeholder="Optional"
+                      inputmode="numeric"
+                      form={formId}
+                      aria-label="{event.label} topic ID"
+                      autocomplete="new-password"
+                      data-testid="topic-{event.kind}"
+                    />
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/each}
+          {#if threadErrors}<p class="text-xs text-error">{threadErrors}</p>{/if}
+        </div>
+      {/if}
+    </SettingsSection>
+  {/if}
 </div>

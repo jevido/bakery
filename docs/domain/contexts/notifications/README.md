@@ -139,3 +139,10 @@ None published.
   it enabled, named after its kind. An event toggled in the events grid is
   saved at once, as Coolify's are, from the stored settings, so other edits
   not yet saved stay unsaved. The recent Deliveries sit below the events grid.
+- **The Email page keeps one switch and its own Recipients.** Coolify's Email
+  page has a separate "SMTP delivery" Enabled/Disabled select beside the
+  page's settings; here the channel's Enable/Disable in the "Email delivery"
+  header is that switch, so an email channel is on or off in one place like
+  every other kind. Coolify sends team email to the team's members; an email
+  Notification channel here carries its own Recipients, which is what makes
+  several email channels (a team inbox, an on-call address) useful.

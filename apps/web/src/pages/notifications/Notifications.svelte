@@ -15,8 +15,11 @@
   import Spinner from '../../lib/ui/Spinner.svelte'
   import { kindLabels, type KindPageProps } from './channelForm'
   import Discord from './Discord.svelte'
-  import Interim from './Interim.svelte'
+  import Email from './Email.svelte'
+  import Ntfy from './Ntfy.svelte'
+  import Pushover from './Pushover.svelte'
   import Slack from './Slack.svelte'
+  import Telegram from './Telegram.svelte'
   import Webhook from './Webhook.svelte'
 
   let { page }: { page: NotificationPage } = $props()
@@ -108,14 +111,20 @@
         <p class="text-sm text-error">{error}</p>
       {:else if !kindProps}
         <Spinner text="Loading…" />
+      {:else if page === 'email'}
+        <Email {...kindProps} />
       {:else if page === 'discord'}
         <Discord {...kindProps} />
+      {:else if page === 'telegram'}
+        <Telegram {...kindProps} />
       {:else if page === 'slack'}
         <Slack {...kindProps} />
+      {:else if page === 'pushover'}
+        <Pushover {...kindProps} />
       {:else if page === 'webhook'}
         <Webhook {...kindProps} />
       {:else}
-        <Interim kind={page} {...kindProps} />
+        <Ntfy {...kindProps} />
       {/if}
     </div>
   </div>
