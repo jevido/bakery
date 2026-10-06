@@ -19,6 +19,7 @@ import (
 
 type projectRecord struct {
 	ID          uint64 `gorm:"primaryKey"`
+	GuildID     uint64
 	Name        string
 	Description string
 	orm.Timestamps
@@ -199,9 +200,9 @@ func writeDomains(tx contractsorm.Query, applicationID uint64, domains []string)
 
 // toDomain leaves the Deploy key's private half out; only Application(id)
 // decrypts it.
-func (r applicationRecord) toDomain(projectID uint64) domain.Application {
+func (r applicationRecord) toDomain(projectID, guildID uint64) domain.Application {
 	return domain.Application{
-		ID: r.ID, EnvironmentID: r.EnvironmentID, ProjectID: projectID, Name: r.Name, Description: r.Description, Slug: r.Slug,
+		ID: r.ID, EnvironmentID: r.EnvironmentID, ProjectID: projectID, GuildID: guildID, Name: r.Name, Description: r.Description, Slug: r.Slug,
 		BuildPack: domain.BuildPack(r.BuildPack), DockerImage: r.DockerImage, PublishDirectory: r.PublishDirectory,
 		GitURL: r.GitURL, GitBranch: r.GitBranch, DockerfilePath: r.DockerfilePath, Port: r.Port,
 		DeployKey:           domain.DeployKey{Public: r.DeployKeyPublic},
@@ -262,8 +263,32 @@ func (Store) query(ctx context.Context) contractsorm.Query {
 	return facades.Orm().WithContext(ctx).Query()
 }
 
+// inGuild narrows a query on table to the Guild ctx is scoped to (see
+// app.InGuild); unscoped, it leaves the query as it is.
+func inGuild(ctx context.Context, q contractsorm.Query, table string) contractsorm.Query {
+	guildID, ok := app.GuildOf(ctx)
+	if !ok {
+		return q
+	}
+	switch table {
+	case "projects":
+		return q.Where("guild_id", guildID)
+	case "environments":
+		return q.Where("project_id IN (SELECT id FROM projects WHERE guild_id = ?)", guildID)
+	default: // applications
+		return q.Where("environment_id IN (SELECT e.id FROM environments e JOIN projects p ON p.id = e.project_id WHERE p.guild_id = ?)", guildID)
+	}
+}
+
+// guildOfProject is the Guild the Project belongs to.
+func (s Store) guildOfProject(ctx context.Context, projectID uint64) (uint64, error) {
+	var rec projectRecord
+	_, err := first(s.query(ctx).Where("id", projectID), &rec)
+	return rec.GuildID, err
+}
+
 func (s Store) CreateProject(ctx context.Context, p domain.Project) (domain.Project, error) {
-	rec := projectRecord{Name: p.Name, Description: p.Description}
+	rec := projectRecord{GuildID: p.GuildID, Name: p.Name, Description: p.Description}
 	env := environmentRecord{Name: domain.DefaultEnvironment}
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		if err := tx.Create(&rec); err != nil {
@@ -276,28 +301,30 @@ func (s Store) CreateProject(ctx context.Context, p domain.Project) (domain.Proj
 		return domain.Project{}, err
 	}
 	p.ID = rec.ID
-	p.Environments = []domain.Environment{env.toDomain()}
+	created := env.toDomain()
+	created.GuildID = p.GuildID
+	p.Environments = []domain.Environment{created}
 	return p, nil
 }
 
 func (s Store) Projects(ctx context.Context) ([]domain.Project, error) {
 	var recs []projectRecord
-	if err := s.query(ctx).OrderBy("name").Find(&recs); err != nil {
+	if err := inGuild(ctx, s.query(ctx), "projects").OrderBy("name").Find(&recs); err != nil {
 		return nil, err
 	}
 	out := make([]domain.Project, len(recs))
 	for i, r := range recs {
-		out[i] = domain.Project{ID: r.ID, Name: r.Name, Description: r.Description}
+		out[i] = domain.Project{ID: r.ID, GuildID: r.GuildID, Name: r.Name, Description: r.Description}
 	}
 	return out, nil
 }
 
 func (s Store) Project(ctx context.Context, id uint64) (domain.Project, bool, error) {
 	var rec projectRecord
-	if found, err := first(s.query(ctx).Where("id", id), &rec); err != nil || !found {
+	if found, err := first(inGuild(ctx, s.query(ctx), "projects").Where("id", id), &rec); err != nil || !found {
 		return domain.Project{}, found, err
 	}
-	p := domain.Project{ID: rec.ID, Name: rec.Name, Description: rec.Description}
+	p := domain.Project{ID: rec.ID, GuildID: rec.GuildID, Name: rec.Name, Description: rec.Description}
 
 	var envs []environmentRecord
 	if err := s.query(ctx).Where("project_id", id).OrderBy("id").Find(&envs); err != nil {
@@ -315,13 +342,14 @@ func (s Store) Project(ctx context.Context, id uint64) (domain.Project, bool, er
 	}
 	all := make([]domain.Application, len(apps))
 	for i, a := range apps {
-		all[i] = a.toDomain(id)
+		all[i] = a.toDomain(id, rec.GuildID)
 	}
 	if err := s.withLists(ctx, all); err != nil {
 		return domain.Project{}, false, err
 	}
 	for _, e := range envs {
 		env := e.toDomain()
+		env.GuildID = rec.GuildID
 		env.Applications = []domain.Application{}
 		for _, a := range all {
 			if a.EnvironmentID == e.ID {
@@ -355,8 +383,13 @@ func (s Store) DeleteProject(ctx context.Context, id uint64) error {
 
 func (s Store) Environment(ctx context.Context, id uint64) (domain.Environment, bool, error) {
 	var rec environmentRecord
-	found, err := first(s.query(ctx).Where("id", id), &rec)
-	return rec.toDomain(), found, err
+	if found, err := first(inGuild(ctx, s.query(ctx), "environments").Where("id", id), &rec); err != nil || !found {
+		return domain.Environment{}, found, err
+	}
+	e := rec.toDomain()
+	guildID, err := s.guildOfProject(ctx, rec.ProjectID)
+	e.GuildID = guildID
+	return e, err == nil, err
 }
 
 func (s Store) EnvironmentNameTaken(ctx context.Context, projectID uint64, name string, exceptID uint64) (bool, error) {
@@ -369,7 +402,9 @@ func (s Store) CreateEnvironment(ctx context.Context, e domain.Environment) (dom
 	if err := s.query(ctx).Create(&rec); err != nil {
 		return domain.Environment{}, environmentNameViolation(err)
 	}
-	return rec.toDomain(), nil
+	created := rec.toDomain()
+	created.GuildID = e.GuildID
+	return created, nil
 }
 
 func (s Store) UpdateEnvironment(ctx context.Context, e domain.Environment) error {
@@ -460,7 +495,7 @@ func (s Store) CreateApplication(ctx context.Context, a domain.Application) (dom
 	if err != nil {
 		return domain.Application{}, uniqueViolation(err)
 	}
-	created := rec.toDomain(a.ProjectID)
+	created := rec.toDomain(a.ProjectID, a.GuildID)
 	created.Domains, created.Storages = a.Domains, a.Storages
 	if created.Storages == nil {
 		created.Storages = []domain.Storage{}
@@ -470,14 +505,18 @@ func (s Store) CreateApplication(ctx context.Context, a domain.Application) (dom
 
 func (s Store) Application(ctx context.Context, id uint64) (domain.Application, bool, error) {
 	var rec applicationRecord
-	if found, err := first(s.query(ctx).Where("id", id), &rec); err != nil || !found {
+	if found, err := first(inGuild(ctx, s.query(ctx), "applications").Where("id", id), &rec); err != nil || !found {
 		return domain.Application{}, found, err
 	}
 	var env environmentRecord
 	if _, err := first(s.query(ctx).Where("id", rec.EnvironmentID), &env); err != nil {
 		return domain.Application{}, false, err
 	}
-	a := rec.toDomain(env.ProjectID)
+	guildID, err := s.guildOfProject(ctx, env.ProjectID)
+	if err != nil {
+		return domain.Application{}, false, err
+	}
+	a := rec.toDomain(env.ProjectID, guildID)
 	lists := []domain.Application{a}
 	if err := s.withLists(ctx, lists); err != nil {
 		return domain.Application{}, false, err

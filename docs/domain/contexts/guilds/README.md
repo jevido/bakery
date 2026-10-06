@@ -92,8 +92,12 @@ concerned, which the Instance admin always is.
     `read:sensitive` for an API token, for GETs that return Secrets.
   - `guilds.CanSeeSecrets(ctx)`: for a response that mixes Secrets with
     fields a viewer may see.
+  - `guilds.Owns(name, belongs)`: after `guilds.Auth`, 404 for a route
+    whose `{id}` names something outside the Current guild; `belongs(id,
+    guild)` is the owning context's check (e.g. `projects.ApplicationInGuild`).
   - `guilds.Current(ctx) uint64`: the Current guild's id, which every other
-    context stores on what it creates and filters every list and read by.
+    context stores on what it creates (or reaches through something that
+    does) and filters every list and read by.
   - `guilds.RoleOf(ctx)`: the Role the request acts with there.
   - `guilds.OnGuildDeleting(f)` and `guilds.OnInvitationCreated(f)`: see
     Domain events.

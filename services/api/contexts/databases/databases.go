@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/route"
 
 	"github.com/jevido/bakery/services/api/app/facades"
@@ -70,13 +71,44 @@ func svc() *app.Service {
 	return service
 }
 
-// Routes registers the databases API behind guilds.Auth; listing S3
-// storages also needs guilds.Secrets, changing them guilds.Admin.
+// inGuild answers 404 for a route whose {id} Environment (through the id
+// lookup) is outside the Current guild.
+func inGuild(name string, environmentOf func(ctx context.Context, id uint64) (uint64, error)) contractshttp.Middleware {
+	return guilds.Owns(name, func(ctx context.Context, id, guildID uint64) (bool, error) {
+		envID, err := environmentOf(ctx, id)
+		if errors.Is(err, app.ErrNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return projects.EnvironmentInGuild(ctx, envID, guildID)
+	})
+}
+
+var (
+	environmentInGuild = guilds.Owns("environment", projects.EnvironmentInGuild)
+	projectInGuild     = guilds.Owns("project", projects.ProjectInGuild)
+	databaseInGuild    = inGuild("database", func(ctx context.Context, id uint64) (uint64, error) {
+		return svc().EnvironmentOfDatabase(ctx, id)
+	})
+	scheduledBackupInGuild = inGuild("scheduled-backup", func(ctx context.Context, id uint64) (uint64, error) {
+		return svc().EnvironmentOfScheduledBackup(ctx, id)
+	})
+	backupExecutionInGuild = inGuild("backup-execution", func(ctx context.Context, id uint64) (uint64, error) {
+		return svc().EnvironmentOfBackupExecution(ctx, id)
+	})
+)
+
+// Routes registers the databases API behind guilds.Auth, every route keyed
+// by an Environment, Project, Database, Scheduled backup or Backup execution
+// answering 404 outside the Current guild; listing S3 storages also needs
+// guilds.Secrets, changing them guilds.Admin.
 func Routes(r route.Router) {
 	c := databaseshttp.NewController(svc())
-	r.Middleware(guilds.Auth).Group(func(r route.Router) {
-		r.Post("/api/environments/{id}/databases", c.Create)
-		r.Get("/api/projects/{id}/databases", c.ForProject)
+	r.Middleware(guilds.Auth, environmentInGuild).Post("/api/environments/{id}/databases", c.Create)
+	r.Middleware(guilds.Auth, projectInGuild).Get("/api/projects/{id}/databases", c.ForProject)
+	r.Middleware(guilds.Auth, databaseInGuild).Group(func(r route.Router) {
 		r.Get("/api/databases/{id}", c.Show)
 		r.Patch("/api/databases/{id}", c.Update)
 		r.Delete("/api/databases/{id}", c.Delete)
@@ -84,16 +116,20 @@ func Routes(r route.Router) {
 		r.Post("/api/databases/{id}/backup-executions", c.BackUp)
 		r.Get("/api/databases/{id}/scheduled-backups", c.ScheduledBackups)
 		r.Post("/api/databases/{id}/scheduled-backups", c.CreateScheduledBackup)
+	})
+	r.Middleware(guilds.Auth, scheduledBackupInGuild).Group(func(r route.Router) {
 		r.Get("/api/scheduled-backups/{id}", c.ShowScheduledBackup)
 		r.Patch("/api/scheduled-backups/{id}", c.UpdateScheduledBackup)
 		r.Delete("/api/scheduled-backups/{id}", c.DeleteScheduledBackup)
 		r.Get("/api/scheduled-backups/{id}/backup-executions", c.ScheduledBackupExecutions)
 		r.Post("/api/scheduled-backups/{id}/backup-executions", c.BackUpScheduledBackup)
+	})
+	r.Middleware(guilds.Auth, backupExecutionInGuild).Group(func(r route.Router) {
 		r.Post("/api/backup-executions/{id}/restore", c.Restore)
 		r.Delete("/api/backup-executions/{id}", c.DeleteBackupExecution)
 	})
 	// Coolify's deploy actions: an API token needs deploy for them.
-	r.Middleware(guilds.Deploy).Group(func(r route.Router) {
+	r.Middleware(guilds.Deploy, databaseInGuild).Group(func(r route.Router) {
 		r.Post("/api/databases/{id}/start", c.Start)
 		r.Post("/api/databases/{id}/stop", c.Stop)
 		r.Post("/api/databases/{id}/restart", c.Restart)
@@ -112,16 +148,13 @@ func Routes(r route.Router) {
 }
 
 // StreamRoutes registers the log stream and Backup execution downloads, behind
-// guilds.Auth but outside the request timeout. A Backup execution holds the
+// guilds.Auth (404 outside the Current guild) but outside the request
+// timeout. A Backup execution holds the
 // Database's data, so its download is a Secret.
 func StreamRoutes(r route.Router) {
 	c := databaseshttp.NewStreamController(svc(), shutdown)
-	r.Middleware(guilds.Auth).Group(func(r route.Router) {
-		r.Get("/api/databases/{id}/logs", c.Logs)
-	})
-	r.Middleware(guilds.Auth, guilds.Secrets).Group(func(r route.Router) {
-		r.Get("/api/backup-executions/{id}/download", c.Download)
-	})
+	r.Middleware(guilds.Auth, databaseInGuild).Get("/api/databases/{id}/logs", c.Logs)
+	r.Middleware(guilds.Auth, guilds.Secrets, backupExecutionInGuild).Get("/api/backup-executions/{id}/download", c.Download)
 }
 
 // Recover starts, in the background, every Database that should run and has

@@ -2,7 +2,6 @@
 package http
 
 import (
-	"context"
 	"errors"
 	"strconv"
 
@@ -13,15 +12,16 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/routing/domain"
 )
 
-// ApplicationExists is projects' published ApplicationExists.
-type ApplicationExists func(ctx context.Context, id uint64) (bool, error)
+// ApplicationInGuild reports whether the Application exists in the
+// request's Current guild (projects' published ApplicationInGuild).
+type ApplicationInGuild func(ctx contractshttp.Context, id uint64) (bool, error)
 
 type Controller struct {
 	service *app.Service
-	exists  ApplicationExists
+	exists  ApplicationInGuild
 }
 
-func NewController(service *app.Service, exists ApplicationExists) *Controller {
+func NewController(service *app.Service, exists ApplicationInGuild) *Controller {
 	return &Controller{service: service, exists: exists}
 }
 
@@ -75,7 +75,7 @@ func (c *Controller) application(ctx contractshttp.Context) (uint64, contractsht
 	if err != nil {
 		return 0, respond.Error(ctx, contractshttp.StatusNotFound, "not found")
 	}
-	ok, err := c.exists(ctx.Context(), id)
+	ok, err := c.exists(ctx, id)
 	if err != nil {
 		return 0, respond.ServerError(ctx, err)
 	}

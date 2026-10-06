@@ -4,6 +4,7 @@
 package http
 
 import (
+	"context"
 	"strconv"
 	"time"
 
@@ -191,4 +192,33 @@ func MemberID(ctx contractshttp.Context) uint64 { return placeOf(ctx).principal.
 func CanSeeSecrets(ctx contractshttp.Context) bool {
 	p := placeOf(ctx)
 	return p.role.CanSeeSecrets() && p.principal.Allows(identity.PermissionReadSensitive)
+}
+
+// Owns answers 404 when the route's {id} names something that is not in the
+// Current guild; Belongs is asked by the context that owns it. A malformed
+// {id} is left to the handler. It runs after Auth.
+type Owns struct {
+	// Name tells the middlewares apart, e.g. "application".
+	Name    string
+	Belongs func(ctx context.Context, id, guildID uint64) (bool, error)
+}
+
+func (o Owns) Signature() string { return "guilds.owns." + o.Name }
+
+func (o Owns) Handle(ctx contractshttp.Context) {
+	id, err := strconv.ParseUint(ctx.Request().Route("id"), 10, 64)
+	if err != nil {
+		ctx.Request().Next()
+		return
+	}
+	ok, err := o.Belongs(ctx.Context(), id, Current(ctx))
+	if err != nil {
+		_ = respond.ServerError(ctx, err).Abort()
+		return
+	}
+	if !ok {
+		_ = respond.Error(ctx, contractshttp.StatusNotFound, "not found").Abort()
+		return
+	}
+	ctx.Request().Next()
 }

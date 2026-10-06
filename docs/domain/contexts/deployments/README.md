@@ -124,7 +124,7 @@ Application is (projects) or for the Caddy configuration (routing).
 
 - **Publishes:** the Deployment and its log over HTTP (JSON and SSE), and
   `OnDeploymentFinished` (notifications).
-- **Consumes:** `projects.ApplicationForDeploy` (the snapshot is taken once, at
+- **Consumes:** `projects.ApplicationInGuild` (through `guilds.Owns`), so every route keyed by an Application or a Deployment answers 404 outside the Current guild (the Webhook endpoint is found by its secret, in any Guild); `projects.ApplicationForDeploy` (the snapshot is taken once, at
   the start of a Deployment, so editing the Application mid-build does not
   change what is being built; it carries the Deploy key for SSH Git repositories);
   `routing.SwitchRoute` (with the Target server); `ApplicationDeleted` (the

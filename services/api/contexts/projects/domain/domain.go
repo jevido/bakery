@@ -29,7 +29,9 @@ func invalid(field, format string, args ...any) error {
 }
 
 type Project struct {
-	ID           uint64
+	ID uint64
+	// GuildID is the Guild the Project belongs to, and so everything in it.
+	GuildID      uint64
 	Name         string
 	Description  string
 	Environments []Environment
@@ -38,6 +40,7 @@ type Project struct {
 type Environment struct {
 	ID           uint64
 	ProjectID    uint64
+	GuildID      uint64
 	Name         string
 	Description  string
 	Applications []Application
@@ -110,6 +113,7 @@ type Application struct {
 	ID            uint64
 	EnvironmentID uint64
 	ProjectID     uint64
+	GuildID       uint64
 	Name          string
 	// Description is free text of at most 255 characters, empty for none.
 	Description string

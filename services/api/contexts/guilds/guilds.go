@@ -1,8 +1,8 @@
 // Package guilds is what other contexts, the router and bootstrap may use
-// from the guilds context: the Auth, Deploy, Admin and Secrets middlewares,
-// Current, RoleOf and CanSeeSecrets, the routes, the InvitationCreated
-// event, and Boot. Nothing else in
-// contexts/guilds is for outside use.
+// from the guilds context: the Auth, Deploy, Admin, Secrets and Owns
+// middlewares, Current, RoleOf and CanSeeSecrets, the routes, the
+// InvitationCreated event, and Boot. Nothing else in contexts/guilds is for
+// outside use.
 package guilds
 
 import (
@@ -45,6 +45,13 @@ var Secrets contractshttp.Middleware = guildshttp.Secrets{}
 // CanSeeSecrets reports whether the request may be answered with Secrets;
 // for a response that mixes Secrets with what a viewer may see.
 func CanSeeSecrets(ctx contractshttp.Context) bool { return guildshttp.CanSeeSecrets(ctx) }
+
+// Owns, after Auth, answers 404 for a route whose {id} names something
+// outside the Current guild. belongs is the owning context's check, e.g.
+// projects.ApplicationInGuild; name tells the middlewares apart.
+func Owns(name string, belongs func(ctx context.Context, id, guildID uint64) (bool, error)) contractshttp.Middleware {
+	return guildshttp.Owns{Name: name, Belongs: belongs}
+}
 
 // Current is the id of the Guild the request acts in, after Auth.
 func Current(ctx contractshttp.Context) uint64 { return guildshttp.Current(ctx) }

@@ -181,22 +181,23 @@ func isApplicationNotFound(err error) bool { return errors.Is(err, projects.ErrN
 
 // Routes registers the deployments API behind guilds.Auth (Known hosts
 // also behind guilds.Admin, the Webhook with its secret behind
-// guilds.Secrets), and the
-// Webhook endpoint git hosts call without a Session (the signature is its
-// authentication).
+// guilds.Secrets), every route keyed by an Application or a Deployment
+// answering 404 outside the Current guild, and the Webhook endpoint git
+// hosts call without a Session (the signature is its authentication; it is
+// found by its secret, in whatever Guild).
 func Routes(r route.Router) {
 	c := deploymentshttp.NewController(svc(), isApplicationNotFound)
 	wc := deploymentshttp.NewWebhookController(webhooks, isApplicationNotFound)
 	r.Post("/api/webhooks/applications/{id}", wc.Receive)
 	// The Webhook answers with its secret, even after a change.
-	r.Middleware(guilds.Auth, guilds.Secrets).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, guilds.Secrets, applicationInGuild).Group(func(r route.Router) {
 		r.Get("/api/applications/{id}/webhook", wc.Show)
 	})
 	r.Middleware(guilds.Auth, guilds.Admin).Group(func(r route.Router) {
 		r.Get("/api/known-hosts", c.KnownHosts)
 		r.Delete("/api/known-hosts/{id}", c.ForgetKnownHost)
 	})
-	r.Middleware(guilds.Auth).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, applicationInGuild).Group(func(r route.Router) {
 		r.Patch("/api/applications/{id}/webhook", wc.Update)
 		r.Post("/api/applications/{id}/webhook/secret", wc.RotateSecret)
 		r.Get("/api/applications/{id}/status", c.Status)
@@ -204,30 +205,48 @@ func Routes(r route.Router) {
 		r.Delete("/api/applications/{id}/previews/{number}", c.DeletePreview)
 		r.Get("/api/applications/{id}/deployments", c.List)
 		r.Get("/api/applications/{id}/images", c.Images)
+	})
+	r.Middleware(guilds.Auth, deploymentInGuild).Group(func(r route.Router) {
 		r.Get("/api/deployments/{id}", c.Show)
 	})
 	// Coolify's deploy actions: an API token needs deploy for them.
-	r.Middleware(guilds.Deploy).Group(func(r route.Router) {
+	r.Middleware(guilds.Deploy, applicationInGuild).Group(func(r route.Router) {
 		r.Post("/api/applications/{id}/deploy", c.Deploy)
 		r.Post("/api/applications/{id}/restart", c.Restart)
 		r.Post("/api/applications/{id}/stop", c.Stop)
 		r.Post("/api/applications/{id}/previews/{number}/deploy", c.DeployPreview)
+	})
+	r.Middleware(guilds.Deploy, deploymentInGuild).Group(func(r route.Router) {
 		r.Post("/api/deployments/{id}/cancel", c.Cancel)
 		r.Post("/api/deployments/{id}/rollback", c.Rollback)
 	})
 }
 
+// applicationInGuild and deploymentInGuild answer 404 for an {id}
+// Application, or a Deployment of an Application, outside the Current guild.
+var (
+	applicationInGuild = guilds.Owns("application", projects.ApplicationInGuild)
+	deploymentInGuild  = guilds.Owns("deployment", func(ctx context.Context, id, guildID uint64) (bool, error) {
+		d, err := svc().Deployment(ctx, id)
+		if errors.Is(err, app.ErrNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return projects.ApplicationInGuild(ctx, d.ApplicationID, guildID)
+	})
+)
+
 var shutdown = make(chan struct{})
 
 // StreamRoutes registers the live log streams, behind guilds.Auth but
-// outside the request timeout.
+// outside the request timeout, each answering 404 outside the Current guild.
 func StreamRoutes(r route.Router) {
 	isNotFound := func(err error) bool { return errors.Is(err, projects.ErrNotFound) || errors.Is(err, app.ErrNotFound) }
 	c := deploymentshttp.NewStreamController(svc(), followContainer, isNotFound, shutdown)
-	r.Middleware(guilds.Auth).Group(func(r route.Router) {
-		r.Get("/api/deployments/{id}/log", c.DeploymentLog)
-		r.Get("/api/applications/{id}/logs", c.ContainerLogs)
-	})
+	r.Middleware(guilds.Auth, deploymentInGuild).Get("/api/deployments/{id}/log", c.DeploymentLog)
+	r.Middleware(guilds.Auth, applicationInGuild).Get("/api/applications/{id}/logs", c.ContainerLogs)
 }
 
 // followContainer reads the Application's running Container on its Target

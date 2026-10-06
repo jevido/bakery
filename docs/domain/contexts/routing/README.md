@@ -60,9 +60,15 @@ None.
 ## Integration
 
 - **Publishes:** `SwitchRoute`, `StopRoute`, `SwitchPreviewRoute` and `DropPreviewRoute` for deployments; `SetServiceRoutes` and `DropServiceRoutes` for services; the Route settings over HTTP (`GET/PUT /api/applications/{id}/routing`) for the dashboard.
-- **Consumes:** `ApplicationDeleted` and `ApplicationDomainsChanged` from projects; `servers.Connect` to run and configure a Remote Proxy.
+- **Consumes:** `ApplicationDeleted` and `ApplicationDomainsChanged` from projects, and `ApplicationInGuild` for the Route settings API; `servers.Connect` to run and configure a Remote Proxy.
 
 ## Why it's shaped this way
+
+- **A Domain is unique across every Guild.** One Proxy serves every Guild's
+  Applications and Services, so two Guilds cannot both have `app.example.com`;
+  `projects.DomainInUse` and the Domain checks ask across all Guilds. The
+  Route settings API (`/api/applications/{id}/routing`) answers 404 for an
+  Application outside the Current guild (`projects.ApplicationInGuild`).
 
 - **Caddy is configured only through its admin API, and always with the full
   config.** Rendering everything from the `routes` table and loading it with

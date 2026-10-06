@@ -84,7 +84,7 @@ backing up Redis and Valkey (see below).
   dashboard, and `OnBackupExecutionFinished` (notifications).
 - **Talks to:** S3-compatible storage (AWS S3, Garage, and the like) over
   its HTTP API, for S3 storages.
-- **Consumes:** `projects.Environment(id)` to place a new Database (and
+- **Consumes:** `projects.EnvironmentInGuild` and `projects.ProjectInGuild` (through `guilds.Owns`), so every route keyed by an Environment, Project, Database, Scheduled backup or Backup execution answers 404 outside the Current guild; `projects.Environment(id)` to place a new Database (and
   learn its Project), translated into its own `Environment`; registers
   `projects.OnProjectDeleting`, answering "in use" while the Project has
   Databases.

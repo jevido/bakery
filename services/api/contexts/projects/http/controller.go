@@ -20,10 +20,18 @@ type Controller struct {
 	// localServer is the Local server's id, shown where an Application's
 	// Target server is 0.
 	localServer func(ctx context.Context) (uint64, error)
+	// currentGuild is the Guild the request acts in.
+	currentGuild func(ctx contractshttp.Context) uint64
 }
 
-func NewController(service *app.Service, localServer func(ctx context.Context) (uint64, error)) *Controller {
-	return &Controller{service: service, localServer: localServer}
+func NewController(service *app.Service, localServer func(ctx context.Context) (uint64, error), currentGuild func(ctx contractshttp.Context) uint64) *Controller {
+	return &Controller{service: service, localServer: localServer, currentGuild: currentGuild}
+}
+
+// in is the request's context scoped to its Current guild: a Project,
+// Environment or Application of another Guild is not found (404).
+func (c *Controller) in(ctx contractshttp.Context) context.Context {
+	return app.InGuild(ctx.Context(), c.currentGuild(ctx))
 }
 
 // localID is the Local server's id, 0 when it cannot be read (the
@@ -225,7 +233,7 @@ type projectRequest struct {
 }
 
 func (c *Controller) ListProjects(ctx contractshttp.Context) contractshttp.Response {
-	ps, err := c.service.Projects(ctx.Context())
+	ps, err := c.service.Projects(c.in(ctx))
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -241,7 +249,7 @@ func (c *Controller) CreateProject(ctx contractshttp.Context) contractshttp.Resp
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	p, err := c.service.CreateProject(ctx.Context(), req.Name, req.Description)
+	p, err := c.service.CreateProject(c.in(ctx), c.currentGuild(ctx), req.Name, req.Description)
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -253,7 +261,7 @@ func (c *Controller) ShowProject(ctx contractshttp.Context) contractshttp.Respon
 	if !ok {
 		return notFound(ctx)
 	}
-	p, err := c.service.Project(ctx.Context(), pid)
+	p, err := c.service.Project(c.in(ctx), pid)
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -269,7 +277,7 @@ func (c *Controller) UpdateProject(ctx contractshttp.Context) contractshttp.Resp
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	p, err := c.service.UpdateProject(ctx.Context(), pid, req.Name, req.Description)
+	p, err := c.service.UpdateProject(c.in(ctx), pid, req.Name, req.Description)
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -281,7 +289,7 @@ func (c *Controller) DeleteProject(ctx contractshttp.Context) contractshttp.Resp
 	if !ok {
 		return notFound(ctx)
 	}
-	if err := c.service.DeleteProject(ctx.Context(), pid); err != nil {
+	if err := c.service.DeleteProject(c.in(ctx), pid); err != nil {
 		return fail(ctx, err)
 	}
 	return ctx.Response().NoContent()
@@ -301,7 +309,7 @@ func (c *Controller) CreateEnvironment(ctx contractshttp.Context) contractshttp.
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	e, err := c.service.CreateEnvironment(ctx.Context(), pid, req.Name, req.Description)
+	e, err := c.service.CreateEnvironment(c.in(ctx), pid, req.Name, req.Description)
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -313,7 +321,7 @@ func (c *Controller) ShowEnvironment(ctx contractshttp.Context) contractshttp.Re
 	if !ok {
 		return notFound(ctx)
 	}
-	p, e, err := c.service.EnvironmentInProject(ctx.Context(), eid)
+	p, e, err := c.service.EnvironmentInProject(c.in(ctx), eid)
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -331,7 +339,7 @@ func (c *Controller) UpdateEnvironment(ctx contractshttp.Context) contractshttp.
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	e, err := c.service.UpdateEnvironment(ctx.Context(), eid, req.Name, req.Description)
+	e, err := c.service.UpdateEnvironment(c.in(ctx), eid, req.Name, req.Description)
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -343,9 +351,9 @@ func (c *Controller) DeleteEnvironment(ctx contractshttp.Context) contractshttp.
 	if !ok {
 		return notFound(ctx)
 	}
-	err := c.service.DeleteEnvironment(ctx.Context(), eid)
+	err := c.service.DeleteEnvironment(c.in(ctx), eid)
 	if errors.Is(err, app.ErrEnvironmentNotEmpty) {
-		e, _ := c.service.Environment(ctx.Context(), eid)
+		e, _ := c.service.Environment(c.in(ctx), eid)
 		return respond.Error(ctx, contractshttp.StatusConflict, fmt.Sprintf("Environment %s has resources, delete them first.", e.Name))
 	}
 	if err != nil {
@@ -423,7 +431,7 @@ func (c *Controller) CreateApplication(ctx contractshttp.Context) contractshttp.
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	a, err := c.service.CreateApplication(ctx.Context(), envID, req.input())
+	a, err := c.service.CreateApplication(c.in(ctx), envID, req.input())
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -435,7 +443,7 @@ func (c *Controller) ShowApplication(ctx contractshttp.Context) contractshttp.Re
 	if !ok {
 		return notFound(ctx)
 	}
-	a, err := c.service.Application(ctx.Context(), aid)
+	a, err := c.service.Application(c.in(ctx), aid)
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -451,7 +459,7 @@ func (c *Controller) UpdateApplication(ctx contractshttp.Context) contractshttp.
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	a, err := c.service.UpdateApplication(ctx.Context(), aid, req.input())
+	a, err := c.service.UpdateApplication(c.in(ctx), aid, req.input())
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -464,7 +472,7 @@ func (c *Controller) RegenerateDeployKey(ctx contractshttp.Context) contractshtt
 	if !ok {
 		return notFound(ctx)
 	}
-	a, err := c.service.RegenerateDeployKey(ctx.Context(), aid)
+	a, err := c.service.RegenerateDeployKey(c.in(ctx), aid)
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -480,7 +488,7 @@ func (c *Controller) DeleteApplication(ctx contractshttp.Context) contractshttp.
 	// docker_cleanup. Both default to true, as Coolify's do.
 	deleteVolumes := ctx.Request().QueryBool("delete_volumes", true)
 	deleteImages := ctx.Request().QueryBool("delete_images", true)
-	if err := c.service.DeleteApplication(ctx.Context(), aid, deleteVolumes, deleteImages); err != nil {
+	if err := c.service.DeleteApplication(c.in(ctx), aid, deleteVolumes, deleteImages); err != nil {
 		return fail(ctx, err)
 	}
 	return ctx.Response().NoContent()
@@ -540,7 +548,7 @@ func (c *Controller) ShowEnvironmentVariables(ctx contractshttp.Context) contrac
 	if !ok {
 		return notFound(ctx)
 	}
-	own, inherited, err := c.service.Variables(ctx.Context(), aid)
+	own, inherited, err := c.service.Variables(c.in(ctx), aid)
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -552,7 +560,7 @@ func (c *Controller) ShowEnvironmentVariables(ctx contractshttp.Context) contrac
 }
 
 // replaceVariables binds the whole set and hands it to replace.
-func replaceVariables(ctx contractshttp.Context, replace func(ctx context.Context, owner uint64, vars []domain.EnvironmentVariable) error) contractshttp.Response {
+func (c *Controller) replaceVariables(ctx contractshttp.Context, replace func(ctx context.Context, owner uint64, vars []domain.EnvironmentVariable) error) contractshttp.Response {
 	oid, ok := id(ctx)
 	if !ok {
 		return notFound(ctx)
@@ -562,18 +570,18 @@ func replaceVariables(ctx contractshttp.Context, replace func(ctx context.Contex
 		return respond.BadBody(ctx)
 	}
 	vars := req.vars()
-	if err := replace(ctx.Context(), oid, vars); err != nil {
+	if err := replace(c.in(ctx), oid, vars); err != nil {
 		return fail(ctx, err)
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"environment_variables": variablesToJSON(vars)})
 }
 
-func showVariables(ctx contractshttp.Context, read func(ctx context.Context, owner uint64) ([]domain.EnvironmentVariable, error)) contractshttp.Response {
+func (c *Controller) showVariables(ctx contractshttp.Context, read func(ctx context.Context, owner uint64) ([]domain.EnvironmentVariable, error)) contractshttp.Response {
 	oid, ok := id(ctx)
 	if !ok {
 		return notFound(ctx)
 	}
-	vars, err := read(ctx.Context(), oid)
+	vars, err := read(c.in(ctx), oid)
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -581,21 +589,21 @@ func showVariables(ctx contractshttp.Context, read func(ctx context.Context, own
 }
 
 func (c *Controller) ReplaceEnvironmentVariables(ctx contractshttp.Context) contractshttp.Response {
-	return replaceVariables(ctx, c.service.ReplaceEnvironmentVariables)
+	return c.replaceVariables(ctx, c.service.ReplaceEnvironmentVariables)
 }
 
 func (c *Controller) ShowProjectSharedVariables(ctx contractshttp.Context) contractshttp.Response {
-	return showVariables(ctx, c.service.ProjectSharedVariables)
+	return c.showVariables(ctx, c.service.ProjectSharedVariables)
 }
 
 func (c *Controller) ReplaceProjectSharedVariables(ctx contractshttp.Context) contractshttp.Response {
-	return replaceVariables(ctx, c.service.ReplaceProjectSharedVariables)
+	return c.replaceVariables(ctx, c.service.ReplaceProjectSharedVariables)
 }
 
 func (c *Controller) ShowEnvironmentSharedVariables(ctx contractshttp.Context) contractshttp.Response {
-	return showVariables(ctx, c.service.EnvironmentSharedVariables)
+	return c.showVariables(ctx, c.service.EnvironmentSharedVariables)
 }
 
 func (c *Controller) ReplaceEnvironmentSharedVariables(ctx contractshttp.Context) contractshttp.Response {
-	return replaceVariables(ctx, c.service.ReplaceEnvironmentSharedVariables)
+	return c.replaceVariables(ctx, c.service.ReplaceEnvironmentSharedVariables)
 }

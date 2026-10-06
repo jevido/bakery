@@ -485,6 +485,13 @@ func (s *Service) view(ctx context.Context, sv domain.Service) (View, error) {
 	return v, nil
 }
 
+// EnvironmentOf is the Environment the Service is in, or ErrNotFound; for
+// answering 404 outside the Current guild.
+func (s *Service) EnvironmentOf(ctx context.Context, id uint64) (uint64, error) {
+	sv, err := s.get(ctx, id)
+	return sv.EnvironmentID, err
+}
+
 func (s *Service) Get(ctx context.Context, id uint64) (View, error) {
 	sv, err := s.get(ctx, id)
 	if err != nil {

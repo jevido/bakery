@@ -74,19 +74,38 @@ func svc() *app.Service {
 	return service
 }
 
-// Routes registers the services API, all behind guilds.Auth.
+var (
+	environmentInGuild = guilds.Owns("environment", projects.EnvironmentInGuild)
+	projectInGuild     = guilds.Owns("project", projects.ProjectInGuild)
+	// serviceInGuild answers 404 for an {id} Service whose Environment is
+	// outside the Current guild.
+	serviceInGuild = guilds.Owns("service", func(ctx context.Context, id, guildID uint64) (bool, error) {
+		envID, err := svc().EnvironmentOf(ctx, id)
+		if errors.Is(err, app.ErrNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return projects.EnvironmentInGuild(ctx, envID, guildID)
+	})
+)
+
+// Routes registers the services API, all behind guilds.Auth, every route
+// keyed by an Environment, Project or Service answering 404 outside the
+// Current guild.
 func Routes(r route.Router) {
 	c := serviceshttp.NewController(svc())
-	r.Middleware(guilds.Auth).Group(func(r route.Router) {
-		r.Get("/api/service-templates", c.Templates)
-		r.Post("/api/environments/{id}/services", c.Create)
-		r.Get("/api/projects/{id}/services", c.ForProject)
+	r.Middleware(guilds.Auth).Get("/api/service-templates", c.Templates)
+	r.Middleware(guilds.Auth, environmentInGuild).Post("/api/environments/{id}/services", c.Create)
+	r.Middleware(guilds.Auth, projectInGuild).Get("/api/projects/{id}/services", c.ForProject)
+	r.Middleware(guilds.Auth, serviceInGuild).Group(func(r route.Router) {
 		r.Get("/api/services/{id}", c.Show)
 		r.Patch("/api/services/{id}", c.Update)
 		r.Delete("/api/services/{id}", c.Delete)
 	})
 	// Coolify's deploy actions: an API token needs deploy for them.
-	r.Middleware(guilds.Deploy).Group(func(r route.Router) {
+	r.Middleware(guilds.Deploy, serviceInGuild).Group(func(r route.Router) {
 		r.Post("/api/services/{id}/start", c.Start)
 		r.Post("/api/services/{id}/stop", c.Stop)
 		r.Post("/api/services/{id}/restart", c.Restart)
@@ -95,12 +114,10 @@ func Routes(r route.Router) {
 }
 
 // StreamRoutes registers the Component log stream, behind guilds.Auth
-// but outside the request timeout.
+// (404 outside the Current guild) but outside the request timeout.
 func StreamRoutes(r route.Router) {
 	c := serviceshttp.NewStreamController(svc(), shutdown)
-	r.Middleware(guilds.Auth).Group(func(r route.Router) {
-		r.Get("/api/services/{id}/components/{component}/logs", c.Logs)
-	})
+	r.Middleware(guilds.Auth, serviceInGuild).Get("/api/services/{id}/components/{component}/logs", c.Logs)
 }
 
 // Recover brings Up, in the background, every Service that should run and

@@ -666,3 +666,24 @@ func (s *Service) Tick(ctx context.Context, now time.Time) error {
 	}
 	return nil
 }
+
+// EnvironmentOfDatabase is the Environment the Database is in, or
+// ErrNotFound; for answering 404 outside the Current guild.
+func (s *Service) EnvironmentOfDatabase(ctx context.Context, id uint64) (uint64, error) {
+	d, err := s.get(ctx, id)
+	return d.EnvironmentID, err
+}
+
+// EnvironmentOfScheduledBackup is the Environment of the Scheduled
+// backup's Database, or ErrNotFound.
+func (s *Service) EnvironmentOfScheduledBackup(ctx context.Context, id uint64) (uint64, error) {
+	_, d, err := s.scheduledBackup(ctx, id)
+	return d.EnvironmentID, err
+}
+
+// EnvironmentOfBackupExecution is the Environment of the Backup
+// execution's Database, or ErrNotFound.
+func (s *Service) EnvironmentOfBackupExecution(ctx context.Context, id uint64) (uint64, error) {
+	_, d, err := s.execution(ctx, id)
+	return d.EnvironmentID, err
+}

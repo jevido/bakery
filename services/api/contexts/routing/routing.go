@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/route"
 	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/app/podman"
@@ -83,7 +84,9 @@ func svc() *app.Service {
 
 // Routes registers the Route settings API, behind guilds.Auth.
 func Routes(r route.Router) {
-	c := routinghttp.NewController(svc(), projects.ApplicationExists)
+	c := routinghttp.NewController(svc(), func(ctx contractshttp.Context, id uint64) (bool, error) {
+		return projects.ApplicationInGuild(ctx.Context(), id, guilds.Current(ctx))
+	})
 	r.Middleware(guilds.Auth).Group(func(r route.Router) {
 		r.Get("/api/applications/{id}/routing", c.ShowSettings)
 		r.Put("/api/applications/{id}/routing", c.ReplaceSettings)

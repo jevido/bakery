@@ -432,3 +432,39 @@ func TestApplicationDescription(t *testing.T) {
 		t.Fatalf("clearing: %v, %q", err, a.Description)
 	}
 }
+
+func TestInGuildScopesAContext(t *testing.T) {
+	if _, ok := GuildOf(context.Background()); ok {
+		t.Fatal("a background context is scoped to a Guild")
+	}
+	if g, ok := GuildOf(InGuild(context.Background(), 7)); !ok || g != 7 {
+		t.Fatalf("GuildOf(InGuild(7)) = %d, %v", g, ok)
+	}
+}
+
+// guildStore keeps one Environment, in Guild 1, and honours the scope as the
+// real store does.
+type guildStore struct{ fakeStore }
+
+func (g *guildStore) Environment(ctx context.Context, id uint64) (domain.Environment, bool, error) {
+	if guild, ok := GuildOf(ctx); ok && guild != 1 {
+		return domain.Environment{}, false, nil
+	}
+	return domain.Environment{ID: 1, ProjectID: 1, GuildID: 1, Name: domain.DefaultEnvironment}, true, nil
+}
+
+func TestAnApplicationBelongsToItsEnvironmentsGuild(t *testing.T) {
+	s := NewService(&guildStore{}, fakeKey, "example.com", "")
+	in := domain.ApplicationInput{Name: "web", GitURL: "https://example.com/r.git", Port: 80}
+
+	if _, err := s.CreateApplication(InGuild(context.Background(), 2), 1, in); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("create in another Guild's Environment: want ErrNotFound, got %v", err)
+	}
+	a, err := s.CreateApplication(InGuild(context.Background(), 1), 1, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.GuildID != 1 {
+		t.Fatalf("GuildID = %d, want 1", a.GuildID)
+	}
+}

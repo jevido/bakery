@@ -188,11 +188,13 @@ func (s *Service) DomainInUse(ctx context.Context, d string) (bool, error) {
 	return len(taken) > 0, err
 }
 
-func (s *Service) CreateProject(ctx context.Context, name, description string) (domain.Project, error) {
+// CreateProject makes a Project in the Guild.
+func (s *Service) CreateProject(ctx context.Context, guildID uint64, name, description string) (domain.Project, error) {
 	p, err := domain.NewProject(name, description)
 	if err != nil {
 		return domain.Project{}, err
 	}
+	p.GuildID = guildID
 	return s.store.CreateProject(ctx, p)
 }
 
@@ -266,6 +268,7 @@ func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, i
 		ServerID:         server,
 		EnvironmentID:    env.ID,
 		ProjectID:        env.ProjectID,
+		GuildID:          env.GuildID,
 		Name:             in.Name,
 		Slug:             slug,
 		BuildPack:        in.BuildPack,
@@ -529,14 +532,15 @@ func (s *Service) EnvironmentInProject(ctx context.Context, id uint64) (domain.P
 // CreateEnvironment adds an Environment to the Project; its name is unique
 // within the Project, case-insensitively.
 func (s *Service) CreateEnvironment(ctx context.Context, projectID uint64, name, description string) (domain.Environment, error) {
-	if _, err := s.Project(ctx, projectID); err != nil {
+	p, err := s.Project(ctx, projectID)
+	if err != nil {
 		return domain.Environment{}, err
 	}
 	e, err := domain.NewEnvironment(name, description)
 	if err != nil {
 		return domain.Environment{}, err
 	}
-	e.ProjectID = projectID
+	e.ProjectID, e.GuildID = projectID, p.GuildID
 	if err := s.checkEnvironmentName(ctx, e, 0); err != nil {
 		return domain.Environment{}, err
 	}

@@ -1,6 +1,7 @@
 // Package projects is what other contexts and the router may use from the
 // projects context: its routes, ApplicationForDeploy (with the Target
-// server), Environment, the ApplicationDeleted and ApplicationDomainsChanged
+// server), Environment, ProjectInGuild, EnvironmentInGuild and
+// ApplicationInGuild, the ApplicationDeleted and ApplicationDomainsChanged
 // events and the OnProjectDeleting and OnEnvironmentDeleting checks. Nothing
 // else in contexts/projects is for outside use.
 package projects
@@ -37,7 +38,7 @@ var ErrNotFound = app.ErrNotFound
 
 // Routes registers the projects API, all behind guilds.Auth.
 func Routes(r route.Router) {
-	c := projectshttp.NewController(svc(), servers.LocalID)
+	c := projectshttp.NewController(svc(), servers.LocalID, guilds.Current)
 	r.Middleware(guilds.Auth).Group(func(r route.Router) {
 		r.Get("/api/projects", c.ListProjects)
 		r.Post("/api/projects", c.CreateProject)
@@ -69,8 +70,10 @@ func Routes(r route.Router) {
 // at the start of a Deployment. Its variables are merged (Application over
 // Environment over Project), split by scope and decrypted.
 type ApplicationSnapshot struct {
-	ID   uint64
-	Slug string
+	ID uint64
+	// GuildID is the Guild the Application belongs to (through its Project).
+	GuildID uint64
+	Slug    string
 	// BuildPack is "dockerfile", "nixpacks", "static" or "dockerimage".
 	BuildPack string
 	// DockerImage is set for the dockerimage pack, which has no Git repository.
@@ -116,16 +119,6 @@ type HealthCheck struct {
 	StartPeriod int
 }
 
-// ApplicationExists reports whether the Application exists, for contexts
-// that keep something of their own per Application.
-func ApplicationExists(ctx context.Context, id uint64) (bool, error) {
-	_, err := svc().Application(ctx, id)
-	if errors.Is(err, app.ErrNotFound) {
-		return false, nil
-	}
-	return err == nil, err
-}
-
 // ApplicationForDeploy returns the snapshot, or ErrNotFound.
 func ApplicationForDeploy(ctx context.Context, id uint64) (ApplicationSnapshot, error) {
 	a, err := svc().Application(ctx, id)
@@ -141,7 +134,7 @@ func ApplicationForDeploy(ctx context.Context, id uint64) (ApplicationSnapshot, 
 		storages[i] = Storage(s)
 	}
 	return ApplicationSnapshot{
-		ID: a.ID, Slug: a.Slug, BuildPack: string(a.BuildPack), DockerImage: a.DockerImage, PublishDirectory: a.PublishDirectory,
+		ID: a.ID, GuildID: a.GuildID, Slug: a.Slug, BuildPack: string(a.BuildPack), DockerImage: a.DockerImage, PublishDirectory: a.PublishDirectory,
 		RegistryUsername: a.RegistryCredentials.Username, RegistryPassword: a.RegistryCredentials.Password,
 		GitURL: a.GitURL, GitBranch: a.GitBranch,
 		DockerfilePath: a.DockerfilePath, Port: a.Port, Domains: a.Domains, BuildVariables: build, RuntimeVariables: runtime, DeployKey: a.DeployKey.Private,
@@ -162,6 +155,7 @@ func OnApplicationDomainsChanged(f func(ctx context.Context, applicationID uint6
 type EnvironmentSnapshot struct {
 	ID        uint64
 	ProjectID uint64
+	GuildID   uint64
 	Name      string
 }
 
@@ -171,7 +165,32 @@ func Environment(ctx context.Context, id uint64) (EnvironmentSnapshot, error) {
 	if err != nil {
 		return EnvironmentSnapshot{}, err
 	}
-	return EnvironmentSnapshot{ID: e.ID, ProjectID: e.ProjectID, Name: e.Name}, nil
+	return EnvironmentSnapshot{ID: e.ID, ProjectID: e.ProjectID, GuildID: e.GuildID, Name: e.Name}, nil
+}
+
+// ProjectInGuild reports whether the Project exists and belongs to the
+// Guild, for the routes of other contexts keyed by a Project id.
+func ProjectInGuild(ctx context.Context, projectID, guildID uint64) (bool, error) {
+	return found(svc().Project(app.InGuild(ctx, guildID), projectID))
+}
+
+// EnvironmentInGuild reports whether the Environment exists and belongs to
+// the Guild, for the routes of other contexts keyed by an Environment id.
+func EnvironmentInGuild(ctx context.Context, environmentID, guildID uint64) (bool, error) {
+	return found(svc().Environment(app.InGuild(ctx, guildID), environmentID))
+}
+
+// ApplicationInGuild reports whether the Application exists and belongs to
+// the Guild, for the routes of other contexts keyed by an Application id.
+func ApplicationInGuild(ctx context.Context, applicationID, guildID uint64) (bool, error) {
+	return found(svc().Application(app.InGuild(ctx, guildID), applicationID))
+}
+
+func found[T any](_ T, err error) (bool, error) {
+	if errors.Is(err, app.ErrNotFound) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // OnProjectDeleting registers a check asked before a Project is deleted: a

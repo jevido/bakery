@@ -30,12 +30,12 @@ adapt to.
 | Upstream | Downstream | Pattern | Through |
 | -------- | ---------- | ------- | ------- |
 | identity | guilds | customer/supplier | `identity.Authenticate(ctx)` (the Principal: Member, Instance admin flag, the API token's Guild and Permissions, `Allows(permission)`) under every guilds middleware; `identity.ActIn` and identity's API token route group, which guilds registers behind its middlewares; `identity.Members`, `identity.MemberByID`, `identity.MemberByEmail`, `identity.ResetTwoFactor` and `identity.RevokeAPITokens` for the Members of a Guild; `identity.OnSetUp` for the first Guild; `identity.SessionMember`, `identity.CreateMember(...)` and `identity.SignIn` when an Invitation is accepted. Identity never imports guilds |
-| guilds | projects, deployments, routing, databases, services, servers, notifications | open host service (they are conformist) | The `guilds.Auth` middleware (a signed-in Member with a Membership in the Current guild, or the Instance admin; viewers refused on every change), `guilds.Deploy` around deploy actions, `guilds.Admin` around admin-only areas, `guilds.Secrets` around GETs that return Secrets, `guilds.CanSeeSecrets(ctx)` where one response mixes Secrets with public fields, and `guilds.Current(ctx)`, the Guild id every context stores on what it creates and filters by; each owning context registers `guilds.OnGuildDeleting` so a Guild that still owns something is not deleted. The others learn nothing else about Members |
-| projects | deployments | customer/supplier | `projects.ApplicationForDeploy(id)` returns an `ApplicationSnapshot` (Target server, Git repository, Dockerfile path, port, Domains, Persistent storage, Resource limits, decrypted Environment variables and Deploy key) |
-| projects | routing | customer/supplier | `projects.ApplicationExists(id)`, so the Route settings API answers 404 for an unknown Application without reading projects' tables |
+| guilds | projects, deployments, routing, databases, services, servers, notifications | open host service (they are conformist) | The `guilds.Auth` middleware (a signed-in Member with a Membership in the Current guild, or the Instance admin; viewers refused on every change), `guilds.Deploy` around deploy actions, `guilds.Admin` around admin-only areas, `guilds.Owns(name, belongs)` on every route keyed by an id (404 when the owning context's `belongs` says it is outside the Current guild), `guilds.Secrets` around GETs that return Secrets, `guilds.CanSeeSecrets(ctx)` where one response mixes Secrets with public fields, and `guilds.Current(ctx)`, the Guild id every context stores on what it creates and filters by; each owning context registers `guilds.OnGuildDeleting` so a Guild that still owns something is not deleted. The others learn nothing else about Members |
+| projects | deployments, routing, databases, services | customer/supplier | `projects.ProjectInGuild`, `projects.EnvironmentInGuild` and `projects.ApplicationInGuild(ctx, id, guildID)`, through `guilds.Owns`, so every route keyed by a Project, Environment, Application or something in one (a Deployment, Database, Scheduled backup, Backup execution, Service) answers 404 outside the Current guild without reading projects' tables. Background paths (deploy workers, Webhooks, probes) ask without a Guild |
+| projects | deployments | customer/supplier | `projects.ApplicationForDeploy(id)` returns an `ApplicationSnapshot` (its Guild, Target server, Git repository, Dockerfile path, port, Domains, Persistent storage, Resource limits, decrypted Environment variables and Deploy key) |
 | routing | deployments | customer/supplier | `routing.SwitchRoute(serverID, applicationID, domains, container, port)`, called synchronously in a Deployment's route step, so the old Container is removed only after traffic has moved; `routing.SwitchPreviewRoute(serverID, applicationID, preview, domains, container, port)` the same for a Preview, and `routing.DropPreviewRoute(applicationID, preview)` when a Preview closes |
 | projects | routing, deployments | published language | `ApplicationDeleted` event: routing drops the Application's Route, Preview routes and Route settings; deployments removes its Containers, Deployments, Previews and Webhook, and its volumes and Images unless the event keeps them |
-| projects | databases | customer/supplier | `projects.Environment(id)` places a new Database and names its Project; `projects.OnProjectDeleting` lets databases refuse deleting a Project that still has Databases |
+| projects | databases | customer/supplier | `projects.Environment(id)` (an `EnvironmentSnapshot` with its Project and Guild) places a new Database and names its Project; `projects.OnProjectDeleting` lets databases refuse deleting a Project that still has Databases |
 | projects | routing | published language | `ApplicationDomainsChanged { applicationID, domains }` event: routing moves the Application's Route to the new Domains at once |
 | projects | services | customer/supplier | `projects.Environment(id)` places a Service; `projects.DomainInUse(domain)` before a Service stores a Domain; services registers `projects.OnDomainCheck` (an Application cannot take a Service's Domain) and `projects.OnProjectDeleting` (a Project with Services is not deleted) |
 | routing | services | customer/supplier | `routing.SetServiceRoutes(serviceID, routes)` after a Service is Up, `routing.DropServiceRoutes(serviceID)` before it is deleted |
@@ -68,18 +68,18 @@ A shared kernel is a deliberate exception and needs a line saying why.
 ```mermaid
 flowchart LR
   identity -->|Authenticate, CreateMember| guilds
-  guilds -->|Auth, Admin, Secrets, Current| projects
+  guilds -->|Auth, Admin, Secrets, Owns, Current| projects
   guilds --> deployments
   guilds --> routing
-  projects -->|ApplicationForDeploy| deployments
+  projects -->|ApplicationForDeploy, ApplicationInGuild| deployments
   routing -->|SwitchRoute| deployments
-  projects -->|ApplicationDeleted| routing
+  projects -->|ApplicationDeleted, ApplicationInGuild| routing
   projects -->|ApplicationDeleted| deployments
   projects -->|ApplicationDomainsChanged| routing
   guilds --> databases
-  projects -->|Environment, OnProjectDeleting| databases
+  projects -->|Environment, EnvironmentInGuild, ProjectInGuild, OnProjectDeleting| databases
   guilds --> services
-  projects -->|Environment, DomainInUse, OnDomainCheck, OnProjectDeleting| services
+  projects -->|Environment, EnvironmentInGuild, ProjectInGuild, DomainInUse, OnDomainCheck, OnProjectDeleting| services
   routing -->|SetServiceRoutes| services
   guilds --> servers
   servers -->|Connect, OnCleanup| deployments
