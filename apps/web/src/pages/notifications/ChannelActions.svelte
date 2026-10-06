@@ -12,7 +12,16 @@
     testing = false,
     ontoggle,
     ontest,
-  }: { enabled: boolean; busy?: boolean; testing?: boolean; ontoggle: () => unknown; ontest: () => unknown } = $props()
+    plainWhenDisabled = false,
+  }: {
+    enabled: boolean
+    busy?: boolean
+    testing?: boolean
+    ontoggle: () => unknown
+    ontest: () => unknown
+    /** Email: a disabled Send test is a bare button, as in Coolify's email.blade.php. */
+    plainWhenDisabled?: boolean
+  } = $props()
 
   const valid = (e: MouseEvent) => (e.currentTarget as HTMLElement).closest('form')?.reportValidity() ?? true
 </script>
@@ -37,7 +46,7 @@
       if (valid(e)) ontest()
     }}
   >
-    {#if !testing}<Icon name="notifications" class="size-3.5" />{/if}
+    {#if !testing && (enabled || !plainWhenDisabled)}<Icon name="notifications" class="size-3.5" />{/if}
     Send test
   </Button>
 </div>

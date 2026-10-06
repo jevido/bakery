@@ -22,6 +22,18 @@ func emailInput() Input {
 	}}
 }
 
+func TestChannelWithoutEvents(t *testing.T) {
+	in := emailInput()
+	in.EventKinds = []EventKind{}
+	c, err := NewChannel(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.EventKinds) != 0 {
+		t.Errorf("event kinds %v, want none", c.EventKinds)
+	}
+}
+
 func TestNewChannelDefaults(t *testing.T) {
 	c, err := NewChannel(emailInput())
 	if err != nil {
@@ -33,7 +45,7 @@ func TestNewChannelDefaults(t *testing.T) {
 	if !slices.Equal(c.Settings.To, []string{"ops@example.com"}) {
 		t.Errorf("to %v", c.Settings.To)
 	}
-	if !c.Subscribed(DeploymentFailure) || c.Subscribed(DeploymentSuccess) || c.Subscribed(BackupSuccess) || !c.Subscribed(ServerDiskUsage) {
+	if !c.Subscribed(DeploymentFailure) || c.Subscribed(DeploymentSuccess) || c.Subscribed(BackupSuccess) || !c.Subscribed(ServerDiskUsage) || c.Subscribed(ServerReachable) {
 		t.Errorf("event kinds %v", c.EventKinds)
 	}
 }
@@ -68,7 +80,6 @@ func TestChannelValidation(t *testing.T) {
 			return Input{Name: "p", Kind: Pushover, Settings: Settings{UserKey: "a b", APIToken: "abc"}}
 		}, "user_key"},
 		{"ntfy topic", func() Input { return Input{Name: "n", Kind: Ntfy, Settings: Settings{Topic: "a/b"}} }, "topic"},
-		{"no events", func() Input { in := emailInput(); in.EventKinds = []EventKind{}; return in }, "event_kinds"},
 		{"unknown event", func() Input { in := emailInput(); in.EventKinds = []EventKind{"reboot"}; return in }, "event_kinds"},
 		{"from name", func() Input { in := emailInput(); in.Settings.FromName = "Ops <x>"; return in }, "from_name"},
 		{"timeout low", func() Input { in := emailInput(); in.Settings.Timeout = -1; return in }, "timeout"},

@@ -69,7 +69,7 @@ var EventKinds = []EventKindInfo{
 	{BackupSuccess, "Backup success", false},
 	{BackupFailure, "Backup failure", true},
 	{ServerDiskUsage, "Disk usage warning", true},
-	{ServerReachable, "Server reachable", true},
+	{ServerReachable, "Server reachable", false},
 	{ServerUnreachable, "Server unreachable", true},
 }
 
@@ -228,9 +228,6 @@ func (c *Channel) Change(in Input) error {
 				events = append(events, k)
 			}
 		}
-	}
-	if len(events) == 0 {
-		return invalid("event_kinds", "pick at least one event")
 	}
 	s, err := c.merge(in.Settings)
 	if err != nil {

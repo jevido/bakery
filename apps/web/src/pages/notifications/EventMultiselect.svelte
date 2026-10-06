@@ -2,6 +2,7 @@
   // Coolify's notification event multiselect (resources/views/components/notification/event-multiselect.blade.php,
   // Apache-2.0, see NOTICE): a listbox trigger naming the selected events
   // with an n/m count, and a panel of check boxes; a click toggles one.
+  import { cubicIn, cubicOut } from 'svelte/easing'
   let {
     id,
     label,
@@ -20,6 +21,15 @@
   let root = $state<HTMLDivElement>()
   const selected = $derived(events.filter((e) => e.enabled))
   const selectedLabels = $derived(selected.map((e) => e.label).join(', '))
+
+  // Coolify's x-transition: from 0.25rem up, 98 % and transparent.
+  function pop(_: Element, { duration, easing }: { duration: number; easing: (t: number) => number }) {
+    return {
+      duration,
+      easing,
+      css: (t: number) => `opacity: ${t}; transform: translateY(${(t - 1) * 0.25}rem) scale(${0.98 + 0.02 * t})`,
+    }
+  }
 </script>
 
 <svelte:window
@@ -57,7 +67,7 @@
     </button>
 
     {#if open}
-      <div class="listbox-panel" role="listbox" aria-multiselectable="true">
+      <div class="listbox-panel" role="listbox" aria-multiselectable="true" in:pop={{ duration: 100, easing: cubicOut }} out:pop={{ duration: 75, easing: cubicIn }}>
         {#each events as event (event.kind)}
           <button
             type="button"

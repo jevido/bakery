@@ -23,7 +23,7 @@ each channel; an audit log is something else.
 | ---- | ------- |
 | Notification channel | A named place Notifications go to: a Channel kind, its settings (secrets encrypted), the Event kinds it is subscribed to, and whether it is enabled or disabled. |
 | Channel kind | `email` (SMTP server, from address and optional from name, recipients, an optional timeout and EHLO domain), `discord` (an incoming webhook URL, a secret, and whether Critical event mention is on: `@here` on an alarming Event kind), `slack` (an incoming webhook URL, a secret), `telegram` (a bot token, a chat id and optionally a forum topic, a message thread id, per Event kind), `pushover` (a user key and an API token, both secrets), `ntfy` (a server URL, a topic and optionally a token) or `webhook` (any URL, kept secret, JSON signed with an optional secret). |
-| Event kind | What a Notification is about: `deployment_failure`, `deployment_success`, `backup_failure`, `backup_success`, `server_unreachable`, `server_reachable`, `server_disk_usage`. A new channel is subscribed to all but the two `_success` ones. |
+| Event kind | What a Notification is about: `deployment_failure`, `deployment_success`, `backup_failure`, `backup_success`, `server_unreachable`, `server_reachable`, `server_disk_usage`. A new channel is subscribed to `deployment_failure`, `backup_failure`, `server_unreachable` and `server_disk_usage`, as Coolify's settings start. |
 | Notification | What a publisher hands over: an Event kind, a title, a body, an optional link into the dashboard and when it happened. Not stored on its own. |
 | Delivery | One Notification sent to one Notification channel: `pending`, `sent` or `failed`, the attempts made (at most 3) and the last error. The 50 newest per channel are kept. |
 | Test notification | A Notification sent at once from a channel's Send test button, recorded as a Delivery like any other. An email channel's can go to one typed recipient instead of its own. |
@@ -34,7 +34,7 @@ each channel; an audit log is something else.
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Notification channel | The name is unique (1–63 characters). The settings are valid for the Channel kind: URLs are `http` or `https`; an email channel has a host, a port, a security mode (`none`, `starttls`, `tls`), a from address and at least one recipient; Telegram has a bot token and a chat id, and its topics are digits, each for a known Event kind; Pushover has a user key and an API token; ntfy a server URL and a topic. An email channel's timeout is 1–300 seconds (empty means 30) and its EHLO domain a host name. It is subscribed to at least one Event kind. A secret setting left empty on a change keeps its stored value. A new channel is enabled; a disabled one gets no Deliveries and cannot be tested. |
+| Notification channel | The name is unique (1–63 characters). The settings are valid for the Channel kind: URLs are `http` or `https`; an email channel has a host, a port, a security mode (`none`, `starttls`, `tls`), a from address and at least one recipient; Telegram has a bot token and a chat id, and its topics are digits, each for a known Event kind; Pushover has a user key and an API token; ntfy a server URL and a topic. An email channel's timeout is 1–300 seconds (empty means 30) and its EHLO domain a host name. It may be subscribed to no Event kind, as in Coolify; then only a Test reaches it. A secret setting left empty on a change keeps its stored value. A new channel is enabled; a disabled one gets no Deliveries and cannot be tested. |
 | Delivery | Belongs to one Notification channel and goes when it goes. Attempts only grow, at most 3; after the third failure it is `failed` for good. Retries are 10 s after the first attempt and 60 s after the second. |
 
 ### Commands
@@ -108,8 +108,8 @@ None published.
   (`BAKERY_TELEGRAM_API_URL`, `BAKERY_PUSHOVER_API_URL`) only so tests can
   point them at a local stand-in; the other kinds take full URLs already.
 - **A Test notification mentions no one and goes to no forum topic**, as
-  Coolify's Test does: it carries the channel's first Event kind only so its
-  Delivery has one.
+  Coolify's Test does: it carries the channel's first Event kind
+  (`deployment_success` when it has none) only so its Delivery has one.
 - **A Telegram forum topic is set per Event kind**, as Coolify sets one per
   notification: a Notification of a kind without a topic goes to the main
   chat. Coolify's topics for Event kinds The Bakery does not have yet
@@ -146,3 +146,40 @@ None published.
   every other kind. Coolify sends team email to the team's members; an email
   Notification channel here carries its own Recipients, which is what makes
   several email channels (a team inbox, an on-call address) useful.
+- **The Notifications pages leave out what The Bakery has nothing behind
+  yet.** The pages follow Coolify's Notifications pages, with these
+  differences:
+  - Several named channels per kind, the channel picker and each channel's
+    recent Deliveries below the events grid (see "One page per Channel
+    kind" above). A Delivery shows its title, status, Event kind, time,
+    attempts and last error, newest first.
+  - ntfy is a seventh page, last in the Notifications sidebar, in the
+    other pages' shape: its fields, Enable/Disable, Send test and the
+    events grid.
+  - Email has its own Recipients field instead of sending to the team's
+    members: The Bakery's members are not a Team yet (goal Order 6,
+    Teams). There is no "Email service" system-wide/team select, no "Copy
+    from instance settings" and no Resend: The Bakery has no instance SMTP
+    settings to copy from or fall back to (goal Order 6, instance Settings:
+    SMTP and Resend).
+  - The events grid lists only the Event kinds The Bakery publishes.
+    Resource status changes and Restart limit reached are left out because
+    nothing restarts Resources on its own; Scheduled task success and
+    failure come with Scheduled Tasks and Docker cleanup success and
+    failure with the cleanup settings (both goal Order 6); Server patching
+    is left out because nothing checks for patches; Traefik proxy outdated
+    is left out because the proxy is Caddy only.
+  - The Webhook page has a Signing secret below the Webhook URL: The
+    Bakery signs each request (`X-Bakery-Signature`) when one is set, and
+    receivers that check it keep working.
+  - A field the API refuses says what a valid value looks like ("port is
+    1–65535 (587 for STARTTLS, 465 for TLS)") instead of Coolify's
+    "… is required.": The Bakery checks the shape of each setting, not only
+    that it is there. The Email page's one form saves the SMTP server with
+    the rest, so its one toast is "Email notifications settings updated."
+    and there is no separate "SMTP settings updated.".
+  - Notifications are admin-only: a member sees no Notifications in the
+    sidebar and the API refuses them, where Coolify shows members the pages
+    read-only with secrets hidden. A Notification channel's settings
+    include webhook URLs and tokens that grant posting to a team's chat, and
+    the pages have nothing a member could act on.

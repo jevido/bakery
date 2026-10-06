@@ -52,7 +52,7 @@ export function blankForm(events: string[]): ChannelForm {
     timeout: '',
     ehlo_domain: '',
     url: '',
-    ping: false,
+    ping: true,
     bot_token: '',
     chat_id: '',
     thread_ids: {},

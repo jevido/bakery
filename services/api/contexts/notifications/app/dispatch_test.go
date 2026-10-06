@@ -180,6 +180,17 @@ func TestTestChannelIsOneAttempt(t *testing.T) {
 	}
 }
 
+func TestTestChannelWithoutEvents(t *testing.T) {
+	s, store, _, _ := setup(t)
+	store.channels[0].EventKinds = nil
+	if sendErr, err := s.TestChannel(context.Background(), 1, ""); sendErr != nil || err != nil {
+		t.Fatalf("sendErr %v, err %v", sendErr, err)
+	}
+	if d := store.deliveries[0]; d.Notification.Kind != domain.DeploymentSuccess {
+		t.Fatalf("%+v", d)
+	}
+}
+
 func TestDisabledChannelGetsNothing(t *testing.T) {
 	s, store, sender, _ := setup(t)
 	store.channels[0].Enabled = false

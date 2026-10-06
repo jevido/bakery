@@ -14,6 +14,7 @@
   // "Send Test Email" modal does.
   import { untrack, type Snippet } from 'svelte'
   import { api, ApiError } from '../../lib/api'
+  import { session } from '../../lib/session.svelte'
   import Button from '../../lib/ui/Button.svelte'
   import Input from '../../lib/ui/Input.svelte'
   import Modal from '../../lib/ui/Modal.svelte'
@@ -42,7 +43,7 @@
   }: {
     kind: ChannelKind
     title: string
-    description: string
+    description?: string
     /** This kind's channels. */
     channels: NotificationChannel[]
     /** Every channel's name, of any kind; names are unique. */
@@ -64,6 +65,10 @@
     /** Saves a setting at once (Coolify's instantSave…), leaving other unsaved edits be. */
     instant: (change: Partial<ChannelForm>) => Promise<void>
   }
+
+  // Coolify's Email page says its own words in the toasts.
+  const savedText = $derived(kind === 'email' ? 'Email notifications settings updated.' : 'Settings saved.')
+  const testedText = $derived(kind === 'email' ? 'Test Email sent.' : 'Test notification sent.')
 
   const defaults = $derived(eventKinds.filter((e) => e.default).map((e) => e.kind))
 
@@ -133,7 +138,7 @@
     if (!c) return
     selected = c.id
     form = formOf(c)
-    toast.success('Settings saved.')
+    toast.success(savedText)
   }
 
   async function toggle() {
@@ -143,7 +148,7 @@
     if (!c) return
     selected = c.id
     form = formOf(c)
-    toast.success('Settings saved.')
+    toast.success(savedText)
   }
 
   let askingRecipient = $state(false)
@@ -157,7 +162,7 @@
     try {
       await api('POST', `/notification-channels/${channel.id}/test`, to ? { recipient: to } : undefined)
       askingRecipient = false
-      toast.success('Test notification sent.')
+      toast.success(testedText)
     } catch (err) {
       if (!(err instanceof ApiError)) throw err
       if (err.errors.recipient) {
@@ -165,7 +170,7 @@
         return
       }
       askingRecipient = false
-      toast.error('Test notification failed.', err.message)
+      toast.error(err.message)
     } finally {
       testing = false
       deliveriesVersion++
@@ -182,7 +187,7 @@
     const c = await store({ ...payload(formOf(channel)), event_kinds: toggled(channel.event_kinds) })
     if (!c) return
     form.events = [...c.event_kinds]
-    toast.success('Settings saved.')
+    toast.success(savedText)
   }
 
   async function instant(change: Partial<ChannelForm>) {
@@ -193,7 +198,7 @@
       Object.assign(form, Object.fromEntries(Object.keys(change).map((k) => [k, formOf(channel)[k as keyof ChannelForm]])))
       return
     }
-    toast.success('Settings saved.')
+    toast.success(savedText)
   }
 
   async function remove() {
@@ -231,9 +236,12 @@
           busy={toggling}
           {testing}
           ontoggle={toggle}
+          plainWhenDisabled={kind === 'email'}
           ontest={() => {
             if (kind !== 'email') return test()
             recipientError = ''
+            // Coolify starts the recipient at the signed-in user's address.
+            recipient ||= session.member?.email ?? ''
             askingRecipient = true
           }}
         />
@@ -273,7 +281,7 @@
       }}
       data-testid="test-email-form"
     >
-      <Input label="Recipient" type="email" bind:value={recipient} placeholder="test@example.com" required error={recipientError} data-testid="test-recipient" />
+      <Input label="Recipient" bind:value={recipient} placeholder="test@example.com" required error={recipientError} data-testid="test-recipient" />
       <div class="flex justify-end border-t border-neutral-200 pt-4 dark:border-white/[0.08]">
         <Button type="submit" variant="highlighted" loading={testing}>Send email</Button>
       </div>

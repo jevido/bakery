@@ -141,8 +141,13 @@ func (s *Service) TestChannel(ctx context.Context, id uint64, recipient string) 
 		c.Settings.To = []string{recipient}
 	}
 	timeout := sendTimeout(c, testTimeout)
+	// A channel may have no Event kinds; its Test's Delivery still needs one.
+	kind := domain.DeploymentSuccess
+	if len(c.EventKinds) > 0 {
+		kind = c.EventKinds[0]
+	}
 	n := domain.Notification{
-		Kind:  c.EventKinds[0],
+		Kind:  kind,
 		Title: "Test notification from The Bakery",
 		Body:  "This is a test of the notification channel \"" + c.Name + "\". If you can read it, it works.",
 		Link:  s.DashboardURL,

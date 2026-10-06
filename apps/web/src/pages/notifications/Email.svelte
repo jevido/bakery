@@ -13,17 +13,15 @@
   let props: KindPageProps = $props()
 </script>
 
-<ChannelPage kind="email" title="Email delivery" description="Send team notifications by email." {...props}>
+<ChannelPage kind="email" title="Email delivery" {...props}>
   {#snippet fields({ form, errors })}
     <div class="grid gap-4 lg:grid-cols-2">
-      <Input label="From name" helper="Name used in emails." bind:value={form.from_name} error={errors.from_name} placeholder="The Bakery" data-testid="email-from-name" />
+      <Input label="From name" helper="Name used in emails." bind:value={form.from_name} error={errors.from_name} required data-testid="email-from-name" />
       <Input
         label="From address"
-        type="email"
         helper="Email address used in emails."
         bind:value={form.from}
         error={errors.from}
-        placeholder="bakery@example.com"
         required
         data-testid="email-from"
       />
@@ -67,7 +65,6 @@
             helper="Timeout value for sending emails."
             bind:value={form.timeout}
             error={errors.timeout}
-            placeholder="30"
             data-testid="email-timeout"
           />
           <Input
@@ -75,7 +72,7 @@
             helper="Fully qualified domain sent in the SMTP EHLO command. Uses the system default when empty."
             bind:value={form.ehlo_domain}
             error={errors.ehlo_domain}
-            placeholder={location.hostname}
+            placeholder="bakery.example.com"
             data-testid="email-ehlo"
           />
         </div>
