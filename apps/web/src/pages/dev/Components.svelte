@@ -10,6 +10,9 @@
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Dropdown from '../../lib/ui/Dropdown.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
+  import CollectionToolbar from '../../lib/CollectionToolbar.svelte'
+  import EntityRow from '../../lib/EntityRow.svelte'
+  import ProjectTile from '../../lib/ProjectTile.svelte'
   import MetricCard from '../../lib/MetricCard.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
   import Helper from '../../lib/ui/Helper.svelte'
@@ -374,6 +377,36 @@
     <Empty title="No resources found" description="Add an application, a database or a service to this environment." icon="layers">
       <Button variant="highlighted">+ Add Resource</Button>
     </Empty>
+  </section>
+
+  <section id="collection-toolbar">
+    <SectionHeading title="CollectionToolbar" subtitle="CollectionToolbar: context, search, controls, actions, feedback" />
+    <CollectionToolbar>
+      {#snippet context()}<span class="text-sm text-muted-foreground">3 projects</span>{/snippet}
+      {#snippet search()}<UiInput type="search" placeholder="Search projects" class="h-8 sm:max-w-sm" />{/snippet}
+      {#snippet controls()}<UiButton variant="ghost" size="sm" class="text-xs">Sort: Name A–Z</UiButton>{/snippet}
+      {#snippet actions()}<UiButton variant="outline" size="sm"><Plus class="size-4" />New project</UiButton>{/snippet}
+      {#snippet feedback()}<Badge variant="secondary">Filtered by name</Badge>{/snippet}
+    </CollectionToolbar>
+  </section>
+
+  <section id="entity-row">
+    <SectionHeading title="EntityRow, ProjectTile" subtitle="EntityRow in a card; ProjectTile xs, sm, md, lg, neutral and tinted" />
+    <Card.Root class="block gap-0 overflow-hidden py-0">
+      <EntityRow title="Bakery" subtitle="The deployment platform" href="#/dev/components">
+        {#snippet leading()}<ProjectTile size="sm" />{/snippet}
+        {#snippet trailing()}<span class="text-xs text-muted-foreground">2 envs · 5 resources</span>{/snippet}
+      </EntityRow>
+      <EntityRow title="Selected, no subtitle" reserveSubtitleSpace selected>
+        {#snippet leading()}<ProjectTile size="sm" color="#6366f1" />{/snippet}
+      </EntityRow>
+    </Card.Root>
+    <div class="mt-4 flex items-center gap-3">
+      {#each ['xs', 'sm', 'md', 'lg'] as const as size (size)}
+        <ProjectTile {size} />
+        <ProjectTile {size} color="#0ea5e9" icon="servers" />
+      {/each}
+    </div>
   </section>
 
   <section id="metric-card">

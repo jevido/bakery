@@ -5,11 +5,25 @@
   // NOTICE): search, Sort, a remembered table/grid switch and client-side
   // pages, with "New project" in a modal.
   //
+  // Laid out as Paperclip's Projects page (ui/src/pages/Projects.tsx, MIT):
+  // a CollectionToolbar, a "Sort: <label>" popover, and the Projects as
+  // EntityRows in one bordered card, or as cards in the grid view.
+  //
   // Left out: project icons (Projects have none here) and the empty state's
-  // "Open onboarding" link, until onboarding exists.
+  // "Open onboarding" link, until onboarding exists. Paperclip's "My
+  // Projects" / "Other Projects" split follows Project membership, which The
+  // Bakery does not have, so this is one list.
+  import { buttonVariants } from '$lib/components/ui/button'
+  import { Card } from '$lib/components/ui/card'
+  import { Input as UiInput } from '$lib/components/ui/input'
+  import * as Popover from '$lib/components/ui/popover'
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
+  import CollectionToolbar from '../lib/CollectionToolbar.svelte'
+  import EntityRow from '../lib/EntityRow.svelte'
   import Icon from '../lib/Icon.svelte'
+  import PageSkeleton from '../lib/PageSkeleton.svelte'
+  import ProjectTile from '../lib/ProjectTile.svelte'
   import { projectCounts, type ProjectCounts } from '../lib/projectCounts'
   import { go, href } from '../lib/router.svelte'
   import { canIn, session } from '../lib/session.svelte'
@@ -19,8 +33,6 @@
   import Empty from '../lib/ui/Empty.svelte'
   import Input from '../lib/ui/Input.svelte'
   import Modal from '../lib/ui/Modal.svelte'
-  import Spinner from '../lib/ui/Spinner.svelte'
-  import TableDropdown from '../lib/ui/TableDropdown.svelte'
 
   type SortKey = 'name-asc' | 'name-desc' | 'resources' | 'environments'
   type ViewMode = 'table' | 'grid'
@@ -38,7 +50,7 @@
   let counts = $state.raw<Record<number, ProjectCounts>>({})
   let loadError = $state('')
 
-  let search = $state('')
+  let searchText = $state('')
   let sortBy = $state<SortKey>('name-asc')
   let viewMode = $state<ViewMode>(localStorage.getItem(viewKey) === 'table' ? 'table' : 'grid')
   let page = $state(1)
@@ -47,7 +59,7 @@
   // The search box filters 150 ms after the last key, as Coolify's debounce does.
   let query = $state('')
   $effect(() => {
-    const value = search
+    const value = searchText
     const timer = setTimeout(() => (query = value.trim().toLowerCase()), 150)
     return () => clearTimeout(timer)
   })
@@ -123,259 +135,197 @@
     }
   }
 
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+  const countsLine = (p: Project) => `${plural(environmentCount(p), 'env')} · ${plural(resourceCount(p), 'resource')}`
+  const sortLabel = $derived(sortOptions.find((o) => o.value === sortBy)?.label ?? 'Name A–Z')
+  const listCard = 'block gap-0 overflow-hidden py-0'
   const rowAction =
-    'flex items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg'
-  const toggleIdle =
-    'text-neutral-400 hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg'
+    'flex size-6.5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
 
   $effect(() => breadcrumb.set({ label: 'Projects' }))
 </script>
 
-<div class="chrome application-settings-form w-full">
-  <header class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-    <h1 class="min-w-0 truncate text-[24px]! leading-7! font-semibold! tracking-tight!">Projects</h1>
-    {#if session.can('manage_applications')}
-      <div class="w-fit shrink-0">
-        <Modal title="New Project" bind:open={creating}>
-          {#snippet trigger(show)}
-            <button type="button" class="button button-highlighted" onclick={show}>
-              <Icon name="plus" class="size-3.5" />
-              New project
-            </button>
-          {/snippet}
-          <form class="space-y-4" onsubmit={create}>
-            <div class="grid gap-4 md:grid-cols-2">
-              <Input placeholder="Your project name" label="Name" required bind:value={name} error={errors.name} />
-              <Input placeholder="A short project description" label="Description" bind:value={description} error={errors.description} />
-            </div>
+{#snippet rowActions(project: Project)}
+  {@const addHref = addResourceHref(project)}
+  {@const editHref = settingsHref(project)}
+  {#if addHref}
+    <a href={addHref} class={rowAction} title="Add resource" aria-label="Add resource to {project.name}">
+      <Icon name="plus" class="size-3.5" />
+    </a>
+  {/if}
+  {#if editHref}
+    <a href={editHref} class={rowAction} title="Project settings" aria-label="Open settings for {project.name}">
+      <Icon name="settings" class="size-3.5" />
+    </a>
+  {/if}
+{/snippet}
 
-            <p
-              class="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-[12px] text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-fg-dim"
-            >
-              A production environment will be created automatically.
-            </p>
+<div class="chrome w-full space-y-4">
+  <h1 class="sr-only">Projects</h1>
 
-            <footer class="flex justify-end border-t border-neutral-200 pt-4 dark:border-white/[0.08]">
-              <Button type="submit" variant="highlighted" loading={busy}>Create project</Button>
-            </footer>
-          </form>
-        </Modal>
-      </div>
-    {/if}
-  </header>
+  {#if session.can('manage_applications')}
+    <Modal title="New Project" variant="none" bind:open={creating}>
+      <form class="space-y-4" onsubmit={create}>
+        <div class="grid gap-4 md:grid-cols-2">
+          <Input placeholder="Your project name" label="Name" required bind:value={name} error={errors.name} />
+          <Input placeholder="A short project description" label="Description" bind:value={description} error={errors.description} />
+        </div>
+
+        <p class="rounded-md border border-border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
+          A production environment will be created automatically.
+        </p>
+
+        <footer class="flex justify-end border-t border-border pt-4">
+          <Button type="submit" variant="highlighted" loading={busy}>Create project</Button>
+        </footer>
+      </form>
+    </Modal>
+  {/if}
 
   {#if loadError}
-    <p class="text-sm text-error">{loadError}</p>
+    <p class="text-sm text-destructive">{loadError}</p>
   {:else if projects === null}
-    <Spinner text="Loading…" />
-  {:else if projects.length === 0}
-    <Empty title="No projects yet" description="Create a project to organize your environments and resources." icon="projects" />
+    <PageSkeleton />
   {:else}
-    <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div class="relative w-full sm:max-w-sm">
-        <Icon
-          name="search"
-          class="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-neutral-400 dark:text-fg-faint"
-        />
-        <input
-          bind:value={search}
-          oninput={() => (page = 1)}
-          type="search"
-          placeholder="Search projects"
-          aria-label="Search projects"
-          class="input h-8! w-full rounded-lg! border-neutral-200! bg-white! py-0! pr-8! pl-8! text-[12px]! shadow-none! placeholder:text-neutral-400 focus:border-ring! focus:ring-0! dark:border-white/[0.08]! dark:bg-white/[0.035]! dark:text-fg! dark:placeholder:text-fg-faint"
-        />
-        {#if search}
-          <button
-            type="button"
-            onclick={() => {
-              search = ''
-              page = 1
-            }}
-            class="absolute top-1/2 right-2 flex size-5 -translate-y-1/2 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.07] dark:hover:text-fg"
-            aria-label="Clear search"
-          >
-            <span class="text-sm leading-none">×</span>
-          </button>
-        {/if}
-      </div>
-
-      <div class="flex items-center gap-2">
-        <TableDropdown panelClass="w-52!">
-          {#snippet trigger({ open, toggle })}
-            <button type="button" class="button" aria-haspopup="listbox" aria-expanded={open} onclick={toggle}>
-              <svg class="size-3.5 opacity-65" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path
-                  d="M8 5v14m0 0-3-3m3 3 3-3M16 19V5m0 0-3 3m3-3 3 3"
-                  stroke="currentColor"
-                  stroke-width="1.7"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-              Sort
-            </button>
-          {/snippet}
-          {#snippet children(close)}
-            {#each sortOptions as option (option.value)}
+    <CollectionToolbar ariaLabel="Projects controls">
+      {#snippet search()}
+        {#if projects?.length}
+          <div class="relative w-full sm:max-w-sm">
+            <Icon name="search" class="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <UiInput
+              bind:value={searchText}
+              oninput={() => (page = 1)}
+              type="search"
+              placeholder="Search projects"
+              aria-label="Search projects"
+              class="h-8 pr-8 pl-8 text-sm [&::-webkit-search-cancel-button]:hidden"
+            />
+            {#if searchText}
               <button
                 type="button"
-                role="option"
-                aria-selected={sortBy === option.value}
-                class="flex h-9 w-full items-center rounded-md px-2 text-left text-[12px] text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-dim dark:hover:bg-white/[0.06] dark:hover:text-fg"
                 onclick={() => {
-                  sortBy = option.value
-                  close()
+                  searchText = ''
                   page = 1
                 }}
+                class="absolute top-1/2 right-1.5 flex size-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                aria-label="Clear search"
               >
-                <span class="flex-1">{option.label}</span>
-                {#if sortBy === option.value}
-                  <svg class="size-3.5 text-foreground" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                    <path d="m2.5 6.25 2.1 2.1 4.9-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
-                  </svg>
-                {/if}
+                <Icon name="x" class="size-3" />
+              </button>
+            {/if}
+          </div>
+        {/if}
+      {/snippet}
+      {#snippet controls()}
+        {#if projects?.length}
+          <Popover.Root>
+            <Popover.Trigger class={buttonVariants({ variant: 'ghost', size: 'sm', class: 'w-fit text-xs' })} title="Sort">
+              <Icon name="sort-direction" class="size-3.5 sm:size-3" />
+              <span>Sort: {sortLabel}</span>
+            </Popover.Trigger>
+            <Popover.Content align="start" class="w-48 p-2">
+              <div class="space-y-0.5" role="listbox" aria-label="Sort projects">
+                {#each sortOptions as option (option.value)}
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={sortBy === option.value}
+                    class={[
+                      'flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-sm',
+                      sortBy === option.value ? 'bg-accent/50 text-foreground' : 'text-muted-foreground hover:bg-accent/50',
+                    ]}
+                    onclick={() => {
+                      sortBy = option.value
+                      page = 1
+                    }}
+                  >
+                    <span>{option.label}</span>
+                    {#if sortBy === option.value}<Icon name="check" class="size-3 text-muted-foreground" />{/if}
+                  </button>
+                {/each}
+              </div>
+            </Popover.Content>
+          </Popover.Root>
+          <div class="flex items-center" role="group" aria-label="View">
+            {#each [{ mode: 'table', icon: 'unordered-list', label: 'Table view' }, { mode: 'grid', icon: 'grid', label: 'Grid view' }] as const as v (v.mode)}
+              <button
+                type="button"
+                onclick={() => setViewMode(v.mode)}
+                class={buttonVariants({
+                  variant: 'ghost',
+                  size: 'icon-sm',
+                  class: ['size-8', viewMode === v.mode ? 'bg-accent text-foreground' : 'text-muted-foreground'].join(' '),
+                })}
+                aria-label={v.label}
+                aria-pressed={viewMode === v.mode}
+                title={v.label}
+              >
+                <Icon name={v.icon} class="size-3.5" />
               </button>
             {/each}
-          {/snippet}
-        </TableDropdown>
-
-        <div class="view-toggle">
-          <button
-            type="button"
-            onclick={() => setViewMode('table')}
-            class={['flex size-7.5 items-center justify-center rounded-md transition-colors', viewMode === 'table' ? 'control-selected' : toggleIdle]}
-            aria-label="Table view"
-            aria-pressed={viewMode === 'table'}
-            title="Table view"
-          >
-            <Icon name="unordered-list" class="size-3.5" />
+          </div>
+        {/if}
+      {/snippet}
+      {#snippet actions()}
+        {#if session.can('manage_applications')}
+          <button type="button" class={buttonVariants({ variant: 'outline', size: 'sm' })} onclick={() => (creating = true)}>
+            <Icon name="plus" class="size-4" />
+            New project
           </button>
-          <button
-            type="button"
-            onclick={() => setViewMode('grid')}
-            class={['flex size-7.5 items-center justify-center rounded-md transition-colors', viewMode === 'grid' ? 'control-selected' : toggleIdle]}
-            aria-label="Grid view"
-            aria-pressed={viewMode === 'grid'}
-            title="Grid view"
-          >
-            <Icon name="grid" class="size-3.5" />
-          </button>
-        </div>
-      </div>
-    </div>
+        {/if}
+      {/snippet}
+    </CollectionToolbar>
 
-    {#if filtered.length === 0}
-      <div
-        class="flex min-h-52 flex-col items-center justify-center rounded-xl border border-neutral-200 bg-white px-6 text-center dark:border-white/[0.08] dark:bg-white/[0.05]"
-      >
-        <Icon name="search" class="mb-3 size-6 text-neutral-300 dark:text-fg-faint" />
-        <p class="text-[13px] font-medium">No matching projects</p>
-        <p class="mt-1 text-[12px] text-neutral-500 dark:text-fg-dim">Try a different search.</p>
-      </div>
+    {#if projects.length === 0}
+      <Empty title="No projects yet" description="Create a project to organize your environments and resources." icon="projects">
+        {#if session.can('manage_applications')}
+          <Button variant="highlighted" onclick={() => (creating = true)}>
+            <Icon name="plus" class="size-4" />
+            New project
+          </Button>
+        {/if}
+      </Empty>
+    {:else if filtered.length === 0}
+      <Card class="block py-0">
+        <Empty title="No matching projects" description="Try a different search." icon="search" size="sm" />
+      </Card>
     {:else if viewMode === 'grid'}
-      <div>
+      <div class="space-y-3">
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {#each paginated as project (project.id)}
-            {@const addHref = addResourceHref(project)}
-            {@const editHref = settingsHref(project)}
-            {@const envs = environmentCount(project)}
-            {@const resources = resourceCount(project)}
-            <article
-              class="group relative flex min-h-28 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.05] dark:hover:border-white/[0.14]"
-            >
-              <a href={href(`/project/${project.id}`)} class="absolute inset-0 rounded-xl" aria-label="Open {project.name}"></a>
+            <Card interactive class="relative min-h-28 gap-0 p-4">
+              <a href={href(`/project/${project.id}`)} class="absolute inset-0 rounded-lg" aria-label="Open {project.name}"></a>
               <div class="flex items-start gap-3">
-                <div
-                  class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-fg-dim"
-                >
-                  <Icon name="projects" class="size-4" />
-                </div>
+                <ProjectTile size="lg" />
                 <div class="min-w-0 flex-1">
-                  <h2 class="truncate text-[13px]! leading-4! font-semibold! text-black dark:text-fg">{project.name}</h2>
-                  <p class="mt-0.5 truncate text-[11px] text-neutral-500 dark:text-fg-faint">{project.description || ''}</p>
+                  <h2 class="truncate text-sm font-medium" title={project.name}>{project.name}</h2>
+                  <p class="mt-0.5 min-h-4 truncate text-xs text-muted-foreground">{project.description || ''}</p>
                 </div>
               </div>
-
               <div class="mt-auto flex items-center justify-between gap-3 pt-4">
-                <p class="min-w-0 truncate text-[11px] text-neutral-500 dark:text-fg-dim">
-                  <span>{envs} {envs === 1 ? 'env' : 'envs'}</span>
-                  <span class="px-1 text-neutral-300 dark:text-white/15">·</span>
-                  <span>{resources} {resources === 1 ? 'resource' : 'resources'}</span>
-                </p>
-
-                <div class="relative z-10 flex shrink-0 items-center gap-0.5">
-                  {#if addHref}
-                    <a href={addHref} class={['size-7.5', rowAction]} title="Add resource" aria-label="Add resource to {project.name}">
-                      <Icon name="plus" class="size-3" />
-                    </a>
-                  {/if}
-                  {#if editHref}
-                    <a href={editHref} class={['size-7.5', rowAction]} title="Project settings" aria-label="Open settings for {project.name}">
-                      <Icon name="settings" class="size-3" />
-                    </a>
-                  {/if}
-                </div>
+                <p class="min-w-0 truncate text-xs text-muted-foreground tabular-nums">{countsLine(project)}</p>
+                <div class="relative z-10 flex shrink-0 items-center gap-0.5">{@render rowActions(project)}</div>
               </div>
-            </article>
+            </Card>
           {/each}
         </div>
-        <ClientPagination
-          bind:page
-          bind:pageSize
-          total={filtered.length}
-          options={[12, 24, 48, 96]}
-          storageKey={pageSizeKey}
-          class="mt-3 rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
-        />
+        <Card class={listCard}>
+          <ClientPagination bind:page bind:pageSize total={filtered.length} options={[12, 24, 48, 96]} storageKey={pageSizeKey} />
+        </Card>
       </div>
     {:else}
-      <div class="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-white/[0.05]">
-        <div
-          class="projects-table-grid border-b border-neutral-200 bg-neutral-50 px-4 py-2.5 text-[11px] font-medium text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-fg-faint"
-        >
-          <div>Project</div>
-          <div>Environments</div>
-          <div>Resources</div>
-          <div class="project-description">Description</div>
-          <div></div>
-        </div>
-
+      <Card class={listCard}>
         {#each paginated as project (project.id)}
-          {@const addHref = addResourceHref(project)}
-          {@const editHref = settingsHref(project)}
-          <div
-            class="projects-table-grid group min-h-14 items-center border-b border-neutral-200 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-neutral-50 dark:border-white/[0.07] dark:hover:bg-white/[0.025]"
-          >
-            <div class="flex min-w-0 items-center gap-3">
-              <div
-                class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.035] dark:text-fg-dim"
-              >
-                <Icon name="projects" class="size-4" />
-              </div>
-              <a href={href(`/project/${project.id}`)} class="truncate text-[13px] font-semibold text-black hover:underline dark:text-fg">{project.name}</a>
-            </div>
-
-            <div class="text-[12px] text-neutral-600 dark:text-fg-dim">{environmentCount(project)}</div>
-            <div class="text-[12px] text-neutral-600 dark:text-fg-dim">{resourceCount(project)}</div>
-            <p class="project-description truncate text-[12px] text-neutral-500 dark:text-fg-dim">{project.description || '-'}</p>
-
-            <div class="flex items-center justify-end gap-0.5">
-              {#if addHref}
-                <a href={addHref} class={['size-7', rowAction]} title="Add resource" aria-label="Add resource to {project.name}">
-                  <Icon name="plus" class="size-3.5" />
-                </a>
-              {/if}
-              {#if editHref}
-                <a href={editHref} class={['size-7', rowAction]} title="Project settings" aria-label="Open settings for {project.name}">
-                  <Icon name="settings" class="size-3.5" />
-                </a>
-              {/if}
-            </div>
-          </div>
+          <EntityRow title={project.name} subtitle={project.description || undefined} reserveSubtitleSpace href={href(`/project/${project.id}`)} class="group">
+            {#snippet leading()}<ProjectTile size="sm" />{/snippet}
+            {#snippet trailing()}
+              <span class="hidden text-xs text-muted-foreground tabular-nums sm:inline">{countsLine(project)}</span>
+              <div class="flex items-center gap-0.5">{@render rowActions(project)}</div>
+            {/snippet}
+          </EntityRow>
         {/each}
         <ClientPagination bind:page bind:pageSize total={filtered.length} options={[12, 24, 48, 96]} storageKey={pageSizeKey} />
-      </div>
+      </Card>
     {/if}
   {/if}
 </div>

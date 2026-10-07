@@ -1,7 +1,8 @@
 <script lang="ts">
-  // Paperclip's EmptyState (components/EmptyState.tsx) under Coolify's empty
-  // props: an optional icon on a muted square, a title, a description and
-  // actions, centred.
+  // Paperclip's EmptyState (components/EmptyState.tsx, MIT, see NOTICE) under
+  // Coolify's empty props: an optional icon on a muted square, a bold title,
+  // a muted message and the actions, centred. `size` only changes the
+  // spacing and the icon, for empty states inside a small card.
   import type { Snippet } from 'svelte'
   import Icon, { type IconName } from '../Icon.svelte'
 
@@ -21,20 +22,19 @@
     children?: Snippet
   } = $props()
 
-  const spacing = $derived({ sm: 'min-h-44 py-8', base: 'min-h-80 py-16', lg: 'min-h-96 py-16' }[size])
-  const iconBox = $derived({ sm: 'mb-3 p-3', base: 'mb-4 p-4', lg: 'mb-4 p-4' }[size])
-  const iconSize = $derived({ sm: 'size-6', base: 'size-10', lg: 'size-12' }[size])
-  const titleClass = $derived(size === 'sm' ? 'text-sm font-semibold text-foreground' : 'text-base font-semibold text-foreground')
+  const spacing = $derived({ sm: 'py-8', base: 'py-16', lg: 'py-24' }[size])
+  const iconBox = $derived(size === 'sm' ? 'mb-3 p-3' : 'mb-4 p-4')
+  const iconSize = $derived(size === 'sm' ? 'size-6' : 'size-10')
 </script>
 
-<div class={['chrome empty-state flex w-full flex-col items-center justify-center px-6 text-center', spacing, className]}>
+<div class={['flex w-full flex-col items-center justify-center px-6 text-center', spacing, className]}>
   {#if icon}
     <div class={['bg-muted/50', iconBox]}>
       <Icon name={icon} class={[iconSize, 'text-muted-foreground/50'].join(' ')} />
     </div>
   {/if}
-  <h2 class={titleClass}>{title}</h2>
-  {#if description}<p class="mt-1.5 max-w-md text-sm text-muted-foreground">{description}</p>{/if}
+  <p class="mb-1.5 text-base font-semibold text-foreground">{title}</p>
+  {#if description}<p class="max-w-md text-sm text-muted-foreground">{description}</p>{/if}
   {#if children}
     <div class="mt-4 flex flex-wrap items-center justify-center gap-2">{@render children()}</div>
   {/if}
