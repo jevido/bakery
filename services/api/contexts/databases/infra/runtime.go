@@ -50,7 +50,7 @@ func (r Runtime) Start(ctx context.Context, d domain.Database) error {
 	if d.PublicPort != 0 {
 		ports = []podman.PortMapping{{HostIP: r.PublicBind, HostPort: uint16(d.PublicPort), ContainerPort: uint16(spec.Port), Protocol: "tcp"}}
 	}
-	if _, err := r.Podman.CreateContainer(ctx, podman.ContainerSpec{
+	container := podman.ContainerSpec{
 		Name:           name,
 		Image:          image,
 		Command:        d.Command(),
@@ -61,7 +61,8 @@ func (r Runtime) Start(ctx context.Context, d domain.Database) error {
 		Volumes:        []podman.NamedVolume{{Name: volume, Dest: spec.DataPath}},
 		RestartPolicy:  "always",
 		ResourceLimits: podman.Limits(d.ResourceLimits.MemoryMB, d.ResourceLimits.CPUs),
-	}); err != nil {
+	}
+	if err := r.create(ctx, container); err != nil {
 		return err
 	}
 	if err := r.Podman.StartContainer(ctx, name); err != nil {
@@ -69,6 +70,24 @@ func (r Runtime) Start(ctx context.Context, d domain.Database) error {
 		return err
 	}
 	return nil
+}
+
+// create makes the Container. Podman carries on creating after the request
+// is aborted and then leaves a container it cannot start or inspect, so a
+// Start superseded by another (ctx cancelled) must not abort it. A name still
+// held by such a leftover, or by an older Container, is freed and tried once
+// more.
+func (r Runtime) create(ctx context.Context, spec podman.ContainerSpec) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+	defer cancel()
+	_, err := r.Podman.CreateContainer(ctx, spec)
+	if podman.IsExists(err) {
+		if err := r.removeContainer(spec.Name); err != nil {
+			return err
+		}
+		_, err = r.Podman.CreateContainer(ctx, spec)
+	}
+	return err
 }
 
 // pull tries three times: registries (Docker Hub in particular) sometimes

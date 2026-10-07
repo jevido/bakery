@@ -382,17 +382,13 @@
 }
 
 @theme inline {
-  --color-panel: var(--sidebar);
-  --color-surface: var(--card);
   --color-raised: var(--muted);
   --color-selected: var(--accent);
   --color-fg: var(--foreground);
   --color-fg-dim: color-mix(in oklab, var(--foreground) 80%, var(--muted-foreground));
   --color-fg-faint: var(--muted-foreground);
-  --color-hairline: var(--border);
   --color-coollabs: var(--primary);
   --color-coolgray-100: var(--card);
-  --color-coolgray-200: var(--muted);
   --color-coolgray-400: var(--input);
   --color-warning-700: color-mix(in oklab, var(--warning) 65%, black);
 }
@@ -409,9 +405,7 @@
 
 /* `button` is Paperclip's outline button and `button-highlighted` its
    default one (ui/src/components/ui/button.tsx). */
-.button,
-.icon-button,
-.app-tab {
+.button {
   transition-property: color, background-color, border-color, box-shadow, opacity;
   transition-timing-function: var(--ease-out);
   transition-duration: 120ms;
@@ -468,24 +462,8 @@
   @apply flex h-9 items-center rounded-md border bg-background shadow-xs dark:border-input dark:bg-input/30;
 }
 
-@utility icon-button {
-  @apply inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-transparent text-muted-foreground outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-accent/50;
-}
-
-@utility app-tab {
-  @apply inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground;
-}
-
 @utility dropdown-item {
   @apply relative flex w-full cursor-pointer items-center justify-start gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50;
-}
-
-@utility badge {
-  @apply inline-block h-3 w-3 rounded-full border border-background text-xs leading-none font-bold;
-}
-
-@utility menu {
-  @apply flex items-center gap-1;
 }
 
 @utility menu-item {
@@ -506,50 +484,6 @@
 
 @utility nav-section {
   @apply px-3 py-1.5 text-[10px] font-medium tracking-widest text-muted-foreground/60 uppercase select-none;
-}
-
-@utility menu-subitem {
-  @apply relative flex h-8 w-full min-w-0 items-center gap-2.5 rounded-md pr-3 pl-3 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground;
-}
-
-@utility menu-subitem-active {
-  @apply bg-accent text-foreground hover:bg-accent;
-}
-
-@utility icon {
-  @apply h-6 w-6 hover:text-foreground;
-}
-
-@utility loading {
-  @apply w-4 text-muted-foreground;
-}
-
-@utility box {
-  @apply relative flex min-h-[4rem] cursor-pointer flex-col rounded-xl border bg-card p-3 text-card-foreground transition-colors hover:bg-accent/50 hover:text-card-foreground hover:no-underline lg:flex-row;
-}
-
-@utility description {
-  @apply text-xs font-medium text-muted-foreground;
-}
-
-@utility text-helper {
-  @apply inline-block font-semibold text-foreground;
-}
-
-@utility info-helper {
-  @apply cursor-pointer text-muted-foreground transition-colors hover:text-foreground;
-}
-
-@utility info-helper-popup {
-  @apply rounded-md border bg-popover break-words whitespace-normal text-popover-foreground shadow-md;
-}
-
-@utility title {
-  @apply hidden pb-0 lg:block lg:pb-8;
-}
-
-@utility subtitle {
-  @apply pt-2 pb-9;
 }
 
 /* Dropdown panels and their rows (the user menu, the breadcrumb switchers),
@@ -727,14 +661,6 @@
   scroll-margin-top: 7rem;
 }
 
-/* The vertical connector line under a sidebar item's section sub-items. */
-.nav-children {
-  position: relative;
-  margin-left: 1.1rem;
-  padding-left: 0.25rem;
-  border-left: 1px solid var(--color-hairline);
-}
-
 .is-section-highlight {
   position: relative;
 }
@@ -836,14 +762,6 @@
   background: rgba(255, 255, 255, 0.02);
 }
 
-.data-table > .env-table-item {
-  border-bottom: 1px solid var(--coollabs-fill);
-}
-
-.data-table > .env-table-item:last-child {
-  border-bottom: none;
-}
-
 .data-table-row {
   display: grid;
   align-items: center;
@@ -859,39 +777,6 @@
 
 .dark .data-table-row:hover {
   background: rgba(255, 255, 255, 0.02);
-}
-
-.table-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  height: 20px;
-  padding: 0 0.5rem;
-  border-radius: 9999px;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-  background: var(--coollabs-fill);
-  color: #52525b;
-}
-
-.dark .table-badge {
-  color: var(--color-fg-dim);
-}
-
-/* Coolify's Scheduled backups and Backup executions tables. The Bakery's
-   executions show the trigger where Coolify shows the dumped database's name. */
-.scheduled-backups-table-grid {
-  grid-template-columns: minmax(10rem, 1.25fr) 8rem minmax(9rem, 1fr) 6rem 5rem;
-}
-
-.backup-executions-table-grid {
-  grid-template-columns: 6.5rem minmax(7rem, 0.8fr) minmax(
-      14rem,
-      1.5fr
-    ) 7rem 5rem 4rem minmax(8rem, 1fr) 5rem;
-  gap: 0.75rem;
-  min-width: 66rem;
 }
 
 .server-resources-managed-table-grid {
@@ -936,81 +821,6 @@
   .server-containers-table-grid > :nth-child(2) {
     display: none;
   }
-}
-
-.backup-executions-table-scroll {
-  overflow-x: auto;
-}
-
-.backup-execution-row:last-child > .data-table-row {
-  border-bottom: 0;
-}
-
-@media (max-width: 900px) {
-  .backup-executions-table-grid {
-    grid-template-columns: 7.5rem minmax(9rem, 0.8fr) minmax(
-        14rem,
-        1.5fr
-      ) 8rem 6rem minmax(9rem, auto);
-  }
-
-  .backup-executions-table-grid > :nth-child(6),
-  .backup-executions-table-grid > :nth-child(7) {
-    display: none;
-  }
-}
-
-@media (max-width: 640px) {
-  .scheduled-backups-table-grid {
-    grid-template-columns: minmax(0, 1fr) 8rem 5rem;
-  }
-
-  .scheduled-backups-table-grid > :nth-child(3),
-  .scheduled-backups-table-grid > :nth-child(4) {
-    display: none;
-  }
-
-  .backup-executions-table-grid {
-    grid-template-columns: 7.5rem 9rem minmax(14rem, 1fr) minmax(7rem, auto);
-    min-width: 42rem;
-  }
-
-  .backup-executions-table-grid > :nth-child(4),
-  .backup-executions-table-grid > :nth-child(5),
-  .backup-executions-table-grid > :nth-child(6),
-  .backup-executions-table-grid > :nth-child(7) {
-    display: none;
-  }
-}
-
-/* Coolify's deployment history table (resources/css/app.css,
-   Apache-2.0, see NOTICE). */
-.deployment-table-scroll {
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  -webkit-overflow-scrolling: touch;
-}
-
-.deployment-table-grid {
-  min-width: 59rem;
-  grid-template-columns: 7.5rem minmax(7rem, 0.8fr) minmax(12rem, 1.7fr) minmax(
-      8rem,
-      0.9fr
-    ) 6.5rem minmax(7rem, 0.8fr);
-}
-
-@media (min-width: 1024px) {
-  .deployment-table-scroll {
-    overflow-x: visible;
-  }
-
-  .deployment-table-grid {
-    min-width: 0;
-  }
-}
-
-.data-table-row-active {
-  background: var(--coollabs-fill);
 }
 
 /* Coolify's API tokens table: Description | Permissions | Last used | Created

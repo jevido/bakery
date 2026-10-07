@@ -75,10 +75,19 @@ func (e *Error) Error() string {
 // IsNotFound reports whether err is the API's 404, or its 500 for a
 // container removed between the API resolving its name and reading it (a
 // restart replacing the container), which libpod reports with the cause
-// "no such container".
+// "no such container", or "container not known" when its database still
+// names the container but its storage no longer has it (caught mid-create or
+// mid-remove).
 func IsNotFound(err error) bool {
 	var e *Error
-	return errors.As(err, &e) && (e.Status == http.StatusNotFound || e.Cause == "no such container")
+	return errors.As(err, &e) && (e.Status == http.StatusNotFound || e.Cause == "no such container" || e.Cause == "container not known")
+}
+
+// IsExists reports whether err is the API refusing to create a container
+// whose name another container already holds.
+func IsExists(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && e.Cause == "container already exists"
 }
 
 // anonymousAuth is base64("{}"). Sent on pulls and builds so the Podman

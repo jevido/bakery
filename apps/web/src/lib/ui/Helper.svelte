@@ -67,7 +67,7 @@
   <button
     type="button"
     bind:this={trigger}
-    class={['info-helper relative inline-flex shrink-0 items-center justify-center border-0 bg-transparent p-0 leading-none', !icon && 'size-3.5']}
+    class={['relative inline-flex cursor-pointer text-muted-foreground transition-colors hover:text-foreground shrink-0 items-center justify-center border-0 bg-transparent p-0 leading-none', !icon && 'size-3.5']}
     aria-label={label}
     aria-describedby={open ? id : undefined}
     onmouseenter={show}
@@ -92,7 +92,7 @@
       {id}
       role="tooltip"
       {style}
-      class="info-helper-popup fixed z-[10000] w-max max-w-[min(20rem,calc(100vw-2rem))] rounded-md border bg-popover break-words whitespace-normal text-popover-foreground shadow-md"
+      class="fixed z-[10000] w-max max-w-[min(20rem,calc(100vw-2rem))] rounded-md border bg-popover break-words whitespace-normal text-popover-foreground shadow-md"
       onmouseenter={show}
       onmouseleave={hide}
     >

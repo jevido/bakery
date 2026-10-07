@@ -4,6 +4,7 @@
   // status tokens and kept bottom-right where Coolify has it. Coolify's copy
   // button for the details stays. Bakery's toasts carry plain text only.
   import { fly } from 'svelte/transition'
+  import { motion } from './motion'
   import Check from '@lucide/svelte/icons/check'
   import Copy from '@lucide/svelte/icons/copy'
   import X from '@lucide/svelte/icons/x'
@@ -37,8 +38,8 @@
 <ul class="chrome pointer-events-none list-none fixed right-3 bottom-3 z-9999 flex w-[calc(100%-1.5rem)] flex-col-reverse gap-2 sm:max-w-sm" aria-live="polite">
   {#each toasts as item (item.id)}
     <li
-      in:fly={{ y: 12, duration: 200 }}
-      out:fly={{ y: 4, duration: 150 }}
+      in:fly={{ y: 12, duration: motion(200) }}
+      out:fly={{ y: 4, duration: motion(150) }}
       onmouseenter={() => hold(item.id)}
       onmouseleave={() => schedule(item.id)}
       class={['group pointer-events-auto rounded-sm border bg-background text-foreground shadow-lg backdrop-blur-xl', tone[item.type]]}

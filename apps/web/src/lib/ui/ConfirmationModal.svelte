@@ -21,6 +21,7 @@
   // same portal and focus trap as Modal.
   import type { Snippet } from 'svelte'
   import { fade, scale } from 'svelte/transition'
+  import { motion } from './motion'
   import Trash from '@lucide/svelte/icons/trash-2'
   import X from '@lucide/svelte/icons/x'
   import { Input as UiInput } from '$lib/components/ui/input'
@@ -129,13 +130,13 @@
   <div class="chrome" {@attach portal}>
     {#if open}
       <div class="fixed inset-0 z-99 flex min-h-full items-center justify-center overflow-y-auto p-4">
-        <div class="absolute inset-0 bg-black/50" transition:fade={{ duration: 150 }}></div>
+        <div class="absolute inset-0 bg-black/50" transition:fade={{ duration: motion(150) }}></div>
         <div
           role="dialog"
           aria-modal="true"
           aria-label={title}
           {@attach focusTrap}
-          transition:scale={{ start: 0.97, duration: 150 }}
+          transition:scale={{ start: 0.97, duration: motion(150) }}
           class="relative flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-lg border bg-background text-foreground shadow-lg lg:max-w-2xl lg:min-w-[36rem]"
         >
           <header class="flex items-start gap-2 px-6 pt-6 pb-4">

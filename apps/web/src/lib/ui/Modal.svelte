@@ -9,6 +9,7 @@
   // what callers rely on.
   import type { Snippet } from 'svelte'
   import { fade, scale } from 'svelte/transition'
+  import { motion } from './motion'
   import X from '@lucide/svelte/icons/x'
   import Button from './Button.svelte'
   import { focusTrap } from './focusTrap'
@@ -67,7 +68,7 @@
   <div class="chrome" {@attach portal}>
     {#if open}
       <div class="fixed inset-0 z-99 overflow-hidden">
-        <div class="absolute inset-0 h-full w-full bg-black/50" transition:fade={{ duration: 150 }}></div>
+        <div class="absolute inset-0 h-full w-full bg-black/50" transition:fade={{ duration: motion(150) }}></div>
         <!-- A click beside the card closes it; Escape does the same from the keyboard. -->
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div
@@ -80,7 +81,7 @@
             aria-modal="true"
             aria-label={title}
             {@attach focusTrap}
-            transition:scale={{ start: 0.97, duration: 150 }}
+            transition:scale={{ start: 0.97, duration: motion(150) }}
             class={[
               'relative flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-lg border bg-background text-foreground shadow-lg',
               isLarge ? 'lg:w-[95vw]! lg:max-w-7xl!' : 'lg:w-auto lg:max-w-4xl lg:min-w-2xl',

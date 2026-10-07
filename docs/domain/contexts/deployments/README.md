@@ -379,3 +379,18 @@ Application is (projects) or for the Caddy configuration (routing).
   (Delete asks to type its domain, as Coolify's asks for the preview's
   name). Stop and Rebuild are left out: a Preview is cheap to delete and
   comes back on the next push.
+- **The Resource pages keep Coolify's grouped sub-page nav, not
+  Paperclip's tab bar.** Paperclip's detail pages (Project, Agent) switch
+  their sections with a row of tabs (`PageTabBar`). An Application has
+  about twenty sub-pages in Coolify's groups (General, Advanced,
+  Environment Variables, Deployments, Logs, …), too many for one row, so
+  the Application, Database and Service pages keep Coolify's grouped
+  configuration sidebar, drawn with Paperclip's sidebar pieces, and use
+  `PageTabBar`'s phone select only below `xl`. A Scheduled backup's
+  sections use the same nav.
+- **A Resource's Actions are on the page header, not in the top bar.**
+  Coolify puts Deploy, Restart and Stop in the Resource's own heading;
+  Paperclip puts a detail page's actions in its page header, and keeps the
+  top bar for the breadcrumb. The Bakery's Actions menu (Deploy, Redeploy,
+  Restart, Stop) sits on the Resource's page header with its name, status
+  and Links, shown only to whoever may deploy.

@@ -179,13 +179,6 @@
     letter-spacing: 0.03em;
   }
 
-  .card {
-    background: var(--color-card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1.25rem;
-  }
-
   .muted {
     color: var(--muted-foreground);
   }

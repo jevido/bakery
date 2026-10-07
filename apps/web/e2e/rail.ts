@@ -38,7 +38,7 @@ const browser = await chromium.launch({ executablePath: CHROMIUM })
 const who = owner()
 
 async function signedIn(width: number, height: number): Promise<Page> {
-  const ctx = await browser.newContext({ viewport: { width, height } })
+  const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce' })
   const login = await ctx.request.post(`${WEB}/api/login`, { data: who })
   if (!login.ok()) throw new Error(`sign in: ${login.status()} (is task dev running?)`)
   return ctx.newPage()

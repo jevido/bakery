@@ -34,7 +34,7 @@ const browser = await chromium.launch({ executablePath: CHROMIUM })
 const who = owner()
 
 // The ids to open, from the API as the Owner reads it.
-const probe = await browser.newContext()
+const probe = await browser.newContext({ reducedMotion: 'reduce' })
 async function get<T>(path: string): Promise<T> {
   const r = await probe.request.get(`${WEB}/api${path}`)
   if (!r.ok()) throw new Error(`GET ${path}: ${r.status()}`)
@@ -169,7 +169,7 @@ async function overflow(page: Page): Promise<string | null> {
 
 for (const { width, height, theme } of combos) {
   const label = `${width}×${height} ${theme}`
-  const ctx = await browser.newContext({ viewport: { width, height } })
+  const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce' })
   await ctx.addInitScript((t) => localStorage.setItem('theme', t), theme)
   await ctx.request.post(`${WEB}/api/login`, { data: who })
   for (const hash of routes) {
@@ -189,7 +189,7 @@ for (const { width, height, theme } of combos) {
   await ctx.close()
 
   // Signed out: Login, and Invite with a live Invitation.
-  const out = await browser.newContext({ viewport: { width, height } })
+  const out = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce' })
   await out.addInitScript((t) => localStorage.setItem('theme', t), theme)
   for (const hash of ['/login', invitation.path.replace(/^\/?#/, '')]) {
     const { page, why } = await open(out, hash, false)

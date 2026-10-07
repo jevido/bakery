@@ -7,6 +7,7 @@
   // trigger and a popover panel.
   import type { Snippet } from 'svelte'
   import { fly } from 'svelte/transition'
+  import { motion } from './motion'
   import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down'
 
   let {
@@ -82,7 +83,7 @@
     <div
       bind:this={panel}
       style={panelStyle}
-      transition:fly={{ y: -4, duration: 150 }}
+      transition:fly={{ y: -4, duration: motion(150) }}
       class={['origin-top', inline ? 'mt-1 w-full' : 'absolute top-full z-50 mt-1 max-w-[calc(100vw-1rem)] min-w-max md:top-0 md:mt-6']}
     >
       <div

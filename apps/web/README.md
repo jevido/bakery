@@ -9,6 +9,7 @@ CORS.
 task web:dev     # from the repo root: http://127.0.0.1:4930
 task web:check   # svelte-check, tsc, build
 task web:walk    # every route in headless Chromium, both sizes and themes (needs task dev)
+task web:rail    # the guild rail in headless Chromium (needs task dev)
 ```
 
 - `src/lib/router.svelte.ts` is a small hash router (`#/projects`,
@@ -36,18 +37,32 @@ pages are built from Paperclip's list pieces in `src/lib`: `PageHeader` (tile,
 name, description, actions), `CollectionToolbar` (search, controls, actions)
 with `SearchField`, `SortPopover` and `ViewToggle`, `EntityRow`,
 `ProjectTile` and `PageSkeleton`; settings pages from
-`src/lib/settings/SettingsPage` and `SettingsGroup`. The legacy names from
-the Coolify port that the Resource, Server, Notifications, Profile and
-Settings pages still use (`text-fg-dim`, `text-fg-faint`, `bg-surface`,
-`button`, `input`, `select`, `menu-item`, `box`, the `coollabs` colors, …)
-are kept, defined from the new tokens, and removed as those pages are
-restyled; the Projects and Environment pages use none of them. The theme is `localStorage.theme` (`dark`, `light` or
+`src/lib/settings/SettingsPage` and `SettingsGroup`. The Application,
+Database and Service pages share one frame: `PageHeader` with the status
+and an Actions menu, and `ResourceNav`, the grouped sub-page nav drawn
+with `SidebarSection`/`SidebarNavItem` from `xl` and as a select below it.
+Every status pill takes its tone from `src/lib/statusColors.ts`, the one
+status palette (success, warning, error, muted). Deployment and Runtime
+Logs draw on the `log` and `log-foreground` tokens (a dark panel in dark
+mode, a light one in light mode). Modals, menus and toasts take their
+transition lengths from `src/lib/ui/motion.ts`, which makes them instant
+when the person (or an e2e script's browser) asks for reduced motion. The legacy names from the Coolify
+port that the Server, Notifications, Keys & Tokens, Profile and Settings
+pages still use (`button`, `button-highlighted`, `input`, `select`,
+`menu-item*`, `nav-section`, `listbox-*`, `data-table*`,
+`application-settings-section*`, `settings-mobile-*`, `text-fg`,
+`text-fg-dim`, `text-fg-faint`, `bg-raised`, `bg-selected`, the `coollabs`
+and `coolgray-*` colors, …) are kept, defined from the new tokens, and
+removed as those pages are restyled; the Projects, Environment and
+Resource pages and `src/lib/ui` use none of them. The theme is `localStorage.theme` (`dark`, `light` or
 `system`, dark by default): `index.html` applies it before first paint and
 `src/lib/theme.svelte.ts` keeps it in step. `src/app.css` is the legacy layer
 for pages not yet ported: plain CSS in Tailwind's base layer whose variables
 point at the new tokens; it shrinks as pages are ported.
 
-The shell is Paperclip's Layout (`src/lib/Layout.svelte`): `Sidebar.svelte`
+The shell is Paperclip's Layout (`src/lib/Layout.svelte`): `GuildRail.svelte`,
+the column of guild icons at the far left (Discord's server list, with a "+"
+for a new Guild); `Sidebar.svelte`
 (resizable from 240px, collapsing to a 64px icon rail with tooltips, a drawer
 below 768px) headed by `GuildMenu.svelte` (switch, create or invite to a
 Guild) and ending in `AccountMenu.svelte` (Profile, Settings, theme, Sign
