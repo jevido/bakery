@@ -12,6 +12,12 @@
 //                  found and cleared by search, authenticates GET /api/me by
 //                  Bearer with no cookie, and stops doing so once revoked
 //
+//   profile        the header card shows the name; a rename shows in it and
+//                  is renamed back; a wrong current password shows its error
+//                  under the field; Set up two-factor shows the QR code and
+//                  key and is left pending (never on), so the owner's
+//                  password and two-factor stay as the other scripts expect
+//
 //   bun e2e/settings.ts [section ...]   (task web:settings; needs task dev)
 //
 // The same environment as e2e/walk.ts overrides what it uses.
@@ -248,6 +254,56 @@ const sections: Record<string, () => Promise<void>> = {
 
     const meAfter = await fetch(`${WEB}/api/me`, { headers: { Authorization: `Bearer ${token}` } })
     expect('the revoked token no longer authenticates', meAfter.status === 401, meAfter.status)
+
+    await page.close()
+  },
+
+  async profile() {
+    const page = await signedIn()
+    await page.goto(`${WEB}/#/profile`)
+    const card = page.getByTestId('profile-card')
+    await card.waitFor()
+    const original = (await (await page.request.get(`${WEB}/api/me`)).json()).member.name as string
+    expect('the header card shows the name', (await page.getByTestId('profile-name').innerText()).trim() === original.trim())
+    expect('the header card shows the email', (await card.innerText()).includes(who.email))
+
+    const renamed = `${original} e2e`
+    await page.locator('#name').fill(renamed)
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    expect('Save confirms with a toast', (await toastText(page)).includes('Saved'))
+    await page.getByTestId('profile-name').filter({ hasText: renamed }).waitFor({ timeout: 5000 }).catch(() => {})
+    expect('the header card shows the new name', (await page.getByTestId('profile-name').innerText()).trim() === renamed)
+    await clearToasts(page)
+    await page.locator('#name').fill(original)
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await toastText(page)
+    expect('the name is back', (await page.getByTestId('profile-name').innerText()).trim() === original.trim())
+
+    await page.locator('#current_password').fill('not-the-password-e2e')
+    await page.locator('#new_password').fill('a-new-password-e2e')
+    await page.locator('#repeat_password').fill('a-new-password-e2e')
+    await page.getByRole('button', { name: 'Change password' }).click()
+    // FieldError is the <p> right after the field's input row.
+    const fieldError = page.locator('#current_password').locator('xpath=ancestor::div[contains(@class,"chrome")][1]').locator('p')
+    await fieldError.first().waitFor({ timeout: 5000 }).catch(() => {})
+    const errorText = (await fieldError.allInnerTexts()).join(' ')
+    expect('a wrong current password shows its error under the field', errorText.includes('the password is wrong'), errorText)
+    const login = await fetch(`${WEB}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(who) })
+    expect('the owner still signs in with the old password', login.status === 200, login.status)
+
+    const twoFactor = page.getByTestId('two-factor')
+    const setUp = twoFactor.getByRole('button', { name: 'Set up two-factor' })
+    if ((await setUp.count()) === 0) {
+      expect('two-factor is off for the owner, so it can be set up', false, await twoFactor.innerText())
+    } else {
+      await setUp.click()
+      await page.getByTestId('two-factor-secret').waitFor()
+      expect('setup shows the QR code', (await twoFactor.getByRole('img', { name: /QR code/ }).locator('svg').count()) === 1)
+      expect('setup shows the key in groups of four', /^([A-Z2-7]{1,4} )+[A-Z2-7]{1,4}$/.test((await page.getByTestId('two-factor-secret').innerText()).trim()))
+      await twoFactor.getByRole('button', { name: 'Cancel' }).click()
+      const status = (await (await page.request.get(`${WEB}/api/me/two-factor`)).json()) as { state: string }
+      expect('two-factor stays off until it is confirmed', status.state !== 'on', status.state)
+    }
 
     await page.close()
   },
