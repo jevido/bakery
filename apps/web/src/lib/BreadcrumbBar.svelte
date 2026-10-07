@@ -3,8 +3,7 @@
   // NOTICE): the 60px bar over the page. A single crumb is the page's title;
   // several are a trail whose first link is set in caps. A Resource's crumb
   // keeps its status beside its name. The sidebar toggle leads it (the
-  // drawer's hamburger on a phone), a Server page's switcher docks after the
-  // crumbs, and an Application's Links and Actions on the right.
+  // drawer's hamburger on a phone).
   import { Menu, PanelLeft } from '@lucide/svelte'
   import * as Breadcrumb from '$lib/components/ui/breadcrumb'
   import { Button } from '$lib/components/ui/button'
@@ -71,9 +70,5 @@
         </Breadcrumb.List>
       </Breadcrumb.Root>
     {/if}
-    <!-- A Server page's switcher and status summary dock here, after the breadcrumb. -->
-    <div id="server-topbar-context" class="min-w-0"></div>
   </div>
-  <!-- Resource actions dock here on desktop (the Application heading's Links and Actions). -->
-  <div id="resource-action-hud-slot" class="hidden shrink-0 items-center xl:flex"></div>
 </div>

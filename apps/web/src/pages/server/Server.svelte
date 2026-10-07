@@ -1,7 +1,7 @@
 <script lang="ts">
   // Coolify's Server page (the layout every resources/views/livewire/server/*.blade.php
-  // page shares, Apache-2.0, see NOTICE): the navbar, the configuration
-  // sidebar and the sub-page the URL names.
+  // page shares, Apache-2.0, see NOTICE) as Paperclip's detail page: the
+  // heading, the configuration nav and the sub-page the URL names.
   import { api } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import { href, type ServerPage } from '../../lib/router.svelte'
@@ -11,8 +11,8 @@
   import Danger from './Danger.svelte'
   import DockerCleanup from './DockerCleanup.svelte'
   import General from './General.svelte'
+  import Heading from './Heading.svelte'
   import Metrics from './Metrics.svelte'
-  import Navbar from './Navbar.svelte'
   import PrivateKey from './PrivateKey.svelte'
   import Resources from './Resources.svelte'
 
@@ -36,23 +36,24 @@
     return () => clearInterval(t)
   })
 
-  // Coolify's top-breadcrumb says "Servers"; the Server's name follows in the
-  // switcher the navbar puts beside it. Every route change clears it, a new
-  // sub-page included.
+  // Servers › the Server's name, once it has loaded. Every route change
+  // clears it, a new sub-page included.
+  const name = $derived(server?.name)
   $effect(() => {
     void [id, page]
-    breadcrumb.set({ label: 'Servers', href: href('/servers') })
+    if (name) breadcrumb.set({ label: 'Servers', href: href('/servers') }, { label: name })
+    else breadcrumb.set({ label: 'Servers', href: href('/servers') })
   })
 </script>
 
 {#if loadError}
-  <p class="chrome text-sm text-error">{loadError}</p>
+  <p class="chrome text-sm text-destructive">{loadError}</p>
 {:else if !server}
   <div class="chrome"><Spinner text="Loading…" /></div>
 {:else}
-  <Navbar {server} {page} />
-  <section class="mt-4 w-full max-w-none lg:mt-0">
-    <div class="grid min-w-0 gap-8 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
+  <div class="chrome w-full space-y-6">
+    <Heading {server} {page} />
+    <div class="grid min-w-0 gap-6 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
       <ConfigurationSidebar {server} {page} />
       <div class="min-w-0">
         {#if page === ''}
@@ -70,5 +71,5 @@
         {/if}
       </div>
     </div>
-  </section>
+  </div>
 {/if}

@@ -1,11 +1,13 @@
 <script lang="ts">
   // Coolify's Server configuration sidebar (resources/views/components/server/sidebar.blade.php,
-  // Apache-2.0, see NOTICE): the sub-pages in Coolify's groups, one column on
-  // wide screens and a grid of links above the page on narrower ones. Only the
-  // sub-pages The Bakery has something behind are listed. The Local server is
-  // Coolify's `is_coolify_host`: it has no Private Key and cannot be deleted.
-  import Icon, { type IconName } from '../../lib/Icon.svelte'
-  import { href, serverPath, type ServerPage } from '../../lib/router.svelte'
+  // Apache-2.0, see NOTICE): the sub-pages in Coolify's groups, drawn by
+  // ResourceNav as a column on wide screens and a select on narrower ones.
+  // Only the sub-pages The Bakery has something behind are listed. The Local
+  // server is Coolify's `is_coolify_host`: it has no Private Key and cannot
+  // be deleted.
+  import type { IconName } from '../../lib/Icon.svelte'
+  import ResourceNav from '../../lib/ResourceNav.svelte'
+  import { serverPath, type ServerPage } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
   import type { Server } from '../../lib/types'
   import { isFunctional } from './status'
@@ -29,30 +31,13 @@
 
   // Coolify's groupBy('group'): groups in the order their first item comes.
   const grouped = $derived(
-    [...new Set(items.map((i) => i.group))].map((label) => ({ label, items: items.filter((i) => i.group === label) })),
+    [...new Set(items.map((i) => i.group))].map((label) => ({
+      label,
+      items: items
+        .filter((i) => i.group === label)
+        .map((i) => ({ label: i.label, path: serverPath(server.id, i.page), icon: i.icon, active: i.page === page })),
+    })),
   )
 </script>
 
-<aside class="chrome application-settings-navigation min-w-0 xl:self-start">
-  <nav
-    aria-label="Server configuration sections"
-    class="grid grid-cols-2 gap-0.5 border-y border-neutral-200 py-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-1 xl:border-y-0 xl:py-0 dark:border-white/[0.06]"
-  >
-    {#each grouped as group, i (group.label)}
-      {#if i > 0}
-        <div class="my-2 hidden border-t border-neutral-200 xl:block dark:border-white/[0.06]" aria-hidden="true"></div>
-      {/if}
-      <div class="nav-section hidden xl:block">{group.label}</div>
-      {#each group.items as item (item.label)}
-        <a
-          class={['menu-item', item.page === page && 'menu-item-active']}
-          href={href(serverPath(server.id, item.page))}
-          aria-current={item.page === page ? 'page' : undefined}
-        >
-          <Icon name={item.icon} class="menu-item-icon" />
-          <span class="menu-item-label">{item.label}</span>
-        </a>
-      {/each}
-    {/each}
-  </nav>
-</aside>
+<ResourceNav groups={grouped} label="Server configuration sections" />

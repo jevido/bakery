@@ -1,12 +1,16 @@
 // The Servers list and New server in headless Chromium: the Local server
 // shows with its Ready status, search narrows and clears, the table/grid
 // switch persists across a reload, New server validates an empty submit,
-// and a Viewer sees no "New server".
+// and a Viewer sees no "New server". A Server's frame, in dark and light on
+// a desktop and a phone: the header with its name and status pill, the nav
+// to every sub-page (the select on a phone), and the switcher to a second
+// Server (the Remote server stand-in, when task remote:up runs).
 //
 //   bun e2e/servers.ts            (task web:servers; needs task dev running)
 //
 // The same environment as e2e/walk.ts overrides what it uses.
 import { readFileSync } from 'node:fs'
+import { connect } from 'node:net'
 import { chromium, type Page } from 'playwright-core'
 
 const WEB = (process.env.BAKERY_WEB ?? 'http://127.0.0.1:4930').replace(/\/$/, '')
@@ -59,6 +63,77 @@ for (const theme of ['light', 'dark'] as const) {
   const dark = await page.evaluate(() => document.documentElement.classList.contains('dark'))
   expect(`${theme}: the page is in the ${theme} theme`, dark === (theme === 'dark'), dark)
   await page.close()
+}
+
+// The Server frame on the Local server, in each theme and size.
+const subPages = ['General', 'Resources', 'Docker Cleanup', 'Metrics']
+for (const theme of ['light', 'dark'] as const) {
+  for (const [width, height] of [
+    [1440, 900],
+    [390, 844],
+  ] as const) {
+    const at = `${theme} ${width}px`
+    const page = await signedIn(width, height, theme)
+    await page.goto(`${WEB}/#/server/${localServer.id}`)
+    await page.getByTestId('server-subtitle').waitFor()
+    expect(`${at}: the header shows the name`, (await page.getByTestId('server-subtitle').textContent())?.trim() === localServer.name)
+    const pill = page.getByTestId('server-status-summary')
+    expect(`${at}: the status pill says Ready`, ((await pill.textContent()) ?? '').includes('Ready'))
+    await pill.click()
+    expect(`${at}: the pill opens System status`, await page.getByText('System status').isVisible())
+    await page.keyboard.press('Escape')
+    const crumbs = await page.getByTestId('breadcrumb-bar').textContent()
+    expect(`${at}: the breadcrumb is Servers › the name`, !!crumbs?.includes(localServer.name), crumbs)
+    expect(`${at}: the top bar holds no server context`, (await page.locator('#server-topbar-context, #resource-action-hud-slot').count()) === 0)
+
+    for (const label of subPages) {
+      if (width >= 1280) {
+        await page.getByRole('navigation', { name: 'Server configuration sections' }).getByRole('link', { name: label, exact: true }).click()
+      } else {
+        await page.getByRole('combobox', { name: 'Server configuration sections' }).selectOption({ label })
+      }
+      await page.waitForTimeout(300)
+      const want = label === 'General' ? `#/server/${localServer.id}` : `#/server/${localServer.id}/${label.toLowerCase().replace(' ', '-')}`
+      expect(`${at}: the nav opens ${label}`, page.url().endsWith(want), page.url())
+    }
+    if (width < 1280) {
+      const sideways = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
+      expect(`${at}: nothing scrolls sideways`, !sideways)
+    }
+    await page.close()
+  }
+}
+
+// The switcher, with the Remote server stand-in as a second Server.
+const standIn = await new Promise<boolean>((resolve) => {
+  const socket = connect(4972, '127.0.0.1')
+  socket.once('connect', () => (socket.destroy(), resolve(true)))
+  socket.once('error', () => resolve(false))
+})
+if (!standIn) {
+  console.log('skip the switcher: the Remote server stand-in is not running (task remote:up)')
+} else {
+  const page = await signedIn(1440, 900)
+  const name = `e2e-switch-${Date.now()}`
+  const added = await page.request.post(`${WEB}/api/servers`, { data: { name, host: '127.0.0.1', port: 4972, user: 'podman' } })
+  const other = ((await added.json()) as { server: Server }).server
+  try {
+    await page.goto(`${WEB}/#/server/${localServer.id}/metrics`)
+    await page.getByTestId('server-subtitle').waitFor()
+    await page.getByLabel('Switch server').click()
+    const options = page.getByTestId('server-switcher-option')
+    expect('the switcher lists both Servers', (await options.count()) >= 2, await options.count())
+    await page.getByLabel('Filter servers').fill(name)
+    await page.waitForTimeout(200)
+    expect('the filter narrows to the other Server', (await options.count()) === 1, await options.count())
+    await options.first().click()
+    await page.waitForTimeout(500)
+    expect('the switcher stays on Metrics', page.url().endsWith(`#/server/${other.id}/metrics`), page.url())
+    expect('the header shows the other Server', (await page.getByTestId('server-subtitle').textContent())?.trim() === name)
+  } finally {
+    await page.request.delete(`${WEB}/api/servers/${other.id}`)
+    await page.close()
+  }
 }
 
 const page = await signedIn(1440, 900)
