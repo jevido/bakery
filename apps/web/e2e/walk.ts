@@ -97,6 +97,7 @@ const routes = [
   '/servers/new',
   ...pages('serverPages').map((p) => sub(`/server/${server.id}`, p)),
   '/storages',
+  '/goals',
   '/settings',
   ...pages('guildPages').map((p) => sub('/guild', p)),
   `/guild/roles/${role.id}`,

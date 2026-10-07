@@ -11,6 +11,8 @@
   import Guild from './pages/guild/Guild.svelte'
   import NewGuild from './pages/guild/New.svelte'
   import Profile from './pages/Profile.svelte'
+  import Goal from './pages/goals/Goal.svelte'
+  import Goals from './pages/goals/Goals.svelte'
   import NotFound from './pages/NotFound.svelte'
   import Application from './pages/application/Application.svelte'
   import Database from './pages/database/Database.svelte'
@@ -142,6 +144,12 @@
       <Notifications page={router.route.page} />
     {:else if router.route.name === 'security'}
       <Security page={router.route.page} />
+    {:else if router.route.name === 'goals'}
+      <Goals />
+    {:else if router.route.name === 'goal'}
+      {#key router.route.id}
+        <Goal id={router.route.id} />
+      {/key}
     {:else if router.route.name === 'profile'}
       <Profile />
     {:else if router.route.name === 'dev-components' && devComponents}

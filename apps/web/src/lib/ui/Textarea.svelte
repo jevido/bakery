@@ -29,13 +29,15 @@
     spellcheck = !monospace,
     rows = 4,
     class: className = '',
+    onkeydown,
     ...rest
   }: Props = $props()
 
   const generated = $props.id()
   const htmlId = $derived(id ?? generated)
 
-  function tab(e: KeyboardEvent) {
+  function tab(e: KeyboardEvent & { currentTarget: EventTarget & HTMLTextAreaElement }) {
+    onkeydown?.(e)
     if (!allowTab || e.key !== 'Tab') return
     e.preventDefault()
     const el = e.currentTarget as HTMLTextAreaElement

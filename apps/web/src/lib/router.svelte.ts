@@ -1,7 +1,7 @@
 import { api } from './api'
 import type { Application, Database, Project, Service } from './types'
 
-// Hash router, with Coolify's paths for Projects, Environments, Resources and Servers: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/permissions, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/guild[/{page}] (its pages are guildPages; #/guild/roles/{id} opens one Role; #/members opens Members in place), #/guild/new, #/notifications/{kind} (its pages are notificationPages; #/notifications opens Email in place), #/security/{page} (its pages are securityPages; #/security and #/api-tokens open API Tokens in place), #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
+// Hash router, with Coolify's paths for Projects, Environments, Resources and Servers: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/permissions, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/guild[/{page}] (its pages are guildPages; #/guild/roles/{id} opens one Role; #/members opens Members in place), #/guild/new, #/notifications/{kind} (its pages are notificationPages; #/notifications opens Email in place), #/security/{page} (its pages are securityPages; #/security and #/api-tokens open API Tokens in place), #/goals, #/goals/{id}, #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
@@ -41,6 +41,8 @@ export type Route =
   | { name: 'guild-new' }
   | { name: 'notifications'; page: NotificationPage }
   | { name: 'security'; page: SecurityPage }
+  | { name: 'goals' }
+  | { name: 'goal'; id: number }
   | { name: 'profile' }
   | { name: 'invite'; token: string }
   | { name: 'login' }
@@ -200,6 +202,10 @@ function parse(hash: string): Route {
   if (parts[0] === 'api-tokens' && parts.length === 1) return redirect(securityPath('api-tokens'))
   // #/account was the page's name before it took Coolify's; old links still open it.
   if ((parts[0] === 'profile' || parts[0] === 'account') && parts.length === 1) return { name: 'profile' }
+  if (parts[0] === 'goals') {
+    if (parts.length === 1) return { name: 'goals' }
+    if (parts.length === 2 && /^\d+$/.test(parts[1])) return { name: 'goal', id: Number(parts[1]) }
+  }
   if (parts[0] === 'invite' && parts.length === 2) return { name: 'invite', token: parts[1] }
   if (parts[0] === 'servers') {
     if (parts.length === 1) return { name: 'servers' }

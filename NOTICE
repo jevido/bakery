@@ -38,6 +38,11 @@ The dashboard's components are built with shadcn-svelte
 The dashboard uses Lucide icons (https://github.com/lucide-icons/lucide),
 Copyright (c) Lucide Contributors, licensed under the ISC License.
 
+Descriptions and Comments are rendered from Markdown with marked
+(https://github.com/markedjs/marked), licensed under the MIT License, and
+sanitized with DOMPurify (https://github.com/cure53/DOMPurify), licensed
+under the Apache License 2.0 (or MPL 2.0).
+
 The New Resource page uses icons copied unchanged from Coolify v4.3.23's
 public/svgs/ under the same license: resources/public-repo.svg,
 resources/deploy-key.svg, resources/docker-compose.svg,

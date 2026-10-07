@@ -37,6 +37,12 @@ tasks:
     cmds:
       - bun e2e/settings.ts
 
+  work:
+    desc: Check the work pages (Goals) in headless Chromium (needs task dev)
+    deps: [install]
+    cmds:
+      - bun e2e/work.ts
+
   check:
     desc: svelte-check, tsc and a production build
     deps: [install]

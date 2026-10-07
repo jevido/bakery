@@ -46,3 +46,8 @@ export function duration(from: string | Date, to: string | Date): string {
   if (h > 0) return `${pad(h)}h ${pad(m)}m ${pad(sec)}s`
   return `${pad(m)}m ${pad(sec)}s`
 }
+
+/** A day as Paperclip's formatDate writes it: "Oct 8, 2026". */
+export function formatDate(at: string | Date): string {
+  return new Date(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
