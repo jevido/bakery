@@ -16,6 +16,7 @@ depend on each other.
 | guilds | supporting | `services/api` (`contexts/guilds`) | Guilds, Memberships and their Roles, Permissions, the Guild Master and its Transfer offers, Permission overrides per Project, Invitations, the Current guild of a request |
 | identity | generic | `services/api` (`contexts/identity`) | Members, the Instance admin, Setup, Sessions, API tokens, Profiles and Two-factor authentication |
 | notifications | generic | `services/api` (`contexts/notifications`) | Notification channels and their Deliveries |
+| work | supporting | `services/api` (`contexts/work`) | Goals, Issues and Comments a Guild's Board plans and tracks work with |
 
 - **Core:** where the project competes. Gets the most care and the richest model.
 - **Supporting:** needed and specific to this project, but not the differentiator.
@@ -46,6 +47,8 @@ adapt to.
 | deployments | notifications | published language | `deployments.OnDeploymentFinished { deployment, guild, application, slug, succeeded, reason, branch, commit, trigger, rollback }`: a Deployment ended succeeded or failed (not cancelled, not failed by a restart) |
 | databases | notifications | published language | `databases.OnBackupExecutionFinished { backup execution, guild, database, name, type, succeeded, reason, trigger, size, off-site }`: a Backup execution ended (not one failed by a restart) |
 | servers | notifications | published language | `servers.OnServerHealthChanged { server, guild, name, change, reason, disk used/total }`: a Server probe found a Server unreachable, reachable again, or its disk usage high; guild is 0 for the Local server, which concerns every Guild |
+| guilds | work | open host service (work is conformist) | `guilds.Auth`, `guilds.Can(permission)` (reading needs `view_resources`, every change `manage_work`), `guilds.Current(ctx)`, `guilds.VisibleProjects(ctx, ids)` so an Issue or Goal in a Project the Member may not view is hidden (404), `guilds.IssuePrefix(ctx, guild)` for every Issue identifier, `guilds.IsMember(ctx, guild, member)` for Assignees and Goal owners; work registers `guilds.OnGuildDeleting` so a Guild with Goals or Issues is not deleted |
+| projects | work | customer/supplier | `projects.ProjectInGuild(ctx, id, guildID)` before an Issue or Goal takes a Project; `projects.OnProjectDeleted`, after which its Issues and Goals keep existing without a Project |
 | guilds | notifications | customer/supplier | `guilds.OnInvitationCreated { guild, email, role, invited by, link, expires }`, called synchronously; notifications answers whether it emailed the link |
 
 ## External systems
@@ -90,4 +93,6 @@ flowchart LR
   deployments -->|OnDeploymentFinished| notifications
   databases -->|OnBackupExecutionFinished| notifications
   servers -->|OnServerHealthChanged| notifications
+  guilds -->|Auth, Can, Current, VisibleProjects, IssuePrefix, IsMember| work
+  projects -->|ProjectInGuild, OnProjectDeleted| work
 ```

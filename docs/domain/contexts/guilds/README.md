@@ -23,12 +23,12 @@ rows and stores the Guild's id on them.
 
 | Term | Meaning |
 | ---- | ------- |
-| Guild | A group of Members that owns Projects, Servers (all but the Local server), S3 storages, Notification channels, Known hosts and API tokens. Name and optional description. Coolify's Team, Paperclip's Company. |
+| Guild | A group of Members that owns Projects, Servers (all but the Local server), S3 storages, Notification channels, Known hosts, API tokens, Goals and Issues. Name, optional description and Issue prefix. Coolify's Team, Paperclip's Company. |
 | Membership | A Member's place in a Guild, holding any number of Roles and always the Base role. At most one per Member and Guild. |
-| Role | A named set of Permissions in one Guild, with a color and a Position. Seeded in every Guild: `Admin` (Administrator), `Member` (View resources, See secrets, Deploy, Manage applications), `Viewer` (View resources). Discord's role. |
+| Role | A named set of Permissions in one Guild, with a color and a Position. Seeded in every Guild: `Admin` (Administrator), `Member` (View resources, See secrets, Deploy, Manage applications, Manage work), `Viewer` (View resources). Discord's role. |
 | Base role | The Role every Member holds, shown as `@everyone`, at Position 0. Cannot be assigned, removed, renamed or deleted; only its Permissions change. Seeded with none. Discord's `@everyone`. |
 | Position | A Role's place in its Guild's order, higher above lower. A Member's highest Role is the highest-placed Role they hold. |
-| Permission | One of the fixed list in the glossary (`administrator`, `view_resources`, `see_secrets`, `deploy`, `manage_applications`, `manage_servers`, `manage_notifications`, `manage_guild`, `manage_members`, `manage_roles`, `hire_agents`, `approve`, `manage_budgets`). A Member's Permissions in a Guild are the union of their Roles'; `administrator` grants every one. |
+| Permission | One of the fixed list in the glossary (`administrator`, `view_resources`, `see_secrets`, `deploy`, `manage_applications`, `manage_servers`, `manage_notifications`, `manage_guild`, `manage_members`, `manage_roles`, `hire_agents`, `approve`, `manage_budgets`, `manage_work`). A Member's Permissions in a Guild are the union of their Roles'; `administrator` grants every one. |
 | Guild Master | The one Member of a Guild above every Role, with every Permission, never removable or re-roled; changes only by an accepted Transfer offer. Discord's server owner. |
 | Transfer offer | The Guild Master's offer of the Guild Master to one other Member; accepted, declined, withdrawn or expired after 7 days. |
 | Permission override | On one Project, per Role or per Member: allow, deny or inherit for `view_resources`, `see_secrets`, `deploy` or `manage_applications`. |
