@@ -68,7 +68,9 @@ None.
   Applications and Services, so two Guilds cannot both have `app.example.com`;
   `projects.DomainInUse` and the Domain checks ask across all Guilds. The
   Route settings API (`/api/applications/{id}/routing`) answers 404 for an
-  Application outside the Current guild (`projects.ApplicationInGuild`).
+  Application outside the Current guild or a Project the request may not
+  view (`projects.ProjectOf` through `guilds.InProject`), and changing them
+  needs `manage_applications` in that Project.
 
 - **Caddy is configured only through its admin API, and always with the full
   config.** Rendering everything from the `routes` table and loading it with

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -22,6 +23,12 @@ type Controller struct {
 	localServer func(ctx context.Context) (uint64, error)
 	// currentGuild is the Guild the request acts in.
 	currentGuild func(ctx contractshttp.Context) uint64
+	// Visible keeps the Projects among ids the request may view; nil keeps
+	// every one.
+	Visible func(ctx contractshttp.Context, ids []uint64) ([]uint64, error)
+	// Permissions lists what the request may do in its Project; nil lists
+	// nothing.
+	Permissions func(ctx contractshttp.Context) []string
 }
 
 func NewController(service *app.Service, localServer func(ctx context.Context) (uint64, error), currentGuild func(ctx contractshttp.Context) uint64) *Controller {
@@ -194,6 +201,8 @@ type projectJSON struct {
 	Name         string            `json:"name"`
 	Description  string            `json:"description"`
 	Environments []environmentJSON `json:"environments,omitempty"`
+	// Permissions are the request's in the Project, on its own page only.
+	Permissions []string `json:"permissions,omitempty"`
 }
 
 func projectToJSON(p domain.Project, localServer uint64) projectJSON {
@@ -237,6 +246,17 @@ func (c *Controller) ListProjects(ctx contractshttp.Context) contractshttp.Respo
 	if err != nil {
 		return fail(ctx, err)
 	}
+	if c.Visible != nil {
+		ids := make([]uint64, len(ps))
+		for i, p := range ps {
+			ids[i] = p.ID
+		}
+		visible, err := c.Visible(ctx, ids)
+		if err != nil {
+			return fail(ctx, err)
+		}
+		ps = slices.DeleteFunc(ps, func(p domain.Project) bool { return !slices.Contains(visible, p.ID) })
+	}
 	out := make([]projectJSON, len(ps))
 	for i, p := range ps {
 		out[i] = projectToJSON(p, c.localID(ctx))
@@ -265,7 +285,11 @@ func (c *Controller) ShowProject(ctx contractshttp.Context) contractshttp.Respon
 	if err != nil {
 		return fail(ctx, err)
 	}
-	return ctx.Response().Success().Json(contractshttp.Json{"project": projectToJSON(p, c.localID(ctx))})
+	out := projectToJSON(p, c.localID(ctx))
+	if c.Permissions != nil {
+		out.Permissions = c.Permissions(ctx)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"project": out})
 }
 
 func (c *Controller) UpdateProject(ctx contractshttp.Context) contractshttp.Response {

@@ -73,8 +73,12 @@ type Change struct {
 	DeletedRole uint64
 	// Membership, when set, holds exactly its RoleIDs afterwards.
 	Membership *domain.Membership
-	// RemovedMembership is the id of a Membership to delete, 0 for none.
+	// RemovedMembership is the id of a Membership to delete, 0 for none;
+	// its Member's Overrides in the Guild go with it.
 	RemovedMembership uint64
+	// Override, when set, replaces the Project's Override for its Role or
+	// Member; an empty one deletes it.
+	Override *domain.Override
 }
 
 // Members is what guilds needs to know and ask of identity's Members.
@@ -96,6 +100,7 @@ type Service struct {
 	roles       Roles
 	invitations Invitations
 	offers      Offers
+	overrides   Overrides
 	members     Members
 	// Now is the clock; time.Now unless a test sets it.
 	Now func() time.Time
@@ -118,8 +123,8 @@ func (e ErrGuildInUse) Error() string {
 	return "the guild still owns resources; delete them first"
 }
 
-func NewService(guilds Guilds, memberships Memberships, roles Roles, invitations Invitations, offers Offers, members Members) *Service {
-	return &Service{guilds: guilds, memberships: memberships, roles: roles, invitations: invitations, offers: offers, members: members, Now: time.Now}
+func NewService(guilds Guilds, memberships Memberships, roles Roles, invitations Invitations, offers Offers, overrides Overrides, members Members) *Service {
+	return &Service{guilds: guilds, memberships: memberships, roles: roles, invitations: invitations, offers: offers, overrides: overrides, members: members, Now: time.Now}
 }
 
 // CreateGuild makes a Guild with the seeded Roles and creatorID its Guild

@@ -82,13 +82,15 @@ func svc() *app.Service {
 	return service
 }
 
-// Routes registers the Route settings API, behind guilds.Auth.
+// Routes registers the Route settings API, behind guilds.Auth and
+// guilds.InProject.
 func Routes(r route.Router) {
 	c := routinghttp.NewController(svc(), func(ctx contractshttp.Context, id uint64) (bool, error) {
 		return projects.ApplicationInGuild(ctx.Context(), id, guilds.Current(ctx))
 	})
-	r.Middleware(guilds.Auth).Get("/api/applications/{id}/routing", c.ShowSettings)
-	r.Middleware(guilds.Auth, guilds.Can("manage_applications")).Put("/api/applications/{id}/routing", c.ReplaceSettings)
+	application := guilds.InProject("application", projects.ProjectOf("application"))
+	r.Middleware(guilds.Auth, application).Get("/api/applications/{id}/routing", c.ShowSettings)
+	r.Middleware(guilds.Auth, application, guilds.Can("manage_applications")).Put("/api/applications/{id}/routing", c.ReplaceSettings)
 }
 
 // Init wires routing's event handlers. Call once at start.

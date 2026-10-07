@@ -15,6 +15,11 @@ type Place struct {
 	Permissions domain.Permissions
 	// GuildMaster is set when the Member is the Guild's Guild Master.
 	GuildMaster bool
+	// MemberID is who acts there; Held the ids of the Roles they hold
+	// there, the Base role's (BaseRoleID) first, for Permission overrides.
+	MemberID   uint64
+	Held       []uint64
+	BaseRoleID uint64
 }
 
 // Place finds the Current guild of a Member's request: for an API token
@@ -46,7 +51,7 @@ func (s *Service) Place(ctx context.Context, memberID uint64, instanceAdmin bool
 		if err != nil || len(all) == 0 {
 			return Place{}, false, err
 		}
-		return Place{Guild: all[0], Permissions: domain.AllPermissions, GuildMaster: all[0].MasterID == memberID}, true, nil
+		return Place{Guild: all[0], Permissions: domain.AllPermissions, GuildMaster: all[0].MasterID == memberID, MemberID: memberID}, true, nil
 	}
 	return Place{}, false, nil
 }
@@ -58,13 +63,24 @@ func (s *Service) placeIn(ctx context.Context, guildID, memberID uint64, instanc
 	}
 	master := g.MasterID == memberID
 	if instanceAdmin || master {
-		return Place{Guild: g, Permissions: domain.AllPermissions, GuildMaster: master}, true, nil
+		return Place{Guild: g, Permissions: domain.AllPermissions, GuildMaster: master, MemberID: memberID}, true, nil
 	}
-	perms, ok, err := s.PermissionsIn(ctx, guildID, memberID)
+	m, ok, err := s.memberships.Of(ctx, guildID, memberID)
 	if err != nil || !ok {
 		return Place{}, false, err
 	}
-	return Place{Guild: g, Permissions: perms}, true, nil
+	roles, err := s.roles.ForGuild(ctx, guildID)
+	if err != nil {
+		return Place{}, false, err
+	}
+	p := Place{Guild: g, Permissions: domain.PermissionsOf(roles, m), MemberID: memberID}
+	for _, r := range roles {
+		if r.Base {
+			p.BaseRoleID = r.ID
+			p.Held = append([]uint64{r.ID}, m.RoleIDs...)
+		}
+	}
+	return p, true, nil
 }
 
 // GuildsFor lists the Guilds a Member may act in, by id, with their

@@ -33,6 +33,11 @@ type place struct {
 	permissions domain.Permissions
 	// held are the Member's own Permissions, before an API token's cap.
 	held domain.Permissions
+	// at is where the Member acts, for resolving a Project's overrides.
+	at app.Place
+	// project is the Project the route is in (InProject), 0 for none;
+	// permissions and held are then resolved there.
+	project uint64
 }
 
 // Auth lets a request through only from a Member (identity.Authenticate)
@@ -93,7 +98,7 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 		_ = refuse(ctx, p, pl.Permissions, domain.PermissionViewResources)
 		return
 	}
-	ctx.WithValue(placeKey{}, place{principal: p, guild: pl.Guild, permissions: perms, held: pl.Permissions})
+	ctx.WithValue(placeKey{}, place{principal: p, guild: pl.Guild, permissions: perms, held: pl.Permissions, at: pl})
 	if found {
 		identity.ActIn(ctx, pl.Guild.ID, pl.Permissions.Expand().Keys())
 	}
@@ -206,7 +211,8 @@ func tokenPermission(need domain.Permission) identity.Permission {
 }
 
 // Can lets only requests that may use Permission in the Current guild
-// through (403). It runs after Auth.
+// through (403), or in the request's Project after InProject. It runs
+// after Auth.
 type Can struct {
 	Permission domain.Permission
 }

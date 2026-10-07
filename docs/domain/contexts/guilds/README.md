@@ -47,7 +47,7 @@ rows and stores the Guild's id on them.
 | Guild (Guild Master) | Exactly one Guild Master at all times, a Member with a Membership in the Guild. The Guild Master is never removed from the Guild, never re-roled by anyone, cannot leave it, and cannot have their account deleted while they hold it; they transfer it first or delete the Guild. At most one open Transfer offer, to another Member of the Guild who is a person (never an agent); it changes nothing until accepted, can be withdrawn by the Guild Master and declined by its Member, and expires 7 days after it was made. Accepting swaps the Guild Master in one step; both keep their other Roles. |
 | Role | Belongs to one Guild. Name is 1–100 characters after trimming; color is `#rrggbb`; Permissions are from the fixed list. Positions are unique per Guild. The Base role is at Position 0, always exists, and cannot be renamed, deleted, assigned or removed; every other Role sits above it. A Role held by Members can be deleted; they simply stop holding it. |
 | Membership | One per Member and Guild. Holds a set of Roles of its own Guild (never the Base role explicitly; it holds that implicitly). The Instance admin's Memberships are never removed. |
-| Permission overrides | Keyed by one Project of the Guild. Each entry is a Role or a Member, a Permission from `view_resources`, `see_secrets`, `deploy` and `manage_applications`, and allow or deny (inherit is no entry). For a Member on that Project: start from their Guild Permissions; then, over all the Roles they hold, a deny removes the Permission and otherwise an allow adds it; then the Member's own entry, if any, decides. `administrator`, the Instance admin and the Guild Master skip overrides. |
+| Permission overrides | Keyed by one Project of the Guild. Each entry is a Role or a Member, a Permission from `view_resources`, `see_secrets`, `deploy` and `manage_applications`, and allow or deny (inherit is no entry). For a Member on that Project: start from their Guild Permissions; then the Base role's entry; then, over all the other Roles they hold, a deny removes the Permission and otherwise an allow adds it; then the Member's own entry, if any, decides. Deleting the Project, the Role or the Member's Membership deletes its entries. `administrator`, the Instance admin and the Guild Master skip overrides. |
 | Invitation | Belongs to one Guild. Email is valid and not already a Member of this Guild; its Roles are Roles of that Guild below the inviter's highest Role (none means the Base role only); at most one open Invitation per Guild and email; expires 7 days after it was made; accepted at most once; a revoked or expired one cannot be accepted. Only the hash of its token is stored. |
 
 ### The hierarchy
@@ -112,8 +112,14 @@ that touches a Role or a Member also follows the hierarchy above.
 - `WithdrawOffer()` [the Guild Master].
 - `AcceptOffer()`, `DeclineOffer()` [the Member it was offered to]:
   accepting makes them the Guild Master in one step.
-- `SetOverride(project, role or member, permission, allow | deny | inherit)`
-  [`manage_roles`]: for a Role or Member below one's own highest.
+- `SetOverride(project, role or member, allow, deny)` [`manage_roles` in
+  that Project]: for a Role below one's own highest (the Base role
+  included) or a Member whose highest Role is below it, never oneself, the
+  Guild Master or the Instance admin; only switching Permissions one holds
+  in that Project. Both empty is inherit for every Permission and deletes
+  the entry.
+- `ForgetProject(project)` [projects, when it deletes a Project]: its
+  Permission overrides go.
 
 ### Domain events
 
@@ -163,9 +169,31 @@ other changes with `write`, `administrator` only with `root`.
   - `guilds.Allows(ctx, permission)`: the same question inside a handler
     whose answer differs by Permission, e.g. Secrets in a response a
     viewer may also read.
+  - `guilds.InProject(name, projectOf)`: after `guilds.Auth`, on every
+    route whose `{id}` is a Project or something in one (Environments,
+    Applications, Deployments, Databases, Scheduled backups, Backup
+    executions, Services, variables, routing): 404 when it is outside the
+    Current guild or in a Project where the request lacks `view_resources`;
+    otherwise the request's Permissions are resolved in that Project, so
+    `guilds.Can` and `guilds.Allows` after it count its Permission
+    overrides. `projectOf(id)` is the owning context's lookup answering the
+    Project and Guild (`projects.ProjectOf(kind)` for `project`,
+    `environment` and `application`; databases, services and deployments
+    reach theirs through it). Routes keyed by no Project (`POST
+    /api/projects`, `GET /api/projects`) keep the guild-wide check.
+  - `guilds.VisibleProjects(ctx, ids)`: the Projects among ids the request
+    may view, with one read of the Guild's overrides; a list across
+    Projects (`GET /api/projects`) drops the others.
+  - `guilds.Permissions(ctx)`: the request's Permissions as wire keys, in
+    its Project after `guilds.InProject`.
+  - `guilds.ForgetProject(ctx, project)` and
+    `guilds.ProjectPermissionRoutes(r, projectOf)`: projects calls the first
+    from its delete use case and registers the second, since guilds cannot
+    find a Project itself.
   - `guilds.Owns(name, belongs)`: after `guilds.Auth`, 404 for a route
-    whose `{id}` names something outside the Current guild; `belongs(id,
-    guild)` is the owning context's check (e.g. `projects.ApplicationInGuild`).
+    whose `{id}` names something outside the Current guild that is in no
+    Project; `belongs(id, guild)` is the owning context's check (e.g.
+    databases' S3 storages).
   - `guilds.Current(ctx) uint64`: the Current guild's id, which every other
     context stores on what it creates (or reaches through something that
     does) and filters every list and read by.
@@ -209,7 +237,17 @@ other changes with `write`, `administrator` only with `root`.
   Another Guild's Role answers 404, a Role at or above one's own highest,
   the Base role's name or color, or a Permission one lacks 403.
   `GET /api/permissions` lists the fixed list (`key`, `name`,
-  `description`, `overridable`) for every Member. Transfer offers, with a Session only:
+  `description`, `overridable`) for every Member. A Project's Permission
+  overrides, with `manage_roles` in that Project: `GET
+  /api/projects/{id}/permissions` (`overrides`, each `{role_id,
+  member_id, allow, deny}` with one id null), `PUT
+  /api/projects/{id}/permissions/roles/{role_id}` and
+  `.../members/{member_id}` (`{"allow", "deny"}`, wire keys; both empty
+  deletes it; answers the `override`) and `DELETE` of either (204). A
+  Permission that cannot be overridden or is both allowed and denied
+  answers 422 on `allow`; a Role or Member not below one's own, or a
+  Permission one lacks there, 403; another Guild's Role 404. `GET
+  /api/projects/{id}` adds `permissions`, the request's there. Transfer offers, with a Session only:
   `POST /api/guilds/current/guild-master-offer` (`{"member_id"}`; 201 with
   the `offer`; 403 for anyone but the Guild Master, 422 for themselves or
   someone outside the Guild, 409 while one is open) and `DELETE
@@ -372,6 +410,25 @@ other changes with `write`, `administrator` only with `root`.
   deny here is meant to hold whichever other Role the Member also has, which
   is what "this Role must not deploy on this Project" says. The Member's own
   override still beats both, as in Discord.
+- **The Base role's override comes first, as in Discord.** It is applied
+  before the other Roles', so an allow on a Role beats a deny on `@everyone`.
+  That is how a Project is made private: deny `view_resources` to
+  `@everyone`, allow it to the Roles that may see it. Counting the Base role
+  among the other Roles would let its deny beat every allow and make that
+  impossible.
+- **A Project one may not view answers 404**, the same as another Guild's
+  thing, and is missing from every list, so a hidden Project leaks not even
+  its existence. Reading still needs `view_resources` in the Guild first
+  (`guilds.Auth`), so an allow on a Project can lift a Role's deny or give
+  `see_secrets`, `deploy` and `manage_applications` there, but cannot open a
+  Project to someone without `view_resources` at all. Discord lets a
+  channel allow give view to a Role without it; here Servers, S3 storages
+  and channels would then need their own answer, and no flow asks for it.
+- **`project_id` has no foreign key.** Projects are the projects context's
+  table; it tells guilds when one is deleted (`ForgetProject`), the way
+  guilds asks the others before a Guild is deleted (`OnGuildDeleting`).
+  Containers on a Server's page stay guild-wide: Servers are not in a
+  Project.
 - **Only four Permissions can be overridden per Project.** Those are the
   ones that mean something inside one Project; Servers, Notification
   channels, Members and Roles are the Guild's, not a Project's.

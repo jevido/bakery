@@ -79,6 +79,9 @@ type Service struct {
 	// the Local server.
 	ServerUsable func(ctx context.Context, id, guildID uint64) (bool, error)
 	LocalServer  func(ctx context.Context) (uint64, error)
+	// ProjectDeleted is told of each deleted Project (guilds forgets its
+	// Permission overrides); nil tells no one.
+	ProjectDeleted func(ctx context.Context, projectID uint64) error
 }
 
 // targetServer checks the Target server an Application is created with and
@@ -239,7 +242,13 @@ func (s *Service) DeleteProject(ctx context.Context, id uint64) error {
 			return ErrProjectNotEmpty
 		}
 	}
-	return s.store.DeleteProject(ctx, id)
+	if err := s.store.DeleteProject(ctx, id); err != nil {
+		return err
+	}
+	if s.ProjectDeleted != nil {
+		return s.ProjectDeleted(ctx, id)
+	}
+	return nil
 }
 
 func (s *Service) CreateApplication(ctx context.Context, environmentID uint64, in domain.ApplicationInput) (domain.Application, error) {

@@ -327,7 +327,16 @@ func store(tx contractsorm.Query, guildID uint64, c *app.Change) error {
 			}
 		}
 	}
+	if c.Override != nil {
+		c.Override.GuildID = guildID
+		if err := setOverride(tx, *c.Override); err != nil {
+			return err
+		}
+	}
 	if c.RemovedMembership != 0 {
+		if _, err := tx.Exec("DELETE FROM permission_overrides WHERE guild_id = ? AND member_id = (SELECT user_id FROM memberships WHERE id = ?)", guildID, c.RemovedMembership); err != nil {
+			return err
+		}
 		if _, err := tx.Where("id", c.RemovedMembership).Where("guild_id", guildID).Delete(&membershipRecord{}); err != nil {
 			return err
 		}

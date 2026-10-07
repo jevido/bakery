@@ -15,6 +15,56 @@ type memStore struct {
 	guilds      []domain.Guild
 	memberships []domain.Membership
 	roles       []domain.Role
+	overrides   memOverrides
+}
+
+// memOverrides keeps its own lock: SetOverride reads it inside Change.
+type memOverrides struct {
+	mu   sync.Mutex
+	list []domain.Override
+}
+
+func (o *memOverrides) ForGuild(_ context.Context, guildID uint64) ([]domain.Override, error) {
+	return o.where(func(x domain.Override) bool { return x.GuildID == guildID }), nil
+}
+
+func (o *memOverrides) ForProject(_ context.Context, guildID, projectID uint64) ([]domain.Override, error) {
+	return o.where(func(x domain.Override) bool { return x.GuildID == guildID && x.ProjectID == projectID }), nil
+}
+
+func (o *memOverrides) ForgetProject(_ context.Context, projectID uint64) error {
+	o.drop(func(x domain.Override) bool { return x.ProjectID == projectID })
+	return nil
+}
+
+func (o *memOverrides) where(keep func(domain.Override) bool) []domain.Override {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	var out []domain.Override
+	for _, x := range o.list {
+		if keep(x) {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+func (o *memOverrides) drop(gone func(domain.Override) bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.list = slices.DeleteFunc(o.list, gone)
+}
+
+func (o *memOverrides) set(v domain.Override) {
+	o.drop(func(x domain.Override) bool {
+		return x.ProjectID == v.ProjectID && x.RoleID == v.RoleID && x.MemberID == v.MemberID
+	})
+	if !v.Empty() {
+		o.mu.Lock()
+		v.ID = uint64(len(o.list) + 1)
+		o.list = append(o.list, v)
+		o.mu.Unlock()
+	}
 }
 
 // The Permissions of the seeded Roles, for actors in the tests.
@@ -245,7 +295,14 @@ func (m *memStore) Change(_ context.Context, guildID uint64, decide func(Hierarc
 	if c.Membership != nil {
 		m.memberships[slices.IndexFunc(m.memberships, func(x domain.Membership) bool { return x.ID == c.Membership.ID })].RoleIDs = c.Membership.RoleIDs
 	}
+	if c.Override != nil {
+		v := *c.Override
+		v.GuildID = guildID
+		m.overrides.set(v)
+	}
 	if c.RemovedMembership != 0 {
+		gone := m.memberships[slices.IndexFunc(m.memberships, func(x domain.Membership) bool { return x.ID == c.RemovedMembership })]
+		m.overrides.drop(func(x domain.Override) bool { return x.GuildID == guildID && x.MemberID == gone.MemberID })
 		m.memberships = slices.DeleteFunc(m.memberships, func(x domain.Membership) bool { return x.ID == c.RemovedMembership })
 	}
 	return c, nil
@@ -302,7 +359,7 @@ func newTestService() (*Service, *memStore) {
 func newTestServiceWithMembers() (*Service, *memStore, *memMembers) {
 	m := &memStore{}
 	members := &memMembers{}
-	return NewService(m, m, m, &memInvitations{store: m}, &memOffers{store: m}, members), m, members
+	return NewService(m, m, m, &memInvitations{store: m}, &memOffers{store: m}, &m.overrides, members), m, members
 }
 
 func TestMakeFirstGuildOnlyOnce(t *testing.T) {

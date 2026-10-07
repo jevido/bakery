@@ -1,7 +1,7 @@
 // Package projects is what other contexts and the router may use from the
 // projects context: its routes, ApplicationForDeploy (with the Target
-// server), Environment, ProjectInGuild, EnvironmentInGuild and
-// ApplicationInGuild, the ApplicationDeleted and ApplicationDomainsChanged
+// server), Environment, ProjectOf and ApplicationInGuild, the
+// ApplicationDeleted and ApplicationDomainsChanged
 // events and the OnProjectDeleting and OnEnvironmentDeleting checks. Nothing
 // else in contexts/projects is for outside use.
 package projects
@@ -28,6 +28,7 @@ func svc() *app.Service {
 		service = app.NewService(infra.Store{}, infra.NewDeployKey, cfg.GetString("bakery.domain_suffix", "localhost"), cfg.GetString("bakery.dashboard.domain"))
 		service.ServerUsable = servers.UsableBy
 		service.LocalServer = servers.LocalID
+		service.ProjectDeleted = guilds.ForgetProject
 		servers.OnServerDeleting(infra.Store{}.ServerInUse)
 		servers.OnContainerOwner("application", ApplicationInGuild)
 		guilds.OnGuildDeleting("projects", func(ctx context.Context, guildID uint64) (bool, error) {
@@ -41,37 +42,80 @@ func svc() *app.Service {
 // ErrNotFound is returned for an Application that does not exist.
 var ErrNotFound = app.ErrNotFound
 
-// Routes registers the projects API, all behind guilds.Auth; changes need
-// manage_applications, reading variables see_secrets.
+// Routes registers the projects API, all behind guilds.Auth; a route keyed
+// by a Project, Environment or Application also behind guilds.InProject,
+// so its Permission overrides count. Changes need manage_applications,
+// reading variables see_secrets. A Project's Permission overrides are
+// guilds' routes, registered here with ProjectOf.
 func Routes(r route.Router) {
 	c := projectshttp.NewController(svc(), servers.LocalID, guilds.Current)
-	r.Middleware(guilds.Auth).Group(func(r route.Router) {
-		r.Get("/api/projects", c.ListProjects)
-		r.Get("/api/projects/{id}", c.ShowProject)
-		r.Get("/api/environments/{id}", c.ShowEnvironment)
-		r.Get("/api/applications/{id}", c.ShowApplication)
-	})
-	r.Middleware(guilds.Auth, guilds.Can("manage_applications")).Group(func(r route.Router) {
-		r.Post("/api/projects", c.CreateProject)
+	c.Visible = guilds.VisibleProjects
+	c.Permissions = guilds.Permissions
+	project := guilds.InProject("project", ProjectOf("project"))
+	environment := guilds.InProject("environment", ProjectOf("environment"))
+	application := guilds.InProject("application", ProjectOf("application"))
+	manage, secrets := guilds.Can("manage_applications"), guilds.Can("see_secrets")
+	r.Middleware(guilds.Auth).Get("/api/projects", c.ListProjects)
+	r.Middleware(guilds.Auth, manage).Post("/api/projects", c.CreateProject)
+	r.Middleware(guilds.Auth, project).Get("/api/projects/{id}", c.ShowProject)
+	r.Middleware(guilds.Auth, project, manage).Group(func(r route.Router) {
 		r.Patch("/api/projects/{id}", c.UpdateProject)
 		r.Delete("/api/projects/{id}", c.DeleteProject)
 		r.Post("/api/projects/{id}/environments", c.CreateEnvironment)
+		r.Put("/api/projects/{id}/variables", c.ReplaceProjectSharedVariables)
+	})
+	r.Middleware(guilds.Auth, environment).Get("/api/environments/{id}", c.ShowEnvironment)
+	r.Middleware(guilds.Auth, environment, manage).Group(func(r route.Router) {
 		r.Patch("/api/environments/{id}", c.UpdateEnvironment)
 		r.Delete("/api/environments/{id}", c.DeleteEnvironment)
 		r.Post("/api/environments/{id}/applications", c.CreateApplication)
+		r.Put("/api/environments/{id}/variables", c.ReplaceEnvironmentSharedVariables)
+	})
+	r.Middleware(guilds.Auth, application).Get("/api/applications/{id}", c.ShowApplication)
+	r.Middleware(guilds.Auth, application, manage).Group(func(r route.Router) {
 		r.Patch("/api/applications/{id}", c.UpdateApplication)
 		r.Delete("/api/applications/{id}", c.DeleteApplication)
 		r.Post("/api/applications/{id}/deploy-key", c.RegenerateDeployKey)
 		r.Put("/api/applications/{id}/environment-variables", c.ReplaceEnvironmentVariables)
-		r.Put("/api/projects/{id}/variables", c.ReplaceProjectSharedVariables)
-		r.Put("/api/environments/{id}/variables", c.ReplaceEnvironmentSharedVariables)
 	})
 	// Variable values are Secrets.
-	r.Middleware(guilds.Auth, guilds.Can("see_secrets")).Group(func(r route.Router) {
-		r.Get("/api/applications/{id}/environment-variables", c.ShowEnvironmentVariables)
-		r.Get("/api/projects/{id}/variables", c.ShowProjectSharedVariables)
-		r.Get("/api/environments/{id}/variables", c.ShowEnvironmentSharedVariables)
-	})
+	r.Middleware(guilds.Auth, project, secrets).Get("/api/projects/{id}/variables", c.ShowProjectSharedVariables)
+	r.Middleware(guilds.Auth, environment, secrets).Get("/api/environments/{id}/variables", c.ShowEnvironmentSharedVariables)
+	r.Middleware(guilds.Auth, application, secrets).Get("/api/applications/{id}/environment-variables", c.ShowEnvironmentVariables)
+	guilds.ProjectPermissionRoutes(r, ProjectOf("project"))
+}
+
+// ProjectOf finds the Project and Guild of a "project", "environment" or
+// "application" by id, for guilds.InProject on the routes of every context
+// keyed by one; another kind panics, at boot where routes are registered.
+func ProjectOf(kind string) guilds.ProjectOf {
+	var of func(ctx context.Context, id uint64) (projectID, guildID uint64, err error)
+	switch kind {
+	case "project":
+		of = func(ctx context.Context, id uint64) (uint64, uint64, error) {
+			p, err := svc().Project(ctx, id)
+			return p.ID, p.GuildID, err
+		}
+	case "environment":
+		of = func(ctx context.Context, id uint64) (uint64, uint64, error) {
+			e, err := svc().Environment(ctx, id)
+			return e.ProjectID, e.GuildID, err
+		}
+	case "application":
+		of = func(ctx context.Context, id uint64) (uint64, uint64, error) {
+			a, err := svc().Application(ctx, id)
+			return a.ProjectID, a.GuildID, err
+		}
+	default:
+		panic("projects: no project of " + kind)
+	}
+	return func(ctx context.Context, id uint64) (uint64, uint64, bool, error) {
+		projectID, guildID, err := of(ctx, id)
+		if errors.Is(err, app.ErrNotFound) {
+			return 0, 0, false, nil
+		}
+		return projectID, guildID, err == nil, err
+	}
 }
 
 // ApplicationSnapshot is an Application as deployments needs it, taken once
@@ -174,18 +218,6 @@ func Environment(ctx context.Context, id uint64) (EnvironmentSnapshot, error) {
 		return EnvironmentSnapshot{}, err
 	}
 	return EnvironmentSnapshot{ID: e.ID, ProjectID: e.ProjectID, GuildID: e.GuildID, Name: e.Name}, nil
-}
-
-// ProjectInGuild reports whether the Project exists and belongs to the
-// Guild, for the routes of other contexts keyed by a Project id.
-func ProjectInGuild(ctx context.Context, projectID, guildID uint64) (bool, error) {
-	return found(svc().Project(app.InGuild(ctx, guildID), projectID))
-}
-
-// EnvironmentInGuild reports whether the Environment exists and belongs to
-// the Guild, for the routes of other contexts keyed by an Environment id.
-func EnvironmentInGuild(ctx context.Context, environmentID, guildID uint64) (bool, error) {
-	return found(svc().Environment(app.InGuild(ctx, guildID), environmentID))
 }
 
 // ApplicationInGuild reports whether the Application exists and belongs to

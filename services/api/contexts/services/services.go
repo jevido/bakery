@@ -71,29 +71,32 @@ func svc() *app.Service {
 		projects.OnProjectDeleting(service.InUse)
 		projects.OnEnvironmentDeleting(service.InUseInEnvironment)
 		projects.OnDomainCheck(service.DomainInUse)
-		servers.OnContainerOwner("service", serviceBelongs)
+		servers.OnContainerOwner("service", func(ctx context.Context, id, guildID uint64) (bool, error) {
+			_, g, found, err := serviceProject(ctx, id)
+			return found && g == guildID, err
+		})
 	})
 	return service
 }
 
 var (
-	environmentInGuild = guilds.Owns("environment", projects.EnvironmentInGuild)
-	projectInGuild     = guilds.Owns("project", projects.ProjectInGuild)
-	// serviceInGuild answers 404 for an {id} Service whose Environment is
-	// outside the Current guild.
-	serviceInGuild = guilds.Owns("service", serviceBelongs)
+	environmentInProject = guilds.InProject("environment", projects.ProjectOf("environment"))
+	projectInProject     = guilds.InProject("project", projects.ProjectOf("project"))
+	// serviceInProject answers 404 for an {id} Service outside the Current
+	// guild or in a Project the request may not view.
+	serviceInProject = guilds.InProject("service", serviceProject)
 )
 
-// serviceBelongs reports whether the Service's Environment is in the Guild.
-func serviceBelongs(ctx context.Context, id, guildID uint64) (bool, error) {
+// serviceProject finds the Project of the Service's Environment.
+func serviceProject(ctx context.Context, id uint64) (uint64, uint64, bool, error) {
 	envID, err := svc().EnvironmentOf(ctx, id)
 	if errors.Is(err, app.ErrNotFound) {
-		return false, nil
+		return 0, 0, false, nil
 	}
 	if err != nil {
-		return false, err
+		return 0, 0, false, err
 	}
-	return projects.EnvironmentInGuild(ctx, envID, guildID)
+	return projects.ProjectOf("environment")(ctx, envID)
 }
 
 // Routes registers the services API, all behind guilds.Auth, every route
@@ -102,15 +105,15 @@ func serviceBelongs(ctx context.Context, id, guildID uint64) (bool, error) {
 func Routes(r route.Router) {
 	c := serviceshttp.NewController(svc())
 	r.Middleware(guilds.Auth).Get("/api/service-templates", c.Templates)
-	r.Middleware(guilds.Auth, environmentInGuild, guilds.Can("manage_applications")).Post("/api/environments/{id}/services", c.Create)
-	r.Middleware(guilds.Auth, projectInGuild).Get("/api/projects/{id}/services", c.ForProject)
-	r.Middleware(guilds.Auth, serviceInGuild).Get("/api/services/{id}", c.Show)
-	r.Middleware(guilds.Auth, serviceInGuild, guilds.Can("manage_applications")).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, environmentInProject, guilds.Can("manage_applications")).Post("/api/environments/{id}/services", c.Create)
+	r.Middleware(guilds.Auth, projectInProject).Get("/api/projects/{id}/services", c.ForProject)
+	r.Middleware(guilds.Auth, serviceInProject).Get("/api/services/{id}", c.Show)
+	r.Middleware(guilds.Auth, serviceInProject, guilds.Can("manage_applications")).Group(func(r route.Router) {
 		r.Patch("/api/services/{id}", c.Update)
 		r.Delete("/api/services/{id}", c.Delete)
 	})
 	// Coolify's deploy actions: an API token needs deploy for them.
-	r.Middleware(guilds.Deploy, serviceInGuild, guilds.Can("deploy")).Group(func(r route.Router) {
+	r.Middleware(guilds.Deploy, serviceInProject, guilds.Can("deploy")).Group(func(r route.Router) {
 		r.Post("/api/services/{id}/start", c.Start)
 		r.Post("/api/services/{id}/stop", c.Stop)
 		r.Post("/api/services/{id}/restart", c.Restart)
@@ -122,7 +125,7 @@ func Routes(r route.Router) {
 // (404 outside the Current guild) but outside the request timeout.
 func StreamRoutes(r route.Router) {
 	c := serviceshttp.NewStreamController(svc(), shutdown)
-	r.Middleware(guilds.Auth, serviceInGuild).Get("/api/services/{id}/components/{component}/logs", c.Logs)
+	r.Middleware(guilds.Auth, serviceInProject).Get("/api/services/{id}/components/{component}/logs", c.Logs)
 }
 
 // Recover brings Up, in the background, every Service that should run and

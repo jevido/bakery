@@ -80,7 +80,7 @@ None published yet.
 - **Publishes:** the Services API (`/api/environments/{id}/services`,
   `/api/projects/{id}/services`, `/api/services/{id}` and its actions and
   per-Component log stream, `/api/service-templates`) for the dashboard.
-- **Consumes:** `projects.EnvironmentInGuild` and `projects.ProjectInGuild` (through `guilds.Owns`), so every route keyed by an Environment, Project or Service answers 404 outside the Current guild; `projects.Environment(id)` to place a Service;
+- **Consumes:** `projects.ProjectOf` (through `guilds.InProject`), so every route keyed by an Environment, Project or Service answers 404 outside the Current guild or a Project the request may not view, and its Permissions count that Project's overrides; `projects.Environment(id)` to place a Service;
   `projects.DomainInUse(domain)` before storing a Domain; registers
   `projects.OnDomainCheck` (Applications cannot take a Service's Domain)
   and `projects.OnProjectDeleting` (a Project with Services is not

@@ -4,8 +4,10 @@
 # deploy), drags it just below Admin and gives it to Bo, with a second Role
 # that has manage_roles and manage_members. Bo still cannot edit or assign
 # Admin or remove Al, and Al cannot remove the Guild Master. An Invitation
-# with role_ids gives exactly those Roles. Needs `task dev` running (API on
-# 127.0.0.1:4910).
+# with role_ids gives exactly those Roles. On a Project, a deny of deploy
+# for Deployer stops Bo there only, until Al allows it to Bo himself, and a
+# deny of view resources hides another Project from Bo but not from Al.
+# Needs `task dev` running (API on 127.0.0.1:4910).
 set -euo pipefail
 
 # Nothing here uses Forgejo; leave it as it is.
@@ -13,9 +15,11 @@ KEEP_FORGEJO=1
 # shellcheck source=SCRIPTDIR/../lib/e2e.sh
 . "$(dirname "$0")/../lib/e2e.sh"
 
-MEMBER_IDS=() ROLE_IDS=()
+MEMBER_IDS=() ROLE_IDS=() P2_ID="" P2_APP=""
 e2e_cleanup_hook() {
 	local id
+	if [ -n "$P2_APP" ]; then bakery DELETE "/api/applications/$P2_APP" >/dev/null; fi
+	if [ -n "$P2_ID" ]; then bakery DELETE "/api/projects/$P2_ID" >/dev/null; fi
 	for id in "${MEMBER_IDS[@]}"; do bakery DELETE "/api/members/$id" >/dev/null; done
 	for id in "${ROLE_IDS[@]}"; do bakery DELETE "/api/roles/$id" >/dev/null; done
 	for id in $(bakery GET /api/invitations 2>/dev/null | json "' '.join(str(i['id']) for i in d['invitations'] if '$RUN' in i['email'])"); do
@@ -109,6 +113,32 @@ expect "Bo cannot invite with Admin" 403 "$(as "$BO" POST /api/invitations "{\"e
 DI_ID=$(join "$DI_TOKEN" "$WORK/di" Di)
 MEMBER_IDS+=("$DI_ID")
 expect "Di holds exactly those" "['$DEPLOYER', '$KEEPER']" "$(roles_of "$DI_ID")"
+
+say "Permission overrides on a Project"
+# An image that does not exist: a deploy is accepted, then fails at once.
+IMAGE_APP="\"build_pack\":\"dockerimage\",\"docker_image\":\"localhost/bakery-e2e-none:$RUN\",\"port\":80"
+new_app "{\"name\":\"p1-$RUN\",$IMAGE_APP}"
+P1_ID=$PROJECT_ID P1_APP=$APP_ID
+P2_ID=$(bakery POST /api/projects "{\"name\":\"p2-$RUN\"}" | json "d['project']['id']")
+P2_ENV=$(bakery GET "/api/projects/$P2_ID" | json "d['project']['environments'][0]['id']")
+P2_APP=$(bakery POST "/api/environments/$P2_ENV/applications" "{\"name\":\"p2-$RUN\",$IMAGE_APP}" | json "d['application']['id']")
+expect "Bo cannot override Deployer, his own highest" 403 "$(as "$BO" PUT "/api/projects/$P1_ID/permissions/roles/$DEPLOYER_ID" '{"deny":["deploy"]}')"
+expect "manage_servers cannot be overridden" 422 "$(as "$AL" PUT "/api/projects/$P1_ID/permissions/roles/$DEPLOYER_ID" '{"deny":["manage_servers"]}')"
+expect "Al denies deploy to Deployer on P1" 200 "$(as "$AL" PUT "/api/projects/$P1_ID/permissions/roles/$DEPLOYER_ID" '{"deny":["deploy"]}')"
+expect "the override reads back" "[None, ['deploy']]" "$(as "$AL" GET "/api/projects/$P1_ID/permissions" >/dev/null; body "[[o['member_id'], o['deny']] for o in d['overrides'] if o['role_id'] == $DEPLOYER_ID][0]")"
+expect "Bo's Permissions on P1 lack deploy" False "$(as "$BO" GET "/api/projects/$P1_ID" >/dev/null; body "'deploy' in d['project']['permissions']")"
+expect "Bo cannot deploy in P1" 403 "$(as "$BO" POST "/api/applications/$P1_APP/deploy")"
+expect "Bo deploys in P2" 201 "$(as "$BO" POST "/api/applications/$P2_APP/deploy")"
+expect "Al, an admin, keeps deploy on P1" True "$(as "$AL" GET "/api/projects/$P1_ID" >/dev/null; body "'deploy' in d['project']['permissions']")"
+expect "Al allows deploy to Bo himself on P1" 200 "$(as "$AL" PUT "/api/projects/$P1_ID/permissions/members/$BO_ID" '{"allow":["deploy"]}')"
+expect "Bo deploys in P1 now" 201 "$(as "$BO" POST "/api/applications/$P1_APP/deploy")"
+expect "Al denies view resources to Deployer on P2" 200 "$(as "$AL" PUT "/api/projects/$P2_ID/permissions/roles/$DEPLOYER_ID" '{"deny":["view_resources"]}')"
+expect "Bo's Projects lack P2" "True False" "$(as "$BO" GET /api/projects >/dev/null; body "' '.join(str(any(p['id'] == i for p in d['projects'])) for i in ($P1_ID, $P2_ID))")"
+expect "P2's Application is not found for Bo" 404 "$(as "$BO" GET "/api/applications/$P2_APP")"
+expect "nor are its Deployments" 404 "$(as "$BO" GET "/api/applications/$P2_APP/deployments")"
+expect "Al still sees P2" True "$(as "$AL" GET /api/projects >/dev/null; body "any(p['id'] == $P2_ID for p in d['projects'])")"
+expect "Al clears Bo's own override" 204 "$(as "$AL" DELETE "/api/projects/$P1_ID/permissions/members/$BO_ID")"
+expect "Bo cannot deploy in P1 again" 403 "$(as "$BO" POST "/api/applications/$P1_APP/deploy")"
 
 say "Deleting a Role"
 expect "Al deletes Deployer" 204 "$(as "$AL" DELETE "/api/roles/$DEPLOYER_ID")"

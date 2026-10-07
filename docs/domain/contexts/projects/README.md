@@ -63,9 +63,16 @@ reaches an Application (routing).
   already merged (Application > Environment > Project) and split by scope.
   The snapshot also names the Application's Guild.
   Changing its fields is a breaking change for deployments.
-  `ProjectInGuild`, `EnvironmentInGuild` and `ApplicationInGuild(id,
-  guild)` for every other context's routes keyed by one of them, or by
-  something kept in one, so they answer 404 outside the Current guild.
+  `ProjectOf(kind)` for `project`, `environment` and `application`: the
+  Project and Guild of one by id, for `guilds.InProject` on every route
+  keyed by one of them or by something kept in one, so they answer 404
+  outside the Current guild or a Project the request may not view, and the
+  Project's Permission overrides count. `ApplicationInGuild(id, guild)` for
+  servers' Container owners. `GET /api/projects` leaves out the Projects
+  `guilds.VisibleProjects` hides; `GET /api/projects/{id}` adds the
+  request's `permissions` there (`guilds.Permissions`). Deleting a Project
+  calls `guilds.ForgetProject`, and the Project's Permission override
+  routes are registered here (`guilds.ProjectPermissionRoutes`).
   `Environment(id)` (id, Project id, Guild, name), `OnProjectDeleting(check)` and
   `OnEnvironmentDeleting(check)` for databases and services, which place
   Databases and Services in Environments and refuse the deletion of a
@@ -300,9 +307,9 @@ reaches an Application (routing).
 - **A Project's Permission overrides are guilds', not projects'.** Who may
   view, see the Secrets of, deploy or manage a Project is access, and access
   is guilds' model: guilds keeps the Permission overrides keyed by the
-  Project's id, and projects publishes only the Project's Guild
-  (`ProjectInGuild`) and which Project an Environment or Application is in.
-  A deleted Project's overrides go with it.
+  Project's id, and projects publishes only which Project and Guild a
+  Project, Environment or Application is in (`ProjectOf`). A deleted
+  Project's overrides go with it (`guilds.ForgetProject`).
 - **A Project belongs to a Guild; its Environments and Applications follow
   it.** Only `projects` stores `guild_id`; the rest is joined through the
   Project, so nothing has a second copy that could disagree. Requests carry
@@ -310,7 +317,6 @@ reaches an Application (routing).
   list and every read by id there, so a handler cannot forget it; background
   work (deploy workers, Webhooks, probes) passes no Guild and sees all.
   Other contexts do not keep a `guild_id` of their own for what they keep in
-  an Environment either: their routes ask `EnvironmentInGuild` /
-  `ApplicationInGuild` through `guilds.Owns`, and none of them lists across
-  Projects. Slugs and Domains stay unique across every Guild: one Proxy
+  an Environment either: their routes ask `ProjectOf` through
+  `guilds.InProject`, and none of them lists across Projects. Slugs and Domains stay unique across every Guild: one Proxy
   serves them all, and Images and Containers are named by the Slug.

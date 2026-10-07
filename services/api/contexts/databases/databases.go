@@ -72,45 +72,54 @@ func svc() *app.Service {
 			return len(sts) > 0, err
 		})
 		projects.OnEnvironmentDeleting(service.InUseInEnvironment)
-		servers.OnContainerOwner("database", belongs(service.EnvironmentOfDatabase))
+		servers.OnContainerOwner("database", inGuild(projectOf(service.EnvironmentOfDatabase)))
 	})
 	return service
 }
 
-// inGuild answers 404 for a route whose {id} Environment (through the id
-// lookup) is outside the Current guild.
-func inGuild(name string, environmentOf func(ctx context.Context, id uint64) (uint64, error)) contractshttp.Middleware {
-	return guilds.Owns(name, belongs(environmentOf))
+// inProject is guilds.InProject for a route whose {id} has an Environment
+// (through the id lookup): 404 outside the Current guild or a Project the
+// request may not view, and its Permission overrides count.
+func inProject(name string, environmentOf func(ctx context.Context, id uint64) (uint64, error)) contractshttp.Middleware {
+	return guilds.InProject(name, projectOf(environmentOf))
 }
 
-// belongs reports whether the Environment of the id (through the lookup)
-// is in the Guild.
-func belongs(environmentOf func(ctx context.Context, id uint64) (uint64, error)) func(ctx context.Context, id, guildID uint64) (bool, error) {
-	return func(ctx context.Context, id, guildID uint64) (bool, error) {
+// projectOf finds the Project of the id's Environment (through the
+// lookup).
+func projectOf(environmentOf func(ctx context.Context, id uint64) (uint64, error)) guilds.ProjectOf {
+	return func(ctx context.Context, id uint64) (uint64, uint64, bool, error) {
 		envID, err := environmentOf(ctx, id)
 		if errors.Is(err, app.ErrNotFound) {
-			return false, nil
+			return 0, 0, false, nil
 		}
 		if err != nil {
-			return false, err
+			return 0, 0, false, err
 		}
-		return projects.EnvironmentInGuild(ctx, envID, guildID)
+		return projects.ProjectOf("environment")(ctx, envID)
+	}
+}
+
+// inGuild reports whether the id (through of) is in the Guild.
+func inGuild(of guilds.ProjectOf) func(ctx context.Context, id, guildID uint64) (bool, error) {
+	return func(ctx context.Context, id, guildID uint64) (bool, error) {
+		_, g, found, err := of(ctx, id)
+		return found && g == guildID, err
 	}
 }
 
 var (
-	environmentInGuild = guilds.Owns("environment", projects.EnvironmentInGuild)
-	projectInGuild     = guilds.Owns("project", projects.ProjectInGuild)
-	databaseInGuild    = inGuild("database", func(ctx context.Context, id uint64) (uint64, error) {
+	environmentInProject = guilds.InProject("environment", projects.ProjectOf("environment"))
+	projectInProject     = guilds.InProject("project", projects.ProjectOf("project"))
+	databaseInProject    = inProject("database", func(ctx context.Context, id uint64) (uint64, error) {
 		return svc().EnvironmentOfDatabase(ctx, id)
 	})
-	scheduledBackupInGuild = inGuild("scheduled-backup", func(ctx context.Context, id uint64) (uint64, error) {
+	scheduledBackupInProject = inProject("scheduled-backup", func(ctx context.Context, id uint64) (uint64, error) {
 		return svc().EnvironmentOfScheduledBackup(ctx, id)
 	})
 	s3StorageInGuild = guilds.Owns("s3-storage", func(ctx context.Context, id, guildID uint64) (bool, error) {
 		return svc().S3StorageInGuild(ctx, id, guildID)
 	})
-	backupExecutionInGuild = inGuild("backup-execution", func(ctx context.Context, id uint64) (uint64, error) {
+	backupExecutionInProject = inProject("backup-execution", func(ctx context.Context, id uint64) (uint64, error) {
 		return svc().EnvironmentOfBackupExecution(ctx, id)
 	})
 )
@@ -122,34 +131,34 @@ var (
 // manage_applications, deploy actions deploy.
 func Routes(r route.Router) {
 	c := databaseshttp.NewController(svc(), guilds.Current)
-	r.Middleware(guilds.Auth, environmentInGuild, guilds.Can("manage_applications")).Post("/api/environments/{id}/databases", c.Create)
-	r.Middleware(guilds.Auth, projectInGuild).Get("/api/projects/{id}/databases", c.ForProject)
-	r.Middleware(guilds.Auth, databaseInGuild).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, environmentInProject, guilds.Can("manage_applications")).Post("/api/environments/{id}/databases", c.Create)
+	r.Middleware(guilds.Auth, projectInProject).Get("/api/projects/{id}/databases", c.ForProject)
+	r.Middleware(guilds.Auth, databaseInProject).Group(func(r route.Router) {
 		r.Get("/api/databases/{id}", c.Show)
 		r.Get("/api/databases/{id}/backup-executions", c.BackupExecutions)
 		r.Get("/api/databases/{id}/scheduled-backups", c.ScheduledBackups)
 	})
-	r.Middleware(guilds.Auth, databaseInGuild, guilds.Can("manage_applications")).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, databaseInProject, guilds.Can("manage_applications")).Group(func(r route.Router) {
 		r.Patch("/api/databases/{id}", c.Update)
 		r.Delete("/api/databases/{id}", c.Delete)
 		r.Post("/api/databases/{id}/backup-executions", c.BackUp)
 		r.Post("/api/databases/{id}/scheduled-backups", c.CreateScheduledBackup)
 	})
-	r.Middleware(guilds.Auth, scheduledBackupInGuild).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, scheduledBackupInProject).Group(func(r route.Router) {
 		r.Get("/api/scheduled-backups/{id}", c.ShowScheduledBackup)
 		r.Get("/api/scheduled-backups/{id}/backup-executions", c.ScheduledBackupExecutions)
 	})
-	r.Middleware(guilds.Auth, scheduledBackupInGuild, guilds.Can("manage_applications")).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, scheduledBackupInProject, guilds.Can("manage_applications")).Group(func(r route.Router) {
 		r.Patch("/api/scheduled-backups/{id}", c.UpdateScheduledBackup)
 		r.Delete("/api/scheduled-backups/{id}", c.DeleteScheduledBackup)
 		r.Post("/api/scheduled-backups/{id}/backup-executions", c.BackUpScheduledBackup)
 	})
-	r.Middleware(guilds.Auth, backupExecutionInGuild, guilds.Can("manage_applications")).Group(func(r route.Router) {
+	r.Middleware(guilds.Auth, backupExecutionInProject, guilds.Can("manage_applications")).Group(func(r route.Router) {
 		r.Post("/api/backup-executions/{id}/restore", c.Restore)
 		r.Delete("/api/backup-executions/{id}", c.DeleteBackupExecution)
 	})
 	// Coolify's deploy actions: an API token needs deploy for them.
-	r.Middleware(guilds.Deploy, databaseInGuild, guilds.Can("deploy")).Group(func(r route.Router) {
+	r.Middleware(guilds.Deploy, databaseInProject, guilds.Can("deploy")).Group(func(r route.Router) {
 		r.Post("/api/databases/{id}/start", c.Start)
 		r.Post("/api/databases/{id}/stop", c.Stop)
 		r.Post("/api/databases/{id}/restart", c.Restart)
@@ -172,8 +181,8 @@ func Routes(r route.Router) {
 // Database's data, so its download is a Secret.
 func StreamRoutes(r route.Router) {
 	c := databaseshttp.NewStreamController(svc(), shutdown)
-	r.Middleware(guilds.Auth, databaseInGuild).Get("/api/databases/{id}/logs", c.Logs)
-	r.Middleware(guilds.Auth, backupExecutionInGuild, guilds.Can("see_secrets")).Get("/api/backup-executions/{id}/download", c.Download)
+	r.Middleware(guilds.Auth, databaseInProject).Get("/api/databases/{id}/logs", c.Logs)
+	r.Middleware(guilds.Auth, backupExecutionInProject, guilds.Can("see_secrets")).Get("/api/backup-executions/{id}/download", c.Download)
 }
 
 // Recover starts, in the background, every Database that should run and has

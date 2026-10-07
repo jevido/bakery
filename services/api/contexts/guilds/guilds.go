@@ -1,8 +1,9 @@
 // Package guilds is what other contexts, the router and bootstrap may use
-// from the guilds context: the Auth, Deploy, Can and Owns middlewares,
-// Current and Allows, IsGuildMaster, the routes, the
-// InvitationCreated event, the OnGuildDeleting check, and Boot. Nothing else in contexts/guilds is for
-// outside use.
+// from the guilds context: the Auth, Deploy, Can, Owns and InProject
+// middlewares, Current, Allows, Permissions and VisibleProjects, a
+// Project's Permission override routes and ForgetProject, IsGuildMaster,
+// the routes, the InvitationCreated event, the OnGuildDeleting check, and
+// Boot. Nothing else in contexts/guilds is for outside use.
 package guilds
 
 import (
@@ -21,7 +22,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/identity"
 )
 
-var service = app.NewService(infra.Guilds{}, infra.Memberships{}, infra.Roles{}, infra.Invitations{}, infra.Offers{}, members{})
+var service = app.NewService(infra.Guilds{}, infra.Memberships{}, infra.Roles{}, infra.Invitations{}, infra.Offers{}, infra.Overrides{}, members{})
 
 // Auth refuses requests that come from no Member (401), from a Member in no
 // Guild (403 `you are in no guild`), reading without view_resources in the
@@ -63,9 +64,57 @@ func mustPermission(key string) domain.Permission {
 
 // Owns, after Auth, answers 404 for a route whose {id} names something
 // outside the Current guild. belongs is the owning context's check, e.g.
-// projects.ApplicationInGuild; name tells the middlewares apart.
+// servers.S3StorageInGuild; name tells the middlewares apart.
 func Owns(name string, belongs func(ctx context.Context, id, guildID uint64) (bool, error)) contractshttp.Middleware {
 	return guildshttp.Owns{Name: name, Belongs: belongs}
+}
+
+// ProjectOf finds the Project and Guild of a thing of one kind by id, as
+// the context that owns it answers; false when there is none.
+type ProjectOf = guildshttp.ProjectOf
+
+// InProject, after Auth, answers 404 for a route whose {id} names
+// something outside the Current guild or in a Project the request may not
+// view (view_resources there), and resolves the request's Permissions in
+// that Project, so Can and Allows after it count its Permission overrides.
+// projectOf is the owning context's lookup, e.g. projects.ProjectOf;
+// name tells the middlewares apart.
+func InProject(name string, projectOf ProjectOf) contractshttp.Middleware {
+	return guildshttp.InProject{Service: service, Name: name, ProjectOf: projectOf}
+}
+
+// VisibleProjects keeps the Projects among ids (of the Current guild) that
+// the request may view, in their order, after Auth: a list across
+// Projects leaves out the ones a Permission override hides.
+func VisibleProjects(ctx contractshttp.Context, ids []uint64) ([]uint64, error) {
+	return guildshttp.VisibleProjects(ctx, service, ids)
+}
+
+// Permissions lists the wire keys of what the request may do, after Auth:
+// in its Project after InProject, else in the Current guild.
+func Permissions(ctx contractshttp.Context) []string {
+	return guildshttp.PermissionsOf(ctx).Expand().Keys()
+}
+
+// ForgetProject deletes the Permission overrides of a Project that was
+// deleted; projects calls it from its delete use case.
+func ForgetProject(ctx context.Context, projectID uint64) error {
+	return service.ForgetProject(ctx, projectID)
+}
+
+// ProjectPermissionRoutes registers a Project's Permission overrides
+// (`/api/projects/{id}/permissions`), behind InProject with projectOf for
+// Projects and manage_roles. projects calls it: guilds cannot find a
+// Project itself.
+func ProjectPermissionRoutes(r route.Router, projectOf ProjectOf) {
+	c := guildshttp.NewController(service)
+	r.Middleware(Auth, InProject("project", projectOf), Can("manage_roles")).Group(func(r route.Router) {
+		r.Get("/api/projects/{id}/permissions", c.ProjectPermissions)
+		r.Put("/api/projects/{id}/permissions/roles/{role_id}", c.OverrideRole)
+		r.Delete("/api/projects/{id}/permissions/roles/{role_id}", c.ForgetRoleOverride)
+		r.Put("/api/projects/{id}/permissions/members/{member_id}", c.OverrideMember)
+		r.Delete("/api/projects/{id}/permissions/members/{member_id}", c.ForgetMemberOverride)
+	})
 }
 
 // Current is the id of the Guild the request acts in, after Auth.
