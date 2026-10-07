@@ -303,6 +303,94 @@ await viewer.goto(`${WEB}/#/servers`)
 await viewer.getByTestId('servers-count').waitFor()
 expect('a Viewer sees no "New server"', (await viewer.getByRole('link', { name: 'New server' }).count()) === 0)
 
+// S3 Storage: add (the Garage stand-in when task s3:up runs, else dummy
+// values that fail the connection test with a readable message), edit its
+// name, delete it, and a Viewer sees the Empty sentence.
+const garageUp = await new Promise<boolean>((resolve) => {
+  const socket = connect(4960, '127.0.0.1')
+  socket.once('connect', () => (socket.destroy(), resolve(true)))
+  socket.once('error', () => resolve(false))
+})
+const s3 = garageUp
+  ? (() => {
+      const env = Object.fromEntries(
+        readFileSync(new URL('../../../infra/dev/state/garage.env', import.meta.url), 'utf8')
+          .trim()
+          .split('\n')
+          .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
+      )
+      return { endpoint: env.GARAGE_ENDPOINT, region: env.GARAGE_REGION, bucket: env.GARAGE_BUCKET, accessKey: env.GARAGE_ACCESS_KEY, secretKey: env.GARAGE_SECRET_KEY }
+    })()
+  : { endpoint: 'http://127.0.0.1:4960', region: 'garage', bucket: 'no-such-bucket', accessKey: 'dummy', secretKey: 'dummy' }
+
+for (const theme of ['light', 'dark'] as const) {
+  for (const [width, height] of [
+    [1440, 900],
+    [390, 844],
+  ] as const) {
+    const at = `${theme} ${width}px`
+    const page = await signedIn(width, height, theme)
+    await page.goto(`${WEB}/#/storages`)
+    await page.getByRole('heading', { name: 'S3 Storage', exact: true, level: 1 }).last().waitFor()
+
+    await page.getByRole('button', { name: 'Add' }).click()
+    const name = `e2e-storage-${Date.now()}`
+    await page.getByLabel('Name').fill(name)
+    await page.getByLabel('Endpoint').fill(s3.endpoint)
+    await page.getByLabel('Region').fill(s3.region)
+    await page.getByLabel('Bucket').fill(s3.bucket)
+    await page.getByLabel('Access key').fill(s3.accessKey)
+    await page.getByLabel('Secret key').fill(s3.secretKey)
+
+    await page.getByTestId('s3-storage-test').click()
+    const checkResult = page.getByTestId('s3-storage-check')
+    await checkResult.waitFor()
+    if (garageUp) expect(`${at}: the connection test succeeds`, (await checkResult.textContent())?.includes('Connected') ?? false)
+    else expect(`${at}: the connection test fails with a readable message`, ((await checkResult.textContent()) ?? '').trim().length > 0)
+
+    await page.getByTestId('s3-storage-save').click()
+    const row = page.getByTestId('s3-storage').filter({ hasText: name })
+    await row.waitFor()
+    expect(`${at}: the new storage is listed`, (await row.count()) === 1)
+
+    // Edit its name.
+    const renamed = `${name}-edit`
+    await row.click()
+    await page.getByLabel('Name').fill(renamed)
+    await page.getByTestId('s3-storage-save').click()
+    const renamedRow = page.getByTestId('s3-storage').filter({ hasText: renamed })
+    await renamedRow.waitFor()
+    expect(`${at}: the rename is listed`, (await renamedRow.count()) === 1)
+
+    // Delete it.
+    await renamedRow.getByLabel(`Delete ${renamed}`).click()
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    await page.waitForFunction((n) => !document.body.textContent?.includes(n), renamed, { timeout: 5000 }).catch(() => {})
+    expect(`${at}: the storage is gone after delete`, (await page.getByTestId('s3-storage').filter({ hasText: renamed }).count()) === 0)
+
+    if (width < 1280) {
+      const sideways = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
+      expect(`${at}: nothing scrolls sideways`, !sideways)
+    }
+    await page.close()
+  }
+}
+
+// A Viewer sees the Empty sentence, no "Add".
+const storagesViewer = await signedIn(1440, 900)
+await storagesViewer.route('**/api/me', async (route) => {
+  const r = await route.fetch()
+  const body = await r.json()
+  body.permissions = body.permissions.filter((p: string) => p !== 'manage_servers' && p !== 'administrator')
+  for (const g of body.guilds ?? []) g.permissions = (g.permissions ?? []).filter((p: string) => p !== 'manage_servers' && p !== 'administrator')
+  await route.fulfill({ response: r, json: body })
+})
+await storagesViewer.goto(`${WEB}/#/storages`)
+await storagesViewer.getByRole('heading', { name: 'S3 Storage', exact: true, level: 1 }).last().waitFor()
+expect('a Viewer sees the Empty sentence', (await storagesViewer.getByText('S3 Storage needs the Manage servers permission').count()) === 1)
+expect('a Viewer sees no "Add"', (await storagesViewer.getByRole('button', { name: 'Add' }).count()) === 0)
+await storagesViewer.close()
+
 await browser.close()
 if (failed) {
   console.log(`${failed} failed`)
