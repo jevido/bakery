@@ -10,7 +10,7 @@
 
 <ChannelPage kind="ntfy" title="ntfy" description="Send guild notifications to an ntfy topic." {...props}>
   {#snippet fields({ form, errors, channel })}
-    <div class="grid gap-4 lg:grid-cols-2">
+    <div class="grid gap-4 sm:grid-cols-2">
       <Input
         label="Server URL"
         helper="The ntfy server to publish to. Empty uses https://ntfy.sh."
@@ -20,7 +20,7 @@
         data-testid="ntfy-url"
       />
       <Input label="Topic" helper="The topic your devices subscribe to." bind:value={form.topic} error={errors.topic} required data-testid="ntfy-topic" />
-      <div class="lg:col-span-2">
+      <div class="sm:col-span-2">
         <Input
           type="password"
           label="Access token"

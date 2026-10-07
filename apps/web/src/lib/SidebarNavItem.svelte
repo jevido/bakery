@@ -3,7 +3,8 @@
   // NOTICE): one row of the sidebar, an inset pill when active. On the rail
   // the label is clipped but stays the link's name, and a tooltip names it.
   // An `inline` item sits in a page's own nav: never a rail, and it leaves
-  // the drawer alone.
+  // the drawer alone. A `brandIcon` is a brand mark masked from
+  // /svgs/<name>.svg in place of a Lucide icon, as Coolify draws them.
   import type { Component } from 'svelte'
   import * as Tooltip from '$lib/components/ui/tooltip'
   import { RAIL_HIDDEN_LABEL, sidebar } from './sidebar.svelte'
@@ -13,9 +14,19 @@
     href,
     label,
     icon: Icon,
+    brandIcon,
     active = false,
     inline = false,
-  }: { href: string; label: string; icon: Component<{ class?: string }>; active?: boolean; inline?: boolean } = $props()
+    testid,
+  }: {
+    href: string
+    label: string
+    icon?: Component<{ class?: string }>
+    brandIcon?: string
+    active?: boolean
+    inline?: boolean
+    testid?: string
+  } = $props()
 
   const rail = $derived(!inline && sidebar.rail)
 </script>
@@ -25,6 +36,7 @@
     {...props}
     type={undefined}
     {href}
+    data-testid={testid}
     aria-current={active ? 'page' : undefined}
     onclick={() => !inline && sidebar.closeDrawer()}
     class={cn(
@@ -34,7 +46,16 @@
       active ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
     )}
   >
-    <span data-slot="sidebar-nav-icon" class="relative shrink-0"><Icon class="size-4" /></span>
+    <span data-slot="sidebar-nav-icon" class="relative shrink-0">
+      {#if brandIcon}
+        <span
+          class="block size-4 bg-current"
+          style="mask: url('/svgs/{brandIcon}.svg') center / contain no-repeat; -webkit-mask: url('/svgs/{brandIcon}.svg') center / contain no-repeat;"
+        ></span>
+      {:else if Icon}
+        <Icon class="size-4" />
+      {/if}
+    </span>
     <span class={rail ? RAIL_HIDDEN_LABEL : 'min-w-0 flex-1 truncate'}>{label}</span>
   </a>
 {/snippet}

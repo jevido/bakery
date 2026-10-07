@@ -11,7 +11,7 @@
 
 <ChannelPage kind="telegram" title="Telegram" description="Deliver guild notifications through a Telegram bot and chat." threaded {...props}>
   {#snippet fields({ form, errors, channel })}
-    <div class="grid gap-4 lg:grid-cols-2">
+    <div class="grid gap-4 sm:grid-cols-2">
       <Input
         type="password"
         label="Bot API token"

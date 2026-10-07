@@ -11,7 +11,7 @@
 
 <ChannelPage kind="discord" title="Discord" description="Send guild notifications to a Discord channel through an incoming webhook." {...props}>
   {#snippet fields({ form, errors, channel, instant })}
-    <div class="grid gap-4 lg:grid-cols-2">
+    <div class="grid gap-4 sm:grid-cols-2">
       <Select
         label="Critical event mention"
         helper="Mention @here when a critical event occurs."
@@ -23,7 +23,7 @@
         <option value="true">Mention @here</option>
         <option value="false">Do not mention</option>
       </Select>
-      <div class="lg:col-span-2">
+      <div class="sm:col-span-2">
         <Input
           type="password"
           label="Webhook URL"

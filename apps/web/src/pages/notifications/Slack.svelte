@@ -10,8 +10,8 @@
 
 <ChannelPage kind="slack" title="Slack" description="Send guild notifications to Slack through an incoming webhook." {...props}>
   {#snippet fields({ form, errors, channel })}
-    <div class="grid gap-4 lg:grid-cols-2">
-      <div class="lg:col-span-2">
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div class="sm:col-span-2">
         <Input
           type="password"
           label="Webhook URL"

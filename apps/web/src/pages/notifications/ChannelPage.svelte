@@ -1,7 +1,7 @@
 <script lang="ts">
   // What every Notifications page of Coolify (resources/views/livewire/notifications/*.blade.php,
   // app/Livewire/Notifications/*.php, Apache-2.0, see NOTICE) shares: the
-  // unsaved bar and the channel's settings section with Enable/Disable and
+  // unsaved bar and the channel's settings group with Enable/Disable and
   // Send test, then the Notification events grid. The kind's page gives the
   // fields. The Bakery adds the channel's recent Deliveries below the grid,
   // and the picker when a kind has several channels.
@@ -14,13 +14,13 @@
   // "Send Test Email" modal does.
   import { untrack, type Snippet } from 'svelte'
   import { api, ApiError } from '../../lib/api'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import { session } from '../../lib/session.svelte'
   import Button from '../../lib/ui/Button.svelte'
   import Input from '../../lib/ui/Input.svelte'
   import Modal from '../../lib/ui/Modal.svelte'
   import type { ChannelKind, EventKind, NotificationChannel } from '../../lib/types'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
-  import { toast } from '../../lib/ui/toast.svelte'
+    import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
   import ChannelActions from './ChannelActions.svelte'
   import ChannelPicker from './ChannelPicker.svelte'
@@ -215,7 +215,7 @@
   }
 </script>
 
-<div class="chrome application-settings-form flex flex-col gap-6">
+<div class="flex flex-col gap-8">
   {#if channels.length >= 2 || (channels.length === 1 && selected === 'new')}
     <ChannelPicker {channels} selected={shown} {pendingName} taken={allNames} onselect={(id) => (selected = id)} onadd={add} ondelete={remove} />
   {/if}
@@ -229,7 +229,7 @@
     data-testid="channel-form"
   >
     <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
-    <SettingsSection id="{kind}-settings" {title} helper={description}>
+    <SettingsGroup id="{kind}-settings" label={title} hint={description}>
       {#snippet actions()}
         <ChannelActions
           enabled={channel?.enabled ?? false}
@@ -247,7 +247,7 @@
         />
       {/snippet}
       {@render fields({ form, errors, channel, instant })}
-    </SettingsSection>
+    </SettingsGroup>
     {@render more?.({ form, errors, channel, instant })}
   </form>
 
@@ -282,7 +282,7 @@
       data-testid="test-email-form"
     >
       <Input label="Recipient" bind:value={recipient} placeholder="test@example.com" required error={recipientError} data-testid="test-recipient" />
-      <div class="flex justify-end border-t border-neutral-200 pt-4 dark:border-white/[0.08]">
+      <div class="flex justify-end border-t border-border pt-4">
         <Button type="submit" variant="highlighted" loading={testing}>Send email</Button>
       </div>
     </form>

@@ -31,6 +31,12 @@ tasks:
     cmds:
       - bun e2e/servers.ts
 
+  settings:
+    desc: Check the settings flows (Notifications, Keys & Tokens, Profile, Settings) in headless Chromium (needs task dev)
+    deps: [install]
+    cmds:
+      - bun e2e/settings.ts
+
   check:
     desc: svelte-check, tsc and a production build
     deps: [install]

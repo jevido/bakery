@@ -6,7 +6,7 @@
   // channel's Recipients rather than to the team's members.
   import Input from '../../lib/ui/Input.svelte'
   import Select from '../../lib/ui/Select.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import ChannelPage from './ChannelPage.svelte'
   import type { KindPageProps } from './channelForm'
 
@@ -15,7 +15,7 @@
 
 <ChannelPage kind="email" title="Email delivery" {...props}>
   {#snippet fields({ form, errors })}
-    <div class="grid gap-4 lg:grid-cols-2">
+    <div class="grid gap-4 sm:grid-cols-2">
       <Input label="From name" helper="Name used in emails." bind:value={form.from_name} error={errors.from_name} required data-testid="email-from-name" />
       <Input
         label="From address"
@@ -25,7 +25,7 @@
         required
         data-testid="email-from"
       />
-      <div class="lg:col-span-2">
+      <div class="sm:col-span-2">
         <Input
           label="Recipients"
           helper="Notifications go to these addresses. Separate several with commas."
@@ -39,9 +39,9 @@
     </div>
   {/snippet}
   {#snippet more({ form, errors, channel })}
-    <div class="mt-6">
-      <SettingsSection id="email-smtp-server" title="SMTP server" helper="Deliver messages through your own SMTP server.">
-        <div class="grid gap-4 lg:grid-cols-3">
+    <div class="mt-8">
+      <SettingsGroup id="email-smtp-server" label="SMTP server" hint="Deliver messages through your own SMTP server.">
+        <div class="grid gap-4 sm:grid-cols-2">
           <Input label="Host" bind:value={form.host} error={errors.host} placeholder="smtp.mailgun.org" required data-testid="email-host" />
           <Input label="Port" type="number" bind:value={form.port} error={errors.port} placeholder="587" required data-testid="email-port" />
           <Select label="Encryption" bind:value={form.security} error={errors.security} required data-testid="email-encryption">
@@ -76,7 +76,7 @@
             data-testid="email-ehlo"
           />
         </div>
-      </SettingsSection>
+      </SettingsGroup>
     </div>
   {/snippet}
 </ChannelPage>

@@ -3,7 +3,16 @@
 
   /** An in-page section of a sub-page, scrolled to from the nav. */
   export type ResourceNavSection = { id: string; label: string }
-  export type ResourceNavItem = { label: string; path: string; icon: IconName; active: boolean; sections?: ResourceNavSection[] }
+  /** `brandIcon` names a brand mark in /svgs/ drawn in place of `icon`; `testid` marks the link for the e2e. */
+  export type ResourceNavItem = {
+    label: string
+    path: string
+    icon?: IconName
+    brandIcon?: string
+    active: boolean
+    sections?: ResourceNavSection[]
+    testid?: string
+  }
   export type ResourceNavGroup = { label: string; items: ResourceNavItem[] }
 </script>
 
@@ -60,7 +69,15 @@
     {#each groups as group (group.label)}
       <SidebarSection label={group.label} inline>
         {#each group.items as item (item.label)}
-          <SidebarNavItem href={href(item.path)} label={item.label} icon={icons[item.icon]} active={item.active} inline />
+          <SidebarNavItem
+            href={href(item.path)}
+            label={item.label}
+            icon={item.icon && icons[item.icon]}
+            brandIcon={item.brandIcon}
+            active={item.active}
+            testid={item.testid}
+            inline
+          />
           {#if item.sections?.length}
             <div class="ml-6 flex flex-col gap-0.5 border-l border-border py-1 pl-2">
               {#each item.sections as section (section.id)}

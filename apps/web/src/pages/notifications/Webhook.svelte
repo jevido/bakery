@@ -11,8 +11,8 @@
 
 <ChannelPage kind="webhook" title="Webhook" description="Send JSON event payloads to your own HTTP endpoint." {...props}>
   {#snippet fields({ form, errors, channel })}
-    <div class="grid gap-4 lg:grid-cols-2">
-      <div class="lg:col-span-2">
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div class="sm:col-span-2">
         <Input
           type="password"
           label="Webhook URL"
@@ -25,7 +25,7 @@
           data-testid="webhook-url"
         />
       </div>
-      <div class="lg:col-span-2">
+      <div class="sm:col-span-2">
         <Input
           type="password"
           label="Signing secret"
