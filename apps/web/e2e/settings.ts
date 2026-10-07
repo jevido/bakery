@@ -7,6 +7,11 @@
 //                  URL saves, Enable and Disable toggle and toast, Send test
 //                  answers with a toast; the Discord channel is deleted again
 //
+//   tokens         create a token with Read and Deploy, expiring in 7 days;
+//                  its value shows once with Copy, survives no reload, is
+//                  found and cleared by search, authenticates GET /api/me by
+//                  Bearer with no cookie, and stops doing so once revoked
+//
 //   bun e2e/settings.ts [section ...]   (task web:settings; needs task dev)
 //
 // The same environment as e2e/walk.ts overrides what it uses.
@@ -49,6 +54,11 @@ async function signedIn(width = 1440, height = 900, theme: 'dark' | 'light' = 'd
 
 async function channels(page: Page): Promise<Channel[]> {
   return ((await (await page.request.get(`${WEB}/api/notification-channels`)).json()) as { channels: Channel[] }).channels
+}
+
+type ApiToken = { id: number; name: string }
+async function apiTokens(page: Page): Promise<ApiToken[]> {
+  return ((await (await page.request.get(`${WEB}/api/api-tokens`)).json()) as { api_tokens: ApiToken[] }).api_tokens
 }
 
 /** The newest toast's text, once one shows. */
@@ -184,6 +194,60 @@ const sections: Record<string, () => Promise<void>> = {
 
     const email = (await channels(page)).find((c) => c.kind === 'email')
     if (email) await page.request.delete(`${WEB}/api/notification-channels/${email.id}`)
+
+    await page.close()
+  },
+
+  async tokens() {
+    const page = await signedIn()
+    const name = 'E2E token'
+    for (const t of (await apiTokens(page)).filter((t) => t.name === name)) await page.request.delete(`${WEB}/api/api-tokens/${t.id}`)
+
+    await page.goto(`${WEB}/#/security/api-tokens`)
+    await page.locator('#main-content').getByRole('heading', { name: 'Keys & Tokens', level: 1 }).waitFor()
+
+    await page.getByTestId('token-description').fill(name)
+    await page.getByTestId('token-expires').selectOption('7')
+
+    // Clicking Deploy takes it alone, as Coolify's updatedPermissions does;
+    // Read is clicked again after, to land on both.
+    await page.getByTestId('permissions-trigger').click()
+    await page.getByTestId('permission-deploy').click()
+    await page.getByTestId('permission-read').click()
+    await page.keyboard.press('Escape')
+
+    await page.getByTestId('create-token').click()
+    await page.getByTestId('new-token').waitFor()
+    const token = await page.getByTestId('new-token-value').inputValue()
+    expect('the new token value is shown once', token.length > 0, token)
+
+    const row = page.getByTestId('api-token').filter({ hasText: name })
+    await row.waitFor()
+    const perms = (await row.getByTestId('token-permission').allInnerTexts()).sort()
+    expect('the token has Read and Deploy', perms.join(',') === 'deploy,read', perms)
+
+    const meBefore = await fetch(`${WEB}/api/me`, { headers: { Authorization: `Bearer ${token}` } })
+    expect('the token authenticates GET /api/me with no cookie', meBefore.status === 200, meBefore.status)
+
+    await page.reload()
+    expect('the token value is gone from the page after a reload', (await page.getByTestId('new-token').count()) === 0)
+    await page.getByTestId('api-token').filter({ hasText: name }).waitFor()
+
+    await page.getByLabel('Search tokens').fill(name)
+    expect('search finds the token', (await page.getByTestId('api-token').count()) === 1)
+    await page.getByLabel('Search tokens').fill('no-such-token-zzz')
+    expect('search filters out what does not match', (await page.getByTestId('api-token').count()) === 0)
+    await page.getByLabel('Clear search').click()
+    expect('clearing the search shows the token again', (await page.getByTestId('api-token').count()) >= 1)
+
+    await page.getByTestId('api-token').filter({ hasText: name }).getByTestId('revoke-token').click()
+    await page.getByLabel('Token description').fill(name)
+    await page.getByRole('dialog').getByRole('button', { name: 'Revoke token' }).click()
+    await page.waitForTimeout(500)
+    expect('Revoke removes the token', (await apiTokens(page)).filter((t) => t.name === name).length === 0)
+
+    const meAfter = await fetch(`${WEB}/api/me`, { headers: { Authorization: `Bearer ${token}` } })
+    expect('the revoked token no longer authenticates', meAfter.status === 401, meAfter.status)
 
     await page.close()
   },
