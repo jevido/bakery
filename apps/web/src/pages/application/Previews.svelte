@@ -8,18 +8,25 @@
   // GitHub, so the Previews it lists are those the webhook opened. Its URL
   // template is fixed (pr-<number>.<domain>), forks never get a Preview, and
   // a Preview is redeployed or deleted but not stopped or rebuilt.
+  //
+  // The list is Paperclip's EntityRow pattern (as the Environment page and
+  // Deployment history are): one row per open Preview, its Deploy/Redeploy
+  // and Remove actions as buttons on the row.
+  import { buttonVariants } from '$lib/components/ui/button'
+  import { Card } from '$lib/components/ui/card'
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
   import { api, ApiError } from '../../lib/api'
+  import EntityRow from '../../lib/EntityRow.svelte'
   import Icon from '../../lib/Icon.svelte'
   import { applicationPath, href } from '../../lib/router.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import type { Application, Preview, Webhook } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
   import Input from '../../lib/ui/Input.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
   import StatusBadge from '../../lib/ui/StatusBadge.svelte'
-  import TableDropdown from '../../lib/ui/TableDropdown.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import { deploymentStatus } from './DeploymentHistory.svelte'
 
@@ -31,9 +38,10 @@
   let toggling = $state(false)
   let token = $state('')
   let savingToken = $state(false)
+  let deploying = $state(0)
 
   const open = $derived(previews.filter((p) => p.state === 'open'))
-  const deploying = $derived(previews.some((p) => p.latest_deployment?.active))
+  const anyDeploying = $derived(previews.some((p) => p.latest_deployment?.active))
 
   async function load() {
     previews = (await api<{ previews: Preview[] }>('GET', `/applications/${application.id}/previews`)).previews
@@ -56,7 +64,7 @@
   // Quickly while a Preview deploys, slower so one opened by a pull request
   // shows up by itself.
   $effect(() => {
-    const t = setInterval(() => load().catch(() => {}), deploying ? 3000 : 5000)
+    const t = setInterval(() => load().catch(() => {}), anyDeploying ? 3000 : 5000)
     return () => clearInterval(t)
   })
 
@@ -93,6 +101,7 @@
   }
 
   async function deploy(p: Preview) {
+    deploying = p.number
     try {
       await api('POST', `/applications/${application.id}/previews/${p.number}/deploy`)
       toast.success('Preview deployment started.')
@@ -101,6 +110,8 @@
     } catch (err) {
       if (!(err instanceof ApiError)) throw err
       toast.error('Preview deployment not started', err.message)
+    } finally {
+      deploying = 0
     }
   }
 
@@ -116,12 +127,14 @@
     }
   }
 
-  // Coolify's hidden confirmation triggers, clicked from the Actions menu.
+  // Coolify's hidden confirmation triggers, clicked from the row's Remove button.
   const openModal = (id: string) => document.getElementById(id)?.click()
+
+  const listCard = 'block gap-0 overflow-hidden py-0'
 </script>
 
 <div class="chrome flex flex-col gap-6">
-  <SettingsSection id="preview-settings-section" title="Preview settings" helper="Automatic pull request deployments and who can trigger them.">
+  <SettingsGroup id="preview-settings-section" label="Preview settings" hint="Automatic pull request deployments and who can trigger them." wide>
     {#snippet actions()}
       {#if projectAccess.can('manage_applications') && webhook}
         {#if webhook.previews}
@@ -133,20 +146,17 @@
     {/snippet}
 
     <div class="flex flex-col gap-4">
-      <p class="text-[13px] leading-5 text-neutral-500 dark:text-fg-dim">
+      <p class="text-sm text-muted-foreground">
         Every pull request into <span class="font-mono">{application.git_branch}</span> gets its own deployment. The webhook (under
-        <a class="font-medium text-coollabs underline-offset-2 hover:underline" href={href(applicationPath(application, 'webhooks'))}
-          >Webhooks</a
-        >) must also send pull request events. Pull requests from forks get no preview.
+        <a class="font-medium text-primary underline-offset-2 hover:underline" href={href(applicationPath(application, 'webhooks'))}>Webhooks</a>) must
+        also send pull request events. Pull requests from forks get no preview.
       </p>
       {#if webhook}
         {#if webhook.has_git_host_token}
-          <div
-            class="flex items-center justify-between gap-3 rounded-lg bg-neutral-50 px-3 py-2.5 ring-1 ring-neutral-200 dark:bg-white/[0.05] dark:ring-white/[0.07]"
-          >
-            <span class="text-[12px] text-neutral-500 dark:text-fg-dim">Git host token</span>
+          <div class="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2.5 ring-1 ring-border">
+            <span class="text-xs text-muted-foreground">Git host token</span>
             <span class="flex items-center gap-2">
-              <span class="text-[12px] font-medium text-neutral-900 dark:text-fg" data-testid="token-saved">Saved</span>
+              <span class="text-xs font-medium text-foreground" data-testid="token-saved">Saved</span>
               {#if projectAccess.can('manage_applications')}<Button loading={savingToken} onclick={() => saveToken('')}>Remove</Button>{/if}
             </span>
           </div>
@@ -171,114 +181,111 @@
         {/if}
       {/if}
     </div>
-  </SettingsSection>
+  </SettingsGroup>
 
-  <SettingsSection id="preview-template-section" title="Preview URL template" helper="How The Bakery generates domains for pull request deployments.">
-    <div
-      class="flex items-center justify-between gap-3 rounded-lg bg-neutral-100 px-3 py-2.5 ring-1 ring-neutral-200 dark:bg-white/[0.04] dark:ring-white/[0.07]"
-    >
-      <span class="text-[13px] text-neutral-500 dark:text-fg-dim">Generated pattern</span>
-      <code class="text-right font-mono text-xs break-all text-neutral-700 dark:text-fg">{'pr-{{pr_id}}.{{domain}}'}</code>
+  <SettingsGroup id="preview-template-section" label="Preview URL template" hint="How The Bakery generates domains for pull request deployments." wide>
+    <div class="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2.5 ring-1 ring-border">
+      <span class="text-sm text-muted-foreground">Generated pattern</span>
+      <code class="text-right font-mono text-xs break-all text-foreground">{'pr-{{pr_id}}.{{domain}}'}</code>
     </div>
-  </SettingsSection>
+  </SettingsGroup>
 
-  <SettingsSection
+  <SettingsGroup
     id="preview-deployments-section"
-    title="Preview deployments"
-    helper="Manage domains, deployments, logs, and lifecycle actions for configured previews."
-    flush
+    label="Preview deployments"
+    hint="Manage domains, deployments, logs, and lifecycle actions for configured previews."
+    wide
   >
-    {#each open as p (p.number)}
-      {@const status = p.latest_deployment ? deploymentStatus(p.latest_deployment) : null}
-      <section class="border-b border-neutral-200 p-4 last:border-b-0 dark:border-white/[0.07]" data-testid="preview-row">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div class="flex min-w-0 items-center gap-3">
-            <div
-              class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 font-mono text-xs font-semibold text-neutral-600 ring-1 ring-neutral-200 dark:bg-white/[0.05] dark:text-fg-dim dark:ring-white/[0.07]"
-            >
-              #{p.number}
-            </div>
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <h4 class="text-sm font-semibold text-black dark:text-fg">Preview #{p.number}</h4>
-                {#if status}<StatusBadge status={status.label} type={status.type} />{/if}
-              </div>
-              <p class="mt-0.5 truncate text-[12px] text-neutral-500 dark:text-fg-dim">
-                {p.title} · <span class="font-mono">{p.branch}</span>
-              </p>
-            </div>
-          </div>
+    {#if open.length === 0}
+      {#if loaded}
+        <Card class={listCard}>
+          <Empty size="sm" title="No preview deployments" description="Open a pull request into the branch to create an isolated deployment." icon="eye" />
+        </Card>
+      {/if}
+    {:else}
+      <Card class={listCard}>
+        {#each open as p (p.number)}
+          {@const status = p.latest_deployment ? deploymentStatus(p.latest_deployment) : null}
+          <EntityRow
+            title={`Preview #${p.number}`}
+            subtitle={`${p.title} · ${p.branch} · ${p.domain}`}
+            reserveSubtitleSpace
+            data-testid="preview-row"
+          >
+            {#snippet leading()}
+              <span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted font-mono text-xs font-semibold text-muted-foreground">
+                #{p.number}
+              </span>
+            {/snippet}
+            {#snippet trailing()}
+              {#if status}<StatusBadge status={status.label} type={status.type} />{/if}
 
-          <div class="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
-            <TableDropdown role="menu" panelClass="w-56! min-w-56!">
-              {#snippet trigger({ open, toggle })}
-                <button type="button" class="button gap-1.5" title="Preview links" aria-expanded={open} aria-haspopup="menu" onclick={toggle}>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger class={buttonVariants({ variant: 'outline', size: 'sm' })} title="Preview links">
                   <Icon name="external-link" class="size-3.5 opacity-70" />
                   Links
                   <Icon name="chevron-down" class="size-3 opacity-55" />
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content align="end" class="w-56">
+                  {#if p.public_url}
+                    <DropdownMenu.Item>
+                      {#snippet child({ props })}
+                        <a {...props} target="_blank" rel="noreferrer" href={p.public_url}>
+                          <Icon name="external-link" class="size-3.5 opacity-70" />
+                          <span class="min-w-0 truncate">Open preview</span>
+                        </a>
+                      {/snippet}
+                    </DropdownMenu.Item>
+                  {/if}
+                  {#if p.url}
+                    <DropdownMenu.Item>
+                      {#snippet child({ props })}
+                        <a {...props} target="_blank" rel="noreferrer" href={p.url}>
+                          <Icon name="external-link" class="size-3.5 opacity-70" />
+                          <span class="min-w-0 truncate">Open pull request</span>
+                        </a>
+                      {/snippet}
+                    </DropdownMenu.Item>
+                  {/if}
+                  {#if !p.public_url && !p.url}
+                    <DropdownMenu.Item disabled>No links available</DropdownMenu.Item>
+                  {/if}
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
+
+              {#if p.latest_deployment}
+                <a
+                  class={buttonVariants({ variant: 'outline', size: 'sm' })}
+                  href={href(`${applicationPath(application, 'deployment')}/${p.latest_deployment.id}`)}
+                  title="Preview deployment logs"
+                >
+                  <Icon name="terminal" class="size-3.5 opacity-70" />
+                  Logs
+                </a>
+              {/if}
+
+              {#if projectAccess.can('deploy')}
+                <button
+                  type="button"
+                  class={buttonVariants({ variant: 'outline', size: 'sm' })}
+                  disabled={p.latest_deployment?.status === 'queued' || deploying === p.number}
+                  onclick={() => deploy(p)}
+                >
+                  {p.latest_deployment ? 'Redeploy' : 'Deploy'}
                 </button>
-              {/snippet}
-              {#snippet children(close)}
-                {#if p.public_url}
-                  <a target="_blank" rel="noreferrer" class="listbox-option justify-start! gap-2.5!" href={p.public_url} onclick={close} role="menuitem">
-                    <Icon name="external-link" class="size-3.5 opacity-70" />
-                    <span class="min-w-0 truncate">Open preview</span>
-                  </a>
-                {/if}
-                {#if p.url}
-                  <a target="_blank" rel="noreferrer" class="listbox-option justify-start! gap-2.5!" href={p.url} onclick={close} role="menuitem">
-                    <Icon name="external-link" class="size-3.5 opacity-70" />
-                    <span class="min-w-0 truncate">Open pull request</span>
-                  </a>
-                {/if}
-              {/snippet}
-            </TableDropdown>
+              {/if}
 
-            {#if p.latest_deployment}
-              <a class="button gap-1.5" href={href(`${applicationPath(application, 'deployment')}/${p.latest_deployment.id}`)} title="Preview deployment logs">
-                <Icon name="terminal" class="size-3.5 opacity-70" />
-                Logs
-              </a>
-            {/if}
-
-            {#if (projectAccess.can('deploy') || projectAccess.can('manage_applications'))}
-              <TableDropdown role="menu" panelClass="w-52! min-w-52!">
-                {#snippet trigger({ open, toggle })}
-                  <button type="button" class="button gap-1.5" title="Preview actions" aria-expanded={open} aria-haspopup="menu" onclick={toggle}>
-                    Actions
-                    <span class={['inline-flex transition-transform', open && 'rotate-180']}><Icon name="chevron-down" class="size-3 opacity-55" /></span>
-                  </button>
-                {/snippet}
-                {#snippet children(close)}
-                  <button
-                    type="button"
-                    class="listbox-option justify-start! gap-2.5!"
-                    role="menuitem"
-                    disabled={p.latest_deployment?.status === 'queued'}
-                    onclick={() => {
-                      close()
-                      deploy(p)
-                    }}
-                  >
-                    <Icon name="play-circle" class="size-3.5 opacity-70" />
-                    {p.latest_deployment ? 'Redeploy' : 'Deploy'}
-                  </button>
-                  <button
-                    type="button"
-                    class="listbox-option justify-start! gap-2.5! text-error!"
-                    role="menuitem"
-                    onclick={() => {
-                      close()
-                      openModal(`preview-delete-trigger-${p.number}`)
-                    }}
-                  >
-                    <Icon name="trash" class="size-3.5" />
-                    Delete
-                  </button>
-                {/snippet}
-              </TableDropdown>
-            {/if}
-          </div>
+              {#if projectAccess.can('manage_applications')}
+                <button
+                  type="button"
+                  class={buttonVariants({ variant: 'destructive', size: 'sm' })}
+                  onclick={() => openModal(`preview-delete-trigger-${p.number}`)}
+                >
+                  Remove
+                </button>
+              {/if}
+            {/snippet}
+          </EntityRow>
 
           {#if projectAccess.can('manage_applications')}
             <div class="hidden" aria-hidden="true">
@@ -301,32 +308,8 @@
               </ConfirmationModal>
             </div>
           {/if}
-        </div>
-
-        <div class="mt-4 border-t border-neutral-200 pt-4 dark:border-white/[0.07]">
-          <p class="mb-3 text-[13px] text-neutral-500 dark:text-fg-dim">1 domain</p>
-          <div class="application-settings-section-body is-flush overflow-visible">
-            <div class="flex items-center gap-3 px-4 py-3">
-              <Icon name="globe" class="size-4 shrink-0 text-neutral-400 dark:text-fg-faint" />
-              {#if p.public_url}
-                <a class="min-w-0 truncate font-mono text-[13px] text-black hover:underline dark:text-fg" href={p.public_url} target="_blank" rel="noreferrer"
-                  >{p.domain}</a
-                >
-              {:else}
-                <span class="min-w-0 truncate font-mono text-[13px] text-neutral-500 dark:text-fg-dim">{p.domain}</span>
-              {/if}
-            </div>
-          </div>
-        </div>
-      </section>
-    {:else}
-      {#if loaded}
-        <Empty
-          title="No preview deployments"
-          description="Open a pull request into the branch to create an isolated deployment."
-          icon="eye"
-        />
-      {/if}
-    {/each}
-  </SettingsSection>
+        {/each}
+      </Card>
+    {/if}
+  </SettingsGroup>
 </div>

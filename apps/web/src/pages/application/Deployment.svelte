@@ -115,6 +115,7 @@
 
   const visible = $derived(search ? lines.filter((l) => (timestamp(l.at) + ' ' + l.line).toLowerCase().includes(search)) : lines)
   const status = $derived(deployment ? deploymentStatus(deployment) : null)
+  const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' })
   const running = $derived(deployment?.active ?? false)
 
   function text(of: Line[]): string {
@@ -206,6 +207,19 @@
   {#if missing}
     <Empty title="Deployment not found" description="This Deployment does not exist or was removed with its Application." icon="layers" />
   {:else}
+    {#if deployment}
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+        {#if status}<StatusBadge status={status.label} type={status.type} />{/if}
+        {#if deployment.commit_sha}
+          <span>Commit <code class="font-mono text-foreground">{deployment.commit_sha.slice(0, 7)}</code></span>
+        {:else if deployment.source_image}
+          <span>Image <code class="font-mono text-foreground">{deployment.source_image.split('/').pop()}</code></span>
+        {/if}
+        <span>Started {deployment.started_at ? when.format(new Date(deployment.started_at)) : '-'}</span>
+        <span>Finished {deployment.finished_at ? when.format(new Date(deployment.finished_at)) : '-'}</span>
+        <span>Server {serverNames[deployment.server_id] ?? `Server #${deployment.server_id}`}</span>
+      </div>
+    {/if}
     <div class="flex h-[calc(100dvh-8rem)] min-h-[32rem] w-full flex-col overflow-hidden xl:h-[32rem] xl:min-h-0 xl:flex-none">
       <div
         class={cn(

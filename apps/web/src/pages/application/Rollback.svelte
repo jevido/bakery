@@ -6,15 +6,20 @@
   // Coolify lists `docker images` by tag; The Bakery lists the finished
   // Deployments whose Image is still on their Server, so a Rollback names
   // the Deployment it starts again.
+  //
+  // Listed as Paperclip's EntityRow pattern (as the Environment page and
+  // Deployment history are), under a SettingsGroup for the Reload action.
+  import { buttonVariants } from '$lib/components/ui/button'
+  import { Card } from '$lib/components/ui/card'
   import { api, ApiError } from '../../lib/api'
+  import EntityRow from '../../lib/EntityRow.svelte'
   import { ago } from '../../lib/format'
   import Icon from '../../lib/Icon.svelte'
   import { applicationPath, go } from '../../lib/router.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import type { Application, Deployment } from '../../lib/types'
-  import Button from '../../lib/ui/Button.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import StatusBadge from '../../lib/ui/StatusBadge.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
@@ -61,64 +66,68 @@
   const tag = (image: string) => image.slice(image.lastIndexOf(':') + 1)
   const builtAt = (d: Deployment) => d.finished_at ?? d.created_at
   const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' })
+  const listCard = 'block gap-0 overflow-hidden py-0'
 </script>
 
 <div class="chrome flex flex-col gap-6">
-  <SettingsSection
-    id="rollback-images-section"
-    title="Available images"
-    helper="Rollback uses an existing local image without rebuilding the application."
-    flush
-  >
+  <SettingsGroup id="rollback-images-section" label="Available images" hint="Rollback uses an existing local image without rebuilding the application." wide>
     {#snippet actions()}
-      <Button onclick={() => load(true)} disabled={loading}>Reload images</Button>
+      <button type="button" class={buttonVariants({ variant: 'outline', size: 'sm' })} onclick={() => load(true)} disabled={loading}>
+        {#if loading}<Spinner />{/if}
+        Reload images
+      </button>
     {/snippet}
 
     {#if loading}
-      <div class="flex items-center justify-center gap-2 px-4 py-10 text-[13px] text-neutral-500 dark:text-fg-dim">
-        <Spinner />
-        Loading available images…
-      </div>
+      <Card class={listCard}>
+        <div class="flex items-center justify-center gap-2 px-4 py-10 text-sm text-muted-foreground">
+          <Spinner />
+          Loading available images…
+        </div>
+      </Card>
+    {:else if images.length === 0}
+      <Card class={listCard}>
+        <Empty title="No rollback images" description="No previous application images are currently stored on this server." icon="layers" />
+      </Card>
     {:else}
-      {#each images as image (image.deployment.id)}
-        <div
-          class="flex flex-col gap-3 border-b border-neutral-200 px-4 py-3.5 last:border-b-0 sm:flex-row sm:items-center dark:border-white/[0.07]"
-          data-testid="rollback-image"
-        >
-          <div
-            class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-500 ring-1 ring-neutral-200 dark:bg-white/[0.05] dark:text-fg-dim dark:ring-white/[0.07]"
+      <Card class={listCard}>
+        {#each images as image (image.deployment.id)}
+          <EntityRow
+            title={tag(image.image)}
+            subtitle={`Built ${ago(builtAt(image.deployment))} · ${when.format(new Date(builtAt(image.deployment)))} · Deployment #${image.deployment.id}${image.deployment.commit_sha ? ` (${image.deployment.commit_sha.slice(0, 7)})` : ''}`}
+            reserveSubtitleSpace
+            data-testid="rollback-image"
           >
-            <Icon name="layers" class="size-[18px]" />
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <code class="truncate font-mono text-[13px] font-semibold text-black dark:text-fg" title={image.image}>{tag(image.image)}</code>
+            {#snippet leading()}
+              <span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                <Icon name="layers" class="size-4" />
+              </span>
+            {/snippet}
+            {#snippet trailing()}
               {#if image.current}
                 <StatusBadge status="Running image" type="success" />
               {/if}
-            </div>
-            <p class="mt-1 text-xs text-neutral-500 dark:text-fg-dim">
-              Built {ago(builtAt(image.deployment))}
-              <span class="mx-1 text-neutral-300 dark:text-fg-faint">·</span>
-              {when.format(new Date(builtAt(image.deployment)))}
-              <span class="mx-1 text-neutral-300 dark:text-fg-faint">·</span>
-              Deployment #{image.deployment.id}{#if image.deployment.commit_sha}
-                ({image.deployment.commit_sha.slice(0, 7)}){/if}
-            </p>
-          </div>
-          {#if projectAccess.can('deploy')}
-            {#if image.current}
-              <Button disabled title="This image is currently running.">Rollback</Button>
-            {:else}
-              <Button loading={rollingBack === image.deployment.id} disabled={rollingBack !== 0} onclick={() => rollback(image.deployment)}
-                >Roll back to this image</Button
-              >
-            {/if}
-          {/if}
-        </div>
-      {:else}
-        <Empty title="No rollback images" description="No previous application images are currently stored on this server." icon="layers" />
-      {/each}
+              {#if projectAccess.can('deploy')}
+                {#if image.current}
+                  <button type="button" class={buttonVariants({ variant: 'outline', size: 'sm' })} disabled title="This image is currently running.">
+                    Rollback
+                  </button>
+                {:else}
+                  <button
+                    type="button"
+                    class={buttonVariants({ variant: 'outline', size: 'sm' })}
+                    disabled={rollingBack !== 0}
+                    onclick={() => rollback(image.deployment)}
+                  >
+                    {#if rollingBack === image.deployment.id}<Spinner />{/if}
+                    Roll back to this image
+                  </button>
+                {/if}
+              {/if}
+            {/snippet}
+          </EntityRow>
+        {/each}
+      </Card>
     {/if}
-  </SettingsSection>
+  </SettingsGroup>
 </div>
