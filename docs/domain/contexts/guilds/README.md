@@ -43,7 +43,7 @@ rows and stores the Guild's id on them.
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Guild | Name is 1–255 characters after trimming; the description is optional, at most 255 characters. Deleted only when it owns nothing: no Projects, Servers, S3 storages or Notification channels (each owning context answers through `OnGuildDeleting`); its Memberships, Invitations, API tokens and Known hosts go with it. |
+| Guild | Name is 1–255 characters after trimming; the description is optional, at most 255 characters. Deleted only when it owns nothing: no Projects, Servers, S3 storages, Notification channels, Goals or Issues (each owning context answers through `OnGuildDeleting`); its Memberships, Invitations, API tokens and Known hosts go with it. |
 | Guild (Guild Master) | Exactly one Guild Master at all times, a Member with a Membership in the Guild. The Guild Master is never removed from the Guild, never re-roled by anyone, cannot leave it, and cannot have their account deleted while they hold it; they transfer it first or delete the Guild. At most one open Transfer offer, to another Member of the Guild who is a person (never an agent); it changes nothing until accepted, can be withdrawn by the Guild Master and declined by its Member, and expires 7 days after it was made. Accepting swaps the Guild Master in one step; both keep their other Roles. |
 | Role | Belongs to one Guild. Name is 1–100 characters after trimming; color is `#rrggbb`; Permissions are from the fixed list. Positions are unique per Guild. The Base role is at Position 0, always exists, and cannot be renamed, deleted, assigned or removed; every other Role sits above it. A Role held by Members can be deleted; they simply stop holding it. |
 | Membership | One per Member and Guild. Holds a set of Roles of its own Guild (never the Base role explicitly; it holds that implicitly). The Instance admin's Memberships are never removed. |
@@ -208,8 +208,8 @@ other changes with `write`, `administrator` only with `root`.
     Membership in the Guild; work asks it before making someone an
     Assignee or a Goal's owner.
   - `guilds.OnGuildDeleting(kind, f)` and `guilds.OnInvitationCreated(f)`:
-    see Domain events. Projects, servers, databases (S3 storages) and
-    notifications register `OnGuildDeleting`.
+    see Domain events. Projects, servers, databases (S3 storages),
+    notifications and work register `OnGuildDeleting`.
 - **Serves:** `GET /api/me` (the Member, their `permissions` in the Current
   guild as wire keys, `administrator` meaning every one, the former `role`
   derived from them for scripts, `instance_admin`, `guild_master` (whether
@@ -428,7 +428,10 @@ other changes with `write`, `administrator` only with `root`.
   `Member` and `Viewer` with the Permissions that keep the meaning of the
   fixed roles they replace, and every Membership is moved onto the matching
   one, so nobody's access changes. They are ordinary Roles from then on:
-  renamed, recolored, changed or deleted like any other.
+  renamed, recolored, changed or deleted like any other. `manage_work`,
+  added with Goals and Issues, was seeded into `Member` (and `Admin` holds
+  it through `administrator`): planning work is what a Member did not have
+  to be given, and a Viewer still only reads.
 - **The Base role starts with no Permissions.** Discord's `@everyone` grants
   a few by default; here every Member already holds one of the seeded Roles,
   and giving the Base role anything would widen today's access.

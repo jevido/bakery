@@ -70,9 +70,37 @@ None yet. Inbox and Activity, in a later phase, are where they start.
 
 ## Integration
 
-- **Publishes:** the Goals and Issues API (`/api/goals`, `/api/issues`,
-  `/api/issues/{issue}/comments`), an Issue addressed by its id or its Issue
-  identifier.
+- **Publishes:** the Goals and Issues API, all in the Current guild (an id
+  from another Guild is 404), reading with `view_resources` and changing
+  with `manage_work` (403 without it). An Issue is addressed by its id or
+  its Issue identifier (`DEF-12`).
+
+  | Route | Answers |
+  | ----- | ------- |
+  | `GET /api/goals` | `{"goals": [Goal]}` |
+  | `POST /api/goals` | 201 `{"goal": Goal}` |
+  | `GET /api/goals/{id}` | `{"goal": Goal + "issues": [Issue], "issue_counts": {status: n}}` |
+  | `PATCH /api/goals/{id}`, `DELETE /api/goals/{id}` | `{"goal": Goal}`, 204 |
+  | `GET /api/issues` | `{"issues": [Issue]}`, most recently updated first; filters `status` and `priority` (comma lists), `assignee` (an id, `me` or `none`), `project`, `goal`, `parent` (an id or `none`), `q` (title, description, identifier), `limit` (≤ 200) and `offset` |
+  | `POST /api/issues` | 201 `{"issue": Issue + "children": [Issue]}` |
+  | `GET /api/issues/{issue}`, `PATCH /api/issues/{issue}` | `{"issue": Issue + "children": [Issue]}` |
+  | `DELETE /api/issues/{issue}` | 204 |
+  | `GET /api/issues/{issue}/comments` | `{"comments": [Comment]}`, oldest first |
+  | `POST /api/issues/{issue}/comments` | 201 `{"comment": Comment}` |
+  | `PATCH /api/issues/{issue}/comments/{comment}` | `{"comment": Comment}` |
+  | `DELETE /api/issues/{issue}/comments/{comment}` | 204; the Comment keeps its place in the list, `deleted` and without its body |
+
+  A Goal is `{id, title, description, level, status, parent_id, owner:
+  {id, name} | null, created_at, updated_at}`; it is written with `title`,
+  `description`, `level`, `status`, `parent_id` and `owner_id`. An Issue is
+  `{id, number, identifier, title, description, status, priority, assignee,
+  project, goal, parent, created_by, started_at, completed_at, cancelled_at,
+  created_at, updated_at}`, the references as `{id, name}` (`{id, title}`
+  for a Goal, `{id, identifier, title}` for a parent) or null, and lists leave
+  `description` out; it is written with `title`, `description`, `status`,
+  `priority`, `assignee_id`, `project_id`, `goal_id` and `parent_id`, any of
+  them null to clear it. A Comment is `{id, body, deleted, author, created_at,
+  updated_at, edited}`.
 - **Consumes:**
   - from guilds: `guilds.Auth`, `guilds.Can(permission)`,
     `guilds.Current(ctx)` (the Guild every Goal and Issue is stored and
@@ -117,3 +145,21 @@ None yet. Inbox and Activity, in a later phase, are where they start.
   refuses to delete a Goal that has Sub-goals. Moving them under the
   deleted Goal's parent keeps the rest of the tree where it was, so
   deleting a middle Goal does not scatter its subtree to the top.
+- **"Issues", not "Tasks".** Paperclip's pages say Issues while some of its
+  code and permissions say tasks. The Bakery uses Issue everywhere a person
+  or the code reads it, so one thing has one name.
+- **A Textarea with a Preview tab, not a rich Markdown editor.** Paperclip
+  writes descriptions and comments in MDXEditor. The Bakery stores the same
+  Markdown and writes it in a plain Textarea with Write and Preview tabs,
+  which keeps a large editor and its React dependencies out of the
+  dashboard. The rendered Markdown is the same.
+- **No labels, attachments or read states yet.** Paperclip's Issues carry
+  labels, file attachments and per-person read markers. None of them is
+  needed for a Board to plan and talk about work, and attachments would
+  need storage of their own; they are left out until a phase needs them.
+  The Inbox, in a later phase, is where read states would start.
+- **A Viewer sees everything and changes nothing.** Reading needs only
+  `view_resources`, so the base Role's Viewers read the Board's Goals,
+  Issues and Comments; the dashboard hides New Issue, New Goal, the
+  pickers, the comment box and Delete without `manage_work`, and the API
+  refuses (403) what a hand-made request tries.

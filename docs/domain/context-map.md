@@ -49,7 +49,7 @@ adapt to.
 | servers | notifications | published language | `servers.OnServerHealthChanged { server, guild, name, change, reason, disk used/total }`: a Server probe found a Server unreachable, reachable again, or its disk usage high; guild is 0 for the Local server, which concerns every Guild |
 | guilds | work | open host service (work is conformist) | `guilds.Auth`, `guilds.Can(permission)` (reading needs `view_resources`, every change `manage_work`), `guilds.Current(ctx)`, `guilds.MemberID(ctx)` (an Issue's creator, `assignee=me`), `guilds.VisibleProjects(ctx, ids)` so an Issue in a Project the Member may not view is hidden (404), `guilds.IssuePrefix(ctx, guild)` for every Issue identifier, `guilds.IsMember(ctx, guild, member)` for Assignees and Goal owners; work registers `guilds.OnGuildDeleting` so a Guild with Goals or Issues is not deleted |
 | projects | work | customer/supplier | `projects.ProjectNames(ctx, guildID, ids)` for the names of Issues' Projects, and before an Issue takes a Project (one that is not named is not the Guild's); `projects.OnProjectDeleted`, after which its Issues keep existing without a Project |
-| identity | work | customer/supplier | `identity.Members(ctx, ids)` for the names of Goal owners, Assignees and Issue creators (and, later, Comment authors) |
+| identity | work | customer/supplier | `identity.Members(ctx, ids)` for the names of Goal owners, Assignees, Issue creators and Comment authors |
 | guilds | notifications | customer/supplier | `guilds.OnInvitationCreated { guild, email, role, invited by, link, expires }`, called synchronously; notifications answers whether it emailed the link |
 
 ## External systems
@@ -96,4 +96,5 @@ flowchart LR
   servers -->|OnServerHealthChanged| notifications
   guilds -->|Auth, Can, Current, MemberID, VisibleProjects, IssuePrefix, IsMember| work
   projects -->|ProjectNames, OnProjectDeleted| work
+  identity -->|Members| work
 ```

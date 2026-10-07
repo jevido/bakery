@@ -23,6 +23,15 @@
 //           stays); the Goal's page and the Issues list open it from
 //           their rows; #/issues/DEF-99999 shows the not-found state; the scratch
 //           Issues and Goal are deleted again
+//   viewer  a Viewer, invited for the run and removed again, sees the Issues
+//           list, Goals and an Issue's page but no New Issue, New Goal,
+//           composer, pickers, Add sub-issue or Delete, and the API answers
+//           403 to their Issue and Comment
+//   hidden  a Member, invited for the run, sees an Issue in a scratch
+//           Project until the Project's permissions page denies the Member
+//           Role View resources there: then it is gone from the list, by its
+//           identifier (404) and on its page; removing the override shows it
+//           again
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -96,6 +105,35 @@ async function cleanIssues(page: Page) {
 async function pick(page: Page, scope: ReturnType<Page['getByRole']>, chip: string, option: string) {
   await scope.getByRole('button', { name: chip, exact: true }).click()
   await page.getByRole('listbox', { name: chip }).getByRole('option', { name: option, exact: true }).click()
+}
+
+
+/**
+ * A real Member of the owner's Current guild through an Invitation with
+ * the seeded Role `role`, signed in in a context of its own. `leave`
+ * removes the Membership again.
+ */
+async function invited(owner: Page, role: 'viewer' | 'member'): Promise<{ page: Page; id: number; leave: () => Promise<void> }> {
+  const { members } = (await (await owner.request.get(`${WEB}/api/members`)).json()) as { members: { id: number; email: string }[] }
+  for (const m of members.filter((m) => m.email.startsWith(`work-${role}-`))) await owner.request.delete(`${WEB}/api/members/${m.id}`)
+  const inv = await owner.request.post(`${WEB}/api/invitations`, { data: { email: `work-${role}-${Date.now()}@example.test`, role } })
+  if (!inv.ok()) throw new Error(`invite: ${inv.status()}`)
+  const token = ((await inv.json()) as { path: string }).path.split('/').pop()
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+  await ctx.addInitScript(() => localStorage.setItem('theme', 'dark'))
+  const accept = await ctx.request.post(`${WEB}/api/invitations/by-token/${token}/accept`, {
+    data: { name: `Work ${role}`, password: 'a long enough password' },
+  })
+  if (!accept.ok()) throw new Error(`accept: ${accept.status()} ${await accept.text()}`)
+  const { member } = (await accept.json()) as { member: { id: number } }
+  return {
+    page: await ctx.newPage(),
+    id: member.id,
+    leave: async () => {
+      await ctx.close()
+      await owner.request.delete(`${WEB}/api/members/${member.id}`)
+    },
+  }
 }
 
 const sections: Record<string, () => Promise<void>> = {
@@ -183,7 +221,9 @@ const sections: Record<string, () => Promise<void>> = {
     const project = (await (await page.request.post(`${WEB}/api/projects`, { data: { name: scratchProject } })).json()) as { project: { id: number } }
 
     await page.goto(`${WEB}/#/issues`)
-    expect('Issues is in the sidebar', await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Issues' }).isVisible())
+    const nav = page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Issues' })
+    await nav.waitFor()
+    expect('Issues is in the sidebar', await nav.isVisible())
     await page.getByRole('button', { name: 'New Issue' }).first().click()
     let dialog = page.getByRole('dialog', { name: 'New issue' })
     await dialog.getByLabel('Issue title').fill(scratchIssues[0])
@@ -335,6 +375,82 @@ const sections: Record<string, () => Promise<void>> = {
     await tidy()
     const left = (await issues(page)).filter((i) => titles.includes(i.title))
     expect('the scratch Issues are deleted again', left.length === 0, left)
+    await page.close()
+  },
+  async viewer() {
+    const page = await signedIn()
+    const title = 'Viewer reads this'
+    for (const i of (await issues(page)).filter((i) => i.title === title)) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title, status: 'todo' } })).json()) as { issue: Issue }
+    const v = await invited(page, 'viewer')
+
+    await v.page.goto(`${WEB}/#/issues`)
+    await v.page.locator(`[data-issue="${issue.identifier}"]`).waitFor()
+    expect('a Viewer sees the Issues list', true)
+    expect('a Viewer sees no New Issue', (await v.page.getByRole('button', { name: 'New Issue' }).count()) === 0)
+    await v.page.goto(`${WEB}/#/goals`)
+    await Promise.race([v.page.getByText('No goals yet.').waitFor(), v.page.locator('[data-goal]').first().waitFor()])
+    expect('a Viewer sees Goals but no New Goal', (await v.page.getByRole('button', { name: /^(New Goal|Add Goal)$/ }).count()) === 0)
+
+    await v.page.goto(`${WEB}/#/issues/${issue.identifier}`)
+    await v.page.getByRole('heading', { name: title }).waitFor()
+    expect('a Viewer opens the Issue, its title not editable', (await v.page.locator('[data-inline-editor]').count()) === 0)
+    const thread = v.page.getByRole('region', { name: 'Comments' })
+    expect('a Viewer sees no composer', (await thread.getByLabel('Comment', { exact: true }).count()) === 0)
+    const properties = v.page.getByRole('complementary', { name: 'Properties' })
+    expect('a Viewer sees no pickers', (await properties.getByRole('button', { name: /^Change (status|priority)/ }).count()) === 0)
+    expect('a Viewer sees no Delete', (await v.page.getByRole('button', { name: 'More issue actions' }).count()) === 0)
+    expect('a Viewer sees no Add sub-issue', (await v.page.getByRole('button', { name: 'Add sub-issue' }).count()) === 0)
+
+    const post = await v.page.request.post(`${WEB}/api/issues`, { data: { title: 'Viewer may not' } })
+    expect('the API answers 403 to a Viewer\'s POST', post.status() === 403, post.status())
+    const comment = await v.page.request.post(`${WEB}/api/issues/${issue.id}/comments`, { data: { body: 'no' } })
+    expect('and to a Viewer\'s Comment', comment.status() === 403, comment.status())
+
+    await v.leave()
+    await page.request.delete(`${WEB}/api/issues/${issue.id}`)
+    await page.close()
+  },
+  async hidden() {
+    const page = await signedIn()
+    const name = 'Work e2e hidden'
+    const { projects } = (await (await page.request.get(`${WEB}/api/projects`)).json()) as { projects: { id: number; name: string }[] }
+    for (const p of projects.filter((p) => p.name === name)) await page.request.delete(`${WEB}/api/projects/${p.id}`)
+    for (const i of (await issues(page)).filter((i) => i.title === 'Hidden with its Project')) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    const { project } = (await (await page.request.post(`${WEB}/api/projects`, { data: { name } })).json()) as { project: { id: number } }
+    const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title: 'Hidden with its Project', project_id: project.id } })).json()) as { issue: Issue }
+    const m = await invited(page, 'member')
+    const sees = async () => (await issues(m.page)).some((i) => i.id === issue.id)
+    expect('a Member sees the Issue before the override', await sees())
+
+    const { roles } = (await (await page.request.get(`${WEB}/api/roles`)).json()) as { roles: { id: number; name: string }[] }
+    const memberRole = roles.find((r) => r.name === 'Member')!
+    await page.goto(`${WEB}/#/project/${project.id}/permissions`)
+    await page.getByTestId('project-permissions').waitFor()
+    await page.getByRole('button', { name: 'Add role or member' }).click()
+    await page.locator(`[data-testid="add-target"][data-target="role:${memberRole.id}"]`).click()
+    await page.locator('[data-permission="view_resources"]').getByRole('radio', { name: 'Deny' }).click()
+    await page.getByRole('button', { name: 'Save changes' }).click()
+    await page.getByRole('button', { name: 'Remove override' }).waitFor()
+
+    expect('a Member no longer sees the Issue in the list', !(await sees()))
+    const byId = await m.page.request.get(`${WEB}/api/issues/${issue.identifier}`)
+    expect('nor by its identifier', byId.status() === 404, byId.status())
+    await m.page.goto(`${WEB}/#/issues/${issue.identifier}`)
+    await m.page.getByTestId('not-found').waitFor()
+    expect('the Issue page shows the not-found state', true)
+    await m.page.goto(`${WEB}/#/issues`)
+    await m.page.getByRole('button', { name: 'New Issue' }).first().waitFor()
+    expect('the Issues list has no row for it', (await m.page.locator(`[data-issue="${issue.identifier}"]`).count()) === 0)
+
+    await page.getByRole('button', { name: 'Remove override' }).click()
+    await page.getByRole('button', { name: 'Remove', exact: true }).click()
+    await page.getByRole('button', { name: 'Remove override' }).waitFor({ state: 'detached' })
+    expect('removing the override shows it again', await sees())
+
+    await m.leave()
+    await page.request.delete(`${WEB}/api/issues/${issue.id}`)
+    await page.request.delete(`${WEB}/api/projects/${project.id}`)
     await page.close()
   },
 }

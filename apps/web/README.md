@@ -87,6 +87,14 @@ dialog), `tokens` (create, copy once, search, use and revoke an API token),
 hosts and the Forget confirmation) and `viewer` (what a Viewer cannot see),
 each once in the dark theme at 1440×900.
 
+`e2e/work.ts` (`task web:work`, needs `task dev`) checks the work pages,
+one section per flow (`bun e2e/work.ts issue` runs one): `goals` (the tree,
+New Goal, a Sub-goal, in-place editing, Markdown), `issues` (New Issue, search,
+filters and grouping), `issue` (the Issue page: properties, sub-issues and
+the comment thread), `viewer` (a Viewer, invited for the run, reads and
+changes nothing) and `hidden` (an Issue in a Project denied to the Member
+Role is gone for a Member), each once in the dark theme at 1440×900.
+
 `e2e/servers.ts` (`task web:servers`, needs `task dev`) checks the Servers
 pages and S3 Storage, one section per flow (`bun e2e/servers.ts remote`
 runs one): the list, the Server frame, Resources, Metrics, Cleanup, the

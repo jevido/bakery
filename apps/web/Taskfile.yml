@@ -38,7 +38,7 @@ tasks:
       - bun e2e/settings.ts
 
   work:
-    desc: Check the work pages (Goals) in headless Chromium (needs task dev)
+    desc: Check the work pages (Goals, Issues, the Issue page, a Viewer, a hidden Project) in headless Chromium (needs task dev)
     deps: [install]
     cmds:
       - bun e2e/work.ts
