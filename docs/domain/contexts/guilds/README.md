@@ -75,7 +75,7 @@ that touches a Role or a Member also follows the hierarchy above.
   gets a Membership with the `Admin` Role and is the Guild Master; the Guild
   gets the seeded Roles and becomes their Current guild; it owns nothing and
   deploys to the Local server.
-- `RenameGuild(name)`, `ChangeDescription(description)` [`manage_guild`].
+- `RenameGuild(name)`, `ChangeDescription(description)`, `ChangeIssuePrefix(prefix)` [`manage_guild`].
 - `DeleteGuild()` [`administrator`]: refused while the Guild owns anything, naming
   what (`projects`, `servers`, `s3 storages`, `notification channels`). The
   first Guild is not special, and a Member may delete their last Guild.
@@ -202,6 +202,11 @@ other changes with `write`, `administrator` only with `root`.
   - `guilds.IsGuildMaster(ctx, member) bool`: whether the Member is the
     Guild Master of any Guild. Whatever deletes an account or lets a Member
     leave a Guild asks it first and refuses while it is true.
+  - `guilds.IssuePrefix(ctx, guild) string`: the Guild's Issue prefix,
+    which work renders Issue identifiers from when it reads them.
+  - `guilds.IsMember(ctx, guild, member) bool`: whether the Member holds a
+    Membership in the Guild; work asks it before making someone an
+    Assignee or a Goal's owner.
   - `guilds.OnGuildDeleting(kind, f)` and `guilds.OnInvitationCreated(f)`:
     see Domain events. Projects, servers, databases (S3 storages) and
     notifications register `OnGuildDeleting`.
@@ -219,7 +224,7 @@ other changes with `write`, `administrator` only with `root`.
   `GET /api/guilds/current` (`name`, `description`, `blocking`, what
   keeps it from being deleted, `guild_master` `{id, name, email}` and
   `offer`, the open Transfer offer or null) for every Member, `PATCH /api/guilds/current`
-  (`{"name", "description"}`) with `manage_guild` and `DELETE
+  (`{"name", "description", "issue_prefix"}`, `issue_prefix` left as it is when absent; 422 for an invalid one or one another Guild has) with `manage_guild` and `DELETE
   /api/guilds/current` (204, or 409 with `blocking`) with `administrator`.
   The Members of the Current guild: `GET /api/members` for every Member
   (each with `roles`, `[{id, name, color}]` top first, besides the former

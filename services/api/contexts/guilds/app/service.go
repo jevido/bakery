@@ -17,7 +17,9 @@ type Guilds interface {
 	// All lists every Guild by id.
 	All(ctx context.Context) ([]domain.Guild, error)
 	// Create stores g with its seeded Roles (domain.SeedRoles) and a
-	// Membership holding Admin for its Guild Master, in one transaction.
+	// Membership holding Admin for its Guild Master, in one transaction,
+	// with the first free Issue prefix (domain.FreeIssuePrefix) from
+	// g's.
 	Create(ctx context.Context, g domain.Guild) (domain.Guild, error)
 	// CreateFirstIfNone is Create unless a Guild exists already, in which
 	// case it stores nothing and reports false. The check and the insert are
@@ -26,7 +28,8 @@ type Guilds interface {
 	// MasteredBy reports whether the Member is the Guild Master of any
 	// Guild.
 	MasteredBy(ctx context.Context, memberID uint64) (bool, error)
-	// Update stores g's name and description.
+	// Update stores g's name, description and Issue prefix;
+	// ErrIssuePrefixTaken when another Guild has that prefix.
 	Update(ctx context.Context, g domain.Guild) error
 	// Delete removes the Guild with its Memberships, Invitations and API
 	// tokens. ErrGuildInUse when something of another context still
@@ -114,6 +117,9 @@ type deletingCheck struct {
 }
 
 var ErrGuildNotFound = errors.New("guild not found")
+
+// ErrIssuePrefixTaken refuses an Issue prefix another Guild has.
+var ErrIssuePrefixTaken = errors.New("another guild has this issue prefix")
 
 // ErrGuildInUse refuses to delete a Guild that still owns something;
 // Blocking names what, in the words of the contexts that own it.
@@ -217,9 +223,9 @@ func (s *Service) Guild(ctx context.Context, id uint64) (domain.Guild, error) {
 	return g, err
 }
 
-// UpdateGuild renames and describes the Guild. Only a Member with administrator
-// gets here (Admin guards the route).
-func (s *Service) UpdateGuild(ctx context.Context, id uint64, name, description string) (domain.Guild, error) {
+// UpdateGuild renames and describes the Guild, and changes its Issue prefix
+// unless issuePrefix is nil. Only a Member with manage_guild gets here.
+func (s *Service) UpdateGuild(ctx context.Context, id uint64, name, description string, issuePrefix *string) (domain.Guild, error) {
 	g, err := s.Guild(ctx, id)
 	if err != nil {
 		return domain.Guild{}, err
@@ -230,7 +236,27 @@ func (s *Service) UpdateGuild(ctx context.Context, id uint64, name, description 
 	if err := g.ChangeDescription(description); err != nil {
 		return domain.Guild{}, err
 	}
-	return g, s.guilds.Update(ctx, g)
+	if issuePrefix != nil {
+		if err := g.ChangeIssuePrefix(*issuePrefix); err != nil {
+			return domain.Guild{}, err
+		}
+	}
+	if err := s.guilds.Update(ctx, g); err != nil {
+		return domain.Guild{}, err
+	}
+	return g, nil
+}
+
+// IssuePrefix is the Guild's Issue prefix.
+func (s *Service) IssuePrefix(ctx context.Context, guildID uint64) (string, error) {
+	g, err := s.Guild(ctx, guildID)
+	return g.IssuePrefix, err
+}
+
+// IsMember reports whether the Member holds a Membership in the Guild.
+func (s *Service) IsMember(ctx context.Context, guildID, memberID uint64) (bool, error) {
+	_, ok, err := s.memberships.Of(ctx, guildID, memberID)
+	return ok, err
 }
 
 // DeleteGuild deletes the Guild once it owns nothing: ErrGuildInUse names

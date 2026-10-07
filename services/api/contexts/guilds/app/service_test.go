@@ -70,7 +70,7 @@ func (o *memOverrides) set(v domain.Override) {
 // The Permissions of the seeded Roles, for actors in the tests.
 var (
 	viewerPerms = domain.Of(domain.PermissionViewResources)
-	memberPerms = domain.Of(domain.PermissionViewResources, domain.PermissionSeeSecrets, domain.PermissionDeploy, domain.PermissionManageApplications)
+	memberPerms = domain.Of(domain.PermissionViewResources, domain.PermissionSeeSecrets, domain.PermissionDeploy, domain.PermissionManageApplications, domain.PermissionManageWork)
 	adminPerms  = domain.Of(domain.PermissionAdministrator)
 )
 
@@ -105,6 +105,9 @@ func (m *memStore) MasteredBy(_ context.Context, memberID uint64) (bool, error) 
 
 func (m *memStore) create(g domain.Guild) domain.Guild {
 	g.ID = uint64(len(m.guilds) + 1)
+	g.IssuePrefix = domain.FreeIssuePrefix(g.IssuePrefix, func(p string) bool {
+		return slices.ContainsFunc(m.guilds, func(o domain.Guild) bool { return o.IssuePrefix == p })
+	})
 	m.guilds = append(m.guilds, g)
 	for _, r := range domain.SeedRoles(g.ID) {
 		r.ID = uint64(len(m.roles) + 1)
@@ -126,6 +129,9 @@ func (m *memStore) CreateFirstIfNone(_ context.Context, g domain.Guild) (domain.
 func (m *memStore) Update(_ context.Context, g domain.Guild) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if slices.ContainsFunc(m.guilds, func(o domain.Guild) bool { return o.ID != g.ID && o.IssuePrefix == g.IssuePrefix }) {
+		return ErrIssuePrefixTaken
+	}
 	for i := range m.guilds {
 		if m.guilds[i].ID == g.ID {
 			m.guilds[i] = g
@@ -551,17 +557,30 @@ func TestGuildsFor(t *testing.T) {
 func TestUpdateGuild(t *testing.T) {
 	ctx := context.Background()
 	s, _, _ := twoGuilds(t)
-	g, err := s.UpdateGuild(ctx, 2, "  Pastry  ", "Cakes")
-	if err != nil || g.Name != "Pastry" || g.Description != "Cakes" {
+	g, err := s.UpdateGuild(ctx, 2, "  Pastry  ", "Cakes", nil)
+	if err != nil || g.Name != "Pastry" || g.Description != "Cakes" || g.IssuePrefix != "BAK" {
 		t.Fatalf("got %+v, %v", g, err)
 	}
 	if got, _ := s.Guild(ctx, 2); got != g {
 		t.Errorf("stored %+v, want %+v", got, g)
 	}
-	if _, err := s.UpdateGuild(ctx, 2, " ", ""); !errors.Is(err, domain.ErrInvalidName) {
+	if _, err := s.UpdateGuild(ctx, 2, " ", "", nil); !errors.Is(err, domain.ErrInvalidName) {
 		t.Errorf("empty name: %v", err)
 	}
-	if _, err := s.UpdateGuild(ctx, 9, "X", ""); !errors.Is(err, ErrGuildNotFound) {
+	prefix := func(s string) *string { return &s }
+	if g, err := s.UpdateGuild(ctx, 2, "Pastry", "", prefix("pas")); err != nil || g.IssuePrefix != "PAS" {
+		t.Errorf("new prefix: %+v, %v", g, err)
+	}
+	if _, err := s.UpdateGuild(ctx, 2, "Pastry", "", prefix("def")); !errors.Is(err, ErrIssuePrefixTaken) {
+		t.Errorf("Default's prefix: %v", err)
+	}
+	if _, err := s.UpdateGuild(ctx, 2, "Pastry", "", prefix("TOOLONG")); !errors.Is(err, domain.ErrInvalidIssuePrefix) {
+		t.Errorf("too long a prefix: %v", err)
+	}
+	if p, err := s.IssuePrefix(ctx, 2); err != nil || p != "PAS" {
+		t.Errorf("IssuePrefix = %q, %v", p, err)
+	}
+	if _, err := s.UpdateGuild(ctx, 9, "X", "", nil); !errors.Is(err, ErrGuildNotFound) {
 		t.Errorf("unknown guild: %v", err)
 	}
 }
@@ -631,5 +650,22 @@ func TestPlaceUnitesTheBaseRoleAndEveryRoleHeld(t *testing.T) {
 	}
 	if p.Permissions.Has(domain.PermissionSeeSecrets) {
 		t.Error("Viewer and Deployer see no Secrets")
+	}
+}
+
+func TestCreateGuildTakesTheFirstFreeIssuePrefix(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := twoGuilds(t)
+	for _, want := range []string{"DEFA", "DEFB"} {
+		g, err := s.CreateGuild(ctx, "Default", "", 2)
+		if err != nil || g.IssuePrefix != want {
+			t.Errorf("got %+v, %v; want prefix %s", g, err, want)
+		}
+	}
+	if ok, _ := s.IsMember(ctx, 1, 3); !ok {
+		t.Error("Dev is a Member of Default")
+	}
+	if ok, _ := s.IsMember(ctx, 2, 1); ok {
+		t.Error("the Instance admin holds no Membership in Bakers")
 	}
 }

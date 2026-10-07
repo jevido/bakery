@@ -54,9 +54,10 @@ func toJSON(m identity.Member, role string) memberJSON {
 }
 
 type guildJSON struct {
-	ID   uint64 `json:"id"`
-	Name string `json:"name"`
-	Role string `json:"role,omitempty"`
+	ID          uint64 `json:"id"`
+	Name        string `json:"name"`
+	IssuePrefix string `json:"issue_prefix"`
+	Role        string `json:"role,omitempty"`
 	// Permissions are the wire keys of the Member's Permissions there.
 	Permissions []string `json:"permissions"`
 }
@@ -79,7 +80,7 @@ func (c *Controller) Me(ctx contractshttp.Context) contractshttp.Response {
 	guilds := guildsJSON(places)
 	var current *guildJSON
 	if p.guild.ID != 0 {
-		current = &guildJSON{ID: p.guild.ID, Name: p.guild.Name, Permissions: p.permissions.Keys()}
+		current = &guildJSON{ID: p.guild.ID, Name: p.guild.Name, IssuePrefix: p.guild.IssuePrefix, Permissions: p.permissions.Keys()}
 	}
 	offers, err := c.offersTo(ctx, m.ID)
 	if err != nil {

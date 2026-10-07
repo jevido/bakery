@@ -20,13 +20,14 @@ type guildRecord struct {
 	Name        string
 	Description string
 	MasterID    uint64
+	IssuePrefix string
 	orm.Timestamps
 }
 
 func (guildRecord) TableName() string { return "guilds" }
 
 func (r guildRecord) toDomain() domain.Guild {
-	return domain.Guild{ID: r.ID, Name: r.Name, Description: r.Description, MasterID: r.MasterID}
+	return domain.Guild{ID: r.ID, Name: r.Name, Description: r.Description, MasterID: r.MasterID, IssuePrefix: r.IssuePrefix}
 }
 
 type membershipRecord struct {
@@ -105,11 +106,19 @@ func (Guilds) All(ctx context.Context) ([]domain.Guild, error) {
 
 func (Guilds) Create(ctx context.Context, g domain.Guild) (domain.Guild, error) {
 	var rec guildRecord
-	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
-		var err error
-		rec, err = create(tx, g)
-		return err
-	})
+	tryCreate := func() error {
+		return facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+			var err error
+			rec, err = create(tx, g)
+			return err
+		})
+	}
+	err := tryCreate()
+	if isUniqueViolation(err) {
+		// Another Guild took the same free Issue prefix in between; the
+		// second try sees it.
+		err = tryCreate()
+	}
 	if err != nil {
 		return domain.Guild{}, err
 	}
@@ -145,7 +154,12 @@ func (Guilds) MasteredBy(ctx context.Context, memberID uint64) (bool, error) {
 }
 
 func (Guilds) Update(ctx context.Context, g domain.Guild) error {
-	_, err := query(ctx).Model(&guildRecord{}).Where("id", g.ID).Update(map[string]any{"name": g.Name, "description": g.Description})
+	_, err := query(ctx).Model(&guildRecord{}).Where("id", g.ID).Update(map[string]any{
+		"name": g.Name, "description": g.Description, "issue_prefix": g.IssuePrefix,
+	})
+	if isUniqueViolation(err) {
+		return app.ErrIssuePrefixTaken
+	}
 	return err
 }
 
@@ -161,10 +175,19 @@ func (Guilds) Delete(ctx context.Context, id uint64) error {
 	return err
 }
 
-// create stores the Guild, its seeded Roles and its Guild Master's
-// Membership holding Admin.
+// create stores the Guild with the first free Issue prefix from g's, its
+// seeded Roles and its Guild Master's Membership holding Admin.
 func create(tx contractsorm.Query, g domain.Guild) (guildRecord, error) {
-	rec := guildRecord{Name: g.Name, Description: g.Description, MasterID: g.MasterID}
+	var prefixes []string
+	if err := tx.Model(&guildRecord{}).Pluck("issue_prefix", &prefixes); err != nil {
+		return guildRecord{}, err
+	}
+	taken := make(map[string]bool, len(prefixes))
+	for _, p := range prefixes {
+		taken[p] = true
+	}
+	prefix := domain.FreeIssuePrefix(g.IssuePrefix, func(p string) bool { return taken[p] })
+	rec := guildRecord{Name: g.Name, Description: g.Description, MasterID: g.MasterID, IssuePrefix: prefix}
 	if err := tx.Create(&rec); err != nil {
 		return guildRecord{}, err
 	}

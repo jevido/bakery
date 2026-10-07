@@ -28,6 +28,9 @@ type Guild struct {
 	// MasterID is the Member who is the Guild Master: above every Role,
 	// with every Permission, changed only by an accepted Offer.
 	MasterID uint64
+	// IssuePrefix numbers the Guild's Issues (DEF-12), unique across the
+	// installation.
+	IssuePrefix string
 }
 
 // FirstGuildName is what Setup and the migration from before Guilds call
@@ -35,7 +38,8 @@ type Guild struct {
 const FirstGuildName = "Default"
 
 // NewGuild validates a new Guild, whose creator is its Guild Master, and
-// returns it without an ID.
+// returns it without an ID. Its Issue prefix is derived from the name; the
+// store makes it unique.
 func NewGuild(name, description string, creatorID uint64) (Guild, error) {
 	g := Guild{MasterID: creatorID}
 	if err := g.Rename(name); err != nil {
@@ -44,6 +48,7 @@ func NewGuild(name, description string, creatorID uint64) (Guild, error) {
 	if err := g.ChangeDescription(description); err != nil {
 		return Guild{}, err
 	}
+	g.IssuePrefix = DeriveIssuePrefix(g.Name)
 	return g, nil
 }
 

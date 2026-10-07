@@ -1,7 +1,7 @@
 <script lang="ts">
   // Coolify's Team General page (resources/views/livewire/team/index.blade.php,
   // app/Livewire/Team/Index.php; Apache-2.0, see NOTICE): Name, Description
-  // and "New guild", in Paperclip's CompanySettings General group
+  // and "New guild", plus the Issue prefix, in Paperclip's CompanySettings General group
   // (ui/src/pages/CompanySettings.tsx; MIT, see NOTICE). Coolify's MCP server
   // setting is left out until agents reach The Bakery's API.
   import { SlidersHorizontal } from '@lucide/svelte'
@@ -24,6 +24,7 @@
 
   let name = $state(untrack(() => guild.name))
   let description = $state(untrack(() => guild.description))
+  let issuePrefix = $state(untrack(() => guild.issue_prefix))
   let errors = $state<Record<string, string>>({})
   let saving = $state(false)
   let creating = $state(false)
@@ -31,17 +32,22 @@
   function reset() {
     name = guild.name
     description = guild.description
+    issuePrefix = guild.issue_prefix
     errors = {}
   }
 
-  const dirty = $derived(canUpdate && (name !== guild.name || description !== guild.description))
+  const dirty = $derived(canUpdate && (name !== guild.name || description !== guild.description || issuePrefix !== guild.issue_prefix))
 
   async function save() {
     if (saving || !dirty) return
     saving = true
     errors = {}
     try {
-      const r = await api<{ guild: GuildDetails }>('PATCH', '/guilds/current', { name, description })
+      const r = await api<{ guild: GuildDetails }>('PATCH', '/guilds/current', {
+        name,
+        description,
+        issue_prefix: issuePrefix,
+      })
       onchange({ ...r.guild, blocking: guild.blocking })
       untrack(reset)
       // The switcher shows the new name.
@@ -83,6 +89,15 @@
         placeholder="Optional guild description"
         bind:value={description}
         error={errors.description}
+        disabled={!canUpdate}
+      />
+      <Input
+        label="Issue prefix"
+        helper="Issues in this guild are numbered like DEF-12. Changing it renames every issue's identifier."
+        bind:value={issuePrefix}
+        error={errors.issue_prefix}
+        maxlength={5}
+        required
         disabled={!canUpdate}
       />
     </SettingsGroup>

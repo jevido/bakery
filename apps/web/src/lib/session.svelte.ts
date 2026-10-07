@@ -44,11 +44,12 @@ export type Permission =
   | 'hire_agents'
   | 'approve'
   | 'manage_budgets'
+  | 'manage_work'
 
 /** A Guild the signed-in Member may switch to, with their former role and Permissions there. */
-export type GuildPlace = { id: number; name: string; role: Exclude<Role, 'owner'>; permissions: Permission[] }
+export type GuildPlace = { id: number; name: string; issue_prefix: string; role: Exclude<Role, 'owner'>; permissions: Permission[] }
 /** The Guild the Session acts in. */
-export type CurrentGuild = { id: number; name: string }
+export type CurrentGuild = { id: number; name: string; issue_prefix: string }
 
 /** Whether permissions (a Member's, as /me or a Project answers them) allow p; administrator allows everything. */
 export function canIn(permissions: readonly Permission[], p: Permission): boolean {

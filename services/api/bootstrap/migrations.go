@@ -85,5 +85,7 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000070CreateGuildMasterOffersTable{},
 		&migrations.M20260930000071AddRolesToInvitations{},
 		&migrations.M20260930000072CreatePermissionOverridesTable{},
+		&migrations.M20260930000073AddManageWorkToMemberRoles{},
+		&migrations.M20260930000074AddIssuePrefixToGuilds{},
 	}
 }

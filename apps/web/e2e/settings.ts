@@ -21,6 +21,11 @@
 //                  key and is left pending (never on), so the owner's
 //                  password and two-factor stay as the other scripts expect
 //
+//   guild          the guild's General page shows the Issue prefix; an
+//                  invalid one shows its error under the field, a valid one
+//                  saves upper-cased with a toast and is put back after;
+//                  the Member Role's page lists Manage work, switched on
+//
 //   instance       Settings (Known hosts) shows its rows or the empty state;
 //                  Forget opens the confirmation and cancels
 //
@@ -331,6 +336,50 @@ const sections: Record<string, () => Promise<void>> = {
       expect('two-factor stays off until it is confirmed', status.state !== 'on', status.state)
     }
 
+    await page.close()
+  },
+
+  // The guild's General page: the Issue prefix shows, an invalid one is
+  // refused under the field, a valid one saves upper-cased; the original is
+  // put back at the end.
+  async guild() {
+    const page = await signedIn()
+    const current = async () =>
+      ((await (await page.request.get(`${WEB}/api/guilds/current`)).json()) as { guild: { issue_prefix: string } }).guild.issue_prefix
+    const original = await current()
+    await page.goto(`${WEB}/#/guild`)
+    const field = page.getByLabel('Issue prefix')
+    await field.waitFor()
+    expect('General shows the Issue prefix', (await field.inputValue()) === original, await field.inputValue())
+    const save = page.getByRole('button', { name: 'Save changes' })
+
+    await field.fill('D3F')
+    await save.click()
+    const fieldError = field.locator('xpath=ancestor::div[contains(@class,"chrome")][1]').locator('p')
+    await fieldError.first().waitFor({ timeout: 5000 }).catch(() => {})
+    const errorText = (await fieldError.allInnerTexts()).join(' ')
+    expect('an invalid prefix shows its error under the field', errorText.includes('1 to 5 letters'), errorText)
+
+    await field.fill('qqz')
+    await save.click()
+    expect('a valid prefix saves with a toast', (await toastText(page)).includes('Guild updated'))
+    expect('it is stored upper-cased', (await current()) === 'QQZ', await current())
+    await clearToasts(page)
+    await field.fill(original)
+    await save.click()
+    await toastText(page)
+    expect('the original prefix is back', (await current()) === original, await current())
+
+    const roles = ((await (await page.request.get(`${WEB}/api/roles`)).json()) as { roles: { id: number; name: string }[] }).roles
+    const member = roles.find((r) => r.name === 'Member')
+    if (!member) {
+      expect('the guild has its seeded Member Role', false, roles.map((r) => r.name))
+    } else {
+      await page.goto(`${WEB}/#/guild/roles/${member.id}`)
+      const manageWork = page.getByRole('switch', { name: 'Manage work' })
+      await manageWork.waitFor()
+      expect('the Member Role holds Manage work', (await manageWork.getAttribute('aria-checked')) === 'true')
+    }
     await page.close()
   },
 

@@ -75,7 +75,7 @@ func SeedRoles(guildID uint64) []Role {
 		{GuildID: guildID, Name: BaseRoleName, Color: "#99aab5", Position: 0, Base: true},
 		{GuildID: guildID, Name: ViewerRole, Color: "#95a5a6", Position: 1, Permissions: Of(PermissionViewResources)},
 		{GuildID: guildID, Name: MemberRole, Color: "#3498db", Position: 2,
-			Permissions: Of(PermissionViewResources, PermissionSeeSecrets, PermissionDeploy, PermissionManageApplications)},
+			Permissions: Of(PermissionViewResources, PermissionSeeSecrets, PermissionDeploy, PermissionManageApplications, PermissionManageWork)},
 		{GuildID: guildID, Name: AdminRole, Color: "#e74c3c", Position: 3, Permissions: Of(PermissionAdministrator)},
 	}
 }

@@ -13,12 +13,15 @@ import (
 type guildRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	// IssuePrefix is left as it is when absent.
+	IssuePrefix *string `json:"issue_prefix"`
 }
 
 type currentGuildJSON struct {
 	ID          uint64 `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	IssuePrefix string `json:"issue_prefix"`
 	// Blocking names what keeps the Guild from being deleted.
 	Blocking []string `json:"blocking"`
 	// GuildMaster is the Guild's Guild Master; Offer its open Transfer
@@ -35,6 +38,8 @@ func guildFailure(ctx contractshttp.Context, err error) contractshttp.Response {
 		return respond.Invalid(ctx, "name", err.Error())
 	case errors.Is(err, domain.ErrDescriptionTooLong):
 		return respond.Invalid(ctx, "description", err.Error())
+	case errors.Is(err, domain.ErrInvalidIssuePrefix), errors.Is(err, app.ErrIssuePrefixTaken):
+		return respond.Invalid(ctx, "issue_prefix", err.Error())
 	case errors.Is(err, app.ErrGuildNotFound):
 		return respond.Error(ctx, contractshttp.StatusNotFound, "guild not found")
 	case errors.As(err, &inUse):
@@ -57,7 +62,7 @@ func (c *Controller) Guilds(ctx contractshttp.Context) contractshttp.Response {
 func guildsJSON(places []app.Place) []guildJSON {
 	out := make([]guildJSON, len(places))
 	for i, pl := range places {
-		out[i] = guildJSON{ID: pl.Guild.ID, Name: pl.Guild.Name, Role: wireRole(pl.Permissions), Permissions: pl.Permissions.Keys()}
+		out[i] = guildJSON{ID: pl.Guild.ID, Name: pl.Guild.Name, IssuePrefix: pl.Guild.IssuePrefix, Role: wireRole(pl.Permissions), Permissions: pl.Permissions.Keys()}
 	}
 	return out
 }
@@ -76,7 +81,7 @@ func (c *Controller) CreateGuild(ctx contractshttp.Context) contractshttp.Respon
 	}
 	SetCurrent(ctx, g.ID)
 	return ctx.Response().Json(contractshttp.StatusCreated, contractshttp.Json{
-		"guild": guildJSON{ID: g.ID, Name: g.Name, Role: wireRole(admin), Permissions: admin.Keys()},
+		"guild": guildJSON{ID: g.ID, Name: g.Name, IssuePrefix: g.IssuePrefix, Role: wireRole(admin), Permissions: admin.Keys()},
 	})
 }
 
@@ -99,22 +104,23 @@ func (c *Controller) CurrentGuild(ctx contractshttp.Context) contractshttp.Respo
 		return respond.ServerError(ctx, err)
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{
-		"guild": currentGuildJSON{ID: g.ID, Name: g.Name, Description: g.Description, Blocking: blocking, GuildMaster: master, Offer: offer},
+		"guild": currentGuildJSON{ID: g.ID, Name: g.Name, Description: g.Description, IssuePrefix: g.IssuePrefix, Blocking: blocking, GuildMaster: master, Offer: offer},
 	})
 }
 
-// UpdateCurrentGuild renames and describes the Current guild.
+// UpdateCurrentGuild renames and describes the Current guild and changes
+// its Issue prefix.
 func (c *Controller) UpdateCurrentGuild(ctx contractshttp.Context) contractshttp.Response {
 	var req guildRequest
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	g, err := c.service.UpdateGuild(ctx.Context(), Current(ctx), req.Name, req.Description)
+	g, err := c.service.UpdateGuild(ctx.Context(), Current(ctx), req.Name, req.Description, req.IssuePrefix)
 	if err != nil {
 		return guildFailure(ctx, err)
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{
-		"guild": currentGuildJSON{ID: g.ID, Name: g.Name, Description: g.Description, Blocking: []string{}},
+		"guild": currentGuildJSON{ID: g.ID, Name: g.Name, Description: g.Description, IssuePrefix: g.IssuePrefix, Blocking: []string{}},
 	})
 }
 

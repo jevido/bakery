@@ -2,7 +2,7 @@
 // from the guilds context: the Auth, Deploy, Can, Owns and InProject
 // middlewares, Current, Allows, Permissions and VisibleProjects, a
 // Project's Permission override routes and ForgetProject, IsGuildMaster,
-// the routes, the InvitationCreated event, the OnGuildDeleting check, and
+// IssuePrefix and IsMember, the routes, the InvitationCreated event, the OnGuildDeleting check, and
 // Boot. Nothing else in contexts/guilds is for outside use.
 package guilds
 
@@ -193,6 +193,18 @@ func OnGuildDeleting(kind string, inUse func(ctx context.Context, guildID uint64
 // deleted; whatever deletes an account or leaves a Guild asks this first.
 func IsGuildMaster(ctx context.Context, memberID uint64) (bool, error) {
 	return service.IsGuildMaster(ctx, memberID)
+}
+
+// IssuePrefix is the Guild's Issue prefix, which numbers its Issues
+// (DEF-12). work renders Issue identifiers from it when it reads them.
+func IssuePrefix(ctx context.Context, guildID uint64) (string, error) {
+	return service.IssuePrefix(ctx, guildID)
+}
+
+// IsMember reports whether the Member holds a Membership in the Guild, as
+// an Assignee or an owner must.
+func IsMember(ctx context.Context, guildID, memberID uint64) (bool, error) {
+	return service.IsMember(ctx, guildID, memberID)
 }
 
 // Boot subscribes guilds to what identity announces: Setup's Instance admin

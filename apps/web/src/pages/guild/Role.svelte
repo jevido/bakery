@@ -30,7 +30,11 @@
   const groups: { title: string; keys: Permission[]; hint?: string }[] = [
     { title: 'General', keys: ['view_resources', 'manage_guild', 'manage_roles', 'manage_members'] },
     { title: 'Resources', keys: ['see_secrets', 'deploy', 'manage_applications', 'manage_servers', 'manage_notifications'] },
-    { title: 'Agents and work', keys: ['hire_agents', 'approve', 'manage_budgets'], hint: 'Checked once agents exist.' },
+    {
+      title: 'Agents and work',
+      keys: ['manage_work', 'hire_agents', 'approve', 'manage_budgets'],
+      hint: 'Hire agents, Approve and Manage budgets are checked once agents exist.',
+    },
     { title: 'Advanced', keys: ['administrator'] },
   ]
   // Discord's role color swatches.

@@ -411,6 +411,8 @@ export type GuildDetails = {
   id: number
   name: string
   description: string
+  /** Numbers its Issues, e.g. DEF in DEF-12. */
+  issue_prefix: string
   /** What still keeps it from being deleted, e.g. "projects". */
   blocking: string[]
   /** Its Guild Master; left out after an edit. */
