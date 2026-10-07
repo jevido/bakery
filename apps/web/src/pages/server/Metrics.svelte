@@ -8,17 +8,21 @@
   import { api } from '../../lib/api'
   import { percent, size } from '../../lib/format'
   import { href } from '../../lib/router.svelte'
+  import MetricCard from '../../lib/MetricCard.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import type { ContainerMetrics, Metrics, Server } from '../../lib/types'
   import Empty from '../../lib/ui/Empty.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
   import StatusBadge from '../../lib/ui/StatusBadge.svelte'
   import UsageChart, { type Sample } from './UsageChart.svelte'
 
   let { server }: { server: Server } = $props()
 
-  // Coolify's cpuColor and ramColor (layouts/base.blade.php), in both themes.
-  const cpuColor = '#1e90ff'
-  const ramColor = '#00ced1'
+  // Two of the theme's chart colors in place of Coolify's cpuColor and
+  // ramColor (#1e90ff, #00ced1). Paperclip's chart palette is grey, and
+  // --chart-1 is too light to read on white, so memory takes --chart-4 in
+  // light and --chart-1 in dark.
+  const cpuTone = 'text-chart-2'
+  const ramTone = 'text-chart-4 dark:text-chart-1'
   const maxSamples = 720
 
   let metrics = $state.raw<Metrics | null>(null)
@@ -70,75 +74,80 @@
   }
 </script>
 
-<div class="chrome application-settings-form flex w-full min-w-0 flex-col gap-6">
+<div class="flex w-full min-w-0 flex-col gap-8">
   {#if !reachable}
-    <SettingsSection id="server-metrics-overview-section" title="Metrics" helper="Inspect recent CPU and memory usage of this server.">
+    <SettingsGroup id="server-metrics-overview-section" label="Metrics" hint="Inspect recent CPU and memory usage of this server.">
       <Empty
         size="sm"
         title="Metrics unavailable"
         description="The Bakery reads metrics once this server is validated and reachable."
         icon="dashboard"
       />
-    </SettingsSection>
+    </SettingsGroup>
   {:else}
-    <SettingsSection id="server-metrics-overview-section" title="Metrics" helper="Inspect recent CPU and memory usage of this server.">
+    <SettingsGroup id="server-metrics-overview-section" label="Metrics" hint="Inspect recent CPU and memory usage of this server." wide>
       {#snippet actions()}
         <StatusBadge status="Live updates" type="success" />
       {/snippet}
-      <p class="text-sm text-neutral-950 dark:text-fg" data-testid="metrics-range">Since you opened this page</p>
-      <p class="mt-3 text-xs leading-5 text-neutral-500 dark:text-fg-dim">
-        The charts refresh every five seconds and keep the last hour.
-      </p>
-      {#if metricsError}<p class="mt-3 text-sm text-error">{metricsError}</p>{/if}
-    </SettingsSection>
+      <p class="text-sm text-foreground" data-testid="metrics-range">Since you opened this page</p>
+      <p class="text-xs text-muted-foreground">The charts refresh every five seconds and keep the last hour.</p>
+      {#if metricsError}<p class="text-sm text-destructive">{metricsError}</p>{/if}
+      {#if metrics}
+        {@const total = metrics.server.memory_total_bytes}
+        <div class="grid grid-cols-2 gap-1 rounded-md border border-border sm:gap-2 xl:grid-cols-4" data-testid="metrics-overview">
+          <MetricCard icon="cpu" value={percent(metrics.server.cpu_percent)} label="CPU" />
+          <MetricCard icon="storages" value={total ? percent((metrics.server.memory_used_bytes / total) * 100) : '—'} label="Memory">
+            {#snippet description()}{size(metrics!.server.memory_used_bytes)} of {size(total)}{/snippet}
+          </MetricCard>
+          <MetricCard icon="servers" value={metrics.containers.length} label="Containers" />
+          <MetricCard icon="layers" value={size(metrics.server.images_bytes)} label="Images" />
+        </div>
+      {/if}
+    </SettingsGroup>
 
-    <SettingsSection id="server-cpu-metrics-section" title="CPU usage" helper="Percentage of available CPU capacity used by this server.">
-      <UsageChart name="CPU" color={cpuColor} samples={cpu} empty={metricsError ? 'No CPU metrics available' : 'Loading CPU metrics…'} />
-    </SettingsSection>
+    <SettingsGroup id="server-cpu-metrics-section" label="CPU usage" hint="Percentage of available CPU capacity used by this server." wide>
+      <UsageChart name="CPU" tone={cpuTone} samples={cpu} empty={metricsError ? 'No CPU metrics available' : 'Loading CPU metrics…'} />
+    </SettingsGroup>
 
-    <SettingsSection id="server-memory-metrics-section" title="Memory usage" helper="Percentage of physical memory currently used by this server.">
-      <UsageChart name="Memory" color={ramColor} samples={memory} empty={metricsError ? 'No memory metrics available' : 'Loading memory metrics…'} />
-    </SettingsSection>
+    <SettingsGroup id="server-memory-metrics-section" label="Memory usage" hint="Percentage of physical memory currently used by this server." wide>
+      <UsageChart name="Memory" tone={ramTone} samples={memory} empty={metricsError ? 'No memory metrics available' : 'Loading memory metrics…'} />
+    </SettingsGroup>
 
-    <SettingsSection id="server-containers-metrics-section" title="Containers" helper="What each container The Bakery runs on this server uses now." flush>
+    <SettingsGroup id="server-containers-metrics-section" label="Containers" hint="What each container The Bakery runs on this server uses now." wide>
       {#if !metrics}
-        <p class="px-4 py-4 text-sm text-neutral-500 dark:text-fg-dim">Reading metrics…</p>
+        <p class="text-sm text-muted-foreground">Reading metrics…</p>
       {:else}
-        <p class="border-b border-neutral-200 px-4 py-3 text-xs text-neutral-500 dark:border-white/[0.08] dark:text-fg-dim" data-testid="podman-storage">
+        <p class="text-xs text-muted-foreground" data-testid="podman-storage">
           Podman storage: images {size(metrics.server.images_bytes)}, containers {size(metrics.server.containers_bytes)}, volumes
           {size(metrics.server.volumes_bytes)}.
         </p>
-        {#if metrics.containers.length === 0}
-          <div class="p-6">
-            <Empty size="sm" title="No containers" description="The Bakery runs no containers on this server." icon="servers" />
-          </div>
-        {:else}
-          <div class="data-table" data-testid="containers">
-            <div class="data-table-header server-containers-table-grid">
-              <span>Container</span>
-              <span>Belongs to</span>
-              <span>CPU</span>
-              <span>Memory</span>
+        <div class="overflow-hidden rounded-md border border-border">
+          {#if metrics.containers.length === 0}
+            <div class="p-4">
+              <Empty size="sm" title="No containers" description="The Bakery runs no containers on this server." icon="servers" />
             </div>
-            {#each metrics.containers as c (c.name)}
-              {@const link = ownerHref(c)}
-              <div class="data-table-row server-containers-table-grid border-b border-neutral-200 last:border-b-0 dark:border-white/[0.08]">
-                <div class="min-w-0 truncate font-mono text-[12px] text-neutral-950 dark:text-fg">{c.name}</div>
-                <div class="min-w-0 truncate text-[11px] text-neutral-600 dark:text-fg-dim">
-                  {#if link}<a class="hover:underline" href={link}>{c.owner} {c.owner_id}</a>{:else}{c.owner || '—'}{/if}
+          {:else}
+            <div data-testid="containers">
+              {#each metrics.containers as c (c.name)}
+                {@const link = ownerHref(c)}
+                <div class="flex items-center gap-3 border-b border-border px-4 py-2.5 last:border-b-0" data-testid="container">
+                  <span class="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{c.name}</span>
+                  <span class="hidden w-36 truncate text-xs text-muted-foreground sm:block">
+                    {#if link}<a class="hover:underline" href={link}>{c.owner} {c.owner_id}</a>{:else}{c.owner || '—'}{/if}
+                  </span>
+                  <span class="w-14 text-right text-xs text-muted-foreground tabular-nums" title="CPU">{percent(c.cpu_percent)}</span>
+                  <span class="w-28 text-right text-xs text-muted-foreground tabular-nums" title="Memory">
+                    {size(c.memory_used_bytes)}
+                    {#if c.memory_limit_bytes && metrics.server.memory_total_bytes && c.memory_limit_bytes < metrics.server.memory_total_bytes}
+                      <span class="text-muted-foreground/70">/ {size(c.memory_limit_bytes)}</span>
+                    {/if}
+                  </span>
                 </div>
-                <div class="text-[11px] text-neutral-600 tabular-nums dark:text-fg-dim">{percent(c.cpu_percent)}</div>
-                <div class="text-[11px] text-neutral-600 tabular-nums dark:text-fg-dim">
-                  {size(c.memory_used_bytes)}
-                  {#if c.memory_limit_bytes && metrics.server.memory_total_bytes && c.memory_limit_bytes < metrics.server.memory_total_bytes}
-                    <span class="text-neutral-400 dark:text-fg-faint">/ {size(c.memory_limit_bytes)}</span>
-                  {/if}
-                </div>
-              </div>
-            {/each}
-          </div>
-        {/if}
+              {/each}
+            </div>
+          {/if}
+        </div>
       {/if}
-    </SettingsSection>
+    </SettingsGroup>
   {/if}
 </div>

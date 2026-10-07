@@ -9,10 +9,10 @@
   import { ago, size } from '../../lib/format'
   import Icon from '../../lib/Icon.svelte'
   import { session } from '../../lib/session.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import type { Server } from '../../lib/types'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
   import StatusBadge from '../../lib/ui/StatusBadge.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
 
@@ -33,11 +33,11 @@
   const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 </script>
 
-<div class="chrome application-settings-form flex w-full flex-col gap-6">
-  <SettingsSection
+<div class="flex w-full flex-col gap-8">
+  <SettingsGroup
     id="docker-cleanup-overview-section"
-    title="Docker cleanup"
-    helper="Remove unused Podman images and keep disk usage under control."
+    label="Docker cleanup"
+    hint="Remove unused Podman images and keep disk usage under control."
   >
     {#snippet actions()}
       {#if session.can('manage_servers') && (server.kind === 'remote' || session.instanceAdmin)}
@@ -56,48 +56,37 @@
       {/if}
     {/snippet}
 
-    <div class="flex items-start gap-3">
-      <div
-        class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-500 dark:bg-white/[0.06] dark:text-fg-dim"
-      >
-        <Icon name="storages" class="size-4" />
-      </div>
+    <div class="flex items-start gap-3 rounded-md border border-border px-4 py-3">
+      <Icon name="storages" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
       <div>
-        <p class="text-sm font-medium text-neutral-950 dark:text-fg">Scheduled maintenance</p>
-        <p class="mt-1 text-xs leading-5 text-neutral-500 dark:text-fg-dim">
-          Cleanup runs automatically every night at 03:00, The Bakery's local time.
-        </p>
+        <p class="text-sm font-medium text-foreground">Scheduled maintenance</p>
+        <p class="mt-1 text-xs text-muted-foreground">Cleanup runs automatically every night at 03:00, The Bakery's local time.</p>
       </div>
     </div>
-  </SettingsSection>
+  </SettingsGroup>
 
-  <SettingsSection
-    id="docker-cleanup-executions-section"
-    title="Recent executions"
-    helper="Review the last cleanup and what it freed."
-    flush
-  >
-    {#if server.last_cleanup.at}
-      <div class="border-b border-neutral-200 last:border-b-0 dark:border-white/[0.08]" data-testid="cleanup-execution">
-        <div class="flex w-full items-center gap-4 px-4 py-3 text-left">
+  <SettingsGroup id="docker-cleanup-executions-section" label="Recent executions" hint="Review the last cleanup and what it freed.">
+    <div class="overflow-hidden rounded-md border border-border">
+      {#if server.last_cleanup.at}
+        <div class="flex items-center gap-3 px-4 py-2.5" data-testid="cleanup-execution">
           <StatusBadge status="Success" type="success" />
           <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-neutral-950 dark:text-fg">{when.format(new Date(server.last_cleanup.at))}</p>
-            <p class="mt-0.5 text-xs text-neutral-500 dark:text-fg-dim">
+            <p class="text-sm font-medium text-foreground">{when.format(new Date(server.last_cleanup.at))}</p>
+            <p class="mt-0.5 text-xs text-muted-foreground">
               Freed {size(server.last_cleanup.reclaimed_bytes)} · finished {ago(server.last_cleanup.at)}
             </p>
           </div>
         </div>
-      </div>
-    {:else}
-      <div class="p-6" data-testid="cleanup-executions-empty">
-        <Empty
-          size="sm"
-          title="No cleanup executions"
-          description="Run a manual cleanup or wait for the next scheduled execution."
-          icon="storages"
-        />
-      </div>
-    {/if}
-  </SettingsSection>
+      {:else}
+        <div class="p-4" data-testid="cleanup-executions-empty">
+          <Empty
+            size="sm"
+            title="No cleanup executions"
+            description="Run a manual cleanup or wait for the next scheduled execution."
+            icon="storages"
+          />
+        </div>
+      {/if}
+    </div>
+  </SettingsGroup>
 </div>

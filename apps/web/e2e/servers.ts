@@ -8,7 +8,9 @@
 // renames the Local server and back and opens Validate with its checkpoints;
 // Private Key and Danger open on the Remote server stand-in, where Danger's
 // button stays disabled until the name is typed; a Viewer sees no save
-// button and no Danger.
+// button and no Danger. Resources lists the Local server's resources (or its
+// empty state) and search narrows them; Metrics shows the overview and draws
+// a chart sample; Docker Cleanup's confirmation opens and cancels.
 //
 //   bun e2e/servers.ts            (task web:servers; needs task dev running)
 //
@@ -100,6 +102,57 @@ for (const theme of ['light', 'dark'] as const) {
       const want = label === 'General' ? `#/server/${localServer.id}` : `#/server/${localServer.id}/${label.toLowerCase().replace(' ', '-')}`
       expect(`${at}: the nav opens ${label}`, page.url().endsWith(want), page.url())
     }
+    // Resources: at least one resource or the empty state; search narrows.
+    await page.goto(`${WEB}/#/server/${localServer.id}/resources`)
+    await page.locator('#server-resources-section').waitFor()
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="server-resource"], [data-testid="resources-empty"]'),
+      null,
+      // Composed from one request per Project and Application; the dev
+      // installation's many e2e Projects make that several seconds.
+      { timeout: 30000 },
+    )
+    const resources = page.getByTestId('server-resource')
+    const listed = await resources.count()
+    if (listed === 0) {
+      expect(`${at}: Resources shows its empty state`, (await page.getByTestId('resources-empty').count()) === 1)
+    } else {
+      const first = ((await resources.first().locator('a').textContent()) ?? '').trim()
+      await page.getByPlaceholder('Search resources by name').fill(first)
+      await page.waitForTimeout(500)
+      const narrowed = await resources.count()
+      expect(`${at}: Resources search narrows to "${first}"`, narrowed >= 1 && narrowed <= listed, { narrowed, listed })
+      await page.getByPlaceholder('Search resources by name').fill('no-such-resource-xyz')
+      await page.waitForTimeout(500)
+      expect(`${at}: Resources search shows no match`, (await page.getByTestId('resources-empty').count()) === 1)
+    }
+
+    // Metrics: the overview figures and a chart sample within 12 s.
+    await page.goto(`${WEB}/#/server/${localServer.id}/metrics`)
+    // Resources' requests may still hold the browser's connections here.
+    await page.getByTestId('metrics-overview').waitFor({ timeout: 30000 }).catch(() => {})
+    expect(`${at}: Metrics shows the overview`, (await page.getByTestId('metrics-overview').count()) === 1)
+    const sampled = await page
+      .waitForFunction(
+        () => [...document.querySelectorAll('[data-testid="usage-chart"] svg')].some((svg) => svg.querySelector('path, circle')),
+        null,
+        { timeout: 12000 },
+      )
+      .then(() => true)
+      .catch(() => false)
+    expect(`${at}: Metrics draws a chart sample`, sampled)
+
+    // Docker Cleanup: its confirmation opens and cancels.
+    await page.goto(`${WEB}/#/server/${localServer.id}/docker-cleanup`)
+    await page.locator('#docker-cleanup-overview-section').waitFor()
+    await page.getByRole('button', { name: 'Run cleanup' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Confirm Docker Cleanup?' })
+    await dialog.waitFor()
+    expect(`${at}: Docker Cleanup asks to confirm`, await dialog.isVisible())
+    await dialog.getByRole('button', { name: 'Cancel' }).click()
+    await page.waitForTimeout(200)
+    expect(`${at}: Cancel closes the confirmation`, (await dialog.count()) === 0)
+
     if (width < 1280) {
       const sideways = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
       expect(`${at}: nothing scrolls sideways`, !sideways)

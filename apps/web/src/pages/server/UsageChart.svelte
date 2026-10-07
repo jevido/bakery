@@ -22,8 +22,9 @@
   // The area chart of Coolify's server/charts.blade.php (ApexCharts there),
   // drawn as inline SVG: a smooth line over a fading fill, a dashed grid,
   // percent ticks on the left, UTC times below, and the value under the
-  // pointer.
-  let { name, color, samples, empty }: { name: string; color: string; samples: Sample[]; empty: string } = $props()
+  // pointer. The line takes its color from `tone`, a text-color class, as
+  // currentColor; the grid, ticks and tooltip are the theme's tokens.
+  let { name, tone, samples, empty }: { name: string; tone: string; samples: Sample[]; empty: string } = $props()
 
   const height = 240
   const pad = { top: 12, right: 12, bottom: 28, left: 48 }
@@ -82,20 +83,20 @@
     viewBox="0 0 {width} {height}"
     role="img"
     aria-label="{name} usage"
-    class="block text-black dark:text-white"
+    class={['block', tone]}
     onpointermove={pointer}
     onpointerleave={() => (hover = null)}
   >
     <defs>
       <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-        <stop offset="0%" stop-color={color} stop-opacity="0.28" />
-        <stop offset="90%" stop-color={color} stop-opacity="0.02" />
-        <stop offset="100%" stop-color={color} stop-opacity="0.02" />
+        <stop offset="0%" stop-color="currentColor" stop-opacity="0.28" />
+        <stop offset="90%" stop-color="currentColor" stop-opacity="0.02" />
+        <stop offset="100%" stop-color="currentColor" stop-opacity="0.02" />
       </linearGradient>
     </defs>
     {#each ticks as t (t)}
-      <line x1={pad.left} x2={width - pad.right} y1={y(t)} y2={y(t)} stroke="rgba(128, 128, 128, 0.14)" stroke-dasharray="4" />
-      <text x={pad.left - 8} y={y(t)} dy="0.32em" text-anchor="end" font-size="11" fill="currentColor">{formatPercent(t)}</text>
+      <line x1={pad.left} x2={width - pad.right} y1={y(t)} y2={y(t)} stroke="var(--border)" stroke-dasharray="4" />
+      <text x={pad.left - 8} y={y(t)} dy="0.32em" text-anchor="end" font-size="11" fill="var(--muted-foreground)">{formatPercent(t)}</text>
     {/each}
     {#each timeTicks as t, i (i)}
       <text
@@ -103,27 +104,27 @@
         y={height - 8}
         text-anchor={timeTicks.length < 2 ? 'middle' : i === 0 ? 'start' : i === timeTicks.length - 1 ? 'end' : 'middle'}
         font-size="11"
-        fill="currentColor">{time.format(t)}</text
+        fill="var(--muted-foreground)">{time.format(t)}</text
       >
     {/each}
     {#if area}<path d={area} fill="url(#{gradientId})" />{/if}
-    {#if line}<path d={line} fill="none" stroke={color} stroke-width="2" stroke-linejoin="round" />{/if}
-    {#if points.length === 1}<circle cx={points[0][0]} cy={points[0][1]} r="3" fill={color} />{/if}
+    {#if line}<path d={line} fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />{/if}
+    {#if points.length === 1}<circle cx={points[0][0]} cy={points[0][1]} r="3" fill="currentColor" />{/if}
     {#if hover !== null && points[hover]}
-      <line x1={points[hover][0]} x2={points[hover][0]} y1={pad.top} y2={y(0)} stroke="rgba(128, 128, 128, 0.4)" stroke-dasharray="3" />
-      <circle cx={points[hover][0]} cy={points[hover][1]} r="4" fill={color} />
+      <line x1={points[hover][0]} x2={points[hover][0]} y1={pad.top} y2={y(0)} stroke="var(--muted-foreground)" stroke-dasharray="3" />
+      <circle cx={points[hover][0]} cy={points[hover][1]} r="4" fill="currentColor" />
     {/if}
   </svg>
   {#if samples.length === 0}
-    <p class="absolute inset-0 flex items-center justify-center text-sm text-neutral-500 dark:text-fg-dim">{empty}</p>
+    <p class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">{empty}</p>
   {/if}
   {#if hover !== null && samples[hover]}
     <div
-      class="pointer-events-none absolute top-2 rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-xs shadow-sm dark:border-white/[0.08] dark:bg-raised"
+      class="pointer-events-none absolute top-2 rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-sm"
       style:left="{Math.min(points[hover][0] + 8, width - 180)}px"
     >
-      <div class="text-neutral-700 dark:text-fg-dim">{name}: <span class="font-semibold text-black dark:text-fg">{formatPercent(samples[hover].value)}</span></div>
-      <div class="text-neutral-500 dark:text-fg-faint">{stamp.format(samples[hover].at)} UTC</div>
+      <div class="text-muted-foreground">{name}: <span class="font-semibold text-foreground">{formatPercent(samples[hover].value)}</span></div>
+      <div class="text-muted-foreground/70">{stamp.format(samples[hover].at)} UTC</div>
     </div>
   {/if}
 </div>
