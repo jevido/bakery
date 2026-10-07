@@ -1,5 +1,5 @@
 // Package work is what the router may use from the work context: its
-// routes (Goals and Issues). Nothing else in contexts/work is for outside use.
+// routes (Goals, Issues and Comments). Nothing else in contexts/work is for outside use.
 package work
 
 import (
@@ -23,7 +23,7 @@ var (
 
 func svc() *app.Service {
 	once.Do(func() {
-		service = app.NewService(infra.Goals{}, infra.Issues{}, guildsOfWork{}, projectsOfWork{})
+		service = app.NewService(infra.Goals{}, infra.Issues{}, infra.Comments{}, guildsOfWork{}, projectsOfWork{})
 		guilds.OnGuildDeleting("goals", func(ctx context.Context, guildID uint64) (bool, error) {
 			gs, err := service.Goals(ctx, guildID)
 			return len(gs) > 0, err
@@ -70,8 +70,9 @@ var goalInGuild = guilds.Owns("goal", func(ctx context.Context, id, guildID uint
 	return svc().GoalInGuild(ctx, id, guildID)
 })
 
-// Routes registers the Current guild's Goals and Issues API: reading needs
-// view_resources, changing manage_work. An Issue's {id} is its id or its
+// Routes registers the Current guild's Goals, Issues and Comments API:
+// reading needs view_resources, changing manage_work, and changing a
+// Comment also being its author. An Issue's {id} is its id or its
 // Issue identifier, so the service, not guilds.Owns, answers 404 for one
 // outside the Current guild or in a Project the request may not view.
 func Routes(r route.Router) {
@@ -91,5 +92,11 @@ func Routes(r route.Router) {
 	r.Middleware(guilds.Auth, manage).Group(func(r route.Router) {
 		r.Patch("/api/issues/{id}", c.UpdateIssue)
 		r.Delete("/api/issues/{id}", c.DeleteIssue)
+	})
+	r.Middleware(guilds.Auth, view).Get("/api/issues/{id}/comments", c.ListComments)
+	r.Middleware(guilds.Auth, manage).Group(func(r route.Router) {
+		r.Post("/api/issues/{id}/comments", c.WriteComment)
+		r.Patch("/api/issues/{id}/comments/{comment}", c.EditComment)
+		r.Delete("/api/issues/{id}/comments/{comment}", c.DeleteComment)
 	})
 }

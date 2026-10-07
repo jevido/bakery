@@ -1,5 +1,5 @@
-// Package app holds the work use cases: plan Goals and Issues, and later
-// their Comments.
+// Package app holds the work use cases: plan Goals and Issues and talk
+// about Issues in Comments.
 package app
 
 import (
@@ -36,13 +36,14 @@ type Guilds interface {
 type Service struct {
 	goals    Goals
 	issues   Issues
+	comments Comments
 	guilds   Guilds
 	projects Projects
 	now      func() time.Time
 }
 
-func NewService(goals Goals, issues Issues, guilds Guilds, projects Projects) *Service {
-	return &Service{goals: goals, issues: issues, guilds: guilds, projects: projects, now: time.Now}
+func NewService(goals Goals, issues Issues, comments Comments, guilds Guilds, projects Projects) *Service {
+	return &Service{goals: goals, issues: issues, comments: comments, guilds: guilds, projects: projects, now: time.Now}
 }
 
 // GoalInput is a new Goal as typed. Empty Level and Status take their

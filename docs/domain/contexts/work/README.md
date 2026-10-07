@@ -57,8 +57,12 @@ in that Project after its Permission overrides, and is otherwise hidden
   change moves the Status times.
 - `DeleteIssue()` [`manage_work`]: its Sub-issues lose their parent; its
   Comments go with it.
-- `WriteComment(body)` [`manage_work`]; `EditComment(body)`,
-  `DeleteComment()` [`manage_work`, and only the author].
+- `WriteComment(body)` [`manage_work`]: moves the Issue's last update to
+  now, so a discussed Issue sorts up in lists, as Paperclip's does. This
+  touches only the Issue's timestamp, none of its rules, so it is stored
+  with the Comment in one transaction. `EditComment(body)`,
+  `DeleteComment()` [`manage_work`, and only the author; anyone else is
+  refused (403), and a deleted Comment cannot be changed (409)].
 
 ### Domain events
 

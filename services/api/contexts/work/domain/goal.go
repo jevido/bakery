@@ -1,5 +1,5 @@
-// Package domain is the work context's model: Goals, and later Issues and
-// their Comments. It depends on nothing outside the standard library.
+// Package domain is the work context's model: Goals, Issues and their
+// Comments. It depends on nothing outside the standard library.
 package domain
 
 import (

@@ -1,5 +1,4 @@
-// Package http is the work JSON API: Goals and Issues, and later their
-// Comments.
+// Package http is the work JSON API: Goals, Issues and their Comments.
 package http
 
 import (
@@ -164,6 +163,10 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 		return respond.Invalid(ctx, fe.Field, fe.Message)
 	case errors.Is(err, app.ErrNotFound):
 		return notFound(ctx)
+	case errors.Is(err, domain.ErrNotAuthor):
+		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
+	case errors.Is(err, domain.ErrCommentDeleted):
+		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
 	}
 	return respond.ServerError(ctx, err)
 }
