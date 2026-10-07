@@ -10,11 +10,16 @@
   // with `follow=1`, goes on with new ones as server-sent events.
   import { untrack } from 'svelte'
   import type { Attachment } from 'svelte/attachments'
+  import { Button } from '$lib/components/ui/button'
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
+  import { Input } from '$lib/components/ui/input'
+  import { cn } from '$lib/utils'
   import Icon from '../../lib/Icon.svelte'
+  import SearchField from '../../lib/SearchField.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
-  import TableDropdown from '../../lib/ui/TableDropdown.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
+  import LogButton from './LogButton.svelte'
 
   let {
     url,
@@ -50,7 +55,6 @@
   )
   let searchInput = $state('')
   let search = $state('')
-  let downloadOpen = $state(false)
   let downloadingAll = $state(false)
 
   let nextId = 0
@@ -217,7 +221,6 @@
   }
 
   function downloadLogs() {
-    downloadOpen = false
     save(visible.map((l) => lineText(l) + '\n').join(''), '-logs')
   }
 
@@ -232,7 +235,6 @@
       toast.error(err instanceof Error ? err.message : String(err))
     } finally {
       downloadingAll = false
-      downloadOpen = false
     }
   }
 
@@ -278,282 +280,151 @@
     if (follow && ['ArrowUp', 'PageUp', 'Home'].includes(e.key)) follow = false
   }
 
-  const outside: Attachment<HTMLElement> = (el) => {
-    const onclick = (e: MouseEvent) => {
-      if (!el.contains(e.target as Node)) downloadOpen = false
-    }
-    document.addEventListener('click', onclick)
-    return () => document.removeEventListener('click', onclick)
-  }
-
-  const levels: { level: Level; label: string; dot: string }[] = [
-    { level: 'error', label: 'Error', dot: 'bg-red-500' },
-    { level: 'warning', label: 'Warning', dot: 'bg-yellow-500' },
-    { level: 'debug', label: 'Debug', dot: 'bg-purple-500' },
-    { level: 'info', label: 'Info', dot: 'bg-blue-500' },
+  // Coolify's level colors: a dot in the filter, a tint behind the line.
+  const levels: { level: Level; label: string; dot: string; tint: string }[] = [
+    { level: 'error', label: 'Error', dot: 'bg-red-500', tint: 'bg-red-500/10 dark:bg-red-500/15' },
+    { level: 'warning', label: 'Warning', dot: 'bg-yellow-500', tint: 'bg-yellow-500/10 dark:bg-yellow-500/15' },
+    { level: 'debug', label: 'Debug', dot: 'bg-purple-500', tint: 'bg-purple-500/10 dark:bg-purple-500/15' },
+    { level: 'info', label: 'Info', dot: 'bg-blue-500', tint: 'bg-blue-500/10 dark:bg-blue-500/15' },
   ]
+  const tint = Object.fromEntries(levels.map((l) => [l.level, l.tint])) as Record<Level, string>
 </script>
 
 <svelte:window onkeydown={(e) => fullscreen && e.key === 'Escape' && (fullscreen = false)} />
 
 <div class="chrome mt-4 w-full lg:mt-3">
   {#if container === null}
-    <div class="loading-state-card flex min-h-40 w-full items-center justify-center"><Spinner text="Loading containers" /></div>
+    <div class="flex min-h-40 w-full items-center justify-center rounded-lg border"><Spinner text="Loading containers" /></div>
   {:else if container === ''}
     <Empty size="lg" title="Runtime logs unavailable" description="No containers are running, so there are no runtime logs to show." icon="file-content" />
   {:else}
-    <div class="flex flex-col gap-4">
-      <div class="runtime-log-shell w-full min-w-0">
-        <button type="button" class="runtime-log-trigger w-full" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
-          <svg class={['size-4 transition-transform', expanded && 'rotate-90']} viewBox="0 0 24 24" aria-hidden="true">
-            <path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
-          </svg>
-          <h4>{container}</h4>
-          {#if streaming}<Spinner />{/if}
-        </button>
-        {#if expanded}
-          <div
-            class={fullscreen ? 'logs-fullscreen flex flex-col overflow-visible! bg-white dark:bg-coolgray-100' : 'relative mx-auto w-full'}
-          >
-            <div class={['runtime-log-panel', fullscreen && 'h-full w-full']}>
-              <div class="runtime-log-toolbar logs-viewer-toolbar">
-                <div class="logs-viewer-toolbar-controls">
-                  <div class="logs-viewer-actions">
-                    <button type="button" title="Refresh Logs" class="runtime-log-icon-button order-8" disabled={streaming} onclick={getLogs}>
-                      <Icon name="refresh" class="size-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      title={streaming ? 'Stop Streaming' : 'Stream Logs'}
-                      aria-pressed={streaming}
-                      class={['runtime-log-icon-button order-9', streaming && 'runtime-log-icon-button-active']}
-                      onclick={() => (streaming = !streaming)}
-                    >
-                      {#if streaming}
-                        <svg class="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
-                      {:else}
-                        <svg class="size-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7L8 5z" /></svg>
-                      {/if}
-                    </button>
-                    <button type="button" title="Copy Logs" class="runtime-log-icon-button order-6" onclick={copyLogs}>
-                      <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
-                        />
-                      </svg>
-                    </button>
-                    <div class="relative order-7 shrink-0" {@attach outside}>
-                      <button
-                        type="button"
-                        title="Download Logs"
-                        class="runtime-log-icon-button"
-                        aria-expanded={downloadOpen}
-                        onclick={() => (downloadOpen = !downloadOpen)}
-                      >
-                        <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                        </svg>
-                      </button>
-                      {#if downloadOpen}
-                        <div
-                          class="runtime-log-menu absolute right-0 z-[90] mt-2 w-max min-w-52 origin-top-right rounded-lg border border-neutral-200 p-1 shadow-dropdown dark:border-white/[0.1]"
-                        >
-                          <button
-                            type="button"
-                            class="listbox-option text-neutral-700! hover:bg-neutral-100! dark:text-neutral-200! dark:hover:bg-white/[0.07]!"
-                            onclick={downloadLogs}>Download displayed logs</button
-                          >
-                          <button
-                            type="button"
-                            class={[
-                              'listbox-option text-neutral-700! hover:bg-neutral-100! dark:text-neutral-200! dark:hover:bg-white/[0.07]!',
-                              downloadingAll && 'cursor-not-allowed opacity-50',
-                            ]}
-                            disabled={downloadingAll}
-                            onclick={downloadAllLogs}
-                          >
-                            {#if downloadingAll}<Spinner text="Downloading..." />{:else}Download all logs{/if}
-                          </button>
-                        </div>
-                      {/if}
-                    </div>
-                    <button
-                      type="button"
-                      title="Toggle Timestamps"
-                      aria-pressed={showTimestamps}
-                      class={['runtime-log-icon-button order-1', showTimestamps && 'runtime-log-icon-button-active']}
-                      onclick={() => (showTimestamps = !showTimestamps)}
-                    >
-                      <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      title="Toggle Log Colors"
-                      aria-pressed={colorLogs}
-                      class={['runtime-log-icon-button order-3', colorLogs && 'runtime-log-icon-button-active']}
-                      onclick={toggleColorLogs}
-                    >
-                      <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M9.53 16.122a3 3 0 0 0-5.78 1.128 2.25 2.25 0 0 1-2.4 2.245 4.5 4.5 0 0 0 8.4-2.245c0-.399-.078-.78-.22-1.128Zm0 0a15.998 15.998 0 0 0 3.388-1.62m-5.043-.025a15.994 15.994 0 0 1 1.622-3.395m3.42 3.42a15.995 15.995 0 0 0 4.764-4.648l3.876-5.814a1.151 1.151 0 0 0-1.597-1.597L14.146 6.32a15.996 15.996 0 0 0-4.649 4.763m3.42 3.42a6.776 6.776 0 0 0-3.42-3.42"
-                        />
-                      </svg>
-                    </button>
-                    <div class="order-4">
-                      <TableDropdown panelClass="runtime-log-menu min-w-40!">
-                        {#snippet trigger({ open, toggle })}
-                          <button
-                            type="button"
-                            title="Filter Log Levels"
-                            class={['runtime-log-icon-button', Object.values(logFilters).some((v) => !v) && 'runtime-log-icon-button-active']}
-                            aria-haspopup="listbox"
-                            aria-expanded={open}
-                            onclick={toggle}
-                          >
-                            <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
-                              <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"
-                              />
-                            </svg>
-                          </button>
-                        {/snippet}
-                        {#snippet children()}
-                          {#each levels as l (l.level)}
-                            <button type="button" class="listbox-option" onclick={() => toggleLogFilter(l.level)}>
-                              <span class={['h-2.5 w-2.5 rounded-full', l.dot]}></span>
-                              <span class="flex-1 text-left">{l.label}</span>
-                              {#if logFilters[l.level]}<span>✓</span>{/if}
-                            </button>
-                          {/each}
-                        {/snippet}
-                      </TableDropdown>
-                    </div>
-                    <button
-                      type="button"
-                      title="Follow Logs"
-                      aria-pressed={follow}
-                      class={['runtime-log-icon-button order-2', follow && 'runtime-log-icon-button-active']}
-                      onclick={toggleFollow}
-                    >
-                      <svg class="size-4" viewBox="0 0 24 24" aria-hidden="true">
-                        <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14m4-4l-4 4m-4-4l4 4" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      title={fullscreen ? 'Minimize' : 'Fullscreen'}
-                      class="runtime-log-icon-button order-5"
-                      onclick={() => (fullscreen = !fullscreen)}
-                    >
-                      {#if fullscreen}
-                        <svg class="size-4" viewBox="0 0 24 24" aria-hidden="true">
-                          <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 14h4m0 0v4m0-4l-6 6m14-10h-4m0 0V6m0 4l6-6" />
-                        </svg>
-                      {:else}
-                        <svg class="size-4" viewBox="0 0 24 24" aria-hidden="true">
-                          <path
-                            fill="currentColor"
-                            d="M9.793 12.793a1 1 0 0 1 1.497 1.32l-.083.094L6.414 19H9a1 1 0 0 1 .117 1.993L9 21H4a1 1 0 0 1-.993-.883L3 20v-5a1 1 0 0 1 1.993-.117L5 15v2.586l4.793-4.793ZM20 3a1 1 0 0 1 .993.883L21 4v5a1 1 0 0 1-1.993.117L19 9V6.414l-4.793 4.793a1 1 0 0 1-1.497-1.32l.083-.094L17.586 5H15a1 1 0 0 1-.117-1.993L15 3h5Z"
-                          />
-                        </svg>
-                      {/if}
-                    </button>
-                  </div>
-                  <div class="logs-viewer-end runtime-logs-viewer-end">
-                    <div class="logs-viewer-meta">
-                      <form
-                        class="logs-viewer-lines"
-                        onsubmit={(e) => {
-                          e.preventDefault()
-                          getLogs()
-                        }}
-                      >
-                        <span class="logs-viewer-lines-label">Lines</span>
-                        <input
-                          type="number"
-                          bind:value={numberOfLines}
-                          placeholder="100"
-                          min="-1"
-                          max="50000"
-                          title="Number of lines (max 50,000; use -1 for all)"
-                          aria-label="Lines"
-                          readonly={streaming}
-                          class="input logs-viewer-lines-input"
-                        />
-                        <button type="button" title="Show all logs" class="runtime-log-icon-button" disabled={streaming} onclick={showAllLogs}>All</button>
-                      </form>
-                      {#if search}<span class="text-xs whitespace-nowrap text-gray-500 dark:text-gray-400">{visible.length} matches</span>{/if}
-                    </div>
-                    <div class="logs-viewer-search relative">
-                      <Icon
-                        name="search"
-                        class="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-neutral-400 dark:text-fg-faint"
-                      />
-                      <input
-                        type="search"
-                        bind:value={searchInput}
-                        placeholder="Find in logs"
-                        aria-label="Find in logs"
-                        class="h-8! w-full rounded-lg! border-neutral-200! bg-white! py-0! pr-8! pl-8! text-[12px]! shadow-none! placeholder:text-neutral-400 focus:border-ring! focus:ring-0! dark:border-white/[0.08]! dark:bg-white/[0.035]! dark:text-fg! dark:placeholder:text-fg-faint"
-                      />
-                      {#if searchInput}
-                        <button
-                          type="button"
-                          class="absolute top-1/2 right-2 z-10 flex size-5 -translate-y-1/2 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.07] dark:hover:text-fg"
-                          aria-label="Clear search"
-                          onclick={() => (searchInput = search = '')}
-                        >
-                          <Icon name="x" class="size-3" />
-                        </button>
-                      {/if}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <!-- Focusable so the keyboard can scroll it, as Coolify's tabindex="0". -->
-              <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
-              <div
-                class={[
-                  'runtime-log-viewport logs-viewer-viewport flex w-full min-w-0 flex-col overflow-x-hidden overflow-y-auto',
-                  fullscreen ? 'flex-1' : 'max-h-[min(40rem,70dvh)] sm:max-h-[40rem]',
-                ]}
-                tabindex="0"
-                role="log"
-                aria-live="off"
-                onwheel={(e) => e.deltaY < 0 && (follow = false)}
-                onkeydown={keyScroll}
-                {@attach autoscroll}
+    <div class="w-full min-w-0 rounded-lg border bg-card">
+      <button
+        type="button"
+        class="flex min-h-11 w-full items-center gap-2 rounded-lg px-3.5 py-2.5 text-left transition-colors hover:bg-accent/50"
+        aria-expanded={expanded}
+        onclick={() => (expanded = !expanded)}
+      >
+        <Icon name="chevron-right" class={cn('size-4 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-90')} />
+        <h4 class="min-w-0 truncate font-mono text-[13px] font-medium">{container}</h4>
+        {#if streaming}<Spinner />{/if}
+      </button>
+      {#if expanded}
+        <div class={cn('flex min-w-0 flex-col', fullscreen ? 'fixed inset-0 z-60 bg-background' : 'border-t')}>
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-2 py-1.5">
+            <div class="flex flex-wrap items-center gap-0.5">
+              <LogButton
+                label="Toggle Timestamps"
+                icon="clock"
+                active={showTimestamps}
+                aria-pressed={showTimestamps}
+                onclick={() => (showTimestamps = !showTimestamps)}
+              />
+              <LogButton label="Follow Logs" icon="follow" active={follow} aria-pressed={follow} onclick={toggleFollow} />
+              <LogButton label="Toggle Log Colors" icon="palette" active={colorLogs} aria-pressed={colorLogs} onclick={toggleColorLogs} />
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger>
+                  {#snippet child({ props })}
+                    <LogButton {...props} label="Filter Log Levels" icon="filter" active={Object.values(logFilters).some((v) => !v)} />
+                  {/snippet}
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content align="start" class="w-40">
+                  {#each levels as l (l.level)}
+                    <DropdownMenu.CheckboxItem checked={logFilters[l.level]} onCheckedChange={() => toggleLogFilter(l.level)}>
+                      <span class={cn('size-2.5 rounded-full', l.dot)}></span>
+                      {l.label}
+                    </DropdownMenu.CheckboxItem>
+                  {/each}
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
+              <LogButton label={fullscreen ? 'Minimize' : 'Fullscreen'} icon={fullscreen ? 'minimize' : 'maximize'} onclick={() => (fullscreen = !fullscreen)} />
+              <LogButton label="Copy Logs" icon="copy" onclick={copyLogs} />
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger>
+                  {#snippet child({ props })}
+                    <LogButton {...props} label="Download Logs" icon="download" />
+                  {/snippet}
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content align="start" class="w-52">
+                  <DropdownMenu.Item onSelect={downloadLogs}>Download displayed logs</DropdownMenu.Item>
+                  <DropdownMenu.Item disabled={downloadingAll} onSelect={downloadAllLogs}>
+                    {downloadingAll ? 'Downloading...' : 'Download all logs'}
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
+              <LogButton label="Refresh Logs" icon="refresh" disabled={streaming} onclick={getLogs} />
+              <LogButton
+                label={streaming ? 'Stop Streaming' : 'Stream Logs'}
+                icon={streaming ? 'pause' : 'play'}
+                active={streaming}
+                aria-pressed={streaming}
+                onclick={() => (streaming = !streaming)}
+              />
+            </div>
+            <div class="flex w-full min-w-0 flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:flex-nowrap">
+              <form
+                class="flex shrink-0 items-center gap-1.5"
+                onsubmit={(e) => {
+                  e.preventDefault()
+                  getLogs()
+                }}
               >
-                {#if lines.length > 0}
-                  <div class="max-w-full cursor-default font-logs text-[11px] leading-relaxed sm:text-xs" data-testid="runtime-log">
-                    {#if search && visible.length === 0}
-                      <div class="py-2 text-gray-500 dark:text-gray-400">No matches found.</div>
-                    {/if}
-                    {#each visible as l (l.id)}
-                      <div class={['log-line logs-viewer-line', colorLogs && `log-${l.level}`]} data-log-line>
-                        {#if l.at && showTimestamps}<span class="logs-viewer-timestamp text-gray-500">{l.at}</span>{/if}
-                        <span class="logs-viewer-line-text"
-                          >{#each parts(l.text) as p, i (i)}{#if p.match}<span class="log-highlight">{p.text}</span>{:else}{p.text}{/if}{/each}</span
-                        >
-                      </div>
-                    {/each}
-                  </div>
-                {:else}
-                  <pre class="max-w-full font-logs break-all whitespace-pre-wrap text-neutral-400">{loading ? 'Loading…' : 'No logs yet.'}</pre>
-                {/if}
+                <span class="text-xs font-medium text-muted-foreground">Lines</span>
+                <Input
+                  type="number"
+                  bind:value={numberOfLines}
+                  placeholder="100"
+                  min="-1"
+                  max="50000"
+                  title="Number of lines (max 50,000; use -1 for all)"
+                  aria-label="Lines"
+                  readonly={streaming}
+                  class="h-8 w-18 px-2 text-center text-xs [appearance:textfield]"
+                />
+                <Button variant="ghost" size="xs" title="Show all logs" disabled={streaming} onclick={showAllLogs}>All</Button>
+              </form>
+              {#if search}<span class="text-xs whitespace-nowrap text-muted-foreground">{visible.length} matches</span>{/if}
+              <div class="min-w-0 flex-1 sm:w-56 sm:flex-none">
+                <SearchField bind:value={searchInput} label="Find in logs" oninput={() => {
+                    if (!searchInput) search = ''
+                  }} />
               </div>
             </div>
           </div>
-        {/if}
-      </div>
+          <!-- Focusable so the keyboard can scroll it, as Coolify's tabindex="0". -->
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+          <div
+            class={cn(
+              'flex w-full min-w-0 flex-col overflow-x-hidden overflow-y-auto bg-log px-2 pt-2 text-log-foreground after:flex-[0_0_2rem] after:content-[""] sm:px-3',
+              fullscreen ? 'flex-1' : 'max-h-[min(40rem,70dvh)] min-h-48 rounded-b-lg sm:max-h-[40rem] sm:min-h-72',
+            )}
+            tabindex="0"
+            role="log"
+            aria-live="off"
+            onwheel={(e) => e.deltaY < 0 && (follow = false)}
+            onkeydown={keyScroll}
+            {@attach autoscroll}
+          >
+            {#if lines.length > 0}
+              <div class="max-w-full cursor-default font-mono text-[11px] leading-relaxed sm:text-xs" data-testid="runtime-log">
+                {#if search && visible.length === 0}
+                  <div class="py-2 text-muted-foreground">No matches found.</div>
+                {/if}
+                {#each visible as l (l.id)}
+                  <div class={cn('flex min-w-0 flex-col gap-0.5 py-0.5 sm:flex-row sm:gap-2 sm:py-0', colorLogs && tint[l.level])} data-log-line>
+                    {#if l.at && showTimestamps}<span class="shrink-0 text-[10px] text-muted-foreground sm:text-xs">{l.at}</span>{/if}
+                    <span class="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]"
+                      >{#each parts(l.text) as p, i (i)}{#if p.match}<mark class="bg-warning/30 text-inherit">{p.text}</mark>{:else}{p.text}{/if}{/each}</span
+                    >
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <pre class="max-w-full font-mono text-xs break-all whitespace-pre-wrap text-muted-foreground">{loading ? 'Loading…' : 'No logs yet.'}</pre>
+            {/if}
+          </div>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
