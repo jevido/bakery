@@ -72,6 +72,7 @@ func svc() *app.Service {
 			return len(sts) > 0, err
 		})
 		projects.OnEnvironmentDeleting(service.InUseInEnvironment)
+		servers.OnServerResources("database", onServer)
 		servers.OnContainerOwner("database", inGuild(projectOf(service.EnvironmentOfDatabase)))
 	})
 	return service
@@ -292,4 +293,25 @@ func publishBackupExecutionFinished(ctx context.Context, d domain.Database, b do
 			f(ctx, e)
 		}()
 	}
+}
+
+// onServer lists the Databases on a Server for its Resources list: they run on
+// the Local server only.
+func onServer(ctx context.Context, serverID uint64, in []servers.ResourceProject) ([]servers.ServerResource, error) {
+	if serverID != 0 {
+		return nil, nil
+	}
+	ids := make([]uint64, len(in))
+	for i, p := range in {
+		ids[i] = p.ID
+	}
+	list, err := service.ForProjects(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]servers.ServerResource, len(list))
+	for i, v := range list {
+		out[i] = servers.ServerResource{ID: v.ID, Name: v.Name, EnvironmentID: v.EnvironmentID, Status: string(v.Status)}
+	}
+	return out, nil
 }

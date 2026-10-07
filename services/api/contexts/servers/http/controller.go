@@ -25,6 +25,9 @@ type Controller struct {
 	// SeesContainer reports whether the request may see a Container on the
 	// Local server, by its owner.
 	SeesContainer func(ctx contractshttp.Context, owner, ownerID string) (bool, error)
+	// Projects lists the Projects of the Current guild the request may view,
+	// whose Resources a Server's Resources list shows.
+	Projects func(ctx contractshttp.Context) ([]app.ResourceProject, error)
 }
 
 func NewController(service *app.Service) *Controller {
@@ -342,4 +345,37 @@ func (c *Controller) CleanUp(ctx contractshttp.Context) contractshttp.Response {
 		return fail(ctx, err)
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"cleanup": cleanupToJSON(cl)})
+}
+
+type resourceJSON struct {
+	Type          string `json:"type"`
+	ID            uint64 `json:"id"`
+	Name          string `json:"name"`
+	ProjectID     uint64 `json:"project_id"`
+	Project       string `json:"project"`
+	EnvironmentID uint64 `json:"environment_id"`
+	Environment   string `json:"environment"`
+	Status        string `json:"status"`
+}
+
+// Resources lists the Applications, Databases and Services on the Server in
+// the Projects the request may view.
+func (c *Controller) Resources(ctx contractshttp.Context) contractshttp.Response {
+	sid, ok := id(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	projects, err := c.Projects(ctx)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	list, err := c.service.Resources(ctx.Context(), sid, projects)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out := make([]resourceJSON, len(list))
+	for i, r := range list {
+		out[i] = resourceJSON(r)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"resources": out})
 }

@@ -1,7 +1,7 @@
 // Package projects is what other contexts and the router may use from the
 // projects context: its routes, ApplicationForDeploy (with the Target
-// server), Environment, ProjectOf and ApplicationInGuild, the
-// ApplicationDeleted and ApplicationDomainsChanged
+// server), Environment, ProjectOf, ApplicationInGuild and
+// ApplicationsOnServer, the ApplicationDeleted and ApplicationDomainsChanged
 // events and the OnProjectDeleting and OnEnvironmentDeleting checks. Nothing
 // else in contexts/projects is for outside use.
 package projects
@@ -31,6 +31,7 @@ func svc() *app.Service {
 		service.ProjectDeleted = guilds.ForgetProject
 		servers.OnServerDeleting(infra.Store{}.ServerInUse)
 		servers.OnContainerOwner("application", ApplicationInGuild)
+		servers.OnResourceProjects(resourceProjects)
 		guilds.OnGuildDeleting("projects", func(ctx context.Context, guildID uint64) (bool, error) {
 			ps, err := service.Projects(app.InGuild(ctx, guildID))
 			return len(ps) > 0, err
@@ -218,6 +219,46 @@ func Environment(ctx context.Context, id uint64) (EnvironmentSnapshot, error) {
 		return EnvironmentSnapshot{}, err
 	}
 	return EnvironmentSnapshot{ID: e.ID, ProjectID: e.ProjectID, GuildID: e.GuildID, Name: e.Name}, nil
+}
+
+// resourceProjects lists the Guild's Projects and their Environments for a
+// Server's Resources list.
+func resourceProjects(ctx context.Context, guildID uint64) ([]servers.ResourceProject, error) {
+	ps, err := svc().ProjectsWithEnvironments(app.InGuild(ctx, guildID))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]servers.ResourceProject, len(ps))
+	for i, p := range ps {
+		envs := make(map[uint64]string, len(p.Environments))
+		for _, e := range p.Environments {
+			envs[e.ID] = e.Name
+		}
+		out[i] = servers.ResourceProject{ID: p.ID, Name: p.Name, Environments: envs}
+	}
+	return out, nil
+}
+
+// ApplicationOnServer is an Application as a Server's Resources list sees
+// it.
+type ApplicationOnServer struct {
+	ID            uint64
+	Name          string
+	EnvironmentID uint64
+}
+
+// ApplicationsOnServer lists the Applications in the Environments that
+// target the Server (0 for the Local server).
+func ApplicationsOnServer(ctx context.Context, serverID uint64, environmentIDs []uint64) ([]ApplicationOnServer, error) {
+	list, err := svc().ApplicationsOnServer(ctx, serverID, environmentIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ApplicationOnServer, len(list))
+	for i, a := range list {
+		out[i] = ApplicationOnServer{ID: a.ID, Name: a.Name, EnvironmentID: a.EnvironmentID}
+	}
+	return out, nil
 }
 
 // ApplicationInGuild reports whether the Application exists and belongs to

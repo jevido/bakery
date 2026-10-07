@@ -71,6 +71,7 @@ func svc() *app.Service {
 		projects.OnProjectDeleting(service.InUse)
 		projects.OnEnvironmentDeleting(service.InUseInEnvironment)
 		projects.OnDomainCheck(service.DomainInUse)
+		servers.OnServerResources("service", onServer)
 		servers.OnContainerOwner("service", func(ctx context.Context, id, guildID uint64) (bool, error) {
 			_, g, found, err := serviceProject(ctx, id)
 			return found && g == guildID, err
@@ -151,4 +152,23 @@ func Recover(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// onServer lists the Services on a Server for its Resources list: they run on
+// the Local server only.
+func onServer(ctx context.Context, serverID uint64, in []servers.ResourceProject) ([]servers.ServerResource, error) {
+	if serverID != 0 {
+		return nil, nil
+	}
+	var out []servers.ServerResource
+	for _, p := range in {
+		list, err := service.ForProject(ctx, p.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, v := range list {
+			out = append(out, servers.ServerResource{ID: v.ID, Name: v.Name, EnvironmentID: v.EnvironmentID, Status: string(v.Status)})
+		}
+	}
+	return out, nil
 }

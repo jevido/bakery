@@ -361,6 +361,49 @@ func (s Store) Project(ctx context.Context, id uint64) (domain.Project, bool, er
 	return p, true, nil
 }
 
+func (s Store) EnvironmentsOf(ctx context.Context, projectIDs []uint64) ([]domain.Environment, error) {
+	if len(projectIDs) == 0 {
+		return nil, nil
+	}
+	in := make([]any, len(projectIDs))
+	for i, id := range projectIDs {
+		in[i] = id
+	}
+	var recs []environmentRecord
+	if err := s.query(ctx).WhereIn("project_id", in).OrderBy("id").Find(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]domain.Environment, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+	}
+	return out, nil
+}
+
+// ApplicationsOnServer leaves the Applications' ProjectID and GuildID 0:
+// the caller knows them from the Environments it asked for.
+func (s Store) ApplicationsOnServer(ctx context.Context, serverID uint64, environmentIDs []uint64) ([]domain.Application, error) {
+	in := make([]any, len(environmentIDs))
+	for i, id := range environmentIDs {
+		in[i] = id
+	}
+	q := s.query(ctx).WhereIn("environment_id", in)
+	if serverID == 0 {
+		q = q.WhereNull("server_id")
+	} else {
+		q = q.Where("server_id", serverID)
+	}
+	var recs []applicationRecord
+	if err := q.OrderBy("name").Find(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]domain.Application, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain(0, 0)
+	}
+	return out, nil
+}
+
 func (s Store) UpdateProject(ctx context.Context, p domain.Project) error {
 	_, err := s.query(ctx).Model(&projectRecord{}).Where("id", p.ID).Update(map[string]any{"name": p.Name, "description": p.Description})
 	return err

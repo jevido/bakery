@@ -85,12 +85,27 @@ Local server. It does not keep a metrics history either.
   whose a Container is), `OnServerDeleting(check)` (projects: a Server Applications
   target is not deleted) `OnCleanup(retention)` (deployments registers its
   Image retention, called with the Server's id during every Cleanup) and
-  `OnServerHealthChanged(f)` (notifications).
+  `OnServerHealthChanged(f)` (notifications), and for a Server's Resources
+  list (`/api/servers/{id}/resources`) `OnResourceProjects(list)` (projects
+  names the Guild's Projects and Environments) and
+  `OnServerResources(kind, list)` (deployments lists the Applications with
+  their latest own Deployment's state, databases and services theirs on the
+  Local server).
 - **Consumes:** the auth middlewares from guilds (`Auth`, `Admin`, `Owns`,
-  `Current`, `InstanceAdmin`). Nothing else: servers imports no other
-  context, so every context may depend on it.
+  `Current`, `InstanceAdmin`, `VisibleProjects`). Nothing else: servers
+  imports no other context, so every context may depend on it.
 
 ## Why it's shaped this way
+
+- **A Server's Resources come in one request, assembled here.** The
+  dashboard first composed the list from every Project, Application and
+  Deployment list, one request each, which took seconds on a Guild with
+  many Projects. servers cannot import the contexts that own the Resources
+  (they import servers), so they register listers and servers puts the rows
+  together. A Database's status there is its Container's state without the
+  readiness probe the Database page runs: probing every running Database
+  serially took seconds, so a running Database that is not ready yet shows
+  as running in this list.
 
 - **The Local server is the installation's, not a Guild's.** Every Guild
   needs somewhere to deploy before it adds a Server of its own, and there is

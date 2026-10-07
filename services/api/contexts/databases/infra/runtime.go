@@ -152,6 +152,16 @@ const probeTimeout = 5 * time.Second
 // Status reads what the Database's Container is doing. detail explains an
 // exited Container (its exit code).
 func (r Runtime) Status(ctx context.Context, d domain.Database) (status domain.Status, detail string, err error) {
+	return r.status(ctx, d, true)
+}
+
+// State is Status without the readiness probe, which execs in the
+// Container: a running Container is StatusRunning, ready or not.
+func (r Runtime) State(ctx context.Context, d domain.Database) (status domain.Status, detail string, err error) {
+	return r.status(ctx, d, false)
+}
+
+func (r Runtime) status(ctx context.Context, d domain.Database, probe bool) (domain.Status, string, error) {
 	info, err := r.Podman.InspectContainer(ctx, domain.ContainerName(d.Slug))
 	switch {
 	case podman.IsNotFound(err) && d.DesiredState == domain.Stopped:
@@ -162,6 +172,8 @@ func (r Runtime) Status(ctx context.Context, d domain.Database) (status domain.S
 		return "", "", err
 	case !info.State.Running:
 		return domain.StatusExited, fmt.Sprintf("exited with code %d", info.State.ExitCode), nil
+	case !probe:
+		return domain.StatusRunning, "", nil
 	}
 	pctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()

@@ -324,6 +324,16 @@ func (s *Service) Deployments(ctx context.Context, applicationID uint64) ([]doma
 	return s.store.ByApplication(ctx, applicationID, 50)
 }
 
+// LatestStatus is the state of the Application's newest Deployment that is
+// not a Preview's; empty when it has none.
+func (s *Service) LatestStatus(ctx context.Context, applicationID uint64) (string, error) {
+	list, err := s.store.ByPreview(ctx, applicationID, 0, 1)
+	if err != nil || len(list) == 0 {
+		return "", err
+	}
+	return string(list[0].Status), nil
+}
+
 // History returns a page of the Application's Deployment history, and how
 // many Deployments match in all.
 func (s *Service) History(ctx context.Context, applicationID uint64, q HistoryQuery) ([]domain.Deployment, int, error) {

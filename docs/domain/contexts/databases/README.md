@@ -86,7 +86,7 @@ backing up Redis and Valkey (see below).
   (notifications), carrying the Database's Guild.
 - **Talks to:** S3-compatible storage (AWS S3, Garage, and the like) over
   its HTTP API, for S3 storages.
-- **Consumes:** `projects.ProjectOf` (through `guilds.InProject`), so every route keyed by an Environment, Project, Database, Scheduled backup or Backup execution answers 404 outside the Current guild or a Project the request may not view, and its Permissions count that Project's overrides (S3 storages are the Guild's, behind `guilds.Owns`); `projects.Environment(id)` to place a new Database (and
+- **Consumes:** `servers.OnServerResources` (a Server's Resources list shows the Local server's Databases with their Container's state, without the readiness probe); `projects.ProjectOf` (through `guilds.InProject`), so every route keyed by an Environment, Project, Database, Scheduled backup or Backup execution answers 404 outside the Current guild or a Project the request may not view, and its Permissions count that Project's overrides (S3 storages are the Guild's, behind `guilds.Owns`); `projects.Environment(id)` to place a new Database (and
   learn its Project and Guild), translated into its own `Environment`; registers
   `projects.OnProjectDeleting`, answering "in use" while the Project has
   Databases.

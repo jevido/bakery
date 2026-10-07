@@ -149,6 +149,15 @@ func (s Store) ForProject(ctx context.Context, projectID uint64) ([]domain.Datab
 	return s.list(s.query(ctx).Where("project_id", projectID))
 }
 
+// ForProjects lists the Projects' Databases, oldest first.
+func (s Store) ForProjects(ctx context.Context, projectIDs []uint64) ([]domain.Database, error) {
+	in := make([]any, len(projectIDs))
+	for i, id := range projectIDs {
+		in[i] = id
+	}
+	return s.list(s.query(ctx).WhereIn("project_id", in))
+}
+
 // Wanted lists every Database whose desired state is running.
 func (s Store) Wanted(ctx context.Context) ([]domain.Database, error) {
 	return s.list(s.query(ctx).Where("desired_state", string(domain.Running)))

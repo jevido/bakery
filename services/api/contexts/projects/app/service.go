@@ -43,6 +43,8 @@ type Store interface {
 	// DeleteEnvironment refuses (ErrEnvironmentNotEmpty) while it has
 	// Applications.
 	DeleteEnvironment(ctx context.Context, id uint64) error
+	// EnvironmentsOf lists the Environments of the Projects.
+	EnvironmentsOf(ctx context.Context, projectIDs []uint64) ([]domain.Environment, error)
 
 	SlugTaken(ctx context.Context, slug string) (bool, error)
 	// DomainsTaken returns those of the Domains that an Application other
@@ -52,6 +54,10 @@ type Store interface {
 	Application(ctx context.Context, id uint64) (domain.Application, bool, error)
 	UpdateApplication(ctx context.Context, a domain.Application) error
 	DeleteApplication(ctx context.Context, id uint64) error
+	// ApplicationsOnServer lists the Applications in the Environments whose
+	// Target server is serverID (0 for the Local server), without their
+	// lists.
+	ApplicationsOnServer(ctx context.Context, serverID uint64, environmentIDs []uint64) ([]domain.Application, error)
 
 	// Variables returns the variables of one level (domain.FromProject,
 	// FromEnvironment or FromApplication) of the owner with that id.
@@ -204,6 +210,40 @@ func (s *Service) CreateProject(ctx context.Context, guildID uint64, name, descr
 
 func (s *Service) Projects(ctx context.Context) ([]domain.Project, error) {
 	return s.store.Projects(ctx)
+}
+
+// ProjectsWithEnvironments lists the Projects with their Environments (but
+// not their Applications).
+func (s *Service) ProjectsWithEnvironments(ctx context.Context) ([]domain.Project, error) {
+	ps, err := s.store.Projects(ctx)
+	if err != nil || len(ps) == 0 {
+		return ps, err
+	}
+	ids := make([]uint64, len(ps))
+	for i, p := range ps {
+		ids[i] = p.ID
+	}
+	envs, err := s.store.EnvironmentsOf(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range ps {
+		for _, e := range envs {
+			if e.ProjectID == ps[i].ID {
+				ps[i].Environments = append(ps[i].Environments, e)
+			}
+		}
+	}
+	return ps, nil
+}
+
+// ApplicationsOnServer lists the Applications in the Environments that
+// target the Server (0 for the Local server).
+func (s *Service) ApplicationsOnServer(ctx context.Context, serverID uint64, environmentIDs []uint64) ([]domain.Application, error) {
+	if len(environmentIDs) == 0 {
+		return nil, nil
+	}
+	return s.store.ApplicationsOnServer(ctx, serverID, environmentIDs)
 }
 
 func (s *Service) Project(ctx context.Context, id uint64) (domain.Project, error) {

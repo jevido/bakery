@@ -111,6 +111,7 @@ func svc() *app.Service {
 		// the newest five finished Deployments there go, unless a Container
 		// still uses one. It works once StartWorker ran.
 		servers.OnCleanup(service.PruneImages)
+		servers.OnServerResources("application", applicationsOn)
 		projects.OnApplicationDeleted(func(ctx context.Context, e projects.ApplicationDeleted) {
 			applicationID := e.ApplicationID
 			// Every Server its Deployments ran on; a Server that cannot be
@@ -178,6 +179,30 @@ func publicURL(d string, serverID uint64) string {
 }
 
 func isApplicationNotFound(err error) bool { return errors.Is(err, projects.ErrNotFound) }
+
+// applicationsOn lists the Applications on a Server for its Resources list,
+// each with its latest own Deployment's state as its status.
+func applicationsOn(ctx context.Context, serverID uint64, in []servers.ResourceProject) ([]servers.ServerResource, error) {
+	var envIDs []uint64
+	for _, p := range in {
+		for id := range p.Environments {
+			envIDs = append(envIDs, id)
+		}
+	}
+	list, err := projects.ApplicationsOnServer(ctx, serverID, envIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]servers.ServerResource, len(list))
+	for i, a := range list {
+		status, err := service.LatestStatus(ctx, a.ID)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = servers.ServerResource{ID: a.ID, Name: a.Name, EnvironmentID: a.EnvironmentID, Status: status}
+	}
+	return out, nil
+}
 
 // Routes registers the deployments API behind guilds.Auth (Known hosts
 // behind manage_servers, the Webhook with its secret behind see_secrets,

@@ -165,11 +165,55 @@ func seesContainer(ctx contractshttp.Context, owner, ownerID string) (bool, erro
 	return inGuild(ctx.Context(), id, guilds.Current(ctx))
 }
 
+// ServerResource is an Application, Database or Service on a Server, as
+// its Resources list shows it.
+type ServerResource = app.Resource
+
+// ResourceProject is a Project with the names of its Environments, by id.
+type ResourceProject = app.ResourceProject
+
+// OnServerResources registers the lister of one Type of Resource
+// ("application", "database" or "service") for a Server's Resources list:
+// those on the Server (0 for the Local server) in the Projects'
+// Environments, with ID, Name, EnvironmentID and Status.
+func OnServerResources(kind string, list func(ctx context.Context, serverID uint64, projects []ResourceProject) ([]ServerResource, error)) {
+	svc().OnResources(kind, list)
+}
+
+var resourceProjects func(ctx context.Context, guildID uint64) ([]ResourceProject, error)
+
+// OnResourceProjects registers where a Server's Resources list finds the
+// Guild's Projects and their Environments; projects registers it.
+func OnResourceProjects(list func(ctx context.Context, guildID uint64) ([]ResourceProject, error)) {
+	resourceProjects = list
+}
+
+// visibleProjects is the Current guild's Projects the request may view.
+func visibleProjects(ctx contractshttp.Context) ([]ResourceProject, error) {
+	if resourceProjects == nil {
+		return nil, nil
+	}
+	all, err := resourceProjects(ctx.Context(), guilds.Current(ctx))
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uint64, len(all))
+	for i, p := range all {
+		ids[i] = p.ID
+	}
+	visible, err := guilds.VisibleProjects(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(all, func(p ResourceProject) bool { return !slices.Contains(visible, p.ID) }), nil
+}
+
 func controller() *servershttp.Controller {
 	c := servershttp.NewController(svc())
 	c.Guild = guilds.Current
 	c.InstanceAdmin = guilds.InstanceAdmin
 	c.SeesContainer = seesContainer
+	c.Projects = visibleProjects
 	return c
 }
 
@@ -178,8 +222,8 @@ var inGuild = guilds.Owns("server", UsableBy)
 
 // Routes registers the servers API behind guilds.Auth: the Current guild's
 // Servers and the Local server. Every Member may list them (to pick a Target
-// server) and see their usage; changing them needs manage_servers, and only
-// the Instance admin changes the Local server.
+// server) and see their usage and Resources; changing them needs
+// manage_servers, and only the Instance admin changes the Local server.
 func Routes(r route.Router) {
 	c := controller()
 	r.Middleware(guilds.Auth, inGuild).Group(func(r route.Router) {
@@ -187,6 +231,7 @@ func Routes(r route.Router) {
 		r.Get("/api/servers/{id}", c.Show)
 		r.Get("/api/servers/{id}/metrics", c.Metrics)
 		r.Get("/api/servers/{id}/details", c.Details)
+		r.Get("/api/servers/{id}/resources", c.Resources)
 	})
 	r.Middleware(guilds.Auth, inGuild, guilds.Can("manage_servers")).Group(func(r route.Router) {
 		r.Post("/api/servers", c.Create)

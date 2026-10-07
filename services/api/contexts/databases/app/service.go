@@ -21,6 +21,7 @@ type Store interface {
 	Create(ctx context.Context, d domain.Database) (domain.Database, error)
 	Get(ctx context.Context, id uint64) (domain.Database, bool, error)
 	ForProject(ctx context.Context, projectID uint64) ([]domain.Database, error)
+	ForProjects(ctx context.Context, projectIDs []uint64) ([]domain.Database, error)
 	// Wanted lists the Databases whose desired state is running.
 	Wanted(ctx context.Context) ([]domain.Database, error)
 	Update(ctx context.Context, d domain.Database) error
@@ -75,6 +76,8 @@ type Runtime interface {
 	// Remove removes the Container and, when volume is true, the volume.
 	Remove(ctx context.Context, d domain.Database, volume bool) error
 	Status(ctx context.Context, d domain.Database) (domain.Status, string, error)
+	// State is Status without the readiness probe, for a list of many.
+	State(ctx context.Context, d domain.Database) (domain.Status, string, error)
 	Logs(ctx context.Context, d domain.Database, follow bool, tail int, out func(stream, line string)) (bool, error)
 	// Dump runs the Database's DumpCommand in its Container, writing its
 	// stdout to w; it returns the exit code and stderr.
@@ -322,7 +325,11 @@ func (s *Service) Create(ctx context.Context, environmentID uint64, in domain.In
 // view reads the Database's status. A change still running in the
 // background shows as starting.
 func (s *Service) view(ctx context.Context, d domain.Database) (View, error) {
-	status, detail, err := s.runtime.Status(ctx, d)
+	return s.viewWith(ctx, d, s.runtime.Status)
+}
+
+func (s *Service) viewWith(ctx context.Context, d domain.Database, read func(context.Context, domain.Database) (domain.Status, string, error)) (View, error) {
+	status, detail, err := read(ctx, d)
 	if err != nil {
 		return View{}, err
 	}
@@ -357,6 +364,26 @@ func (s *Service) ForProject(ctx context.Context, projectID uint64) ([]View, err
 	out := make([]View, len(list))
 	for i, d := range list {
 		if out[i], err = s.view(ctx, d); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// ForProjects lists the Projects' Databases with their Container's state
+// (Runtime.State): probing each running one for readiness takes a moment,
+// too long for a list across Projects.
+func (s *Service) ForProjects(ctx context.Context, projectIDs []uint64) ([]View, error) {
+	if len(projectIDs) == 0 {
+		return nil, nil
+	}
+	list, err := s.store.ForProjects(ctx, projectIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]View, len(list))
+	for i, d := range list {
+		if out[i], err = s.viewWith(ctx, d, s.runtime.State); err != nil {
 			return nil, err
 		}
 	}

@@ -58,6 +58,7 @@ type Service struct {
 	// OnHealthChanged, when set, hears what a Server probe found changed.
 	OnHealthChanged func(ctx context.Context, e HealthChanged)
 	inUse           []InUse
+	listers         map[string]ResourceLister
 }
 
 // OnDeleting registers a check asked before a Server is deleted.

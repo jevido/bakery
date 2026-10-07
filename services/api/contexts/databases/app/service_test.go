@@ -52,6 +52,15 @@ func (m *memStore) ForProject(_ context.Context, projectID uint64) ([]domain.Dat
 	}
 	return out, nil
 }
+func (m *memStore) ForProjects(_ context.Context, projectIDs []uint64) ([]domain.Database, error) {
+	var out []domain.Database
+	for _, d := range m.dbs {
+		if slices.Contains(projectIDs, d.ProjectID) {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
 func (m *memStore) Wanted(context.Context) ([]domain.Database, error) {
 	var out []domain.Database
 	for _, d := range m.dbs {
@@ -343,6 +352,9 @@ func (f *fakeRuntime) Remove(_ context.Context, d domain.Database, volume bool) 
 	}
 	f.record(call, d.ID, false)
 	return nil
+}
+func (f *fakeRuntime) State(ctx context.Context, d domain.Database) (domain.Status, string, error) {
+	return f.Status(ctx, d)
 }
 func (f *fakeRuntime) Status(_ context.Context, d domain.Database) (domain.Status, string, error) {
 	f.mu.Lock()

@@ -62,6 +62,10 @@ reaches an Application (routing).
   `BuildVariables` and `RuntimeVariables`, Deploy key, and `ServerID`, the Target server, 0 for the Local server). The two variable sets are
   already merged (Application > Environment > Project) and split by scope.
   The snapshot also names the Application's Guild.
+  `ApplicationsOnServer(server, environments)` (the Applications there that
+  target the Server, for deployments' part of a Server's Resources list),
+  and it registers the Guild's Projects and Environments with
+  `servers.OnResourceProjects`.
   Changing its fields is a breaking change for deployments.
   `ProjectOf(kind)` for `project`, `environment` and `application`: the
   Project and Guild of one by id, for `guilds.InProject` on every route
