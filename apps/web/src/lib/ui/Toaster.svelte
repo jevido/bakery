@@ -34,7 +34,7 @@
   }
 </script>
 
-<ul class="chrome pointer-events-none fixed right-3 bottom-3 z-9999 flex w-[calc(100%-1.5rem)] flex-col-reverse gap-2 sm:max-w-sm" aria-live="polite">
+<ul class="chrome pointer-events-none list-none fixed right-3 bottom-3 z-9999 flex w-[calc(100%-1.5rem)] flex-col-reverse gap-2 sm:max-w-sm" aria-live="polite">
   {#each toasts as item (item.id)}
     <li
       in:fly={{ y: 12, duration: 200 }}

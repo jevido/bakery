@@ -8,6 +8,7 @@
   import { api } from '../api'
   import { applicationPath, go } from '../router.svelte'
   import type { Application } from '../types'
+  import SettingsGroup from '../settings/SettingsGroup.svelte'
   import Button from '../ui/Button.svelte'
   import Input from '../ui/Input.svelte'
   import { attempt } from './create'
@@ -65,53 +66,45 @@
   }
 </script>
 
-<div class="chrome mt-8 w-full max-w-[920px] lg:mt-3">
-  <!-- An edit clears the messages of the last attempt. -->
-  <form onsubmit={submit} oninput={() => (errors = {})}>
-    <section class="application-settings-section">
-      <div class="application-settings-section-header">
-        <div>
-          <h2>Docker image</h2>
-          <p>Deploy an existing image from Docker Hub or another OCI registry.</p>
-        </div>
-        <Button type="submit" variant="highlighted" loading={busy}>Create application</Button>
+<!-- An edit clears the messages of the last attempt. -->
+<form onsubmit={submit} oninput={() => (errors = {})}>
+  <SettingsGroup label="Docker image" hint="Deploy an existing image from Docker Hub or another OCI registry.">
+    <!-- svelte-ignore a11y_autofocus -->
+    <Input
+      label="Image name"
+      placeholder="nginx, ghcr.io/user/app:v1.2.3, or nginx:stable@sha256:…"
+      helper="Paste a complete image reference, or enter a name and use one of the optional fields below."
+      required
+      autofocus
+      bind:value={imageName}
+      oninput={(e) => {
+        if (e instanceof InputEvent && e.inputType === 'insertFromPaste') updatedImageName()
+      }}
+      onchange={updatedImageName}
+      error={errors.imageName ?? errors.docker_image}
+    />
+    <div
+      class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-end"
+      role="group"
+      aria-label="Tag and SHA256 digest are mutually exclusive"
+    >
+      <Input label="Tag" placeholder="latest" helper="Use a mutable tag such as latest or v1.2.3." bind:value={imageTag} error={errors.imageTag} />
+      <div class="flex items-center justify-center text-xs font-semibold text-muted-foreground sm:h-9">
+        <span>OR</span>
       </div>
-      <div class="application-settings-section-body space-y-4">
-        <!-- svelte-ignore a11y_autofocus -->
-        <Input
-          label="Image name"
-          placeholder="nginx, ghcr.io/user/app:v1.2.3, or nginx:stable@sha256:…"
-          helper="Paste a complete image reference, or enter a name and use one of the optional fields below."
-          required
-          autofocus
-          bind:value={imageName}
-          oninput={(e) => {
-            if (e instanceof InputEvent && e.inputType === 'insertFromPaste') updatedImageName()
-          }}
-          onchange={updatedImageName}
-          error={errors.imageName ?? errors.docker_image}
-        />
-        <div
-          class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-end"
-          role="group"
-          aria-label="Tag and SHA256 digest are mutually exclusive"
-        >
-          <Input label="Tag" placeholder="latest" helper="Use a mutable tag such as latest or v1.2.3." bind:value={imageTag} error={errors.imageTag} />
-          <div class="flex items-center justify-center text-xs font-semibold text-neutral-400 sm:h-9 dark:text-fg-faint">
-            <span>OR</span>
-          </div>
-          <Input
-            label="SHA256 digest"
-            placeholder="59e02939b1bf39f16c93138a28727aec…"
-            helper="Use the 64-character digest without the sha256: prefix."
-            bind:value={imageSha256}
-            error={errors.imageSha256}
-          />
-        </div>
-        <div class="sm:max-w-[calc(50%-0.375rem)]">
-          <Input type="number" label="Port" required helper="Port the application listens on." bind:value={port} error={errors.port} />
-        </div>
-      </div>
-    </section>
-  </form>
-</div>
+      <Input
+        label="SHA256 digest"
+        placeholder="59e02939b1bf39f16c93138a28727aec…"
+        helper="Use the 64-character digest without the sha256: prefix."
+        bind:value={imageSha256}
+        error={errors.imageSha256}
+      />
+    </div>
+    <div class="sm:max-w-[calc(50%-0.375rem)]">
+      <Input type="number" label="Port" required helper="Port the application listens on." bind:value={port} error={errors.port} />
+    </div>
+    <div class="flex justify-end">
+      <Button type="submit" variant="highlighted" loading={busy}>Create application</Button>
+    </div>
+  </SettingsGroup>
+</form>

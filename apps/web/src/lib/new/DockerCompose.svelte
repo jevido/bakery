@@ -9,6 +9,7 @@
   import { api } from '../api'
   import { go, servicePath } from '../router.svelte'
   import type { Service } from '../types'
+  import SettingsGroup from '../settings/SettingsGroup.svelte'
   import Button from '../ui/Button.svelte'
   import Textarea from '../ui/Textarea.svelte'
   import { toast } from '../ui/toast.svelte'
@@ -37,35 +38,27 @@
   }
 </script>
 
-<div class="chrome mt-8 w-full lg:mt-3">
-  <form onsubmit={submit}>
-    <section class="application-settings-section">
-      <div class="application-settings-section-header">
-        <div>
-          <h2>Docker Compose</h2>
-          <p>Create a multi-container service directly from a Compose file.</p>
-        </div>
-        <Button type="submit" variant="highlighted" loading={busy}>Create service</Button>
-      </div>
-      <div class="application-settings-section-body">
-        <!-- svelte-ignore a11y_autofocus -->
-        <Textarea
-          label="Docker Compose file"
-          rows={20}
-          monospace
-          allowTab
-          required
-          autofocus
-          bind:value={dockerComposeRaw}
-          aria-invalid={problems.length > 0 ? 'true' : undefined}
-          placeholder={'services:\n  app:\n    image: nginx:alpine\n    environment:\n      - SERVICE_FQDN_APP_80\n'}
-        />
-        {#if problems.length > 0}
-          <ul class="mt-1 list-none space-y-0.5 p-0 font-mono text-xs text-red-500">
-            {#each problems as problem, i (i)}<li>{problem}</li>{/each}
-          </ul>
-        {/if}
-      </div>
-    </section>
-  </form>
-</div>
+<form onsubmit={submit}>
+  <SettingsGroup label="Docker Compose" hint="Create a multi-container service directly from a Compose file." wide>
+    <!-- svelte-ignore a11y_autofocus -->
+    <Textarea
+      label="Docker Compose file"
+      rows={20}
+      monospace
+      allowTab
+      required
+      autofocus
+      bind:value={dockerComposeRaw}
+      aria-invalid={problems.length > 0 ? 'true' : undefined}
+      placeholder={'services:\n  app:\n    image: nginx:alpine\n    environment:\n      - SERVICE_FQDN_APP_80\n'}
+    />
+    {#if problems.length > 0}
+      <ul class="mt-1 list-none space-y-0.5 p-0 font-mono text-xs text-destructive">
+        {#each problems as problem, i (i)}<li>{problem}</li>{/each}
+      </ul>
+    {/if}
+    <div class="flex justify-end">
+      <Button type="submit" variant="highlighted" loading={busy}>Create service</Button>
+    </div>
+  </SettingsGroup>
+</form>

@@ -10,21 +10,35 @@
   // Left out until they exist: the GitHub App, GitLab App and Dockerfile
   // cards, KeyDB, Dragonfly and ClickHouse, Destinations, build servers, the
   // PostgreSQL image picker and "Connect an existing PostgreSQL database".
+  //
+  // In Paperclip's look (MIT, see NOTICE): the ProjectDetail header, the list
+  // toolbar of Projects.tsx, Cards for the types, EntityRows for the Servers,
+  // and a settings page (CompanySettings.tsx) around each create form.
+  import { Plus } from '@lucide/svelte'
+  import { buttonVariants } from '$lib/components/ui/button'
+  import { Card } from '$lib/components/ui/card'
+  import * as Popover from '$lib/components/ui/popover'
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
+  import CollectionToolbar from '../lib/CollectionToolbar.svelte'
+  import EntityRow from '../lib/EntityRow.svelte'
   import Icon from '../lib/Icon.svelte'
   import DockerCompose from '../lib/new/DockerCompose.svelte'
   import DockerImage from '../lib/new/DockerImage.svelte'
   import PrivateGitRepository from '../lib/new/PrivateGitRepository.svelte'
   import PublicGitRepository from '../lib/new/PublicGitRepository.svelte'
   import { databasePath, go, href, serverPath, servicePath } from '../lib/router.svelte'
+  import PageHeader from '../lib/PageHeader.svelte'
+  import PageSkeleton from '../lib/PageSkeleton.svelte'
   import { projectAccess } from '../lib/projectAccess.svelte'
+  import ProjectTile from '../lib/ProjectTile.svelte'
+  import SearchField from '../lib/SearchField.svelte'
+  import SettingsPage from '../lib/settings/SettingsPage.svelte'
   import type { Database, DatabaseType, Environment, Server, Service, ServiceTemplate } from '../lib/types'
   import Callout from '../lib/ui/Callout.svelte'
   import Empty from '../lib/ui/Empty.svelte'
   import Spinner from '../lib/ui/Spinner.svelte'
   import StatusBadge from '../lib/ui/StatusBadge.svelte'
-  import TableDropdown from '../lib/ui/TableDropdown.svelte'
   import { toast } from '../lib/ui/toast.svelte'
 
   let {
@@ -35,8 +49,8 @@
   }: { projectId: number; id: number; type: string; server: number | null } = $props()
 
   type ResourceType = 'all' | 'applications' | 'databases' | 'services'
-  type Card = { id: string; name: string; description: string; logo: string; docs: string; website?: string }
-  type ApplicationCard = Card & { source: 'Git source' | 'Docker source' }
+  type ResourceCard = { id: string; name: string; description: string; logo: string; docs: string; website?: string }
+  type ApplicationCard = ResourceCard & { source: 'Git source' | 'Docker source' }
 
   // Select.php's cards, in its order, with what The Bakery can create.
   const gitBasedApplications: ApplicationCard[] = [
@@ -76,7 +90,7 @@
       source: 'Docker source',
     },
   ]
-  const databases: (Card & { id: DatabaseType })[] = [
+  const databases: (ResourceCard & { id: DatabaseType })[] = [
     {
       id: 'postgresql',
       name: 'PostgreSQL',
@@ -142,13 +156,13 @@
   let loadError = $state('')
   let loading = $state(true)
 
-  let search = $state('')
+  let searchText = $state('')
   let resourceType = $state<ResourceType>('all')
   let selectedCategory = $state('')
   let categorySearch = $state('')
   // The card being created; every card waits while one is.
   let selecting = $state('')
-  let searchInput = $state<HTMLInputElement>()
+  let searchInput = $state<HTMLInputElement | null>(null)
 
   async function loadResources() {
     loading = true
@@ -200,7 +214,7 @@
   })
 
   function matches(item: { name: string; description: string }) {
-    const q = search.trim().toLowerCase()
+    const q = searchText.trim().toLowerCase()
     return !q || item.name.toLowerCase().includes(q) || item.description.toLowerCase().includes(q)
   }
 
@@ -302,322 +316,265 @@
       )
   })
 
-  const cardClass =
-    'group flex min-h-48 cursor-pointer flex-col rounded-xl border border-neutral-200 bg-white p-4 text-left transition-colors hover:border-neutral-300 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none dark:border-white/[0.08] dark:bg-white/[0.05] dark:hover:border-white/[0.14]'
-  const logoBox =
-    'flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50 dark:border-white/[0.08] dark:bg-white/[0.04]'
-  const serverIcon =
-    'flex size-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.035] dark:text-fg-dim'
+  const deployButton = buttonVariants({ size: 'xs', class: 'ml-auto' })
+  const linkButton = buttonVariants({ variant: 'ghost', size: 'xs', class: 'relative z-10 text-muted-foreground' })
+  const option = (selected: boolean) => [
+    'flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-sm',
+    selected ? 'bg-accent/50 text-foreground' : 'text-muted-foreground hover:bg-accent/50',
+  ]
+  const cardGrid = 'grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'
+  let typeOpen = $state(false)
+  let categoryOpen = $state(false)
+  const typeLabel = $derived(resourceTypeOptions.find((o) => o.value === resourceType)?.label ?? 'All resources')
 </script>
 
 <svelte:window {onkeydown} />
 
-{#snippet resourceCard(key: string, c: Card, subtitle: string, onpick: () => void, imgClass = 'size-full object-contain')}
-  <div
+{#snippet resourceCard(key: string, c: ResourceCard, subtitle: string, onpick: () => void, imgClass = 'size-full object-contain')}
+  <Card
+    interactive
     role="button"
-    tabindex="0"
+    tabindex={0}
     aria-label="Deploy {c.name}"
     aria-busy={selecting === key}
     aria-disabled={!!selecting}
     onclick={onpick}
-    onkeydown={(e) => {
+    onkeydown={(e: KeyboardEvent) => {
       if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
         e.preventDefault()
         onpick()
       }
     }}
-    class={[cardClass, selecting && selecting !== key && 'opacity-60', selecting && 'cursor-wait']}
+    class={['min-h-44 gap-0 p-4 text-left hover:bg-accent/50', selecting && selecting !== key && 'opacity-60', selecting && 'cursor-wait'].filter(Boolean).join(' ')}
   >
     <div class="flex min-w-0 items-start gap-3">
-      <div class={logoBox}>
+      <div class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted/40">
         <img class={imgClass} src={c.logo} alt="" onerror={(e) => ((e.currentTarget as HTMLImageElement).src = 'svgs/default.webp')} />
       </div>
       <div class="min-w-0 flex-1">
-        <h3 class="truncate text-[13px] font-semibold text-black dark:text-fg">{c.name}</h3>
-        {#if subtitle}<p class="mt-0.5 truncate text-[11px] text-neutral-500 dark:text-fg-faint">{subtitle}</p>{/if}
+        <h3 class="truncate text-sm font-medium" title={c.name}>{c.name}</h3>
+        {#if subtitle}<p class="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</p>{/if}
       </div>
     </div>
-    <p class="mt-3 line-clamp-2 text-[12px] leading-5 text-neutral-600 dark:text-fg-dim">{c.description}</p>
-    <div class="mt-auto flex items-center gap-1.5 border-t border-neutral-200 pt-3 dark:border-white/[0.07]">
-      <a class="button" href={c.docs} target="_blank" rel="noopener noreferrer" onclick={(e) => e.stopPropagation()}>Docs</a>
+    <p class="mt-3 line-clamp-2 text-xs leading-5 text-muted-foreground">{c.description}</p>
+    <div class="mt-auto flex items-center gap-1 border-t border-border pt-3">
+      <a class={linkButton} href={c.docs} target="_blank" rel="noopener noreferrer" onclick={(e) => e.stopPropagation()}>Docs</a>
       {#if c.website}
-        <a class="button" href={c.website} target="_blank" rel="noopener noreferrer" onclick={(e) => e.stopPropagation()}>Website</a>
+        <a class={linkButton} href={c.website} target="_blank" rel="noopener noreferrer" onclick={(e) => e.stopPropagation()}>Website</a>
       {/if}
-      <span class="button button-highlighted ml-auto">
+      <span class={deployButton}>
         {#if selecting === key}
           <Spinner text="Deploying" />
         {:else}
           Deploy
-          <Icon name="arrow-right" class="size-3.5" />
+          <Icon name="arrow-right" class="size-3" />
         {/if}
       </span>
     </div>
-  </div>
+  </Card>
 {/snippet}
 
-{#snippet sectionHeader(icon: 'globe' | 'database' | 'layers', title: string)}
-  <div class="application-settings-section-header">
-    <div class="flex items-center gap-2">
-      <Icon name={icon} class="size-4 text-neutral-400 dark:text-fg-faint" />
-      <h2>{title}</h2>
-    </div>
+{#snippet groupLabel(icon: 'globe' | 'database' | 'layers', title: string)}
+  <div class="flex items-center gap-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+    <Icon name={icon} class="size-3.5" />
+    <h2 class="text-xs font-medium">{title}</h2>
   </div>
 {/snippet}
 
 {#if loadError}
-  <p class="text-sm text-error">{loadError}</p>
+  <p class="text-sm text-destructive">{loadError}</p>
 {:else if !environment}
-  <Spinner text="Loading…" />
-{:else}
-  <div class="chrome application-settings-form w-full">
-    <h1 class="sr-only">New resource in {environment.name}</h1>
+  <PageSkeleton />
+{:else if step === 'type'}
+  <div class="chrome w-full space-y-6">
+    <PageHeader title="New resource" description="Add an application, database or service to {environment.name}.">
+      {#snippet leading()}<ProjectTile size="lg" icon="plus" />{/snippet}
+      {#snippet actions()}
+        <button type="button" class={buttonVariants({ variant: 'outline', size: 'sm' })} disabled={loading} onclick={loadResources}>
+          <Icon name="refresh" class="size-3.5" />
+          Reload
+        </button>
+      {/snippet}
+    </PageHeader>
 
-    {#if step === 'type'}
-      <section class="application-settings-section">
-        <header>
-          <div class="min-w-0 py-0.5"><h3>Choose a resource</h3></div>
-          <div class="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-            <button type="button" class="button" disabled={loading} onclick={loadResources}>
-              <Icon name="refresh" class="size-3.5" />
-              Reload
-            </button>
-          </div>
-        </header>
-        <div class="application-settings-section-body is-flush">
-          <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div class="relative min-w-0 flex-1">
-              <Icon
-                name="search"
-                class="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-neutral-400 dark:text-fg-faint"
-              />
+    <CollectionToolbar ariaLabel="Resource controls">
+      {#snippet search()}
+        <SearchField bind:value={searchText} bind:ref={searchInput} autofocus label="Search resources" />
+      {/snippet}
+      {#snippet controls()}
+        <Popover.Root bind:open={typeOpen}>
+          <Popover.Trigger
+            class={buttonVariants({ variant: 'ghost', size: 'sm', class: ['text-xs', resourceType !== 'all' && 'bg-accent'].filter(Boolean).join(' ') })}
+            title="Resource type"
+          >
+            <Icon name="filter" class="size-3.5 sm:size-3" />
+            <span>{resourceType === 'all' ? 'Filter' : typeLabel}</span>
+          </Popover.Trigger>
+          <Popover.Content align="start" class="w-48 p-2">
+            <div class="px-2 pt-1 pb-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">Resource type</div>
+            <div class="space-y-0.5" role="listbox" aria-label="Resource type">
+              {#each resourceTypeOptions as o (o.value)}
+                <button type="button" role="option" aria-selected={resourceType === o.value} class={option(resourceType === o.value)} onclick={() => {
+                    resourceType = o.value
+                    typeOpen = false
+                  }}>
+                  <span>{o.label}</span>
+                  {#if resourceType === o.value}<Icon name="check" class="size-3 text-muted-foreground" />{/if}
+                </button>
+              {/each}
+            </div>
+          </Popover.Content>
+        </Popover.Root>
+        <Popover.Root bind:open={categoryOpen} onOpenChange={(open) => open && (categorySearch = '')}>
+          <Popover.Trigger
+            class={buttonVariants({ variant: 'ghost', size: 'sm', class: ['max-w-56 text-xs', selectedCategory && 'bg-accent'].filter(Boolean).join(' ') })}
+            disabled={loading || categories.length === 0}
+            title={selectedCategory || 'All categories'}
+          >
+            <Icon name="layers" class="size-3.5 sm:size-3" />
+            <span class={['truncate', selectedCategory && 'capitalize']}>{selectedCategory || 'All categories'}</span>
+            <Icon name="chevron-down" class="size-3 opacity-60" />
+          </Popover.Trigger>
+          <Popover.Content align="start" class="w-60 p-0">
+            <div class="border-b border-border p-2">
               <!-- svelte-ignore a11y_autofocus -->
               <input
-                bind:this={searchInput}
-                bind:value={search}
-                autocomplete="off"
-                autofocus
                 type="search"
-                placeholder="Search resources"
-                aria-label="Search resources"
-                class="input h-8! w-full rounded-lg! border-neutral-200! bg-white! py-0! pr-8! pl-8! text-[12px]! shadow-none! placeholder:text-neutral-400 focus:border-ring! focus:ring-0! dark:border-white/[0.08]! dark:bg-white/[0.035]! dark:text-fg! dark:placeholder:text-fg-faint"
+                bind:value={categorySearch}
+                autofocus
+                placeholder="Search categories"
+                aria-label="Search categories"
+                class="h-8 w-full rounded-md border border-input bg-transparent px-2.5 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
               />
             </div>
-
-            <div class="flex shrink-0 items-center gap-2">
-              <TableDropdown panelClass="w-48!">
-                {#snippet trigger({ open, toggle })}
-                  <button type="button" class="button" aria-haspopup="listbox" aria-expanded={open} onclick={toggle}>
-                    <Icon name="filter" class="size-3.5" />
-                    Filter
-                  </button>
-                {/snippet}
-                {#snippet children(close)}
-                  <div class="px-2 py-1 text-[10px] font-semibold tracking-wide text-neutral-400 uppercase dark:text-fg-faint">
-                    Resource type
-                  </div>
-                  {#each resourceTypeOptions as option (option.value)}
-                    <button
-                      type="button"
-                      class="listbox-option"
-                      role="option"
-                      aria-selected={resourceType === option.value}
-                      onclick={() => {
-                        resourceType = option.value
-                        close()
-                      }}
-                    >
-                      <span>{option.label}</span>
-                      {#if resourceType === option.value}<Icon name="check-circle" class="size-3.5 text-primary" />{/if}
-                    </button>
-                  {/each}
-                {/snippet}
-              </TableDropdown>
-
-              <div class="w-48">
-                <TableDropdown panelClass="min-w-56! p-0!">
-                  {#snippet trigger({ open, toggle })}
-                    <button
-                      type="button"
-                      class="listbox-trigger"
-                      disabled={loading || categories.length === 0}
-                      aria-haspopup="listbox"
-                      aria-expanded={open}
-                      title={selectedCategory || 'All categories'}
-                      onclick={() => {
-                        categorySearch = ''
-                        toggle()
-                      }}
-                    >
-                      <span class="listbox-trigger-label capitalize">{selectedCategory || 'All categories'}</span>
-                      <svg class="size-3.5 shrink-0 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m8 9 4-4 4 4m0 6-4 4-4-4" />
-                      </svg>
-                    </button>
-                  {/snippet}
-                  {#snippet children(close)}
-                    <div class="border-b border-neutral-200 p-2 dark:border-white/[0.08]">
-                      <!-- svelte-ignore a11y_autofocus -->
-                      <input
-                        type="search"
-                        bind:value={categorySearch}
-                        autofocus
-                        placeholder="Search categories"
-                        aria-label="Search categories"
-                        class="input h-8! w-full rounded-md! border-neutral-200! bg-neutral-50! px-2.5! py-0! text-[12px]! shadow-none! focus:ring-0! dark:border-white/[0.08]! dark:bg-white/[0.04]! dark:text-fg!"
-                      />
-                    </div>
-                    <div class="max-h-60 overflow-auto p-1" role="listbox" aria-label="Service category">
-                      <button
-                        type="button"
-                        class="listbox-option"
-                        role="option"
-                        aria-selected={selectedCategory === ''}
-                        onclick={() => {
-                          selectedCategory = ''
-                          close()
-                        }}
-                      >
-                        <span>All categories</span>
-                        {#if selectedCategory === ''}<Icon name="check-circle" class="size-3.5 text-primary" />{/if}
-                      </button>
-                      {#each shownCategories as category (category)}
-                        <button
-                          type="button"
-                          class="listbox-option capitalize"
-                          role="option"
-                          aria-selected={selectedCategory === category}
-                          onclick={() => {
-                            selectedCategory = category
-                            close()
-                          }}
-                        >
-                          <span class="truncate">{category}</span>
-                          {#if selectedCategory === category}<Icon name="check-circle" class="size-3.5 text-primary" />{/if}
-                        </button>
-                      {/each}
-                    </div>
-                  {/snippet}
-                </TableDropdown>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {#if loading}
-        <div class="flex items-center justify-center py-8"><Spinner text="Loading resources..." /></div>
-      {:else}
-        <div class="mt-6 flex flex-col gap-6">
-          {#if showApplications}
-            <section class="application-settings-section">
-              {@render sectionHeader('globe', 'Applications')}
-              <div class="application-settings-section-body grid grid-cols-1 justify-start gap-3 text-left md:grid-cols-2 xl:grid-cols-3">
-                {#each filteredGit as c (c.id)}
-                  {@render resourceCard(`application-${c.id}`, c, c.source, () => pickApplication(c))}
-                {/each}
-                {#each filteredDocker as c (c.id)}
-                  {@render resourceCard(`application-${c.id}`, c, c.source, () => pickApplication(c))}
-                {/each}
-              </div>
-            </section>
-          {/if}
-
-          {#if showDatabases}
-            <section class="application-settings-section">
-              {@render sectionHeader('database', 'Databases')}
-              <div class="application-settings-section-body grid grid-cols-1 justify-start gap-3 text-left md:grid-cols-2 xl:grid-cols-3">
-                {#each filteredDatabases as c (c.id)}
-                  {@render resourceCard(`database-${c.id}`, c, '', () => pickDatabase(c.id))}
-                {/each}
-              </div>
-            </section>
-          {/if}
-
-          {#if showServices}
-            <section class="application-settings-section">
-              {@render sectionHeader('layers', 'Services')}
-              <div class="application-settings-section-body">
-                <Callout type="info" title="Trademarks policy" class="mb-4">
-                  The respective trademarks mentioned here are owned by the respective companies, and use of them does not imply any
-                  affiliation or endorsement.
-                </Callout>
-                <div class="grid grid-cols-1 justify-start gap-3 text-left md:grid-cols-2 xl:grid-cols-3">
-                  {#each filteredServices as t (t.key)}
-                    {@render resourceCard(
-                      `service-${t.key}`,
-                      { id: t.key, name: t.name, description: t.description, logo: t.logo, docs: t.docs_url, website: websiteOf(t.docs_url) },
-                      'Template ready',
-                      () => pickService(t),
-                      'h-full w-full object-contain p-2',
-                    )}
-                  {/each}
-                </div>
-              </div>
-            </section>
-          {/if}
-
-          {#if !showApplications && !showDatabases && !showServices}
-            <Empty title="No resources found" description="Try a different search or resource type." icon="layers" size="sm" />
-          {/if}
-        </div>
-      {/if}
-    {:else if step === 'servers'}
-      <section class="application-settings-section">
-        <header>
-          <div class="min-w-0 py-0.5">
-            <h3>Select a server</h3>
-            <p class="mt-0.5 text-[12px] text-neutral-500 dark:text-fg-dim">Choose the machine that will host this resource.</p>
-          </div>
-          <div class="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-            <a class="button" href={href(base)}>Back</a>
-          </div>
-        </header>
-        <div class="application-settings-section-body is-flush">
-          {#if ready.length === 0}
-            <Callout type="warning" title="No deployment server" class="m-4">
-              No server is ready. Add or validate a server before continuing.
-              <a class="font-medium underline" href={href('/servers')}>Open servers</a>
-            </Callout>
-          {/if}
-          <div class="divide-y divide-neutral-200 dark:divide-white/[0.07]">
-            {#each ready as s (s.id)}
-              <button
-                type="button"
-                onclick={() => go(`${base}?type=${type}&server=${s.id}`)}
-                class="group flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-neutral-50 dark:hover:bg-white/[0.025]"
-              >
-                <span class={serverIcon}><Icon name="servers" class="size-4" /></span>
-                <span class="min-w-0 flex-1">
-                  <span class="block truncate text-[13px] font-semibold text-black dark:text-fg">{s.name}</span>
-                  <span class="block truncate text-[11px] text-neutral-500 dark:text-fg-faint">{s.kind === 'local' ? 'This machine' : s.host}</span>
-                </span>
-                <StatusBadge status="Ready" type="success" />
+            <div class="max-h-60 space-y-0.5 overflow-auto p-2" role="listbox" aria-label="Service category">
+              <button type="button" role="option" aria-selected={selectedCategory === ''} class={option(selectedCategory === '')} onclick={() => {
+                  selectedCategory = ''
+                  categoryOpen = false
+                }}>
+                <span>All categories</span>
+                {#if selectedCategory === ''}<Icon name="check" class="size-3 text-muted-foreground" />{/if}
               </button>
-            {/each}
-            {#each notReady as s (s.id)}
-              <div class="flex min-h-14 items-center gap-3 px-4 py-3 opacity-55">
-                <span class={serverIcon}><Icon name="servers" class="size-4" /></span>
-                <span class="min-w-0 flex-1">
-                  <span class="block truncate text-[13px] font-semibold text-black dark:text-fg">{s.name}</span>
-                  <span class="block text-[11px] text-neutral-500 dark:text-fg-faint">Validate this server before it can host resources.</span>
-                </span>
-                <StatusBadge status={s.status === 'unreachable' ? 'Unreachable' : 'Not validated'} type="neutral" />
-                <a href={href(serverPath(s.id))} class="button">Settings</a>
-              </div>
-            {/each}
-          </div>
-        </div>
-      </section>
-    {:else if step === 'create' && card}
-      {#if card.id === 'public'}
-        <PublicGitRepository environmentId={id} server={server!} />
-      {:else if card.id === 'private-deploy-key'}
-        <PrivateGitRepository environmentId={id} server={server!} />
-      {:else if card.id === 'docker-image'}
-        <DockerImage environmentId={id} server={server!} />
-      {:else}
-        <DockerCompose environmentId={id} />
-      {/if}
+              {#each shownCategories as category (category)}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selectedCategory === category}
+                  class={[...option(selectedCategory === category), 'capitalize']}
+                  onclick={() => {
+                    selectedCategory = category
+                    categoryOpen = false
+                  }}
+                >
+                  <span class="truncate">{category}</span>
+                  {#if selectedCategory === category}<Icon name="check" class="size-3 text-muted-foreground" />{/if}
+                </button>
+              {/each}
+            </div>
+          </Popover.Content>
+        </Popover.Root>
+      {/snippet}
+    </CollectionToolbar>
+
+    {#if loading}
+      <div class="flex items-center justify-center py-8"><Spinner text="Loading resources..." /></div>
+    {:else}
+      <div class="space-y-8">
+        {#if showApplications}
+          <section class="space-y-3">
+            {@render groupLabel('globe', 'Applications')}
+            <div class={cardGrid}>
+              {#each [...filteredGit, ...filteredDocker] as c (c.id)}
+                {@render resourceCard(`application-${c.id}`, c, c.source, () => pickApplication(c))}
+              {/each}
+            </div>
+          </section>
+        {/if}
+        {#if showDatabases}
+          <section class="space-y-3">
+            {@render groupLabel('database', 'Databases')}
+            <div class={cardGrid}>
+              {#each filteredDatabases as c (c.id)}
+                {@render resourceCard(`database-${c.id}`, c, '', () => pickDatabase(c.id))}
+              {/each}
+            </div>
+          </section>
+        {/if}
+        {#if showServices}
+          <section class="space-y-3">
+            {@render groupLabel('layers', 'Services')}
+            <Callout type="info" title="Trademarks policy">
+              The respective trademarks mentioned here are owned by the respective companies, and use of them does not imply any affiliation or
+              endorsement.
+            </Callout>
+            <div class={cardGrid}>
+              {#each filteredServices as t (t.key)}
+                {@render resourceCard(
+                  `service-${t.key}`,
+                  { id: t.key, name: t.name, description: t.description, logo: t.logo, docs: t.docs_url, website: websiteOf(t.docs_url) },
+                  'Template ready',
+                  () => pickService(t),
+                  'h-full w-full object-contain p-2',
+                )}
+              {/each}
+            </div>
+          </section>
+        {/if}
+        {#if !showApplications && !showDatabases && !showServices}
+          <Card class="block py-0">
+            <Empty title="No resources found" description="Try a different search or resource type." icon="search" size="sm" />
+          </Card>
+        {/if}
+      </div>
     {/if}
   </div>
+{:else if step === 'servers'}
+  <div class="chrome w-full space-y-6">
+    <PageHeader title="Select a server" description="Choose the machine that will host this resource.">
+      {#snippet leading()}<ProjectTile size="lg" icon="servers" />{/snippet}
+      {#snippet actions()}
+        <a class={buttonVariants({ variant: 'outline', size: 'sm' })} href={href(base)}>Back</a>
+      {/snippet}
+    </PageHeader>
+    {#if ready.length === 0}
+      <Callout type="warning" title="No deployment server">
+        No server is ready. Add or validate a server before continuing.
+        <a class="font-medium underline" href={href('/servers')}>Open servers</a>
+      </Callout>
+    {/if}
+    {#if servers.length > 0}
+      <Card class="block gap-0 overflow-hidden py-0">
+        {#each ready as s (s.id)}
+          <EntityRow title={s.name} subtitle={s.kind === 'local' ? 'This machine' : s.host} href={href(`${base}?type=${type}&server=${s.id}`)}>
+            {#snippet leading()}<ProjectTile size="sm" icon="servers" />{/snippet}
+            {#snippet trailing()}<StatusBadge status="Ready" type="success" />{/snippet}
+          </EntityRow>
+        {/each}
+        {#each notReady as s (s.id)}
+          <EntityRow title={s.name} subtitle="Validate this server before it can host resources." class="opacity-60">
+            {#snippet leading()}<ProjectTile size="sm" icon="servers" />{/snippet}
+            {#snippet trailing()}
+              <StatusBadge status={s.status === 'unreachable' ? 'Unreachable' : 'Not validated'} type="neutral" />
+              <a href={href(serverPath(s.id))} class={buttonVariants({ variant: 'outline', size: 'xs' })}>Settings</a>
+            {/snippet}
+          </EntityRow>
+        {/each}
+      </Card>
+    {/if}
+  </div>
+{:else if step === 'create' && card}
+  <SettingsPage icon={Plus} title={card.name}>
+    {#snippet actions()}
+      <a class={buttonVariants({ variant: 'outline', size: 'sm' })} href={href(base)}>Back</a>
+    {/snippet}
+    {#if card.id === 'public'}
+      <PublicGitRepository environmentId={id} server={server!} />
+    {:else if card.id === 'private-deploy-key'}
+      <PrivateGitRepository environmentId={id} server={server!} />
+    {:else if card.id === 'docker-image'}
+      <DockerImage environmentId={id} server={server!} />
+    {:else}
+      <DockerCompose environmentId={id} />
+    {/if}
+  </SettingsPage>
 {/if}

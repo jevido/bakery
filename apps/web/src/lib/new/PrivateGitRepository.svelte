@@ -8,6 +8,7 @@
   import { api } from '../api'
   import { applicationPath, go } from '../router.svelte'
   import type { Application, BuildPack } from '../types'
+  import SettingsGroup from '../settings/SettingsGroup.svelte'
   import Button from '../ui/Button.svelte'
   import Input from '../ui/Input.svelte'
   import { toast } from '../ui/toast.svelte'
@@ -47,28 +48,13 @@
   }
 </script>
 
-<div class="chrome mt-8 flex w-full max-w-none flex-col gap-6 lg:mt-3">
-  <form onsubmit={submit}>
-    <section class="application-settings-section">
-      <div class="application-settings-section-header">
-        <div>
-          <h2>Repository configuration</h2>
-          <p>Enter the repository location and choose how The Bakery should build it.</p>
-        </div>
-        <Button type="submit" variant="highlighted" loading={busy}>Continue</Button>
-      </div>
-      <div class="application-settings-section-body space-y-5">
-        <!-- svelte-ignore a11y_autofocus -->
-        <Input
-          required
-          label="Repository URL"
-          placeholder="git@github.com:owner/repository.git"
-          autofocus
-          bind:value={repositoryUrl}
-          error={errors.git_url}
-        />
-        <BuildConfiguration bind:branch bind:buildPack bind:port bind:publishDirectory {errors} />
-      </div>
-    </section>
-  </form>
-</div>
+<form onsubmit={submit}>
+  <SettingsGroup label="Repository configuration" hint="Enter the repository location and choose how The Bakery should build it.">
+    <!-- svelte-ignore a11y_autofocus -->
+    <Input required label="Repository URL" placeholder="git@github.com:owner/repository.git" autofocus bind:value={repositoryUrl} error={errors.git_url} />
+    <BuildConfiguration bind:branch bind:buildPack bind:port bind:publishDirectory {errors} />
+    <div class="flex justify-end">
+      <Button type="submit" variant="highlighted" loading={busy}>Continue</Button>
+    </div>
+  </SettingsGroup>
+</form>

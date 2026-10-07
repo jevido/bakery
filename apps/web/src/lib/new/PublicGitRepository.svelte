@@ -10,6 +10,7 @@
   import { api } from '../api'
   import { applicationPath, go } from '../router.svelte'
   import type { Application, BuildPack } from '../types'
+  import SettingsGroup from '../settings/SettingsGroup.svelte'
   import Button from '../ui/Button.svelte'
   import Input from '../ui/Input.svelte'
   import BuildConfiguration from './BuildConfiguration.svelte'
@@ -62,63 +63,47 @@
 </script>
 
 {#snippet repositoryHelper()}
-  <span class="text-helper">Examples</span><br />For Public repositories, use <span class="text-helper">https://...</span>.<br />For
-  Private repositories, use <span class="text-helper">git@...</span>.<br /><br />https://github.com/owner/repository
-  <span class="text-helper">main</span> branch will be selected<br />https://github.com/owner/repository/tree/develop
-  <span class="text-helper">develop</span> branch will be selected.<br />https://gitea.com/owner/repository.git
-  <span class="text-helper">main</span> branch will be selected.
+  <span class="font-medium text-foreground">Examples</span><br />For Public repositories, use <span class="font-medium text-foreground">https://...</span>.<br />For
+  Private repositories, use <span class="font-medium text-foreground">git@...</span>.<br /><br />https://github.com/owner/repository
+  <span class="font-medium text-foreground">main</span> branch will be selected<br />https://github.com/owner/repository/tree/develop
+  <span class="font-medium text-foreground">develop</span> branch will be selected.<br />https://gitea.com/owner/repository.git
+  <span class="font-medium text-foreground">main</span> branch will be selected.
 {/snippet}
 
-<div class="chrome mt-8 flex w-full max-w-none flex-col gap-6 lg:mt-3">
-  <form onsubmit={loadBranch}>
-    <section class="application-settings-section">
-      <div class="application-settings-section-header">
-        <div>
-          <h2>Public Git repository</h2>
-          <p>Connect a public repository over HTTPS and inspect its default branch.</p>
-        </div>
+<form onsubmit={loadBranch}>
+  <SettingsGroup label="Public Git repository" hint="Connect a public repository over HTTPS and inspect its default branch.">
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-end">
+      <div class="min-w-0 flex-1">
+        <!-- svelte-ignore a11y_autofocus -->
+        <Input
+          required
+          label="Repository URL"
+          helper={repositoryHelper}
+          placeholder="https://github.com/owner/repository"
+          autofocus
+          bind:value={repositoryUrl}
+          error={errors.git_url}
+        />
       </div>
-      <div class="application-settings-section-body">
-        <div class="flex flex-col gap-2 sm:flex-row sm:items-end">
-          <div class="min-w-0 flex-1">
-            <!-- svelte-ignore a11y_autofocus -->
-            <Input
-              required
-              label="Repository URL"
-              helper={repositoryHelper}
-              placeholder="https://github.com/owner/repository"
-              autofocus
-              bind:value={repositoryUrl}
-              error={errors.git_url}
-            />
-          </div>
-          <Button type="submit" class="w-full justify-center sm:w-auto">Check repository</Button>
-        </div>
-      </div>
-    </section>
-  </form>
+      <Button type="submit" class="w-full justify-center sm:w-auto">Check repository</Button>
+    </div>
+  </SettingsGroup>
+</form>
 
-  {#if branchFound}
-    <form onsubmit={submit}>
-      <section class="application-settings-section">
-        <div class="application-settings-section-header">
-          <div>
-            <h2>Build configuration</h2>
-            <p>Choose how The Bakery builds and runs this repository.</p>
-          </div>
-          <Button type="submit" variant="highlighted" loading={busy}>Continue</Button>
-        </div>
-        <div class="application-settings-section-body space-y-5">
-          <BuildConfiguration
-            bind:branch={gitBranch}
-            bind:buildPack
-            bind:port
-            bind:publishDirectory
-            {errors}
-            branchHelper="You can choose another branch after the application is created."
-          />
-        </div>
-      </section>
-    </form>
-  {/if}
-</div>
+{#if branchFound}
+  <form onsubmit={submit}>
+    <SettingsGroup label="Build configuration" hint="Choose how The Bakery builds and runs this repository.">
+      <BuildConfiguration
+        bind:branch={gitBranch}
+        bind:buildPack
+        bind:port
+        bind:publishDirectory
+        {errors}
+        branchHelper="You can choose another branch after the application is created."
+      />
+      <div class="flex justify-end">
+        <Button type="submit" variant="highlighted" loading={busy}>Continue</Button>
+      </div>
+    </SettingsGroup>
+  </form>
+{/if}

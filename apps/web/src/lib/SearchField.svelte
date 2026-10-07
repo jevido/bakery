@@ -5,13 +5,22 @@
   import { Input } from '$lib/components/ui/input'
   import Icon from './Icon.svelte'
 
-  let { value = $bindable(''), label, oninput }: { value?: string; label: string; oninput?: () => void } = $props()
+  let {
+    value = $bindable(''),
+    ref = $bindable(null),
+    label,
+    autofocus = false,
+    oninput,
+  }: { value?: string; ref?: HTMLInputElement | null; label: string; autofocus?: boolean; oninput?: () => void } = $props()
 </script>
 
 <div class="relative w-full sm:max-w-sm">
   <Icon name="search" class="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+  <!-- svelte-ignore a11y_autofocus -->
   <Input
     bind:value
+    bind:ref
+    {autofocus}
     {oninput}
     type="search"
     placeholder={label}
