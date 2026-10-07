@@ -7,7 +7,8 @@
   import Empty from '../../lib/ui/Empty.svelte'
   import SettingsSection from '../../lib/ui/SettingsSection.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
-  import StatusBadge, { type StatusType } from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import { statusType } from '../../lib/statusColors'
 
   let { channelId, eventKinds, version }: { channelId: number; eventKinds: EventKind[]; version: number } = $props()
 
@@ -25,11 +26,7 @@
       .catch((e) => (error = e.message))
   })
 
-  const badge: Record<Delivery['status'], { label: string; type: StatusType }> = {
-    pending: { label: 'Pending', type: 'warning' },
-    sent: { label: 'Sent', type: 'success' },
-    failed: { label: 'Failed', type: 'error' },
-  }
+  const labels: Record<Delivery['status'], string> = { pending: 'Pending', sent: 'Sent', failed: 'Failed' }
   const label = (kind: string) => eventKinds.find((e) => e.kind === kind)?.label ?? kind
   const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' })
 </script>
@@ -47,7 +44,7 @@
     {#each deliveries as d (d.id)}
       <div class="border-b border-neutral-200 last:border-b-0 dark:border-white/[0.08]" data-testid="delivery">
         <div class="flex w-full items-start gap-4 px-4 py-3 text-left">
-          <StatusBadge status={badge[d.status].label} type={badge[d.status].type} class="mt-0.5 shrink-0" />
+          <StatusBadge status={labels[d.status]} type={statusType(d.status)} class="mt-0.5 shrink-0" />
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-medium text-neutral-950 dark:text-fg">{d.title}</p>
             <p class="mt-0.5 text-xs text-neutral-500 dark:text-fg-dim">

@@ -2,6 +2,7 @@
   // Coolify's client-pagination (resources/views/components/client-pagination.blade.php):
   // "start-end of total", the page size, and previous/next, for a list paged
   // in the browser.
+  import { buttonVariants } from '$lib/components/ui/button'
   import Icon from '../Icon.svelte'
   import PageSizeSelect from './PageSizeSelect.svelte'
 
@@ -25,13 +26,12 @@
   const start = $derived(total === 0 ? 0 : (page - 1) * pageSize + 1)
   const end = $derived(Math.min(page * pageSize, total))
 
-  const arrow =
-    'flex size-7 items-center justify-center rounded-md border border-neutral-200 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-black disabled:pointer-events-none disabled:opacity-35 dark:border-white/[0.08] dark:text-fg-dim dark:hover:bg-white/[0.06] dark:hover:text-fg'
+  const arrow = buttonVariants({ variant: 'outline', size: 'icon-sm', class: 'size-7 text-muted-foreground' })
 </script>
 
 <footer
   class={[
-    'flex min-h-11 items-center justify-between border-t border-neutral-200 px-4 text-[11px] text-neutral-500 dark:border-white/[0.08] dark:text-fg-faint',
+    'flex min-h-11 items-center justify-between border-t border-border px-4 text-xs text-muted-foreground',
     className,
   ]}
 >

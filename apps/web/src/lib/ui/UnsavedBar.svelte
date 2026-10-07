@@ -4,7 +4,10 @@
   // Reset and "Save changes", and Enter saving from anywhere but a textarea,
   // button, link or select. It shows 300 ms after the form turns dirty and
   // hides at once while saving, as Coolify's delayed classes do. On a phone
-  // it sits above the on-screen keyboard.
+  // it sits above the on-screen keyboard. Drawn as Paperclip's popover
+  // surface with its ghost and primary buttons.
+  import { Button } from '$lib/components/ui/button'
+
   let {
     dirty,
     saving = false,
@@ -57,30 +60,17 @@
   aria-hidden={!dirty || saving}
   style="--keyboard-inset: {keyboardInset}px"
   class={[
-    'pointer-events-none fixed inset-x-3 bottom-[calc(var(--keyboard-inset,0px)+max(1.5rem,env(safe-area-inset-bottom,0px)+0.75rem))] z-[1000] flex max-w-full translate-y-6 scale-95 flex-col items-stretch gap-2 rounded-2xl border border-neutral-200 bg-white py-2.5 pr-2.5 pl-4 opacity-0 shadow-modal transition-[opacity,transform,scale] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] delay-0 dark:border-white/10 dark:bg-surface [&.is-dirty]:pointer-events-auto [&.is-dirty]:translate-y-0 [&.is-dirty]:scale-100 [&.is-dirty]:opacity-100 [&.is-dirty]:delay-300 [&.is-saving]:pointer-events-none [&.is-saving]:translate-y-6 [&.is-saving]:scale-95 [&.is-saving]:opacity-0 [&.is-saving]:delay-0 [&.is-saving]:duration-200 [&.is-saving]:ease-in sm:inset-x-auto sm:bottom-6 sm:left-1/2 sm:w-max sm:max-w-none sm:-translate-x-1/2 sm:flex-row sm:items-center sm:gap-8 sm:py-2 sm:pr-2 sm:pl-5',
+    'pointer-events-none fixed inset-x-3 bottom-[calc(var(--keyboard-inset,0px)+max(1.5rem,env(safe-area-inset-bottom,0px)+0.75rem))] z-[1000] flex max-w-full translate-y-6 scale-95 flex-col items-stretch gap-2 rounded-lg border border-border bg-popover text-popover-foreground py-2.5 pr-2.5 pl-4 opacity-0 shadow-lg transition-[opacity,transform,scale] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] delay-0 [&.is-dirty]:pointer-events-auto [&.is-dirty]:translate-y-0 [&.is-dirty]:scale-100 [&.is-dirty]:opacity-100 [&.is-dirty]:delay-300 [&.is-saving]:pointer-events-none [&.is-saving]:translate-y-6 [&.is-saving]:scale-95 [&.is-saving]:opacity-0 [&.is-saving]:delay-0 [&.is-saving]:duration-200 [&.is-saving]:ease-in sm:inset-x-auto sm:bottom-6 sm:left-1/2 sm:w-max sm:max-w-none sm:-translate-x-1/2 sm:flex-row sm:items-center sm:gap-8 sm:py-2 sm:pr-2 sm:pl-5',
     dirty && 'is-dirty',
     saving && 'is-saving',
   ]}
 >
-  <span class="text-[13px] leading-snug font-semibold text-neutral-800 sm:whitespace-nowrap dark:text-fg">{label}</span>
+  <span class="text-sm leading-snug font-medium sm:whitespace-nowrap">{label}</span>
   <div class="flex shrink-0 items-center justify-end gap-2">
-    <button
-      type="button"
-      tabindex={dirty ? 0 : -1}
-      onclick={onreset}
-      class="h-8 rounded-lg bg-neutral-100 px-3.5 text-[13px] font-medium text-neutral-700 transition-colors hover:bg-neutral-200 dark:bg-white/[0.07] dark:text-fg dark:hover:bg-white/[0.12]"
-    >
-      Reset
-    </button>
-    <button
-      type="button"
-      tabindex={dirty ? 0 : -1}
-      disabled={saving}
-      onclick={onsave}
-      class="button-highlighted flex h-8 items-center gap-2 rounded-lg px-4 text-[13px] font-semibold transition-[transform,background-color] active:scale-[0.98]"
-    >
+    <Button variant="ghost" size="sm" class="h-8" tabindex={dirty ? 0 : -1} onclick={onreset}>Reset</Button>
+    <Button size="sm" class="h-8" tabindex={dirty ? 0 : -1} disabled={saving} onclick={onsave}>
       <span>Save changes</span>
       <kbd class="rounded border border-current/20 bg-current/10 px-1.5 py-0.5 text-[10px] leading-none font-medium text-current">Enter</kbd>
-    </button>
+    </Button>
   </div>
 </div>

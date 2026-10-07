@@ -413,8 +413,7 @@
 }
 
 /* Reserve space for a visibility toggle or copy button inside an input. */
-.input[type="password"],
-.input.input-with-copy-button {
+.input[type="password"] {
   padding-right: 2.5rem;
 }
 

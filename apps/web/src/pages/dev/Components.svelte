@@ -26,6 +26,8 @@
   import SectionHeading from '../../lib/ui/SectionHeading.svelte'
   import Select from '../../lib/ui/Select.svelte'
   import StatusBadge, { containerStatus } from '../../lib/ui/StatusBadge.svelte'
+  import StatusSummary from '../../lib/ui/StatusSummary.svelte'
+  import { statusTypes } from '../../lib/statusColors'
   import Textarea from '../../lib/ui/Textarea.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
@@ -389,8 +391,20 @@
       <StatusBadge {...containerStatus('restarting')} />
       <StatusBadge {...containerStatus('degraded:unhealthy')} />
       <StatusBadge {...containerStatus('exited')} />
-      <StatusBadge status="Failed" type="error" />
       <StatusBadge status="Refresh" onclick={() => toast.info('Refreshing status')} class="cursor-pointer border-transparent hover:bg-accent" />
+    </div>
+    <p class="mt-4 mb-2 text-xs text-muted-foreground">Every state in the status palette, once</p>
+    <div class="flex flex-wrap gap-2" data-testid="status-palette">
+      {#each Object.keys(statusTypes) as state (state)}
+        <StatusBadge status={state} />
+      {/each}
+    </div>
+    <p class="mt-4 mb-2 text-xs text-muted-foreground">status-summary: click to see the container and its healthcheck</p>
+    <div class="flex flex-wrap gap-2">
+      <StatusSummary status="running:healthy" />
+      <StatusSummary status="running:unknown" />
+      <StatusSummary status="degraded:unhealthy" />
+      <StatusSummary status="exited" />
     </div>
   </section>
 

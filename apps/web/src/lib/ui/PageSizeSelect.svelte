@@ -3,8 +3,8 @@
   // the rows per page from a short list or "Custom…" (1–100), remembered under
   // `storageKey` when one is given.
   import { untrack } from 'svelte'
+  import * as Popover from '$lib/components/ui/popover'
   import Icon from '../Icon.svelte'
-  import TableDropdown from './TableDropdown.svelte'
 
   let {
     value = $bindable(),
@@ -18,7 +18,9 @@
     onchange?: (size: number) => void
   } = $props()
 
+  let open = $state(false)
   let customizing = $state(false)
+  const option_ = 'flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-sm tabular-nums'
   let custom = $state(untrack(() => value))
   let customInput = $state<HTMLInputElement>()
 
@@ -42,54 +44,49 @@
   })
 </script>
 
-<div class="mb-0! flex h-7 items-center gap-1.5 text-[11px] text-neutral-500 dark:text-fg-dim">
+<div class="flex h-7 items-center gap-1.5 text-xs text-muted-foreground">
   {#if !customizing}
-    <span class="relative inline-flex h-7 w-12 items-center">
-      <TableDropdown panelClass="min-w-24!">
-        {#snippet trigger({ open, toggle })}
-          <button
-            type="button"
-            aria-label="Items per page"
-            aria-haspopup="listbox"
-            aria-expanded={open}
-            onclick={toggle}
-            class="inline-flex h-7! w-12! items-center justify-between border-0 px-1 text-[11px]! leading-none! text-neutral-500 tabular-nums transition-colors hover:text-black dark:text-fg-dim dark:hover:text-fg"
-          >
-            <span>{value}</span>
-            <Icon name="chevron-down" class="size-3 text-neutral-400 dark:text-fg-faint" />
-          </button>
-        {/snippet}
-        {#snippet children(close)}
+    <Popover.Root bind:open>
+      <Popover.Trigger
+        aria-label="Items per page"
+        aria-haspopup="listbox"
+        class="inline-flex h-7 w-12 items-center justify-between rounded-sm px-1 text-xs leading-none text-muted-foreground tabular-nums transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        <span>{value}</span>
+        <Icon name="chevron-down" class="size-3 opacity-60" />
+      </Popover.Trigger>
+      <Popover.Content align="start" class="w-28 p-1">
+        <div class="space-y-0.5" role="listbox" aria-label="Items per page">
           {#each options as option (option)}
             <button
               type="button"
-              class="listbox-option"
+              class={[option_, value === option ? 'bg-accent/50 text-foreground' : 'text-muted-foreground hover:bg-accent/50']}
               role="option"
               aria-selected={value === option}
               onclick={() => {
                 apply(option)
-                close()
+                open = false
               }}
             >
               <span>{option}</span>
-              {#if value === option}<Icon name="check" class="size-3.5" />{/if}
+              {#if value === option}<Icon name="check" class="size-3 text-muted-foreground" />{/if}
             </button>
           {/each}
           <button
             type="button"
-            class="listbox-option"
+            class={[option_, 'text-muted-foreground hover:bg-accent/50']}
             role="option"
             aria-selected="false"
             onclick={() => {
-              close()
+              open = false
               customizing = true
             }}
           >
             Custom…
           </button>
-        {/snippet}
-      </TableDropdown>
-    </span>
+        </div>
+      </Popover.Content>
+    </Popover.Root>
   {:else}
     <input
       bind:this={customInput}
@@ -109,7 +106,7 @@
       max="100"
       inputmode="numeric"
       aria-label="Custom items per page"
-      class="mb-0! h-7! w-14! rounded-md! border-neutral-200! bg-transparent! px-1.5! py-0! text-[11px]! tabular-nums shadow-none! focus:border-neutral-300! focus:ring-0! dark:border-white/[0.08]! dark:text-fg-dim!"
+      class="h-7 w-14 rounded-md border bg-transparent px-1.5 py-0 text-xs text-foreground tabular-nums outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
     />
   {/if}
 </div>

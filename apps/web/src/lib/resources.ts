@@ -1,7 +1,7 @@
 // What an Environment's Resources page shows of each Application, Database
 // and Service, with the helpers from the Alpine script in Coolify's
 // project/resource/index.blade.php (Apache-2.0, see NOTICE).
-import type { StatusType } from './ui/StatusBadge.svelte'
+import { statusType, type StatusType } from './statusColors'
 
 export type ResourceType = 'application' | 'database' | 'service'
 
@@ -44,11 +44,7 @@ export const statusTitle = statusLabel
  * a cancelled one is neutral.
  */
 export function statusTone(item: Pick<ResourceItem, 'status'>): StatusType {
-  const state = statusState(item)
-  if (['running', 'finished'].includes(state)) return 'success'
-  if (['starting', 'restarting', 'degraded', 'queued', 'cloning', 'building', 'deploying'].includes(state)) return 'warning'
-  if (['exited', 'stopped', 'failed'].includes(state)) return 'error'
-  return 'neutral'
+  return statusType(statusState(item))
 }
 
 export function firstDomain(fqdn: string): string {

@@ -1,14 +1,17 @@
 <script lang="ts" module>
   import type { Deployment } from '../../lib/types'
-  import type { StatusType } from '../../lib/ui/StatusBadge.svelte'
+  import { statusType, type StatusType } from '../../lib/statusColors'
 
-  /** Coolify's status label and colour for a Deployment. */
+  const deploymentLabels: Partial<Record<Deployment['status'], string>> = {
+    finished: 'Success',
+    failed: 'Failed',
+    queued: 'Queued',
+    cancelled: 'Cancelled',
+  }
+
+  /** Coolify's status label for a Deployment, coloured from the status palette. */
   export function deploymentStatus(d: Pick<Deployment, 'status' | 'active'>): { label: string; type: StatusType } {
-    if (d.status === 'finished') return { label: 'Success', type: 'success' }
-    if (d.status === 'failed') return { label: 'Failed', type: 'error' }
-    if (d.status === 'queued') return { label: 'Queued', type: 'warning' }
-    if (d.status === 'cancelled') return { label: 'Cancelled', type: 'neutral' }
-    return { label: 'In progress', type: 'warning' }
+    return { label: deploymentLabels[d.status] ?? 'In progress', type: statusType(d.status) }
   }
 
   /** Coolify's Source column; The Bakery also names Restarts. */

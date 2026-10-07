@@ -1,5 +1,6 @@
 <script lang="ts" module>
-  export type StatusType = 'neutral' | 'success' | 'warning' | 'error'
+  import type { StatusType } from '../statusColors'
+  export type { StatusType }
 
   function headline(s: string): string {
     return s
@@ -30,14 +31,16 @@
 
 <script lang="ts">
   // Paperclip's StatusBadge (components/StatusBadge.tsx): a pill tinted by
-  // its status, here the success, warning and error tokens. `href` renders a
-  // link, `onclick` a button.
+  // its status from the one palette in statusColors.ts. Without a `type` the
+  // tone comes from `status` itself (`failed`, `running:healthy`). `href`
+  // renders a link, `onclick` a button.
   import type { Snippet } from 'svelte'
+  import { statusBadgeClasses, statusType } from '../statusColors'
 
   let {
     label,
     status,
-    type = 'neutral',
+    type: typeProp,
     href,
     onclick,
     title,
@@ -54,12 +57,7 @@
     children?: Snippet
   } = $props()
 
-  const tone: Record<StatusType, string> = {
-    neutral: 'bg-muted text-muted-foreground',
-    success: 'bg-success/10 text-success',
-    warning: 'bg-warning/10 text-warning',
-    error: 'bg-destructive/10 text-destructive',
-  }
+  const tone = $derived(statusBadgeClasses[typeProp ?? statusType(status ?? '')])
 
   const base = 'chrome inline-flex max-w-full shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap'
   const text = $derived([label, status].filter(Boolean).join(' '))
@@ -74,9 +72,9 @@
 {/snippet}
 
 {#if href}
-  <a {href} {title} class={[base, tone[type], 'transition-opacity hover:opacity-80', className]}>{@render body()}</a>
+  <a {href} {title} class={[base, tone, 'transition-opacity hover:opacity-80', className]}>{@render body()}</a>
 {:else if onclick}
-  <button type="button" {onclick} {title} class={[base, tone[type], 'cursor-pointer transition-opacity hover:opacity-80', className]}>{@render body()}</button>
+  <button type="button" {onclick} {title} class={[base, tone, 'cursor-pointer transition-opacity hover:opacity-80', className]}>{@render body()}</button>
 {:else}
-  <span {title} class={[base, tone[type], className]}>{@render body()}</span>
+  <span {title} class={[base, tone, className]}>{@render body()}</span>
 {/if}

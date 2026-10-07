@@ -21,7 +21,8 @@
   import { canIn, session } from '../lib/session.svelte'
   import type { Project, Server } from '../lib/types'
   import Empty from '../lib/ui/Empty.svelte'
-  import StatusBadge, { type StatusType } from '../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '../lib/ui/StatusBadge.svelte'
+  import { statusType, type StatusType } from '../lib/statusColors'
 
   const itemLimit = 8
   const byName = (a: { name: string }, b: { name: string }) =>
@@ -55,9 +56,8 @@
   // Coolify's server states, in its order, in this context's words: a Server
   // not yet validated is not ready, one that failed validation is unreachable.
   function serverStatus(s: Server): { label: string; type: StatusType } {
-    if (s.status === 'unreachable') return { label: 'Unreachable', type: 'error' }
-    if (s.status === 'unvalidated') return { label: 'Not ready', type: 'warning' }
-    return { label: 'Ready', type: 'success' }
+    const label = s.status === 'unreachable' ? 'Unreachable' : s.status === 'unvalidated' ? 'Not ready' : 'Ready'
+    return { label, type: statusType(s.status) }
   }
 
   // The Resources card waits until every Project's counts are in, so it never

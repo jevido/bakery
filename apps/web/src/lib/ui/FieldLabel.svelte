@@ -15,7 +15,7 @@
 </script>
 
 <div class="mb-1.5 flex h-4 w-full items-center gap-1.5">
-  <label for={htmlFor} class={['mb-0! flex items-center gap-1 text-sm font-medium leading-4', disabled && 'text-neutral-600']}>
+  <label for={htmlFor} class={['mb-0! flex items-center gap-1 text-sm font-medium leading-4', disabled && 'text-muted-foreground']}>
     {label}
     {#if required}<span class="text-helper">*</span>{/if}
   </label>

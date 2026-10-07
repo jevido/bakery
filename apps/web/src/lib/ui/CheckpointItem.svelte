@@ -9,6 +9,7 @@
   // that failed without being required.
   import type { Snippet } from 'svelte'
   import Icon from '../Icon.svelte'
+  import { statusBadgeClasses } from '../statusColors'
 
   let {
     title,
@@ -27,12 +28,12 @@
   } = $props()
 
   const statusClasses: Record<CheckpointStatus, string> = {
-    success: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-    error: 'border-red-500/25 bg-red-500/10 text-red-600 dark:text-red-400',
-    warning: 'border-warning/25 bg-warning/15 text-warning-700 dark:text-warning',
+    success: `border-success/25 ${statusBadgeClasses.success}`,
+    error: `border-destructive/25 ${statusBadgeClasses.error}`,
+    warning: `border-warning/25 ${statusBadgeClasses.warning}`,
     running: 'border-primary/25 bg-primary/10 text-primary',
-    pending: 'border-neutral-200 text-neutral-400 dark:border-white/[0.1] dark:text-fg-faint',
-    idle: 'border-neutral-200 bg-neutral-50 text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.035] dark:text-fg-dim',
+    pending: 'border-border text-muted-foreground/70',
+    idle: 'border-border bg-muted/50 text-muted-foreground',
   }
 </script>
 
@@ -56,12 +57,12 @@
     {/if}
   </span>
   <span class="min-w-0">
-    <span class="block text-[13px] font-semibold">{title}</span>
+    <span class="block text-sm font-medium">{title}</span>
     {#if description}
-      <span class="mt-0.5 block text-[11px] text-neutral-500 dark:text-fg-faint">{description}</span>
+      <span class="mt-0.5 block text-xs text-muted-foreground">{description}</span>
     {/if}
     {#if children}
-      <div class="mt-0.5 text-[11px] break-words text-neutral-500 dark:text-fg-faint">{@render children()}</div>
+      <div class="mt-0.5 text-xs break-words text-muted-foreground">{@render children()}</div>
     {/if}
   </span>
 </div>
