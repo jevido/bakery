@@ -164,7 +164,9 @@
   $effect(() => {
     environment = null
     loadError = ''
-    // A viewer has no create rights: the Environment page instead.
+    // A viewer has no create rights: the Environment page instead. Opened
+    // straight from a link, the Project's Permissions are still on their way.
+    if (!projectAccess.ready) return
     if (!projectAccess.can('manage_applications')) {
       location.replace(href(`/project/${projectId}/environment/${id}`))
       return

@@ -66,6 +66,11 @@ class ProjectAccess {
     }
   }
 
+  /** Whether the followed Project has answered, so `can` is final. True outside a Project. */
+  get ready(): boolean {
+    return this.#project === null || this.#permissions !== null
+  }
+
   /**
    * Whether the Member may use p where the page is: in its Project for the
    * four Permissions a Project overrides (false until the Project answers),

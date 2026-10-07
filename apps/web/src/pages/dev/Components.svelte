@@ -10,6 +10,8 @@
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Dropdown from '../../lib/ui/Dropdown.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
+  import MetricCard from '../../lib/MetricCard.svelte'
+  import PageSkeleton from '../../lib/PageSkeleton.svelte'
   import Helper from '../../lib/ui/Helper.svelte'
   import Input from '../../lib/ui/Input.svelte'
   import Modal from '../../lib/ui/Modal.svelte'
@@ -372,6 +374,24 @@
     <Empty title="No resources found" description="Add an application, a database or a service to this environment." icon="layers">
       <Button variant="highlighted">+ Add Resource</Button>
     </Empty>
+  </section>
+
+  <section id="metric-card">
+    <SectionHeading title="Metric card" subtitle="MetricCard" />
+    <div class="grid grid-cols-2 gap-2 xl:grid-cols-4">
+      <MetricCard icon="projects" value={3} label="Projects" href="#/projects">
+        {#snippet description()}Deployment workspaces{/snippet}
+      </MetricCard>
+      <MetricCard icon="alert-triangle" value={1} label="Servers needing attention" />
+    </div>
+  </section>
+
+  <section id="page-skeleton">
+    <SectionHeading title="Page skeleton" subtitle="PageSkeleton list, dashboard" />
+    <div class="grid gap-6 md:grid-cols-2">
+      <PageSkeleton />
+      <PageSkeleton variant="dashboard" />
+    </div>
   </section>
 
   <section id="dropdown">
