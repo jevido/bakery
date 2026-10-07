@@ -37,7 +37,13 @@
 			{#snippet child({ props })}
 				<div
 					class={cn(
-						"bg-foreground fill-foreground z-50 size-2.5 translate-y-(--sz-calc-28) rotate-45 rounded-(--rad-2)",
+						// bits-ui turns the arrow per side itself, so each side
+						// needs its own nudge (shadcn-svelte's classes).
+						"bg-foreground fill-foreground z-50 size-2.5 rotate-45 rounded-(--rad-2)",
+						"data-[side=top]:translate-x-1/2 data-[side=top]:translate-y-(--sz-calc-29)",
+						"data-[side=bottom]:-translate-x-1/2 data-[side=bottom]:-translate-y-(--sz-calc-30)",
+						"data-[side=right]:translate-x-(--sz-calc-31) data-[side=right]:translate-y-1/2",
+						"data-[side=left]:-translate-y-(--sz-calc-32)",
 						arrowClasses
 					)}
 					{...props}

@@ -130,10 +130,14 @@
   --sz-300px: 300px;
   --sz-8rem: 8rem;
   --sz-neg-5px: -5px;
+  --sz-calc-24: calc(100vw - 1rem);
   --sz-calc-25: calc(100% - 2rem);
   --sz-calc-26: max(1rem, env(safe-area-inset-top));
   --sz-calc-27: calc(100% - 1px);
-  --sz-calc-28: calc(-50% - 2px);
+  --sz-calc-29: calc(-50% + 2px);
+  --sz-calc-30: calc(-50% + 1px);
+  --sz-calc-31: calc(50% + 2px);
+  --sz-calc-32: calc(50% - 3px);
   --rad-2: 2px;
   --rad-3: 3px;
   --rad-4: 4px;
@@ -151,6 +155,26 @@
   --tp-transform-opacity: transform, opacity;
   --tp-width: width;
   --e-cubic-bezier-0_16-1-0_3-1: cubic-bezier(0.16, 1, 0.3, 1);
+  --drop-shadow-extract-1: 0 1px 2px rgba(0, 0, 0, 0.65);
+
+  /* The account and guild menus' popovers (Paperclip's profile and
+     organization popover tokens). */
+  --profile-popover-width: 248px;
+  --profile-popover-header-height: 76px;
+  --profile-popover-row-height: 38px;
+  --profile-popover-row-gap: 9px;
+  --profile-popover-label-line-height: 18px;
+  --profile-popover-meta-line-height: 15px;
+  --shadow-profile-popover: 0 18px 45px oklch(0 0 0 / 18%);
+  --organization-popover-width: 248px;
+  --organization-popover-header-height: 48px;
+  --organization-popover-company-row-height: 44px;
+  --organization-popover-action-row-height: 38px;
+  --organization-popover-avatar-size: 30px;
+  --organization-popover-row-gap: 9px;
+  --organization-popover-name-line-height: 17px;
+  --organization-popover-prefix-line-height: 13px;
+  --organization-popover-action-line-height: 18px;
 }
 
 .dark {
