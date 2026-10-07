@@ -116,7 +116,7 @@
 {/snippet}
 
 {#if missing}
-  <NotFound />
+  <NotFound title="Goal not found" description="This goal does not exist or you cannot see it." />
 {:else if loadError}
   <p class="text-sm text-destructive">{loadError}</p>
 {:else if goal === null}

@@ -1,4 +1,4 @@
-// The Guild's work pages (Goals and Issues; the Issue page follows) in
+// The Guild's work pages (Goals, Issues and the Issue page) in
 // headless Chromium, one section each, every flow once in the dark theme at
 // 1440×900 (the light theme and phone width wait for the guilds goal's final
 // sweep):
@@ -14,6 +14,15 @@
 //           one; the status filter todo hides a backlog one and survives a
 //           reload; the Project filter keeps only the first; grouping shows
 //           the counts; the scratch Issues and Project are deleted again
+//   issue   a scratch Issue opens by its identifier; its title is renamed in
+//           place and a reload keeps it; status In Progress shows the
+//           Started time, priority and the Assignee and Goal change from the
+//           properties panel; Add sub-issue creates one under it, listed and
+//           opening its own page with the parent link; a Markdown comment
+//           with a code block is posted, edited and deleted (the placeholder
+//           stays); the Goal's page and the Issues list open it from
+//           their rows; #/issues/DEF-99999 shows the not-found state; the scratch
+//           Issues and Goal are deleted again
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -237,6 +246,95 @@ const sections: Record<string, () => Promise<void>> = {
     const left = (await issues(page)).filter((i) => scratchIssues.includes(i.title))
     expect('the scratch Issues are deleted again', left.length === 0, left)
 
+    await page.close()
+  },
+  async issue() {
+    const page = await signedIn()
+    const titles = ['Port the Issue page', 'Port the Issue page now', 'Issue page sub-issue']
+    const tidy = async () => {
+      for (const i of (await issues(page)).filter((i) => titles.includes(i.title))) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+      for (const g of (await goals(page)).filter((g) => g.title === 'Issue page goal')) await page.request.delete(`${WEB}/api/goals/${g.id}`)
+    }
+    await tidy()
+    const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title: titles[0], status: 'todo' } })).json()) as { issue: Issue }
+    await page.request.post(`${WEB}/api/goals`, { data: { title: 'Issue page goal', level: 'guild', status: 'active' } })
+
+    await page.goto(`${WEB}/#/issues/${issue.identifier}`)
+    const header = page.getByTestId('issue-detail-header')
+    await header.getByText(issue.identifier, { exact: true }).waitFor()
+    expect('the page opens by the identifier', await page.locator('[data-inline-editor="Title"]', { hasText: titles[0] }).isVisible())
+
+    await page.locator('[data-inline-editor="Title"]').click()
+    await page.getByLabel('Title', { exact: true }).fill(titles[1])
+    await page.keyboard.press('Enter')
+    await page.locator('[data-inline-editor="Title"]', { hasText: titles[1] }).waitFor()
+    await page.reload()
+    await page.locator('[data-inline-editor="Title"]', { hasText: titles[1] }).waitFor()
+    expect('a renamed title survives a reload', true)
+
+    const properties = page.getByRole('complementary', { name: 'Properties' })
+    await properties.getByRole('button', { name: /^Change status/ }).click()
+    await page.getByRole('listbox', { name: 'Status' }).getByRole('option', { name: 'In Progress' }).click()
+    await properties.locator('[data-property-row="Started"]').waitFor()
+    expect('In Progress shows the Started time', true)
+    await properties.getByRole('button', { name: /^Change priority/ }).click()
+    await page.getByRole('listbox', { name: 'Priority' }).getByRole('option', { name: 'High' }).click()
+    await properties.getByRole('button', { name: 'Change priority (current: High)' }).waitFor()
+    const me = ((await (await page.request.get(`${WEB}/api/me`)).json()) as { member: { name: string } }).member.name
+    await pick(page, properties, 'Assignee', me)
+    await pick(page, properties, 'Goal', 'Issue page goal')
+    await properties.getByRole('button', { name: 'Goal' }).getByText('Issue page goal').waitFor()
+    const saved = ((await (await page.request.get(`${WEB}/api/issues/${issue.identifier}`)).json()) as { issue: Issue & { goal: { title: string } | null; started_at: string | null } }).issue
+    expect('status, priority, Assignee and Goal are saved', saved.status === 'in_progress' && saved.priority === 'high' && saved.assignee?.name === me && saved.goal?.title === 'Issue page goal' && !!saved.started_at, saved)
+
+    await page.getByRole('region', { name: 'Sub-issues' }).getByRole('button', { name: 'Add sub-issue' }).click()
+    const dialog = page.getByRole('dialog', { name: 'New sub-issue' })
+    await dialog.getByLabel('Issue title').fill(titles[2])
+    await dialog.getByRole('button', { name: 'Create sub-issue' }).click()
+    const child = page.getByRole('region', { name: 'Sub-issues' }).locator('[data-issue]', { hasText: titles[2] })
+    await child.waitFor()
+    expect('Add sub-issue lists the new one', true)
+    await child.click()
+    await page.locator('[data-inline-editor="Title"]', { hasText: titles[2] }).waitFor()
+    expect('it opens with the parent link', await page.getByRole('navigation', { name: 'Parent issues' }).getByRole('link', { name: titles[1] }).isVisible())
+    await page.getByRole('navigation', { name: 'Parent issues' }).getByRole('link', { name: titles[1] }).click()
+    await page.locator('[data-inline-editor="Title"]', { hasText: titles[1] }).waitFor()
+
+    const thread = page.getByRole('region', { name: 'Comments' })
+    await thread.getByLabel('Comment', { exact: true }).fill('Looks right:\n\n```go\nfmt.Println("guild")\n```')
+    await page.keyboard.press('Control+Enter')
+    const comment = thread.locator('[data-comment]').last()
+    await comment.locator('pre code').waitFor()
+    expect('a Markdown comment renders its code block', (await comment.locator('pre code').textContent())?.includes('fmt.Println') ?? false)
+    await comment.getByRole('button', { name: 'Edit comment' }).click()
+    await comment.getByLabel('Edit comment', { exact: true }).fill('Looks **right** now.')
+    await comment.getByRole('button', { name: 'Save' }).click()
+    await comment.locator('strong', { hasText: 'right' }).waitFor()
+    expect('an edited comment says so', await comment.getByText('· edited').isVisible())
+    await comment.getByRole('button', { name: 'Delete comment' }).click()
+    await page.getByTestId('confirm-delete-comment').click()
+    await comment.getByText('Comment deleted').waitFor()
+    expect('a deleted comment leaves its placeholder', true)
+
+    const goal = (await goals(page)).find((g) => g.title === 'Issue page goal')!
+    await page.goto(`${WEB}/#/goals/${goal.id}`)
+    await page.getByRole('tab', { name: /^Issues/ }).click()
+    await page.getByRole('link', { name: new RegExp(titles[1]) }).click()
+    await page.waitForURL(new RegExp(`#/issues/${issue.identifier}$`))
+    await page.locator('[data-inline-editor="Title"]', { hasText: titles[1] }).waitFor()
+    expect("a Goal's Issue row opens the Issue page", true)
+    await page.goto(`${WEB}/#/issues?q=${issue.identifier}`)
+    await page.locator(`[data-issue="${issue.identifier}"] a`).click()
+    await page.locator('[data-inline-editor="Title"]', { hasText: titles[1] }).waitFor()
+    expect('a row of the Issues list opens it too', true)
+
+    await page.goto(`${WEB}/#/issues/DEF-99999`)
+    await page.getByTestId('not-found').waitFor()
+    expect('an unknown identifier shows the not-found state', await page.getByText('This issue does not exist or you cannot see it.').isVisible())
+
+    await tidy()
+    const left = (await issues(page)).filter((i) => titles.includes(i.title))
+    expect('the scratch Issues are deleted again', left.length === 0, left)
     await page.close()
   },
 }

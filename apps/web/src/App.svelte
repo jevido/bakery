@@ -13,6 +13,7 @@
   import Profile from './pages/Profile.svelte'
   import Goal from './pages/goals/Goal.svelte'
   import Goals from './pages/goals/Goals.svelte'
+  import Issue from './pages/issues/Issue.svelte'
   import Issues from './pages/issues/Issues.svelte'
   import NotFound from './pages/NotFound.svelte'
   import Application from './pages/application/Application.svelte'
@@ -147,6 +148,10 @@
       <Security page={router.route.page} />
     {:else if router.route.name === 'issues'}
       <Issues />
+    {:else if router.route.name === 'issue'}
+      {#key router.route.key}
+        <Issue key={router.route.key} />
+      {/key}
     {:else if router.route.name === 'goals'}
       <Goals />
     {:else if router.route.name === 'goal'}

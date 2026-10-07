@@ -1,5 +1,5 @@
-// The work context's API: Goals and Issues; Comments join them with the
-// Issue page. Every call answers in the Current guild.
+// The work context's API: Goals, Issues and the Comments on an Issue.
+// Every call answers in the Current guild.
 import { api } from './api'
 
 /** How wide a Goal reaches, widest first. */
@@ -129,3 +129,22 @@ export const createIssue = (input: IssueInput) => api<{ issue: IssueDetail }>('P
 export const updateIssue = (key: number | string, patch: IssueInput) =>
   api<{ issue: IssueDetail }>('PATCH', `/issues/${key}`, patch).then((r) => r.issue)
 export const deleteIssue = (key: number | string) => api<void>('DELETE', `/issues/${key}`)
+
+/** One Comment in an Issue's thread; a deleted one keeps its place with no body. */
+export type Comment = {
+  id: number
+  body: string
+  deleted: boolean
+  author: WorkMember | null
+  created_at: string
+  updated_at: string
+  edited: boolean
+}
+
+export const listComments = (issue: number | string) =>
+  api<{ comments: Comment[] }>('GET', `/issues/${issue}/comments`).then((r) => r.comments)
+export const writeComment = (issue: number | string, body: string) =>
+  api<{ comment: Comment }>('POST', `/issues/${issue}/comments`, { body }).then((r) => r.comment)
+export const editComment = (issue: number | string, id: number, body: string) =>
+  api<{ comment: Comment }>('PATCH', `/issues/${issue}/comments/${id}`, { body }).then((r) => r.comment)
+export const deleteComment = (issue: number | string, id: number) => api<void>('DELETE', `/issues/${issue}/comments/${id}`)
