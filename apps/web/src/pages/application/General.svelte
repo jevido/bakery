@@ -9,16 +9,17 @@
   // redirect and response headers.
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
+  import { buttonVariants } from '$lib/components/ui/button'
   import Icon from '../../lib/Icon.svelte'
   import { applicationPath, href } from '../../lib/router.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import { scrollToPendingSettingsSection } from '../../lib/settingsSection.svelte'
   import type { Application, ApplicationInput, BuildPack, RouteSettings } from '../../lib/types'
   import Input from '../../lib/ui/Input.svelte'
   import Select from '../../lib/ui/Select.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
 
   let { application, onchange }: { application: Application; onchange: (a: Application) => void } = $props()
 
@@ -180,7 +181,7 @@
 </script>
 
 <form
-  class="application-settings-form flex flex-col"
+  class="space-y-8"
   onsubmit={(e) => {
     e.preventDefault()
     save()
@@ -189,192 +190,164 @@
   {#if canUpdate}
     <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
   {/if}
-  <div class="flex flex-col gap-6">
-    <SettingsSection
-      id="application-details-section"
-      title="Application details"
-      helper="Name the application and choose the build strategy The Bakery should use to deploy it."
+  <SettingsGroup
+    id="application-details-section"
+    label="Application details"
+    hint="Name the application and choose the build strategy The Bakery should use to deploy it."
+  >
+    <Input label="Name" bind:value={name} error={errors.name} required disabled={!canUpdate} />
+    <Input label="Description" bind:value={description} error={errors.description} disabled={!canUpdate} />
+  </SettingsGroup>
+
+  <SettingsGroup id="access-section" label="Access" hint="Manage how this application is reached publicly.">
+    <div
+      id="public-access-section"
+      class="relative flex items-center gap-3 rounded-md border border-border px-4 py-3 transition-colors focus-within:ring-2 focus-within:ring-ring/40 hover:bg-accent/50"
     >
-      <div class="grid gap-4">
-        <Input label="Name" bind:value={name} error={errors.name} required disabled={!canUpdate} />
-        <Input label="Description" bind:value={description} error={errors.description} disabled={!canUpdate} />
-      </div>
-    </SettingsSection>
-
-    <SettingsSection id="access-section" title="Access" helper="Manage how this application is reached publicly.">
-      <section id="public-access-section">
-        <h3 class="mb-3 text-sm font-semibold text-black dark:text-fg">Public access</h3>
-        <div
-          class="group relative flex items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50/60 px-4 py-3 transition-colors focus-within:ring-2 focus-within:ring-coollabs/40 hover:bg-neutral-100 dark:border-white/[0.07] dark:bg-white/[0.05] dark:hover:bg-white/[0.08]"
-        >
-          <a
-            class="flex min-w-0 flex-1 items-center gap-3 after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
-            aria-label={primaryDomain ? 'Manage application domains' : 'Add an application domain'}
-            href={domainsHref}
-          >
-            <div
-              class="flex size-9 shrink-0 items-center justify-center rounded-md bg-neutral-200/70 text-neutral-600 dark:bg-white/[0.07] dark:text-fg-dim"
-            >
-              <Icon name="globe" class="size-4" />
-            </div>
-            <div class="min-w-0">
-              <p class="text-sm font-medium text-black dark:text-fg">
-                {#if primaryDomain}<span class="block truncate">{primaryDomain}</span>{:else}No public domain configured{/if}
-              </p>
-              <p class="text-xs text-neutral-500 dark:text-fg-dim">
-                {#if additionalDomains > 0}
-                  +{additionalDomains} more {additionalDomains === 1 ? 'domain' : 'domains'}
-                {:else if !primaryDomain}
-                  Make this application available from a URL
-                {:else}
-                  Manage domains and the www redirect
-                {/if}
-              </p>
-            </div>
-          </a>
-          <a
-            class="button relative z-10 ml-auto shrink-0"
-            aria-label={primaryDomain ? 'Manage application domains' : 'Add an application domain'}
-            href={domainsHref}
-          >
-            {primaryDomain ? 'Manage domains' : 'Add domain'}
-            <Icon name="arrow-right" class="size-4" />
-          </a>
-        </div>
-      </section>
-    </SettingsSection>
-
-    <SettingsSection
-      id="build-pipeline-section"
-      title="Build pipeline"
-      helper="Commands, directories and options used while building the application."
-    >
-      {#if gitBased}
-        <div class="application-build-pack-options mb-5 border-b border-neutral-200 pb-5 dark:border-white/[0.07]">
-          <div class="grid gap-4 sm:grid-cols-2">
-            <Select label="Build strategy" bind:value={buildPack} error={errors.build_pack} disabled={!canUpdate}>
-              <option value="nixpacks">Nixpacks</option>
-              <option value="static">Static</option>
-              <option value="dockerfile">Dockerfile</option>
-            </Select>
-          </div>
-        </div>
-      {/if}
-      <div class="flex flex-col gap-5">
-        {#if !gitBased}
-          <p class="text-sm text-neutral-500 dark:text-fg-dim">Nothing to build. This application deploys a prebuilt Docker image.</p>
-        {:else}
-          <div class="grid gap-4 lg:grid-cols-2">
-            {#if buildPack === 'dockerfile'}
-              <Input
-                label="Dockerfile location"
-                bind:value={dockerfilePath}
-                error={errors.dockerfile_path}
-                placeholder="Dockerfile"
-                helper="Relative to the repository root."
-                disabled={!canUpdate}
-              />
-            {:else if buildPack === 'static'}
-              <Input
-                label="Publish directory"
-                bind:value={publishDirectory}
-                error={errors.publish_directory}
-                placeholder="dist"
-                helper="Relative to the repository root."
-                required
-                disabled={!canUpdate}
-              />
-            {/if}
-          </div>
-        {/if}
-      </div>
-    </SettingsSection>
-
-    {#if !gitBased}
-      <SettingsSection id="container-image-section" title="Container image" helper="Configure the Docker image used for this application.">
-        <div class="grid gap-4 lg:grid-cols-2">
-          <Input label="Image" bind:value={image} error={errors.docker_image} placeholder="nginx" required disabled={!canUpdate} />
-          <Input
-            label="Tag"
-            bind:value={tag}
-            placeholder="alpine"
-            helper="Enter a tag (e.g., 'latest', 'v1.2.3') or SHA256 hash (e.g., 'sha256-59e02939b1bf39f16c93138a28727aec520bb916da021180ae502c61626b3cf0')"
-            disabled={!canUpdate}
-          />
-        </div>
-        <div class="mt-5 grid gap-4 border-t border-neutral-200 pt-5 sm:grid-cols-2 dark:border-white/[0.07]">
-          <Input
-            label="Registry username"
-            bind:value={registryUsername}
-            error={errors.registry_credentials}
-            helper="Only for a private image. Clear the username to remove the stored credentials."
-            disabled={!canUpdate}
-          />
-          <Input
-            label="Registry password or token"
-            type="password"
-            bind:value={registryPassword}
-            autocomplete="new-password"
-            placeholder={application.has_registry_password ? 'unchanged' : ''}
-            disabled={!canUpdate}
-          />
-        </div>
-      </SettingsSection>
-    {/if}
-
-    <SettingsSection
-      id="networking-section"
-      title="Networking"
-      helper="The port the container exposes; the proxy sends the domains' traffic to it."
-    >
-      <div class="grid gap-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
-        <div class="min-w-0">
-          <Input
-            label="Ports exposes"
-            value={static_ ? '80' : port}
-            oninput={(e) => (port = e.currentTarget.value)}
-            readonly={static_}
-            error={errors.port}
-            placeholder="3000"
-            inputmode="numeric"
-            helper={static_
-              ? 'A static site is served on port 80.'
-              : 'The port your application listens on. The healthcheck uses it too. Be sure to set this correctly.'}
-            disabled={!canUpdate}
-          />
-        </div>
-      </div>
-    </SettingsSection>
-
-    <SettingsSection id="security-section" title="Security" helper="Protect this application with authentication at the proxy level.">
-      <Select
-        label="Authentication"
-        value={authEnabled ? 'basic' : 'none'}
-        onchange={(e) => {
-          authEnabled = e.currentTarget.value === 'basic'
-          authenticationChanged()
-        }}
-        helper="HTTP Basic Authentication makes the proxy ask for a username and password before any request reaches the application. The Bakery supports a single username and password."
-        disabled={!canUpdate || !routing}
+      <a
+        class="flex min-w-0 flex-1 items-center gap-3 after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
+        aria-label={primaryDomain ? 'Manage application domains' : 'Add an application domain'}
+        href={domainsHref}
       >
-        <option value="none">None</option>
-        <option value="basic">HTTP Basic Authentication</option>
-      </Select>
-      {#if authEnabled}
-        <div class="mt-5 grid w-full gap-4 border-t border-neutral-200 pt-5 sm:grid-cols-2 dark:border-white/[0.07]">
-          <Input label="Username" bind:value={authUsername} error={errors['basic_auth.username']} required disabled={!canUpdate} />
-          <Input
-            label="Password"
-            type="password"
-            bind:value={authPassword}
-            error={errors['basic_auth.password']}
-            autocomplete="new-password"
-            placeholder={routing?.basic_auth.password_set ? 'unchanged' : ''}
-            required={!routing?.basic_auth.password_set}
-            disabled={!canUpdate}
-          />
+        <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          <Icon name="globe" class="size-4" />
         </div>
+        <div class="min-w-0">
+          <p class="text-sm font-medium text-foreground">
+            {#if primaryDomain}<span class="block truncate">{primaryDomain}</span>{:else}No public domain configured{/if}
+          </p>
+          <p class="text-xs text-muted-foreground">
+            {#if additionalDomains > 0}
+              +{additionalDomains} more {additionalDomains === 1 ? 'domain' : 'domains'}
+            {:else if !primaryDomain}
+              Make this application available from a URL
+            {:else}
+              Manage domains and the www redirect
+            {/if}
+          </p>
+        </div>
+      </a>
+      <a
+        class={buttonVariants({ variant: 'outline', size: 'sm', class: 'relative z-10 ml-auto' })}
+        aria-label={primaryDomain ? 'Manage application domains' : 'Add an application domain'}
+        href={domainsHref}
+      >
+        {primaryDomain ? 'Manage domains' : 'Add domain'}
+        <Icon name="arrow-right" class="size-3.5" />
+      </a>
+    </div>
+  </SettingsGroup>
+
+  <SettingsGroup id="build-pipeline-section" label="Build pipeline" hint="Commands, directories and options used while building the application.">
+    {#if !gitBased}
+      <p class="text-sm text-muted-foreground">Nothing to build. This application deploys a prebuilt Docker image.</p>
+    {:else}
+      <Select label="Build strategy" bind:value={buildPack} error={errors.build_pack} disabled={!canUpdate}>
+        <option value="nixpacks">Nixpacks</option>
+        <option value="static">Static</option>
+        <option value="dockerfile">Dockerfile</option>
+      </Select>
+      {#if buildPack === 'dockerfile'}
+        <Input
+          label="Dockerfile location"
+          bind:value={dockerfilePath}
+          error={errors.dockerfile_path}
+          placeholder="Dockerfile"
+          helper="Relative to the repository root."
+          disabled={!canUpdate}
+        />
+      {:else if buildPack === 'static'}
+        <Input
+          label="Publish directory"
+          bind:value={publishDirectory}
+          error={errors.publish_directory}
+          placeholder="dist"
+          helper="Relative to the repository root."
+          required
+          disabled={!canUpdate}
+        />
       {/if}
-    </SettingsSection>
-  </div>
+    {/if}
+  </SettingsGroup>
+
+  {#if !gitBased}
+    <SettingsGroup id="container-image-section" label="Container image" hint="Configure the Docker image used for this application.">
+      <div class="grid gap-3 sm:grid-cols-2">
+        <Input label="Image" bind:value={image} error={errors.docker_image} placeholder="nginx" required disabled={!canUpdate} />
+        <Input
+          label="Tag"
+          bind:value={tag}
+          placeholder="alpine"
+          helper="Enter a tag (e.g., 'latest', 'v1.2.3') or SHA256 hash (e.g., 'sha256-59e02939b1bf39f16c93138a28727aec520bb916da021180ae502c61626b3cf0')"
+          disabled={!canUpdate}
+        />
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <Input
+          label="Registry username"
+          bind:value={registryUsername}
+          error={errors.registry_credentials}
+          helper="Only for a private image. Clear the username to remove the stored credentials."
+          disabled={!canUpdate}
+        />
+        <Input
+          label="Registry password or token"
+          type="password"
+          bind:value={registryPassword}
+          autocomplete="new-password"
+          placeholder={application.has_registry_password ? 'unchanged' : ''}
+          disabled={!canUpdate}
+        />
+      </div>
+    </SettingsGroup>
+  {/if}
+
+  <SettingsGroup id="networking-section" label="Networking" hint="The port the container exposes; the proxy sends the domains' traffic to it.">
+    <div class="max-w-56">
+      <Input
+        label="Ports exposes"
+        value={static_ ? '80' : port}
+        oninput={(e) => (port = e.currentTarget.value)}
+        readonly={static_}
+        error={errors.port}
+        placeholder="3000"
+        inputmode="numeric"
+        helper={static_
+          ? 'A static site is served on port 80.'
+          : 'The port your application listens on. The healthcheck uses it too. Be sure to set this correctly.'}
+        disabled={!canUpdate}
+      />
+    </div>
+  </SettingsGroup>
+
+  <SettingsGroup id="security-section" label="Security" hint="Protect this application with authentication at the proxy level.">
+    <Select
+      label="Authentication"
+      value={authEnabled ? 'basic' : 'none'}
+      onchange={(e) => {
+        authEnabled = e.currentTarget.value === 'basic'
+        authenticationChanged()
+      }}
+      helper="HTTP Basic Authentication makes the proxy ask for a username and password before any request reaches the application. The Bakery supports a single username and password."
+      disabled={!canUpdate || !routing}
+    >
+      <option value="none">None</option>
+      <option value="basic">HTTP Basic Authentication</option>
+    </Select>
+    {#if authEnabled}
+      <div class="grid gap-3 sm:grid-cols-2">
+        <Input label="Username" bind:value={authUsername} error={errors['basic_auth.username']} required disabled={!canUpdate} />
+        <Input
+          label="Password"
+          type="password"
+          bind:value={authPassword}
+          error={errors['basic_auth.password']}
+          autocomplete="new-password"
+          placeholder={routing?.basic_auth.password_set ? 'unchanged' : ''}
+          required={!routing?.basic_auth.password_set}
+          disabled={!canUpdate}
+        />
+      </div>
+    {/if}
+  </SettingsGroup>
 </form>

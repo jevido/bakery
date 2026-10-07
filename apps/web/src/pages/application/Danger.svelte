@@ -8,7 +8,7 @@
   import { api } from '../../lib/api'
   import { go } from '../../lib/router.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
 
   let {
@@ -43,14 +43,14 @@
   }
 </script>
 
-<SettingsSection id="danger-zone-section" title="Danger zone" helper="Destructive resource actions cannot be undone.">
-  <div class="chrome flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+<SettingsGroup id="danger-zone-section" label="Danger zone" hint="Destructive resource actions cannot be undone." destructive>
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
     <div class="min-w-0">
-      <h4 class="text-sm font-semibold text-red-700 dark:text-red-300">Delete {label}</h4>
-      <div class="mt-2 max-w-2xl space-y-2 text-[13px] leading-5 text-red-700/80 dark:text-red-300/80">
+      <h4 class="text-sm font-medium text-destructive">Delete {label}</h4>
+      <div class="mt-2 space-y-2 text-sm text-muted-foreground">
         <p>
           Permanently delete
-          <strong class="font-semibold text-black dark:text-fg">{name}</strong>, stop its containers, and remove the selected resources and
+          <strong class="font-medium text-foreground">{name}</strong>, stop its containers, and remove the selected resources and
           configuration.
         </p>
         <ul class="space-y-1 text-xs">
@@ -77,4 +77,4 @@
       />
     </div>
   </div>
-</SettingsSection>
+</SettingsGroup>

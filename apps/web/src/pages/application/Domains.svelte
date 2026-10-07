@@ -10,6 +10,7 @@
   // and path of a domain (a Domain is a hostname served over HTTPS).
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
+  import { buttonVariants } from '$lib/components/ui/button'
   import Icon from '../../lib/Icon.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Application, Redirect, RouteSettings, Server } from '../../lib/types'
@@ -19,6 +20,7 @@
   import Empty from '../../lib/ui/Empty.svelte'
   import Input from '../../lib/ui/Input.svelte'
   import Modal from '../../lib/ui/Modal.svelte'
+  import SearchField from '../../lib/SearchField.svelte'
   import Select from '../../lib/ui/Select.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import { applicationInput } from './applicationInput'
@@ -166,7 +168,7 @@
   const canGenerate = (except = -1) => !domains.some((d, i) => i !== except && d === application.generated_domain)
 </script>
 
-<div id="application-domains-section" class="domains-overview-container chrome flex flex-col gap-4">
+<div id="application-domains-section" class="flex flex-col gap-4">
   {#if !canUpdate}
     <Callout type="danger" title="Insufficient permissions">
       You don't have permission to manage domains. Contact your guild's admin for access.
@@ -179,127 +181,121 @@
     </Callout>
   {/if}
 
-  <div class="flex flex-wrap items-center gap-2">
+  <div class="flex flex-wrap items-end gap-2">
     <div class="min-w-0 flex-1">
-      <h2 id="domains-section">Domains</h2>
-      <p class="text-[13px] text-neutral-500 dark:text-fg-dim">
+      <h2 id="domains-section" class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Domains</h2>
+      <p class="mt-1 text-sm text-muted-foreground">
         {domains.length} domain{domains.length === 1 ? '' : 's'}
       </p>
     </div>
-    <div class="ml-auto flex flex-wrap items-center gap-2">
-      <div class="relative w-full sm:w-64">
-        <Icon
-          name="search"
-          class="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-neutral-400 dark:text-fg-faint"
-        />
-        <input
-          type="search"
-          bind:value={search}
-          aria-label="Search domains"
-          class="input h-8! w-full pl-8! text-[13px]!"
-          placeholder="Search domains"
-        />
+    <div class="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
+      <div class="min-w-0 flex-1 sm:w-64 sm:flex-none">
+        <SearchField bind:value={search} label="Search domains" />
       </div>
       {#if canUpdate}
-        <button type="button" class="button button-highlighted" onclick={openAdd}>
+        <Button variant="highlighted" onclick={openAdd}>
           <Icon name="plus" class="size-3.5" />
           Add domain
-        </button>
+        </Button>
       {/if}
     </div>
   </div>
 
-  <div id="domains-table-section" class="application-settings-section-body is-flush mt-1 w-full scroll-mt-28">
-    <div class="data-table-header service-domains-overview-grid">
+  <div id="domains-table-section" class="scroll-mt-28 overflow-hidden rounded-md border border-border">
+    <div
+      class="hidden grid-cols-[minmax(0,1fr)_10rem_7rem_5rem] gap-3 border-b border-border bg-muted/30 px-4 py-2 text-xs font-medium text-muted-foreground md:grid"
+    >
       <span>Domain</span>
       <span>Domain redirect</span>
       <span>Internal port</span>
       <span class="text-right">Actions</span>
     </div>
-    <div class="data-table w-full">
-      {#each domains as d, index (d)}
-        {@const counterpart = rowCounterparts.get(d)}
-        {#if matches(d)}
-          <div class="env-table-item">
-            <div class="data-table-row service-domains-overview-grid">
-              <div class="flex min-w-0 items-center gap-2">
-                <Icon name="globe" class="size-4 shrink-0 text-neutral-400 dark:text-fg-faint" />
-                <a
-                  href={application.public_urls[index]}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="min-w-0 flex-1 truncate text-[13px] text-black underline decoration-neutral-300 underline-offset-2 hover:decoration-coollabs dark:text-fg dark:decoration-white/20"
-                  title={application.public_urls[index]}
+    {#each domains as d, index (d)}
+      {@const counterpart = rowCounterparts.get(d)}
+      {#if matches(d)}
+        <div
+          class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-border px-4 py-2 text-sm transition-colors last:border-b-0 hover:bg-accent/50 md:grid-cols-[minmax(0,1fr)_10rem_7rem_5rem]"
+        >
+          <div class="flex min-w-0 items-center gap-2">
+            <Icon name="globe" class="size-4 shrink-0 text-muted-foreground" />
+            <a
+              href={application.public_urls[index]}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="min-w-0 flex-1 truncate text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
+              title={application.public_urls[index]}
+            >
+              {application.public_urls[index]}
+            </a>
+            {#if index === 0}
+              <span class="shrink-0 rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs text-muted-foreground" title="The primary domain">
+                Primary
+              </span>
+            {/if}
+          </div>
+
+          <div class="hidden truncate text-muted-foreground md:block" title={counterpart ? `${counterpart} → ${d}` : 'Domain redirect'}>
+            <span>{counterpart ? directionLabel(redirect) : 'Disabled'}</span>
+          </div>
+          <div class="hidden font-mono text-xs text-muted-foreground md:block" title="The application's port">
+            <span aria-label={`Internal port ${application.port}`}>{application.port}</span>
+          </div>
+
+          <div class="flex items-center justify-end gap-1 md:order-last">
+            {#if canUpdate}
+              <button
+                type="button"
+                class={buttonVariants({ variant: 'ghost', size: 'icon-sm', class: 'size-8 text-muted-foreground' })}
+                title="Domain settings"
+                aria-label={`Settings for ${d}`}
+                onclick={() => openEdit(index)}
+              >
+                <Icon name="settings" class="size-3.5" />
+              </button>
+              {#if domains.length > 1}
+                <ConfirmationModal
+                  title="Remove domain?"
+                  buttonTitle="Remove"
+                  variant="error"
+                  actions={['This domain will be removed from the application.', 'The proxy stops serving it at once.']}
+                  confirmWithText={false}
+                  step2ButtonText="Remove domain"
+                  onconfirm={() => remove(index)}
                 >
-                  {application.public_urls[index]}
-                </a>
-                {#if index === 0}<span class="table-badge shrink-0" title="The primary domain">Primary</span>{/if}
-              </div>
-
-              <div class="service-domain-detail" title={counterpart ? `${counterpart} → ${d}` : 'Domain redirect'}>
-                <span>{counterpart ? directionLabel(redirect) : 'Disabled'}</span>
-              </div>
-              <div class="service-domain-detail" title="The application's port">
-                <span aria-label={`Internal port ${application.port}`}>{application.port}</span>
-              </div>
-
-              <div class="service-domain-mobile-summary" aria-label="Domain routing summary">
-                <span>{counterpart ? directionLabel(redirect) : 'No redirects'}</span>
-                <span>Port {application.port}</span>
-              </div>
-
-              <div class="service-domain-actions flex items-center justify-end gap-1">
-                {#if canUpdate}
-                  <button
-                    type="button"
-                    class="icon-button shrink-0"
-                    title="Domain settings"
-                    aria-label={`Settings for ${d}`}
-                    onclick={() => openEdit(index)}
-                  >
-                    <Icon name="settings" class="size-3.5" />
-                  </button>
-                  {#if domains.length > 1}
-                    <ConfirmationModal
-                      title="Remove domain?"
-                      buttonTitle="Remove"
-                      variant="error"
-                      actions={['This domain will be removed from the application.', 'The proxy stops serving it at once.']}
-                      confirmWithText={false}
-                      step2ButtonText="Remove domain"
-                      onconfirm={() => remove(index)}
-                    >
-                      {#snippet trigger(show)}
-                        <button
-                          type="button"
-                          class="icon-button shrink-0 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
-                          title="Remove domain"
-                          aria-label={`Remove ${d}`}
-                          onclick={show}
-                        >
-                          <Icon name="trash" class="size-3.5" />
-                        </button>
-                      {/snippet}
-                    </ConfirmationModal>
-                  {:else}
-                    <!-- An Application always has a Domain: without one it would get the generated one back. -->
+                  {#snippet trigger(show)}
                     <button
                       type="button"
-                      class="icon-button shrink-0 text-red-500 dark:text-red-400"
-                      title="An application keeps at least one domain; change this one instead"
+                      class={buttonVariants({ variant: 'ghost', size: 'icon-sm', class: 'size-8 text-destructive hover:text-destructive' })}
+                      title="Remove domain"
                       aria-label={`Remove ${d}`}
-                      disabled
+                      onclick={show}
                     >
                       <Icon name="trash" class="size-3.5" />
                     </button>
-                  {/if}
-                {/if}
-              </div>
-            </div>
+                  {/snippet}
+                </ConfirmationModal>
+              {:else}
+                <!-- An Application always has a Domain: without one it would get the generated one back. -->
+                <button
+                  type="button"
+                  class={buttonVariants({ variant: 'ghost', size: 'icon-sm', class: 'size-8 text-destructive' })}
+                  title="An application keeps at least one domain; change this one instead"
+                  aria-label={`Remove ${d}`}
+                  disabled
+                >
+                  <Icon name="trash" class="size-3.5" />
+                </button>
+              {/if}
+            {/if}
           </div>
-        {/if}
-      {/each}
-    </div>
+
+          <div class="col-span-2 flex gap-3 text-xs text-muted-foreground md:hidden" aria-label="Domain routing summary">
+            <span>{counterpart ? directionLabel(redirect) : 'No redirects'}</span>
+            <span>Port {application.port}</span>
+          </div>
+        </div>
+      {/if}
+    {/each}
     {#if !anyMatch}
       <div class="px-4 py-8">
         <Empty size="sm" title="No domains found" description="No domain matches your search." icon="search" />
@@ -310,7 +306,7 @@
 
 {#if canUpdate}
   <Modal title="Add domain" variant="none" closeOutside={false} bind:open={adding}>
-    <form class="application-settings-form flex flex-col gap-4" onsubmit={add}>
+    <form class="flex flex-col gap-4" onsubmit={add}>
       <Input
         label="Domain"
         bind:value={newHost}
@@ -331,23 +327,23 @@
   </Modal>
 
   <Modal title="Domain settings" variant="none" bind:open={editing}>
-    <form class="application-settings-form flex flex-col gap-4" onsubmit={update}>
+    <form class="flex flex-col gap-4" onsubmit={update}>
       <Input label="Domain" bind:value={editingHost} placeholder="app.example.com" required error={editError} />
-      <div class="grid grid-cols-1 gap-4 border-t border-neutral-200 pt-4 dark:border-white/10">
+      <div class="flex flex-col gap-4 border-t border-border pt-4">
         <Select label="www redirect" helper="Applies to all domains for this application." bind:value={editingRedirect}>
           <option value="both">No redirect</option>
           <option value="www">Redirect to www</option>
           <option value="non-www">Redirect to non-www</option>
         </Select>
         {#if editingCounterparts.length > 0}
-          <ul class="flex flex-col gap-1 font-mono text-[12px] text-neutral-600 dark:text-fg-dim" aria-label="Redirects added">
+          <ul class="flex flex-col gap-1 font-mono text-xs text-muted-foreground" aria-label="Redirects added">
             {#each editingCounterparts as [to, from] (from)}<li>{from} → {to}</li>{/each}
           </ul>
         {:else if editingRedirect !== 'both'}
-          <p class="text-[12px] text-neutral-500 dark:text-fg-dim">No domain has a counterpart to redirect for this choice.</p>
+          <p class="text-xs text-muted-foreground">No domain has a counterpart to redirect for this choice.</p>
         {/if}
       </div>
-      <div class="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-200 pt-4 dark:border-white/10">
+      <div class="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
         {#if canGenerate(editingIndex)}
           <Button onclick={() => (editingHost = application.generated_domain)}>Regenerate hostname</Button>
         {:else}

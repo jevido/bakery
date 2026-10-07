@@ -10,6 +10,9 @@
   // Volumes/Files/Directories tabs, volume backups and the preview suffix.
   import { untrack } from 'svelte'
   import { ApiError } from '../../lib/api'
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
+  import { buttonVariants } from '$lib/components/ui/button'
+  import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import Icon from '../../lib/Icon.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Storage } from '../../lib/types'
@@ -19,7 +22,7 @@
   import FieldError from '../../lib/ui/FieldError.svelte'
   import Input from '../../lib/ui/Input.svelte'
   import Modal from '../../lib/ui/Modal.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
 
   let {
@@ -46,7 +49,6 @@
     })
   })
 
-  let menuOpen = $state(false)
   let adding = $state(false)
   let name = $state('')
   let mountPath = $state('')
@@ -65,7 +67,6 @@
   }
 
   function openAdd() {
-    menuOpen = false
     name = ''
     mountPath = ''
     addError = ''
@@ -106,117 +107,95 @@
     toast.success('Storage deleted.', 'Its volume and data are kept.')
   }
 
-  const grid = $derived(onsave ? 'volumes-table-grid' : 'volumes-table-grid-readonly')
+  const grid = $derived(onsave ? 'md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]' : 'md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]')
 
   const changed = (i: number) => forms[i] && (forms[i].name !== storages[i]?.name || forms[i].mount_path !== storages[i]?.mount_path)
 </script>
 
-<svelte:window onclick={() => (menuOpen = false)} />
+<SettingsGroup id="storage-mounts-section" label="Persistent storage" hint={helper} wide>
+  {#snippet actions()}
+    {#if canUpdate && storages.length < 10}
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger class={buttonVariants({ size: 'sm' })}>
+          <Icon name="plus" class="size-3.5" />
+          Add mount
+          <ChevronDown class="opacity-60" />
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Content align="end" class="w-52">
+          <DropdownMenu.Item onSelect={openAdd}>
+            <Icon name="storages" />
+            Volume mount
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>
+    {/if}
+  {/snippet}
 
-<div class="chrome">
-  <SettingsSection
-    id="storage-mounts-section"
-    title="Persistent storage"
-    {helper}
-    flush
-  >
-    {#snippet actions()}
-      {#if canUpdate && storages.length < 10}
-        <div class="relative">
-          <button
-            type="button"
-            class="button button-highlighted"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onclick={(e) => {
-              e.stopPropagation()
-              menuOpen = !menuOpen
-            }}
-          >
-            <Icon name="plus" class="size-3.5" />
-            Add mount
-            <Icon name="chevron-down" class="size-3 opacity-55" />
-          </button>
-          {#if menuOpen}
-            <div role="menu" class="listbox-panel right-auto! left-0! z-[90]! w-52! min-w-52! sm:right-0! sm:left-auto!">
-              <button type="button" class="listbox-option justify-start! gap-2.5!" role="menuitem" onclick={openAdd}>
-                <Icon name="storages" class="size-3.5 shrink-0 opacity-70" />
-                Volume mount
-              </button>
-            </div>
-          {/if}
-        </div>
-      {/if}
-    {/snippet}
-
+  <div class="overflow-hidden rounded-md border border-border">
     {#if storages.length === 0}
       <div class="p-4">
         <Empty size="sm" title="No persistent storage" description="Add a volume mount to preserve data between deployments." icon="storages" />
       </div>
     {:else}
-      <div class="data-table w-full">
-        <div class="data-table-header {grid}">
-          <span>Volume Name</span>
-          <span>Destination Path</span>
-          {#if onsave}<span class="text-right">Actions</span>{/if}
-        </div>
-        {#each storages as s, i (s.name)}
-          {#if canUpdate && forms[i]}
-            <form class="env-table-item" onsubmit={(e) => update(e, i)}>
-              <div class="data-table-row volumes-table-grid">
-                <div class="volumes-cell-name min-w-0">
-                  <span class="volumes-mobile-label">Volume Name</span>
-                  <Input aria-label="Volume Name" bind:value={forms[i].name} required />
-                </div>
-                <div class="volumes-cell-dest min-w-0">
-                  <span class="volumes-mobile-label">Destination Path</span>
-                  <Input aria-label="Destination Path" bind:value={forms[i].mount_path} required placeholder="/path/in/container" />
-                </div>
-                <div class="volumes-cell-actions flex flex-nowrap items-center justify-end gap-1.5">
-                  <Button type="submit" class="px-2.5! text-xs!" disabled={!changed(i)}>Update</Button>
-                  <ConfirmationModal
-                    title="Confirm persistent storage deletion?"
-                    buttonTitle="Delete"
-                    variant="error"
-                    actions={[
-                      'This storage is removed from the application; containers from the next deployment no longer mount it.',
-                      `Its volume and the data in it are kept: adding a storage named ${s.name} again brings the data back. Only deleting the application removes its volumes.`,
-                    ]}
-                    warningMessage="Running containers keep the mount until the next deployment."
-                    confirmationText={s.name}
-                    confirmationLabel="Please confirm the execution of the actions by entering the Storage Name below"
-                    shortConfirmationLabel="Storage Name"
-                    onconfirm={() => remove(i)}
-                  />
-                </div>
+      <div class="hidden gap-3 border-b border-border bg-muted/30 px-4 py-2 text-xs font-medium text-muted-foreground md:grid {grid}">
+        <span>Volume Name</span>
+        <span>Destination Path</span>
+        {#if onsave}<span class="text-right">Actions</span>{/if}
+      </div>
+      {#each storages as s, i (s.name)}
+        {#if canUpdate && forms[i]}
+          <form class="border-b border-border last:border-b-0" onsubmit={(e) => update(e, i)}>
+            <div class="grid items-end gap-3 px-4 py-2.5 md:items-center {grid}">
+              <div class="min-w-0">
+                <span class="mb-1 block text-xs text-muted-foreground md:hidden">Volume Name</span>
+                <Input aria-label="Volume Name" bind:value={forms[i].name} required />
               </div>
-              {#if rowErrors[i]}<div class="px-4 pb-3"><FieldError error={rowErrors[i]} /></div>{/if}
-            </form>
-          {:else}
-            <div class="env-table-item">
-              <div class="data-table-row {grid} text-[13px] text-neutral-700 dark:text-fg-dim">
-                <div class="volumes-cell-name min-w-0">
-                  <span class="volumes-mobile-label">Volume Name</span>
-                  <span class="min-w-0 truncate text-[13px] font-medium text-neutral-950 dark:text-fg" title={s.name}>{s.name}</span>
-                </div>
-                <div class="volumes-cell-dest min-w-0">
-                  <span class="volumes-mobile-label">Destination Path</span>
-                  <span class="block min-w-0 truncate text-[13px] text-neutral-950 dark:text-fg" title={s.mount_path}>{s.mount_path}</span>
-                </div>
-                {#if onsave}<span class="text-right text-neutral-400 dark:text-fg-faint">—</span>{/if}
+              <div class="min-w-0">
+                <span class="mb-1 block text-xs text-muted-foreground md:hidden">Destination Path</span>
+                <Input aria-label="Destination Path" bind:value={forms[i].mount_path} required placeholder="/path/in/container" />
+              </div>
+              <div class="flex flex-nowrap items-center justify-end gap-1.5">
+                <Button type="submit" disabled={!changed(i)}>Update</Button>
+                <ConfirmationModal
+                  title="Confirm persistent storage deletion?"
+                  buttonTitle="Delete"
+                  variant="error"
+                  actions={[
+                    'This storage is removed from the application; containers from the next deployment no longer mount it.',
+                    `Its volume and the data in it are kept: adding a storage named ${s.name} again brings the data back. Only deleting the application removes its volumes.`,
+                  ]}
+                  warningMessage="Running containers keep the mount until the next deployment."
+                  confirmationText={s.name}
+                  confirmationLabel="Please confirm the execution of the actions by entering the Storage Name below"
+                  shortConfirmationLabel="Storage Name"
+                  onconfirm={() => remove(i)}
+                />
               </div>
             </div>
-          {/if}
-        {/each}
-      </div>
+            {#if rowErrors[i]}<div class="px-4 pb-3"><FieldError error={rowErrors[i]} /></div>{/if}
+          </form>
+        {:else}
+          <div class="grid gap-x-3 gap-y-1 border-b border-border px-4 py-2.5 text-sm last:border-b-0 {grid}">
+            <div class="min-w-0">
+              <span class="block text-xs text-muted-foreground md:hidden">Volume Name</span>
+              <span class="block min-w-0 truncate font-medium text-foreground" title={s.name}>{s.name}</span>
+            </div>
+            <div class="min-w-0">
+              <span class="block text-xs text-muted-foreground md:hidden">Destination Path</span>
+              <span class="block min-w-0 truncate font-mono text-xs text-foreground md:leading-5" title={s.mount_path}>{s.mount_path}</span>
+            </div>
+            {#if onsave}<span class="hidden text-right text-muted-foreground md:block">—</span>{/if}
+          </div>
+        {/if}
+      {/each}
     {/if}
-  </SettingsSection>
-</div>
+  </div>
+</SettingsGroup>
 
 {#if canUpdate}
   <Modal title="Add volume mount" variant="none" bind:open={adding}>
     <form class="flex w-full flex-col gap-4" onsubmit={add}>
-      <p class="text-[13px] leading-5 text-neutral-500 dark:text-fg-dim">Mount a Podman volume inside the container.</p>
+      <p class="text-sm text-muted-foreground">Mount a Podman volume inside the container.</p>
       <Input placeholder="pv-name" label="Name" required bind:value={name} helper="Volume name: lowercase letters, digits and -." />
       <Input placeholder="/tmp/root" label="Destination Path" required bind:value={mountPath} helper="Directory inside the container." />
       <FieldError error={addError} />

@@ -9,14 +9,15 @@
   // wait for Sources.
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
+  import { buttonVariants } from '$lib/components/ui/button'
   import Icon from '../../lib/Icon.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Application } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Input from '../../lib/ui/Input.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
   import Textarea from '../../lib/ui/Textarea.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
   import { applicationInput } from './applicationInput'
@@ -96,7 +97,7 @@
   }
 </script>
 
-<div class="application-settings-form flex flex-col gap-6">
+<div class="space-y-8">
   <form
     class="flex flex-col gap-6"
     onsubmit={(e) => {
@@ -108,30 +109,28 @@
       <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
     {/if}
 
-    <SettingsSection id="repository-section" title="Repository" helper="Configure the Git repository and branch The Bakery deploys.">
+    <SettingsGroup id="repository-section" label="Repository" hint="Configure the Git repository and branch The Bakery deploys.">
       {#snippet actions()}
-        <div class="flex flex-wrap items-center gap-2">
-          <a target="_blank" rel="noreferrer" class="button" href={branchLocation}>
-            Repository
-            <Icon name="external-link" class="size-3.5" />
-          </a>
-          <a target="_blank" rel="noreferrer" class="button" href={commits}>
-            Commits
-            <Icon name="external-link" class="size-3.5" />
-          </a>
-        </div>
+        <a target="_blank" rel="noreferrer" class={buttonVariants({ variant: 'outline', size: 'sm' })} href={branchLocation}>
+          Repository
+          <Icon name="external-link" class="size-3.5" />
+        </a>
+        <a target="_blank" rel="noreferrer" class={buttonVariants({ variant: 'outline', size: 'sm' })} href={commits}>
+          Commits
+          <Icon name="external-link" class="size-3.5" />
+        </a>
       {/snippet}
 
       {#if !application.deploy_key_public}
         <div
-          class="mb-4 flex items-center justify-between gap-3 rounded-lg bg-neutral-50 px-3 py-2.5 ring-1 ring-neutral-200 dark:bg-white/[0.05] dark:ring-white/[0.07]"
+          class="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/30 px-3 py-2.5"
         >
-          <span class="text-[12px] text-neutral-500 dark:text-fg-dim">Connected source</span>
-          <span class="text-[12px] font-medium text-neutral-900 dark:text-fg">Public repository</span>
+          <span class="text-xs text-muted-foreground">Connected source</span>
+          <span class="text-xs font-medium text-foreground">Public repository</span>
         </div>
       {/if}
 
-      <div class="grid gap-4 lg:grid-cols-2">
+      <div class="grid gap-3 sm:grid-cols-2">
         <Input
           label="Repository"
           bind:value={gitUrl}
@@ -143,16 +142,16 @@
         />
         <Input label="Branch" bind:value={gitBranch} error={errors.git_branch} placeholder="main" disabled={!canUpdate} />
       </div>
-    </SettingsSection>
+    </SettingsGroup>
   </form>
 
   {#if application.deploy_key_public}
-    <SettingsSection id="deploy-key-section" title="Deploy key" helper="The SSH key The Bakery uses to clone this private repository.">
+    <SettingsGroup id="deploy-key-section" label="Deploy key" hint="The SSH key The Bakery uses to clone this private repository.">
       <div
-        class="mb-4 flex items-center justify-between gap-3 rounded-lg bg-neutral-50 px-3 py-2.5 ring-1 ring-neutral-200 dark:bg-white/[0.05] dark:ring-white/[0.07]"
+        class="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/30 px-3 py-2.5"
       >
-        <span class="text-[12px] text-neutral-500 dark:text-fg-dim">Attached private key</span>
-        <span class="text-[12px] font-medium text-neutral-900 dark:text-fg">Deploy key of {application.name}</span>
+        <span class="text-xs text-muted-foreground">Attached private key</span>
+        <span class="text-xs font-medium text-foreground">Deploy key of {application.name}</span>
       </div>
       <Textarea
         label="Public key"
@@ -163,7 +162,7 @@
         helper="Add it to the repository as a read-only deploy key (GitHub: Settings → Deploy keys; GitLab: Settings → Repository → Deploy keys; Gitea and Forgejo: Settings → Deploy keys)."
         data-testid="deploy-key"
       />
-      <div class="mt-4 flex flex-wrap items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <Button onclick={copyKey}>Copy public key</Button>
         {#if canUpdate}
           <ConfirmationModal
@@ -179,6 +178,6 @@
           </ConfirmationModal>
         {/if}
       </div>
-    </SettingsSection>
+    </SettingsGroup>
   {/if}
 </div>

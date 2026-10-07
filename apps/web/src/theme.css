@@ -750,11 +750,11 @@
   border-left: 1px solid var(--color-hairline);
 }
 
-.application-settings-section.is-section-highlight {
+.is-section-highlight {
   position: relative;
 }
 
-.application-settings-section.is-section-highlight::after {
+.is-section-highlight::after {
   content: "";
   position: absolute;
   inset: 0;

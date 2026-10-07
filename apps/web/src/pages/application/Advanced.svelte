@@ -9,14 +9,16 @@
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
   import { projectAccess } from '../../lib/projectAccess.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import { scrollToPendingSettingsSection } from '../../lib/settingsSection.svelte'
   import type { Application, RouteSettings, Webhook } from '../../lib/types'
+  import Button from '../../lib/ui/Button.svelte'
   import FieldError from '../../lib/ui/FieldError.svelte'
   import FieldLabel from '../../lib/ui/FieldLabel.svelte'
+  import { Input } from '$lib/components/ui/input'
   import Select from '../../lib/ui/Select.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
 
   let { application }: { application: Application } = $props()
 
@@ -98,30 +100,27 @@
   }
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="space-y-8">
   {#if gitBased}
-    <SettingsSection id="advanced-deployment-section" title="Deployment" helper="Automatic deployments from Git webhooks.">
-      <div class="grid w-full gap-4 sm:grid-cols-2">
-        {#if projectAccess.can('see_secrets')}
-          <Select
-            label="Auto deploy"
-            value={webhook ? String(webhook.auto_deploy) : ''}
-            onchange={(e) => autoDeployChanged(e.currentTarget.value === 'true')}
-            helper="Automatically deploy new commits based on Git webhooks."
-            disabled={!canUpdate || !webhook}
-          >
-            <option value="true">Deploy on push (webhooks)</option>
-            <option value="false">Manual deployments only</option>
-          </Select>
-        {:else}
-          <p class="text-sm text-neutral-500 dark:text-fg-dim">The webhook settings are hidden for viewers.</p>
-        {/if}
-      </div>
-    </SettingsSection>
+    <SettingsGroup id="advanced-deployment-section" label="Deployment" hint="Automatic deployments from Git webhooks.">
+      {#if projectAccess.can('see_secrets')}
+        <Select
+          label="Auto deploy"
+          value={webhook ? String(webhook.auto_deploy) : ''}
+          onchange={(e) => autoDeployChanged(e.currentTarget.value === 'true')}
+          helper="Automatically deploy new commits based on Git webhooks."
+          disabled={!canUpdate || !webhook}
+        >
+          <option value="true">Deploy on push (webhooks)</option>
+          <option value="false">Manual deployments only</option>
+        </Select>
+      {:else}
+        <p class="text-sm text-muted-foreground">The webhook settings are hidden for viewers.</p>
+      {/if}
+    </SettingsGroup>
   {/if}
 
   <form
-    class="flex flex-col"
     onsubmit={(e) => {
       e.preventDefault()
       save()
@@ -130,7 +129,7 @@
     {#if canUpdate}
       <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
     {/if}
-    <SettingsSection id="advanced-proxy-section" title="Proxy" helper="How the proxy serves traffic for this application.">
+    <SettingsGroup id="advanced-proxy-section" label="Proxy" hint="How the proxy serves traffic for this application.">
       <FieldLabel
         label="Response headers"
         for="response-header-0"
@@ -139,17 +138,17 @@
       <div class="flex flex-col gap-2">
         {#each headers as h, i (h.key)}
           <div class="flex items-center gap-2">
-            <input
+            <Input
               id={`response-header-${i}`}
-              class="input min-w-0 flex-1"
+              class="min-w-0 flex-1"
               aria-label="Header name"
               bind:value={h.name}
               placeholder="X-Frame-Options"
               autocomplete="off"
               disabled={!canUpdate}
             />
-            <input
-              class="input min-w-0 flex-1"
+            <Input
+              class="min-w-0 flex-1"
               aria-label="Header value"
               bind:value={h.value}
               placeholder="DENY"
@@ -157,24 +156,17 @@
               disabled={!canUpdate}
             />
             {#if canUpdate}
-              <button
-                type="button"
-                class="button"
-                aria-label="Remove header"
-                onclick={() => (headers = headers.filter((x) => x.key !== h.key))}>Remove</button
-              >
+              <Button aria-label="Remove header" onclick={() => (headers = headers.filter((x) => x.key !== h.key))}>Remove</Button>
             {/if}
           </div>
         {:else}
-          <p class="text-sm text-neutral-500 dark:text-fg-dim">No custom response headers.</p>
+          <p class="text-sm text-muted-foreground">No custom response headers.</p>
         {/each}
       </div>
       <FieldError error={errors.response_headers} />
       {#if canUpdate && headers.length < 20}
-        <div class="mt-3">
-          <button type="button" class="button" onclick={() => headers.push({ key: nextKey++, name: '', value: '' })}>Add header</button>
-        </div>
+        <Button onclick={() => headers.push({ key: nextKey++, name: '', value: '' })}>Add header</Button>
       {/if}
-    </SettingsSection>
+    </SettingsGroup>
   </form>
 </div>

@@ -9,6 +9,7 @@
   // Gitea and Forgejo (their signature headers); Bitbucket is not. Coolify's
   // Deploy webhook (/api/v1/deploy) comes with the /api/v1 API.
   import { api, ApiError } from '../../lib/api'
+  import { buttonVariants } from '$lib/components/ui/button'
   import Icon from '../../lib/Icon.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Application, Webhook } from '../../lib/types'
@@ -16,7 +17,7 @@
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import CopyButton from '../../lib/ui/CopyButton.svelte'
   import Input from '../../lib/ui/Input.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
 
   let { application }: { application: Application } = $props()
@@ -61,64 +62,58 @@
   }
 </script>
 
-<div class="chrome flex flex-col gap-6">
-  <div class="application-settings-form flex flex-col">
-    <SettingsSection
-      id="manual-git-webhooks-section"
-      title="Manual Git webhooks"
-      helper="Configure these endpoints on the Git host so a push deploys the application. The Git host must be able to reach this URL."
-      flush
-    >
-      {#snippet actions()}
-        <div class="flex flex-wrap items-center gap-2">
-          {#if settings}
-            <a class="button" href={settings} target="_blank" rel="noopener noreferrer">
-              Repository settings
-              <Icon name="external-link" class="size-3.5" />
-            </a>
-          {/if}
-          {#if projectAccess.can('manage_applications') && projectAccess.can('see_secrets')}
-            <ConfirmationModal
-              title="Rotate webhook secret?"
-              buttonTitle="Rotate"
-              actions={['A new webhook secret is generated.', 'Pushes stop deploying until the new secret is pasted into the Git host.']}
-              confirmWithText={false}
-              onconfirm={rotate}
-            >
-              {#snippet trigger(show)}
-                <Button onclick={show}>Rotate secret</Button>
-              {/snippet}
-            </ConfirmationModal>
+<SettingsGroup
+  id="manual-git-webhooks-section"
+  label="Manual Git webhooks"
+  hint="Configure these endpoints on the Git host so a push deploys the application. The Git host must be able to reach this URL."
+  wide
+>
+  {#snippet actions()}
+    {#if settings}
+      <a class={buttonVariants({ variant: 'outline', size: 'sm' })} href={settings} target="_blank" rel="noopener noreferrer">
+        Repository settings
+        <Icon name="external-link" class="size-3.5" />
+      </a>
+    {/if}
+    {#if projectAccess.can('manage_applications') && projectAccess.can('see_secrets')}
+      <ConfirmationModal
+        title="Rotate webhook secret?"
+        buttonTitle="Rotate"
+        actions={['A new webhook secret is generated.', 'Pushes stop deploying until the new secret is pasted into the Git host.']}
+        confirmWithText={false}
+        onconfirm={rotate}
+      >
+        {#snippet trigger(show)}
+          <Button onclick={show}>Rotate secret</Button>
+        {/snippet}
+      </ConfirmationModal>
+    {/if}
+  {/snippet}
+
+  <div class="divide-y divide-border rounded-md border border-border">
+    {#each providers as provider (provider.name)}
+      <section class="px-4 py-4">
+        <div class="mb-3">
+          <h4 class="text-sm font-medium text-foreground">{provider.name}</h4>
+          <p class="mt-0.5 text-xs text-muted-foreground">{provider.description}</p>
+        </div>
+        <div class="grid gap-3 md:grid-cols-2">
+          <CopyButton label="Webhook URL" text={url} testid="webhook-url" />
+          {#if projectAccess.can('see_secrets')}
+            <Input
+              type="password"
+              label="Webhook secret"
+              value={webhook?.secret ?? ''}
+              readonly
+              helper={`Must exactly match the secret configured in ${provider.name}.`}
+              autocomplete="new-password"
+              data-testid="webhook-secret"
+            />
+          {:else}
+            <Input disabled label="Webhook secret" value="Hidden (only administrators can view)" />
           {/if}
         </div>
-      {/snippet}
-
-      <div class="divide-y divide-neutral-200 dark:divide-white/[0.07]">
-        {#each providers as provider (provider.name)}
-          <section class="px-4 py-5 first:pt-4 last:pb-4">
-            <div class="mb-4">
-              <h4 class="text-sm font-semibold text-black dark:text-fg">{provider.name}</h4>
-              <p class="mt-1 text-[13px] leading-5 text-neutral-500 dark:text-fg-dim">{provider.description}</p>
-            </div>
-            <div class="grid gap-4 md:grid-cols-2">
-              <CopyButton label="Webhook URL" text={url} testid="webhook-url" />
-              {#if projectAccess.can('see_secrets')}
-                <Input
-                  type="password"
-                  label="Webhook secret"
-                  value={webhook?.secret ?? ''}
-                  readonly
-                  helper={`Must exactly match the secret configured in ${provider.name}.`}
-                  autocomplete="new-password"
-                  data-testid="webhook-secret"
-                />
-              {:else}
-                <Input disabled label="Webhook secret" value="Hidden (only administrators can view)" />
-              {/if}
-            </div>
-          </section>
-        {/each}
-      </div>
-    </SettingsSection>
+      </section>
+    {/each}
   </div>
-</div>
+</SettingsGroup>

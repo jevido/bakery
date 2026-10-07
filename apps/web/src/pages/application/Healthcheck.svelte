@@ -14,7 +14,7 @@
   import Button from '../../lib/ui/Button.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Input from '../../lib/ui/Input.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
   import { applicationInput } from './applicationInput'
@@ -114,7 +114,7 @@
 </script>
 
 <form
-  class="application-settings-form flex flex-col gap-6"
+  class="space-y-8"
   onsubmit={(e) => {
     e.preventDefault()
     save()
@@ -124,18 +124,19 @@
     <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
   {/if}
 
-  <SettingsSection
+  <SettingsGroup
     id="healthcheck-configuration-section"
-    title="Healthcheck"
-    helper="Define how The Bakery determines whether this application is ready to receive traffic."
+    label="Healthcheck"
+    hint="Define how The Bakery determines whether this application is ready to receive traffic."
   >
     {#snippet actions()}
-      {#if !saved.enabled}
+      {#if !canUpdate}
+        <!-- A viewer sees the state below, not the toggle. -->
+      {:else if !saved.enabled}
         <ConfirmationModal
           title="Enable healthcheck?"
           buttonTitle="Enable"
           variant="highlighted"
-          disabled={!canUpdate}
           actions={['Enable healthcheck for this resource.']}
           warningMessage="If the healthcheck fails, your application will become inaccessible: a new deployment only takes traffic once the check passes."
           step2ButtonText="Enable healthcheck"
@@ -143,10 +144,10 @@
           onconfirm={toggle}
         />
       {:else}
-        <Button disabled={!canUpdate} onclick={() => toggle().catch(() => {})}>Disable</Button>
+        <Button onclick={() => toggle().catch(() => {})}>Disable</Button>
       {/if}
     {/snippet}
-    <p class="text-[13px] leading-5 text-neutral-600 dark:text-fg-dim">
+    <p class="text-sm text-muted-foreground">
       {#if saved.enabled}
         Enabled. Each new container is checked before it takes traffic; a deployment whose container never turns healthy fails and the
         running one stays.
@@ -154,12 +155,12 @@
         Disabled. A new container takes traffic as soon as it starts.
       {/if}
     </p>
-  </SettingsSection>
+  </SettingsGroup>
 
-  <SettingsSection
+  <SettingsGroup
     id="healthcheck-request-section"
-    title="HTTP request"
-    helper="The Bakery sends a GET request from inside the container, to the port the application listens on, and evaluates the response. The image needs curl or wget."
+    label="HTTP request"
+    hint="The Bakery sends a GET request from inside the container, to the port the application listens on, and evaluates the response. The image needs curl or wget."
   >
     <Input
       label="Path"
@@ -170,14 +171,14 @@
       disabled={!canUpdate}
       helper="Healthy when it answers with a 2xx or 3xx status."
     />
-  </SettingsSection>
+  </SettingsGroup>
 
-  <SettingsSection
+  <SettingsGroup
     id="healthcheck-timing-section"
-    title="Timing and retries"
-    helper="Control how quickly healthchecks start, repeat, and fail."
+    label="Timing and retries"
+    hint="Control how quickly healthchecks start, repeat, and fail."
   >
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="grid gap-3 sm:grid-cols-2">
       <Input
         type="number"
         min="1"
@@ -219,5 +220,5 @@
         disabled={!canUpdate}
       />
     </div>
-  </SettingsSection>
+  </SettingsGroup>
 </form>

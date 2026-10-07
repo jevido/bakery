@@ -9,11 +9,12 @@
   // and how to save them.
   import { untrack } from 'svelte'
   import { ApiError } from '../../lib/api'
+  import { buttonVariants } from '$lib/components/ui/button'
   import Icon from '../../lib/Icon.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { ResourceLimits } from '../../lib/types'
   import Input from '../../lib/ui/Input.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
 
@@ -96,7 +97,7 @@
 </script>
 
 <form
-  class="application-settings-form flex flex-col gap-6"
+  class="space-y-8"
   onsubmit={(e) => {
     e.preventDefault()
     save()
@@ -106,14 +107,14 @@
     <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
   {/if}
 
-  <SettingsSection id="cpu-limits-section" title="CPU" helper="Limit the CPU capacity of this container.">
+  <SettingsGroup id="cpu-limits-section" label="CPU" hint="Limit the CPU capacity of this container.">
     {#snippet actions()}
-      <a class="button" target="_blank" rel="noopener noreferrer" href="https://docs.podman.io/en/latest/markdown/podman-run.1.html#cpus">
+      <a class={buttonVariants({ variant: 'outline', size: 'sm' })} target="_blank" rel="noopener noreferrer" href="https://docs.podman.io/en/latest/markdown/podman-run.1.html#cpus">
         Podman CPU constraints
         <Icon name="external-link" class="size-3.5" />
       </a>
     {/snippet}
-    <div class="grid gap-4 md:grid-cols-3">
+    <div class="max-w-xs">
       <Input
         label="CPU limit"
         bind:value={cpus}
@@ -123,10 +124,10 @@
         helper="Set to 0 to use all available CPUs. Decimal values such as 0.5 are supported."
       />
     </div>
-  </SettingsSection>
+  </SettingsGroup>
 
-  <SettingsSection id="memory-limits-section" title="Memory" helper="Set a hard memory limit for this container.">
-    <div class="grid gap-4 sm:grid-cols-2">
+  <SettingsGroup id="memory-limits-section" label="Memory" hint="Set a hard memory limit for this container.">
+    <div class="max-w-xs">
       <Input
         label="Memory limit"
         bind:value={memory}
@@ -136,9 +137,9 @@
         helper="Maximum memory available to the container. Set to 0 for unlimited."
       />
     </div>
-    <p class="mt-4 text-xs leading-5 text-neutral-500 dark:text-fg-dim">
+    <p class="text-xs text-muted-foreground">
       Accepted units are <code class="font-mono">b</code>, <code class="font-mono">k</code>,
       <code class="font-mono">m</code>, and <code class="font-mono">g</code>; the limit is kept in whole megabytes, between 16m and 64g.
     </p>
-  </SettingsSection>
+  </SettingsGroup>
 </form>
