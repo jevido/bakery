@@ -9,7 +9,11 @@ export type Toast = {
   title: string
   text: string
   persistent: boolean
+  /** A link under the text, as Paperclip's toast action ("Open DEF-4"). */
+  action?: ToastAction
 }
+
+export type ToastAction = { label: string; href: string }
 
 const limit = 4
 let next = 1
@@ -17,8 +21,8 @@ const timers = new Map<number, ReturnType<typeof setTimeout>>()
 
 export const toasts = $state<Toast[]>([])
 
-function show(type: ToastType, title: string, text = '', persistent = false) {
-  const item: Toast = { id: next++, type, title, text, persistent }
+function show(type: ToastType, title: string, text = '', persistent = false, action?: ToastAction) {
+  const item: Toast = { id: next++, type, title, text, persistent, action }
   toasts.unshift(item)
   if (toasts.length > limit) {
     const index = toasts.findLastIndex((t) => !t.persistent)
@@ -50,7 +54,7 @@ export function dismiss(id: number) {
 
 export const toast = {
   show: (title: string, text?: string) => show('default', title, text),
-  success: (title: string, text?: string) => show('success', title, text),
+  success: (title: string, text?: string, action?: ToastAction) => show('success', title, text, false, action),
   info: (title: string, text?: string) => show('info', title, text),
   warning: (title: string, text?: string) => show('warning', title, text),
   error: (title: string, text?: string) => show('danger', title, text),

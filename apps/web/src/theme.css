@@ -178,6 +178,14 @@
   --organization-popover-name-line-height: 17px;
   --organization-popover-prefix-line-height: 13px;
   --organization-popover-action-line-height: 18px;
+  /* Paperclip's Issue status glyph hues (ui/src/index.css), AA-tuned per mode. */
+  --status-task-icon-backlog: #52585d;
+  --status-task-icon-todo: #cc7a00;
+  --status-task-icon-in_progress: var(--color-blue-600);
+  --status-task-icon-in_review: #7c3aed;
+  --status-task-icon-done: #16a34a;
+  --status-task-icon-blocked: #dc2626;
+  --status-task-icon-cancelled: #52585d;
 }
 
 .dark {
@@ -221,6 +229,12 @@
   --success: oklch(72.27% 0.192 149.58);
   --warning: oklch(88.13% 0.1507 91.7);
   --error: var(--destructive);
+  --status-task-icon-backlog: #9a958a;
+  --status-task-icon-todo: #fbbf24;
+  --status-task-icon-in_progress: var(--color-blue-400);
+  --status-task-icon-in_review: #9474f0;
+  --status-task-icon-done: #34d06f;
+  --status-task-icon-cancelled: #9a958a;
 }
 
 /* Paperclip's sidebar surface (the row action fade reads it). */

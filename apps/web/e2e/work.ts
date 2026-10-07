@@ -1,4 +1,4 @@
-// The Guild's work pages (Goals; Issues and the Issue page follow) in
+// The Guild's work pages (Goals and Issues; the Issue page follows) in
 // headless Chromium, one section each, every flow once in the dark theme at
 // 1440×900 (the light theme and phone width wait for the guilds goal's final
 // sweep):
@@ -8,6 +8,12 @@
 //           the status; a Markdown description renders a heading and a link
 //           (opening in a new tab) and no <script>; the scratch Goals are
 //           deleted again, the last one through the page's Delete
+//   issues  New Issue creates two Issues (one in a scratch Project, one
+//           assigned to "Me" at priority high); both rows show their
+//           identifier, icons and Assignee; search by an identifier finds
+//           one; the status filter todo hides a backlog one and survives a
+//           reload; the Project filter keeps only the first; grouping shows
+//           the counts; the scratch Issues and Project are deleted again
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -60,6 +66,27 @@ async function clean(page: Page) {
   const left = (await goals(page)).filter((g) => scratch.includes(g.title))
   left.sort((a, b) => (b.parent_id ?? 0) - (a.parent_id ?? 0))
   for (const g of left) await page.request.delete(`${WEB}/api/goals/${g.id}`)
+}
+
+type Issue = { id: number; identifier: string; title: string; status: string; priority: string; assignee: { id: number; name: string } | null; project: { id: number } | null }
+async function issues(page: Page): Promise<Issue[]> {
+  return ((await (await page.request.get(`${WEB}/api/issues`)).json()) as { issues: Issue[] }).issues
+}
+
+const scratchIssues = ['Wire the guild rail', 'Port the Issues list']
+const scratchProject = 'Work e2e scratch'
+
+/** Deletes the scratch Issues and Project a run before may have left. */
+async function cleanIssues(page: Page) {
+  for (const i of (await issues(page)).filter((i) => scratchIssues.includes(i.title))) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+  const { projects } = (await (await page.request.get(`${WEB}/api/projects`)).json()) as { projects: { id: number; name: string }[] }
+  for (const p of projects.filter((p) => p.name === scratchProject)) await page.request.delete(`${WEB}/api/projects/${p.id}`)
+}
+
+/** Picks an option of a dialog chip or popover by its accessible names. */
+async function pick(page: Page, scope: ReturnType<Page['getByRole']>, chip: string, option: string) {
+  await scope.getByRole('button', { name: chip, exact: true }).click()
+  await page.getByRole('listbox', { name: chip }).getByRole('option', { name: option, exact: true }).click()
 }
 
 const sections: Record<string, () => Promise<void>> = {
@@ -137,6 +164,78 @@ const sections: Record<string, () => Promise<void>> = {
     await page.waitForTimeout(300)
     const left = (await goals(page)).filter((g) => scratch.includes(g.title))
     expect('the scratch Goals are deleted again', left.length === 0, left)
+
+    await page.close()
+  },
+
+  async issues() {
+    const page = await signedIn()
+    await cleanIssues(page)
+    const project = (await (await page.request.post(`${WEB}/api/projects`, { data: { name: scratchProject } })).json()) as { project: { id: number } }
+
+    await page.goto(`${WEB}/#/issues`)
+    expect('Issues is in the sidebar', await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Issues' }).isVisible())
+    await page.getByRole('button', { name: 'New Issue' }).first().click()
+    let dialog = page.getByRole('dialog', { name: 'New issue' })
+    await dialog.getByLabel('Issue title').fill(scratchIssues[0])
+    await pick(page, dialog, 'Status', 'Backlog')
+    await pick(page, dialog, 'Project', scratchProject)
+    await dialog.getByRole('button', { name: 'Create issue' }).click()
+    await page.locator('[data-issue]', { hasText: scratchIssues[0] }).waitFor()
+
+    await page.getByRole('button', { name: 'New Issue' }).first().click()
+    dialog = page.getByRole('dialog', { name: 'New issue' })
+    await dialog.getByLabel('Issue title').fill(scratchIssues[1])
+    await pick(page, dialog, 'Assignee', 'Me')
+    await pick(page, dialog, 'Priority', 'High')
+    await dialog.getByRole('button', { name: 'Create issue' }).click()
+    await page.locator('[data-issue]', { hasText: scratchIssues[1] }).waitFor()
+    expect('the toast names the new identifier', await page.getByText(/^[A-Z]+-\d+ created$/).first().isVisible())
+
+    const made = (await issues(page)).filter((i) => scratchIssues.includes(i.title))
+    const first = made.find((i) => i.title === scratchIssues[0])!
+    const second = made.find((i) => i.title === scratchIssues[1])!
+    expect('New Issue creates both', !!first && !!second, made)
+    expect('the first is in the Project, in backlog', first?.project?.id === project.project.id && first?.status === 'backlog', first)
+    expect('the second is assigned and high', !!second?.assignee && second?.priority === 'high', second)
+
+    const row1 = page.locator(`[data-issue="${first.identifier}"]`)
+    const row2 = page.locator(`[data-issue="${second.identifier}"]`)
+    expect('a row shows its identifier', await row1.getByText(first.identifier, { exact: true }).isVisible())
+    expect('and its status icon', await row1.getByRole('button', { name: 'Change status (current: Backlog)' }).isVisible())
+    expect('and its priority icon', await row2.getByRole('img', { name: 'High priority' }).isVisible())
+    expect("and the Assignee's name", await row2.getByText(second.assignee!.name, { exact: true }).isVisible())
+
+    await page.getByRole('searchbox', { name: 'Search issues...' }).fill(second.identifier)
+    await row1.waitFor({ state: 'detached' })
+    expect('search by the identifier finds one', (await row2.isVisible()) && (await page.locator('[data-issue]').count()) === 1)
+    await page.getByRole('button', { name: 'Clear search' }).click()
+    await row1.waitFor()
+
+    await page.getByRole('button', { name: /^Filter/ }).click()
+    await page.getByRole('listbox', { name: 'Filter issues' }).getByRole('option', { name: 'Todo', exact: true }).click()
+    await page.keyboard.press('Escape')
+    await row1.waitFor({ state: 'detached' })
+    expect('the status filter todo hides the backlog one', await row2.isVisible())
+    expect('and the hash keeps it', page.url().includes('status=todo'))
+    await page.reload()
+    await row2.waitFor()
+    expect('it survives a reload', (await row1.count()) === 0)
+
+    await page.goto(`${WEB}/#/issues?project=${project.project.id}`)
+    await row1.waitFor()
+    expect('the Project filter keeps only the first', (await row2.count()) === 0 && (await page.locator('[data-issue]').count()) === 1)
+
+    await page.goto(`${WEB}/#/issues?project=${project.project.id}&group=priority`)
+    await page.reload()
+    const medium = page.locator('[data-issue-group="medium"]')
+    await medium.waitFor()
+    expect('grouping shows the counts', (await medium.locator('[data-count]').textContent()) === '1')
+
+    for (const i of made) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    await page.request.delete(`${WEB}/api/projects/${project.project.id}`)
+    const left = (await issues(page)).filter((i) => scratchIssues.includes(i.title))
+    expect('the scratch Issues are deleted again', left.length === 0, left)
 
     await page.close()
   },

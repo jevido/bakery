@@ -66,6 +66,7 @@
     Users,
     Variable,
     Bell,
+    CircleDot,
     HardDrive,
     X,
   } from '@lucide/svelte'
@@ -76,6 +77,7 @@
     'servers': Server,
     'storages': HardDrive,
     'goals': Target,
+    'issues': CircleDot,
     'notifications': Bell,
     'keys': KeyRound,
     'settings': Settings,

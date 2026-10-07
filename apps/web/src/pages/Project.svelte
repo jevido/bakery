@@ -8,6 +8,8 @@
   // Laid out as Paperclip's ProjectDetail (ui/src/pages/ProjectDetail.tsx,
   // MIT): its header with the tile, name and actions, then the Environments
   // as on the Projects page, EntityRows in one card or cards in the grid.
+  // Its Issues tab is a link to the Issues list filtered to the Project, and
+  // New issue opens the dialog with the Project preset.
   import { buttonVariants } from '$lib/components/ui/button'
   import { Card } from '$lib/components/ui/card'
   import { api, ApiError } from '../lib/api'
@@ -15,6 +17,7 @@
   import CollectionToolbar from '../lib/CollectionToolbar.svelte'
   import EntityRow from '../lib/EntityRow.svelte'
   import Icon from '../lib/Icon.svelte'
+  import NewIssueDialog from '../lib/NewIssueDialog.svelte'
   import PageHeader from '../lib/PageHeader.svelte'
   import PageSkeleton from '../lib/PageSkeleton.svelte'
   import ProjectTile from '../lib/ProjectTile.svelte'
@@ -100,6 +103,8 @@
   const addResourceHref = (env: Environment) => (projectAccess.can('manage_applications') ? href(`/project/${id}/environment/${env.id}/new`) : null)
   const settingsHref = (env: Environment) => (projectAccess.can('manage_applications') ? href(`/project/${id}/environment/${env.id}/edit`) : null)
 
+  let creatingIssue = $state(false)
+
   // New Environment.
   let creating = $state(false)
   let name = $state('')
@@ -168,6 +173,21 @@
             <Icon name="lock" class="size-3.5" />
             Permissions
           </a>
+        {/if}
+        <a
+          href={href(`/issues?project=${id}`)}
+          class={buttonVariants({ variant: 'outline', size: 'sm' })}
+          title="This project's issues"
+          aria-label="Open the issues of {project.name}"
+        >
+          <Icon name="issues" class="size-3.5" />
+          Issues
+        </a>
+        {#if session.can('manage_work')}
+          <button type="button" class={buttonVariants({ variant: 'outline', size: 'sm' })} onclick={() => (creatingIssue = true)}>
+            <Icon name="plus" class="size-3.5" />
+            New issue
+          </button>
         {/if}
         {#if projectAccess.can('manage_applications')}
           <a
@@ -262,3 +282,5 @@
     {/if}
   </div>
 {/if}
+
+<NewIssueDialog bind:open={creatingIssue} projectId={id} />

@@ -2,7 +2,7 @@
   // Paperclip's toast stack (components/ToastViewport.tsx): a tinted card per
   // toast with a status dot, title, body and dismiss button, here in the
   // status tokens and kept bottom-right where Coolify has it. Coolify's copy
-  // button for the details stays. Bakery's toasts carry plain text only.
+  // button for the details stays. Bakery's toasts carry plain text and at most one link.
   import { fly } from 'svelte/transition'
   import { motion } from './motion'
   import Check from '@lucide/svelte/icons/check'
@@ -50,6 +50,11 @@
           <p class="text-sm leading-5 font-semibold">{item.title}</p>
           {#if item.text}
             <p class="mt-1 text-xs leading-4 break-words whitespace-pre-wrap opacity-70">{item.text}</p>
+          {/if}
+          {#if item.action}
+            <a href={item.action.href} class="mt-1 inline-block text-xs font-medium underline underline-offset-2" onclick={() => dismiss(item.id)}
+              >{item.action.label}</a
+            >
           {/if}
         </div>
         {#if item.text}

@@ -16,9 +16,11 @@
   import GoalTree from '../../lib/GoalTree.svelte'
   import InlineEditor from '../../lib/InlineEditor.svelte'
   import NewGoalDialog from '../../lib/NewGoalDialog.svelte'
+  import NewIssueDialog from '../../lib/NewIssueDialog.svelte'
   import OptionPopover from '../../lib/OptionPopover.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
   import { go, href } from '../../lib/router.svelte'
+  import StatusIcon from '../../lib/StatusIcon.svelte'
   import { session, type Member } from '../../lib/session.svelte'
   import Button from '../../lib/ui/Button.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
@@ -46,6 +48,7 @@
   let missing = $state(false)
   let loadError = $state('')
   let creating = $state(false)
+  let creatingIssue = $state(false)
 
   const editable = $derived(session.can('manage_work'))
 
@@ -156,7 +159,12 @@
             <GoalTree goals={descendants} />
           {/if}
         </Tabs.Content>
-        <Tabs.Content value="issues" class="mt-4">
+        <Tabs.Content value="issues" class="mt-4 space-y-3">
+          {#if editable}
+            <div class="flex items-center justify-start">
+              <Button class="h-8 px-3 text-xs" onclick={() => (creatingIssue = true)}><Plus class="size-3.5" />New Issue</Button>
+            </div>
+          {/if}
           {#if g.issues.length === 0}
             <p class="text-sm text-muted-foreground">No issues.</p>
           {:else}
@@ -166,9 +174,9 @@
                   href={href(`/issues/${issue.identifier}`)}
                   class="flex items-center gap-3 border-b px-4 py-2 text-sm text-inherit no-underline transition-colors last:border-b-0 hover:bg-accent/50"
                 >
+                  <StatusIcon status={issue.status} />
                   <span class="shrink-0 font-mono text-xs text-muted-foreground">{issue.identifier}</span>
                   <span class="min-w-0 flex-1 truncate">{issue.title}</span>
-                  <StatusBadge status={issue.status} />
                 </a>
               {/each}
             </div>
@@ -252,3 +260,4 @@
 {/if}
 
 <NewGoalDialog bind:open={creating} parentId={id} oncreated={load} />
+<NewIssueDialog bind:open={creatingIssue} goalId={id} oncreated={load} />
