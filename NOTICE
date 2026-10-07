@@ -26,6 +26,10 @@ apps/web/src/lib/statusColors.ts), the Filter popover of ui/src/pages/Issues.tsx
 ui/src/components/transcript/RunTranscriptView.tsx (as the Deployment and
 Runtime Logs viewer and apps/web/src/pages/application/LogButton), and the
 detail layouts of ui/src/pages/ProjectDetail.tsx and AgentDetail.tsx.
+The settings pages (Notifications, Keys & Tokens, Profile and Settings) port
+the frame of ui/src/pages/CompanySettings.tsx and CompanyAccess.tsx (as
+apps/web/src/lib/settings/SettingsPage and SettingsGroup) and the layout of
+ui/src/pages/ProfileSettings.tsx (as apps/web/src/pages/Profile).
 
 The dashboard's components are built with shadcn-svelte
 (https://github.com/huntabyte/shadcn-svelte) on bits-ui

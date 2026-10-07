@@ -3,15 +3,11 @@
  * see NOTICE), its semantic tier only. The domain tiers (agent gradients,
  * chips, annotations, markdown, task chat) come with the pages that use them.
  * The shadcn components in src/lib/components/ui read these tokens.
- *
- * Below the tokens sit the legacy names (token and utility names from the
- * Coolify port) that pages not yet restyled still use, now defined from
- * Paperclip's tokens so those pages read in its colors.
  */
 @import "tailwindcss";
 
-/* Styles the native form controls the legacy pages still use (and their
-   select chevron). The shadcn controls set the same properties as utilities,
+/* Styles the native form controls pages still draw (checkboxes, radios and
+   native selects with their chevron). The shadcn controls set the same properties as utilities,
    which win over this base-layer reset. */
 @plugin '@tailwindcss/forms';
 
@@ -367,46 +363,17 @@
 }
 
 /*
- * Legacy names, removed as pages are restyled. Every value comes from the
- * tokens above: surfaces from background/card/muted, text from
- * foreground/muted-foreground, the old accent from primary.
+ * Two values Paperclip's token layer does not have: the warning text on a
+ * tinted badge in the light theme (statusColors.ts) and Coolify's easing
+ * curves, which the shell's transitions use.
  */
 @theme {
-  --shadow-dropdown: 0 4px 12px rgb(0 0 0 / 0.12), 0 2px 4px rgb(0 0 0 / 0.08);
-
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 @theme inline {
-  --color-fg: var(--foreground);
-  --color-fg-dim: color-mix(in oklab, var(--foreground) 80%, var(--muted-foreground));
-  --color-fg-faint: var(--muted-foreground);
-  --color-coollabs: var(--primary);
   --color-warning-700: color-mix(in oklab, var(--warning) 65%, black);
-}
-
-:root {
-  --coollabs-elevated: var(--card);
-  --coollabs-recessed: var(--background);
-  --coollabs-base: var(--card);
-  --coollabs-fill: var(--accent);
-  --coollabs-line: var(--border);
-  --coollabs-hairline: var(--border);
-  --coollabs-subtle: var(--muted-foreground);
-}
-
-/* `button` is Paperclip's outline button and `button-highlighted` its
-   default one (ui/src/components/ui/button.tsx). */
-.button {
-  transition-property: color, background-color, border-color, box-shadow, opacity;
-  transition-timing-function: var(--ease-out);
-  transition-duration: 120ms;
-}
-
-/* Reserve space for a visibility toggle or copy button inside an input. */
-.input[type="password"] {
-  padding-right: 2.5rem;
 }
 
 @media (max-width: 767px) {
@@ -417,206 +384,8 @@
   }
 }
 
-@utility input-select {
-  @apply block h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base text-foreground shadow-xs transition-[color,box-shadow] outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30;
-}
-
-@utility input {
-  @apply input-select;
-  @apply placeholder:text-muted-foreground read-only:bg-muted read-only:text-muted-foreground;
-  @apply focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none;
-  @apply aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40;
-}
-
-@utility select {
-  @apply w-full;
-  @apply input-select;
-  @apply focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='%23737373'%3e%3cpath stroke-linecap='round' stroke-linejoin='round' d='m6 9 6 6 6-6'/%3e%3c/svg%3e");
-  background-position: right 0.75rem center;
-  background-repeat: no-repeat;
-  background-size: 1rem 1rem;
-  padding-right: 2.5rem;
-}
-
-@utility button {
-  @apply inline-flex h-9 min-w-fit shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium whitespace-nowrap text-foreground shadow-xs outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:border-input dark:bg-input/30 dark:hover:bg-input/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4;
-}
-
-@utility button-highlighted {
-  @apply border-transparent bg-primary text-primary-foreground shadow-none hover:bg-primary/90 hover:text-primary-foreground dark:border-transparent dark:bg-primary dark:hover:bg-primary/90;
-}
-
 @utility dropdown-item {
   @apply relative flex w-full cursor-pointer items-center justify-start gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50;
-}
-
-@utility menu-item {
-  @apply relative flex h-8 w-full min-w-0 items-center gap-2.5 truncate rounded-md px-3 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground;
-}
-
-@utility menu-item-icon {
-  @apply size-4 shrink-0;
-}
-
-@utility menu-item-label {
-  @apply min-w-0 flex-1 truncate;
-}
-
-@utility menu-item-active {
-  @apply bg-accent text-foreground hover:bg-accent;
-}
-
-@utility nav-section {
-  @apply px-3 py-1.5 text-[10px] font-medium tracking-widest text-muted-foreground/60 uppercase select-none;
-}
-
-/* Dropdown panels and their rows (the user menu, the breadcrumb switchers),
-   unlayered as in Coolify so they win over layered min-w-* utilities. */
-.listbox-panel {
-  position: absolute;
-  top: calc(100% + 0.25rem);
-  left: 0;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: max(100%, 13rem);
-  width: max-content;
-  max-width: min(24rem, calc(100vw - 1.5rem));
-  max-height: 16rem;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 0.25rem;
-  border-radius: 10px;
-  border: 1px solid var(--coollabs-line);
-  background: var(--coollabs-recessed);
-  box-shadow: var(--shadow-dropdown);
-}
-
-.listbox-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  width: 100%;
-  min-height: 2rem;
-  height: auto;
-  padding: 0.375rem 0.5rem;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-  color: #000000;
-  text-align: left;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.dark .listbox-option {
-  color: var(--color-fg);
-}
-
-.listbox-option:hover {
-  background: var(--coollabs-fill);
-}
-
-.menu-item-active .menu-item-icon {
-  opacity: 1;
-}
-/* Coolify's layer card: an elevated shell with a hairline ring, a compact
-   header strip and a nested body. Modals reuse it. */
-.application-settings-section {
-  margin: 0;
-  display: flex;
-  width: 100%;
-  flex-direction: column;
-  border-radius: 8px;
-  border: none;
-  background: var(--coollabs-elevated);
-  box-shadow:
-    0 0 0 1px var(--coollabs-hairline),
-    0 1px 2px 0 rgb(0 0 0 / 0.05);
-}
-
-@media (min-width: 1024px) {
-  .application-settings-section.application-settings-form {
-    width: auto;
-  }
-}
-
-.application-settings-section
-  > header {
-  display: flex;
-  min-height: 3rem;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.5rem 0.5rem 0.5rem 1rem;
-  border-radius: 8px 8px 0 0;
-  background: var(--coollabs-elevated);
-  font-weight: 500;
-  color: var(--coollabs-subtle);
-}
-
-.application-settings-section
-  > header
-  :is(h2, h3) {
-  font-size: 0.875rem;
-  font-weight: 500;
-  line-height: 1.25rem;
-  letter-spacing: 0;
-  color: oklch(40% 0 0);
-}
-
-.dark
-  .application-settings-section
-  > header
-  :is(h2, h3) {
-  color: var(--color-fg-dim);
-}
-
-
-.application-settings-section-body {
-  position: relative;
-  border-radius: 8px;
-  background: var(--coollabs-base);
-  box-shadow: 0 0 0 1px var(--coollabs-hairline);
-  padding: 1rem;
-}
-
-/* Coolify's settings-layout header below xl (Notifications and the other
-   settings pages): the page title and its description above the sidebar. */
-.settings-mobile-header {
-  margin-bottom: 1.25rem;
-}
-
-.settings-mobile-title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  line-height: 1.75rem;
-  letter-spacing: -0.025em;
-  color: #000000;
-}
-
-.dark .settings-mobile-title {
-  color: #ffffff;
-}
-
-.settings-mobile-description {
-  margin-top: 0.25rem;
-  font-size: 0.8125rem;
-  line-height: 1.25rem;
-  color: #737373;
-}
-
-.dark .settings-mobile-description {
-  color: var(--coollabs-subtle);
-}
-
-/* Flush layer-card body (lists and other full-bleed content). */
-.application-settings-section-body.is-flush {
-  padding: 0;
 }
 
 /* Coolify's section highlight: scrollToSettingsSection flashes the card's
@@ -636,10 +405,6 @@
   }
 }
 
-.application-settings-section {
-  scroll-margin-top: 7rem;
-}
-
 .is-section-highlight {
   position: relative;
 }
@@ -655,133 +420,9 @@
   animation: application-settings-section-highlight 500ms ease-out forwards;
 }
 
-/* Coolify's custom listbox trigger (it replaces a native <select>). */
-.listbox-trigger {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  width: 100%;
-  min-width: 0;
-  height: 2rem;
-  padding: 0 0.625rem 0 0.75rem;
-  overflow: hidden;
-  border-radius: 8px;
-  border: 1px solid var(--coollabs-line);
-  background: var(--coollabs-recessed);
-  font-size: 0.875rem;
-  color: #000000;
-  text-align: left;
-  cursor: pointer;
-  transition-property: color, background-color, border-color, box-shadow;
-  transition-duration: 120ms;
-}
-
-.listbox-trigger-label {
-  min-width: 0;
-  flex: 1 1 0%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: left;
-}
-
-.dark .listbox-trigger {
-  color: var(--color-fg);
-}
-
-.listbox-trigger:disabled {
-  cursor: not-allowed;
-  background-color: var(--color-neutral-100);
-  color: var(--color-neutral-400);
-}
-
-.dark .listbox-trigger:disabled {
-  background-color: color-mix(in oklab, var(--color-white) 3%, transparent);
-  color: var(--color-fg-faint);
-}
-
-.listbox-trigger:focus-visible {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: none;
-}
-
 /* Paperclip's dashboard list rows (ui/src/index.css), the Dashboard's
    Projects and Servers lists. */
 .dashboard-list-row {
   min-height: calc(var(--spacing) * 12);
   padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4);
-}
-
-/* Coolify's data table (layer-card body, full-bleed) and table badges. */
-.data-table {
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  -webkit-overflow-scrolling: touch;
-}
-
-.data-table-header {
-  display: grid;
-  align-items: center;
-  gap: 1rem;
-  padding: 0 1rem;
-  height: 2.5rem;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--coollabs-subtle);
-  background: rgba(0, 0, 0, 0.02);
-  border-bottom: 1px solid var(--coollabs-fill);
-  border-radius: 8px 8px 0 0;
-}
-
-.dark .data-table-header {
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.data-table-row {
-  display: grid;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.625rem 1rem;
-  min-height: 3rem;
-  transition: background-color 0.15s;
-}
-
-.data-table-row:hover {
-  background: rgba(0, 0, 0, 0.02);
-}
-
-.dark .data-table-row:hover {
-  background: rgba(255, 255, 255, 0.02);
-}
-
-/* Coolify's API tokens table: Description | Permissions | Last used | Created
-   | Expires | Actions; Last used and Created go below 900px, Permissions
-   below 640px. */
-.api-tokens-table-grid {
-  grid-template-columns: minmax(9rem, 1.15fr) minmax(14rem, 1.9fr) 7rem 6.5rem 6.5rem 5.5rem;
-}
-
-@media (max-width: 900px) {
-  .api-tokens-table-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(9rem, 1.3fr) 6.5rem 4.5rem;
-  }
-
-  .api-tokens-table-grid > :nth-child(3),
-  .api-tokens-table-grid > :nth-child(4) {
-    display: none;
-  }
-}
-
-@media (max-width: 640px) {
-  .api-tokens-table-grid {
-    grid-template-columns: minmax(0, 1fr) 6.5rem 4.5rem;
-  }
-
-  .api-tokens-table-grid > :nth-child(2) {
-    display: none;
-  }
 }

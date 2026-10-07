@@ -10,6 +10,7 @@
   // with the live updates of the page ports. The Servers empty state skips "A
   // private key is required": every Server here gets its own key when it is
   // added.
+  import { buttonVariants } from '$lib/components/ui/button'
   import { Card } from '$lib/components/ui/card'
   import { api } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
@@ -114,7 +115,7 @@
           <Card class="block py-0">
             <Empty title="No projects yet" description="Use New project to create your first deployment workspace." icon="projects" size="sm">
               {#if session.can('manage_applications')}
-                <a href={href('/projects')} class="button button-highlighted">
+                <a href={href('/projects')} class={buttonVariants()}>
                   <Icon name="plus" class="size-3.5" />
                   New project
                 </a>
@@ -170,7 +171,7 @@
           <Card class="block py-0">
             <Empty title="No servers yet" description="Connect infrastructure for your deployments." icon="servers" size="sm">
               {#if session.can('manage_servers')}
-                <a href={href('/servers/new')} class="button button-highlighted">
+                <a href={href('/servers/new')} class={buttonVariants()}>
                   <Icon name="plus" class="size-3.5" />
                   New server
                 </a>

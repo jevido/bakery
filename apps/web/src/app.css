@@ -1,29 +1,17 @@
 /*
- * Legacy styles for the pages not yet ported to Coolify's markup. They sit in
- * Tailwind's base layer (after its preflight), so utility classes in ported
- * markup always win, and their variables come from the tokens in theme.css,
- * so the old pages follow the dark/light switch. This file shrinks as pages
- * are ported and goes when the last one is. The shell's own markup (inside
- * `.chrome`, as is every `lib/ui/` component) is Coolify's and is left out of
- * the element rules, as are the shadcn components (`[data-slot]`).
+ * Base styles for plain elements outside the shell's own markup: headings,
+ * paragraphs, lists, links, native form controls, buttons and tables that a
+ * page draws without utilities get spacing and colors from Paperclip's tokens
+ * in theme.css, so they follow the dark/light switch. They sit in Tailwind's
+ * base layer (after its preflight), so utility classes always win. Markup
+ * inside `.chrome` (every `lib/ui/` component) and the shadcn components
+ * (`[data-slot]`) is left out of the element rules.
  */
 @layer base {
-  /* Legacy names, removed as pages are restyled: defined from Paperclip's
-     tokens in theme.css, so they follow the dark/light switch on their own. */
-  :root {
-    --bg: var(--background);
-    --hover: var(--muted-foreground);
-    --text: var(--foreground);
-    --danger: var(--destructive);
-    --ok: var(--success);
-    --warn: var(--warning);
-    --mono: var(--font-mono);
-  }
-
   /* On body, not :root, so rem stays 16px and Tailwind's sizes match Coolify's. */
   body {
-    background: var(--bg);
-    color: var(--text);
+    background: var(--background);
+    color: var(--foreground);
     font: 14px/1.45 var(--font-sans);
   }
 
@@ -82,14 +70,14 @@
 
   code,
   pre {
-    font-family: var(--mono);
+    font-family: var(--font-mono);
   }
 
   /* The :not() lifts these above @tailwindcss/forms' [type=…] rules. */
   input:not([type='checkbox'], [type='radio'], [data-slot]),
   select:not([multiple], [data-slot]),
-  textarea:not(.input, [data-slot]) {
-    background-color: var(--bg);
+  textarea:not([data-slot]) {
+    background-color: var(--background);
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.45rem 0.6rem;
@@ -104,7 +92,7 @@
 
   input:not([type='checkbox'], [type='radio'], [data-slot]):focus,
   select:not([multiple], [data-slot]):focus,
-  textarea:not(.input, [data-slot]):focus {
+  textarea:not([data-slot]):focus {
     border-color: var(--primary);
     box-shadow: none;
     outline: none;
@@ -112,7 +100,7 @@
 
   input:not([type='checkbox'], [type='radio'], [data-slot]):focus-visible,
   select:not([multiple], [data-slot]):focus-visible,
-  textarea:not(.input, [data-slot]):focus-visible,
+  textarea:not([data-slot]):focus-visible,
   button:not(.chrome *, [data-slot], [data-slot] *):focus-visible,
   a:not(.chrome *, [data-slot], [data-slot] *):focus-visible {
     outline: 2px solid var(--primary);
@@ -122,27 +110,16 @@
   input[type='checkbox']:not(.chrome *, [data-slot], [data-slot] *),
   input[type='radio']:not(.chrome *, [data-slot], [data-slot] *) {
     color: var(--primary);
-    background-color: var(--bg);
+    background-color: var(--background);
     border-color: var(--muted-foreground);
   }
 
   button:not(.chrome *, [data-slot], [data-slot] *) {
-    background: var(--hover);
+    background: var(--muted-foreground);
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.4rem 0.8rem;
     cursor: pointer;
-  }
-
-  button.primary {
-    background: var(--primary);
-    border-color: var(--primary);
-    color: var(--primary-foreground);
-    font-weight: 600;
-  }
-
-  button.danger {
-    color: var(--danger);
   }
 
   button:not(.chrome *, [data-slot], [data-slot] *):disabled {
@@ -177,24 +154,5 @@
     color: var(--muted-foreground);
     text-transform: uppercase;
     letter-spacing: 0.03em;
-  }
-
-  .muted {
-    color: var(--muted-foreground);
-  }
-
-  .error {
-    color: var(--danger);
-  }
-
-  .mono {
-    font-family: var(--mono);
-  }
-
-
-  /* A fieldset that only groups a form's fields, so disabling it makes the
-     whole form read-only without changing its layout. */
-  fieldset.contents {
-    display: contents;
   }
 }

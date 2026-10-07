@@ -196,7 +196,7 @@
 {/snippet}
 
 <form
-  class="chrome application-settings-form flex flex-col gap-6"
+  class="chrome flex flex-col gap-6"
   onsubmit={(e) => {
     e.preventDefault()
     save()

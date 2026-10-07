@@ -10,6 +10,7 @@ task web:dev     # from the repo root: http://127.0.0.1:4930
 task web:check   # svelte-check, tsc, build
 task web:walk    # every route in headless Chromium, both sizes and themes (needs task dev)
 task web:rail    # the guild rail in headless Chromium (needs task dev)
+task web:settings # the settings pages in headless Chromium (needs task dev)
 ```
 
 - `src/lib/router.svelte.ts` is a small hash router (`#/projects`,
@@ -76,6 +77,15 @@ Invite open outside it.
 at 1440×900 and 390×844, dark and light. It fails on a console or page
 error, a sideways scrollbar at 390px, a page outside the shell, or the words
 "Coolify" or "Paperclip" anywhere a person reads them.
+
+`e2e/settings.ts` (`task web:settings`, needs `task dev`) checks the settings
+pages, one section per page (`bun e2e/settings.ts profile` runs one):
+`notifications` (every Channel kind, a Discord channel saved, enabled,
+disabled and tested, an event toggled, the Deliveries and the Send Test Email
+dialog), `tokens` (create, copy once, search, use and revoke an API token),
+`profile` (rename, a wrong password, two-factor setup), `instance` (Known
+hosts and the Forget confirmation) and `viewer` (what a Viewer cannot see),
+each once in the dark theme at 1440×900.
 
 `e2e/servers.ts` (`task web:servers`, needs `task dev`) checks the Servers
 pages and S3 Storage, one section per flow (`bun e2e/servers.ts remote`

@@ -150,6 +150,15 @@ None published.
   it enabled, named after its kind. An event toggled in the events grid is
   saved at once, as Coolify's are, from the stored settings, so other edits
   not yet saved stay unsaved. The recent Deliveries sit below the events grid.
+- **The Channel-kind nav sits inside one settings page.** Coolify draws
+  Notifications as a settings layout of its own, with the kinds as a sidebar
+  beside each kind's page. In The Bakery it is one of the guild's settings
+  pages, in Paperclip's settings look: the page titled Notifications, the
+  Channel kinds listed on its left with their icons (a select above the page
+  on a phone) the way a Server's sub-pages are listed, and the kind's
+  settings, events grid and Deliveries as grouped rows. The kinds, their
+  order, URLs and fields stay Coolify's; only the frame is Paperclip's, so
+  every settings page reads the same.
 - **The Email page keeps one switch and its own Recipients.** Coolify's Email
   page has a separate "SMTP delivery" Enabled/Disabled select beside the
   page's settings; here the channel's Enable/Disable in the "Email delivery"

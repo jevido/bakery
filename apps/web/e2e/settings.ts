@@ -5,7 +5,10 @@
 //   notifications  every Channel kind opens from the nav and shows its form;
 //                  Discord: an empty save shows the validation, a webhook
 //                  URL saves, Enable and Disable toggle and toast, Send test
-//                  answers with a toast; the Discord channel is deleted again
+//                  answers with a toast and adds a Delivery row, an event
+//                  toggles and stays toggled after a reload; the Discord
+//                  channel is deleted again; the Email kind's Send Test
+//                  Email dialog opens
 //
 //   tokens         create a token with Read and Deploy, expiring in 7 days;
 //                  its value shows once with Copy, survives no reload, is

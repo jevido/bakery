@@ -173,7 +173,10 @@ Who may run each is in brackets.
   Private Key resource to list yet; it comes with the goal's "what Coolify
   has and The Bakery does not" step. Cloud Tokens and Cloud-Init Scripts
   provision servers at a cloud provider, which is not part of The Bakery.
-  The menu shows only what exists rather than dead links.
+  The menu shows only what exists rather than dead links, so Keys & Tokens
+  is one page without Coolify's sub-nav: creating a token, copying it once
+  and the issued tokens sit on it as groups. The sub-nav comes back when
+  Private Keys do.
 - **No "API disabled" state.** Coolify can switch its API off in instance
   Settings and then shows "API access is turned off" instead of the page.
   The Bakery's dashboard is itself an API client, so the API is always on;
@@ -231,4 +234,8 @@ Who may run each is in brackets.
   Coolify's Teams are Guilds.
 - **Profile, not Account.** The page where a Member changes their own
   name, password, Sessions and Two-factor authentication is Coolify's
-  Profile page, so The Bakery calls it Profile too.
+  Profile page, so The Bakery calls it Profile too. It is laid out as
+  Paperclip's profile settings (a card with the Member's initials, name,
+  email and Role over the forms), without Paperclip's picture upload and
+  without changing the email address: a Member has no picture here, and the
+  email is the sign-in name and stays the one the Member signed up with.
