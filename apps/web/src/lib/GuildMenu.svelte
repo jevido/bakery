@@ -28,13 +28,14 @@
   async function switchTo(id: number) {
     sidebar.closeDrawer()
     if (id === session.guild?.id) return
+    // Leave the page first: the switch remounts the current page in the new
+    // Guild, where a Resource of the old one answers 404.
+    go('/')
     try {
       await session.switchGuild(id)
     } catch (err) {
       toast.error('Guild not switched', err instanceof Error ? err.message : String(err))
-      return
     }
-    go('/')
   }
 
   const name = $derived(session.guild?.name ?? null)

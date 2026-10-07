@@ -30,7 +30,7 @@
     success: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
     error: 'border-red-500/25 bg-red-500/10 text-red-600 dark:text-red-400',
     warning: 'border-warning/25 bg-warning/15 text-warning-700 dark:text-warning',
-    running: 'border-coollabs/25 bg-coollabs/10 text-coollabs dark:border-warning/25 dark:bg-warning/15 dark:text-warning',
+    running: 'border-primary/25 bg-primary/10 text-primary',
     pending: 'border-neutral-200 text-neutral-400 dark:border-white/[0.1] dark:text-fg-faint',
     idle: 'border-neutral-200 bg-neutral-50 text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.035] dark:text-fg-dim',
   }

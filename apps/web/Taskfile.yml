@@ -13,6 +13,12 @@ tasks:
     cmds:
       - bun run dev
 
+  walk:
+    desc: Open every route in headless Chromium at both sizes and themes (needs task dev)
+    deps: [install]
+    cmds:
+      - bun e2e/walk.ts
+
   check:
     desc: svelte-check, tsc and a production build
     deps: [install]

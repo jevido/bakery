@@ -8,6 +8,7 @@ CORS.
 ```sh
 task web:dev     # from the repo root: http://127.0.0.1:4930
 task web:check   # svelte-check, tsc, build
+task web:walk    # every route in headless Chromium, both sizes and themes (needs task dev)
 ```
 
 - `src/lib/router.svelte.ts` is a small hash router (`#/projects`,
@@ -15,9 +16,10 @@ task web:check   # svelte-check, tsc, build
   `#/project/:id/environment/:envId/application/:appId[/:page]`, `#/members`, `#/security/api-tokens`,
   `#/invite/:token`, …). An Invitation link opens `#/invite/:token` for
   anyone, signed in or not.
-- `src/lib/session.svelte.ts` knows the signed-in Member and their Role;
-  pages hide what the Role may not do with `session.canWrite`,
-  `session.canSeeSecrets` and `session.isAdmin`.
+- `src/lib/session.svelte.ts` knows the signed-in Member, the Current guild
+  and its Permissions; pages hide what the Member may not do with
+  `session.can('deploy')` and the like (`src/lib/projectAccess.svelte.ts`
+  for a Project's, after its Permission overrides). Never a Role's name.
 - `src/lib/api.ts` is the only place that calls `fetch`.
 
 Styling is Tailwind CSS v4 (through `@tailwindcss/vite`) in Paperclip's look.
@@ -37,3 +39,18 @@ as pages are restyled. The theme is `localStorage.theme` (`dark`, `light` or
 `src/lib/theme.svelte.ts` keeps it in step. `src/app.css` is the legacy layer
 for pages not yet ported: plain CSS in Tailwind's base layer whose variables
 point at the new tokens; it shrinks as pages are ported.
+
+The shell is Paperclip's Layout (`src/lib/Layout.svelte`): `Sidebar.svelte`
+(resizable from 240px, collapsing to a 64px icon rail with tooltips, a drawer
+below 768px) headed by `GuildMenu.svelte` (switch, create or invite to a
+Guild) and ending in `AccountMenu.svelte` (Profile, Settings, theme, Sign
+out); `BreadcrumbBar.svelte`, the 60px bar with the page's title; and
+`SettingsSidebar.svelte`, which settings routes (Guild, Notifications, Keys &
+Tokens, Profile, Settings) show in place of the sidebar. Login, Setup and
+Invite open outside it.
+
+`e2e/walk.ts` signs in as the Owner of the dev installation
+(`infra/dev/state/owner.env`) and opens every route in `router.svelte.ts`
+at 1440×900 and 390×844, dark and light. It fails on a console or page
+error, a sideways scrollbar at 390px, a page outside the shell, or the words
+"Coolify" or "Paperclip" anywhere a person reads them.

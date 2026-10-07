@@ -137,7 +137,7 @@
       </div>
 
       {#if projectAccess.can('manage_applications') || session.can('manage_roles')}
-        <div class="flex w-fit shrink-0 items-center gap-2">
+        <div class="flex shrink-0 flex-wrap items-center gap-2">
           {#if session.can('manage_roles')}
             <a href={href(`/project/${id}/permissions`)} class="button" title="Project permissions" aria-label="Open permissions for {project.name}">
               <Icon name="lock" class="size-3.5" />
@@ -233,7 +233,7 @@
                 >
                   <span class="flex-1">{option.label}</span>
                   {#if sortBy === option.value}
-                    <svg class="size-3.5 text-warning" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                    <svg class="size-3.5 text-foreground" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                       <path d="m2.5 6.25 2.1 2.1 4.9-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
                     </svg>
                   {/if}

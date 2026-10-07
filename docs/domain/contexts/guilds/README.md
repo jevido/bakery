@@ -364,11 +364,20 @@ other changes with `write`, `administrator` only with `root`.
   by its own deliberate delete first.
 - **The guild switcher is Paperclip's company menu.** It heads the sidebar:
   the Current guild's pattern icon and name, opening every Guild with the
-  current one checked, New guild, Invite and Log out. Paperclip's release
-  has no rail of company icons any more; this menu is where it switches
-  companies, so it is the "guild rail" the goal names. Paperclip lets a
-  person drag the companies into their own order; nothing stores an order
-  of Guilds, so the menu lists them as the API does.
+  current one checked, New guild, Invite and Log out. Paperclip v2026.1005.0
+  has no rail of company icons any more; it switches companies from the
+  sidebar's company menu, so this menu is the "guild rail" the goal names.
+  Paperclip lets a person drag the companies into their own order; nothing
+  stores an order of Guilds, so the menu lists them as the API does.
+- **The Guild's workspace is Paperclip's shell, with what has no Bakery
+  counterpart yet left out.** The sidebar, breadcrumb bar, account menu and
+  settings sidebar follow Paperclip's Layout. The theme keeps a third choice,
+  System, beside Dark and Light, because people already chose it. There is no
+  command palette, search, properties panel or mobile bottom nav: in
+  Paperclip they reach Issues and Agents, which come later, and they come
+  with them. The Roles and Role pages have no Paperclip counterpart (a
+  Company's members there hold one fixed role), so they are laid out as
+  Paperclip's Company settings and access pages are.
 - **Every Role reads the Guild's General and Members pages.** As in Coolify,
   whose team pages every member of the team sees; only admins see and make
   Invitations and change anything.

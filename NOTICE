@@ -11,8 +11,8 @@ The guild, agent and work model (Guilds, Memberships, Agents, Goals, Issues
 and the rest) follows Paperclip (https://github.com/paperclipai/paperclip),
 Copyright (c) 2025 Paperclip AI, licensed under the MIT License. The
 dashboard's look is adapted from Paperclip's user interface (its design
-tokens in ui/src/index.css and its components in ui/src/components),
-rewritten for Svelte and Tailwind CSS; Paperclip's name and logo are not used.
+tokens in ui/src/index.css, its components in ui/src/components and its
+page layouts in ui/src/pages), rewritten for Svelte and Tailwind CSS; Paperclip's name and logo are not used.
 
 The dashboard's components are built with shadcn-svelte
 (https://github.com/huntabyte/shadcn-svelte) on bits-ui
