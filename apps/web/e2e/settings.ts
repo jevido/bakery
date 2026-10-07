@@ -125,6 +125,22 @@ const sections: Record<string, () => Promise<void>> = {
     await page.getByTestId('channel-test').click()
     const tested = await toastText(page)
     expect('Send test answers with a toast', tested.length > 0, tested)
+    const deliveries = page.getByTestId('delivery')
+    await deliveries.first().waitFor({ timeout: 5000 }).catch(() => {})
+    expect('a Delivery row appears after Send test', (await deliveries.count()) > 0, await deliveries.count())
+
+    await clearToasts(page)
+    await page.locator('#discord-deployments-events-trigger').click()
+    const checkbox = page.getByTestId('event-option').first().locator('[data-slot="checkbox"]')
+    const checkedBefore = await checkbox.getAttribute('data-state')
+    await page.getByTestId('event-option').first().click()
+    expect('toggling an event toasts', /saved/i.test(await toastText(page)))
+    const checkedAfter = await checkbox.getAttribute('data-state')
+    expect('the event toggle flips the checkbox', checkedAfter !== checkedBefore, { checkedBefore, checkedAfter })
+    await page.reload()
+    await page.locator('#discord-deployments-events-trigger').click()
+    const checkedAfterReload = await page.getByTestId('event-option').first().locator('[data-slot="checkbox"]').getAttribute('data-state')
+    expect('the checkbox state survives a reload', checkedAfterReload === checkedAfter, { checkedAfter, checkedAfterReload })
 
     await clearToasts(page)
     await page.getByTestId('channel-toggle').click()
@@ -140,6 +156,35 @@ const sections: Record<string, () => Promise<void>> = {
     const after = (await channels(page)).filter((c) => c.kind === 'discord')
     expect('the Discord channel is deleted again', after.length === 0, after)
     for (const c of after) await page.request.delete(`${WEB}/api/notification-channels/${c.id}`)
+
+    // Email's Send test asks for a recipient first, starting at the signed-in
+    // owner's address; Send test is disabled until the channel is enabled.
+    const strayEmail = (await channels(page)).filter((c) => c.kind === 'email')
+    for (const c of strayEmail) await page.request.delete(`${WEB}/api/notification-channels/${c.id}`)
+    await page.goto(`${WEB}/#/notifications/email`)
+    await page.locator('#email-settings').waitFor()
+    await page.getByTestId('email-from-name').fill('The Bakery')
+    await page.getByTestId('email-from').fill('bakery@example.com')
+    await page.getByTestId('email-to').fill('ops@example.com')
+    await page.getByTestId('email-host').fill('127.0.0.1')
+    await page.getByTestId('email-port').fill('4980')
+    await page.getByTestId('email-encryption').selectOption('none')
+    await clearToasts(page)
+    await page.getByTestId('channel-toggle').click()
+    expect('enabling email toasts', /updated|saved/i.test(await toastText(page)))
+    await page.getByTestId('channel-toggle').filter({ hasText: 'Disable' }).waitFor()
+
+    await page.getByTestId('channel-test').click()
+    const dialog = page.getByRole('dialog', { name: 'Send Test Email' })
+    await dialog.waitFor()
+    const recipient = await dialog.getByTestId('test-recipient').inputValue()
+    expect('Send test opens with the owner email as recipient', recipient === who.email, recipient)
+    await dialog.getByRole('button', { name: 'Close' }).click()
+    await dialog.waitFor({ state: 'hidden' })
+
+    const email = (await channels(page)).find((c) => c.kind === 'email')
+    if (email) await page.request.delete(`${WEB}/api/notification-channels/${email.id}`)
+
     await page.close()
   },
 }
