@@ -1,8 +1,10 @@
 <script lang="ts">
   // Coolify's Team General page (resources/views/livewire/team/index.blade.php,
   // app/Livewire/Team/Index.php; Apache-2.0, see NOTICE): Name, Description
-  // and "New guild". Coolify's MCP server setting is left out until agents
-  // reach The Bakery's API.
+  // and "New guild", in Paperclip's CompanySettings General group
+  // (ui/src/pages/CompanySettings.tsx; MIT, see NOTICE). Coolify's MCP server
+  // setting is left out until agents reach The Bakery's API.
+  import { SlidersHorizontal } from '@lucide/svelte'
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
   import { session } from '../../lib/session.svelte'
@@ -10,7 +12,8 @@
   import Button from '../../lib/ui/Button.svelte'
   import Input from '../../lib/ui/Input.svelte'
   import Modal from '../../lib/ui/Modal.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
+  import SettingsPage from '../../lib/settings/SettingsPage.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
   import Create from './Create.svelte'
@@ -53,28 +56,35 @@
   }
 </script>
 
-<form
-  class="application-settings-form flex flex-col gap-6"
-  onsubmit={(e) => {
-    e.preventDefault()
-    save()
-  }}
->
-  {#if canUpdate}
-    <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
-  {/if}
-  <SettingsSection id="guild-general-section" title="General" helper="Manage this guild's identity.">
-    {#snippet actions()}
-      <Modal title="New Guild" bind:open={creating}>
-        {#snippet trigger(show)}
-          <Button onclick={show}>New guild</Button>
-        {/snippet}
-        <Create oncreated={() => (creating = false)} />
-      </Modal>
-    {/snippet}
-    <div class="grid gap-4 lg:grid-cols-2">
-      <Input label="Name" bind:value={name} error={errors.name} required disabled={!canUpdate} />
-      <Input label="Description" bind:value={description} error={errors.description} disabled={!canUpdate} />
-    </div>
-  </SettingsSection>
-</form>
+<SettingsPage icon={SlidersHorizontal} title="General">
+  {#snippet actions()}
+    <Modal title="New Guild" bind:open={creating}>
+      {#snippet trigger(show)}
+        <Button onclick={show}>New guild</Button>
+      {/snippet}
+      <Create oncreated={() => (creating = false)} />
+    </Modal>
+  {/snippet}
+  <form
+    class="space-y-8"
+    onsubmit={(e) => {
+      e.preventDefault()
+      save()
+    }}
+  >
+    {#if canUpdate}
+      <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
+    {/if}
+    <SettingsGroup label="General" data-testid="guild-general">
+      <Input label="Guild name" helper="The display name of this guild." bind:value={name} error={errors.name} required disabled={!canUpdate} />
+      <Input
+        label="Description"
+        helper="Optional description shown with this guild."
+        placeholder="Optional guild description"
+        bind:value={description}
+        error={errors.description}
+        disabled={!canUpdate}
+      />
+    </SettingsGroup>
+  </form>
+</SettingsPage>

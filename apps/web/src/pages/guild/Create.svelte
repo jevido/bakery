@@ -2,7 +2,7 @@
   // Coolify's New Team form (resources/views/livewire/team/create.blade.php,
   // app/Livewire/Team/Create.php; Apache-2.0, see NOTICE): Name and
   // Description. The new Guild becomes the Current guild and its creator its
-  // admin, and the Dashboard opens in it.
+  // Guild Master, and the Dashboard opens in it.
   import { api, ApiError } from '../../lib/api'
   import { go } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
@@ -37,9 +37,9 @@
   }
 </script>
 
-<form class="application-settings-form flex w-full flex-col gap-4" onsubmit={create} data-testid="guild-create">
-  <Input label="Name" bind:value={name} error={errors.name} required />
-  <Input label="Description" bind:value={description} error={errors.description} />
+<form class="flex w-full flex-col gap-4" onsubmit={create} data-testid="guild-create">
+  <Input label="Guild name" bind:value={name} error={errors.name} required />
+  <Input label="Description" placeholder="Optional guild description" bind:value={description} error={errors.description} />
   <div class="flex justify-end">
     <Button type="submit" variant="highlighted" loading={busy}>Create guild</Button>
   </div>

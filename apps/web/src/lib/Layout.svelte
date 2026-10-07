@@ -9,12 +9,18 @@
   import AccountMenu from './AccountMenu.svelte'
   import BreadcrumbBar from './BreadcrumbBar.svelte'
   import { router } from './router.svelte'
+  import SettingsSidebar from './SettingsSidebar.svelte'
   import Sidebar from './Sidebar.svelte'
   import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, SIDEBAR_RAIL_WIDTH, SIDEBAR_WIDTH_STEP, sidebar } from './sidebar.svelte'
   import TransferOffers from './TransferOffers.svelte'
   import { cn } from './utils'
 
   let { children }: { children: Snippet } = $props()
+
+  // Settings routes swap the primary sidebar for the settings sidebar, as
+  // Paperclip's Layout does for its company settings.
+  const SETTINGS_ROUTES = ['guild', 'guild-new', 'notifications', 'security', 'profile', 'settings']
+  const Nav = $derived(SETTINGS_ROUTES.includes(router.route.name) ? SettingsSidebar : Sidebar)
 
   // A route change closes the drawer.
   $effect(() => {
@@ -101,7 +107,7 @@
         aria-label="Navigation"
         data-testid="sidebar-drawer"
       >
-        <div class="flex min-h-0 flex-1 overflow-hidden"><Sidebar /></div>
+        <div class="flex min-h-0 flex-1 overflow-hidden"><Nav /></div>
         <AccountMenu />
       </div>
     {:else}
@@ -117,7 +123,7 @@
           onfocusin={focusIn}
           onfocusout={focusOut}
         >
-          <div class="flex min-h-0 flex-1"><Sidebar /></div>
+          <div class="flex min-h-0 flex-1"><Nav /></div>
           <AccountMenu />
         </div>
         {#if !sidebar.collapsed}

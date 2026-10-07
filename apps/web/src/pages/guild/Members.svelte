@@ -1,30 +1,39 @@
 <script lang="ts">
-  // The Current guild's Members: everyone reads the list, the Guild Master
-  // first, each with the Roles they hold as pills. With manage_roles a
-  // Member gives and takes Roles below their own highest, from people whose
-  // highest Role is below theirs; with manage_members they invite (with
-  // Roles), remove, reset two-factor and see the open Invitations. The
-  // Guild Master offers the Guild Master to another Member and can withdraw
-  // the offer.
+  // The Current guild's Members, in Paperclip's CompanyAccess (ui/src/pages/
+  // CompanyAccess.tsx) and InvitesSection (ui/src/components/access/
+  // InvitesSection.tsx; MIT, see NOTICE): a Members and an Invites tab.
+  // Everyone reads the list, the Guild Master first, each with the Roles they
+  // hold as pills. With manage_roles a Member gives and takes Roles below
+  // their own highest, from people whose highest Role is below theirs; with
+  // manage_members they invite (with Roles), remove, reset two-factor and see
+  // the open Invitations. The Guild Master offers the Guild Master to another
+  // Member and can withdraw the offer. Paperclip picks one role per invite
+  // with radios; a Guild's Invitation gives any set of Roles, so checkboxes.
+  import { Check, Crown, EllipsisVertical, Plus, ShieldCheck, X } from '@lucide/svelte'
+  import * as AlertDialog from '$lib/components/ui/alert-dialog'
+  import * as Avatar from '$lib/components/ui/avatar'
+  import { Badge } from '$lib/components/ui/badge'
+  import { Button, buttonVariants } from '$lib/components/ui/button'
+  import { Checkbox } from '$lib/components/ui/checkbox'
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
+  import * as Tabs from '$lib/components/ui/tabs'
   import { api, ApiError } from '../../lib/api'
-  import CopyButton from '../../lib/CopyButton.svelte'
-  import Field from '../../lib/Field.svelte'
-  import { session } from '../../lib/session.svelte'
   import { canAssign, canManage } from '../../lib/hierarchy'
-  import Icon from '../../lib/Icon.svelte'
+  import { session } from '../../lib/session.svelte'
+  import SettingsPage from '../../lib/settings/SettingsPage.svelte'
   import type { GuildDetails, GuildRole, Invitation, Member, Offer, RoleRef } from '../../lib/types'
-  import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
+  import CopyButton from '../../lib/ui/CopyButton.svelte'
+  import Input from '../../lib/ui/Input.svelte'
 
   let members = $state.raw<Member[] | null>(null)
   let roles = $state.raw<GuildRole[]>([])
-  // The Member whose Role picker is open.
-  let picking = $state<number | null>(null)
   let invitations = $state.raw<Invitation[]>([])
   // The Guild's open Transfer offer, null without one.
   let offer = $state.raw<Offer | null>(null)
   let offerError = $state('')
   let loadError = $state('')
   let rowError = $state<Record<number, string>>({})
+  let tab = $state('members')
 
   let email = $state('')
   // The Roles the Invitation gives; Member by default once the Roles load.
@@ -33,6 +42,9 @@
   let busy = $state(false)
   // The link of the Invitation just made; the API never shows it again.
   let invited = $state.raw<{ email: string; link: string; emailed: boolean; emailError?: string } | null>(null)
+
+  // The question the alert dialog asks before a row action; null when closed.
+  let asking = $state.raw<{ title: string; body: string; points?: string[]; action: string; destructive?: boolean; run: () => Promise<void> } | null>(null)
 
   async function load() {
     const [m, i, g, r] = await Promise.all([
@@ -64,6 +76,11 @@
 
   function roleOf(ref: RoleRef): GuildRole | undefined {
     return roles.find((r) => r.id === ref.id)
+  }
+
+  function initials(m: Member): string {
+    const words = m.name.trim().split(/\s+/).filter(Boolean)
+    return (words.length > 1 ? words[0][0] + words[words.length - 1][0] : (words[0] ?? m.email).slice(0, 2)).toUpperCase()
   }
 
   async function offerGuildMaster(m: Member) {
@@ -114,7 +131,6 @@
 
   async function reRole(m: Member, roleID: number, give: boolean) {
     rowError = {}
-    picking = null
     try {
       await api(give ? 'PUT' : 'DELETE', `/members/${m.id}/roles/${roleID}`)
     } catch (err) {
@@ -123,32 +139,60 @@
     await load()
   }
 
-  async function remove(m: Member) {
-    if (!confirm(`Remove ${m.name} (${m.email})? They are signed out at once and their API tokens stop working.`)) return
+  async function rowAction(m: Member, method: 'DELETE', path: string) {
     rowError = {}
     try {
-      await api('DELETE', `/members/${m.id}`)
+      await api(method, path)
     } catch (err) {
       rowError = { [m.id]: err instanceof Error ? err.message : String(err) }
     }
     await load()
   }
 
-  async function resetTwoFactor(m: Member) {
-    if (!confirm(`Turn off two-factor for ${m.name} (${m.email})? They are signed out, sign in with only their password, and should set it up again.`)) return
-    rowError = {}
-    try {
-      await api('DELETE', `/members/${m.id}/two-factor`)
-    } catch (err) {
-      rowError = { [m.id]: err instanceof Error ? err.message : String(err) }
+  function remove(m: Member) {
+    asking = {
+      title: `Remove ${m.name}?`,
+      body: `${m.name} (${m.email}) is signed out at once and their API tokens stop working.`,
+      action: 'Remove',
+      destructive: true,
+      run: () => rowAction(m, 'DELETE', `/members/${m.id}`),
     }
-    await load()
   }
 
-  async function revoke(i: Invitation) {
-    if (!confirm(`Revoke the invitation of ${i.email}? Its link stops working.`)) return
-    await api('DELETE', `/invitations/${i.id}`)
-    await load()
+  function resetTwoFactor(m: Member) {
+    asking = {
+      title: `Turn off two-factor for ${m.name}?`,
+      body: `${m.name} (${m.email}) is signed out, signs in with only their password, and should set it up again.`,
+      action: 'Reset 2FA',
+      run: () => rowAction(m, 'DELETE', `/members/${m.id}/two-factor`),
+    }
+  }
+
+  function transfer(m: Member) {
+    asking = {
+      title: 'Transfer Guild Master?',
+      body: 'Only the Guild Master can transfer it, so you cannot take it back yourself once it is accepted.',
+      points: [
+        `${m.name} is offered the Guild Master of ${session.guild?.name}.`,
+        'Nothing changes until they accept. Until then you can withdraw the offer, and it expires after 7 days.',
+        'Once they accept, they are the Guild Master and you are not. You both keep your other Roles.',
+      ],
+      action: 'Offer',
+      run: () => offerGuildMaster(m),
+    }
+  }
+
+  function revoke(i: Invitation) {
+    asking = {
+      title: `Revoke the invitation of ${i.email}?`,
+      body: 'Its link stops working.',
+      action: 'Revoke',
+      destructive: true,
+      run: async () => {
+        await api('DELETE', `/invitations/${i.id}`)
+        await load()
+      },
+    }
   }
 
   function toggleInviteRole(id: number, on: boolean) {
@@ -159,302 +203,270 @@
   const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
 </script>
 
-<h2>Members</h2>
+{#snippet roleBadge(ref: RoleRef)}
+  <span class="inline-block size-2 shrink-0 rounded-full" style:background-color={ref.color}></span>{ref.name}
+{/snippet}
 
-{#if session.can('manage_members')}
-<form class="card form" onsubmit={invite}>
-  <h2>Invite someone</h2>
-  <div class="row">
-    <Field label="Email" type="email" bind:value={email} error={errors.email} placeholder="dev@example.com" required />
-  </div>
-  <fieldset class="invite-roles" aria-label="Roles of the invitation">
-    <legend>Roles</legend>
-    {#each assignable as r (r.id)}
-      <label class="role-choice" data-testid="invite-role" data-role={r.name}>
-        <input type="checkbox" checked={inviteRoles?.includes(r.id) ?? false} onchange={(e) => toggleInviteRole(r.id, e.currentTarget.checked)} />
-        <span class="dot" style:background-color={r.color}></span>{r.name}
-      </label>
-    {:else}
-      <p class="muted small">You can give no roles; they join with only @everyone.</p>
-    {/each}
-    {#if errors.role_ids || errors.role}<small class="error">{errors.role_ids ?? errors.role}</small>{/if}
-  </fieldset>
-  <p class="muted small">Everyone also holds @everyone. You can only give roles below your own highest role.</p>
-  <div class="actions">
-    <button class="primary" disabled={busy}>Invite</button>
-  </div>
-  {#if invited}
-    <div class="invited" data-testid="invitation-link">
-      {#if invited.emailed}
-        <p>Emailed the link to <strong>{invited.email}</strong>. It works once, for 7 days; you can also send it yourself.</p>
-      {:else}
-        {#if invited.emailError}
-          <p class="error small">Emailing the link failed: {invited.emailError}</p>
-        {/if}
-        <p>Send this link to <strong>{invited.email}</strong>. It works once, for 7 days.</p>
-      {/if}
-      <div class="link">
-        <input readonly value={invited.link} aria-label="Invitation link" />
-        <CopyButton text={invited.link} />
-      </div>
-    </div>
-  {/if}
-</form>
-{/if}
+<SettingsPage icon={ShieldCheck} title="Guild Members">
+  {#snippet actions()}
+    {#if session.can('manage_members') && tab !== 'invites'}
+      <Button onclick={() => (tab = 'invites')}><Plus />Invite people</Button>
+    {/if}
+  {/snippet}
 
-{#if loadError}
-  <p class="error">{loadError}</p>
-{:else if members === null}
-  <p class="muted">Loading…</p>
-{:else}
-  {#if offer}
-    <div class="card offer" data-testid="guild-master-offer">
-      <p>
-        {#if offer.to?.id === session.member?.id}
-          You are offered the Guild Master of this guild. Nothing changes until you accept it above.
-        {:else}
-          The Guild Master is offered to <strong>{offer.to?.name}</strong> ({offer.to?.email}). Nothing changes until
-          they accept; the offer expires on {when.format(new Date(offer.expires_at))}.
-        {/if}
-      </p>
-      {#if session.guildMaster}<button onclick={withdrawOffer}>Withdraw</button>{/if}
-    </div>
-  {/if}
-  {#if offerError}<p class="error">{offerError}</p>{/if}
-  <table>
-    <thead><tr><th>Name</th><th>Email</th><th>Roles</th><th>2FA</th><th></th></tr></thead>
-    <tbody>
-      {#each members as m (m.id)}
-        <tr data-testid="member">
-          <td>{m.name}{m.id === session.member?.id ? ' (you)' : ''}</td>
-          <td class="muted">{m.email}</td>
-          <td>
-            {#if m.guild_master}
-              <span
-                class="inline-flex items-center rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-amber-800 dark:text-amber-300"
-                data-testid="guild-master">Guild Master</span
-              >
-              {#if m.instance_admin}<span class="muted">· Instance admin</span>{/if}
-            {:else if m.instance_admin}
-              <span class="muted">Instance admin</span>
-            {/if}
-            <div class="pills" data-testid="member-roles">
-              {#each m.roles ?? [] as ref (ref.id)}
-                {@const r = roleOf(ref)}
-                <span class="pill" data-testid="role-pill" data-role={ref.name}>
-                  <span class="dot" style:background-color={ref.color}></span>{ref.name}
-                  {#if r && reRolable(m) && canAssign(r, roles)}
-                    <button class="pill-x" aria-label="Remove {ref.name} from {m.email}" onclick={() => reRole(m, ref.id, false)}>
-                      <Icon name="x" class="size-3" />
-                    </button>
-                  {/if}
-                </span>
-              {/each}
-              {#if reRolable(m)}
-                {@const left = assignable.filter((r) => !m.roles?.some((h) => h.id === r.id))}
-                {#if left.length}
-                  <span class="picker">
-                    <button class="pill add" aria-label="Give {m.email} a role" aria-expanded={picking === m.id} onclick={() => (picking = picking === m.id ? null : m.id)}>
-                      <Icon name="plus" class="size-3" />
-                    </button>
-                    {#if picking === m.id}
-                      <span class="menu" role="menu">
-                        {#each left as r (r.id)}
-                          <button role="menuitem" onclick={() => reRole(m, r.id, true)} data-testid="role-option" data-role={r.name}>
-                            <span class="dot" style:background-color={r.color}></span>{r.name}
-                          </button>
-                        {/each}
-                      </span>
-                    {/if}
-                  </span>
-                {/if}
-              {/if}
-            </div>
-            {#if rowError[m.id]}<small class="error">{rowError[m.id]}</small>{/if}
-          </td>
-          <td class={m.two_factor ? '' : 'muted'}>{m.two_factor ? 'on' : 'off'}</td>
-          <td>
-            <div class="row-actions">
-              {#if session.guildMaster && !m.guild_master && !offer}
-                <ConfirmationModal
-                  title="Transfer Guild Master?"
-                  buttonTitle="Transfer Guild Master"
-                  actions={[
-                    `${m.name} is offered the Guild Master of ${session.guild?.name}.`,
-                    'Nothing changes until they accept. Until then you can withdraw the offer, and it expires after 7 days.',
-                    'Once they accept, they are the Guild Master and you are not. You both keep your other Roles.',
-                  ]}
-                  warningMessage="Only the Guild Master can transfer it, so you cannot take it back yourself once it is accepted."
-                  confirmWithText={false}
-                  step2ButtonText="Offer"
-                  onconfirm={() => offerGuildMaster(m)}
-                />
-              {/if}
-              {#if manageable(m)}
-                {#if m.two_factor}<button onclick={() => resetTwoFactor(m)}>Reset 2FA</button>{/if}
-                <button class="danger" onclick={() => remove(m)}>Remove</button>
-              {/if}
-            </div>
-          </td>
-        </tr>
-      {/each}
-    </tbody>
-  </table>
-
-  {#if session.can('manage_members')}
-  <h2>Open invitations</h2>
-  {#if invitations.length === 0}
-    <p class="muted">None. An invitation stays here until it is accepted, revoked or expires.</p>
+  {#if loadError}
+    <p class="text-sm text-destructive">{loadError}</p>
+  {:else if members === null}
+    <p class="text-sm text-muted-foreground">Loading guild members…</p>
   {:else}
-    <table>
-      <thead><tr><th>Email</th><th>Roles</th><th>Expires</th><th></th></tr></thead>
-      <tbody>
-        {#each invitations as i (i.id)}
-          <tr data-testid="invitation">
-            <td>{i.email}</td>
-            <td>
-              <div class="pills">
-                {#each i.roles as ref (ref.id)}<span class="pill"><span class="dot" style:background-color={ref.color}></span>{ref.name}</span>{:else}<span class="muted">@everyone</span>{/each}
-              </div>
-            </td>
-            <td class="muted">{when.format(new Date(i.expires_at))}</td>
-            <td><button class="danger" onclick={() => revoke(i)}>Revoke</button></td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-  {/if}
-  {/if}
-{/if}
+    <Tabs.Root bind:value={tab} class="flex flex-col gap-4">
+      {#if session.can('manage_members')}
+        <Tabs.List variant="line" class="justify-start">
+          <Tabs.Trigger value="members">Members</Tabs.Trigger>
+          <Tabs.Trigger value="invites" data-testid="invites-tab">Invites</Tabs.Trigger>
+        </Tabs.List>
+      {/if}
 
-<style>
-  .offer {
-    display: flex;
-    gap: 1rem;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 1rem;
-  }
-  .offer p {
-    margin: 0;
-  }
-  .row-actions {
-    display: flex;
-    gap: 0.4rem;
-    justify-content: flex-end;
-  }
-  .form {
-    display: grid;
-    gap: 0.8rem;
-    max-width: 36rem;
-    margin-bottom: 1.5rem;
-  }
-  .form h2 {
-    margin: 0;
-  }
-  .row {
-    display: grid;
-    gap: 0.8rem;
-  }
-  .invite-roles {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem 1rem;
-    border: 0;
-    padding: 0;
-    margin: 0;
-  }
-  .invite-roles legend {
-    font-size: 0.8rem;
-    color: var(--muted-foreground);
-    margin-bottom: 0.3rem;
-  }
-  .role-choice {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.85rem;
-  }
-  .pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-    align-items: center;
-  }
-  .pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    border: 1px solid var(--border, rgb(0 0 0 / 0.12));
-    border-radius: 999px;
-    padding: 0.05rem 0.5rem;
-    font-size: 0.75rem;
-    white-space: nowrap;
-  }
-  .pill.add {
-    padding: 0.2rem;
-    background: transparent;
-  }
-  .pill-x {
-    display: inline-flex;
-    padding: 0;
-    background: transparent;
-    border: 0;
-    cursor: pointer;
-  }
-  .dot {
-    width: 0.6rem;
-    height: 0.6rem;
-    border-radius: 999px;
-    display: inline-block;
-  }
-  .picker {
-    position: relative;
-  }
-  .menu {
-    position: absolute;
-    z-index: 10;
-    top: 100%;
-    left: 0;
-    margin-top: 0.25rem;
-    display: grid;
-    min-width: 10rem;
-    padding: 0.25rem;
-    border: 1px solid var(--border, rgb(0 0 0 / 0.12));
-    border-radius: 0.4rem;
-    background: var(--bg, white);
-    box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
-  }
-  .menu button {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    text-align: left;
-    background: transparent;
-    border: 0;
-    padding: 0.3rem 0.5rem;
-    font-size: 0.85rem;
-  }
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-  }
-  .small {
-    font-size: 0.8rem;
-    margin: 0;
-  }
-  .invited p {
-    margin: 0 0 0.4rem;
-  }
-  .link {
-    display: flex;
-    gap: 0.5rem;
-  }
-  .link input {
-    flex: 1;
-    font-family: var(--mono, monospace);
-  }
-  td small {
-    display: block;
-  }
-</style>
+      <Tabs.Content value="members" class="space-y-4">
+        {#if offer}
+          <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200" data-testid="guild-master-offer">
+            <p>
+              {#if offer.to?.id === session.member?.id}
+                You are offered the Guild Master of this guild. Nothing changes until you accept it above.
+              {:else}
+                The Guild Master is offered to <strong class="font-medium">{offer.to?.name}</strong> ({offer.to?.email}). Nothing changes
+                until they accept; the offer expires on {when.format(new Date(offer.expires_at))}.
+              {/if}
+            </p>
+            {#if session.guildMaster}<Button size="sm" variant="outline" onclick={withdrawOffer}>Withdraw</Button>{/if}
+          </div>
+        {/if}
+        {#if offerError}<p class="text-sm text-destructive">{offerError}</p>{/if}
+
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-(--sz-44rem) text-left text-sm">
+            <thead>
+              <tr class="border-b border-border text-muted-foreground">
+                <th class="px-3 py-2 font-medium">Name</th>
+                <th class="px-3 py-2 font-medium">Email</th>
+                <th class="px-3 py-2 font-medium">Roles</th>
+                <th class="px-3 py-2 font-medium">2FA</th>
+                <th class="px-3 py-2 text-right font-medium">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each members as m (m.id)}
+                {@const left = reRolable(m) ? assignable.filter((r) => !m.roles?.some((h) => h.id === r.id)) : []}
+                {@const transferable = session.guildMaster && !m.guild_master && !offer}
+                <tr class="border-b border-border last:border-b-0" data-testid="member">
+                  <td class="px-3 py-3">
+                    <div class="flex min-w-0 items-center gap-2.5">
+                      <Avatar.Root size="sm"><Avatar.Fallback>{initials(m)}</Avatar.Fallback></Avatar.Root>
+                      <span class="truncate font-medium">{m.name}{m.id === session.member?.id ? ' (you)' : ''}</span>
+                    </div>
+                  </td>
+                  <td class="px-3 py-3 text-muted-foreground">{m.email}</td>
+                  <td class="px-3 py-3">
+                    <div class="flex flex-wrap items-center gap-1.5" data-testid="member-roles">
+                      {#if m.guild_master}
+                        <Badge class="gap-1 bg-amber-400/20 text-amber-800 dark:text-amber-300" data-testid="guild-master"><Crown />Guild Master</Badge>
+                      {/if}
+                      {#if m.instance_admin}<Badge variant="secondary">Instance admin</Badge>{/if}
+                      {#each m.roles ?? [] as ref (ref.id)}
+                        {@const r = roleOf(ref)}
+                        <Badge variant="outline" class="gap-1.5" data-testid="role-pill" data-role={ref.name}>
+                          {@render roleBadge(ref)}
+                          {#if r && reRolable(m) && canAssign(r, roles)}
+                            <button
+                              type="button"
+                              class="-mr-1 rounded-sm text-muted-foreground hover:text-foreground"
+                              aria-label="Remove {ref.name} from {m.email}"
+                              onclick={() => reRole(m, ref.id, false)}><X class="size-3" /></button
+                            >
+                          {/if}
+                        </Badge>
+                      {/each}
+                      {#if left.length}
+                        <DropdownMenu.Root>
+                          <DropdownMenu.Trigger
+                            class="inline-flex size-5 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+                            aria-label="Give {m.email} a role"
+                          >
+                            <Plus class="size-3" />
+                          </DropdownMenu.Trigger>
+                          <DropdownMenu.Content align="start" class="min-w-40">
+                            <DropdownMenu.Label>Give a role</DropdownMenu.Label>
+                            {#each left as r (r.id)}
+                              <DropdownMenu.Item onSelect={() => reRole(m, r.id, true)} data-testid="role-option" data-role={r.name}>
+                                {@render roleBadge(r)}
+                              </DropdownMenu.Item>
+                            {/each}
+                          </DropdownMenu.Content>
+                        </DropdownMenu.Root>
+                      {/if}
+                    </div>
+                    {#if rowError[m.id]}<p class="mt-1 text-xs text-destructive">{rowError[m.id]}</p>{/if}
+                  </td>
+                  <td class="px-3 py-3">
+                    <Badge variant={m.two_factor ? 'secondary' : 'outline'} class={m.two_factor ? '' : 'text-muted-foreground'}>
+                      {#if m.two_factor}<Check />{/if}{m.two_factor ? 'on' : 'off'}
+                    </Badge>
+                  </td>
+                  <td class="px-3 py-3 text-right">
+                    {#if transferable || manageable(m)}
+                      <DropdownMenu.Root>
+                        <DropdownMenu.Trigger class={buttonVariants({ variant: 'ghost', size: 'icon-sm' })} aria-label="Actions for {m.email}" data-testid="member-actions">
+                          <EllipsisVertical />
+                        </DropdownMenu.Trigger>
+                        <DropdownMenu.Content align="end" class="min-w-44">
+                          {#if transferable}
+                            <DropdownMenu.Item onSelect={() => transfer(m)}><Crown />Transfer Guild Master</DropdownMenu.Item>
+                          {/if}
+                          {#if manageable(m)}
+                            {#if m.two_factor}
+                              <DropdownMenu.Item onSelect={() => resetTwoFactor(m)}>Reset 2FA</DropdownMenu.Item>
+                            {/if}
+                            <DropdownMenu.Item variant="destructive" onSelect={() => remove(m)}>Remove</DropdownMenu.Item>
+                          {/if}
+                        </DropdownMenu.Content>
+                      </DropdownMenu.Root>
+                    {/if}
+                  </td>
+                </tr>
+              {:else}
+                <tr><td colspan="5" class="px-3 py-8 text-muted-foreground">No members in this guild yet.</td></tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </Tabs.Content>
+
+      {#if session.can('manage_members')}
+        <Tabs.Content value="invites" class="space-y-8">
+          <p class="max-w-3xl text-sm text-muted-foreground">
+            Invite people to join this guild. Each link works once, for 7 days, and gives the roles you pick.
+          </p>
+
+          <form class="space-y-4 rounded-xl border border-border p-5" onsubmit={invite}>
+            <div class="space-y-1">
+              <h2 class="text-sm font-semibold">Invite a person</h2>
+              <p class="text-sm text-muted-foreground">Send an invitation link and choose the roles it gives.</p>
+            </div>
+            <div class="max-w-md">
+              <Input label="Email" type="email" bind:value={email} error={errors.email} placeholder="dev@example.com" required />
+            </div>
+            <fieldset class="space-y-3" aria-label="Roles of the invitation">
+              <legend class="text-sm font-medium">Choose roles</legend>
+              <div class="rounded-xl border border-border">
+                {#each assignable as r, i (r.id)}
+                  <label class={['flex cursor-pointer items-center gap-3 px-4 py-3', i > 0 && 'border-t border-border']} data-testid="invite-role" data-role={r.name}>
+                    <Checkbox checked={inviteRoles?.includes(r.id) ?? false} onCheckedChange={(on) => toggleInviteRole(r.id, on)} />
+                    <span class="inline-flex items-center gap-2 text-sm font-medium">
+                      <span class="inline-block size-2.5 rounded-full" style:background-color={r.color}></span>{r.name}
+                    </span>
+                    {#if r.name === 'Member'}<Badge variant="outline" class="text-muted-foreground">Default</Badge>{/if}
+                  </label>
+                {:else}
+                  <p class="px-4 py-3 text-sm text-muted-foreground">You can give no roles; they join with only @everyone.</p>
+                {/each}
+              </div>
+              {#if errors.role_ids || errors.role}<p class="text-xs text-destructive">{errors.role_ids ?? errors.role}</p>{/if}
+            </fieldset>
+            <div class="rounded-lg border border-border px-4 py-3 text-sm text-muted-foreground">
+              Everyone also holds @everyone. You can only give roles below your own highest role.
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+              <Button type="submit" disabled={busy}>{busy ? 'Inviting…' : 'Invite'}</Button>
+              <span class="text-sm text-muted-foreground">Open invitations are listed below until accepted, revoked or expired.</span>
+            </div>
+            {#if invited}
+              <div class="space-y-3 rounded-lg border border-border px-4 py-4" data-testid="invitation-link">
+                <div class="space-y-1">
+                  <div class="text-sm font-medium">Latest invite link</div>
+                  <div class="text-sm text-muted-foreground">
+                    {#if invited.emailed}
+                      Emailed the link to <strong class="font-medium text-foreground">{invited.email}</strong>. It works once, for 7 days; you can also send it yourself.
+                    {:else}
+                      {#if invited.emailError}<span class="block text-destructive">Emailing the link failed: {invited.emailError}</span>{/if}
+                      Send this link to <strong class="font-medium text-foreground">{invited.email}</strong>. It works once, for 7 days.
+                    {/if}
+                  </div>
+                </div>
+                <CopyButton text={invited.link} label="Invitation link" />
+              </div>
+            {/if}
+          </form>
+
+          <section class="rounded-xl border border-border">
+            <div class="space-y-1 px-5 py-4">
+              <h2 class="text-sm font-semibold">Open invitations</h2>
+              <p class="text-sm text-muted-foreground">An invitation stays here until it is accepted, revoked or expires.</p>
+            </div>
+            {#if invitations.length === 0}
+              <div class="border-t border-border px-5 py-8 text-sm text-muted-foreground">None.</div>
+            {:else}
+              <div class="overflow-x-auto border-t border-border">
+                <table class="min-w-full text-left text-sm">
+                  <thead>
+                    <tr class="border-b border-border">
+                      <th class="px-5 py-3 font-medium text-muted-foreground">For</th>
+                      <th class="px-5 py-3 font-medium text-muted-foreground">Roles</th>
+                      <th class="px-5 py-3 font-medium text-muted-foreground">Expires</th>
+                      <th class="px-5 py-3 text-right font-medium text-muted-foreground">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each invitations as i (i.id)}
+                      <tr class="border-b border-border last:border-b-0" data-testid="invitation">
+                        <td class="px-5 py-3 align-top">{i.email}</td>
+                        <td class="px-5 py-3 align-top">
+                          <div class="flex flex-wrap gap-1.5">
+                            {#each i.roles as ref (ref.id)}
+                              <Badge variant="outline" class="gap-1.5">{@render roleBadge(ref)}</Badge>
+                            {:else}
+                              <span class="text-muted-foreground">@everyone</span>
+                            {/each}
+                          </div>
+                        </td>
+                        <td class="px-5 py-3 align-top text-muted-foreground">{when.format(new Date(i.expires_at))}</td>
+                        <td class="px-5 py-3 text-right align-top">
+                          <Button size="sm" variant="outline" onclick={() => revoke(i)}>Revoke</Button>
+                        </td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+            {/if}
+          </section>
+        </Tabs.Content>
+      {/if}
+    </Tabs.Root>
+  {/if}
+</SettingsPage>
+
+<AlertDialog.Root open={asking !== null} onOpenChange={(open) => !open && (asking = null)}>
+  <AlertDialog.Content>
+    <AlertDialog.Header>
+      <AlertDialog.Title>{asking?.title}</AlertDialog.Title>
+      {#if asking?.points}
+        <ul class="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+          {#each asking.points as point (point)}<li>{point}</li>{/each}
+        </ul>
+      {/if}
+      <AlertDialog.Description>{asking?.body}</AlertDialog.Description>
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+      <AlertDialog.Action
+        class={buttonVariants({ variant: asking?.destructive ? 'destructive' : 'default' })}
+        onclick={() => {
+          const run = asking?.run
+          asking = null
+          run?.()
+        }}
+        data-testid="confirm-action">{asking?.action}</AlertDialog.Action
+      >
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>

@@ -3,15 +3,17 @@
   // @everyone pinned last. Every Member reads them; with manage_roles the
   // Roles below one's own highest are dragged (or moved with the buttons)
   // into a new order and new ones created. Roles at or above it are locked,
-  // as the server refuses to move them.
+  // as the server refuses to move them. Paperclip has no Roles page; the
+  // rows are its EntityRow (ui/src/components/EntityRow.tsx; MIT, see NOTICE)
+  // in a bordered list, under its settings page frame.
+  import { ArrowDown, ArrowUp, GripVertical, Lock, Plus, Shield } from '@lucide/svelte'
+  import { Button } from '$lib/components/ui/button'
   import { api } from '../../lib/api'
   import { myRank } from '../../lib/hierarchy'
-  import Icon from '../../lib/Icon.svelte'
   import { go, href, rolePath } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
   import type { GuildRole } from '../../lib/types'
-  import Button from '../../lib/ui/Button.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
+  import SettingsPage from '../../lib/settings/SettingsPage.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
 
   let roles = $state.raw<GuildRole[] | null>(null)
@@ -78,26 +80,31 @@
   }
 </script>
 
-<SettingsSection
-  id="guild-roles-section"
-  title="Roles"
-  helper="Members hold any number of Roles and get the Permissions of all of them. A Role higher in the list is above the ones below it; you can only change Roles below your own highest Role."
->
+{#snippet row(r: GuildRole)}
+  <span class="size-3 shrink-0 rounded-full" style:background-color={r.color}></span>
+  <a class="min-w-0 flex-1 truncate font-medium hover:underline" href={href(rolePath(r.id))}>{r.name}</a>
+{/snippet}
+
+<SettingsPage icon={Shield} title="Roles">
   {#snippet actions()}
     {#if canManage}
-      <Button variant="highlighted" onclick={create} disabled={busy} data-testid="create-role">Create role</Button>
+      <Button onclick={create} disabled={busy} data-testid="create-role"><Plus />Create role</Button>
     {/if}
   {/snippet}
+  <p class="max-w-3xl text-sm text-muted-foreground">
+    Members hold any number of roles and get the permissions of all of them. A role higher in the list is above the ones below it; you can
+    only change roles below your own highest role.
+  </p>
   {#if roles === null && !error}
     <Spinner text="Loading…" />
   {:else}
-    {#if error}<p class="text-sm text-red-600 dark:text-red-400" data-testid="roles-error">{error}</p>{/if}
-    <ol class="flex flex-col gap-1" aria-label="Roles, highest first">
+    {#if error}<p class="text-sm text-destructive" data-testid="roles-error">{error}</p>{/if}
+    <ol class="max-w-3xl overflow-hidden rounded-xl border border-border" aria-label="Roles, highest first">
       {#each ordered as r, i (r.id)}
         <li
           class={[
-            'flex items-center gap-3 rounded-md border px-3 py-2 dark:border-white/[0.08]',
-            over === i && dragging !== i ? 'border-coollabs dark:border-coollabs' : 'border-neutral-200',
+            'flex items-center gap-3 border-b border-border px-4 py-2 text-sm transition-colors last:border-b-0 hover:bg-accent/50',
+            over === i && dragging !== i && 'bg-accent/30 shadow-[inset_0_2px_0_var(--ring)]',
             dragging === i && 'opacity-50',
           ]}
           draggable={movable(r) && !busy}
@@ -117,39 +124,35 @@
           data-role={r.name}
         >
           {#if movable(r)}
-            <span class="cursor-grab text-neutral-400 select-none" aria-hidden="true">⠿</span>
+            <GripVertical class="size-4 shrink-0 cursor-grab text-muted-foreground" aria-hidden="true" />
           {:else}
             <span title="Only Roles below your highest Role can be changed" data-testid="role-locked">
-              <Icon name="lock" class="size-4 text-neutral-400" />
+              <Lock class="size-4 shrink-0 text-muted-foreground" />
             </span>
           {/if}
-          <span class="size-3 shrink-0 rounded-full" style:background-color={r.color}></span>
-          <a class="min-w-0 flex-1 truncate font-medium" href={href(rolePath(r.id))}>{r.name}</a>
-          <span class="text-xs text-neutral-500 dark:text-fg-faint">{r.members} {r.members === 1 ? 'member' : 'members'}</span>
+          {@render row(r)}
+          <span class="text-xs text-muted-foreground">{r.members} {r.members === 1 ? 'member' : 'members'}</span>
           {#if movable(r)}
-            <button
-              class="px-1 disabled:opacity-30"
+            <Button
+              variant="ghost"
+              size="icon-xs"
               aria-label="Move {r.name} up"
               disabled={busy || i === 0 || !movable(ordered[i - 1])}
-              onclick={() => move(i, i - 1)}>↑</button
+              onclick={() => move(i, i - 1)}><ArrowUp /></Button
             >
-            <button
-              class="px-1 disabled:opacity-30"
-              aria-label="Move {r.name} down"
-              disabled={busy || i === ordered.length - 1}
-              onclick={() => move(i, i + 1)}>↓</button
+            <Button variant="ghost" size="icon-xs" aria-label="Move {r.name} down" disabled={busy || i === ordered.length - 1} onclick={() => move(i, i + 1)}
+              ><ArrowDown /></Button
             >
           {/if}
         </li>
       {/each}
       {#if everyone}
-        <li class="flex items-center gap-3 rounded-md border border-neutral-200 px-3 py-2 dark:border-white/[0.08]" data-testid="role-row" data-role="@everyone">
-          <span class="w-4"></span>
-          <span class="size-3 shrink-0 rounded-full" style:background-color={everyone.color}></span>
-          <a class="min-w-0 flex-1 truncate font-medium" href={href(rolePath(everyone.id))}>{everyone.name}</a>
-          <span class="text-xs text-neutral-500 dark:text-fg-faint">every member</span>
+        <li class="flex items-center gap-3 px-4 py-2 text-sm transition-colors hover:bg-accent/50" data-testid="role-row" data-role="@everyone">
+          <span class="w-4 shrink-0"></span>
+          {@render row(everyone)}
+          <span class="text-xs text-muted-foreground">every member</span>
         </li>
       {/if}
     </ol>
   {/if}
-</SettingsSection>
+</SettingsPage>

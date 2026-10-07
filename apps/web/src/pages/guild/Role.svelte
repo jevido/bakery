@@ -3,7 +3,11 @@
   // its Permissions grouped as Discord groups them, who holds it, and
   // deleting it. Only a Role below one's own highest is changed, and only
   // Permissions one holds are switched (the server's CanGrant); @everyone
-  // keeps its name and color and is never deleted.
+  // keeps its name and color and is never deleted. In Paperclip's settings
+  // page frame and groups, its Permissions as Paperclip's ToggleField rows
+  // (ui/src/components/agent-config-primitives.tsx; MIT, see NOTICE).
+  import { ArrowLeft, Shield } from '@lucide/svelte'
+  import { Switch } from '$lib/components/ui/switch'
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
   import { canAssign, canEditRole, canManage } from '../../lib/hierarchy'
@@ -15,7 +19,8 @@
   import Callout from '../../lib/ui/Callout.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Input from '../../lib/ui/Input.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
+  import SettingsPage from '../../lib/settings/SettingsPage.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
@@ -123,37 +128,39 @@
   }
 </script>
 
-<a class="mb-4 inline-block text-sm text-neutral-500 hover:underline dark:text-fg-faint" href={href(guildPath('roles'))}>← Roles</a>
+<a class="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground" href={href(guildPath('roles'))}>
+  <ArrowLeft class="size-3.5" />Roles
+</a>
 
 {#if loadError}
-  <p class="text-sm text-red-600 dark:text-red-400">{loadError}</p>
+  <p class="text-sm text-destructive">{loadError}</p>
 {:else if roles === null}
   <Spinner text="Loading…" />
 {:else if role === null}
-  <p class="text-sm text-neutral-500">This guild has no such role.</p>
+  <p class="text-sm text-muted-foreground">This guild has no such role.</p>
 {:else}
-  <form
-    class="application-settings-form flex flex-col gap-6"
-    onsubmit={(e) => {
-      e.preventDefault()
-      save()
-    }}
-  >
-    {#if editable}
-      <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
-    {:else}
-      <Callout type="info" title="Read only">
-        {session.can('manage_roles')
-          ? 'This role is at or above your highest role, so you cannot change it.'
-          : 'You need the Manage roles permission to change roles.'}
-      </Callout>
-    {/if}
-    {#if errors.form}<p class="text-sm text-red-600 dark:text-red-400" data-testid="role-error">{errors.form}</p>{/if}
+  <SettingsPage icon={Shield} title={role.name} data-testid="role-page">
+    <form
+      class="space-y-8"
+      onsubmit={(e) => {
+        e.preventDefault()
+        save()
+      }}
+    >
+      {#if editable}
+        <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
+      {:else}
+        <Callout type="info" title="Read only">
+          {session.can('manage_roles')
+            ? 'This role is at or above your highest role, so you cannot change it.'
+            : 'You need the Manage roles permission to change roles.'}
+        </Callout>
+      {/if}
+      {#if errors.form}<p class="text-sm text-destructive" data-testid="role-error">{errors.form}</p>{/if}
 
-    <SettingsSection id="role-display-section" title="Display" helper={role.base ? 'Every member holds @everyone; only its permissions change.' : 'How this role shows on the Members page.'}>
-      <div class="grid gap-4 lg:grid-cols-2">
-        <Input label="Name" bind:value={name} error={errors.name} required disabled={!editable || role.base} />
-        <div class="flex flex-col gap-2">
+      <SettingsGroup label="Display" hint={role.base ? 'Every member holds @everyone; only its permissions change.' : 'How this role shows on the Members page.'}>
+        <Input label="Role name" bind:value={name} error={errors.name} required disabled={!editable || role.base} />
+        <div class="space-y-1.5">
           <span class="text-sm font-medium">Color</span>
           <div class="flex flex-wrap items-center gap-2">
             <input
@@ -161,12 +168,12 @@
               bind:value={color}
               disabled={!editable || role.base}
               aria-label="Role color"
-              class="h-8 w-10 cursor-pointer rounded border border-neutral-200 bg-transparent dark:border-white/[0.08]"
+              class="h-8 w-10 cursor-pointer rounded-md border border-border bg-transparent disabled:cursor-not-allowed disabled:opacity-50"
             />
             {#each swatches as s (s)}
               <button
                 type="button"
-                class={['size-6 rounded-full border-2', color.toLowerCase() === s ? 'border-neutral-900 dark:border-white' : 'border-transparent']}
+                class={['size-6 rounded-full border-2 disabled:cursor-not-allowed disabled:opacity-50', color.toLowerCase() === s ? 'border-foreground' : 'border-transparent']}
                 style:background-color={s}
                 aria-label="Color {s}"
                 disabled={!editable || role.base}
@@ -174,80 +181,74 @@
               ></button>
             {/each}
           </div>
-          {#if errors.color}<small class="text-xs text-red-600 dark:text-red-400">{errors.color}</small>{/if}
+          {#if errors.color}<p class="text-xs text-destructive">{errors.color}</p>{/if}
         </div>
-      </div>
-    </SettingsSection>
+      </SettingsGroup>
 
-    <SettingsSection id="role-permissions-section" title="Permissions" helper="You can only switch permissions you hold yourself.">
-      <div class="flex flex-col gap-6">
-        {#each groups as g (g.title)}
-          <div>
-            <h3 class="mb-2 text-xs font-semibold tracking-wide text-neutral-500 uppercase dark:text-fg-faint">{g.title}</h3>
-            {#if g.hint}<p class="mb-2 text-xs text-neutral-500 dark:text-fg-faint">{g.hint}</p>{/if}
-            <div class="flex flex-col divide-y divide-neutral-200 dark:divide-white/[0.06]">
-              {#each g.keys as key (key)}
-                {@const p = byKey.get(key)}
-                {#if p}
-                  <label class="flex items-start justify-between gap-4 py-2" data-testid="permission-toggle" data-permission={key}>
-                    <span class="min-w-0">
-                      <span class="block text-sm font-medium">{p.name}</span>
-                      <span class="block text-xs text-neutral-500 dark:text-fg-faint">{p.description}</span>
-                      {#if key === 'administrator'}
-                        <span class="mt-1 block text-xs text-amber-700 dark:text-amber-300">
-                          Grants every permission and bypasses every project override. Give it with care.
-                        </span>
-                      {/if}
-                    </span>
-                    <input
-                      type="checkbox"
-                      class="mt-1 size-4 shrink-0"
-                      checked={granted.includes(key)}
-                      disabled={!editable || !session.can(key)}
-                      onchange={(e) => toggle(key, e.currentTarget.checked)}
-                      aria-label={p.name}
-                    />
-                  </label>
-                {/if}
-              {/each}
-            </div>
-          </div>
-        {/each}
-      </div>
-    </SettingsSection>
-
-    {#if !role.base}
-      <SettingsSection id="role-members-section" title="Members" helper="Who holds this role. Assign it on the Members page.">
-        {#if rowError}<p class="text-sm text-red-600 dark:text-red-400">{rowError}</p>{/if}
-        {#if holders.length === 0}
-          <p class="text-sm text-neutral-500 dark:text-fg-faint">Nobody holds this role.</p>
-        {:else}
-          <ul class="flex flex-col divide-y divide-neutral-200 dark:divide-white/[0.06]">
-            {#each holders as m (m.id)}
-              <li class="flex items-center justify-between gap-4 py-2" data-testid="role-holder">
-                <span class="text-sm">{m.name} <span class="text-neutral-500 dark:text-fg-faint">{m.email}</span></span>
-                {#if canAssign(role, roles) && canManage(m, 'manage_roles', roles)}
-                  <Button onclick={() => takeFrom(m)}>Remove</Button>
-                {/if}
-              </li>
+      {#each groups as g (g.title)}
+        <SettingsGroup label="{g.title} permissions" hint={g.hint ?? (g.title === 'General' ? 'You can only switch permissions you hold yourself.' : undefined)}>
+          <div class="divide-y divide-border">
+            {#each g.keys as key (key)}
+              {@const p = byKey.get(key)}
+              {#if p}
+                <label class="flex items-start justify-between gap-4 py-3 first:pt-0" data-testid="permission-toggle" data-permission={key}>
+                  <span class="min-w-0">
+                    <span class="block text-sm font-medium">{p.name}</span>
+                    <span class="block text-xs text-muted-foreground">{p.description}</span>
+                    {#if key === 'administrator'}
+                      <span class="mt-1 block text-xs text-amber-700 dark:text-amber-300">
+                        Grants every permission and bypasses every project override. Give it with care.
+                      </span>
+                    {/if}
+                  </span>
+                  <Switch
+                    class="mt-0.5"
+                    checked={granted.includes(key)}
+                    disabled={!editable || !session.can(key)}
+                    onCheckedChange={(on) => toggle(key, on)}
+                    aria-label={p.name}
+                  />
+                </label>
+              {/if}
             {/each}
-          </ul>
-        {/if}
-      </SettingsSection>
+          </div>
+        </SettingsGroup>
+      {/each}
 
-      {#if editable}
-        <SettingsSection id="role-danger-section" title="Danger Zone" helper="Its members stop holding it.">
-          <ConfirmationModal
-            title="Delete role?"
-            buttonTitle="Delete role"
-            variant="error"
-            actions={[`The role ${role.name} is deleted, and its ${role.members} member(s) lose the permissions it gave them.`]}
-            confirmWithText={false}
-            step2ButtonText="Delete"
-            onconfirm={remove}
-          />
-        </SettingsSection>
+      {#if !role.base}
+        <SettingsGroup label="Members" hint="Who holds this role. Assign it on the Members page.">
+          {#if rowError}<p class="text-sm text-destructive">{rowError}</p>{/if}
+          {#if holders.length === 0}
+            <p class="text-sm text-muted-foreground">Nobody holds this role.</p>
+          {:else}
+            <ul class="overflow-hidden rounded-xl border border-border">
+              {#each holders as m (m.id)}
+                <li class="flex items-center justify-between gap-4 border-b border-border px-4 py-2 text-sm last:border-b-0" data-testid="role-holder">
+                  <span class="min-w-0 truncate"><span class="font-medium">{m.name}</span> <span class="text-muted-foreground">{m.email}</span></span>
+                  {#if canAssign(role, roles) && canManage(m, 'manage_roles', roles)}
+                    <Button onclick={() => takeFrom(m)}>Remove</Button>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </SettingsGroup>
+
+        {#if editable}
+          <SettingsGroup label="Danger Zone" destructive>
+            <p class="text-sm text-muted-foreground">Deleting this role takes it from its members; they lose the permissions it gave them.</p>
+            <ConfirmationModal
+              title="Delete role?"
+              buttonTitle="Delete role"
+              variant="error"
+              actions={[`The role ${role.name} is deleted, and its ${role.members} member(s) lose the permissions it gave them.`]}
+              confirmWithText={false}
+              step2ButtonText="Delete"
+              onconfirm={remove}
+            />
+          </SettingsGroup>
+        {/if}
       {/if}
-    {/if}
-  </form>
+    </form>
+  </SettingsPage>
 {/if}
