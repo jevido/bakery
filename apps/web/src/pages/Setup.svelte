@@ -1,10 +1,9 @@
 <script lang="ts">
-  // Coolify's auth/register.blade.php for the first user: here it creates
+  // Coolify's auth/register.blade.php for the first user, in Paperclip's
+  // sign-up layout (ui/src/pages/Auth.tsx; MIT, see NOTICE): here it creates
   // the Instance admin. "Password again" is checked here; the API takes one password.
   import { api, ApiError } from '../lib/api'
-  import Icon from '../lib/Icon.svelte'
   import { session, type Account } from '../lib/session.svelte'
-  import AuthAlert from '../lib/ui/AuthAlert.svelte'
   import AuthShell from '../lib/ui/AuthShell.svelte'
   import Button from '../lib/ui/Button.svelte'
   import Input from '../lib/ui/Input.svelte'
@@ -47,41 +46,38 @@
   }
 </script>
 
-<AuthShell description="Create the Instance admin account for this instance.">
-  <div class="flex flex-col gap-4">
-    <AuthAlert type="warning">
-      <p class="font-medium">Full instance access</p>
-      <p class="mt-0.5 text-black/70 dark:text-white/70">This first account becomes the Instance admin.</p>
-    </AuthAlert>
-    {#if message}<AuthAlert type="error"><p>{message}</p></AuthAlert>{/if}
-    <form class="flex flex-col gap-4" onsubmit={submit}>
-      <div {@attach focus}>
-        <Input label="Name" name="name" bind:value={name} error={errors.name} autocomplete="name" required />
-      </div>
-      <Input label="Email" type="email" name="email" bind:value={email} error={errors.email} autocomplete="email" required />
-      <Input
-        label="Password"
-        type="password"
-        name="password"
-        bind:value={password}
-        error={errors.password}
-        autocomplete="new-password"
-        required
-      />
-      <Input
-        label="Password again"
-        type="password"
-        name="password_confirmation"
-        bind:value={passwordAgain}
-        error={errors.password_confirmation}
-        autocomplete="new-password"
-        required
-      />
-      <div class="auth-guidance">
-        <Icon name="info-circle" class="mt-0.5 size-4 shrink-0" />
-        <p>Use at least 12 characters.</p>
-      </div>
-      <Button class="w-full justify-center" type="submit" variant="highlighted" loading={busy}>Create account</Button>
-    </form>
-  </div>
+<AuthShell
+  title="Create the Instance admin"
+  description="The first account on this instance runs the installation and becomes the Guild Master of its first guild."
+>
+  <form class="space-y-4" onsubmit={submit}>
+    <div {@attach focus}>
+      <Input label="Name" name="name" bind:value={name} error={errors.name} autocomplete="name" required />
+    </div>
+    <Input label="Email" type="email" name="email" bind:value={email} error={errors.email} autocomplete="username" required />
+    <Input
+      label="Password"
+      type="password"
+      name="password"
+      bind:value={password}
+      error={errors.password}
+      autocomplete="new-password"
+      required
+    />
+    <Input
+      label="Password again"
+      type="password"
+      name="password_confirmation"
+      bind:value={passwordAgain}
+      error={errors.password_confirmation}
+      autocomplete="new-password"
+      required
+    />
+    <p class="text-xs text-muted-foreground">Use at least 12 characters.</p>
+    {#if message}<p role="alert" class="text-xs text-destructive">{message}</p>{/if}
+    <Button class="w-full" type="submit" variant="highlighted" loading={busy}>Create account</Button>
+  </form>
+  {#snippet footer()}
+    This account has full access to the instance: its Servers, every guild and its settings.
+  {/snippet}
 </AuthShell>

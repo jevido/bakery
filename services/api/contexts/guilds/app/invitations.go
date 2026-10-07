@@ -95,6 +95,22 @@ func (s *Service) RevokeInvitation(ctx context.Context, guildID, id uint64) erro
 	return s.invitations.Revoke(ctx, id, s.Now())
 }
 
+// DeclineInvitation is the invited person turning down an open Invitation
+// through its link: it stops working, as a revoked one does.
+func (s *Service) DeclineInvitation(ctx context.Context, token string) error {
+	inv, found, err := s.invitations.ByTokenHash(ctx, secret.Hash(token))
+	if err != nil {
+		return err
+	}
+	if !found {
+		return ErrInvitationNotFound
+	}
+	if err := inv.Refusal(s.Now()); err != nil {
+		return err
+	}
+	return s.invitations.Revoke(ctx, inv.ID, s.Now())
+}
+
 // Invited is an Invitation a link points at, its Guild, and whether its
 // email already belongs to a Member (who accepts while signed in).
 type Invited struct {

@@ -1,8 +1,12 @@
 <script lang="ts">
-  // Coolify's auth shell (resources/views/components/auth/shell.blade.php)
-  // inside layout-simple: the centred card with a heading, a body and an
-  // optional footer. The heading carries The Bakery's logo next to the title.
+  // Paperclip's sign-in page layout (ui/src/pages/Auth.tsx; MIT, see NOTICE):
+  // the theme toggle in the corner, the form in the left half under The
+  // Bakery's lockup with a heading, a line under it and an optional footer,
+  // and the ASCII field in the right half, hidden on a phone.
   import type { Snippet } from 'svelte'
+  import AsciiArtAnimation from '../AsciiArtAnimation.svelte'
+  import BakeryLockup from '../BakeryLockup.svelte'
+  import ThemeToggle from '../ThemeToggle.svelte'
 
   let {
     title = 'The Bakery',
@@ -12,24 +16,26 @@
   }: { title?: string; description?: string; children?: Snippet; footer?: Snippet } = $props()
 </script>
 
-<main class="chrome h-full bg-neutral-50 dark:bg-background">
-  <section class="auth-shell">
-    <div class="auth-shell-content">
-      <div class="auth-card">
-        <div class="auth-card-heading">
-          <div class="flex items-center gap-2">
-            <img src="/favicon.svg" alt="" class="size-6" />
-            <h1>{title}</h1>
-          </div>
-          {#if description}<p>{description}</p>{/if}
-        </div>
-        <div class="auth-card-body">
-          {@render children?.()}
-        </div>
-        {#if footer}
-          <footer class="auth-card-footer">{@render footer()}</footer>
-        {/if}
+<main class="chrome fixed inset-0 flex bg-background text-foreground">
+  <div class="absolute top-4 right-4 z-10">
+    <ThemeToggle />
+  </div>
+  <div class="flex w-full flex-col overflow-y-auto md:w-1/2">
+    <div class="mx-auto my-auto w-full max-w-md px-8 py-12">
+      <div class="mb-8">
+        <BakeryLockup class="h-5 w-auto" />
       </div>
+      <h1 class="text-xl font-semibold">{title}</h1>
+      {#if description}<p class="mt-1 text-sm text-muted-foreground">{description}</p>{/if}
+      <div class="mt-6">
+        {@render children?.()}
+      </div>
+      {#if footer}
+        <div class="mt-5 text-sm text-muted-foreground">{@render footer()}</div>
+      {/if}
     </div>
-  </section>
+  </div>
+  <div class="hidden w-1/2 overflow-hidden md:block">
+    <AsciiArtAnimation />
+  </div>
 </main>

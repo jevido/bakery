@@ -134,6 +134,7 @@ func Routes(r route.Router) {
 	c.Invited = publishInvitation
 	r.Get("/api/invitations/by-token/{token}", c.InvitationByToken)
 	r.Post("/api/invitations/by-token/{token}/accept", c.AcceptInvitation)
+	r.Post("/api/invitations/by-token/{token}/decline", c.DeclineInvitation)
 	r.Middleware(guildshttp.Auth{Service: service, Guildless: true}).Get("/api/me", c.Me)
 	r.Middleware(guildshttp.Auth{Service: service, SelfService: true}).Group(identity.APITokenRoutes)
 	// Listing, creating and switching Guilds work in no Guild and for every

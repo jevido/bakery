@@ -48,7 +48,7 @@ rows and stores the Guild's id on them.
 | Role | Belongs to one Guild. Name is 1–100 characters after trimming; color is `#rrggbb`; Permissions are from the fixed list. Positions are unique per Guild. The Base role is at Position 0, always exists, and cannot be renamed, deleted, assigned or removed; every other Role sits above it. A Role held by Members can be deleted; they simply stop holding it. |
 | Membership | One per Member and Guild. Holds a set of Roles of its own Guild (never the Base role explicitly; it holds that implicitly). The Instance admin's Memberships are never removed. |
 | Permission overrides | Keyed by one Project of the Guild. Each entry is a Role or a Member, a Permission from `view_resources`, `see_secrets`, `deploy` and `manage_applications`, and allow or deny (inherit is no entry). For a Member on that Project: start from their Guild Permissions; then the Base role's entry; then, over all the other Roles they hold, a deny removes the Permission and otherwise an allow adds it; then the Member's own entry, if any, decides. Deleting the Project, the Role or the Member's Membership deletes its entries. `administrator`, the Instance admin and the Guild Master skip overrides. |
-| Invitation | Belongs to one Guild. Email is valid and not already a Member of this Guild; its Roles are Roles of that Guild below the inviter's highest Role (none means the Base role only); at most one open Invitation per Guild and email; expires 7 days after it was made; accepted at most once; a revoked or expired one cannot be accepted. Only the hash of its token is stored. |
+| Invitation | Belongs to one Guild. Email is valid and not already a Member of this Guild; its Roles are Roles of that Guild below the inviter's highest Role (none means the Base role only); at most one open Invitation per Guild and email; expires 7 days after it was made; accepted at most once; a revoked, declined or expired one cannot be accepted. Only the hash of its token is stored. |
 
 ### The hierarchy
 
@@ -84,6 +84,8 @@ that touches a Role or a Member also follows the hierarchy above.
 - `Invite(email, roles)` [`manage_members`; the Roles below one's own]:
   returns the Invitation and its link, once.
 - `RevokeInvitation(id)` [`manage_members`].
+- `DeclineInvitation(token)` [anyone with the link]: the invited person
+  turns an open Invitation down; it stops working as a revoked one does.
 - `AcceptInvitation(token, name, password)` [anyone with the link]: when the
   email is new, creates the Member (through identity) with a Membership of
   the invited Roles and signs them in; when a Member already has the email,
@@ -264,7 +266,8 @@ other changes with `write`, `administrator` only with `root`.
   former `role` they read as; another Guild's id answers 404. Open to
   anyone with the link: `GET /api/invitations/by-token/{token}` (the
   Invitation, its `guild` and `existing_member`) and
-  `POST /api/invitations/by-token/{token}/accept`.
+  `POST /api/invitations/by-token/{token}/accept` and
+  `POST /api/invitations/by-token/{token}/decline` (204).
 - **Consumes:** identity's `identity.Authenticate(ctx)` (a Principal: the
   Member, whether they are the Instance admin, and for an API token its
   Guild and Permissions), `identity.ActIn`, identity's API token routes

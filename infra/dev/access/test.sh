@@ -81,6 +81,10 @@ GONE=$(invite "gone-$RUN@example.com" viewer)
 GONE_ID=$(bakery GET /api/invitations | json "[i['id'] for i in d['invitations'] if i['email']=='gone-$RUN@example.com'][0]")
 bakery DELETE "/api/invitations/$GONE_ID" >/dev/null
 expect "a revoked link is refused" 410 "$(join "$GONE" "$WORK/gone" Gone)"
+NO=$(invite "no-$RUN@example.com" viewer)
+expect "the invited person declines without a Session" 204 "$(as "$WORK/anon" POST "/api/invitations/by-token/$NO/decline")"
+expect "a declined link is refused" 410 "$(join "$NO" "$WORK/no" No)"
+expect "it is no longer listed" 0 "$(bakery GET /api/invitations | json "len([i for i in d['invitations'] if i['email']=='no-$RUN@example.com'])")"
 expect "nobody is invited as owner" 422 "$(as "$JAR" POST /api/invitations "{\"email\":\"x-$RUN@example.com\",\"role\":\"owner\"}")"
 as "$MEMBER" GET /api/me >/dev/null
 expect "the member is a member" member "$(body "d['member']['role']")"

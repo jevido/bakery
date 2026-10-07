@@ -62,9 +62,9 @@
     <AuthAlert type="error"><p>Cannot reach the API: {failed}</p></AuthAlert>
   </AuthShell>
 {:else if session.state === 'loading'}
-  <AuthShell>
-    <div class="flex justify-center text-sm text-neutral-500 dark:text-fg-dim"><Spinner text="Loading…" /></div>
-  </AuthShell>
+  <div class="chrome fixed inset-0 flex items-center justify-center bg-background text-sm text-muted-foreground">
+    <Spinner text="Loading…" />
+  </div>
 {:else if router.route.name === 'invite'}
   <!-- An Invitation link opens for anyone, signed in or not. -->
   <Invite token={router.route.token} />

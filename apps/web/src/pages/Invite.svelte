@@ -1,14 +1,16 @@
 <script lang="ts">
-  // Coolify's invitation/accept.blade.php. Coolify's invitee already has an
-  // account; a Bakery invitee may not, so for a new email the card also asks
-  // for a name and a password before "Accept invitation". An existing
-  // Member joins the guild with one click while signed in as that email.
+  // Coolify's invitation/accept.blade.php in Paperclip's invite landing
+  // (ui/src/pages/InviteLanding.tsx; MIT, see NOTICE): the Invitation on the
+  // left, what to do with it on the right. Coolify's invitee already has an
+  // account; a Bakery invitee may not, so for a new email the panel asks for
+  // a name and a password before "Accept invitation". An existing Member
+  // joins the guild with one click while signed in as that email. Anyone
+  // with the link can decline it, which makes it stop working.
   import { api, ApiError } from '../lib/api'
-  import Icon from '../lib/Icon.svelte'
+  import GuildIcon from '../lib/GuildIcon.svelte'
   import { go, returnAfterLogin } from '../lib/router.svelte'
   import { session, type Account, type RoleRef } from '../lib/session.svelte'
   import AuthAlert from '../lib/ui/AuthAlert.svelte'
-  import AuthShell from '../lib/ui/AuthShell.svelte'
   import Button from '../lib/ui/Button.svelte'
   import Input from '../lib/ui/Input.svelte'
   import Spinner from '../lib/ui/Spinner.svelte'
@@ -28,6 +30,8 @@
   let errors = $state<Record<string, string>>({})
   let message = $state('')
   let busy = $state(false)
+  let declining = $state(false)
+  let declined = $state(false)
 
   $effect(() => {
     invitation = null
@@ -69,90 +73,143 @@
   }
 
 
+  async function decline() {
+    declining = true
+    message = ''
+    try {
+      await api('POST', `/invitations/by-token/${encodeURIComponent(token)}/decline`)
+      declined = true
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err
+      if (err.status === 410 || err.status === 404) refusal = err.message
+      else message = err.message
+    } finally {
+      declining = false
+    }
+  }
+
   function signInToAccept() {
     returnAfterLogin(`/invite/${token}`)
     go('/login')
   }
 </script>
 
-<AuthShell description={guild ? `Review your invitation to join ${guild} on The Bakery.` : 'Review your invitation to join The Bakery.'}>
-  {#if refusal}
-    <div class="flex flex-col gap-4" data-testid="invite-refused">
-      <AuthAlert type="error"><p>{refusal}</p></AuthAlert>
-      <div class="auth-guidance">
-        <Icon name="info-circle" class="mt-0.5 size-4 shrink-0" />
-        <p>Ask whoever invited you for a new link.</p>
-      </div>
+{#snippet card(heading: string, text: string, testid: string)}
+  <main class="chrome min-h-screen bg-background px-6 py-12 text-foreground">
+    <div class="mx-auto max-w-xl border border-border bg-card p-6" data-testid={testid}>
+      <h1 class="text-lg font-semibold">{heading}</h1>
+      <p class="mt-2 text-sm text-muted-foreground">{text}</p>
     </div>
-  {:else if invitation === null}
-    <div class="flex justify-center text-sm text-neutral-500 dark:text-fg-dim"><Spinner text="Loading…" /></div>
-  {:else}
-    <div class="flex flex-col gap-4">
-      <div class="auth-guidance">
-        <Icon name="teams" class="mt-0.5 size-4 shrink-0" />
-        <p>You have been invited to join <span class="font-medium" data-testid="invite-guild">{guild}</span> on The Bakery.</p>
-      </div>
-      <dl class="divide-y divide-neutral-200 rounded-lg border border-neutral-200 text-sm dark:divide-white/10 dark:border-white/10">
-        <div class="flex items-center justify-between gap-4 px-3 py-2.5">
-          <dt class="text-neutral-500 dark:text-fg-dim">Guild</dt>
-          <dd class="min-w-0 truncate font-medium text-neutral-900 dark:text-white">{guild}</dd>
-        </div>
-        <div class="flex items-center justify-between gap-4 px-3 py-2.5">
-          <dt class="text-neutral-500 dark:text-fg-dim">Email</dt>
-          <dd class="min-w-0 truncate font-medium text-neutral-900 dark:text-white">{invitation.email}</dd>
-        </div>
-        <div class="flex items-center justify-between gap-4 px-3 py-2.5">
-          <dt class="text-neutral-500 dark:text-fg-dim">Roles</dt>
-          <dd class="min-w-0 truncate font-medium text-neutral-900 dark:text-white">
-            {invitation.roles.length ? invitation.roles.map((r) => r.name).join(', ') : '@everyone'}
-          </dd>
-        </div>
-      </dl>
-      {#if existingMember}
-        {#if message}<AuthAlert type="error"><p>{message}</p></AuthAlert>{/if}
-        {#if session.member?.email === invitation.email}
-          <form onsubmit={accept}>
-            <Button class="w-full justify-center" type="submit" variant="highlighted" loading={busy}>Join {guild}</Button>
-          </form>
-        {:else}
-          <AuthAlert type="warning">
-            {#if session.member}
-              You are signed in as {session.member.email}. Sign in as {invitation.email} to accept this invitation.
-            {:else}
-              You already have an account. Sign in as {invitation.email} to accept this invitation.
-            {/if}
-          </AuthAlert>
-          {#if session.member}
-            <Button class="w-full justify-center" onclick={() => session.logout()}>Logout</Button>
-          {:else}
-            <Button class="w-full justify-center" variant="highlighted" onclick={signInToAccept}>Sign in to accept</Button>
-          {/if}
-        {/if}
-      {:else if session.member}
-        <AuthAlert type="warning">
-          You are signed in as {session.member.email}. Log out to accept this invitation.
-        </AuthAlert>
-        <Button class="w-full justify-center" onclick={() => session.logout()}>Logout</Button>
-      {:else}
-        {#if message}<AuthAlert type="error"><p>{message}</p></AuthAlert>{/if}
-        <form class="flex flex-col gap-4" onsubmit={accept}>
-          <Input label="Name" name="name" bind:value={name} error={errors.name} autocomplete="name" required />
-          <Input
-            label="Password"
-            type="password"
-            name="password"
-            bind:value={password}
-            error={errors.password}
-            autocomplete="new-password"
-            required
-          />
-          <div class="auth-guidance">
-            <Icon name="info-circle" class="mt-0.5 size-4 shrink-0" />
-            <p>Use at least 12 characters.</p>
+  </main>
+{/snippet}
+
+{#snippet declineButton()}
+  <Button class="w-full" onclick={decline} loading={declining} disabled={busy}>Decline</Button>
+{/snippet}
+
+{#if refusal}
+  {@render card('Invitation not available', `${refusal} Ask whoever invited you for a new link.`, 'invite-refused')}
+{:else if declined}
+  {@render card('Invitation declined', `You did not join ${guild}. The link no longer works.`, 'invite-declined')}
+{:else if invitation === null}
+  <main class="chrome mx-auto max-w-xl px-6 py-10 text-sm text-muted-foreground"><Spinner text="Loading invitation…" /></main>
+{:else}
+  <main class="chrome min-h-screen bg-background px-6 py-12 text-foreground">
+    <div class="mx-auto max-w-5xl">
+      <div class="grid gap-6 lg:grid-cols-(--gtc-36)">
+        <section class="space-y-6 border border-border bg-card p-6">
+          <div class="flex items-start gap-4">
+            <GuildIcon name={guild} class="size-16 shrink-0 rounded-none border border-border" />
+            <div class="min-w-0">
+              <p class="text-xs tracking-(--tracking-caps) text-muted-foreground uppercase">
+                You've been invited to join The Bakery
+              </p>
+              <h1 class="mt-2 text-2xl font-semibold" data-testid="invite-guild">Join {guild}</h1>
+              <p class="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                {#if existingMember}
+                  You already have an account. Review the invitation, then accept it while signed in as {invitation.email}.
+                {:else}
+                  Create your account to accept. Review the invitation, then pick a name and a password.
+                {/if}
+              </p>
+            </div>
           </div>
-          <Button class="w-full justify-center" type="submit" variant="highlighted" loading={busy}>Accept invitation</Button>
-        </form>
-      {/if}
+          <div class="grid gap-3 sm:grid-cols-2">
+            {#each [['Guild', guild], ['Email', invitation.email], ['Roles', invitation.roles.length ? invitation.roles.map((r) => r.name).join(', ') : '@everyone'], ['Invitation expires', new Date(invitation.expires_at).toLocaleString()]] as [label, value] (label)}
+              <div class="border border-border p-3">
+                <div class="text-xs tracking-(--tracking-caps) text-muted-foreground uppercase">{label}</div>
+                <div class="mt-1 truncate text-sm">{value}</div>
+              </div>
+            {/each}
+          </div>
+          {#if session.member}
+            <AuthAlert type={session.member.email === invitation.email ? 'success' : 'info'}>
+              Signed in as <span class="font-medium">{session.member.email}</span>.
+            </AuthAlert>
+          {/if}
+        </section>
+
+        <section class="h-fit border border-border bg-card p-6">
+          {#if existingMember && session.member?.email === invitation.email}
+            <form class="space-y-4" onsubmit={accept}>
+              <div>
+                <h2 class="text-lg font-semibold">Accept guild invite</h2>
+                <p class="mt-1 text-sm text-muted-foreground">This will give you access to {guild}.</p>
+              </div>
+              {#if message}<p role="alert" class="text-xs text-destructive">{message}</p>{/if}
+              <Button class="w-full" type="submit" variant="highlighted" loading={busy} disabled={declining}>Join {guild}</Button>
+              {@render declineButton()}
+            </form>
+          {:else if existingMember || session.member}
+            <div class="space-y-4">
+              <div>
+                <h2 class="text-lg font-semibold">Sign in to continue</h2>
+                <p class="mt-1 text-sm text-muted-foreground">
+                  {#if session.member}
+                    You are signed in as {session.member.email}. {existingMember
+                      ? `Sign in as ${invitation.email} to accept this invitation.`
+                      : 'Sign out to accept this invitation.'}
+                  {:else}
+                    You already have an account. Sign in as {invitation.email} to accept this invitation.
+                  {/if}
+                </p>
+              </div>
+              {#if message}<p role="alert" class="text-xs text-destructive">{message}</p>{/if}
+              {#if session.member}
+                <Button class="w-full" variant="highlighted" onclick={() => session.logout()}>Sign out</Button>
+              {:else}
+                <Button class="w-full" variant="highlighted" onclick={signInToAccept}>Sign in to accept</Button>
+              {/if}
+              {@render declineButton()}
+            </div>
+          {:else}
+            <form class="space-y-4" onsubmit={accept}>
+              <div>
+                <h2 class="text-lg font-semibold">Create your account</h2>
+                <p class="mt-1 text-sm text-muted-foreground">
+                  Your account uses {invitation.email}. After that you are in {guild}.
+                </p>
+              </div>
+              <Input label="Name" name="name" bind:value={name} error={errors.name} autocomplete="name" required />
+              <Input
+                label="Password"
+                type="password"
+                name="password"
+                bind:value={password}
+                error={errors.password}
+                autocomplete="new-password"
+                required
+              />
+              <p class="text-xs text-muted-foreground">Use at least 12 characters.</p>
+              {#if message}<p role="alert" class="text-xs text-destructive">{message}</p>{/if}
+              <Button class="w-full" type="submit" variant="highlighted" loading={busy} disabled={declining}>
+                Accept invitation
+              </Button>
+              {@render declineButton()}
+            </form>
+          {/if}
+        </section>
+      </div>
     </div>
-  {/if}
-</AuthShell>
+  </main>
+{/if}

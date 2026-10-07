@@ -1,13 +1,12 @@
 <script lang="ts">
-  // Coolify's auth/login.blade.php and, as the second step, its
+  // Paperclip's sign-in page (ui/src/pages/Auth.tsx; MIT, see NOTICE) with
+  // Coolify's auth/login.blade.php behind it and, as the second step, its
   // auth/two-factor-challenge.blade.php. Left out until instance Settings
-  // has them: "Forgot password?", the "Register" footer link and the OAuth
-  // buttons.
+  // has them: "Forgot password?", "Need an account?" (registration) and the
+  // OAuth buttons.
   import { api, ApiError } from '../lib/api'
-  import Icon from '../lib/Icon.svelte'
   import { go, takeReturnAfterLogin } from '../lib/router.svelte'
   import { session, type Account } from '../lib/session.svelte'
-  import AuthAlert from '../lib/ui/AuthAlert.svelte'
   import AuthShell from '../lib/ui/AuthShell.svelte'
   import Button from '../lib/ui/Button.svelte'
   import Input from '../lib/ui/Input.svelte'
@@ -92,61 +91,61 @@
 </script>
 
 {#if step === 'password'}
-  <AuthShell description="Sign in to manage your applications and infrastructure.">
-    <div class="flex flex-col gap-4">
-      {#if message}<AuthAlert type="error"><p>{message}</p></AuthAlert>{/if}
-      <form class="flex flex-col gap-4" onsubmit={submit}>
-        <div {@attach focus}>
-          <Input label="Email" type="email" name="email" bind:value={email} autocomplete="email" required />
-        </div>
-        <Input label="Password" type="password" name="password" bind:value={password} autocomplete="current-password" required />
-        <Button class="w-full justify-center" type="submit" variant="highlighted" loading={busy}>Login</Button>
-      </form>
-    </div>
+  <AuthShell title="Sign in to The Bakery" description="Use your email and password to access this instance.">
+    <form class="space-y-4" onsubmit={submit}>
+      <div {@attach focus}>
+        <Input label="Email" type="email" name="email" bind:value={email} autocomplete="username" required />
+      </div>
+      <Input label="Password" type="password" name="password" bind:value={password} autocomplete="current-password" required />
+      {#if message}<p role="alert" class="text-xs text-destructive">{message}</p>{/if}
+      <Button class="w-full" type="submit" variant="highlighted" loading={busy}>Sign in</Button>
+    </form>
   </AuthShell>
 {:else}
-  <AuthShell description="Verify your identity to finish signing in.">
-    <div class="flex flex-col gap-4">
-      {#if message}<AuthAlert type="error"><p>{message}</p></AuthAlert>{/if}
-      <div class="auth-guidance">
-        <Icon name="info-circle" class="mt-0.5 size-4 shrink-0" />
-        {#if useRecoveryCode}
-          <p>Enter one of the recovery codes you saved when setting up two-factor authentication.</p>
-        {:else}
-          <p>Enter the 6-digit code from your authenticator app.</p>
-        {/if}
-      </div>
-      <form class="flex flex-col gap-4" onsubmit={submitCode}>
-        {#if useRecoveryCode}
-          <div class="flex flex-col gap-3" {@attach focus}>
-            <Input label="Recovery code" name="recovery_code" bind:value={code} autocomplete="one-time-code" required />
-            <button type="button" class="auth-text-link self-center" onclick={() => switchCode(false)}>Use an authenticator code</button>
-          </div>
-        {:else}
-          <div class="flex flex-col gap-3">
-            <input
-              type="text"
-              name="code"
-              value={code}
-              inputmode="numeric"
-              pattern="[0-9]*"
-              maxlength="6"
-              autocomplete="one-time-code"
-              aria-label="Two-factor authentication code"
-              required
-              oninput={authenticatorInput}
-              {@attach focus}
-              class="mx-auto h-14 w-64 rounded-md border border-neutral-300 bg-white px-4 text-center text-xl font-semibold tracking-[0.5em] text-neutral-900 transition-colors focus:border-ring focus:ring-1 focus:ring-ring/50 focus:outline-none dark:border-white/10 dark:bg-coolgray-100 dark:text-white"
-            />
-            <button type="button" class="auth-text-link self-center" onclick={() => switchCode(true)}>Use a recovery code</button>
-          </div>
-        {/if}
-        <Button class="w-full justify-center" type="submit" variant="highlighted" loading={busy}>Verify and continue</Button>
-      </form>
-    </div>
+  <AuthShell
+    title="Two-factor authentication"
+    description={useRecoveryCode
+      ? 'Enter one of the recovery codes you saved when setting up two-factor authentication.'
+      : 'Enter the 6-digit code from your authenticator app.'}
+  >
+    <form class="space-y-4" onsubmit={submitCode}>
+      {#if useRecoveryCode}
+        <div {@attach focus}>
+          <Input label="Recovery code" name="recovery_code" bind:value={code} autocomplete="one-time-code" required />
+        </div>
+      {:else}
+        <input
+          type="text"
+          name="code"
+          value={code}
+          inputmode="numeric"
+          pattern="[0-9]*"
+          maxlength="6"
+          autocomplete="one-time-code"
+          aria-label="Two-factor authentication code"
+          required
+          oninput={authenticatorInput}
+          {@attach focus}
+          class="h-12 w-full rounded-md border border-border bg-transparent px-3 text-center font-mono text-xl tracking-[0.5em] outline-none focus:ring-1 focus:ring-ring"
+        />
+      {/if}
+      {#if message}<p role="alert" class="text-xs text-destructive">{message}</p>{/if}
+      <Button class="w-full" type="submit" variant="highlighted" loading={busy}>Verify and continue</Button>
+      <button
+        type="button"
+        class="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        onclick={() => switchCode(!useRecoveryCode)}
+      >
+        {useRecoveryCode ? 'Use an authenticator code' : 'Use a recovery code'}
+      </button>
+    </form>
     {#snippet footer()}
-      <span>Not your account?</span>
-      <button type="button" class="auth-text-link" onclick={() => ((step = 'password'), (password = ''), (message = ''))}>Back to login</button>
+      Not your account?
+      <button
+        type="button"
+        class="font-medium text-foreground underline underline-offset-2"
+        onclick={() => ((step = 'password'), (password = ''), (message = ''))}>Back to sign in</button
+      >
     {/snippet}
   </AuthShell>
 {/if}

@@ -211,3 +211,27 @@ func TestInvitationsStayInTheirGuild(t *testing.T) {
 		t.Errorf("open invitations: %v", open)
 	}
 }
+
+func TestDecliningAnInvitationStopsIt(t *testing.T) {
+	ctx := context.Background()
+	s, m, _ := invitingService(t)
+	_, token, err := s.Invite(ctx, 2, 2, adminPerms, "no@example.com", []uint64{m.seeded(2, "viewer")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeclineInvitation(ctx, "not a token"); !errors.Is(err, ErrInvitationNotFound) {
+		t.Errorf("unknown token: %v", err)
+	}
+	if err := s.DeclineInvitation(ctx, token); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeclineInvitation(ctx, token); !errors.Is(err, domain.ErrInvitationRevoked) {
+		t.Errorf("declined twice: %v", err)
+	}
+	if _, _, err := s.AcceptAsNewMember(ctx, token, "No", "correct horse"); !errors.Is(err, domain.ErrInvitationRevoked) {
+		t.Errorf("accepting a declined Invitation: %v", err)
+	}
+	if open, _ := s.OpenInvitations(ctx, 2); len(open) != 0 {
+		t.Errorf("open invitations: %v", open)
+	}
+}

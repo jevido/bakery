@@ -191,6 +191,15 @@ func (c *Controller) InvitationByToken(ctx contractshttp.Context) contractshttp.
 	})
 }
 
+// DeclineInvitation turns an Invitation down through its link; like the
+// page itself it needs no Session.
+func (c *Controller) DeclineInvitation(ctx contractshttp.Context) contractshttp.Response {
+	if err := c.service.DeclineInvitation(ctx.Context(), ctx.Request().Route("token")); err != nil {
+		return invitationFailure(ctx, err)
+	}
+	return ctx.Response().NoContent()
+}
+
 type acceptRequest struct {
 	Name     string `json:"name"`
 	Password string `json:"password"`
