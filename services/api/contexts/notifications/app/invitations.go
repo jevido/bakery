@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/notifications/domain"
@@ -11,8 +12,9 @@ import (
 // Invitation is what guilds tells about an Invitation into a Guild it just
 // made.
 type Invitation struct {
-	Email     string
-	Role      string
+	Email string
+	// Roles are the names of the Roles it gives besides the Base role.
+	Roles     []string
 	GuildID   uint64
 	Guild     string
 	InvitedBy string
@@ -31,14 +33,18 @@ func InvitationEmail(inv Invitation) (subject, body string) {
 		by = "Someone"
 	}
 	subject = "[The Bakery] " + by + " invited you to " + inv.Guild + " on The Bakery"
-	body = fmt.Sprintf(`%s invited you to %s on The Bakery as %s.
+	as := ""
+	if len(inv.Roles) > 0 {
+		as = " as " + strings.Join(inv.Roles, ", ")
+	}
+	body = fmt.Sprintf(`%s invited you to %s on The Bakery%s.
 
 Open this link to accept:
 
 %s
 
 The link works once, until %s.
-If you did not expect this, ignore this email.`, by, inv.Guild, inv.Role, inv.Link, inv.ExpiresAt.UTC().Format("2 January 2006 15:04 UTC"))
+If you did not expect this, ignore this email.`, by, inv.Guild, as, inv.Link, inv.ExpiresAt.UTC().Format("2 January 2006 15:04 UTC"))
 	return subject, body
 }
 

@@ -46,6 +46,50 @@ var permissionNames = []string{
 	"Approve", "Manage budgets",
 }
 
+// permissionDescriptions say what each Permission allows, as the glossary
+// does, in the same order.
+var permissionDescriptions = []string{
+	"Every permission. Ignores permission overrides.",
+	"Read the guild's projects and everything in them, servers, S3 storages and notification channels, without secrets.",
+	"Read secrets: environment variables, database passwords and private keys.",
+	"Deploy, restart, stop, start, cancel and roll back.",
+	"Create, change and delete projects, environments, applications, databases, scheduled backups, services, their variables and routing settings.",
+	"Manage servers, S3 storages and known hosts.",
+	"Manage notification channels.",
+	"Change the guild's name and description.",
+	"Invite and remove members and reset their two-factor authentication.",
+	"Manage roles below your highest role, who holds them, and permission overrides.",
+	"Hire agents into the guild.",
+	"Answer approvals.",
+	"Set the guild's budgets.",
+}
+
+// overridable are the Permissions a Permission override can set on a
+// Project.
+const overridable = Permissions(PermissionViewResources | PermissionSeeSecrets | PermissionDeploy | PermissionManageApplications)
+
+// All lists every Permission in the glossary's order.
+func All() []Permission {
+	out := make([]Permission, len(permissionKeys))
+	for i := range out {
+		out[i] = Permission(1) << i
+	}
+	return out
+}
+
+// Description says what the Permission allows, "" for no single known
+// Permission.
+func (p Permission) Description() string {
+	if p.Key() == "" {
+		return ""
+	}
+	return permissionDescriptions[bits.TrailingZeros64(uint64(p))]
+}
+
+// Overridable reports whether a Permission override on a Project can set
+// p.
+func (p Permission) Overridable() bool { return Permissions(p)&overridable != 0 && p.Key() != "" }
+
 // ParsePermission reads one Permission from its wire key;
 // ErrUnknownPermission for a key that is not on the list.
 func ParsePermission(key string) (Permission, error) {

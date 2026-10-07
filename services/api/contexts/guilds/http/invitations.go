@@ -15,15 +15,22 @@ import (
 )
 
 type invitationJSON struct {
-	ID        uint64    `json:"id"`
-	Email     string    `json:"email"`
+	ID    uint64    `json:"id"`
+	Email string    `json:"email"`
+	Roles []roleRef `json:"roles"`
+	// Role is the former role the Roles read as, for older scripts.
 	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-func invitationToJSON(i domain.Invitation) invitationJSON {
-	return invitationJSON{ID: i.ID, Email: i.Email, Role: i.Role, CreatedAt: i.CreatedAt, ExpiresAt: i.ExpiresAt}
+// invitationToJSON is i with the Roles it gives among its Guild's roles.
+func invitationToJSON(i domain.Invitation, roles []domain.Role) invitationJSON {
+	return invitationJSON{
+		ID: i.ID, Email: i.Email, Roles: refs(roles, i.RoleIDs),
+		Role:      wireRole(domain.PermissionsOf(roles, domain.Membership{RoleIDs: i.RoleIDs})),
+		CreatedAt: i.CreatedAt, ExpiresAt: i.ExpiresAt,
+	}
 }
 
 // invitationFailure answers the errors of Invitations.
@@ -33,6 +40,10 @@ func invitationFailure(ctx contractshttp.Context, err error) contractshttp.Respo
 		return respond.Invalid(ctx, "email", err.Error())
 	case errors.Is(err, domain.ErrInvalidRole):
 		return respond.Invalid(ctx, "role", err.Error())
+	case errors.Is(err, app.ErrRoleNotFound):
+		return respond.Invalid(ctx, "role_ids", "no such role in this guild")
+	case errors.Is(err, domain.ErrRoleNotBelow), errors.Is(err, domain.ErrBaseRoleFixed), errors.As(err, new(domain.ErrMissing)):
+		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
 	case errors.Is(err, identity.ErrInvalidName):
 		return respond.Invalid(ctx, "name", err.Error())
 	case errors.Is(err, identity.ErrPasswordTooShort):
@@ -55,16 +66,24 @@ func (c *Controller) Invitations(ctx contractshttp.Context) contractshttp.Respon
 	if err != nil {
 		return respond.ServerError(ctx, err)
 	}
+	roles, err := c.service.RolesIn(ctx.Context(), Current(ctx))
+	if err != nil {
+		return respond.ServerError(ctx, err)
+	}
 	out := make([]invitationJSON, len(invs))
 	for i, inv := range invs {
-		out[i] = invitationToJSON(inv)
+		out[i] = invitationToJSON(inv, roles)
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"invitations": out})
 }
 
 type inviteRequest struct {
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	Email   string   `json:"email"`
+	RoleIDs []uint64 `json:"role_ids"`
+	// Role is the former role ("viewer", "member" or "admin"), read as
+	// the seeded Role of that name when role_ids is absent, for older
+	// scripts.
+	Role string `json:"role"`
 }
 
 // Invite makes an Invitation into the Current guild and answers its link,
@@ -76,13 +95,28 @@ func (c *Controller) Invite(ctx contractshttp.Context) contractshttp.Response {
 	}
 	guild := placeOf(ctx).guild
 	actor := MemberID(ctx)
-	inv, token, err := c.service.Invite(ctx.Context(), guild.ID, actor, req.Email, req.Role)
+	roles, err := c.service.RolesIn(ctx.Context(), guild.ID)
+	if err != nil {
+		return respond.ServerError(ctx, err)
+	}
+	if req.RoleIDs == nil && req.Role != "" {
+		r, found, err := domain.SeededRole(roles, req.Role)
+		if err != nil {
+			return invitationFailure(ctx, err)
+		}
+		if !found {
+			return respond.Invalid(ctx, "role", "the "+req.Role+" role was renamed or deleted; send role_ids")
+		}
+		req.RoleIDs = []uint64{r.ID}
+	}
+	inv, token, err := c.service.Invite(ctx.Context(), guild.ID, actor, PermissionsOf(ctx), req.Email, req.RoleIDs)
 	if err != nil {
 		return invitationFailure(ctx, err)
 	}
+	ij := invitationToJSON(inv, roles)
 	// The dashboard routes by hash.
 	path := "/#/invite/" + token
-	out := contractshttp.Json{"invitation": invitationToJSON(inv), "path": path}
+	out := contractshttp.Json{"invitation": ij, "path": path}
 	origin := dashboardOrigin(ctx)
 	if origin != "" {
 		out["link"] = origin + path
@@ -96,7 +130,11 @@ func (c *Controller) Invite(ctx contractshttp.Context) contractshttp.Response {
 		if m, found, err := identity.MemberByID(ctx.Context(), actor); err == nil && found {
 			name = m.Name
 		}
-		emailed, err := c.Invited(ctx.Context(), inv, guild, name, origin+path)
+		names := make([]string, len(ij.Roles))
+		for i, r := range ij.Roles {
+			names[i] = r.Name
+		}
+		emailed, err := c.Invited(ctx.Context(), inv, guild, names, name, origin+path)
 		out["emailed"] = emailed
 		if err != nil {
 			// The Invitation stands; its link can still be copied.
@@ -139,9 +177,14 @@ func (c *Controller) InvitationByToken(ctx contractshttp.Context) contractshttp.
 	if err != nil {
 		return invitationFailure(ctx, err)
 	}
+	roles, err := c.service.RolesIn(ctx.Context(), in.Guild.ID)
+	if err != nil {
+		return respond.ServerError(ctx, err)
+	}
+	ij := invitationToJSON(in.Invitation, roles)
 	return ctx.Response().Success().Json(contractshttp.Json{
 		"invitation": contractshttp.Json{
-			"email": in.Invitation.Email, "role": in.Invitation.Role, "expires_at": in.Invitation.ExpiresAt,
+			"email": ij.Email, "roles": ij.Roles, "role": ij.Role, "expires_at": ij.ExpiresAt,
 		},
 		"guild":           contractshttp.Json{"name": in.Guild.Name},
 		"existing_member": in.ExistingMember,

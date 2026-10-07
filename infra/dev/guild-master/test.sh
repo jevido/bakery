@@ -54,6 +54,9 @@ join() {
 held() {
 	"${PSQL[@]}" -c "SELECT string_agg(r.name, ',' ORDER BY r.name) FROM memberships m JOIN membership_roles mr ON mr.membership_id = m.id JOIN roles r ON r.id = mr.role_id WHERE m.guild_id = $GUILD AND m.user_id = $1"
 }
+# as_role_id JAR NAME: the id of the Role with this name in JAR's Current
+# guild.
+as_role_id() { as "$1" GET /api/roles >/dev/null; body "[r['id'] for r in d['roles'] if r['name'] == '$2'][0]"; }
 master() { as "$1" GET /api/guilds/current >/dev/null; body "d['guild']['guild_master']['id']"; }
 offer() { as "$1" GET /api/guilds/current >/dev/null; body "(d['guild']['offer'] or {}).get('id')"; }
 
@@ -74,10 +77,10 @@ expect "the Members list Ann first, marked" "$ANN_ID True" "$(as "$CY" GET /api/
 expect "nobody else is marked" 1 "$(body "sum(m['guild_master'] for m in d['members'])")"
 
 say "Nobody re-roles or removes the Guild Master"
-expect "an admin cannot re-role Ann" 403 "$(as "$CY" PATCH "/api/members/$ANN_ID" '{"role":"viewer"}')"
+expect "an admin cannot re-role Ann" 403 "$(as "$CY" PUT "/api/members/$ANN_ID/roles/$(as_role_id "$CY" Viewer)")"
 expect "an admin cannot remove Ann" 403 "$(as "$CY" DELETE "/api/members/$ANN_ID")"
-expect "Cy, the other admin, can be demoted: Ann still holds everything" 200 "$(as "$ANN" PATCH "/api/members/$CY_ID" '{"role":"member"}')"
-as "$ANN" PATCH "/api/members/$CY_ID" '{"role":"admin"}' >/dev/null
+expect "Cy, the other admin, can be demoted: Ann still holds everything" 200 "$(as "$ANN" DELETE "/api/members/$CY_ID/roles/$(as_role_id "$ANN" Admin)")"
+as "$ANN" PUT "/api/members/$CY_ID/roles/$(as_role_id "$ANN" Admin)" >/dev/null
 
 say "Offers"
 expect "only the Guild Master offers" 403 "$(as "$CY" POST /api/guilds/current/guild-master-offer "{\"member_id\":$BEA_ID}")"

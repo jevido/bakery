@@ -113,28 +113,14 @@ func (s *Service) MembershipsIn(ctx context.Context, guildID uint64) ([]domain.M
 	return s.memberships.ListForGuild(ctx, guildID)
 }
 
-// ChangeRole replaces a Member's Roles in the Guild with the seeded Role a
-// former role ("viewer", "member" or "admin") names, by the domain's rules.
-func (s *Service) ChangeRole(ctx context.Context, guildID, actorID uint64, actor domain.Permissions, memberID uint64, former string) (domain.Membership, error) {
-	roles, err := s.roles.ForGuild(ctx, guildID)
-	if err != nil {
-		return domain.Membership{}, err
-	}
-	r, found, err := domain.SeededRole(roles, former)
-	if err != nil {
-		return domain.Membership{}, err
-	}
-	if !found {
-		return domain.Membership{}, domain.ErrInvalidRole
-	}
-	return s.change(ctx, guildID, actorID, actor, memberID, []uint64{r.ID}, false)
-}
-
-// RemoveMembership takes a Member out of the Guild; their API tokens of the
-// Guild and a Transfer offer to them go with it, and they keep their
-// account and other Memberships.
+// RemoveMembership takes a Member out of the Guild by the hierarchy's
+// rules; their API tokens of the Guild and a Transfer offer to them go with
+// it, and they keep their account and other Memberships.
 func (s *Service) RemoveMembership(ctx context.Context, guildID, actorID uint64, actor domain.Permissions, memberID uint64) error {
-	if _, err := s.change(ctx, guildID, actorID, actor, memberID, nil, true); err != nil {
+	_, err := s.manage(ctx, guildID, actorID, actor, domain.PermissionManageMembers, memberID, func(_ Hierarchy, _ domain.Actor, target domain.Membership) (Change, error) {
+		return Change{RemovedMembership: target.ID}, nil
+	})
+	if err != nil {
 		return err
 	}
 	if err := s.offers.WithdrawTo(ctx, guildID, memberID); err != nil {
@@ -143,28 +129,46 @@ func (s *Service) RemoveMembership(ctx context.Context, guildID, actorID uint64,
 	return s.members.RevokeAPITokens(ctx, memberID, guildID)
 }
 
-func (s *Service) change(ctx context.Context, guildID, actorID uint64, actor domain.Permissions, memberID uint64, to []uint64, remove bool) (domain.Membership, error) {
-	instanceAdmin, err := s.members.IsInstanceAdmin(ctx, memberID)
-	if err != nil {
-		return domain.Membership{}, err
-	}
-	return s.memberships.Change(ctx, guildID, memberID, to, remove, func(g domain.Guild, ms []domain.Membership) error {
-		for _, m := range ms {
-			if m.MemberID == memberID {
-				return domain.CanManage(g, actorID, actor, m, instanceAdmin)
-			}
-		}
-		return ErrMembershipNotFound
-	})
-}
-
 // ResetTwoFactor switches off the two-factor of a Member of the Guild who
-// is locked out, by the same rules as changing their Roles.
+// is locked out, by the same rules as removing them.
 func (s *Service) ResetTwoFactor(ctx context.Context, guildID, actorID uint64, actor domain.Permissions, memberID uint64) error {
-	target, ok, err := s.memberships.Of(ctx, guildID, memberID)
+	g, err := s.Guild(ctx, guildID)
 	if err != nil {
 		return err
 	}
+	roles, err := s.roles.ForGuild(ctx, guildID)
+	if err != nil {
+		return err
+	}
+	ms, err := s.memberships.ListForGuild(ctx, guildID)
+	if err != nil {
+		return err
+	}
+	h := Hierarchy{Guild: g, Roles: roles, Memberships: ms}
+	a, err := s.actor(ctx, h, actorID, actor)
+	if err != nil {
+		return err
+	}
+	if err := s.canManage(ctx, h, a, domain.PermissionManageMembers, memberID); err != nil {
+		return err
+	}
+	return s.members.ResetTwoFactor(ctx, memberID)
+}
+
+// actor is who asks, with these Permissions, for a change in h's Guild.
+func (s *Service) actor(ctx context.Context, h Hierarchy, actorID uint64, perms domain.Permissions) (domain.Actor, error) {
+	instanceAdmin, err := s.members.IsInstanceAdmin(ctx, actorID)
+	if err != nil {
+		return domain.Actor{}, err
+	}
+	m, _ := membershipOf(h.Memberships, actorID)
+	return domain.Actor{MemberID: actorID, Permissions: perms, Rank: domain.RankOf(h.Guild, h.Roles, m, actorID, instanceAdmin)}, nil
+}
+
+// canManage is domain.CanManage for memberID's Membership in h's Guild;
+// ErrMembershipNotFound without one.
+func (s *Service) canManage(ctx context.Context, h Hierarchy, a domain.Actor, need domain.Permission, memberID uint64) error {
+	target, ok := membershipOf(h.Memberships, memberID)
 	if !ok {
 		return ErrMembershipNotFound
 	}
@@ -172,12 +176,37 @@ func (s *Service) ResetTwoFactor(ctx context.Context, guildID, actorID uint64, a
 	if err != nil {
 		return err
 	}
-	g, err := s.Guild(ctx, guildID)
-	if err != nil {
-		return err
+	return domain.CanManage(h.Guild, a, need, target, domain.RankOf(h.Guild, h.Roles, target, memberID, instanceAdmin), instanceAdmin)
+}
+
+// manage changes memberID's Membership in the Guild with change once
+// domain.CanManage allows it, with the Guild locked.
+func (s *Service) manage(ctx context.Context, guildID, actorID uint64, perms domain.Permissions, need domain.Permission, memberID uint64, change func(Hierarchy, domain.Actor, domain.Membership) (Change, error)) (Change, error) {
+	return s.changeRoles(ctx, guildID, actorID, perms, func(h Hierarchy, a domain.Actor) (Change, error) {
+		if err := s.canManage(ctx, h, a, need, memberID); err != nil {
+			return Change{}, err
+		}
+		target, _ := membershipOf(h.Memberships, memberID)
+		return change(h, a, target)
+	})
+}
+
+// changeRoles is Roles.Change with the actor asking for it.
+func (s *Service) changeRoles(ctx context.Context, guildID, actorID uint64, perms domain.Permissions, decide func(Hierarchy, domain.Actor) (Change, error)) (Change, error) {
+	return s.roles.Change(ctx, guildID, func(h Hierarchy) (Change, error) {
+		a, err := s.actor(ctx, h, actorID, perms)
+		if err != nil {
+			return Change{}, err
+		}
+		return decide(h, a)
+	})
+}
+
+func membershipOf(ms []domain.Membership, memberID uint64) (domain.Membership, bool) {
+	for _, m := range ms {
+		if m.MemberID == memberID {
+			return m, true
+		}
 	}
-	if err := domain.CanManage(g, actorID, actor, target, instanceAdmin); err != nil {
-		return err
-	}
-	return s.members.ResetTwoFactor(ctx, memberID)
+	return domain.Membership{}, false
 }

@@ -39,9 +39,13 @@ type Role struct {
 
 var colorPattern = regexp.MustCompile(`^#[0-9a-f]{6}$`)
 
-// Rename trims name and refuses an empty or too long one.
+// Rename trims name and refuses an empty or too long one, and any new
+// name for the Base role.
 func (r *Role) Rename(name string) error {
 	name = strings.TrimSpace(name)
+	if r.Base && name != r.Name {
+		return ErrBaseRoleFixed
+	}
 	if name == "" || utf8.RuneCountInString(name) > MaxRoleNameLength {
 		return ErrInvalidRoleName
 	}
@@ -49,9 +53,13 @@ func (r *Role) Rename(name string) error {
 	return nil
 }
 
-// Recolor sets the color, #rrggbb in either case, stored lower case.
+// Recolor sets the color, #rrggbb in either case, stored lower case; the
+// Base role keeps its own.
 func (r *Role) Recolor(color string) error {
 	color = strings.ToLower(strings.TrimSpace(color))
+	if r.Base && color != r.Color {
+		return ErrBaseRoleFixed
+	}
 	if !colorPattern.MatchString(color) {
 		return ErrInvalidRoleColor
 	}
@@ -99,4 +107,22 @@ func SeededRole(roles []Role, former string) (Role, bool, error) {
 		}
 	}
 	return Role{}, false, nil
+}
+
+// DefaultRoleColor is a new Role's color when none is given, Discord's.
+const DefaultRoleColor = "#99aab5"
+
+// NewRole validates a new Role of the Guild, without an ID or Position.
+func NewRole(guildID uint64, name, color string, permissions Permissions) (Role, error) {
+	r := Role{GuildID: guildID, Permissions: permissions}
+	if err := r.Rename(name); err != nil {
+		return Role{}, err
+	}
+	if strings.TrimSpace(color) == "" {
+		color = DefaultRoleColor
+	}
+	if err := r.Recolor(color); err != nil {
+		return Role{}, err
+	}
+	return r, nil
 }

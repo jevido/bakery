@@ -16,9 +16,9 @@ import (
 type Controller struct {
 	service *app.Service
 	// Invited, when set, hears of each new Invitation with its Guild, the
-	// inviting Member's name and its link, and answers whether it emailed
-	// the link.
-	Invited func(ctx context.Context, inv domain.Invitation, guild domain.Guild, invitedBy, link string) (emailed bool, err error)
+	// names of the Roles it gives, the inviting Member's name and its link,
+	// and answers whether it emailed the link.
+	Invited func(ctx context.Context, inv domain.Invitation, guild domain.Guild, roles []string, invitedBy, link string) (emailed bool, err error)
 }
 
 func NewController(service *app.Service) *Controller {
@@ -40,6 +40,9 @@ type memberJSON struct {
 	InstanceAdmin bool   `json:"instance_admin"`
 	// GuildMaster is set for the Current guild's Guild Master.
 	GuildMaster bool `json:"guild_master"`
+	// Roles are the Roles they hold in the Current guild besides the Base
+	// role, top first; only in the Members list and its changes.
+	Roles *[]roleRef `json:"roles,omitempty"`
 }
 
 func toJSON(m identity.Member, role string) memberJSON {
@@ -98,7 +101,7 @@ func (c *Controller) Me(ctx contractshttp.Context) contractshttp.Response {
 }
 
 // Members lists the Members of the Current guild, its Guild Master first,
-// then the Instance admin, then by name.
+// then the Instance admin, then by name, each with the Roles they hold.
 func (c *Controller) Members(ctx contractshttp.Context) contractshttp.Response {
 	ms, err := c.service.MembershipsIn(ctx.Context(), Current(ctx))
 	if err != nil {
@@ -108,10 +111,10 @@ func (c *Controller) Members(ctx contractshttp.Context) contractshttp.Response {
 	if err != nil {
 		return respond.ServerError(ctx, err)
 	}
-	roles := make(map[uint64]string, len(ms))
+	held := make(map[uint64]domain.Membership, len(ms))
 	ids := make([]uint64, len(ms))
 	for i, m := range ms {
-		roles[m.MemberID], ids[i] = wireRole(domain.PermissionsOf(guildRoles, m)), m.MemberID
+		held[m.MemberID], ids[i] = m, m.MemberID
 	}
 	members, err := identity.Members(ctx.Context(), ids)
 	if err != nil {
@@ -120,7 +123,7 @@ func (c *Controller) Members(ctx contractshttp.Context) contractshttp.Response {
 	master := placeOf(ctx).guild.MasterID
 	out := make([]memberJSON, 0, len(members))
 	for _, m := range members {
-		j := toJSON(m, roles[m.ID])
+		j := memberWithRoles(m, guildRoles, held[m.ID])
 		if m.ID == master {
 			j.GuildMaster = true
 			out = append([]memberJSON{j}, out...)
@@ -131,35 +134,20 @@ func (c *Controller) Members(ctx contractshttp.Context) contractshttp.Response {
 	return ctx.Response().Success().Json(contractshttp.Json{"members": out})
 }
 
-type roleRequest struct {
-	Role string `json:"role"`
+// memberWithRoles is m with their former role and the Roles their
+// Membership holds among the Guild's roles.
+func memberWithRoles(m identity.Member, roles []domain.Role, ms domain.Membership) memberJSON {
+	j := toJSON(m, wireRole(domain.PermissionsOf(roles, ms)))
+	held := refs(roles, ms.RoleIDs)
+	j.Roles = &held
+	return j
 }
 
-func (c *Controller) ChangeRole(ctx contractshttp.Context) contractshttp.Response {
-	id, ok := routeID(ctx)
-	if !ok {
-		return respond.Error(ctx, contractshttp.StatusNotFound, "member not found")
-	}
-	var req roleRequest
-	if err := ctx.Request().Bind(&req); err != nil {
-		return respond.BadBody(ctx)
-	}
-	ms, err := c.service.ChangeRole(ctx.Context(), Current(ctx), MemberID(ctx), PermissionsOf(ctx), id, req.Role)
-	if err != nil {
-		return membershipFailure(ctx, err)
-	}
-	perms, _, err := c.service.PermissionsIn(ctx.Context(), ms.GuildID, ms.MemberID)
-	if err != nil {
-		return respond.ServerError(ctx, err)
-	}
-	m, found, err := identity.MemberByID(ctx.Context(), ms.MemberID)
-	if err != nil {
-		return respond.ServerError(ctx, err)
-	}
-	if !found {
-		return respond.Error(ctx, contractshttp.StatusNotFound, "member not found")
-	}
-	return ctx.Response().Success().Json(contractshttp.Json{"member": toJSON(m, wireRole(perms))})
+// ChangeRoleGone answers the former `PATCH /api/members/{id}`: a Member
+// holds several Roles now.
+func (c *Controller) ChangeRoleGone(ctx contractshttp.Context) contractshttp.Response {
+	return respond.Error(ctx, contractshttp.StatusGone,
+		"a member holds several roles now: use PUT or DELETE /api/members/{id}/roles/{role_id}")
 }
 
 // RemoveMember takes the Member out of the Current guild.
@@ -204,8 +192,8 @@ func membershipFailure(ctx contractshttp.Context, err error) contractshttp.Respo
 	switch {
 	case errors.Is(err, domain.ErrInvalidRole):
 		return respond.Invalid(ctx, "role", err.Error())
-	case errors.Is(err, domain.ErrNotAdmin), errors.Is(err, domain.ErrInstanceAdminFixed), errors.Is(err, domain.ErrSelf),
-		errors.Is(err, domain.ErrGuildMaster):
+	case errors.As(err, new(domain.ErrMissing)), errors.Is(err, domain.ErrInstanceAdminFixed), errors.Is(err, domain.ErrSelf),
+		errors.Is(err, domain.ErrGuildMaster), errors.Is(err, domain.ErrMemberNotBelow):
 		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
 	case errors.Is(err, app.ErrMembershipNotFound):
 		return respond.Error(ctx, contractshttp.StatusNotFound, "member not found")

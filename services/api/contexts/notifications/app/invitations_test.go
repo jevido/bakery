@@ -27,7 +27,7 @@ func TestSendInvitation(t *testing.T) {
 	store := &fakeStore{}
 	mailer := &fakeMailer{}
 	s := NewService(store, &fakeSender{}, mailer)
-	inv := Invitation{Email: "dev@example.com", Role: "member", GuildID: 1, Guild: "Default", InvitedBy: "Jeff", Link: "https://bakery.example.com/#/invite/tok", ExpiresAt: time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)}
+	inv := Invitation{Email: "dev@example.com", Roles: []string{"Member", "Deployer"}, GuildID: 1, Guild: "Default", InvitedBy: "Jeff", Link: "https://bakery.example.com/#/invite/tok", ExpiresAt: time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)}
 
 	if sent, err := s.SendInvitation(context.Background(), inv); sent || err != nil {
 		t.Fatalf("without an email channel: %v %v", sent, err)
@@ -63,7 +63,7 @@ func TestSendInvitation(t *testing.T) {
 	if mailer.channel != "ops" || len(mailer.to) != 1 || mailer.to[0] != "dev@example.com" || mailer.subject != "[The Bakery] Jeff invited you to Default on The Bakery" {
 		t.Fatalf("mailed %+v", mailer)
 	}
-	for _, want := range []string{"invited you to Default on The Bakery as member", inv.Link, "7 October 2026 12:00 UTC"} {
+	for _, want := range []string{"invited you to Default on The Bakery as Member, Deployer", inv.Link, "7 October 2026 12:00 UTC"} {
 		if !strings.Contains(mailer.body, want) {
 			t.Errorf("body lacks %q:\n%s", want, mailer.body)
 		}

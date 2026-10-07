@@ -18,7 +18,6 @@ type invitationRecord struct {
 	ID         uint64 `gorm:"primaryKey"`
 	GuildID    uint64
 	Email      string
-	Role       string
 	TokenHash  string
 	InvitedBy  *uint64
 	ExpiresAt  time.Time
@@ -32,7 +31,7 @@ func (invitationRecord) TableName() string { return "invitations" }
 
 func (r invitationRecord) toDomain() domain.Invitation {
 	inv := domain.Invitation{
-		ID: r.ID, GuildID: r.GuildID, Email: r.Email, Role: r.Role, CreatedAt: r.CreatedAt,
+		ID: r.ID, GuildID: r.GuildID, Email: r.Email, RoleIDs: []uint64{}, CreatedAt: r.CreatedAt,
 		ExpiresAt: r.ExpiresAt, AcceptedAt: r.AcceptedAt, RevokedAt: r.RevokedAt,
 	}
 	if r.InvitedBy != nil {
@@ -45,7 +44,7 @@ type Invitations struct{}
 
 func (Invitations) Add(ctx context.Context, inv domain.Invitation, tokenHash string) (domain.Invitation, error) {
 	rec := invitationRecord{
-		GuildID: inv.GuildID, Email: inv.Email, Role: inv.Role, TokenHash: tokenHash,
+		GuildID: inv.GuildID, Email: inv.Email, TokenHash: tokenHash,
 		ExpiresAt: inv.ExpiresAt, CreatedAt: inv.CreatedAt, UpdatedAt: inv.CreatedAt,
 	}
 	if inv.InvitedBy != 0 {
@@ -66,12 +65,22 @@ func (Invitations) Add(ctx context.Context, inv domain.Invitation, tokenHash str
 		if isUniqueViolation(err) {
 			return app.ErrAlreadyInvited
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		for _, id := range inv.RoleIDs {
+			if err := tx.Create(&invitationRoleRecord{InvitationID: rec.ID, RoleID: id}); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return domain.Invitation{}, err
 	}
-	return rec.toDomain(), nil
+	out := rec.toDomain()
+	out.RoleIDs = inv.RoleIDs
+	return out, nil
 }
 
 func (Invitations) Open(ctx context.Context, guildID uint64, now time.Time) ([]domain.Invitation, error) {
@@ -82,19 +91,17 @@ func (Invitations) Open(ctx context.Context, guildID uint64, now time.Time) ([]d
 	if err != nil {
 		return nil, err
 	}
-	out := make([]domain.Invitation, len(recs))
-	for n, r := range recs {
-		out[n] = r.toDomain()
-	}
-	return out, nil
+	return withRoles(query(ctx), recs)
 }
 
 func (Invitations) ByID(ctx context.Context, id uint64) (domain.Invitation, bool, error) {
-	return firstInvitation(query(ctx).Where("id", id))
+	q := query(ctx)
+	return firstInvitation(q, q.Where("id", id))
 }
 
 func (Invitations) ByTokenHash(ctx context.Context, tokenHash string) (domain.Invitation, bool, error) {
-	return firstInvitation(query(ctx).Where("token_hash", tokenHash))
+	q := query(ctx)
+	return firstInvitation(q, q.Where("token_hash", tokenHash))
 }
 
 func (Invitations) Revoke(ctx context.Context, id uint64, now time.Time) error {
@@ -110,7 +117,7 @@ func (Invitations) Accept(ctx context.Context, tokenHash string, now time.Time, 
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		// The row lock makes two racing accepts of one link take turns; the
 		// second then sees it accepted.
-		inv, found, err := firstInvitation(tx.Where("token_hash", tokenHash).LockForUpdate())
+		inv, found, err := firstInvitation(tx, tx.Where("token_hash", tokenHash).LockForUpdate())
 		if err != nil {
 			return err
 		}
@@ -136,7 +143,17 @@ func (Invitations) Accept(ctx context.Context, tokenHash string, now time.Time, 
 	return accepted, memberID, nil
 }
 
-func firstInvitation(q contractsorm.Query) (domain.Invitation, bool, error) {
+// invitationRoleRecord is one Role an Invitation gives.
+type invitationRoleRecord struct {
+	InvitationID uint64
+	RoleID       uint64
+}
+
+func (invitationRoleRecord) TableName() string { return "invitation_roles" }
+
+// firstInvitation finds the Invitation q selects and, through tx, its
+// Roles.
+func firstInvitation(tx, q contractsorm.Query) (domain.Invitation, bool, error) {
 	var rec invitationRecord
 	if err := q.FirstOrFail(&rec); err != nil {
 		if errors.Is(err, frameworkerrors.OrmRecordNotFound) {
@@ -144,7 +161,34 @@ func firstInvitation(q contractsorm.Query) (domain.Invitation, bool, error) {
 		}
 		return domain.Invitation{}, false, err
 	}
-	return rec.toDomain(), true, nil
+	out, err := withRoles(tx, []invitationRecord{rec})
+	if err != nil {
+		return domain.Invitation{}, false, err
+	}
+	return out[0], true, nil
+}
+
+// withRoles is recs with the Roles each gives, read through tx.
+func withRoles(tx contractsorm.Query, recs []invitationRecord) ([]domain.Invitation, error) {
+	out := make([]domain.Invitation, len(recs))
+	if len(recs) == 0 {
+		return out, nil
+	}
+	ids := make([]any, len(recs))
+	at := make(map[uint64]int, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+		ids[i], at[r.ID] = r.ID, i
+	}
+	var held []invitationRoleRecord
+	if err := tx.Model(&invitationRoleRecord{}).WhereIn("invitation_id", ids).OrderBy("role_id").Find(&held); err != nil {
+		return nil, err
+	}
+	for _, h := range held {
+		i := at[h.InvitationID]
+		out[i].RoleIDs = append(out[i].RoleIDs, h.RoleID)
+	}
+	return out, nil
 }
 
 func isUniqueViolation(err error) bool {
@@ -159,13 +203,9 @@ func isForeignKeyViolation(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "23503")
 }
 
-// addMembership gives memberID a Membership in inv's Guild holding the seeded Role
-// inv names, unless they hold one there already.
+// addMembership gives memberID a Membership in inv's Guild holding the
+// Roles inv gives that still exist, unless they hold one there already.
 func addMembership(tx contractsorm.Query, inv domain.Invitation, memberID uint64, now time.Time) error {
-	role, err := domain.SeededRoleName(inv.Role)
-	if err != nil {
-		return err
-	}
 	var added []uint64
 	if err := tx.Raw(`INSERT INTO memberships (guild_id, user_id, created_at, updated_at)
 		VALUES (?, ?, ?, ?) ON CONFLICT (guild_id, user_id) DO NOTHING RETURNING id`, inv.GuildID, memberID, now, now).Scan(&added); err != nil {
@@ -174,7 +214,9 @@ func addMembership(tx contractsorm.Query, inv domain.Invitation, memberID uint64
 	if len(added) == 0 {
 		return nil
 	}
-	_, err = tx.Exec(`INSERT INTO membership_roles (membership_id, role_id)
-		SELECT ?, id FROM roles WHERE guild_id = ? AND name = ? AND NOT base`, added[0], inv.GuildID, role)
+	// A deleted Role went from invitation_roles by cascade.
+	_, err := tx.Exec(`INSERT INTO membership_roles (membership_id, role_id)
+		SELECT ?, r.id FROM invitation_roles ir JOIN roles r ON r.id = ir.role_id
+		WHERE ir.invitation_id = ? AND r.guild_id = ? AND NOT r.base`, added[0], inv.ID, inv.GuildID)
 	return err
 }

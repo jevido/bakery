@@ -98,7 +98,7 @@ func (m *memInvitations) Accept(ctx context.Context, hash string, now time.Time,
 		return domain.Invitation{}, 0, err
 	}
 	m.store.mu.Lock()
-	m.store.add(inv.GuildID, id, inv.Role)
+	m.store.addWith(inv.GuildID, id, inv.RoleIDs)
 	m.store.mu.Unlock()
 	x.inv = inv
 	return inv, id, nil
@@ -119,18 +119,18 @@ func TestInviteANewPerson(t *testing.T) {
 	ctx := context.Background()
 	s, m, now := invitingService(t)
 
-	inv, token, err := s.Invite(ctx, 2, 2, "New@example.com", "member")
+	inv, token, err := s.Invite(ctx, 2, 2, adminPerms, "New@example.com", []uint64{m.seeded(2, "member")})
 	if err != nil || token == "" || inv.Email != "new@example.com" || inv.GuildID != 2 {
 		t.Fatalf("invite: %+v %q %v", inv, token, err)
 	}
-	if _, _, err := s.Invite(ctx, 2, 2, "new@example.com", "viewer"); !errors.Is(err, ErrAlreadyInvited) {
+	if _, _, err := s.Invite(ctx, 2, 2, adminPerms, "new@example.com", []uint64{m.seeded(2, "viewer")}); !errors.Is(err, ErrAlreadyInvited) {
 		t.Errorf("second invite: %v", err)
 	}
-	if _, _, err := s.Invite(ctx, 1, 1, "new@example.com", "viewer"); err != nil {
+	if _, _, err := s.Invite(ctx, 1, 1, adminPerms, "new@example.com", []uint64{m.seeded(1, "viewer")}); err != nil {
 		t.Errorf("the same email into another Guild: %v", err)
 	}
-	if _, _, err := s.Invite(ctx, 2, 2, "x@example.com", "owner"); !errors.Is(err, domain.ErrInvalidRole) {
-		t.Errorf("inviting an owner: %v", err)
+	if _, _, err := s.Invite(ctx, 2, 2, adminPerms, "x@example.com", []uint64{m.seeded(1, "admin")}); !errors.Is(err, ErrRoleNotFound) {
+		t.Errorf("inviting with another Guild's Role: %v", err)
 	}
 	if _, err := s.InvitationByToken(ctx, "wrong"); !errors.Is(err, ErrInvitationNotFound) {
 		t.Errorf("unknown token: %v", err)
@@ -160,11 +160,11 @@ func TestInviteAnExistingMember(t *testing.T) {
 	ctx := context.Background()
 	s, m, _ := invitingService(t)
 	// Dev (3) is a member of Default and a viewer of Bakers already.
-	if _, _, err := s.Invite(ctx, 2, 2, "dev@example.com", "admin"); !errors.Is(err, ErrAlreadyMember) {
+	if _, _, err := s.Invite(ctx, 2, 2, adminPerms, "dev@example.com", []uint64{m.seeded(2, "admin")}); !errors.Is(err, ErrAlreadyMember) {
 		t.Errorf("inviting a member of the Guild: %v", err)
 	}
 	// Ann (2) is in Bakers only.
-	_, token, err := s.Invite(ctx, 1, 1, "ann@example.com", "viewer")
+	_, token, err := s.Invite(ctx, 1, 1, adminPerms, "ann@example.com", []uint64{m.seeded(1, "viewer")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,9 +191,9 @@ func TestInviteAnExistingMember(t *testing.T) {
 
 func TestInvitationsStayInTheirGuild(t *testing.T) {
 	ctx := context.Background()
-	s, _, now := invitingService(t)
-	bakers, _, _ := s.Invite(ctx, 2, 2, "late@example.com", "viewer")
-	revoked, revokedToken, _ := s.Invite(ctx, 2, 2, "gone@example.com", "viewer")
+	s, m, now := invitingService(t)
+	bakers, _, _ := s.Invite(ctx, 2, 2, adminPerms, "late@example.com", []uint64{m.seeded(2, "viewer")})
+	revoked, revokedToken, _ := s.Invite(ctx, 2, 2, adminPerms, "gone@example.com", []uint64{m.seeded(2, "viewer")})
 	if err := s.RevokeInvitation(ctx, 1, bakers.ID); !errors.Is(err, ErrInvitationNotFound) {
 		t.Errorf("revoking another Guild's Invitation: %v", err)
 	}

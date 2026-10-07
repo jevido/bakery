@@ -42,18 +42,39 @@ type Memberships interface {
 	ListForGuild(ctx context.Context, guildID uint64) ([]domain.Membership, error)
 	// Of is the Member's Membership in the Guild, false without one.
 	Of(ctx context.Context, guildID, memberID uint64) (domain.Membership, bool, error)
-	// Change gives memberID's Membership in the Guild the Roles to, or
-	// deletes it when remove is set, once check accepts the Guild and every
-	// Membership of it as they are. Check and change are one step, so an
-	// accepted Transfer offer cannot slip between them.
-	// ErrMembershipNotFound when memberID holds none there.
-	Change(ctx context.Context, guildID, memberID uint64, to []uint64, remove bool, check func(domain.Guild, []domain.Membership) error) (domain.Membership, error)
 }
 
-// Roles stores the Roles of every Guild.
+// Roles stores the Roles of every Guild and which of them each Membership
+// holds.
 type Roles interface {
 	// ForGuild lists the Guild's Roles by Position, the Base role first.
 	ForGuild(ctx context.Context, guildID uint64) ([]domain.Role, error)
+	// Change locks the Guild, then its Roles, then its Memberships (the
+	// order Offers.Accept locks in), hands them to decide and stores the
+	// Change it answers, in one transaction, so two changes to one Guild's
+	// hierarchy, or a change and an accepted Transfer offer, take turns.
+	// It answers the Change as stored, created Roles with their ids.
+	Change(ctx context.Context, guildID uint64, decide func(Hierarchy) (Change, error)) (Change, error)
+}
+
+// Hierarchy is a Guild with its Roles by Position and its Memberships, as
+// Roles.Change hands them over.
+type Hierarchy struct {
+	Guild       domain.Guild
+	Roles       []domain.Role
+	Memberships []domain.Membership
+}
+
+// Change is what Roles.Change stores.
+type Change struct {
+	// Roles are stored as they are; one without an ID is created.
+	Roles []domain.Role
+	// DeletedRole is the id of a Role to delete, 0 for none.
+	DeletedRole uint64
+	// Membership, when set, holds exactly its RoleIDs afterwards.
+	Membership *domain.Membership
+	// RemovedMembership is the id of a Membership to delete, 0 for none.
+	RemovedMembership uint64
 }
 
 // Members is what guilds needs to know and ask of identity's Members.

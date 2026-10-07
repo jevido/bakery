@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/jevido/bakery/services/api/app/secret"
@@ -39,19 +40,24 @@ type Invitations interface {
 	// Accept takes the Invitation in turn (racing accepts of one link wait
 	// for each other), refuses it with the domain's error if it can no
 	// longer be accepted, asks join for the Member who accepts it, and then
-	// stores their Membership holding the seeded Role the Invitation names
-	// (leaving one they hold already as it is) and marks the Invitation
-	// accepted in one transaction.
+	// stores their Membership holding the Invitation's Roles that still
+	// exist (leaving one they hold already as it is) and marks the
+	// Invitation accepted in one transaction.
 	Accept(ctx context.Context, tokenHash string, now time.Time, join func(domain.Invitation) (uint64, error)) (domain.Invitation, uint64, error)
 }
 
-// Invite makes an Invitation into the Guild for email with a former role
-// ("viewer", "member" or "admin"), and
+// Invite makes an Invitation into the Guild for email that gives these
+// Roles (none: the Base role only), each one the actor may assign, and
 // returns it with the token of its link. The token is only ever known here.
-// Only a Member with administrator gets here (Admin guards the route).
-func (s *Service) Invite(ctx context.Context, guildID, actorID uint64, email string, role string) (domain.Invitation, string, error) {
-	inv, err := domain.NewInvitation(guildID, email, role, actorID, s.Now())
+func (s *Service) Invite(ctx context.Context, guildID, actorID uint64, perms domain.Permissions, email string, roleIDs []uint64) (domain.Invitation, string, error) {
+	if !perms.Has(domain.PermissionManageMembers) {
+		return domain.Invitation{}, "", domain.ErrMissing{Permission: domain.PermissionManageMembers}
+	}
+	inv, err := domain.NewInvitation(guildID, email, uniqueIDs(roleIDs), actorID, s.Now())
 	if err != nil {
+		return domain.Invitation{}, "", err
+	}
+	if err := s.mayInviteWith(ctx, guildID, actorID, perms, inv.RoleIDs); err != nil {
 		return domain.Invitation{}, "", err
 	}
 	if id, found, err := s.members.MemberByEmail(ctx, inv.Email); err != nil {
@@ -148,4 +154,46 @@ func (s *Service) AcceptAsMember(ctx context.Context, token string, memberID uin
 		return memberID, nil
 	})
 	return inv, err
+}
+
+// mayInviteWith checks that the actor may assign every one of these Roles
+// of the Guild; ErrRoleNotFound for one that is not the Guild's.
+func (s *Service) mayInviteWith(ctx context.Context, guildID, actorID uint64, perms domain.Permissions, roleIDs []uint64) error {
+	g, err := s.Guild(ctx, guildID)
+	if err != nil {
+		return err
+	}
+	roles, err := s.roles.ForGuild(ctx, guildID)
+	if err != nil {
+		return err
+	}
+	ms, err := s.memberships.ListForGuild(ctx, guildID)
+	if err != nil {
+		return err
+	}
+	a, err := s.actor(ctx, Hierarchy{Guild: g, Roles: roles, Memberships: ms}, actorID, perms)
+	if err != nil {
+		return err
+	}
+	for _, id := range roleIDs {
+		r, ok := findRole(roles, id)
+		if !ok {
+			return ErrRoleNotFound
+		}
+		if err := domain.CanAssign(a.Rank, r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// uniqueIDs is ids without repeats, in their first order; never nil.
+func uniqueIDs(ids []uint64) []uint64 {
+	out := []uint64{}
+	for _, id := range ids {
+		if !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	return out
 }

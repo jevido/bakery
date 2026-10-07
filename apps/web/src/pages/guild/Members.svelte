@@ -96,10 +96,19 @@
     }
   }
 
+  // Until the Roles page comes, the select still offers the seeded Roles:
+  // the chosen one is assigned and the other two taken away.
   async function changeRole(m: Member, next: Role) {
     rowError = {}
     try {
-      await api('PATCH', `/members/${m.id}`, { role: next })
+      const { roles } = await api<{ roles: { id: number; name: string; base: boolean }[] }>('GET', '/roles')
+      const seeded = roles.filter((r) => !r.base && ['admin', 'member', 'viewer'].includes(r.name.toLowerCase()))
+      const want = seeded.find((r) => r.name.toLowerCase() === next)
+      if (!want) throw new Error(`there is no ${next} role in this guild`)
+      await api('PUT', `/members/${m.id}/roles/${want.id}`)
+      for (const r of seeded) {
+        if (r.id !== want.id && m.roles?.some((h) => h.id === r.id)) await api('DELETE', `/members/${m.id}/roles/${r.id}`)
+      }
     } catch (err) {
       rowError = { [m.id]: err instanceof Error ? err.message : String(err) }
     }

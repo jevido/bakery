@@ -52,6 +52,10 @@ bakery() {
 	if [ $# -ge 3 ]; then args+=(-H 'Content-Type: application/json' -d "$3"); fi
 	curl "${args[@]}"
 }
+
+# role_id NAME: the id of the Current guild's Role with this name, as the
+# signed-in Member reads it.
+role_id() { bakery GET /api/roles | json "[r['id'] for r in d['roles'] if r['name'] == '$1'][0]"; }
 # forgejo METHOD PATH [JSON]: the Forgejo API as the test's admin.
 forgejo() {
 	local args=(-sS -f -X "$1" "$FORGEJO/api/v1$2" -H "Authorization: token $TOKEN")

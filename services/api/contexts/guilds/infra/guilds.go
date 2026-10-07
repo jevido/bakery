@@ -234,53 +234,6 @@ func list(tx, q contractsorm.Query) ([]domain.Membership, error) {
 	return out, nil
 }
 
-func (Memberships) Change(ctx context.Context, guildID, memberID uint64, to []uint64, remove bool, check func(domain.Guild, []domain.Membership) error) (domain.Membership, error) {
-	var changed domain.Membership
-	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
-		// Locks the Guild, then its Memberships, in the order Offers.Accept
-		// does, so a concurrent change or accept waits and then checks what
-		// this one left.
-		g, err := lockGuild(tx, guildID)
-		if err != nil {
-			return err
-		}
-		ms, err := list(tx, tx.Where("guild_id", guildID).OrderBy("id").LockForUpdate())
-		if err != nil {
-			return err
-		}
-		found := false
-		for _, m := range ms {
-			if m.MemberID == memberID {
-				changed, found = m, true
-			}
-		}
-		if !found {
-			return app.ErrMembershipNotFound
-		}
-		if err := check(g, ms); err != nil {
-			return err
-		}
-		if remove {
-			_, err = tx.Where("id", changed.ID).Delete(&membershipRecord{})
-			return err
-		}
-		if _, err := tx.Exec("DELETE FROM membership_roles WHERE membership_id = ?", changed.ID); err != nil {
-			return err
-		}
-		for _, id := range to {
-			if err := tx.Create(&membershipRoleRecord{MembershipID: changed.ID, RoleID: id}); err != nil {
-				return err
-			}
-		}
-		changed.RoleIDs = to
-		return nil
-	})
-	if err != nil {
-		return domain.Membership{}, err
-	}
-	return changed, nil
-}
-
 // lockGuild reads the Guild and locks its row until tx ends.
 func lockGuild(tx contractsorm.Query, id uint64) (domain.Guild, error) {
 	var rec guildRecord
@@ -305,4 +258,79 @@ func (Roles) ForGuild(ctx context.Context, guildID uint64) ([]domain.Role, error
 		out[i] = r.toDomain()
 	}
 	return out, nil
+}
+
+func (Roles) Change(ctx context.Context, guildID uint64, decide func(app.Hierarchy) (app.Change, error)) (app.Change, error) {
+	var c app.Change
+	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		// Locks the Guild first, then its Roles and Memberships, so a
+		// concurrent change or accepted Transfer offer waits and then
+		// decides on what this one left.
+		g, err := lockGuild(tx, guildID)
+		if err != nil {
+			return err
+		}
+		var recs []roleRecord
+		if err := tx.Where("guild_id", guildID).OrderBy("position").LockForUpdate().Find(&recs); err != nil {
+			return err
+		}
+		h := app.Hierarchy{Guild: g, Roles: make([]domain.Role, len(recs))}
+		for i, r := range recs {
+			h.Roles[i] = r.toDomain()
+		}
+		if h.Memberships, err = list(tx, tx.Where("guild_id", guildID).OrderBy("id").LockForUpdate()); err != nil {
+			return err
+		}
+		if c, err = decide(h); err != nil {
+			return err
+		}
+		return store(tx, guildID, &c)
+	})
+	if err != nil {
+		return app.Change{}, err
+	}
+	return c, nil
+}
+
+// store writes c for the Guild in tx, giving created Roles their ids.
+// Positions are unique only at commit, so Roles can swap them here.
+func store(tx contractsorm.Query, guildID uint64, c *app.Change) error {
+	if c.DeletedRole != 0 {
+		// The Memberships and Invitations holding it lose it by cascade.
+		if _, err := tx.Exec("DELETE FROM roles WHERE id = ? AND guild_id = ? AND NOT base", c.DeletedRole, guildID); err != nil {
+			return err
+		}
+	}
+	for i, r := range c.Roles {
+		r.GuildID = guildID
+		rec := toRoleRecord(r)
+		if r.ID == 0 {
+			if err := tx.Create(&rec); err != nil {
+				return err
+			}
+			c.Roles[i] = rec.toDomain()
+			continue
+		}
+		if _, err := tx.Model(&roleRecord{}).Where("id", r.ID).Where("guild_id", guildID).Update(map[string]any{
+			"name": rec.Name, "color": rec.Color, "position": rec.Position, "permissions": rec.Permissions,
+		}); err != nil {
+			return err
+		}
+	}
+	if m := c.Membership; m != nil {
+		if _, err := tx.Exec("DELETE FROM membership_roles WHERE membership_id = ?", m.ID); err != nil {
+			return err
+		}
+		for _, id := range m.RoleIDs {
+			if err := tx.Create(&membershipRoleRecord{MembershipID: m.ID, RoleID: id}); err != nil {
+				return err
+			}
+		}
+	}
+	if c.RemovedMembership != 0 {
+		if _, err := tx.Where("id", c.RemovedMembership).Where("guild_id", guildID).Delete(&membershipRecord{}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

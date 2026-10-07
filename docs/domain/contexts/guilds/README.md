@@ -122,7 +122,7 @@ that touches a Role or a Member also follows the hierarchy above.
   Membership holding `Admin`, and makes them its Guild Master, unless a
   Guild exists already.
 
-- `InvitationCreated { guild, email, role, invited by, link, expires }`: an
+- `InvitationCreated { guild, email, roles, invited by, link, expires }`: an
   Invitation was made. Its one subscriber (notifications, with
   `OnInvitationCreated(f)`) is called synchronously and answers whether it
   emailed the link, which the invite response reports as `emailed`.
@@ -191,11 +191,25 @@ other changes with `write`, `administrator` only with `root`.
   `offer`, the open Transfer offer or null) for every Member, `PATCH /api/guilds/current`
   (`{"name", "description"}`) with `manage_guild` and `DELETE
   /api/guilds/current` (204, or 409 with `blocking`) with `administrator`.
-  The Members of the Current guild: `GET /api/members` for every Member,
-  and with `manage_members` `PATCH /api/members/{id}` (`{"role"}`), `DELETE /api/members/{id}` and
-  `DELETE /api/members/{id}/two-factor`. On the wire the Instance admin's `role` reads `owner`, with
+  The Members of the Current guild: `GET /api/members` for every Member
+  (each with `roles`, `[{id, name, color}]` top first, besides the former
+  `role`), and with `manage_members` `DELETE /api/members/{id}` and
+  `DELETE /api/members/{id}/two-factor`. `PATCH /api/members/{id}` answers
+  410 Gone, naming the routes that replace it. On the wire the Instance admin's `role` reads `owner`, with
   `instance_admin: true`; the Guild Master comes first in the list, marked
-  `guild_master: true`. Transfer offers, with a Session only:
+  `guild_master: true`. The Roles of the Current guild: `GET /api/roles`
+  for every Member (`id`, `name`, `color`, `position`, `permissions`,
+  `base`, `members`, top first and the Base role last) and, with
+  `manage_roles` and by the hierarchy, `POST /api/roles` (`{"name",
+  "color", "permissions"}`; 201, at Position 1), `PATCH /api/roles/{id}`
+  (any of those three), `DELETE /api/roles/{id}` (204), `PUT
+  /api/roles/order` (`{"role_ids"}`, top first, every Role but the Base
+  role; answers the Roles), `PUT` and `DELETE
+  /api/members/{id}/roles/{role_id}` (the `member` with their `roles`).
+  Another Guild's Role answers 404, a Role at or above one's own highest,
+  the Base role's name or color, or a Permission one lacks 403.
+  `GET /api/permissions` lists the fixed list (`key`, `name`,
+  `description`, `overridable`) for every Member. Transfer offers, with a Session only:
   `POST /api/guilds/current/guild-master-offer` (`{"member_id"}`; 201 with
   the `offer`; 403 for anyone but the Guild Master, 422 for themselves or
   someone outside the Guild, 409 while one is open) and `DELETE
@@ -205,8 +219,11 @@ other changes with `write`, `administrator` only with `root`.
   Current, 404 for anyone else and 409 `this offer has expired` or `this
   offer is no longer open`. The Invitations of the Current guild, with
   `manage_members`:
-  `GET /api/invitations`, `POST /api/invitations` (`{"email", "role"}`) and
-  `DELETE /api/invitations/{id}`; another Guild's id answers 404. Open to
+  `GET /api/invitations`, `POST /api/invitations` (`{"email",
+  "role_ids"}`, each a Role the inviter may assign, none for the Base role
+  only; `{"role": "member"}` still names the seeded Role of that name) and
+  `DELETE /api/invitations/{id}`; an Invitation shows its `roles` and the
+  former `role` they read as; another Guild's id answers 404. Open to
   anyone with the link: `GET /api/invitations/by-token/{token}` (the
   Invitation, its `guild` and `existing_member`) and
   `POST /api/invitations/by-token/{token}/accept`.
@@ -393,3 +410,18 @@ other changes with `write`, `administrator` only with `root`.
 - **A Member can only give Permissions they have.** Discord's rule; without
   it a `manage_roles` holder could make a Role with `administrator` below
   their own and hand it out.
+- **Discord's hierarchy, rule for rule.** A Member changes only Roles below
+  their own highest and only Members whose highest Role is below theirs, so
+  someone given `manage_roles` cannot climb past whoever gave it. A new
+  Role lands just above `@everyone`, as in Discord, and is dragged up from
+  there. A Role's Permissions can only be switched on or off by someone who
+  holds them, `administrator` included: otherwise a `manage_roles` holder
+  could make a Role with `administrator` below their own and assign it.
+  `@everyone`'s Permissions may be edited by anyone with `manage_roles`
+  (it is below everyone), but never its name, color or Position. Unlike
+  Discord, nobody changes their own Roles: a Member leaves instead.
+- **`PATCH /api/members/{id}` is gone, not kept.** It set one Role, and a
+  Member now holds several, so any meaning it kept would silently drop the
+  others. It answers 410 naming the routes that replace it. Invitations
+  still accept `{"role": "member"}`, which has one obvious meaning: the
+  seeded Role of that name.

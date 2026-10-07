@@ -150,29 +150,3 @@ func TestPermissionsOf(t *testing.T) {
 		t.Error("the Base role counts for everyone")
 	}
 }
-
-func TestCanManage(t *testing.T) {
-	dev := Membership{MemberID: 3, RoleIDs: []uint64{3}}
-	g := Guild{ID: 1, MasterID: 4}
-	admin, member := Of(PermissionAdministrator), Of(PermissionManageApplications)
-	cases := []struct {
-		actor         uint64
-		perms         Permissions
-		target        Membership
-		instanceAdmin bool
-		want          error
-	}{
-		{1, admin, dev, false, nil},
-		{1, Of(PermissionManageMembers), dev, false, nil},
-		{1, member, dev, false, ErrNotAdmin},
-		{1, admin, Membership{MemberID: 2}, true, ErrInstanceAdminFixed},
-		{3, admin, dev, false, ErrSelf},
-		{1, admin, Membership{MemberID: 4, RoleIDs: []uint64{4}}, false, ErrGuildMaster},
-		{4, AllPermissions, Membership{MemberID: 4}, false, ErrSelf},
-	}
-	for _, c := range cases {
-		if err := CanManage(g, c.actor, c.perms, c.target, c.instanceAdmin); !errors.Is(err, c.want) {
-			t.Errorf("%d (%v) manages %d: %v, want %v", c.actor, c.perms.Keys(), c.target.MemberID, err, c.want)
-		}
-	}
-}

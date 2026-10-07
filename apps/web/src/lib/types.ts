@@ -420,6 +420,9 @@ export type GuildDetails = {
 export type Invitation = {
   id: number
   email: string
+  /** The Roles it gives besides @everyone, top first. */
+  roles: import('./session.svelte').RoleRef[]
+  /** The former role those Roles read as. */
   role: 'admin' | 'member' | 'viewer'
   created_at: string
   expires_at: string

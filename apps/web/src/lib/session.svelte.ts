@@ -10,7 +10,11 @@ export type Member = {
   instance_admin: boolean
   /** Whether they are the Current guild's Guild Master. */
   guild_master: boolean
+  /** The Roles they hold besides @everyone, top first; only in the Members list. */
+  roles?: RoleRef[]
 }
+/** A Role someone holds or an Invitation gives. */
+export type RoleRef = { id: number; name: string; color: string }
 /** A Member as sign-in and the Profile answer them: the Role is per Guild, so only /me has it. */
 export type Account = Omit<Member, 'role' | 'instance_admin' | 'guild_master'>
 /** A Member named on a Guild Master or a Transfer offer. */

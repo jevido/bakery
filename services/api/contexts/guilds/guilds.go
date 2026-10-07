@@ -77,7 +77,8 @@ func InstanceAdmin(ctx contractshttp.Context) bool { return guildshttp.InstanceA
 
 // Routes registers `GET /api/me`, an Invitation link (open), the Guilds
 // (list, create, switch, and the Current guild's General and deletion),
-// the Members and Invitations of the Current guild, and identity's API token routes
+// the Members, Roles and Invitations of the Current guild, the list of
+// Permissions, and identity's API token routes
 // behind guilds' middlewares.
 func Routes(r route.Router) {
 	c := guildshttp.NewController(service)
@@ -107,10 +108,21 @@ func Routes(r route.Router) {
 	// Coolify.
 	r.Middleware(Auth).Get("/api/guilds/current", c.CurrentGuild)
 	r.Middleware(Auth).Get("/api/members", c.Members)
+	r.Middleware(Auth).Get("/api/roles", c.Roles)
+	r.Middleware(Auth).Get("/api/permissions", c.Permissions)
+	// A Member holds several Roles now; the routes below replace it.
+	r.Middleware(Auth).Patch("/api/members/{id}", c.ChangeRoleGone)
+	r.Middleware(Auth, Can("manage_roles")).Group(func(r route.Router) {
+		r.Post("/api/roles", c.CreateRole)
+		r.Put("/api/roles/order", c.ReorderRoles)
+		r.Patch("/api/roles/{id}", c.EditRole)
+		r.Delete("/api/roles/{id}", c.DeleteRole)
+		r.Put("/api/members/{id}/roles/{role_id}", c.AssignRole)
+		r.Delete("/api/members/{id}/roles/{role_id}", c.RemoveRole)
+	})
 	r.Middleware(Auth, Can("manage_guild")).Patch("/api/guilds/current", c.UpdateCurrentGuild)
 	r.Middleware(Auth, Can("administrator")).Delete("/api/guilds/current", c.DeleteCurrentGuild)
 	r.Middleware(Auth, Can("manage_members")).Group(func(r route.Router) {
-		r.Patch("/api/members/{id}", c.ChangeRole)
 		r.Delete("/api/members/{id}", c.RemoveMember)
 		r.Delete("/api/members/{id}/two-factor", c.ResetTwoFactor)
 		r.Get("/api/invitations", c.Invitations)
@@ -143,8 +155,9 @@ func Boot() {
 // the only moment the link is known.
 type InvitationCreated struct {
 	Email string
-	// Role is "admin", "member" or "viewer".
-	Role      string
+	// Roles are the names of the Roles it gives besides the Base role,
+	// top first; none for the Base role only.
+	Roles     []string
 	GuildID   uint64
 	Guild     string
 	InvitedBy string
@@ -166,7 +179,7 @@ func OnInvitationCreated(f func(ctx context.Context, e InvitationCreated) (email
 	onInvited = f
 }
 
-func publishInvitation(ctx context.Context, inv domain.Invitation, guild domain.Guild, invitedBy, link string) (bool, error) {
+func publishInvitation(ctx context.Context, inv domain.Invitation, guild domain.Guild, roles []string, invitedBy, link string) (bool, error) {
 	invitedMu.Lock()
 	f := onInvited
 	invitedMu.Unlock()
@@ -174,7 +187,7 @@ func publishInvitation(ctx context.Context, inv domain.Invitation, guild domain.
 		return false, nil
 	}
 	return f(ctx, InvitationCreated{
-		Email: inv.Email, Role: inv.Role, GuildID: guild.ID, Guild: guild.Name,
+		Email: inv.Email, Roles: roles, GuildID: guild.ID, Guild: guild.Name,
 		InvitedBy: invitedBy, Link: link, ExpiresAt: inv.ExpiresAt,
 	})
 }

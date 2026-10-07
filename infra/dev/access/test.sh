@@ -106,7 +106,8 @@ expect "member cannot change S3 storages" 403 "$(as "$MEMBER" POST /api/s3-stora
 expect "member may list S3 storages" 200 "$(as "$MEMBER" GET /api/s3-storages)"
 expect "member lists the guild's Members" 200 "$(as "$MEMBER" GET /api/members)"
 expect "member cannot list Invitations" 403 "$(as "$MEMBER" GET /api/invitations)"
-expect "member cannot change a Role" 403 "$(as "$MEMBER" PATCH "/api/members/${MEMBER_IDS[-1]}" '{"role":"admin"}')"
+expect "member cannot change a Role" 403 "$(as "$MEMBER" PUT "/api/members/${MEMBER_IDS[-1]}/roles/$(role_id Admin)")"
+expect "the former role change is gone" 410 "$(as "$MEMBER" PATCH "/api/members/${MEMBER_IDS[-1]}" '{"role":"admin"}')"
 expect "member cannot read Known hosts" 403 "$(as "$MEMBER" GET /api/known-hosts)"
 
 say "Admins and the Owner"
@@ -116,12 +117,12 @@ ADMIN=$WORK/admin
 expect "admin accepts" 201 "$(join "$A_TOKEN" "$ADMIN" Admin)"
 MEMBER_IDS+=("$(body "d['member']['id']")")
 OWNER_ID=$(bakery GET /api/me | json "d['member']['id']")
-expect "admin cannot change the Owner's Role" 403 "$(as "$ADMIN" PATCH "/api/members/$OWNER_ID" '{"role":"member"}')"
+expect "admin cannot change the Owner's Roles" 403 "$(as "$ADMIN" PUT "/api/members/$OWNER_ID/roles/$(role_id Member)")"
 expect "admin cannot remove the Owner" 403 "$(as "$ADMIN" DELETE "/api/members/$OWNER_ID")"
-expect "admin makes the viewer a member" 200 "$(as "$ADMIN" PATCH "/api/members/$VIEWER_ID" '{"role":"member"}')"
+expect "admin makes the viewer a member" 200 "$(as "$ADMIN" PUT "/api/members/$VIEWER_ID/roles/$(role_id Member)")"
 expect "the promoted viewer may change things at once" 201 "$(as "$VIEWER" POST /api/projects "{\"name\":\"$RUN-2\"}")"
 bakery DELETE "/api/projects/$(body "d['project']['id']")" >/dev/null
-bakery PATCH "/api/members/$VIEWER_ID" '{"role":"viewer"}' >/dev/null
+bakery DELETE "/api/members/$VIEWER_ID/roles/$(role_id Member)" >/dev/null
 
 say "API tokens"
 expect "member makes a token the old way" 201 "$(as "$MEMBER" POST /api/api-tokens '{"name":"ci full"}')"
