@@ -13,7 +13,7 @@
 {#if running.length === 0}
   <RuntimeLogs url="" container="" />
 {:else}
-  <div class="flex flex-col">
+  <div class="flex flex-col gap-4">
     {#each running as c (c.name)}
       <RuntimeLogs
         url={`/api/services/${service.id}/components/${encodeURIComponent(c.name)}/logs`}

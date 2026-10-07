@@ -10,8 +10,10 @@
   // search engine indexing and the www redirect (a Domain is a hostname
   // served over HTTPS on the Component's port).
   import { api, ApiError } from '../../lib/api'
+  import { buttonVariants } from '$lib/components/ui/button'
   import Icon from '../../lib/Icon.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
+  import SearchField from '../../lib/SearchField.svelte'
   import type { Component, Service } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import Callout from '../../lib/ui/Callout.svelte'
@@ -135,47 +137,37 @@
   }
 </script>
 
-<div id="service-domains-section" class="domains-overview-container chrome flex flex-col gap-4">
+<div id="service-domains-section" class="chrome flex flex-col gap-4">
   {#if !canUpdate}
     <Callout type="danger" title="Insufficient permissions">
       You don't have permission to manage domains. Contact your guild's admin for access.
     </Callout>
   {/if}
 
-  <div class="flex flex-wrap items-center gap-2">
+  <div class="flex flex-wrap items-end gap-2">
     <div class="min-w-0 flex-1">
-      <h2 id="domains-section">Domains</h2>
-      <p class="text-[13px] text-neutral-500 dark:text-fg-dim">
+      <h2 id="domains-section" class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Domains</h2>
+      <p class="mt-1 text-sm text-muted-foreground">
         {domainCount} domain{domainCount === 1 ? '' : 's'} across {publicComponents.length} service{publicComponents.length === 1 ? '' : 's'}
       </p>
     </div>
-    <div class="ml-auto flex flex-wrap items-center gap-2">
-      {#if publicComponents.length > 0}
-        <div class="relative w-full sm:w-64">
-          <Icon
-            name="search"
-            class="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-neutral-400 dark:text-fg-faint"
-          />
-          <input
-            type="search"
-            bind:value={search}
-            aria-label="Search services or domains"
-            class="input h-8! w-full pl-8! text-[13px]!"
-            placeholder="Search services or domains"
-          />
+    {#if publicComponents.length > 0}
+      <div class="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
+        <div class="min-w-0 flex-1 sm:w-64 sm:flex-none">
+          <SearchField bind:value={search} label="Search services or domains" />
         </div>
         {#if canUpdate}
-          <button type="button" class="button button-highlighted" onclick={openAdd}>
+          <Button variant="highlighted" onclick={openAdd}>
             <Icon name="plus" class="size-3.5" />
             Add domain
-          </button>
+          </Button>
         {/if}
-      {/if}
-    </div>
+      </div>
+    {/if}
   </div>
 
   {#if publicComponents.length === 0}
-    <div class="application-settings-section-body mt-1 w-full scroll-mt-28">
+    <div class="mt-1 w-full scroll-mt-28">
       <Empty
         size="sm"
         title="No application services"
@@ -187,94 +179,96 @@
     <div class="flex flex-col gap-3">
       {#each publicComponents as c (c.name)}
         {#if groupMatches(c)}
-          <section id={`service-domain-group-${c.name}`} class="application-settings-section-body is-flush overflow-visible">
-            <div
-              class="flex w-full flex-wrap items-center gap-3 rounded-t-lg border-b border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-white/10 dark:bg-white/[0.04]"
-            >
-              <span class="min-w-0 flex-1 truncate text-sm font-medium text-black dark:text-white">{headline(c.name)}</span>
+          <section id={`service-domain-group-${c.name}`} class="overflow-hidden rounded-md border border-border">
+            <div class="flex w-full flex-wrap items-center gap-3 border-b border-border bg-muted/30 px-4 py-2.5">
+              <span class="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{headline(c.name)}</span>
             </div>
-            <div class="data-table w-full">
-              <div class="data-table-header service-domains-overview-grid is-service">
-                <span>Domain</span>
-                <span>Internal port</span>
-                <span class="text-right">Actions</span>
-              </div>
-              {#each c.domains as d, index (d)}
-                <div class="env-table-item">
-                  <div class="data-table-row service-domains-overview-grid is-service">
-                    <div class="flex min-w-0 items-center gap-2">
-                      <Icon name="globe" class="size-4 shrink-0 text-neutral-400 dark:text-fg-faint" />
-                      <a
-                        href={`https://${d}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="min-w-0 flex-1 truncate text-[13px] text-black underline decoration-neutral-300 underline-offset-2 hover:decoration-coollabs dark:text-fg dark:decoration-white/20"
-                        title={`https://${d}`}
+            <div
+              class="hidden grid-cols-[minmax(0,1fr)_7rem_5rem] gap-3 border-b border-border bg-muted/30 px-4 py-2 text-xs font-medium text-muted-foreground md:grid"
+            >
+              <span>Domain</span>
+              <span>Internal port</span>
+              <span class="text-right">Actions</span>
+            </div>
+            {#each c.domains as d, index (d)}
+              <div
+                class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-border px-4 py-2 text-sm transition-colors last:border-b-0 hover:bg-accent/50 md:grid-cols-[minmax(0,1fr)_7rem_5rem]"
+              >
+                <div class="flex min-w-0 items-center gap-2">
+                  <Icon name="globe" class="size-4 shrink-0 text-muted-foreground" />
+                  <a
+                    href={`https://${d}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="min-w-0 flex-1 truncate text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
+                    title={`https://${d}`}
+                  >
+                    https://{d}
+                  </a>
+                  {#if index === 0}
+                    <span class="shrink-0 rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs text-muted-foreground" title="The primary domain">
+                      Primary
+                    </span>
+                  {/if}
+                </div>
+
+                <div class="hidden font-mono text-xs text-muted-foreground md:block" title="The component's port">
+                  <span aria-label={`Internal port ${c.port}`}>{c.port}</span>
+                </div>
+
+                <div class="flex items-center justify-end gap-1 md:order-last">
+                  {#if canUpdate}
+                    <button
+                      type="button"
+                      class={buttonVariants({ variant: 'ghost', size: 'icon-sm', class: 'size-8 text-muted-foreground' })}
+                      title="Domain settings"
+                      aria-label={`Settings for ${d}`}
+                      onclick={() => openEdit(c.name, index)}
+                    >
+                      <Icon name="settings" class="size-3.5" />
+                    </button>
+                    {#if c.domains.length > 1}
+                      <ConfirmationModal
+                        title="Remove domain?"
+                        buttonTitle="Remove"
+                        variant="error"
+                        actions={['This domain will be removed from the service application.', 'The proxy stops serving it at once.']}
+                        confirmWithText={false}
+                        step2ButtonText="Remove domain"
+                        onconfirm={() => remove(c.name, index)}
                       >
-                        https://{d}
-                      </a>
-                      {#if index === 0}<span class="table-badge shrink-0" title="The primary domain">Primary</span>{/if}
-                    </div>
-
-                    <div class="service-domain-detail" title="The component's port">
-                      <span aria-label={`Internal port ${c.port}`}>{c.port}</span>
-                    </div>
-
-                    <div class="service-domain-mobile-summary" aria-label="Domain routing summary">
-                      <span>Port {c.port}</span>
-                    </div>
-
-                    <div class="service-domain-actions flex items-center justify-end gap-1">
-                      {#if canUpdate}
-                        <button
-                          type="button"
-                          class="icon-button shrink-0"
-                          title="Domain settings"
-                          aria-label={`Settings for ${d}`}
-                          onclick={() => openEdit(c.name, index)}
-                        >
-                          <Icon name="settings" class="size-3.5" />
-                        </button>
-                        {#if c.domains.length > 1}
-                          <ConfirmationModal
-                            title="Remove domain?"
-                            buttonTitle="Remove"
-                            variant="error"
-                            actions={['This domain will be removed from the service application.', 'The proxy stops serving it at once.']}
-                            confirmWithText={false}
-                            step2ButtonText="Remove domain"
-                            onconfirm={() => remove(c.name, index)}
-                          >
-                            {#snippet trigger(show)}
-                              <button
-                                type="button"
-                                class="icon-button shrink-0 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
-                                title="Remove domain"
-                                aria-label={`Remove ${d}`}
-                                onclick={show}
-                              >
-                                <Icon name="trash" class="size-3.5" />
-                              </button>
-                            {/snippet}
-                          </ConfirmationModal>
-                        {:else}
-                          <!-- A public Component always has a Domain: the Proxy routes it by one. -->
+                        {#snippet trigger(show)}
                           <button
                             type="button"
-                            class="icon-button shrink-0 text-red-500 dark:text-red-400"
-                            title="A public component keeps at least one domain; change this one instead"
+                            class={buttonVariants({ variant: 'ghost', size: 'icon-sm', class: 'size-8 text-destructive hover:text-destructive' })}
+                            title="Remove domain"
                             aria-label={`Remove ${d}`}
-                            disabled
+                            onclick={show}
                           >
                             <Icon name="trash" class="size-3.5" />
                           </button>
-                        {/if}
-                      {/if}
-                    </div>
-                  </div>
+                        {/snippet}
+                      </ConfirmationModal>
+                    {:else}
+                      <!-- A public Component always has a Domain: the Proxy routes it by one. -->
+                      <button
+                        type="button"
+                        class={buttonVariants({ variant: 'ghost', size: 'icon-sm', class: 'size-8 text-destructive' })}
+                        title="A public component keeps at least one domain; change this one instead"
+                        aria-label={`Remove ${d}`}
+                        disabled
+                      >
+                        <Icon name="trash" class="size-3.5" />
+                      </button>
+                    {/if}
+                  {/if}
                 </div>
-              {/each}
-            </div>
+
+                <div class="col-span-2 flex gap-3 text-xs text-muted-foreground md:hidden" aria-label="Domain routing summary">
+                  <span>Port {c.port}</span>
+                </div>
+              </div>
+            {/each}
           </section>
         {/if}
       {/each}
@@ -287,7 +281,7 @@
   {/if}
 
   {#each privateComponents as c (c.name)}
-    <p class="text-[13px] text-neutral-500 dark:text-fg-dim">
+    <p class="text-sm text-muted-foreground">
       {headline(c.name)}: only reachable by the other components of this service, as <span class="font-mono">{c.name}</span>.
     </p>
   {/each}
@@ -295,7 +289,7 @@
 
 {#if canUpdate}
   <Modal title="Add domain" variant="none" closeOutside={false} bind:open={adding}>
-    <form class="application-settings-form flex flex-col gap-4" onsubmit={add}>
+    <form class="flex flex-col gap-4" onsubmit={add}>
       <Select
         label="Service application"
         helper="Domain will be assigned to this compose service application."
@@ -326,15 +320,15 @@
   </Modal>
 
   <Modal title="Domain settings" variant="none" bind:open={editing}>
-    <form class="application-settings-form flex flex-col gap-4" onsubmit={update}>
+    <form class="flex flex-col gap-4" onsubmit={update}>
       <div class="w-full">
         <Input label="Service application" value={editingComponent} readonly />
-        <p class="mt-1 text-[12px] text-neutral-500 dark:text-fg-dim">
+        <p class="mt-1 text-xs text-muted-foreground">
           Domains stay on the service they were added to. Remove and re-add to move.
         </p>
       </div>
       <Input label="Domain" bind:value={editingHost} placeholder="app.example.com" required error={editError} />
-      <div class="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-200 pt-4 dark:border-white/10">
+      <div class="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
         {#if regenerated}
           <Button onclick={() => (editingHost = regenerated)}>Regenerate hostname</Button>
         {:else}

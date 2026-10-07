@@ -22,54 +22,56 @@
   // out: the Files and Directories tabs (a Bakery Component mounts only named
   // volumes) and the Backup column.
   import type { Service } from '../../lib/types'
+  import Callout from '../../lib/ui/Callout.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
 
   let { service }: { service: Service } = $props()
 </script>
 
-<div class="chrome space-y-6">
-  <div
-    class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-5 text-amber-800 dark:border-warning/15 dark:bg-warning/[0.07] dark:text-amber-300/90"
-  >
+<div class="chrome flex flex-col gap-6">
+  <Callout title="Read-only mounts">
     Service volume mounts are read-only here. Edit the Docker Compose file and reload it to change volumes.
-  </div>
+  </Callout>
   {#each service.components as c (c.name)}
-    <SettingsSection
+    <SettingsGroup
       id={storageSectionID(c.name)}
-      title={headline(c.name)}
-      helper="Volume mounts for this compose service. Compose-managed mounts are read-only in the dashboard."
-      flush
+      label={headline(c.name)}
+      hint="Volume mounts for this compose service. Compose-managed mounts are read-only in the dashboard."
+      wide
     >
-      {#if c.volumes.length === 0}
-        <div class="p-4">
-          <Empty size="sm" title="No storage found" description="No volumes, files, or directories are defined for this service." icon="storages" />
-        </div>
-      {:else}
-        <div class="data-table w-full" data-testid={`component-volumes-${c.name}`}>
-          <div class="data-table-header volumes-table-grid-readonly">
+      <div class="overflow-hidden rounded-md border border-border">
+        {#if c.volumes.length === 0}
+          <div class="p-4">
+            <Empty size="sm" title="No storage found" description="No volumes, files, or directories are defined for this service." icon="storages" />
+          </div>
+        {:else}
+          <div
+            class="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-3 border-b border-border bg-muted/30 px-4 py-2 text-xs font-medium text-muted-foreground md:grid"
+            data-testid={`component-volumes-${c.name}`}
+          >
             <span>Volume Name</span>
             <span>Destination Path</span>
           </div>
           {#each c.volumes as v (v.path)}
-            <div class="env-table-item">
-              <div class="data-table-row volumes-table-grid-readonly text-[13px] text-neutral-700 dark:text-fg-dim">
-                <div class="volumes-cell-name min-w-0">
-                  <span class="volumes-mobile-label">Volume Name</span>
-                  <span class="block min-w-0 truncate font-mono text-[13px] font-medium text-neutral-950 dark:text-fg" title={v.name}>{v.name}</span>
-                </div>
-                <div class="volumes-cell-dest min-w-0">
-                  <span class="volumes-mobile-label">Destination Path</span>
-                  <span class="flex min-w-0 items-center gap-2">
-                    <span class="min-w-0 truncate text-[13px] text-neutral-950 dark:text-fg" title={v.path}>{v.path}</span>
-                    {#if v.read_only}<span class="table-badge shrink-0">Read-only</span>{/if}
-                  </span>
-                </div>
+            <div class="grid gap-x-3 gap-y-1 border-b border-border px-4 py-2.5 text-sm last:border-b-0 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+              <div class="min-w-0">
+                <span class="block text-xs text-muted-foreground md:hidden">Volume Name</span>
+                <span class="block min-w-0 truncate font-mono text-xs font-medium text-foreground" title={v.name}>{v.name}</span>
+              </div>
+              <div class="min-w-0">
+                <span class="block text-xs text-muted-foreground md:hidden">Destination Path</span>
+                <span class="flex min-w-0 items-center gap-2">
+                  <span class="min-w-0 truncate font-mono text-xs text-foreground" title={v.path}>{v.path}</span>
+                  {#if v.read_only}
+                    <span class="shrink-0 rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs text-muted-foreground">Read-only</span>
+                  {/if}
+                </span>
               </div>
             </div>
           {/each}
-        </div>
-      {/if}
-    </SettingsSection>
+        {/if}
+      </div>
+    </SettingsGroup>
   {/each}
 </div>

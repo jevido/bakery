@@ -11,21 +11,25 @@
   // together through the unsaved bar, as Coolify's one form does.
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
+  import { buttonVariants } from '$lib/components/ui/button'
+  import { Card } from '$lib/components/ui/card'
   import Icon from '../../lib/Icon.svelte'
   import { href, servicePath } from '../../lib/router.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import type { Component, Environment, Service, ServiceTemplate } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import CopyButton from '../../lib/ui/CopyButton.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
+  import EntityRow from '../../lib/EntityRow.svelte'
   import Helper from '../../lib/ui/Helper.svelte'
   import Input from '../../lib/ui/Input.svelte'
   import Modal from '../../lib/ui/Modal.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
   import StatusBadge, { type StatusType } from '../../lib/ui/StatusBadge.svelte'
   import Textarea from '../../lib/ui/Textarea.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
+  import ViewToggle from '../../lib/ViewToggle.svelte'
 
   let {
     service,
@@ -131,8 +135,6 @@
     viewMode = mode
     localStorage.setItem(viewKey, mode)
   }
-  const toggleIdle =
-    'text-neutral-400 hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg'
 
   // The template's documentation, for the Documentation button.
   let docsUrl = $state('')
@@ -168,17 +170,27 @@
 
   let openComponent = $state<string | null>(null)
   const domainsHref = $derived(href(servicePath(service, 'domains')))
-  const tableColumns = 'grid-cols-[minmax(14rem,1fr)_minmax(12rem,1fr)_12rem_5rem]'
-  const iconBadge = 'flex shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-500 dark:bg-white/[0.06] dark:text-fg-dim'
+  const iconBadge = 'flex shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground'
 </script>
 
 {#snippet componentActions(c: Component)}
   {#if c.public && c.domains.length > 0 && canUpdate}
-    <a class="icon-button" title="Manage domains" aria-label="Manage domains" href={domainsHref}>
+    <a
+      class={buttonVariants({ variant: 'ghost', size: 'icon-sm', class: 'size-8 text-muted-foreground' })}
+      title="Manage domains"
+      aria-label="Manage domains"
+      href={domainsHref}
+    >
       <Icon name="globe" class="size-4" />
     </a>
   {/if}
-  <button type="button" class="icon-button" title="Resource settings" aria-label="Resource settings" onclick={() => (openComponent = c.name)}>
+  <button
+    type="button"
+    class={buttonVariants({ variant: 'ghost', size: 'icon-sm', class: 'size-8 text-muted-foreground' })}
+    title="Resource settings"
+    aria-label="Resource settings"
+    onclick={() => (openComponent = c.name)}
+  >
     <Icon name="settings" class="size-4" />
   </button>
 {/snippet}
@@ -194,7 +206,7 @@
     <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
   {/if}
 
-  <SettingsSection id="service-details-section" title="Service details" helper="Manage the identity and Compose configuration for this service.">
+  <SettingsGroup id="service-details-section" label="Service details" hint="Manage the identity and Compose configuration for this service.">
     {#snippet actions()}
       <div class="flex items-center gap-2">
         {#if canUpdate}
@@ -258,10 +270,10 @@
       <Input label="Service name" bind:value={name} error={errors.name} required placeholder="My WordPress site" disabled={!canUpdate} />
       <Input label="Description" bind:value={description} error={errors.description} disabled={!canUpdate} />
     </div>
-  </SettingsSection>
+  </SettingsGroup>
 
   {#if variables.length > 0}
-    <SettingsSection id="service-configuration-section" title="Service configuration" helper="Template-specific values exposed by this service.">
+    <SettingsGroup id="service-configuration-section" label="Service configuration" hint="Template-specific values exposed by this service.">
       <div class="grid gap-4 lg:grid-cols-2" data-testid="service-configuration">
         {#each variables as v (v.name)}
           <div>
@@ -285,131 +297,78 @@
         {/each}
       </div>
       {#if errors.variables}<p class="mt-2 text-xs text-error">{errors.variables}</p>{/if}
-    </SettingsSection>
+    </SettingsGroup>
   {/if}
 </form>
 
-<div class="chrome mt-8" data-testid="compose-resources">
+<div class="chrome mt-8 max-w-4xl" data-testid="compose-resources">
   <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
     <div>
-      <h2 class="text-base font-semibold text-black dark:text-fg">Compose resources</h2>
-      <p class="mt-1 text-sm text-neutral-500 dark:text-fg-dim">Applications and databases defined in this service.</p>
+      <h2 class="text-sm font-medium text-foreground">Compose resources</h2>
+      <p class="mt-1 text-xs text-muted-foreground">Applications and databases defined in this service.</p>
     </div>
     <div class="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-start">
-      <div class="view-toggle">
-        <button
-          type="button"
-          onclick={() => setViewMode('table')}
-          class={['flex size-7.5 items-center justify-center rounded-md transition-colors', viewMode === 'table' ? 'control-selected' : toggleIdle]}
-          aria-label="Table view"
-          aria-pressed={viewMode === 'table'}
-          title="Table view"
-        >
-          <Icon name="unordered-list" class="size-3.5" />
-        </button>
-        <button
-          type="button"
-          onclick={() => setViewMode('grid')}
-          class={['flex size-7.5 items-center justify-center rounded-md transition-colors', viewMode === 'grid' ? 'control-selected' : toggleIdle]}
-          aria-label="Grid view"
-          aria-pressed={viewMode === 'grid'}
-          title="Grid view"
-        >
-          <Icon name="grid" class="size-3.5" />
-        </button>
-      </div>
+      <ViewToggle value={viewMode} onchange={setViewMode} />
       {#if docsUrl}
-        <a class="button" target="_blank" rel="noreferrer" href={docsUrl}>
+        <a class={buttonVariants({ variant: 'outline', size: 'sm' })} target="_blank" rel="noreferrer" href={docsUrl}>
           Documentation
-          <Icon name="external-link" class="size-4" />
+          <Icon name="external-link" class="size-3.5" />
         </a>
       {/if}
     </div>
   </div>
 
-  <div
-    class={viewMode === 'grid'
-      ? 'grid grid-cols-1 gap-3 sm:grid-cols-2'
-      : 'overflow-x-auto rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-white/[0.05]'}
-  >
-    {#if service.components.length === 0}
-      <div class="application-settings-section overflow-hidden sm:col-span-2">
-        <Empty title="No compose resources" description="No applications or databases are defined in this Docker Compose file." icon="grid" />
-      </div>
-    {:else if viewMode === 'table'}
-      <div
-        class={[
-          'grid min-w-[48rem] gap-3 border-b border-neutral-200 bg-neutral-50 px-4 py-2.5 text-[11px] font-medium text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-fg-faint',
-          tableColumns,
-        ]}
-      >
-        <div>Resource</div>
-        <div>Image</div>
-        <div class="justify-self-start">Status</div>
-        <div></div>
-      </div>
-    {/if}
-
-    {#each service.components as c (c.name)}
-      {@const badge = componentStatus(c.status)}
-      {#if viewMode === 'grid'}
-        <div
-          class="group flex min-w-0 flex-col overflow-hidden rounded-[10px] border border-neutral-200 bg-white transition-[border-color,background-color,box-shadow] hover:border-neutral-300 hover:shadow-sm dark:border-white/[0.07] dark:bg-surface dark:hover:border-white/[0.12] dark:hover:bg-white/[0.035]"
+  {#if service.components.length === 0}
+    <Card class="block py-0">
+      <Empty title="No compose resources" description="No applications or databases are defined in this Docker Compose file." icon="grid" />
+    </Card>
+  {:else if viewMode === 'table'}
+    <Card class="block gap-0 overflow-hidden py-0" data-testid="compose-resource-list">
+      {#each service.components as c (c.name)}
+        {@const badge = componentStatus(c.status)}
+        <EntityRow
+          title={headline(c.name)}
+          subtitle={c.detail}
+          reserveSubtitleSpace
+          onclick={() => (openComponent = c.name)}
           data-testid="compose-resource"
         >
-          <div class="flex min-w-0 flex-1 items-start gap-3 p-4">
+          {#snippet leading()}<div class={['size-8', iconBadge]}><Icon name="grid" class="size-4" /></div>{/snippet}
+          {#snippet trailing()}
+            <span class="hidden truncate font-mono text-xs text-muted-foreground sm:inline">{c.image}</span>
+            <StatusBadge status={badge.status} type={badge.type} />
+            {@render componentActions(c)}
+          {/snippet}
+        </EntityRow>
+      {/each}
+    </Card>
+  {:else}
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {#each service.components as c (c.name)}
+        {@const badge = componentStatus(c.status)}
+        <Card class="gap-0 overflow-hidden py-0" data-testid="compose-resource">
+          <div class="flex min-w-0 items-start gap-3 p-4">
             <div class={['size-9', iconBadge]}><Icon name="grid" class="size-4" /></div>
             <div class="min-w-0 flex-1">
               <div class="flex min-w-0 items-start justify-between gap-3">
                 <div class="min-w-0">
-                  <div class="truncate text-sm font-semibold text-black dark:text-fg">{headline(c.name)}</div>
-                  <div class="mt-0.5 truncate font-mono text-xs text-neutral-500 dark:text-fg-faint">{c.image}</div>
+                  <div class="truncate text-sm font-semibold text-foreground">{headline(c.name)}</div>
+                  <div class="mt-0.5 truncate font-mono text-xs text-muted-foreground">{c.image}</div>
                 </div>
                 <StatusBadge status={badge.status} type={badge.type} />
               </div>
               {#if c.detail}
-                <p class="mt-2 line-clamp-2 text-xs leading-5 text-neutral-500 dark:text-fg-dim">{c.detail}</p>
+                <p class="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">{c.detail}</p>
               {/if}
             </div>
           </div>
-          <div
-            class="flex items-center justify-end gap-1 border-t border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-white/[0.06] dark:bg-white/[0.02]"
-          >
+          <div class="flex items-center justify-end gap-1 border-t border-border bg-muted/30 px-3 py-2">
             {@render componentActions(c)}
           </div>
-        </div>
-      {:else}
-        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-        <div
-          role="link"
-          tabindex="0"
-          aria-label={`Open ${headline(c.name)} settings`}
-          onclick={(e) => {
-            if (!(e.target as HTMLElement).closest('a, button')) openComponent = c.name
-          }}
-          onkeydown={(e) => {
-            if (e.key === 'Enter' && !(e.target as HTMLElement).closest('a, button')) openComponent = c.name
-          }}
-          class={[
-            'grid min-h-14 min-w-[48rem] cursor-pointer items-center gap-3 border-b border-neutral-200 px-4 py-2.5 last:border-b-0 hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary dark:border-white/[0.07] dark:hover:bg-white/[0.025]',
-            tableColumns,
-          ]}
-          data-testid="compose-resource"
-        >
-          <div class="flex min-w-0 items-center gap-3">
-            <div class={['size-8', iconBadge]}><Icon name="grid" class="size-4" /></div>
-            <div class="min-w-0">
-              <div class="truncate text-[13px] font-semibold text-black dark:text-fg">{headline(c.name)}</div>
-              {#if c.detail}<div class="truncate text-xs text-neutral-500 dark:text-fg-dim">{c.detail}</div>{/if}
-            </div>
-          </div>
-          <div class="truncate font-mono text-xs text-neutral-500 dark:text-fg-faint">{c.image}</div>
-          <div class="flex flex-wrap items-center gap-1"><StatusBadge status={badge.status} type={badge.type} /></div>
-          <div class="flex items-center justify-end gap-1">{@render componentActions(c)}</div>
-        </div>
-      {/if}
-    {/each}
-  </div>
+        </Card>
+      {/each}
+    </div>
+  {/if}
 </div>
 
 {#each service.components as c (c.name)}
@@ -425,18 +384,18 @@
       <div class="grid gap-4 lg:grid-cols-2">
         <CopyButton label="Image" text={c.image} />
         <div>
-          <span class="mb-1 flex items-center gap-1 text-sm font-medium text-black dark:text-white">Status</span>
+          <span class="mb-1 flex items-center gap-1 text-sm font-medium text-foreground">Status</span>
           <StatusBadge status={badge.status} type={badge.type} />
         </div>
       </div>
-      <p class="text-xs text-neutral-500 dark:text-fg-dim">The image is set in the Compose file; change it with Edit Compose file.</p>
+      <p class="text-xs text-muted-foreground">The image is set in the Compose file; change it with Edit Compose file.</p>
       {#if c.public}
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <span class="text-sm text-neutral-600 dark:text-fg-dim">{c.domains.length} {c.domains.length === 1 ? 'domain' : 'domains'} set.</span>
-          <a class="button" href={domainsHref} onclick={() => (openComponent = null)}>Manage domains</a>
+          <span class="text-sm text-muted-foreground">{c.domains.length} {c.domains.length === 1 ? 'domain' : 'domains'} set.</span>
+          <a class={buttonVariants({ size: 'sm' })} href={domainsHref} onclick={() => (openComponent = null)}>Manage domains</a>
         </div>
       {:else}
-        <p class="text-sm text-neutral-600 dark:text-fg-dim">
+        <p class="text-sm text-muted-foreground">
           Only reachable by the other components of this service, as <span class="font-mono">{c.name}</span>.
         </p>
       {/if}
