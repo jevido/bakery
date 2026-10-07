@@ -6,7 +6,7 @@
   import { api, ApiError } from '../lib/api'
   import Icon from '../lib/Icon.svelte'
   import { go, returnAfterLogin } from '../lib/router.svelte'
-  import { session, type Account, type Role } from '../lib/session.svelte'
+  import { session, type Account, type RoleRef } from '../lib/session.svelte'
   import AuthAlert from '../lib/ui/AuthAlert.svelte'
   import AuthShell from '../lib/ui/AuthShell.svelte'
   import Button from '../lib/ui/Button.svelte'
@@ -15,7 +15,7 @@
 
   let { token }: { token: string } = $props()
 
-  type Invitation = { email: string; role: Role; expires_at: string }
+  type Invitation = { email: string; roles: RoleRef[]; expires_at: string }
 
   let invitation = $state.raw<Invitation | null>(null)
   let guild = $state('')
@@ -68,7 +68,6 @@
     }
   }
 
-  const role = (r: Role) => r.charAt(0).toUpperCase() + r.slice(1)
 
   function signInToAccept() {
     returnAfterLogin(`/invite/${token}`)
@@ -103,8 +102,10 @@
           <dd class="min-w-0 truncate font-medium text-neutral-900 dark:text-white">{invitation.email}</dd>
         </div>
         <div class="flex items-center justify-between gap-4 px-3 py-2.5">
-          <dt class="text-neutral-500 dark:text-fg-dim">Role</dt>
-          <dd class="font-medium text-neutral-900 dark:text-white">{role(invitation.role)}</dd>
+          <dt class="text-neutral-500 dark:text-fg-dim">Roles</dt>
+          <dd class="min-w-0 truncate font-medium text-neutral-900 dark:text-white">
+            {invitation.roles.length ? invitation.roles.map((r) => r.name).join(', ') : '@everyone'}
+          </dd>
         </div>
       </dl>
       {#if existingMember}

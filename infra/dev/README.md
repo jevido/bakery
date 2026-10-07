@@ -71,6 +71,23 @@ Local development stack.
   header, Basic auth, a file in Persistent storage surviving a redeploy and
   a rollback, Resource limits on the Container, and the volume going with
   the Application.
+- `access/test.sh` (`task access:test`, needs `task dev`) invites a member
+  and a viewer, holds each to what their Roles allow, and checks API tokens
+  act within their Token permissions until they expire or the Member is
+  removed.
+- `guilds/test.sh` (`task guilds:test`, needs `task dev`) makes a second
+  Guild and checks nothing made in one is listed, read or changed from the
+  other, with a Session or an API token.
+- `guild-master/test.sh` (`task guild-master:test`, needs `task dev`) makes
+  a Guild, checks nobody re-roles or removes its Guild Master, and walks a
+  Transfer offer through decline, withdraw, accept and expiry.
+- `roles/test.sh` (`task roles:test`, needs `task dev`) creates "Deployer"
+  below "Admin": its holders deploy but see no secrets, cannot touch Admin
+  or its holders, and their API tokens cannot do more; a Project's deny
+  stops them on that Project only, and an Invitation gives exactly its
+  Roles.
+- `account/test.sh` (`task account:test`, needs `task dev`) checks a
+  Member's Profile, Two-factor authentication and password resets.
 - `environments/test.sh` (`task environments:test`, needs `task dev` but
   not Forgejo) adds `staging` to a Project, refuses a second `Staging`,
   renames and describes it, refuses to delete it while an Application or a

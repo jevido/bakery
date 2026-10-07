@@ -7,6 +7,10 @@
 # with role_ids gives exactly those Roles. On a Project, a deny of deploy
 # for Deployer stops Bo there only, until Al allows it to Bo himself, and a
 # deny of view resources hides another Project from Bo but not from Al.
+# Di, holding only Deployer and Keeper, sees no secrets, and an API token
+# she makes cannot do more than her Roles: no root, no read:sensitive, no
+# deploy where Deployer is denied. The Guild Master and its transfer are
+# checked in guild-master/test.sh.
 # Needs `task dev` running (API on 127.0.0.1:4910).
 set -euo pipefail
 
@@ -34,6 +38,8 @@ as() {
 	if [ $# -ge 4 ]; then args+=(-H 'Content-Type: application/json' -d "$4"); fi
 	curl "${args[@]}"
 }
+# with TOKEN METHOD PATH: the status code of a request with an API token.
+with() { curl -s --max-time 10 -o "$WORK/body" -w '%{http_code}' -H "Authorization: Bearer $1" -X "$2" "$API$3"; }
 body() { json "$1" <"$WORK/body"; }
 expect() { # expect DESCRIPTION WANT GOT
 	[ "$2" = "$3" ] || fail "$1: got $3, want $2 ($(head -c 300 "$WORK/body" 2>/dev/null))"
@@ -129,6 +135,21 @@ expect "the override reads back" "[None, ['deploy']]" "$(as "$AL" GET "/api/proj
 expect "Bo's Permissions on P1 lack deploy" False "$(as "$BO" GET "/api/projects/$P1_ID" >/dev/null; body "'deploy' in d['project']['permissions']")"
 expect "Bo cannot deploy in P1" 403 "$(as "$BO" POST "/api/applications/$P1_APP/deploy")"
 expect "Bo deploys in P2" 201 "$(as "$BO" POST "/api/applications/$P2_APP/deploy")"
+# The image does not exist, so Bo's Deployment fails at once and leaves
+# P2's Application free for Di's.
+p2_ended() { [ "$(bakery GET "/api/applications/$P2_APP/deployments" | json "d['deployments'][0]['status']")" = failed ]; }
+wait_for 60 "Bo's Deployment in P2 to end" p2_ended
+expect "Di, with only Deployer and Keeper, sees no secrets" 403 "$(as "$WORK/di" GET "/api/applications/$P2_APP/environment-variables")"
+expect "Di cannot make a root token" 422 "$(as "$WORK/di" POST /api/api-tokens '{"name":"root","permissions":["root"]}')"
+expect "nor a read:sensitive one" 422 "$(as "$WORK/di" POST /api/api-tokens '{"name":"sensitive","permissions":["read:sensitive"]}')"
+expect "Di makes a deploy token" 201 "$(as "$WORK/di" POST /api/api-tokens '{"name":"ci deploy","permissions":["deploy","read"]}')"
+DI_DEPLOY=$(body "d['token']")
+expect "Di makes a read token" 201 "$(as "$WORK/di" POST /api/api-tokens '{"name":"read","permissions":["read"]}')"
+DI_READ=$(body "d['token']")
+expect "the read token cannot deploy" 403 "$(with "$DI_READ" POST "/api/applications/$P2_APP/deploy")"
+expect "the deploy token sees no secrets" 403 "$(with "$DI_DEPLOY" GET "/api/applications/$P2_APP/environment-variables")"
+expect "nor deploys where Deployer is denied" 403 "$(with "$DI_DEPLOY" POST "/api/applications/$P1_APP/deploy")"
+expect "the deploy token deploys in P2" 201 "$(with "$DI_DEPLOY" POST "/api/applications/$P2_APP/deploy")"
 expect "Al, an admin, keeps deploy on P1" True "$(as "$AL" GET "/api/projects/$P1_ID" >/dev/null; body "'deploy' in d['project']['permissions']")"
 expect "Al allows deploy to Bo himself on P1" 200 "$(as "$AL" PUT "/api/projects/$P1_ID/permissions/members/$BO_ID" '{"allow":["deploy"]}')"
 expect "Bo deploys in P1 now" 201 "$(as "$BO" POST "/api/applications/$P1_APP/deploy")"

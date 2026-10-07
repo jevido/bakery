@@ -439,6 +439,13 @@ other changes with `write`, `administrator` only with `root`.
   admin ranks just below the Guild Master in every Guild, so nothing the
   Owner could do before Guilds stops working, but a Guild Master is never at
   their mercy.
+- **Agents get their Roles when agents arrive.** The goal gives an agent
+  Roles like a Discord bot, but agents come with the goal's Order 5. A
+  Membership is the only thing that holds Roles, and nothing in it assumes
+  a person, so an agent will hold Roles through a Membership of its own and
+  every check (`Can`, `InProject`, the hierarchy) applies unchanged. "Never
+  placed above the person who hired it" needs a hirer, so that rule is
+  enforced in the agents phase, not here.
 - **The Guild Master changes only by an accepted offer.** A Guild must have
   exactly one at every moment, so it is never deleted or removed, only
   swapped, and only with the receiving person's consent, as Discord's

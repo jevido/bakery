@@ -24,7 +24,7 @@ context.
 | API token | A named `bky_…` secret of one Member, made in one Guild and working only there, sent as `Authorization: Bearer`, with its Token permissions and an optional expiry. |
 | Token permission | What a request made with an API token may do, capped by the Member's Permissions in the token's Guild: `root` (everything those Permissions allow), `write` (changes other than deploy actions), `deploy` (deploy, restart, stop, start, cancel, rollback), `read` (reading without Secrets), `read:sensitive` (reading Secrets too). In code the type is still `identity.Permission`; it is this Token permission, never guilds' Permission of a Role. The dashboard and the wire keep the word `permissions`. |
 | Principal | Who a request is from: a Member, whether they are the Instance admin, and, when an API token sent it, the token's Guild and Token permissions. guilds adds the Permissions the request acts with (always the Member's current ones in the Current guild). |
-| Secret | A value a viewer may not read (see the glossary). |
+| Secret | A value only a Member with `see_secrets` reads (see the glossary). |
 | Profile | A Member's own name, password, Sessions and Two-factor authentication, changed only by that Member. |
 | Two-factor authentication | A TOTP secret on a Member: `off`, `pending` (made, not yet confirmed with a code) or `on`. When on, signing in needs an Authenticator code or a Recovery code after the password. |
 | Authenticator code | 6 digits from the Member's app (RFC 6238, SHA-1, 30 s steps), accepted for the current step ± 1 and only once. |
@@ -144,15 +144,17 @@ Who may run each is in brackets.
   Permissions besides its Token permissions, so taking a Role away narrows
   their tokens at once. That is how the read-only tokens made before Token permissions keep doing
   exactly what they did: they became `read`, every other token `root`, and
-  `root` on a member's or viewer's token is still only what their
+  `root` on a token is still only what its Member's
   Permissions allow.
   A consequence: a `read` token of an admin reads admin-only lists (Members,
   Known hosts, Notification channels, all without Secrets), where the old
   read-only token acted as a viewer. Coolify's read token does the same.
-- **A member may grant `write`, `deploy` and `read:sensitive`.** Coolify
-  limits its members to read tokens. The Bakery's member Role is the one
-  that changes things, and scripts (CI deploys) are what tokens are for,
-  so a member may give a token what their Role does, except `root`. An old
+- **A Member may grant the Token permissions their Permissions cover.**
+  `root` needs `administrator`, `write` `manage_applications`, `deploy`
+  `deploy` and `read:sensitive` `see_secrets`; anyone may grant `read`.
+  Coolify limits its members to read tokens. The Bakery's seeded "Member"
+  Role is the one that changes things, and scripts (CI deploys) are what
+  tokens are for, so a Member may give a token what their Roles do. An old
   request without `permissions` gets `root` for an admin and everything but
   `root` for a member, so an old script's token does what it did.
 - **`deploy` is separate from `write`, as in Coolify.** A CI token that
@@ -179,8 +181,11 @@ Who may run each is in brackets.
 - **The API Tokens page differs from Coolify's in small ways.** The
   Description is cleared after a create, because a second token with the
   same Description is refused (above). The page size is remembered under
-  `bakery.page-size.api-tokens`. A viewer sees the same form with only
-  Read to choose, since Coolify has no viewer. The page lists only the
+  `bakery.page-size.api-tokens`. A Member whose Roles only view sees the
+  same form with only Read to choose. The form's label stays
+  "Permissions", as Coolify's, although they are Token permissions: Coolify
+  users look for that word there, and the page only offers Token
+  permissions, so it cannot be read as a Role's. The page lists only the
   signed-in Member's own tokens, so each row has Revoke, as Coolify's rows
   do for their owner.
 - **Own TOTP code, no library.** RFC 6238 is a few dozen lines on
@@ -211,14 +216,15 @@ Who may run each is in brackets.
   make tokens useless. The two-factor and Profile routes take a Session
   only, so a leaked token can neither switch two-factor off nor change the
   password.
-- **The Instance admin's lost phone is an artisan command.** Nobody
-  outranks the Instance admin in the dashboard, and whoever has a shell on
-  the server already controls The Bakery.
+- **The Instance admin's lost phone is an artisan command.** The
+  Instance admin may sit in no Guild whose Guild Master or admins could
+  reset it, and whoever has a shell on the server already controls The
+  Bakery.
 - **The Instance admin is not transferable yet**, and can be neither
   demoted nor removed, so an installation can never be left without someone
   who can manage it. It is the Member that was the Owner before Guilds.
-- **The `viewer` Role is kept although Coolify has none.** Coolify's Roles
-  are owner, admin and member; The Bakery adds viewer for read-only access
+- **The seeded "Viewer" Role is kept although Coolify has none.** Coolify's
+  roles are owner, admin and member; The Bakery seeds "Viewer" for read-only access
   (dashboards on a wall, a read-only API token) without handing out
   Secrets. The Coolify API (`/api/v1`) reports a viewer as a member with
   read-only rights. Members keep their name, as on Coolify's Team page;
