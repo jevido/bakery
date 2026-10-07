@@ -41,7 +41,7 @@ type memberJSON struct {
 	// GuildMaster is set for the Current guild's Guild Master.
 	GuildMaster bool `json:"guild_master"`
 	// Roles are the Roles they hold in the Current guild besides the Base
-	// role, top first; only in the Members list and its changes.
+	// role, top first; in the Members list, its changes and /api/me.
 	Roles *[]roleRef `json:"roles,omitempty"`
 }
 
@@ -88,6 +88,14 @@ func (c *Controller) Me(ctx contractshttp.Context) contractshttp.Response {
 	master := p.guild.ID != 0 && p.guild.MasterID == m.ID
 	me := toJSON(m, wireRole(p.permissions))
 	me.GuildMaster = master
+	if p.guild.ID != 0 {
+		// The dashboard names the Member by their highest Role.
+		held, err := c.heldRoles(ctx, p.guild.ID, m.ID)
+		if err != nil {
+			return respond.ServerError(ctx, err)
+		}
+		me.Roles = &held
+	}
 	return ctx.Response().Success().Json(contractshttp.Json{
 		"member":         me,
 		"role":           wireRole(p.permissions),
@@ -98,6 +106,25 @@ func (c *Controller) Me(ctx contractshttp.Context) contractshttp.Response {
 		"guild":          current,
 		"guilds":         guilds,
 	})
+}
+
+// heldRoles are the Roles memberID holds in guildID besides the Base role,
+// top first; none for an Instance admin without a Membership.
+func (c *Controller) heldRoles(ctx contractshttp.Context, guildID, memberID uint64) ([]roleRef, error) {
+	roles, err := c.service.RolesIn(ctx.Context(), guildID)
+	if err != nil {
+		return nil, err
+	}
+	ms, err := c.service.MembershipsIn(ctx.Context(), guildID)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range ms {
+		if m.MemberID == memberID {
+			return refs(roles, m.RoleIDs), nil
+		}
+	}
+	return []roleRef{}, nil
 }
 
 // Members lists the Members of the Current guild, its Guild Master first,

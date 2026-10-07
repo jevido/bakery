@@ -122,7 +122,7 @@
     {:else if router.route.name === 'settings'}
       <Settings />
     {:else if router.route.name === 'guild'}
-      <Guild page={router.route.page} />
+      <Guild page={router.route.page} roleId={router.route.roleId} />
     {:else if router.route.name === 'guild-new'}
       <NewGuild />
     {:else if router.route.name === 'notifications'}

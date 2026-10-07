@@ -160,7 +160,7 @@
 <h2>Profile details</h2>
 <form class="card form" onsubmit={saveName}>
   <Field label="Name" bind:value={name} error={nameErrors.name} autocomplete="name" required />
-  <p class="muted small">Email: {session.member?.email} · Role: {session.member?.role}</p>
+  <p class="muted small">Email: {session.member?.email} · Role: {session.roleName}</p>
   <div class="actions">
     {#if nameSaved}<span class="muted">Saved</span>{/if}
     <button class="primary">Save</button>

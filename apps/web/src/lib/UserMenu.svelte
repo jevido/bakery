@@ -15,7 +15,7 @@
 
   const name = $derived(session.member?.name || 'Account')
   const initial = $derived((session.member?.name || session.member?.email || 'A').slice(0, 1).toUpperCase())
-  const role = $derived(session.member ? session.member.role[0].toUpperCase() + session.member.role.slice(1) : '')
+  const role = $derived(session.member ? session.roleName : '')
 
   const themes: { value: Theme; label: string }[] = [
     { value: 'light', label: 'Light' },

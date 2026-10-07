@@ -13,12 +13,15 @@
   import Danger from './Danger.svelte'
   import General from './General.svelte'
   import Members from './Members.svelte'
+  import Role from './Role.svelte'
+  import Roles from './Roles.svelte'
 
-  let { page }: { page: GuildPage } = $props()
+  let { page, roleId }: { page: GuildPage; roleId?: number } = $props()
 
   const items: { page: GuildPage; label: string; icon: IconName; sectionStart?: boolean }[] = [
     { page: '', label: 'General', icon: 'settings' },
     { page: 'members', label: 'Members', icon: 'teams' },
+    { page: 'roles', label: 'Roles', icon: 'lock' },
     { page: 'danger', label: 'Danger Zone', icon: 'shield-alert', sectionStart: true },
   ]
 
@@ -76,6 +79,10 @@
     <div class="min-w-0">
       {#if page === 'members'}
         <Members />
+      {:else if page === 'roles' && roleId !== undefined}
+        <Role id={roleId} />
+      {:else if page === 'roles'}
+        <Roles />
       {:else if loadError}
         <p class="text-sm text-red-600 dark:text-red-400">{loadError}</p>
       {:else if guild === null}

@@ -1,24 +1,24 @@
 <script lang="ts">
   // The Current guild's Members: everyone reads the list, the Guild Master
-  // first; admins invite, change Roles, remove, reset two-factor and see
-  // the open Invitations; the Guild Master offers the Guild Master to
-  // another Member and can withdraw the offer.
+  // first, each with the Roles they hold as pills. With manage_roles a
+  // Member gives and takes Roles below their own highest, from people whose
+  // highest Role is below theirs; with manage_members they invite (with
+  // Roles), remove, reset two-factor and see the open Invitations. The
+  // Guild Master offers the Guild Master to another Member and can withdraw
+  // the offer.
   import { api, ApiError } from '../../lib/api'
   import CopyButton from '../../lib/CopyButton.svelte'
   import Field from '../../lib/Field.svelte'
   import { session } from '../../lib/session.svelte'
-  import type { GuildDetails, Invitation, Member, Offer, Role } from '../../lib/types'
+  import { canAssign, canManage } from '../../lib/hierarchy'
+  import Icon from '../../lib/Icon.svelte'
+  import type { GuildDetails, GuildRole, Invitation, Member, Offer, RoleRef } from '../../lib/types'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
 
-  const grantable: Invitation['role'][] = ['admin', 'member', 'viewer']
-  const describe: Record<Role, string> = {
-    owner: 'Runs the installation; admin in every guild',
-    admin: 'Also manages servers, storage settings and members',
-    member: 'Adds, changes and deploys applications, databases and services',
-    viewer: 'Reads everything except secrets, changes nothing',
-  }
-
   let members = $state.raw<Member[] | null>(null)
+  let roles = $state.raw<GuildRole[]>([])
+  // The Member whose Role picker is open.
+  let picking = $state<number | null>(null)
   let invitations = $state.raw<Invitation[]>([])
   // The Guild's open Transfer offer, null without one.
   let offer = $state.raw<Offer | null>(null)
@@ -27,27 +27,43 @@
   let rowError = $state<Record<number, string>>({})
 
   let email = $state('')
-  let role = $state<Invitation['role']>('member')
+  // The Roles the Invitation gives; Member by default once the Roles load.
+  let inviteRoles = $state<number[] | null>(null)
   let errors = $state<Record<string, string>>({})
   let busy = $state(false)
   // The link of the Invitation just made; the API never shows it again.
   let invited = $state.raw<{ email: string; link: string; emailed: boolean; emailError?: string } | null>(null)
 
   async function load() {
-    const [m, i, g] = await Promise.all([
+    const [m, i, g, r] = await Promise.all([
       api<{ members: Member[] }>('GET', '/members'),
       session.can('manage_members') ? api<{ invitations: Invitation[] }>('GET', '/invitations') : { invitations: [] },
       api<{ guild: GuildDetails }>('GET', '/guilds/current'),
+      api<{ roles: GuildRole[] }>('GET', '/roles'),
     ])
+    roles = r.roles
+    inviteRoles ??= roles.filter((x) => !x.base && x.name === 'Member' && canAssign(x, roles)).map((x) => x.id)
     members = m.members
     invitations = i.invitations
     offer = g.guild.offer
   }
   load().catch((e) => (loadError = e.message))
 
-  /** Whether the signed-in person may change this Member: with manage_members, never for the Guild Master or the Instance admin, never for themselves. */
+  /** Whether the signed-in person may remove this Member or reset their two-factor. */
   function manageable(m: Member): boolean {
-    return session.can('manage_members') && !m.guild_master && !m.instance_admin && m.id !== session.member?.id
+    return canManage(m, 'manage_members', roles)
+  }
+
+  /** Whether the signed-in person may give or take Roles of this Member at all. */
+  function reRolable(m: Member): boolean {
+    return canManage(m, 'manage_roles', roles)
+  }
+
+  /** The Roles the signed-in person may give, top first. */
+  const assignable = $derived(roles.filter((r) => canAssign(r, roles)))
+
+  function roleOf(ref: RoleRef): GuildRole | undefined {
+    return roles.find((r) => r.id === ref.id)
   }
 
   async function offerGuildMaster(m: Member) {
@@ -78,7 +94,7 @@
       const r = await api<{ invitation: Invitation; path: string; link?: string; emailed: boolean; email_error?: string }>(
         'POST',
         '/invitations',
-        { email, role },
+        { email, role_ids: inviteRoles ?? [] },
       )
       invited = {
         email: r.invitation.email,
@@ -96,19 +112,11 @@
     }
   }
 
-  // Until the Roles page comes, the select still offers the seeded Roles:
-  // the chosen one is assigned and the other two taken away.
-  async function changeRole(m: Member, next: Role) {
+  async function reRole(m: Member, roleID: number, give: boolean) {
     rowError = {}
+    picking = null
     try {
-      const { roles } = await api<{ roles: { id: number; name: string; base: boolean }[] }>('GET', '/roles')
-      const seeded = roles.filter((r) => !r.base && ['admin', 'member', 'viewer'].includes(r.name.toLowerCase()))
-      const want = seeded.find((r) => r.name.toLowerCase() === next)
-      if (!want) throw new Error(`there is no ${next} role in this guild`)
-      await api('PUT', `/members/${m.id}/roles/${want.id}`)
-      for (const r of seeded) {
-        if (r.id !== want.id && m.roles?.some((h) => h.id === r.id)) await api('DELETE', `/members/${m.id}/roles/${r.id}`)
-      }
+      await api(give ? 'PUT' : 'DELETE', `/members/${m.id}/roles/${roleID}`)
     } catch (err) {
       rowError = { [m.id]: err instanceof Error ? err.message : String(err) }
     }
@@ -143,6 +151,11 @@
     await load()
   }
 
+  function toggleInviteRole(id: number, on: boolean) {
+    const now = inviteRoles ?? []
+    inviteRoles = on ? [...now, id] : now.filter((x) => x !== id)
+  }
+
   const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
 </script>
 
@@ -153,15 +166,20 @@
   <h2>Invite someone</h2>
   <div class="row">
     <Field label="Email" type="email" bind:value={email} error={errors.email} placeholder="dev@example.com" required />
-    <label class="field">
-      <span>Role</span>
-      <select bind:value={role} aria-label="Role of the invitation">
-        {#each grantable as r (r)}<option value={r}>{r}</option>{/each}
-      </select>
-      {#if errors.role}<small class="error">{errors.role}</small>{/if}
-    </label>
   </div>
-  <p class="muted small">{describe[role]}.</p>
+  <fieldset class="invite-roles" aria-label="Roles of the invitation">
+    <legend>Roles</legend>
+    {#each assignable as r (r.id)}
+      <label class="role-choice" data-testid="invite-role" data-role={r.name}>
+        <input type="checkbox" checked={inviteRoles?.includes(r.id) ?? false} onchange={(e) => toggleInviteRole(r.id, e.currentTarget.checked)} />
+        <span class="dot" style:background-color={r.color}></span>{r.name}
+      </label>
+    {:else}
+      <p class="muted small">You can give no roles; they join with only @everyone.</p>
+    {/each}
+    {#if errors.role_ids || errors.role}<small class="error">{errors.role_ids ?? errors.role}</small>{/if}
+  </fieldset>
+  <p class="muted small">Everyone also holds @everyone. You can only give roles below your own highest role.</p>
   <div class="actions">
     <button class="primary" disabled={busy}>Invite</button>
   </div>
@@ -204,28 +222,54 @@
   {/if}
   {#if offerError}<p class="error">{offerError}</p>{/if}
   <table>
-    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>2FA</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Email</th><th>Roles</th><th>2FA</th><th></th></tr></thead>
     <tbody>
       {#each members as m (m.id)}
         <tr data-testid="member">
           <td>{m.name}{m.id === session.member?.id ? ' (you)' : ''}</td>
           <td class="muted">{m.email}</td>
           <td>
-            {#if manageable(m)}
-              <select value={m.role} aria-label="Role of {m.email}" onchange={(e) => changeRole(m, e.currentTarget.value as Role)}>
-                {#each grantable as r (r)}<option value={r}>{r}</option>{/each}
-              </select>
-            {:else if m.guild_master}
+            {#if m.guild_master}
               <span
                 class="inline-flex items-center rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-amber-800 dark:text-amber-300"
                 data-testid="guild-master">Guild Master</span
               >
               {#if m.instance_admin}<span class="muted">· Instance admin</span>{/if}
             {:else if m.instance_admin}
-              Instance admin
-            {:else}
-              {m.role}
+              <span class="muted">Instance admin</span>
             {/if}
+            <div class="pills" data-testid="member-roles">
+              {#each m.roles ?? [] as ref (ref.id)}
+                {@const r = roleOf(ref)}
+                <span class="pill" data-testid="role-pill" data-role={ref.name}>
+                  <span class="dot" style:background-color={ref.color}></span>{ref.name}
+                  {#if r && reRolable(m) && canAssign(r, roles)}
+                    <button class="pill-x" aria-label="Remove {ref.name} from {m.email}" onclick={() => reRole(m, ref.id, false)}>
+                      <Icon name="x" class="size-3" />
+                    </button>
+                  {/if}
+                </span>
+              {/each}
+              {#if reRolable(m)}
+                {@const left = assignable.filter((r) => !m.roles?.some((h) => h.id === r.id))}
+                {#if left.length}
+                  <span class="picker">
+                    <button class="pill add" aria-label="Give {m.email} a role" aria-expanded={picking === m.id} onclick={() => (picking = picking === m.id ? null : m.id)}>
+                      <Icon name="plus" class="size-3" />
+                    </button>
+                    {#if picking === m.id}
+                      <span class="menu" role="menu">
+                        {#each left as r (r.id)}
+                          <button role="menuitem" onclick={() => reRole(m, r.id, true)} data-testid="role-option" data-role={r.name}>
+                            <span class="dot" style:background-color={r.color}></span>{r.name}
+                          </button>
+                        {/each}
+                      </span>
+                    {/if}
+                  </span>
+                {/if}
+              {/if}
+            </div>
             {#if rowError[m.id]}<small class="error">{rowError[m.id]}</small>{/if}
           </td>
           <td class={m.two_factor ? '' : 'muted'}>{m.two_factor ? 'on' : 'off'}</td>
@@ -263,12 +307,16 @@
     <p class="muted">None. An invitation stays here until it is accepted, revoked or expires.</p>
   {:else}
     <table>
-      <thead><tr><th>Email</th><th>Role</th><th>Expires</th><th></th></tr></thead>
+      <thead><tr><th>Email</th><th>Roles</th><th>Expires</th><th></th></tr></thead>
       <tbody>
         {#each invitations as i (i.id)}
           <tr data-testid="invitation">
             <td>{i.email}</td>
-            <td>{i.role}</td>
+            <td>
+              <div class="pills">
+                {#each i.roles as ref (ref.id)}<span class="pill"><span class="dot" style:background-color={ref.color}></span>{ref.name}</span>{:else}<span class="muted">@everyone</span>{/each}
+              </div>
+            </td>
             <td class="muted">{when.format(new Date(i.expires_at))}</td>
             <td><button class="danger" onclick={() => revoke(i)}>Revoke</button></td>
           </tr>
@@ -306,17 +354,86 @@
   }
   .row {
     display: grid;
-    grid-template-columns: 1fr 10rem;
     gap: 0.8rem;
   }
-  .field {
-    display: grid;
-    gap: 0.3rem;
-    align-content: start;
+  .invite-roles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+    border: 0;
+    padding: 0;
+    margin: 0;
   }
-  .field span {
+  .invite-roles legend {
     font-size: 0.8rem;
     color: var(--muted);
+    margin-bottom: 0.3rem;
+  }
+  .role-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+  }
+  .pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    align-items: center;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    border: 1px solid var(--border, rgb(0 0 0 / 0.12));
+    border-radius: 999px;
+    padding: 0.05rem 0.5rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+  .pill.add {
+    padding: 0.2rem;
+    background: transparent;
+  }
+  .pill-x {
+    display: inline-flex;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+  }
+  .dot {
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 999px;
+    display: inline-block;
+  }
+  .picker {
+    position: relative;
+  }
+  .menu {
+    position: absolute;
+    z-index: 10;
+    top: 100%;
+    left: 0;
+    margin-top: 0.25rem;
+    display: grid;
+    min-width: 10rem;
+    padding: 0.25rem;
+    border: 1px solid var(--border, rgb(0 0 0 / 0.12));
+    border-radius: 0.4rem;
+    background: var(--bg, white);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
+  }
+  .menu button {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.85rem;
   }
   .actions {
     display: flex;

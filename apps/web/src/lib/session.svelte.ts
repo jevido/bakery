@@ -10,7 +10,7 @@ export type Member = {
   instance_admin: boolean
   /** Whether they are the Current guild's Guild Master. */
   guild_master: boolean
-  /** The Roles they hold besides @everyone, top first; only in the Members list. */
+  /** The Roles they hold besides @everyone, top first; in the Members list and /me. */
   roles?: RoleRef[]
 }
 /** A Role someone holds or an Invitation gives. */
@@ -82,6 +82,14 @@ class Session {
   /** Whether the Member may use p in the Current guild; administrator allows everything. */
   can(p: Permission): boolean {
     return this.permissions.includes('administrator') || this.permissions.includes(p)
+  }
+
+  /** What the Member goes by in the Current guild: Guild Master, else their highest Role. */
+  get roleName(): string {
+    if (this.guildMaster) return 'Guild Master'
+    const top = this.member?.roles?.[0]
+    if (top) return top.name
+    return this.instanceAdmin ? 'Instance admin' : '@everyone'
   }
 
   /** Works out which screen to show: Setup, Login or the dashboard. */

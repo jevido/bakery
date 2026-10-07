@@ -402,7 +402,7 @@ export type ContainerMetrics = {
 
 export type Metrics = { server: ServerMetrics; containers: ContainerMetrics[] }
 
-export type { CurrentGuild, GuildPlace, Member, Offer, Person, Role } from './session.svelte'
+export type { CurrentGuild, GuildPlace, Member, Offer, Person, Role, RoleRef } from './session.svelte'
 
 /** The Current guild as its General and Danger Zone pages show it. */
 export type GuildDetails = {
@@ -415,6 +415,29 @@ export type GuildDetails = {
   guild_master?: import('./session.svelte').Person
   /** Its open Transfer offer, null without one. */
   offer: import('./session.svelte').Offer | null
+}
+
+/** A Role of the Current guild as GET /api/roles lists it. */
+export type GuildRole = {
+  id: number
+  name: string
+  color: string
+  /** 0 for @everyone, contiguous from 1 above it. */
+  position: number
+  permissions: import('./session.svelte').Permission[]
+  /** Whether it is @everyone, the Base role every Member holds. */
+  base: boolean
+  /** How many Members hold it. */
+  members: number
+}
+
+/** A Permission from the fixed list GET /api/permissions answers. */
+export type PermissionInfo = {
+  key: import('./session.svelte').Permission
+  name: string
+  description: string
+  /** Whether a Project's Permission override can set it. */
+  overridable: boolean
 }
 
 export type Invitation = {
