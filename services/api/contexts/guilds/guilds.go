@@ -120,6 +120,10 @@ func ProjectPermissionRoutes(r route.Router, projectOf ProjectOf) {
 // Current is the id of the Guild the request acts in, after Auth.
 func Current(ctx contractshttp.Context) uint64 { return guildshttp.Current(ctx) }
 
+// MemberID is the Member the request comes from, after Auth (an API
+// token's Member for a token).
+func MemberID(ctx contractshttp.Context) uint64 { return guildshttp.MemberID(ctx) }
+
 // InstanceAdmin reports, after Auth, whether the request comes from the
 // Instance admin, who runs the installation (the Local server among it).
 func InstanceAdmin(ctx contractshttp.Context) bool { return guildshttp.InstanceAdmin(ctx) }

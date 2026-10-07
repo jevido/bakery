@@ -1,8 +1,9 @@
 // Package projects is what other contexts and the router may use from the
 // projects context: its routes, ApplicationForDeploy (with the Target
 // server), Environment, ProjectOf, ApplicationInGuild and
-// ApplicationsOnServer, the ApplicationDeleted and ApplicationDomainsChanged
-// events and the OnProjectDeleting and OnEnvironmentDeleting checks. Nothing
+// ApplicationsOnServer, ProjectNames, the ApplicationDeleted,
+// ApplicationDomainsChanged and OnProjectDeleted events and the
+// OnProjectDeleting and OnEnvironmentDeleting checks. Nothing
 // else in contexts/projects is for outside use.
 package projects
 
@@ -20,7 +21,10 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/servers"
 )
 
-var service *app.Service
+var (
+	service        *app.Service
+	projectDeleted []func(ctx context.Context, projectID uint64) error
+)
 
 func svc() *app.Service {
 	if service == nil {
@@ -28,7 +32,17 @@ func svc() *app.Service {
 		service = app.NewService(infra.Store{}, infra.NewDeployKey, cfg.GetString("bakery.domain_suffix", "localhost"), cfg.GetString("bakery.dashboard.domain"))
 		service.ServerUsable = servers.UsableBy
 		service.LocalServer = servers.LocalID
-		service.ProjectDeleted = guilds.ForgetProject
+		service.ProjectDeleted = func(ctx context.Context, projectID uint64) error {
+			if err := guilds.ForgetProject(ctx, projectID); err != nil {
+				return err
+			}
+			for _, f := range projectDeleted {
+				if err := f(ctx, projectID); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
 		servers.OnServerDeleting(infra.Store{}.ServerInUse)
 		servers.OnContainerOwner("application", ApplicationInGuild)
 		servers.OnResourceProjects(resourceProjects)
@@ -280,6 +294,37 @@ func found[T any](_ T, err error) (bool, error) {
 // Applications. An error aborts the deletion.
 func OnProjectDeleting(inUse func(ctx context.Context, projectID uint64) (bool, error)) {
 	svc().OnProjectDeleting(inUse)
+}
+
+// OnProjectDeleted registers a handler told of each deleted Project, after
+// it is gone, so a context that refers to Projects (work's Issues) lets go
+// of it. An error fails the request, though the Project stays deleted.
+func OnProjectDeleted(f func(ctx context.Context, projectID uint64) error) {
+	svc()
+	projectDeleted = append(projectDeleted, f)
+}
+
+// ProjectNames names the Guild's Projects among ids; an id that is not one
+// of the Guild's Projects is left out.
+func ProjectNames(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error) {
+	out := map[uint64]string{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	ps, err := svc().Projects(app.InGuild(ctx, guildID))
+	if err != nil {
+		return nil, err
+	}
+	want := make(map[uint64]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	for _, p := range ps {
+		if want[p.ID] {
+			out[p.ID] = p.Name
+		}
+	}
+	return out, nil
 }
 
 // OnEnvironmentDeleting registers a check asked before an Environment is

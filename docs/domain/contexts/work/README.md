@@ -72,16 +72,20 @@ None yet. Inbox and Activity, in a later phase, are where they start.
 - **Consumes:**
   - from guilds: `guilds.Auth`, `guilds.Can(permission)`,
     `guilds.Current(ctx)` (the Guild every Goal and Issue is stored and
-    filtered by), `guilds.VisibleProjects(ctx, ids)` (which Projects the
+    filtered by), `guilds.MemberID(ctx)` (who creates an Issue, and whom
+    `assignee=me` means), `guilds.VisibleProjects(ctx, ids)` (which Projects the
     Member may view), `guilds.IssuePrefix(ctx, guild)` (for every Issue
     identifier) and `guilds.IsMember(ctx, guild, member)` (for Assignees and
     owners). It registers `guilds.OnGuildDeleting`, so a Guild with Goals or
     Issues is not deleted.
   - from identity: `identity.Members(ctx, ids)`, for the names of Goal
-    owners.
-  - from projects: `projects.ProjectInGuild(ctx, id, guildID)` before an
-    Issue takes a Project, and `projects.OnProjectDeleted`: the
-    Project's Issues keep existing and lose their Project.
+    owners, Assignees and the Members who created Issues.
+  - from projects: `projects.ProjectNames(ctx, guildID, ids)`, for the
+    names of Issues' Projects and before an Issue takes a Project (an id it
+    does not name is not one of the Guild's), and
+    `projects.OnProjectDeleted`: the Project's Issues keep existing and lose
+    their Project. `issues.project_id` has no foreign key, since the
+    Project is projects' row.
 
 ## Why it's shaped this way
 

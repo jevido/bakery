@@ -1,15 +1,17 @@
-// Package app holds the work use cases: plan Goals, and later Issues and
+// Package app holds the work use cases: plan Goals and Issues, and later
 // their Comments.
 package app
 
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
 )
 
-// ErrNotFound is a Goal that does not exist.
+// ErrNotFound is a Goal or an Issue that does not exist, or that the
+// person asking may not see.
 var ErrNotFound = errors.New("not found")
 
 // Goals keeps Goals.
@@ -24,18 +26,23 @@ type Goals interface {
 	DeleteGoal(ctx context.Context, g domain.Goal) error
 }
 
-// Members answers whether a Member belongs to a Guild (guilds.IsMember).
-type Members interface {
+// Guilds is what work asks guilds: whether a Member belongs to a Guild
+// (guilds.IsMember) and a Guild's Issue prefix (guilds.IssuePrefix).
+type Guilds interface {
 	IsMember(ctx context.Context, guildID, memberID uint64) (bool, error)
+	IssuePrefix(ctx context.Context, guildID uint64) (string, error)
 }
 
 type Service struct {
-	goals   Goals
-	members Members
+	goals    Goals
+	issues   Issues
+	guilds   Guilds
+	projects Projects
+	now      func() time.Time
 }
 
-func NewService(goals Goals, members Members) *Service {
-	return &Service{goals: goals, members: members}
+func NewService(goals Goals, issues Issues, guilds Guilds, projects Projects) *Service {
+	return &Service{goals: goals, issues: issues, guilds: guilds, projects: projects, now: time.Now}
 }
 
 // GoalInput is a new Goal as typed. Empty Level and Status take their
@@ -185,7 +192,7 @@ func (s *Service) moveUnder(ctx context.Context, g *domain.Goal, parentID uint64
 
 func (s *Service) setOwner(ctx context.Context, g *domain.Goal, memberID uint64) error {
 	if memberID != 0 {
-		ok, err := s.members.IsMember(ctx, g.GuildID, memberID)
+		ok, err := s.guilds.IsMember(ctx, g.GuildID, memberID)
 		if err != nil {
 			return err
 		}

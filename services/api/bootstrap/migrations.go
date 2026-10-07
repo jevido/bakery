@@ -88,5 +88,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000073AddManageWorkToMemberRoles{},
 		&migrations.M20260930000074AddIssuePrefixToGuilds{},
 		&migrations.M20260930000075CreateGoalsTable{},
+		&migrations.M20260930000076CreateIssuesTables{},
 	}
 }

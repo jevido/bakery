@@ -1,4 +1,4 @@
-// Package http is the work JSON API: Goals, and later Issues and their
+// Package http is the work JSON API: Goals and Issues, and later their
 // Comments.
 package http
 
@@ -29,6 +29,11 @@ type Controller struct {
 	// members names the Members with these ids (identity.Members); a
 	// removed Member is left out.
 	members func(ctx context.Context, ids []uint64) ([]Member, error)
+	// Visible keeps the Projects among ids the request may view
+	// (guilds.VisibleProjects); Member is the Member it comes from
+	// (guilds.MemberID). Both must be set before Issues are served.
+	Visible func(ctx contractshttp.Context, ids []uint64) ([]uint64, error)
+	Member  func(ctx contractshttp.Context) uint64
 }
 
 func NewController(service *app.Service, guild func(ctx contractshttp.Context) uint64, members func(ctx context.Context, ids []uint64) ([]Member, error)) *Controller {
@@ -203,7 +208,22 @@ func (c *Controller) ShowGoal(ctx contractshttp.Context) contractshttp.Response 
 		return notFound(ctx)
 	}
 	g, err := c.service.Goal(ctx.Context(), id)
-	return c.oneGoal(ctx, contractshttp.StatusOK, g, err)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out, err := c.goalsJSON(ctx.Context(), []domain.Goal{g})
+	if err != nil {
+		return fail(ctx, err)
+	}
+	issues, counts, err := c.goalIssues(ctx, g)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"goal": struct {
+		goalJSON
+		Issues      []issueJSON    `json:"issues"`
+		IssueCounts map[string]int `json:"issue_counts"`
+	}{out[0], issues, counts}})
 }
 
 func (c *Controller) UpdateGoal(ctx contractshttp.Context) contractshttp.Response {
