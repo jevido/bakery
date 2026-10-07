@@ -11,7 +11,7 @@
   import { session } from '../../lib/session.svelte'
   import type { Server } from '../../lib/types'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import { serverResources } from './resources'
 
@@ -41,44 +41,38 @@
   }
 </script>
 
-<div class="chrome application-settings-form w-full">
-  {#if server.kind === 'remote'}
-    <SettingsSection
-      id="server-danger-section"
-      title="Delete server"
-      helper="Permanently remove this server and its configuration from The Bakery."
-    >
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div class="min-w-0">
-          <h4 class="text-sm font-semibold text-red-700 dark:text-red-300">This action cannot be undone</h4>
-          <div class="mt-2 max-w-2xl space-y-2 text-[13px] leading-5 text-red-700/80 dark:text-red-300/80">
-            <p>
-              The server will be removed from The Bakery. Nothing on the server itself is touched.
-              {#if hasResources}
-                <span data-testid="server-has-resources">
-                  It currently contains managed resources. Delete them first; The Bakery does not delete a server that still runs
-                  applications.
-                </span>
-              {/if}
+{#if server.kind === 'remote'}
+  <SettingsGroup id="server-danger-section" label="Danger zone" hint="Permanently remove this server and its configuration from The Bakery." destructive>
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="min-w-0">
+        <h4 class="text-sm font-medium text-destructive">Delete server</h4>
+        <div class="mt-2 space-y-2 text-sm text-muted-foreground">
+          <p>
+            <strong class="font-medium text-foreground">{server.name}</strong> will be removed from The Bakery. Nothing on the server itself
+            is touched. This action cannot be undone.
+          </p>
+          {#if hasResources}
+            <p class="text-destructive" data-testid="server-has-resources">
+              It currently contains managed resources. Delete them first; The Bakery does not delete a server that still runs applications.
             </p>
-            <p>Type the server name in the confirmation dialog to continue.</p>
-          </div>
+          {/if}
+          <p class="text-xs">Type the server name in the confirmation dialog to continue.</p>
         </div>
-        {#if session.can('manage_servers')}
-          <div class="shrink-0">
-            <ConfirmationModal
-              title="Confirm Server Deletion?"
-              buttonTitle="Delete server"
-              variant="error"
-              actions={['This server will be permanently deleted from The Bakery.']}
-              confirmationText={server.name}
-              confirmationLabel="Please confirm by entering the Server Name below"
-              shortConfirmationLabel="Server Name"
-              onconfirm={remove}
-            />
-          </div>
-        {/if}
       </div>
-    </SettingsSection>
-  {/if}
-</div>
+      {#if session.can('manage_servers')}
+        <div class="shrink-0">
+          <ConfirmationModal
+            title="Confirm Server Deletion?"
+            buttonTitle="Delete server"
+            variant="error"
+            actions={['This server will be permanently deleted from The Bakery.']}
+            confirmationText={server.name}
+            confirmationLabel="Please confirm by entering the Server Name below"
+            shortConfirmationLabel="Server Name"
+            onconfirm={remove}
+          />
+        </div>
+      {/if}
+    </div>
+  </SettingsGroup>
+{/if}

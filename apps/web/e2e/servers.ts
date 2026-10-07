@@ -4,7 +4,11 @@
 // and a Viewer sees no "New server". A Server's frame, in dark and light on
 // a desktop and a phone: the header with its name and status pill, the nav
 // to every sub-page (the select on a phone), and the switcher to a second
-// Server (the Remote server stand-in, when task remote:up runs).
+// Server (the Remote server stand-in, when task remote:up runs). General
+// renames the Local server and back and opens Validate with its checkpoints;
+// Private Key and Danger open on the Remote server stand-in, where Danger's
+// button stays disabled until the name is typed; a Viewer sees no save
+// button and no Danger.
 //
 //   bun e2e/servers.ts            (task web:servers; needs task dev running)
 //
@@ -112,6 +116,7 @@ const standIn = await new Promise<boolean>((resolve) => {
 })
 if (!standIn) {
   console.log('skip the switcher: the Remote server stand-in is not running (task remote:up)')
+  console.log('skip Private Key, Danger and the Viewer on a Remote server: no stand-in')
 } else {
   const page = await signedIn(1440, 900)
   const name = `e2e-switch-${Date.now()}`
@@ -130,10 +135,71 @@ if (!standIn) {
     await page.waitForTimeout(500)
     expect('the switcher stays on Metrics', page.url().endsWith(`#/server/${other.id}/metrics`), page.url())
     expect('the header shows the other Server', (await page.getByTestId('server-subtitle').textContent())?.trim() === name)
+
+    // Private Key and Danger on a Remote server.
+    await page.goto(`${WEB}/#/server/${other.id}/private-key`)
+    await page.getByTestId('private-key').waitFor()
+    expect('Private Key shows the key type', ((await page.getByTestId('key-type').textContent()) ?? '').startsWith('ssh-'))
+    await page.goto(`${WEB}/#/server/${other.id}/danger`)
+    await page.locator('#server-danger-section').waitFor()
+    await page.getByRole('button', { name: 'Delete server' }).click()
+    const confirm = page.getByRole('button', { name: 'Confirm' })
+    await confirm.waitFor()
+    expect("Danger's button is disabled before the name", await confirm.isDisabled())
+    await page.getByRole('textbox', { name: 'Server Name' }).fill(name)
+    expect("Danger's button is enabled once the name is typed", await confirm.isEnabled())
+    await page.getByRole('button', { name: 'Cancel' }).click()
+
+    // A Viewer: no save button and no Danger nav item.
+    const viewer = await signedIn(1440, 900)
+    await viewer.route('**/api/me', async (route) => {
+      const r = await route.fetch()
+      const body = await r.json()
+      body.permissions = body.permissions.filter((p: string) => p !== 'manage_servers' && p !== 'administrator')
+      for (const g of body.guilds ?? []) g.permissions = (g.permissions ?? []).filter((p: string) => p !== 'manage_servers' && p !== 'administrator')
+      await route.fulfill({ response: r, json: body })
+    })
+    await viewer.goto(`${WEB}/#/server/${other.id}`)
+    await viewer.locator('#server-connection-section').waitFor()
+    expect('a Viewer sees the inputs disabled', await viewer.locator('#server-connection-section input').first().isDisabled())
+    expect('a Viewer sees no save button', (await viewer.getByRole('button', { name: 'Save changes' }).count()) === 0)
+    expect('a Viewer sees no Validate', (await viewer.getByTestId('validate').count()) === 0)
+    expect('a Viewer sees no Danger nav item', (await viewer.getByRole('link', { name: 'Danger' }).count()) === 0)
+    await viewer.close()
   } finally {
     await page.request.delete(`${WEB}/api/servers/${other.id}`)
     await page.close()
   }
+}
+
+// General: rename the Local server and back; Validate lists its checkpoints.
+{
+  const page = await signedIn(1440, 900)
+  await page.goto(`${WEB}/#/server/${localServer.id}`)
+  await page.locator('#server-connection-section').waitFor()
+  const field = page.locator('#server-connection-section input').first()
+  const renamed = `${localServer.name}-e2e`
+  for (const to of [renamed, localServer.name]) {
+    await field.fill(to)
+    await page.getByRole('button', { name: 'Save changes' }).click()
+    await page.waitForFunction(
+      (n) => document.querySelector('[data-testid="server-subtitle"]')?.textContent?.trim() === n,
+      to,
+      { timeout: 5000 },
+    ).catch(() => {})
+    expect(`the header shows "${to}"`, (await page.getByTestId('server-subtitle').textContent())?.trim() === to)
+  }
+  await page.getByTestId('validate').click()
+  const dialog = page.getByTestId('validate-dialog')
+  await dialog.waitFor()
+  const cont = dialog.getByRole('button', { name: 'Continue' })
+  if (await cont.count()) await cont.click()
+  const points = dialog.locator('[data-checkpoint-status]')
+  await points.first().waitFor()
+  expect('Validate lists its checkpoints', (await points.count()) >= 4, await points.count())
+  await page.waitForFunction(() => !document.querySelector('[data-checkpoint-status="running"]'), null, { timeout: 30000 })
+  expect('Validate finishes', (await dialog.getByText(/Validation complete|Validation failed/).count()) === 1)
+  await page.close()
 }
 
 const page = await signedIn(1440, 900)

@@ -18,8 +18,8 @@
   import CheckpointItem, { type CheckpointStatus } from '../../lib/ui/CheckpointItem.svelte'
   import Input from '../../lib/ui/Input.svelte'
   import Modal from '../../lib/ui/Modal.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
-  import Spinner from '../../lib/ui/Spinner.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
+    import Spinner from '../../lib/ui/Spinner.svelte'
   import StatusBadge from '../../lib/ui/StatusBadge.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
@@ -179,29 +179,27 @@
 </script>
 
 {#snippet overview()}
-  <SettingsSection
+  <SettingsGroup
     id="server-overview-section"
-    title="Server overview"
-    helper={remote
+    label="Server overview"
+    hint={remote
       ? 'Connection health, operating system, and hardware details.'
       : 'Operating system and hardware details for the server running The Bakery.'}
   >
     {#snippet actions()}
-      <Button class="size-8! px-0!" title="Refresh server details" aria-label="Refresh server details" loading={detailsLoading} onclick={loadDetails}>
+      <Button class="size-8 px-0" title="Refresh server details" aria-label="Refresh server details" loading={detailsLoading} onclick={loadDetails}>
         {#if !detailsLoading}<Icon name="refresh" class="size-3.5" />{/if}
       </Button>
       <StatusBadge status={functional ? 'Ready' : 'Validation required'} type={functional ? 'success' : 'warning'} />
     {/snippet}
 
     <div class="flex items-start gap-3">
-      <div
-        class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600 dark:bg-white/[0.06] dark:text-fg-dim"
-      >
+      <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent text-muted-foreground">
         <Icon name="servers" class="size-4.5" />
       </div>
       <div class="min-w-0">
-        <p class="truncate text-sm font-medium text-neutral-950 dark:text-fg">{remote ? server.name : 'Localhost'}</p>
-        <p class="mt-1 text-xs leading-5 text-neutral-500 dark:text-fg-dim">
+        <p class="truncate text-sm font-medium">{remote ? server.name : 'Localhost'}</p>
+        <p class="mt-1 text-xs leading-5 text-muted-foreground">
           {#if functional}
             The server is reachable, validated, and ready to host resources.
           {:else if remote}
@@ -213,44 +211,44 @@
       </div>
     </div>
 
-    <div class="mt-4 border-t border-neutral-200 pt-4 dark:border-white/[0.08]">
+    <div class="border-t border-border pt-4">
       {#if details}
         <dl class="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3" data-testid="server-details">
           {#each detailRows as [label, value] (label)}
             <div>
-              <dt class="text-xs font-medium text-neutral-500 dark:text-fg-dim">{label}</dt>
-              <dd class="ms-0 mt-1 text-sm font-medium break-words text-neutral-950 dark:text-fg">{value}</dd>
+              <dt class="text-xs text-muted-foreground">{label}</dt>
+              <dd class="ms-0 mt-1 text-sm font-medium break-words">{value}</dd>
             </div>
           {/each}
         </dl>
       {:else if detailsError}
-        <p class="text-sm text-error" data-testid="server-details-error">{detailsError}</p>
+        <p class="text-sm text-destructive" data-testid="server-details-error">{detailsError}</p>
       {:else}
         <Spinner text="Reading server details…" />
       {/if}
     </div>
-  </SettingsSection>
+  </SettingsGroup>
 {/snippet}
 
 {#snippet previousOutput()}
   {#if server.validation.checks.length > 0}
-    <SettingsSection id="server-validation-output-section" title="Previous validation output" helper="The latest output produced while checking this server.">
-      <div class="max-h-72 overflow-auto rounded-lg bg-neutral-950 p-4 font-mono text-xs leading-5 text-neutral-300" data-testid="checks">
+    <SettingsGroup id="server-validation-output-section" label="Previous validation output" hint="The latest output produced while checking this server.">
+      <div class="max-h-72 overflow-auto rounded-md border border-border bg-log p-4 font-mono text-xs leading-5 text-log-foreground" data-testid="checks">
         {#each server.validation.checks as c (c.name)}
-          <div class={c.ok ? '' : c.required ? 'text-red-400' : 'text-warning'}>
+          <div class={c.ok ? '' : c.required ? 'text-destructive' : 'text-warning'}>
             {mark(c)} {checkTitle(c.name)}: {c.detail}
           </div>
         {/each}
         {#if server.validation.checked_at}
-          <div class="mt-2 text-neutral-500">Checked {when.format(new Date(server.validation.checked_at))}.</div>
+          <div class="mt-2 opacity-70">Checked {when.format(new Date(server.validation.checked_at))}.</div>
         {/if}
       </div>
-    </SettingsSection>
+    </SettingsGroup>
   {/if}
 {/snippet}
 
 <form
-  class="chrome application-settings-form flex flex-col gap-6"
+  class="space-y-8"
   onsubmit={(e) => {
     e.preventDefault()
     save()
@@ -263,10 +261,10 @@
   {@render overview()}
   {#if !remote}{@render previousOutput()}{/if}
 
-  <SettingsSection
+  <SettingsGroup
     id="server-connection-section"
-    title="Connection"
-    helper={remote
+    label="Connection"
+    hint={remote
       ? 'Configure how The Bakery identifies, reaches, and validates this server.'
       : 'Configure how The Bakery identifies and connects to this server.'}
   >
@@ -285,7 +283,7 @@
     </div>
 
     {#if remote}
-      <div class="mt-4 grid gap-4 lg:grid-cols-3">
+      <div class="grid gap-4 lg:grid-cols-3">
         <Input
           type="password"
           label="IP address or domain"
@@ -298,9 +296,9 @@
         <Input label="SSH user" bind:value={user} error={errors.user} required disabled={!canUpdate || validating} />
         <Input type="number" label="SSH port" bind:value={port} error={errors.port} required disabled={!canUpdate || validating} />
       </div>
-      <p class="mt-3 text-xs text-neutral-500 dark:text-fg-dim">A new host, port or user forgets the host key; validate the connection again afterwards.</p>
+      <p class="text-xs text-muted-foreground">A new host, port or user forgets the host key; validate the connection again afterwards.</p>
     {/if}
-  </SettingsSection>
+  </SettingsGroup>
 
   {#if remote}{@render previousOutput()}{/if}
 </form>
@@ -308,19 +306,17 @@
 <Modal title="Validate and configure" bind:open={dialogOpen} variant="none" closeOutside={!validating}>
   <div class="flex flex-col gap-4" data-testid="validate-dialog">
     {#if asking}
-      <div
-        class="rounded-[10px] border border-neutral-200 bg-neutral-50 px-4 py-3 text-[13px] leading-5 text-neutral-600 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-fg-dim"
-      >
+      <div class="rounded-md border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
         This will revalidate the server: {remote ? 'the SSH connection, ' : ''}the Podman socket and version, linger and the
         ports for the proxy. Nothing is installed or restarted.
       </div>
       <Button variant="highlighted" onclick={startValidating}>Continue</Button>
     {:else}
-      <div class="overflow-hidden rounded-[10px] border border-neutral-200 dark:border-white/[0.08]">
-        <div class="border-b border-neutral-200 px-4 py-2.5 dark:border-white/[0.08]">
-          <h3 class="text-[13px] font-medium text-neutral-600 dark:text-fg-dim">Validation checkpoints</h3>
+      <div class="overflow-hidden rounded-md border border-border">
+        <div class="border-b border-border px-4 py-2.5">
+          <h3 class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Validation checkpoints</h3>
         </div>
-        <div class="divide-y divide-neutral-200 dark:divide-white/[0.07]">
+        <div class="divide-y divide-border">
           {#each visibleCheckpoints as c, i (c.name)}
             {@const status = checkpointStatus(c.name, i)}
             {@const check = result?.find((x) => x.name === c.name)}
@@ -338,23 +334,20 @@
       </div>
 
       {#if complete}
-        <div class="flex items-center justify-between gap-3 rounded-[10px] border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3">
-          <div class="flex items-center gap-2 text-[13px] font-medium text-emerald-700 dark:text-emerald-300">
+        <div class="flex items-center justify-between gap-3 rounded-md border border-success/20 bg-success/5 px-4 py-3">
+          <div class="flex items-center gap-2 text-sm font-medium text-success">
             <Icon name="check-circle" class="size-4 shrink-0" />
             Validation complete
           </div>
           <Button onclick={() => (dialogOpen = false)}>Close</Button>
         </div>
       {:else if !validating && (failed.length > 0 || validateError)}
-        <div
-          class="rounded-[10px] border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-[13px] leading-5 text-red-700 dark:text-red-300"
-          data-testid="validation-failed"
-        >
-          <div class="mb-1 flex items-center gap-2 text-[12px] font-semibold tracking-[0.06em] uppercase">
+        <div class="rounded-md border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive" data-testid="validation-failed">
+          <div class="mb-1 flex items-center gap-2 text-xs font-medium tracking-wide uppercase">
             <Icon name="alert-circle" class="size-3.5 shrink-0" />
             Validation failed
           </div>
-          <div class="font-mono text-[12px] leading-5 break-words whitespace-pre-line">
+          <div class="font-mono text-xs leading-5 break-words whitespace-pre-line">
             {validateError || failed.map((c) => `${checkTitle(c.name)}: ${c.detail}`).join('\n')}
           </div>
         </div>

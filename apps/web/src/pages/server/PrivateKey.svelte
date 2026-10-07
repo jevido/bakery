@@ -4,6 +4,7 @@
   // Bakery generates one key per Server instead of picking one of the team's
   // Private Keys, so the key list is one card for the Server's own key, with
   // the command that authorises it and the pinned host key below it.
+  import { Badge } from '$lib/components/ui/badge'
   import { api, ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
   import { session } from '../../lib/session.svelte'
@@ -12,7 +13,7 @@
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import CopyButton from '../../lib/ui/CopyButton.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
 
   let { server, onchange }: { server: Server; onchange: (s: Server) => void } = $props()
@@ -58,11 +59,11 @@
   }
 </script>
 
-<div class="chrome application-settings-form flex w-full flex-col gap-6">
+<div class="space-y-8">
   {#if server.kind !== 'remote'}
     <Empty size="sm" title="The Local server has no Private key." description="The Bakery reaches it through the local Podman socket, not SSH." icon="keys" />
   {:else}
-    <SettingsSection id="server-private-keys-section" title="Private key" helper="The SSH key The Bakery uses to connect to this server." flush>
+    <SettingsGroup id="server-private-keys-section" label="Private key" hint="The SSH key The Bakery uses to connect to this server.">
       {#snippet actions()}
         {#if session.can('manage_servers')}
           <Button loading={checking} onclick={checkConnection} data-testid="check-connection">
@@ -73,40 +74,34 @@
       {/snippet}
 
       {#if !session.can('manage_servers')}
-        <p class="px-4 py-4 text-sm text-neutral-500 dark:text-fg-dim" data-testid="private-key-admin-only">
-          Only an admin can see this server's key.
-        </p>
+        <p class="text-sm text-muted-foreground" data-testid="private-key-admin-only">Only an admin can see this server's key.</p>
       {:else if !publicKey}
         <Empty size="sm" title="No private key" description="This server has no key yet." icon="keys" />
       {:else}
-        <div class="flex flex-col gap-4 px-4 py-4">
-          <div class="flex min-w-0 items-start gap-3">
-            <div
-              class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-500 dark:bg-white/[0.06] dark:text-fg-dim"
-            >
-              <Icon name="keys" class="size-4" />
-            </div>
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <p class="truncate text-sm font-medium text-neutral-950 dark:text-fg">{server.name}</p>
-                <span class="rounded-md border border-coollabs/40 px-1.5 py-0.5 font-mono text-[11px] text-coollabs" data-testid="key-type">{keyType}</span>
-              </div>
-              <p class="mt-1 text-xs text-neutral-500 dark:text-fg-dim">
-                Add it for <span class="font-mono">{server.user}</span> on the server, then Check connection.
-              </p>
-            </div>
+        <div class="flex min-w-0 items-start gap-3">
+          <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent text-muted-foreground">
+            <Icon name="keys" class="size-4" />
           </div>
-          <CopyButton text={publicKey} label="Public key" testid="private-key" />
-          <CopyButton text={command} label="Command" testid="authorize-command" />
-        </div>
-
-        <div class="flex flex-col gap-3 border-t border-neutral-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-white/[0.08]">
           <div class="min-w-0">
-            <p class="text-sm font-medium text-neutral-950 dark:text-fg">Host key</p>
+            <div class="flex flex-wrap items-center gap-2">
+              <p class="truncate text-sm font-medium">{server.name}</p>
+              <Badge variant="outline" class="font-mono" data-testid="key-type">{keyType}</Badge>
+            </div>
+            <p class="mt-1 text-xs text-muted-foreground">
+              Add it for <span class="font-mono">{server.user}</span> on the server, then Check connection.
+            </p>
+          </div>
+        </div>
+        <CopyButton text={publicKey} label="Public key" testid="private-key" />
+        <CopyButton text={command} label="Command" testid="authorize-command" />
+
+        <div class="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <p class="text-sm font-medium">Host key</p>
             {#if server.host_key_fingerprint}
-              <p class="mt-1 font-mono text-xs break-all text-neutral-500 dark:text-fg-dim" data-testid="host-key">{server.host_key_fingerprint}</p>
+              <p class="mt-1 font-mono text-xs break-all text-muted-foreground" data-testid="host-key">{server.host_key_fingerprint}</p>
             {:else}
-              <p class="mt-1 text-xs text-neutral-500 dark:text-fg-dim" data-testid="host-key-none">
+              <p class="mt-1 text-xs text-muted-foreground" data-testid="host-key-none">
                 Not pinned yet; the next connection pins the key the server presents.
               </p>
             {/if}
@@ -125,6 +120,6 @@
           {/if}
         </div>
       {/if}
-    </SettingsSection>
+    </SettingsGroup>
   {/if}
 </div>
