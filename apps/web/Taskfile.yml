@@ -19,6 +19,12 @@ tasks:
     cmds:
       - bun e2e/walk.ts
 
+  rail:
+    desc: Check the guild rail in headless Chromium (needs task dev)
+    deps: [install]
+    cmds:
+      - bun e2e/rail.ts
+
   check:
     desc: svelte-check, tsc and a production build
     deps: [install]

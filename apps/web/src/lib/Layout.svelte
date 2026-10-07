@@ -1,13 +1,15 @@
 <script lang="ts">
   // Paperclip's shell (ui/src/components/Layout.tsx and SidebarShell.tsx; MIT,
   // see NOTICE): the resizable sidebar with its account strip, collapsing to
-  // the 64px icon rail, beside the breadcrumb bar and `main`. Below 768px the
-  // sidebar is a drawer over a scrim. Left out until Issues and agents exist:
+  // the 64px icon rail, beside the breadcrumb bar and `main`, with the guild
+  // rail left of it. Below 768px the sidebar and the guild rail are a drawer
+  // over a scrim. Left out until Issues and agents exist:
   // the command palette, search, the properties panel and the mobile bottom nav.
   import type { Snippet } from 'svelte'
   import * as Tooltip from '$lib/components/ui/tooltip'
   import AccountMenu from './AccountMenu.svelte'
   import BreadcrumbBar from './BreadcrumbBar.svelte'
+  import GuildRail from './GuildRail.svelte'
   import { router } from './router.svelte'
   import SettingsSidebar from './SettingsSidebar.svelte'
   import Sidebar from './Sidebar.svelte'
@@ -98,7 +100,7 @@
       {/if}
       <div
         class={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-60 flex-col overflow-hidden bg-background transition-transform duration-100 ease-out',
+          'fixed inset-y-0 left-0 z-50 flex overflow-hidden bg-background transition-transform duration-100 ease-out',
           sidebar.open ? 'translate-x-0' : '-translate-x-full',
         )}
         inert={!sidebar.open}
@@ -107,10 +109,14 @@
         aria-label="Navigation"
         data-testid="sidebar-drawer"
       >
-        <div class="flex min-h-0 flex-1 overflow-hidden"><Nav /></div>
-        <AccountMenu />
+        <GuildRail />
+        <div class="flex w-60 flex-col overflow-hidden">
+          <div class="flex min-h-0 flex-1 overflow-hidden"><Nav /></div>
+          <AccountMenu />
+        </div>
       </div>
     {:else}
+      <GuildRail />
       <div class="relative h-full shrink-0" style:width="{reserved}px">
         <div
           class={cn(

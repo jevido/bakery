@@ -1,31 +1,11 @@
-<script lang="ts">
-  // Paperclip's company menu (ui/src/components/SidebarCompanyMenu.tsx; MIT,
-  // see NOTICE) as the Guild menu at the top of the sidebar: the Current
-  // guild's pattern icon and name, opening the Guilds to switch to (the
-  // current one checked), New guild, Invite and Log out. Left out: dragging
-  // the Guilds into an order (nothing stores one). Switching opens the other
-  // Guild's Dashboard.
-  import { Check, ChevronsUpDown, LogOut, Plus, UserPlus } from '@lucide/svelte'
-  import { buttonVariants } from '$lib/components/ui/button'
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
-  import GuildIcon from './GuildIcon.svelte'
-  import { go, guildPath, href } from './router.svelte'
+<script lang="ts" module>
+  import { go } from './router.svelte'
   import { session } from './session.svelte'
-  import { RAIL_HIDDEN_LABEL, sidebar } from './sidebar.svelte'
-  import Modal from './ui/Modal.svelte'
+  import { sidebar } from './sidebar.svelte'
   import { toast } from './ui/toast.svelte'
-  import { cn } from './utils'
-  import Create from '../pages/guild/Create.svelte'
 
-  let open = $state(false)
-  let creating = $state(false)
-
-  const ROW =
-    'h-(--organization-popover-company-row-height) min-w-0 gap-(--organization-popover-row-gap) rounded-lg px-2.5 py-0 text-(length:--text-compact) focus:bg-accent/50 focus:text-foreground'
-  const ACTION =
-    'h-(--organization-popover-action-row-height) gap-(--organization-popover-row-gap) rounded-lg px-2.5 py-0 text-(length:--text-compact) font-medium leading-(--organization-popover-action-line-height) text-foreground focus:bg-accent/50 focus:text-foreground'
-
-  async function switchTo(id: number) {
+  /** Makes the Guild the Current guild and opens its Dashboard; the guild rail switches the same way. */
+  export async function switchTo(id: number) {
     sidebar.closeDrawer()
     if (id === session.guild?.id) return
     // Leave the page first: the switch remounts the current page in the new
@@ -37,6 +17,32 @@
       toast.error('Guild not switched', err instanceof Error ? err.message : String(err))
     }
   }
+</script>
+
+<script lang="ts">
+  // Paperclip's company menu (ui/src/components/SidebarCompanyMenu.tsx; MIT,
+  // see NOTICE) as the Guild menu at the top of the sidebar: the Current
+  // guild's pattern icon and name, opening the Guilds to switch to (the
+  // current one checked), New guild, Invite and Log out. Left out: dragging
+  // the Guilds into an order (nothing stores one). Switching opens the other
+  // Guild's Dashboard.
+  import { Check, ChevronsUpDown, LogOut, Plus, UserPlus } from '@lucide/svelte'
+  import { buttonVariants } from '$lib/components/ui/button'
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
+  import GuildIcon from './GuildIcon.svelte'
+  import { guildPath, href } from './router.svelte'
+  import { RAIL_HIDDEN_LABEL } from './sidebar.svelte'
+  import Modal from './ui/Modal.svelte'
+  import { cn } from './utils'
+  import Create from '../pages/guild/Create.svelte'
+
+  let open = $state(false)
+  let creating = $state(false)
+
+  const ROW =
+    'h-(--organization-popover-company-row-height) min-w-0 gap-(--organization-popover-row-gap) rounded-lg px-2.5 py-0 text-(length:--text-compact) focus:bg-accent/50 focus:text-foreground'
+  const ACTION =
+    'h-(--organization-popover-action-row-height) gap-(--organization-popover-row-gap) rounded-lg px-2.5 py-0 text-(length:--text-compact) font-medium leading-(--organization-popover-action-line-height) text-foreground focus:bg-accent/50 focus:text-foreground'
 
   const name = $derived(session.guild?.name ?? null)
 </script>

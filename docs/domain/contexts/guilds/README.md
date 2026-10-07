@@ -362,13 +362,19 @@ other changes with `write`, `administrator` only with `root`.
   Paperclip deletes a company with everything in it in one go; a Guild's
   Applications, Databases and backups run and live on Servers, so each goes
   by its own deliberate delete first.
-- **The guild switcher is Paperclip's company menu.** It heads the sidebar:
+- **Guilds are switched from two places: Paperclip's company menu and a
+  guild rail like Discord's server list.** The Guild menu heads the sidebar:
   the Current guild's pattern icon and name, opening every Guild with the
-  current one checked, New guild, Invite and Log out. Paperclip v2026.1005.0
-  has no rail of company icons any more; it switches companies from the
-  sidebar's company menu, so this menu is the "guild rail" the goal names.
+  current one checked, New guild, Invite and Log out. Left of the sidebar,
+  on every page, the guild rail shows one icon per Guild, the current one
+  marked by a pill on its left edge, and "+" for a New guild; on a phone it
+  sits in the slide-over menu. Paperclip v2026.1005.0 removed its company
+  rail and switches companies from the menu alone; the rail is kept as a
+  deliberate difference because the goal asks for Discord's server list.
+  Both switch the same way and open the other Guild's Dashboard, and both
+  offer New guild to everyone, since any Member may create a Guild.
   Paperclip lets a person drag the companies into their own order; nothing
-  stores an order of Guilds, so the menu lists them as the API does.
+  stores an order of Guilds, so both list them as the API does.
 - **The Guild's workspace is Paperclip's shell, with what has no Bakery
   counterpart yet left out.** The sidebar, breadcrumb bar, account menu and
   settings sidebar follow Paperclip's Layout. The theme keeps a third choice,
