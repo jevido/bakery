@@ -135,7 +135,7 @@
     <div class="flex flex-col gap-4">
       <p class="text-[13px] leading-5 text-neutral-500 dark:text-fg-dim">
         Every pull request into <span class="font-mono">{application.git_branch}</span> gets its own deployment. The webhook (under
-        <a class="font-medium text-coollabs underline-offset-2 hover:underline dark:text-warning" href={href(applicationPath(application, 'webhooks'))}
+        <a class="font-medium text-coollabs underline-offset-2 hover:underline" href={href(applicationPath(application, 'webhooks'))}
           >Webhooks</a
         >) must also send pull request events. Pull requests from forks get no preview.
       </p>

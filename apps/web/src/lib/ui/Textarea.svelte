@@ -1,8 +1,9 @@
 <script lang="ts">
-  // Coolify's forms/textarea (resources/views/components/forms/textarea.blade.php):
-  // `input scrollbar`, `font-mono` for code, and Tab inserting two spaces
-  // when `allowTab` is set.
+  // Coolify's forms/textarea (resources/views/components/forms/textarea.blade.php)
+  // on Paperclip's textarea: `font-mono` for code, and Tab inserting two
+  // spaces when `allowTab` is set. Sized by `rows` rather than its content.
   import type { HTMLTextareaAttributes } from 'svelte/elements'
+  import { Textarea as UiTextarea } from '$lib/components/ui/textarea'
   import FieldError from './FieldError.svelte'
   import FieldLabel from './FieldLabel.svelte'
 
@@ -47,7 +48,8 @@
   {#if label}
     <FieldLabel {label} for={htmlId} required={!!required} {helper} disabled={!!disabled} />
   {/if}
-  <textarea
+  <UiTextarea
+    aria-invalid={error ? true : undefined}
     {...rest}
     bind:value
     id={htmlId}
@@ -56,7 +58,7 @@
     {disabled}
     {spellcheck}
     onkeydown={tab}
-    class={['input scrollbar h-auto', monospace && 'font-mono', className]}
-  ></textarea>
+    class={['field-sizing-fixed', monospace && 'font-mono', className]}
+  />
   <FieldError {error} />
 </div>

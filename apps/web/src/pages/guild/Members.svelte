@@ -366,7 +366,7 @@
   }
   .invite-roles legend {
     font-size: 0.8rem;
-    color: var(--muted);
+    color: var(--muted-foreground);
     margin-bottom: 0.3rem;
   }
   .role-choice {

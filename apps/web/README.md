@@ -20,11 +20,20 @@ task web:check   # svelte-check, tsc, build
   `session.canSeeSecrets` and `session.isAdmin`.
 - `src/lib/api.ts` is the only place that calls `fetch`.
 
-Styling is Tailwind CSS v4 (through `@tailwindcss/vite`). `src/theme.css`
-holds Coolify's design tokens and shared utilities under their original names
-(`bg-app`, `text-fg-dim`, `button`, `input`, `menu-item`, …), so ported markup
-keeps its class lists. The theme is `localStorage.theme` (`dark`, `light` or
+Styling is Tailwind CSS v4 (through `@tailwindcss/vite`) in Paperclip's look.
+`src/theme.css` is the only token source: Paperclip's semantic tokens
+(`background`, `foreground`, `card`, `primary`, `muted`, `accent`,
+`destructive`, `border`, `sidebar-*`, …) for dark and light, its radius and
+type ladders, plus The Bakery's status colors (`success`, `warning`,
+`error`). The font is Inter and the icons are lucide (`src/lib/Icon.svelte`
+maps the names pages use). The components are shadcn-svelte on bits-ui in
+`src/lib/components/ui` (imported as `$lib/components/ui/...`) with
+Paperclip's classes; the `src/lib/ui` kit is built on them with its props
+unchanged. `#/dev/components` (dev builds only) shows all of them. The
+legacy names from the Coolify port (`bg-app`, `text-fg-dim`, `button`,
+`input`, `menu-item`, …) are kept, defined from the new tokens, and removed
+as pages are restyled. The theme is `localStorage.theme` (`dark`, `light` or
 `system`, dark by default): `index.html` applies it before first paint and
-`src/lib/theme.svelte.ts` (`setTheme()`) keeps it in step. `src/app.css` is
-the legacy layer for pages not yet ported: plain CSS in Tailwind's base layer
-whose variables point at the new tokens; it shrinks as pages are ported.
+`src/lib/theme.svelte.ts` keeps it in step. `src/app.css` is the legacy layer
+for pages not yet ported: plain CSS in Tailwind's base layer whose variables
+point at the new tokens; it shrinks as pages are ported.

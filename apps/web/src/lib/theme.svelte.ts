@@ -15,8 +15,11 @@ function stored(): Theme {
 
 function apply(theme: Theme) {
   const dark = theme === 'dark' || (theme === 'system' && prefersDark.matches)
-  document.documentElement.classList.toggle('dark', dark)
-  document.querySelector('meta[name=theme-color]')?.setAttribute('content', dark ? '#101010' : '#ffffff')
+  const root = document.documentElement
+  root.classList.toggle('dark', dark)
+  // As Paperclip's ThemeContext: native controls and the browser bar follow.
+  root.style.colorScheme = dark ? 'dark' : 'light'
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', dark ? '#18181b' : '#ffffff')
 }
 
 class ThemeState {

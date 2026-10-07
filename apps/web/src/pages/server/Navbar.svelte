@@ -83,7 +83,7 @@
                 <span class={['size-1.5 shrink-0 rounded-full', isFunctional(option) ? 'bg-success' : 'bg-error']}></span>
                 <span class="min-w-0 flex-1 truncate">{option.name}</span>
                 {#if option.id === server.id}
-                  <Icon name="check-circle" class="size-3.5 shrink-0 text-coollabs dark:text-warning" />
+                  <Icon name="check-circle" class="size-3.5 shrink-0 text-coollabs" />
                 {/if}
               </a>
             {/each}

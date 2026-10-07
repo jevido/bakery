@@ -1,256 +1,410 @@
 /*
- * The Bakery's design tokens and shared utilities, ported from Coolify v4.3.23
- * (resources/css/app.css and resources/css/utilities.css, Apache-2.0; see NOTICE).
- * Token and utility names are kept unchanged so ported markup can copy its class
- * lists as they are. Left out: apexcharts, the custom-color theme, the terminal
- * and Monaco styles, and tailwind-scrollbar.
+ * The Bakery's design tokens: Paperclip's token layer (ui/src/index.css, MIT;
+ * see NOTICE), its semantic tier only. The domain tiers (agent gradients,
+ * chips, annotations, markdown, task chat) come with the pages that use them.
+ * The shadcn components in src/lib/components/ui read these tokens.
+ *
+ * Below the tokens sit the legacy names (token and utility names from the
+ * Coolify port) that pages not yet restyled still use, now defined from
+ * Paperclip's tokens so those pages read in its colors.
  */
 @import "tailwindcss";
 
+/* Styles the native form controls the legacy pages still use (and their
+   select chevron). The shadcn controls set the same properties as utilities,
+   which win over this base-layer reset. */
 @plugin '@tailwindcss/forms';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-@theme {
-  /* fontsource names the variable fonts "Geist Variable" and "Geist Mono Variable". */
-  --font-sans: "Geist Variable", "Geist Sans", Inter, sans-serif;
+@theme inline {
+  --font-sans:
+    "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono:
-    "Geist Mono Variable", "Geist Mono", "SFMono-Regular", Consolas,
-    "Liberation Mono", Menlo, monospace;
-  --font-geist-sans: "Geist Variable", "Geist Sans", Inter, sans-serif;
-  --font-logs:
-    "Geist Mono Variable", "Geist Mono", "SFMono-Regular", Consolas,
-    "Liberation Mono", Menlo, monospace;
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  /* The Bakery's status colors, beside Paperclip's destructive. */
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  /* Paperclip's multiplicative radius ladder on the one --radius knob. */
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --font-heading: var(--font-sans);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
 
-  --color-base: oklch(17.3% 0 0);
-  --color-warning: oklch(88.13% 0.1507 91.7);
-  --color-warning-50: oklch(98.73% 0.0262 102.21);
-  --color-warning-100: oklch(97.29% 0.0693 103.19);
-  --color-warning-200: oklch(94.51% 0.1243 101.54);
-  --color-warning-300: oklch(90.52% 0.1657 98.11);
-  --color-warning-400: oklch(88.13% 0.1507 91.7);
-  --color-warning-500: oklch(86.06% 0.1731 91.94);
-  --color-warning-600: oklch(68.06% 0.1423 75.83);
-  --color-warning-700: oklch(55.38% 0.1207 66.44);
-  --color-warning-800: oklch(47.62% 0.1034 61.91);
-  --color-warning-900: oklch(42.1% 0.0897 57.71);
-  --color-success: oklch(72.27% 0.192 149.58);
-  --color-error: oklch(57.71% 0.2152 27.33);
-  /* The purple accent's scale. Only the token names come from Coolify's brand;
-     button-highlighted and the light-mode accent use them. */
-  --color-coollabs-50: oklch(96.33% 0.0206 301.15);
-  --color-coollabs: oklch(49.65% 0.2709 289.33);
-  --color-coollabs-100: oklch(52.34% 0.287 289.16);
-  --color-coollabs-200: oklch(43.76% 0.2369 289.82);
-  --color-coollabs-300: oklch(38.04% 0.2031 290.47);
-  --color-coolgray-100: oklch(20.9% 0 0);
-  --color-coolgray-200: oklch(24.35% 0 0);
-  --color-coolgray-300: oklch(26.03% 0 0);
-  --color-coolgray-400: oklch(27.68% 0 0);
-  --color-coolgray-500: oklch(31.71% 0 0);
+:root {
+  color-scheme: light;
+  --radius: 0.5rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --scrollbar-thumb: oklch(0.7 0 0);
+  --scrollbar-thumb-hover: oklch(0.6 0 0);
+  --scrollbar-size: 8px;
+  --scrollbar-radius: 999px;
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.88 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+  /* Status colors are mostly text in light mode, so they are dark enough to
+     clear WCAG AA on white. */
+  --success: oklch(48% 0.135 149.58);
+  --warning: oklch(50% 0.105 80);
+  --error: var(--destructive);
 
-  /* Graphite surfaces: content canvas, then sidebar/topbar chrome a step lighter. */
-  --color-app: oklch(14.48% 0 0);
-  --color-panel: oklch(19.13% 0 0);
-  --color-surface: oklch(20.02% 0 0);
-  --color-raised: oklch(22.64% 0 0);
-  --color-selected: oklch(26.86% 0 0);
-  --color-fg: oklch(96.12% 0 0);
-  --color-fg-dim: oklch(76.99% 0 0);
-  --color-fg-faint: oklch(59.31% 0 0);
-  --color-accent: oklch(49.65% 0.2709 289.33);
-  --color-accent-foreground: oklch(100% 0 0);
-  --color-hairline: oklch(100% 0 0 / 0.08);
-  --color-nav-text: oklch(43.86% 0 0);
-  --color-nav-muted: oklch(51.03% 0 0);
-  --color-nav-active: oklch(20.46% 0 0);
-  --color-log: oklch(15.91% 0 0);
+  /* Paperclip's named type ladder and the tokens its components use in
+     place of arbitrary values (ui/src/index.css, extracted-token blocks). */
+  --text-nano: 10px;
+  --text-micro: 11px;
+  --text-compact: 13px;
+  --tracking-label: 0.08em;
+  --tracking-eyebrow: 0.14em;
+  --tracking-caps: 0.2em;
+  --sz-3px: 3px;
+  --sz-60px: 60px;
+  --sz-220px: 220px;
+  --sz-300px: 300px;
+  --sz-8rem: 8rem;
+  --sz-neg-5px: -5px;
+  --sz-calc-25: calc(100% - 2rem);
+  --sz-calc-26: max(1rem, env(safe-area-inset-top));
+  --sz-calc-27: calc(100% - 1px);
+  --sz-calc-28: calc(-50% - 2px);
+  --rad-2: 2px;
+  --rad-3: 3px;
+  --rad-4: 4px;
+  --pct-50: 50%;
+  --pct-neg-50: -50%;
+  --gtc-17: 1fr auto;
+  --gtr-1: auto auto;
+  --status-task-done: #22c55e;
+  --tp-color-box-shadow: color, box-shadow;
+  --tp-color-background-color-border-color-box-shadow-opacity:
+    color, background-color, border-color, box-shadow, opacity;
+  --tp-color-background-color-border-color-box-shadow:
+    color, background-color, border-color, box-shadow;
+  --tp-border-color-background-color: border-color, background-color;
+  --tp-transform-opacity: transform, opacity;
+  --tp-width: width;
+  --e-cubic-bezier-0_16-1-0_3-1: cubic-bezier(0.16, 1, 0.3, 1);
+}
 
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.205 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.637 0.237 25.331);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --scrollbar-thumb: oklch(0.4 0 0);
+  --scrollbar-thumb-hover: oklch(0.5 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.32 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+  --success: oklch(72.27% 0.192 149.58);
+  --warning: oklch(88.13% 0.1507 91.7);
+  --error: var(--destructive);
+}
+
+/* Paperclip's sidebar surface (the row action fade reads it). */
+.primary-sidebar-surface {
+  --sidebar-action-rest-surface: color-mix(in srgb, var(--border) 50%, var(--background));
+  background-color: var(--sidebar-action-rest-surface);
+}
+
+.dark .primary-sidebar-surface {
+  --sidebar-action-rest-surface: var(--muted);
+}
+
+/* Paperclip's scrollbars: thin dark ones in dark mode, and the auto-hide
+   variant whose thumb shows only on hover. */
+.dark *::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+.dark *::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+.dark *::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+.dark *::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.scrollbar-auto-hide {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.scrollbar-auto-hide::-webkit-scrollbar {
+  width: var(--scrollbar-size) !important;
+  height: var(--scrollbar-size) !important;
+  background: transparent !important;
+}
+
+.scrollbar-auto-hide::-webkit-scrollbar-track,
+.scrollbar-auto-hide::-webkit-scrollbar-thumb {
+  background: transparent !important;
+}
+
+.scrollbar-auto-hide:hover {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.scrollbar-auto-hide:hover::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb) !important;
+  border-radius: var(--scrollbar-radius) !important;
+}
+
+.scrollbar-auto-hide:hover::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover) !important;
+}
+
+@layer base {
+  /* Paperclip's autofill: Chrome's blue fill repainted in the app's colors. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-text-fill-color: var(--foreground);
+    caret-color: var(--foreground);
+    box-shadow: inset 0 0 0 1000px var(--muted);
+    transition: background-color 100000s ease-in-out 0s;
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    -webkit-tap-highlight-color: color-mix(in oklab, var(--foreground) 20%, transparent);
+    @apply min-h-full w-full font-sans;
+  }
+
+  body {
+    min-height: 100dvh;
+    @apply w-full overflow-x-clip bg-background text-sm text-foreground antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  a,
+  button,
+  [role="button"],
+  input,
+  select,
+  textarea,
+  label {
+    touch-action: manipulation;
+  }
+
+  option {
+    @apply bg-popover text-popover-foreground;
+  }
+
+  /* The heading sizes the pages not yet restyled were laid out with. */
+  h1 {
+    @apply text-[24px] leading-7 font-semibold tracking-tight text-foreground;
+  }
+
+  h2 {
+    @apply text-xl font-bold text-foreground;
+  }
+
+  h3 {
+    @apply text-lg font-bold text-foreground;
+  }
+
+  h4 {
+    @apply text-base font-bold text-foreground;
+  }
+
+  a {
+    @apply hover:text-foreground;
+  }
+
+  button:focus-visible,
+  a:focus-visible {
+    @apply ring-[3px] ring-ring/50 outline-none;
+  }
+
+  label {
+    @apply text-muted-foreground;
+  }
+}
+
+/*
+ * Legacy names, removed as pages are restyled. Every value comes from the
+ * tokens above: surfaces from background/card/muted, text from
+ * foreground/muted-foreground, the old accent from primary.
+ */
+@theme {
   --shadow-modal:
-    0 24px 64px rgba(0, 0, 0, 0.55), 0 4px 16px rgba(0, 0, 0, 0.4);
+    0 24px 64px rgb(0 0 0 / 0.55), 0 4px 16px rgb(0 0 0 / 0.4);
   --shadow-dropdown: 0 4px 12px rgb(0 0 0 / 0.12), 0 2px 4px rgb(0 0 0 / 0.08);
 
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --font-logs: var(--font-mono);
 }
 
-/* Layered card surfaces (light), then the dark overrides: yellow accent,
-   brighter nav and faint text, and a red that reads on graphite. */
+@theme inline {
+  --color-app: var(--background);
+  --color-panel: var(--sidebar);
+  --color-surface: var(--card);
+  --color-raised: var(--muted);
+  --color-selected: var(--accent);
+  --color-fg: var(--foreground);
+  --color-fg-dim: color-mix(in oklab, var(--foreground) 80%, var(--muted-foreground));
+  --color-fg-faint: var(--muted-foreground);
+  --color-hairline: var(--border);
+  --color-nav-text: var(--muted-foreground);
+  --color-nav-muted: var(--muted-foreground);
+  --color-nav-active: var(--foreground);
+  --color-log: var(--card);
+  --color-coollabs: var(--primary);
+  --color-coollabs-50: var(--accent);
+  --color-coollabs-100: var(--primary);
+  --color-coollabs-200: var(--primary);
+  --color-coollabs-300: var(--primary);
+  --color-coolgray-100: var(--card);
+  --color-coolgray-200: var(--muted);
+  --color-coolgray-300: var(--accent);
+  --color-coolgray-400: var(--input);
+  --color-coolgray-500: var(--ring);
+  --color-warning-50: color-mix(in oklab, var(--warning) 8%, var(--background));
+  --color-warning-100: color-mix(in oklab, var(--warning) 15%, var(--background));
+  --color-warning-200: color-mix(in oklab, var(--warning) 30%, var(--background));
+  --color-warning-300: color-mix(in oklab, var(--warning) 50%, var(--background));
+  --color-warning-400: var(--warning);
+  --color-warning-500: var(--warning);
+  --color-warning-600: color-mix(in oklab, var(--warning) 80%, black);
+  --color-warning-700: color-mix(in oklab, var(--warning) 65%, black);
+  --color-warning-800: color-mix(in oklab, var(--warning) 55%, black);
+  --color-warning-900: color-mix(in oklab, var(--warning) 45%, black);
+}
+
 :root {
-  --coollabs-canvas: oklch(97% 0 0);
-  --coollabs-elevated: oklch(98% 0 0);
-  --coollabs-recessed: oklch(96% 0 0);
-  --coollabs-base: oklch(100% 0 0);
-  --coollabs-fill: oklch(92.2% 0 0);
-  --coollabs-line: oklch(14.5% 0 0 / 0.1);
-  --coollabs-hairline: oklch(85.5% 0 0);
-  --coollabs-subtle: oklch(50% 0 0);
+  --coollabs-canvas: var(--background);
+  --coollabs-elevated: var(--card);
+  --coollabs-recessed: var(--background);
+  --coollabs-base: var(--card);
+  --coollabs-fill: var(--accent);
+  --coollabs-line: var(--border);
+  --coollabs-hairline: var(--border);
+  --coollabs-subtle: var(--muted-foreground);
 }
 
-.dark {
-  --color-accent: oklch(88.13% 0.1507 91.7);
-  --coollabs-canvas: oklch(14.48% 0 0);
-  --coollabs-elevated: oklch(20.02% 0 0);
-  --coollabs-recessed: oklch(25.2% 0 0);
-  --coollabs-base: oklch(22.64% 0 0);
-  --coollabs-fill: oklch(29.31% 0 0);
-  --coollabs-line: oklch(32% 0 0);
-  --coollabs-hairline: oklch(32% 0 0);
-  --coollabs-subtle: oklch(70.8% 0 0);
-  --color-nav-text: oklch(73.8% 0 0);
-  --color-nav-muted: oklch(61% 0 0);
-  --color-nav-active: oklch(96.12% 0 0);
-  --color-fg-faint: oklch(65% 0 0);
-  --color-error: oklch(66% 0.2 27.33);
-}
-
-/* In light mode warning/success/error are mostly text, so they get darker
-   values that clear WCAG AA on white. */
-html:not(.dark) {
-  --color-warning: oklch(50% 0.105 80);
-  --color-success: oklch(48% 0.135 149.58);
-  --color-error: oklch(52% 0.2 27.33);
-}
-
-@layer base {
-  html {
-    color-scheme: light;
-  }
-
-  html.dark {
-    color-scheme: dark;
-  }
-
-  /* Tailwind v4 borders default to currentcolor; Coolify keeps v3's gray. */
-  *,
-  ::after,
-  ::before,
-  ::backdrop,
-  ::file-selector-button {
-    border-color: var(--color-coolgray-200, currentcolor);
-  }
-
-  html,
-  body {
-    @apply min-h-full w-full bg-neutral-50 dark:bg-app dark:text-fg-dim;
-  }
-
-  body {
-    min-height: 100dvh;
-    @apply overflow-x-clip font-sans text-sm antialiased;
-  }
-
-  option {
-    @apply dark:bg-coolgray-100 dark:text-white;
-  }
-
-  /* Coolify keeps these element rules unlayered; here they sit in the base
-     layer so utilities in ported markup win without a fight. Its table rules
-     wait for the first ported table, so the legacy tables keep their layout. */
-  h1 {
-    @apply text-[24px] leading-7 font-semibold tracking-tight dark:text-white;
-  }
-
-  h2 {
-    @apply text-xl font-bold dark:text-white;
-  }
-
-  h3 {
-    @apply text-lg font-bold dark:text-white;
-  }
-
-  h4 {
-    @apply text-base font-bold dark:text-white;
-  }
-
-  a {
-    @apply hover:text-black dark:hover:text-white;
-  }
-
-  button:focus-visible,
-  a:focus-visible {
-    @apply ring-2 ring-coollabs ring-offset-2 outline-none dark:ring-1 dark:ring-warning dark:ring-offset-coolgray-100;
-  }
-
-  label {
-    @apply dark:text-neutral-400;
-  }
-}
-
-/* Standard buttons have a compact physical edge: hover lifts the face 1px,
-   pressing pushes it down while the depth disappears. */
-.button:not(:disabled) {
-  --button-depth-color: rgb(0 0 0 / 0.22);
-  --button-depth: 0 2px 0 var(--button-depth-color);
-  --button-depth-hover: 0 3px 0 var(--button-depth-color);
-
-  box-shadow: var(--button-depth);
-}
-
-.button.button-highlighted:not(:disabled) {
-  --button-depth-color: color-mix(in oklab, var(--color-coollabs) 52%, black);
-}
-
-.dark .button:not(.button-highlighted):not(.button-error):not(:disabled) {
-  --button-depth-color: rgb(255 255 255 / 0.08);
-}
-
-.button.button-error:not(:disabled) {
-  --button-depth-color: var(--color-red-300);
-}
-
-.dark .button.button-error:not(:disabled) {
-  --button-depth-color: var(--color-red-800);
-}
-
-.button:not(:disabled):focus-visible {
-  box-shadow:
-    var(--button-depth),
-    0 0 0 1px var(--color-accent);
-}
-
-.button:not(:disabled):hover {
-  transform: translateY(-1px);
-  box-shadow: var(--button-depth-hover);
-}
-
-.button:not(:disabled):hover:focus-visible {
-  box-shadow:
-    var(--button-depth-hover),
-    0 0 0 1px var(--color-accent);
-}
-
+/* `button` is Paperclip's outline button, `button-highlighted` its default
+   and `button-error` its destructive one (ui/src/components/ui/button.tsx). */
 .button,
 .icon-button,
 .app-tab {
-  transition-property:
-    color, background-color, border-color, box-shadow, transform;
+  transition-property: color, background-color, border-color, box-shadow, opacity;
   transition-timing-function: var(--ease-out);
   transition-duration: 120ms;
-}
-
-.button {
-  transition-duration: 120ms, 120ms, 120ms, 80ms, 80ms;
-}
-
-.icon-button:not(:disabled):active,
-.app-tab:active {
-  transform: scale(0.97);
-}
-
-.button:not(:disabled):active {
-  transform: translateY(2px);
-  box-shadow: none;
-}
-
-.button.button-error,
-.button.button-error:disabled {
-  @apply border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300;
-}
-
-.button-error:not(:disabled) {
-  @apply hover:bg-red-100 hover:text-red-900 dark:hover:bg-red-700 dark:hover:text-white;
 }
 
 /* Reserve space for a visibility toggle or copy button inside an input. */
@@ -269,79 +423,65 @@ html:not(.dark) {
 }
 
 @utility input-focus {
-  @apply focus-visible:ring-2 focus-visible:ring-coollabs focus-visible:ring-offset-2 focus-visible:outline-none dark:focus-visible:ring-warning dark:focus-visible:ring-offset-base;
+  @apply focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none;
 }
 
 @utility input-select {
-  @apply block h-8 w-full rounded-md border border-neutral-200 bg-[var(--coollabs-recessed)] px-3 py-1.5 text-sm text-black transition-colors disabled:bg-neutral-100 disabled:text-neutral-400 dark:border-white/[0.08] dark:text-fg dark:disabled:bg-white/[0.03] dark:disabled:text-fg-faint;
-  box-shadow: none;
+  @apply block h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base text-foreground shadow-xs transition-[color,box-shadow] outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30;
 }
 
 @utility input {
-  @apply placeholder:text-neutral-400 read-only:bg-neutral-200 read-only:text-neutral-500 dark:placeholder:text-neutral-500 dark:read-only:bg-coolgray-100/40 dark:read-only:text-neutral-500;
   @apply input-select;
-  @apply focus-visible:outline-none;
-
-  &:focus-visible {
-    border-color: var(--color-accent);
-    box-shadow: none;
-  }
-
-  &:read-only {
-    box-shadow: none;
-  }
+  @apply placeholder:text-muted-foreground read-only:bg-muted read-only:text-muted-foreground;
+  @apply focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none;
+  @apply aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40;
 }
 
 @utility select {
   @apply w-full;
   @apply input-select;
-  @apply focus-visible:outline-none;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='%23000000'%3e%3cpath stroke-linecap='round' stroke-linejoin='round' d='M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9'/%3e%3c/svg%3e");
-  background-position: right 0.5rem center;
+  @apply focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='%23737373'%3e%3cpath stroke-linecap='round' stroke-linejoin='round' d='m6 9 6 6 6-6'/%3e%3c/svg%3e");
+  background-position: right 0.75rem center;
   background-repeat: no-repeat;
   background-size: 1rem 1rem;
   padding-right: 2.5rem;
-
-  &:where(.dark, .dark *) {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='%23ffffff'%3e%3cpath stroke-linecap='round' stroke-linejoin='round' d='M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9'/%3e%3c/svg%3e");
-  }
-
-  &:focus-visible {
-    border-color: var(--color-accent);
-    box-shadow: none;
-  }
 }
 
 @utility button {
-  @apply inline-flex h-8 min-h-8 min-w-fit shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 text-[13px] font-medium whitespace-nowrap text-black capitalize outline-0 transition-colors hover:bg-neutral-100 hover:text-black focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:border-neutral-200 disabled:bg-transparent disabled:text-neutral-300 disabled:hover:bg-transparent dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-fg dark:hover:bg-white/[0.1] dark:hover:text-fg dark:disabled:border-white/[0.06] dark:disabled:text-fg-faint;
+  @apply inline-flex h-9 min-w-fit shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium whitespace-nowrap text-foreground shadow-xs outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:border-input dark:bg-input/30 dark:hover:bg-input/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4;
 }
 
 @utility button-highlighted {
-  @apply border-coollabs-200 bg-linear-to-b from-coollabs-100 to-coollabs-200 text-accent-foreground! hover:from-coollabs-100 hover:to-coollabs hover:text-accent-foreground!;
+  @apply border-transparent bg-primary text-primary-foreground shadow-none hover:bg-primary/90 hover:text-primary-foreground dark:border-transparent dark:bg-primary dark:hover:bg-primary/90;
+}
+
+@utility button-error {
+  @apply border-transparent bg-destructive text-white shadow-none hover:bg-destructive/90 hover:text-white focus-visible:ring-destructive/20 dark:border-transparent dark:bg-destructive/60 dark:hover:bg-destructive/50 dark:focus-visible:ring-destructive/40;
 }
 
 @utility control-selected {
-  @apply bg-linear-to-b from-coollabs-100 to-coollabs-200 text-white;
+  @apply bg-primary text-primary-foreground;
 }
 
 @utility view-toggle {
-  @apply flex h-8 items-center rounded-lg border border-neutral-200 bg-white dark:border-white/[0.08] dark:bg-white/[0.06];
+  @apply flex h-9 items-center rounded-md border bg-background shadow-xs dark:border-input dark:bg-input/30;
 }
 
 @utility loading-indicator {
-  @apply text-coollabs dark:text-warning;
+  @apply text-muted-foreground;
 }
 
 @utility icon-button {
-  @apply inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-transparent text-neutral-400 outline-0 transition-colors hover:bg-neutral-100 hover:text-black focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-none disabled:pointer-events-none disabled:opacity-35 dark:text-fg-faint dark:hover:bg-white/[0.07] dark:hover:text-fg;
+  @apply inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-transparent text-muted-foreground outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-accent/50;
 }
 
 @utility app-tab {
-  @apply inline-flex h-7 items-center gap-1 rounded-md px-2.5 text-[13px] font-medium text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-dim dark:hover:bg-white/[0.05] dark:hover:text-fg;
+  @apply inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground;
 }
 
 @utility app-tab-active {
-  @apply bg-coollabs/10 text-coollabs shadow-sm ring-1 ring-coollabs/25 hover:bg-coollabs/15 dark:bg-warning/15 dark:text-warning dark:ring-warning/25 dark:hover:bg-warning/20;
+  @apply bg-accent text-foreground hover:bg-accent;
 }
 
 @utility alert-success {
@@ -349,15 +489,15 @@ html:not(.dark) {
 }
 
 @utility alert-error {
-  @apply flex items-center gap-2 text-error;
+  @apply flex items-center gap-2 text-destructive;
 }
 
 @utility user-menu-item {
-  @apply flex h-8 w-full cursor-pointer items-center gap-2.5 px-3 text-[13px] font-medium text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-dim dark:hover:bg-white/[0.06] dark:hover:text-fg;
+  @apply flex h-8 w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground;
 }
 
 @utility dropdown-item {
-  @apply relative flex w-full cursor-pointer items-center justify-start gap-2 py-1 pr-4 pl-2 text-xs transition-colors outline-none select-none hover:bg-neutral-100 focus-visible:bg-neutral-100 data-disabled:pointer-events-none data-disabled:opacity-50 dark:text-white dark:hover:bg-coollabs dark:focus-visible:bg-coollabs;
+  @apply relative flex w-full cursor-pointer items-center justify-start gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50;
 }
 
 @utility dropdown-item-touch {
@@ -365,11 +505,11 @@ html:not(.dark) {
 }
 
 @utility badge {
-  @apply inline-block h-3 w-3 rounded-full border border-neutral-200 text-xs leading-none font-bold dark:border-black;
+  @apply inline-block h-3 w-3 rounded-full border border-background text-xs leading-none font-bold;
 }
 
 @utility badge-dashboard {
-  @apply absolute top-1 right-1 h-2.5 w-2.5 rounded-full border border-neutral-200 text-xs leading-none font-bold dark:border-black;
+  @apply absolute top-1 right-1 h-2.5 w-2.5 rounded-full border border-background text-xs leading-none font-bold;
 }
 
 @utility badge-success {
@@ -381,7 +521,7 @@ html:not(.dark) {
 }
 
 @utility badge-error {
-  @apply bg-error;
+  @apply bg-destructive;
 }
 
 @utility menu {
@@ -389,11 +529,11 @@ html:not(.dark) {
 }
 
 @utility menu-item {
-  @apply relative flex h-8 w-full min-w-0 items-center gap-2.5 truncate rounded-md px-2.5 text-[13px] font-medium text-nav-text transition-colors hover:bg-black/[0.04] hover:text-nav-active dark:hover:bg-white/[0.05];
+  @apply relative flex h-8 w-full min-w-0 items-center gap-2.5 truncate rounded-md px-3 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground;
 }
 
 @utility menu-item-icon {
-  @apply size-[18px] shrink-0 opacity-90;
+  @apply size-4 shrink-0;
 }
 
 @utility menu-item-label {
@@ -401,19 +541,19 @@ html:not(.dark) {
 }
 
 @utility menu-item-active {
-  @apply overflow-hidden rounded-md bg-black/[0.05] text-nav-active hover:bg-black/[0.05] dark:bg-white/[0.06] dark:hover:bg-white/[0.06];
+  @apply bg-accent text-foreground hover:bg-accent;
 }
 
 @utility nav-section {
-  @apply px-2.5 pt-1 pb-1 text-[11px] font-medium text-nav-muted select-none;
+  @apply px-3 py-1.5 text-[10px] font-medium tracking-widest text-muted-foreground/60 uppercase select-none;
 }
 
 @utility menu-subitem {
-  @apply relative flex h-8 w-full min-w-0 items-center gap-2.5 rounded-md pr-2.5 pl-3 text-[13px] font-medium text-nav-text transition-colors hover:bg-black/[0.04] hover:text-nav-active dark:hover:bg-white/[0.05];
+  @apply relative flex h-8 w-full min-w-0 items-center gap-2.5 rounded-md pr-3 pl-3 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground;
 }
 
 @utility menu-subitem-active {
-  @apply rounded-md bg-black/[0.05] text-nav-active hover:bg-black/[0.05] dark:bg-white/[0.06] dark:hover:bg-white/[0.06];
+  @apply bg-accent text-foreground hover:bg-accent;
 }
 
 @utility sub-menu-wrapper {
@@ -421,51 +561,51 @@ html:not(.dark) {
 }
 
 @utility sub-menu-item {
-  @apply relative flex h-8 w-full min-w-0 items-center gap-2 truncate rounded-none px-2.5 text-[13px] font-medium text-nav-text transition-colors hover:bg-neutral-100 hover:text-nav-active dark:hover:bg-white/[0.05];
+  @apply relative flex h-8 w-full min-w-0 items-center gap-2 truncate rounded-md px-3 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground;
 }
 
 @utility icon {
-  @apply h-6 w-6 dark:hover:text-white;
+  @apply h-6 w-6 hover:text-foreground;
 }
 
 @utility navbar-main {
-  @apply flex h-fit flex-col justify-items-start gap-4 border-b border-solid border-neutral-200 pb-3 text-neutral-700 sm:justify-between md:flex-row md:items-center dark:border-white/[0.06] dark:text-fg-dim;
+  @apply flex h-fit flex-col justify-items-start gap-4 border-b pb-3 text-muted-foreground sm:justify-between md:flex-row md:items-center;
 }
 
 @utility loading {
-  @apply w-4 text-coollabs dark:text-warning;
+  @apply w-4 text-muted-foreground;
 }
 
 @utility box {
-  @apply relative flex min-h-[4rem] cursor-pointer flex-col rounded-md border border-neutral-200 bg-white p-3 text-black transition-colors hover:bg-neutral-50 hover:text-black hover:no-underline lg:flex-row dark:border-white/[0.06] dark:bg-surface dark:text-fg dark:hover:border-white/[0.1] dark:hover:bg-raised dark:hover:text-fg;
+  @apply relative flex min-h-[4rem] cursor-pointer flex-col rounded-xl border bg-card p-3 text-card-foreground transition-colors hover:bg-accent/50 hover:text-card-foreground hover:no-underline lg:flex-row;
 }
 
 @utility coolbox {
-  @apply relative flex min-h-[4.5rem] cursor-pointer items-center rounded-2xl border border-neutral-200 bg-white p-4 transition-all duration-150 hover:border-neutral-300 hover:shadow-[0_4px_16px_rgba(0,0,0,0.35)] dark:border-white/[0.06] dark:bg-surface dark:hover:border-white/[0.12] dark:hover:bg-raised;
+  @apply relative flex min-h-[4.5rem] cursor-pointer items-center rounded-xl border bg-card p-4 text-card-foreground transition-colors hover:bg-accent/50;
 }
 
 @utility box-title {
-  @apply font-semibold text-black dark:text-white dark:group-hover:text-white;
+  @apply font-semibold text-foreground;
 }
 
 @utility box-description {
-  @apply text-xs font-medium text-neutral-500 group-hover:text-black dark:text-fg-faint dark:group-hover:text-fg-dim;
+  @apply text-xs font-medium text-muted-foreground;
 }
 
 @utility description {
-  @apply text-xs font-bold text-neutral-500 group-hover:text-black dark:group-hover:text-white;
+  @apply text-xs font-medium text-muted-foreground;
 }
 
 @utility text-helper {
-  @apply inline-block font-semibold text-coollabs dark:text-warning;
+  @apply inline-block font-semibold text-foreground;
 }
 
 @utility info-helper {
-  @apply cursor-pointer text-neutral-400 transition-colors hover:text-neutral-600 dark:text-fg-faint dark:hover:text-fg-dim;
+  @apply cursor-pointer text-muted-foreground transition-colors hover:text-foreground;
 }
 
 @utility info-helper-popup {
-  @apply rounded-lg border border-neutral-200 bg-white break-words whitespace-normal text-neutral-600 shadow-dropdown dark:border-white/10 dark:bg-raised dark:text-fg-dim;
+  @apply rounded-md border bg-popover break-words whitespace-normal text-popover-foreground shadow-md;
 }
 
 @utility title {
@@ -477,17 +617,13 @@ html:not(.dark) {
 }
 
 @utility surface-popover {
-  background: var(--coollabs-elevated);
-  box-shadow:
-    0 0 0 1px var(--coollabs-line),
-    var(--shadow-dropdown);
+  @apply border bg-popover text-popover-foreground shadow-md;
 }
 
 @utility log-highlight {
-  @apply bg-warning/40 dark:bg-warning/30;
+  @apply bg-warning/30;
 }
 
-/* Log level color classes */
 @utility log-error {
   @apply bg-red-500/10 dark:bg-red-500/15;
 }
@@ -587,45 +723,6 @@ html:not(.dark) {
 .menu-item-active .menu-item-icon {
   opacity: 1;
 }
-
-/* Coolify's button edge: a compact depth shadow under every enabled button,
-   purple-tinted on highlighted ones and red on error ones. */
-.button:not(:disabled) {
-  --button-depth-color: rgb(0 0 0 / 0.22);
-  --button-depth: 0 2px 0 var(--button-depth-color);
-  box-shadow: var(--button-depth);
-}
-
-.button.button-highlighted:not(:disabled) {
-  --button-depth-color: color-mix(in oklab, var(--color-coollabs) 52%, black);
-}
-
-.dark .button:not(.button-highlighted):not(.button-error):not(:disabled) {
-  --button-depth-color: rgb(255 255 255 / 0.08);
-}
-
-.button.button-error:not(:disabled) {
-  --button-depth-color: var(--color-red-300);
-}
-
-.dark .button.button-error:not(:disabled) {
-  --button-depth-color: var(--color-red-800);
-}
-
-.button:not(:disabled):focus-visible {
-  box-shadow:
-    var(--button-depth),
-    0 0 0 1px var(--color-accent);
-}
-
-.button.button-error {
-  @apply border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300;
-}
-
-.button-error:not(:disabled) {
-  @apply hover:bg-red-100 hover:text-red-900 dark:hover:bg-red-700 dark:hover:text-white;
-}
-
 /* Coolify's layer card: an elevated shell with a hairline ring, a compact
    header strip and a nested body. Modals reuse it. */
 .application-settings-section {
@@ -767,7 +864,7 @@ html:not(.dark) {
   inset: 0;
   z-index: 5;
   border-radius: inherit;
-  border: 0.5px solid var(--color-accent);
+  border: 0.5px solid var(--color-primary);
   pointer-events: none;
   animation: application-settings-section-highlight 500ms ease-out forwards;
 }
@@ -820,7 +917,7 @@ html:not(.dark) {
 
 .listbox-trigger:focus-visible {
   outline: none;
-  border-color: var(--color-accent);
+  border-color: var(--color-primary);
   box-shadow: none;
 }
 
@@ -919,7 +1016,7 @@ html:not(.dark) {
 }
 
 .auth-text-link:hover {
-  color: var(--color-accent);
+  color: var(--color-primary);
   text-decoration: underline;
 }
 

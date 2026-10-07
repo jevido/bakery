@@ -3,5 +3,10 @@
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
-  ]
+  ],
+  // Read by the shadcn-svelte CLI to resolve its aliases; tsconfig.app.json
+  // holds the same paths for the type-check.
+  "compilerOptions": {
+    "paths": { "$lib": ["./src/lib"], "$lib/*": ["./src/lib/*"] }
+  }
 }

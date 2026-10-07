@@ -1,6 +1,7 @@
 <script lang="ts">
-  // Every component of lib/ui in its variants, for comparing with Coolify's
-  // Blade components in both themes. Dev builds only: the router answers
+  // Every component of the kit in each variant and size, for comparing with
+  // Paperclip's ui/src/components/ui in both themes: first the shadcn
+  // components in lib/components/ui, then lib/ui built on them. Dev builds only: the router answers
   // `notfound` for #/dev/components in production and App.svelte imports
   // this page behind the same check.
   import Button from '../../lib/ui/Button.svelte'
@@ -19,6 +20,34 @@
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
+  import { theme, type Theme } from '../../lib/theme.svelte'
+  import * as AlertDialog from '$lib/components/ui/alert-dialog'
+  import * as Avatar from '$lib/components/ui/avatar'
+  import { Badge } from '$lib/components/ui/badge'
+  import * as Breadcrumb from '$lib/components/ui/breadcrumb'
+  import { Button as UiButton, type ButtonSize, type ButtonVariant } from '$lib/components/ui/button'
+  import * as Card from '$lib/components/ui/card'
+  import { Checkbox as UiCheckbox } from '$lib/components/ui/checkbox'
+  import * as Collapsible from '$lib/components/ui/collapsible'
+  import * as Dialog from '$lib/components/ui/dialog'
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
+  import { Input as UiInput } from '$lib/components/ui/input'
+  import { Label } from '$lib/components/ui/label'
+  import * as Popover from '$lib/components/ui/popover'
+  import { ScrollArea } from '$lib/components/ui/scroll-area'
+  import * as UiSelect from '$lib/components/ui/select'
+  import { Separator } from '$lib/components/ui/separator'
+  import * as Sheet from '$lib/components/ui/sheet'
+  import { Skeleton } from '$lib/components/ui/skeleton'
+  import { Switch } from '$lib/components/ui/switch'
+  import * as Tabs from '$lib/components/ui/tabs'
+  import { Textarea as UiTextarea } from '$lib/components/ui/textarea'
+  import * as Tooltip from '$lib/components/ui/tooltip'
+  import { buttonVariants as uiButtonVariants } from '$lib/components/ui/button'
+  import { ChevronDown, Plus } from '@lucide/svelte'
+
+  // Triggers render their own element; they take the outline button's classes.
+  const buttonClass = uiButtonVariants({ variant: 'outline' })
 
   $effect(() => breadcrumb.set({ label: 'Components' }))
 
@@ -34,6 +63,15 @@
   let savedTitle = $state('My project')
   let draftTitle = $state('My project')
   let draftSaving = $state(false)
+
+  const buttonVariants: ButtonVariant[] = ['default', 'cta', 'destructive', 'outline', 'secondary', 'ghost', 'link']
+  const buttonSizes: ButtonSize[] = ['default', 'xs', 'sm', 'lg']
+  const iconSizes: ButtonSize[] = ['icon', 'icon-xs', 'icon-sm', 'icon-lg']
+  const badgeVariants = ['default', 'secondary', 'destructive', 'outline', 'ghost', 'link'] as const
+  const themes: Theme[] = ['dark', 'light', 'system']
+  let uiChecked = $state(true)
+  let switchOn = $state(true)
+  let selectValue = $state('nixpacks')
 
   function saveDraft() {
     draftSaving = true
@@ -55,9 +93,204 @@
 
 <div class="chrome mx-auto flex max-w-4xl flex-col gap-10 pb-20" data-testid="components-page">
   <div>
-    <h1 class="text-2xl font-semibold text-black dark:text-white">Components</h1>
-    <p class="mt-1 text-sm text-neutral-500 dark:text-fg-dim">Every component of the kit, in each of its variants.</p>
+    <h1 class="text-2xl font-semibold">Components</h1>
+    <p class="mt-1 text-sm text-muted-foreground">Every component of the kit, in each of its variants and sizes.</p>
   </div>
+
+  <section id="theme" class="flex items-center gap-2" data-testid="theme-switch">
+    <span class="text-sm text-muted-foreground">Theme</span>
+    {#each themes as value (value)}
+      <UiButton size="sm" variant={theme.current === value ? 'default' : 'outline'} onclick={() => theme.set(value)}>{value}</UiButton>
+    {/each}
+  </section>
+
+  <section id="ui-button" class="flex flex-col gap-3">
+    <SectionHeading title="ui/button" subtitle="variants, sizes and icon sizes" />
+    <div class="flex flex-wrap items-center gap-2">
+      {#each buttonVariants as variant (variant)}
+        <UiButton {variant}>{variant}</UiButton>
+      {/each}
+      <UiButton disabled>disabled</UiButton>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      {#each buttonSizes as size (size)}
+        <UiButton variant="outline" {size}><Plus />{size}</UiButton>
+      {/each}
+      {#each iconSizes as size (size)}
+        <UiButton variant="outline" {size} aria-label={size}><Plus /></UiButton>
+      {/each}
+    </div>
+  </section>
+
+  <section id="ui-badge" class="flex flex-col gap-3">
+    <SectionHeading title="ui/badge, ui/avatar, ui/skeleton, ui/separator" />
+    <div class="flex flex-wrap items-center gap-2">
+      {#each badgeVariants as variant (variant)}
+        <Badge {variant}>{variant}</Badge>
+      {/each}
+    </div>
+    <div class="flex items-center gap-3">
+      {#each ['xs', 'sm', 'default', 'lg'] as const as size (size)}
+        <Avatar.Root {size}><Avatar.Fallback>TB</Avatar.Fallback></Avatar.Root>
+      {/each}
+      <Separator orientation="vertical" class="h-6" />
+      <Skeleton class="h-4 w-32" />
+      <Skeleton class="size-8 rounded-full" />
+    </div>
+    <Separator />
+  </section>
+
+  <section id="ui-form" class="flex flex-col gap-3">
+    <SectionHeading title="ui/input, ui/textarea, ui/select, ui/checkbox, ui/switch, ui/label" />
+    <div class="grid gap-4 md:grid-cols-2">
+      <div class="flex flex-col gap-2">
+        <Label for="ui-input">Input</Label>
+        <UiInput id="ui-input" placeholder="whoami" />
+      </div>
+      <div class="flex flex-col gap-2">
+        <Label for="ui-input-invalid">Invalid</Label>
+        <UiInput id="ui-input-invalid" aria-invalid="true" value="bad value" />
+      </div>
+      <div class="flex flex-col gap-2">
+        <Label>Select</Label>
+        <UiSelect.Root type="single" bind:value={selectValue}>
+          <UiSelect.Trigger class="w-full">{selectValue}</UiSelect.Trigger>
+          <UiSelect.Content>
+            <UiSelect.Group>
+              <UiSelect.Label>Build Pack</UiSelect.Label>
+              {#each ['nixpacks', 'dockerfile', 'static'] as value (value)}
+                <UiSelect.Item {value} label={value} />
+              {/each}
+            </UiSelect.Group>
+          </UiSelect.Content>
+        </UiSelect.Root>
+      </div>
+      <div class="flex flex-col gap-2">
+        <Label for="ui-disabled">Disabled</Label>
+        <UiInput id="ui-disabled" disabled value="disabled" />
+      </div>
+    </div>
+    <UiTextarea placeholder="Textarea" />
+    <div class="flex flex-wrap items-center gap-6">
+      <div class="flex items-center gap-2"><UiCheckbox id="ui-check" bind:checked={uiChecked} /><Label for="ui-check">Checkbox</Label></div>
+      <div class="flex items-center gap-2"><UiCheckbox id="ui-check-off" /><Label for="ui-check-off">Unchecked</Label></div>
+      <div class="flex items-center gap-2"><Switch bind:checked={switchOn} /><span class="text-sm">Switch</span></div>
+      <div class="flex items-center gap-2"><Switch size="lg" checked={false} /><span class="text-sm">Switch lg</span></div>
+    </div>
+  </section>
+
+  <section id="ui-card" class="flex flex-col gap-3">
+    <SectionHeading title="ui/card, ui/tabs, ui/breadcrumb" />
+    <Card.Root>
+      <Card.Header>
+        <Card.Title>Card title</Card.Title>
+        <Card.Description>A card's description.</Card.Description>
+        <Card.Action><UiButton size="sm" variant="outline">Action</UiButton></Card.Action>
+      </Card.Header>
+      <Card.Content><p class="text-sm">Card content.</p></Card.Content>
+      <Card.Footer><UiButton size="sm">Save</UiButton></Card.Footer>
+    </Card.Root>
+    <Tabs.Root value="general">
+      <Tabs.List>
+        <Tabs.Trigger value="general">General</Tabs.Trigger>
+        <Tabs.Trigger value="members">Members</Tabs.Trigger>
+        <Tabs.Trigger value="roles">Roles</Tabs.Trigger>
+      </Tabs.List>
+      <Tabs.Content value="general" class="text-sm">General settings.</Tabs.Content>
+      <Tabs.Content value="members" class="text-sm">Members.</Tabs.Content>
+      <Tabs.Content value="roles" class="text-sm">Roles.</Tabs.Content>
+    </Tabs.Root>
+    <Tabs.Root value="one">
+      <Tabs.List variant="line">
+        <Tabs.Trigger value="one">Line</Tabs.Trigger>
+        <Tabs.Trigger value="two">Tabs</Tabs.Trigger>
+      </Tabs.List>
+    </Tabs.Root>
+    <Breadcrumb.Root>
+      <Breadcrumb.List>
+        <Breadcrumb.Item><Breadcrumb.Link href="#/">Projects</Breadcrumb.Link></Breadcrumb.Item>
+        <Breadcrumb.Separator />
+        <Breadcrumb.Item><Breadcrumb.Ellipsis /></Breadcrumb.Item>
+        <Breadcrumb.Separator />
+        <Breadcrumb.Item><Breadcrumb.Page>whoami</Breadcrumb.Page></Breadcrumb.Item>
+      </Breadcrumb.List>
+    </Breadcrumb.Root>
+  </section>
+
+  <section id="ui-overlays" class="flex flex-col gap-3">
+    <SectionHeading title="ui/dialog, ui/alert-dialog, ui/sheet, ui/dropdown-menu, ui/popover, ui/tooltip" />
+    <div class="flex flex-wrap items-center gap-2">
+      <Dialog.Root>
+        <Dialog.Trigger class={buttonClass}>Dialog</Dialog.Trigger>
+        <Dialog.Content>
+          <Dialog.Header>
+            <Dialog.Title>New Environment</Dialog.Title>
+            <Dialog.Description>Environments group resources.</Dialog.Description>
+          </Dialog.Header>
+          <UiInput placeholder="staging" />
+          <Dialog.Footer><UiButton>Continue</UiButton></Dialog.Footer>
+        </Dialog.Content>
+      </Dialog.Root>
+      <AlertDialog.Root>
+        <AlertDialog.Trigger class={buttonClass}>Alert dialog</AlertDialog.Trigger>
+        <AlertDialog.Content>
+          <AlertDialog.Header>
+            <AlertDialog.Title>Delete the guild?</AlertDialog.Title>
+            <AlertDialog.Description>This cannot be undone.</AlertDialog.Description>
+          </AlertDialog.Header>
+          <AlertDialog.Footer>
+            <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+            <AlertDialog.Action>Delete</AlertDialog.Action>
+          </AlertDialog.Footer>
+        </AlertDialog.Content>
+      </AlertDialog.Root>
+      <Sheet.Root>
+        <Sheet.Trigger class={buttonClass}>Sheet</Sheet.Trigger>
+        <Sheet.Content side="left">
+          <Sheet.Header>
+            <Sheet.Title>Navigation</Sheet.Title>
+            <Sheet.Description>The mobile drawer.</Sheet.Description>
+          </Sheet.Header>
+        </Sheet.Content>
+      </Sheet.Root>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger class={buttonClass}>Menu <ChevronDown /></DropdownMenu.Trigger>
+        <DropdownMenu.Content>
+          <DropdownMenu.Group>
+            <DropdownMenu.Label>Guild</DropdownMenu.Label>
+            <DropdownMenu.Item>Settings</DropdownMenu.Item>
+            <DropdownMenu.Item>Invite</DropdownMenu.Item>
+          </DropdownMenu.Group>
+          <DropdownMenu.Separator />
+          <DropdownMenu.Item variant="destructive">Log out</DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>
+      <Popover.Root>
+        <Popover.Trigger class={buttonClass}>Popover</Popover.Trigger>
+        <Popover.Content><p class="text-sm">Popover content.</p></Popover.Content>
+      </Popover.Root>
+      <Tooltip.Provider>
+        <Tooltip.Root>
+          <Tooltip.Trigger class={buttonClass}>Tooltip</Tooltip.Trigger>
+          <Tooltip.Content>Tooltip text</Tooltip.Content>
+        </Tooltip.Root>
+      </Tooltip.Provider>
+    </div>
+    <Collapsible.Root class="flex flex-col gap-2">
+      <Collapsible.Trigger class={buttonClass}>Collapsible</Collapsible.Trigger>
+      <Collapsible.Content class="text-sm text-muted-foreground">Hidden until opened.</Collapsible.Content>
+    </Collapsible.Root>
+    <ScrollArea class="h-24 rounded-md border">
+      <div class="flex flex-col gap-1 p-3 text-sm">
+        {#each Array.from({ length: 12 }, (_, i) => i + 1) as n (n)}
+          <span>Scroll area row {n}</span>
+        {/each}
+      </div>
+    </ScrollArea>
+  </section>
+
+  <Separator />
+  <h2 class="text-lg font-semibold">lib/ui</h2>
 
   <section id="buttons">
     <SectionHeading title="Button" subtitle="forms/button: default, highlighted, error, disabled and loading" />
@@ -102,7 +335,7 @@
         }}
       />
       <Checkbox label="Disabled" disabled />
-      <p class="px-2.5 text-xs text-neutral-500 dark:text-fg-dim" data-testid="instant-saves">Instant saves: {instantSaves}</p>
+      <p class="px-2.5 text-xs text-muted-foreground" data-testid="instant-saves">Instant saves: {instantSaves}</p>
     </div>
   </section>
 
@@ -120,7 +353,7 @@
       <StatusBadge {...containerStatus('degraded:unhealthy')} />
       <StatusBadge {...containerStatus('exited')} />
       <StatusBadge status="Failed" type="error" />
-      <StatusBadge status="Refresh" onclick={() => toast.info('Refreshing status')} class="cursor-pointer border-transparent hover:bg-neutral-200 dark:hover:bg-coolgray-300" />
+      <StatusBadge status="Refresh" onclick={() => toast.info('Refreshing status')} class="cursor-pointer border-transparent hover:bg-accent" />
     </div>
   </section>
 
@@ -205,7 +438,7 @@
       />
     </div>
     {#if deleted}
-      <p class="mt-2 text-xs text-neutral-500 dark:text-fg-dim" data-testid="deleted">Confirmed with: {deleted.join(', ') || 'none'}</p>
+      <p class="mt-2 text-xs text-muted-foreground" data-testid="deleted">Confirmed with: {deleted.join(', ') || 'none'}</p>
     {/if}
   </section>
 </div>

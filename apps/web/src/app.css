@@ -5,32 +5,20 @@
  * so the old pages follow the dark/light switch. This file shrinks as pages
  * are ported and goes when the last one is. The shell's own markup (inside
  * `.chrome`, as is every `lib/ui/` component) is Coolify's and is left out of
- * the element rules.
+ * the element rules, as are the shadcn components (`[data-slot]`).
  */
 @layer base {
+  /* Legacy names, removed as pages are restyled: defined from Paperclip's
+     tokens in theme.css, so they follow the dark/light switch on their own. */
   :root {
-    --bg: var(--color-neutral-50);
-    --panel: var(--color-white);
-    --card: var(--color-white);
-    --hover: var(--color-neutral-100);
-    --border: var(--color-neutral-200);
-    --text: var(--color-neutral-900);
-    --muted: var(--color-neutral-500);
-    --accent: var(--color-accent);
-    --danger: var(--color-error);
-    --ok: var(--color-success);
-    --warn: var(--color-warning);
+    --bg: var(--background);
+    --panel: var(--sidebar);
+    --hover: var(--muted-foreground);
+    --text: var(--foreground);
+    --danger: var(--destructive);
+    --ok: var(--success);
+    --warn: var(--warning);
     --mono: var(--font-mono);
-  }
-
-  .dark {
-    --bg: var(--color-app);
-    --panel: var(--color-panel);
-    --card: var(--color-surface);
-    --hover: var(--color-raised);
-    --border: oklch(100% 0 0 / 0.08);
-    --text: var(--color-fg-dim);
-    --muted: var(--color-fg-faint);
   }
 
   /* On body, not :root, so rem stays 16px and Tailwind's sizes match Coolify's. */
@@ -42,31 +30,31 @@
 
   /* Preflight zeroes margins on headings, paragraphs and lists; the old pages
      were laid out with the browser's defaults. */
-  h1:not(.chrome *) {
+  h1:not(.chrome *, [data-slot], [data-slot] *) {
     font-size: 1.25rem;
     margin: 0 0 1rem;
   }
 
-  h2:not(.chrome *) {
+  h2:not(.chrome *, [data-slot], [data-slot] *) {
     font-size: 1rem;
     margin: 1.5rem 0 0.75rem;
   }
 
-  h1:not(.chrome *),
-  h2:not(.chrome *),
-  h3:not(.chrome *),
-  h4:not(.chrome *) {
+  h1:not(.chrome *, [data-slot], [data-slot] *),
+  h2:not(.chrome *, [data-slot], [data-slot] *),
+  h3:not(.chrome *, [data-slot], [data-slot] *),
+  h4:not(.chrome *, [data-slot], [data-slot] *) {
     font-weight: 600;
     letter-spacing: normal;
   }
 
-  h3:not(.chrome *) {
+  h3:not(.chrome *, [data-slot], [data-slot] *) {
     font-size: 1.17em;
     margin: 1em 0;
   }
 
-  p:not(.chrome *),
-  dl:not(.chrome *) {
+  p:not(.chrome *, [data-slot], [data-slot] *),
+  dl:not(.chrome *, [data-slot], [data-slot] *) {
     margin: 1em 0;
   }
 
@@ -74,22 +62,22 @@
     margin-left: 40px;
   }
 
-  ul:not(.chrome *),
-  ol:not(.chrome *) {
+  ul:not(.chrome *, [data-slot], [data-slot] *),
+  ol:not(.chrome *, [data-slot], [data-slot] *) {
     margin: 1em 0;
     padding-left: 40px;
   }
 
-  ul:not(.chrome *) {
+  ul:not(.chrome *, [data-slot], [data-slot] *) {
     list-style: disc;
   }
 
-  ol {
+  ol:not([data-slot]) {
     list-style: decimal;
   }
 
-  a:not(.chrome *) {
-    color: var(--accent);
+  a:not(.chrome *, [data-slot], [data-slot] *) {
+    color: var(--primary);
     text-decoration: underline;
   }
 
@@ -99,9 +87,9 @@
   }
 
   /* The :not() lifts these above @tailwindcss/forms' [type=…] rules. */
-  input:not([type='checkbox'], [type='radio']),
-  select:not([multiple]),
-  textarea:not(.input) {
+  input:not([type='checkbox'], [type='radio'], [data-slot]),
+  select:not([multiple], [data-slot]),
+  textarea:not(.input, [data-slot]) {
     background-color: var(--bg);
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -111,35 +99,35 @@
     min-width: 0;
   }
 
-  select:not([multiple]) {
+  select:not([multiple], [data-slot]) {
     padding-right: 2.25rem;
   }
 
-  input:not([type='checkbox'], [type='radio']):focus,
-  select:not([multiple]):focus,
-  textarea:not(.input):focus {
-    border-color: var(--accent);
+  input:not([type='checkbox'], [type='radio'], [data-slot]):focus,
+  select:not([multiple], [data-slot]):focus,
+  textarea:not(.input, [data-slot]):focus {
+    border-color: var(--primary);
     box-shadow: none;
     outline: none;
   }
 
-  input:not([type='checkbox'], [type='radio']):focus-visible,
-  select:not([multiple]):focus-visible,
-  textarea:not(.input):focus-visible,
-  button:not(.chrome *):focus-visible,
-  a:not(.chrome *):focus-visible {
-    outline: 2px solid var(--accent);
+  input:not([type='checkbox'], [type='radio'], [data-slot]):focus-visible,
+  select:not([multiple], [data-slot]):focus-visible,
+  textarea:not(.input, [data-slot]):focus-visible,
+  button:not(.chrome *, [data-slot], [data-slot] *):focus-visible,
+  a:not(.chrome *, [data-slot], [data-slot] *):focus-visible {
+    outline: 2px solid var(--primary);
     outline-offset: 1px;
   }
 
-  input[type='checkbox']:not(.chrome *),
-  input[type='radio']:not(.chrome *) {
-    color: var(--color-coollabs);
+  input[type='checkbox']:not(.chrome *, [data-slot], [data-slot] *),
+  input[type='radio']:not(.chrome *, [data-slot], [data-slot] *) {
+    color: var(--primary);
     background-color: var(--bg);
-    border-color: var(--muted);
+    border-color: var(--muted-foreground);
   }
 
-  button:not(.chrome *) {
+  button:not(.chrome *, [data-slot], [data-slot] *) {
     background: var(--hover);
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -148,9 +136,9 @@
   }
 
   button.primary {
-    background: var(--color-coollabs-100);
-    border-color: var(--color-coollabs-200);
-    color: var(--color-accent-foreground);
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--primary-foreground);
     font-weight: 600;
   }
 
@@ -158,7 +146,7 @@
     color: var(--danger);
   }
 
-  button:not(.chrome *):disabled {
+  button:not(.chrome *, [data-slot], [data-slot] *):disabled {
     opacity: 0.55;
     cursor: default;
   }
@@ -171,7 +159,7 @@
   /* On a phone a wide table scrolls on its own instead of widening the page,
      as Coolify's overflow-x-auto wrappers do. */
   @media (width < 40rem) {
-    table:not(.chrome *) {
+    table:not(.chrome *, [data-slot], [data-slot] *) {
       display: block;
       overflow-x: auto;
     }
@@ -187,20 +175,20 @@
   th {
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--muted);
+    color: var(--muted-foreground);
     text-transform: uppercase;
     letter-spacing: 0.03em;
   }
 
   .card {
-    background: var(--card);
+    background: var(--color-card);
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 1.25rem;
   }
 
   .muted {
-    color: var(--muted);
+    color: var(--muted-foreground);
   }
 
   .error {

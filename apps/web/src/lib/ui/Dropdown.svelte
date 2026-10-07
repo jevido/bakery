@@ -3,9 +3,11 @@
   // trigger with the up/down chevrons and a panel below it; on a phone the
   // panel is placed fixed so it stays on screen. `inline` makes it a
   // full-width field whose panel pushes the content down. Rows inside use
-  // the `dropdown-item` class.
+  // the `dropdown-item` class. Drawn as Paperclip's dropdown menu: an outline
+  // trigger and a popover panel.
   import type { Snippet } from 'svelte'
   import { fly } from 'svelte/transition'
+  import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down'
 
   let {
     title,
@@ -66,16 +68,15 @@
     onclick={() => (open = !open)}
     class={[
       'inline-flex items-center justify-start pr-8 transition-colors focus:outline-hidden disabled:pointer-events-none disabled:opacity-50',
-      inline && 'w-full border border-neutral-300 bg-white px-3 py-2 text-left dark:border-coolgray-300 dark:bg-coolgray-100',
+      inline &&
+        'h-9 w-full rounded-md border border-input bg-transparent px-3 py-2 text-left text-sm shadow-xs focus-visible:border-ring focus-visible:ring-(length:--rad-3) focus-visible:ring-ring/50 dark:bg-input/30 dark:hover:bg-input/50',
       triggerClass,
     ]}
   >
-    <span class="flex h-full flex-col items-start leading-none">
+    <span class="flex items-center leading-none">
       {#if typeof title === 'string'}{title}{:else}{@render title()}{/if}
     </span>
-    <svg class="absolute right-0 mr-3 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
-    </svg>
+    <ChevronsUpDown class="absolute right-0 mr-3 size-4 opacity-50" />
   </button>
   {#if open}
     <div
@@ -86,8 +87,8 @@
     >
       <div
         class={[
-          'border border-neutral-300 bg-white p-1 dark:border-coolgray-300',
-          inline ? 'border-0 bg-transparent shadow-none dark:border-0 dark:bg-transparent' : 'shadow-[var(--shadow-dropdown)] dark:bg-coolgray-200',
+          'p-1',
+          inline ? 'bg-transparent' : 'min-w-(--sz-8rem) rounded-md border bg-popover text-popover-foreground shadow-md',
           panelClass,
         ]}
       >

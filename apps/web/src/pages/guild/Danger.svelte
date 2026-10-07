@@ -58,7 +58,7 @@
             <ul class="space-y-1" data-testid="guild-blocking">
               {#each guild.blocking as kind (kind)}
                 <li>
-                  <a class="font-medium text-coollabs hover:underline dark:text-warning" href={href(blockers[kind]?.path ?? '/')}>
+                  <a class="font-medium text-coollabs hover:underline" href={href(blockers[kind]?.path ?? '/')}>
                     {blockers[kind]?.label ?? kind}
                   </a>
                 </li>

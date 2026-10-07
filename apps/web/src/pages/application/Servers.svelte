@@ -40,7 +40,7 @@
             <div class="flex flex-wrap items-center gap-2">
               <h4 class="truncate text-sm font-semibold text-black dark:text-fg">{server.name}</h4>
               <span
-                class="rounded-sm bg-coollabs/10 px-1.5 py-0.5 text-[11px] font-medium text-coollabs dark:bg-warning/10 dark:text-warning"
+                class="rounded-sm bg-coollabs/10 px-1.5 py-0.5 text-[11px] font-medium text-coollabs"
               >
                 Primary
               </span>

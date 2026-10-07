@@ -1,14 +1,19 @@
 <script lang="ts">
-  // Coolify's forms/input (resources/views/components/forms/input.blade.php):
-  // label row, `input`, the password eye, and the validation message.
+  // Coolify's forms/input (resources/views/components/forms/input.blade.php)
+  // on Paperclip's input: label row, the field, the password eye, and the
+  // validation message.
   import type { Snippet } from 'svelte'
   import type { HTMLInputAttributes } from 'svelte/elements'
-  import Icon from '../Icon.svelte'
+  import Eye from '@lucide/svelte/icons/eye'
+  import EyeOff from '@lucide/svelte/icons/eye-off'
+  import { Input as UiInput } from '$lib/components/ui/input'
   import FieldError from './FieldError.svelte'
   import Helper from './Helper.svelte'
   import FieldLabel from './FieldLabel.svelte'
 
-  type Props = Omit<HTMLInputAttributes, 'value'> & {
+  // `files` is left out: a file input is not drawn here, and Paperclip's
+  // input types it apart from every other type.
+  type Props = Omit<HTMLInputAttributes, 'value' | 'files'> & {
     value?: string | number | null
     label?: string
     helper?: string | Snippet
@@ -43,7 +48,8 @@
   {/if}
   {#if type === 'password'}
     <div class="relative">
-      <input
+      <UiInput
+        aria-invalid={error ? true : undefined}
         {...rest}
         bind:value
         id={htmlId}
@@ -51,21 +57,31 @@
         {required}
         {disabled}
         {autocomplete}
-        class={['input pr-10', revealed && !disabled && 'truncate', className]}
+        class={['pr-10', revealed && !disabled && 'truncate', className]}
       />
       {#if allowToPeak}
         <button
           type="button"
           onclick={() => (revealed = !revealed)}
-          class="password-toggle absolute inset-y-0 right-0 z-10 flex cursor-pointer items-center pr-2 text-neutral-500 hover:text-black dark:text-neutral-400 dark:hover:text-white"
+          class="password-toggle absolute inset-y-0 right-0 z-10 flex cursor-pointer items-center px-3 text-muted-foreground transition-colors hover:text-foreground"
           aria-label="Toggle password visibility"
         >
-          <Icon name={revealed ? 'eye-off2' : 'eye'} class="size-[18px]" />
+          {#if revealed}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
         </button>
       {/if}
     </div>
   {:else}
-    <input {...rest} bind:value id={htmlId} {type} {required} {disabled} {autocomplete} class={['input', className]} />
+    <UiInput
+      aria-invalid={error ? true : undefined}
+      {...rest}
+      bind:value
+      id={htmlId}
+      type={type as 'text'}
+      {required}
+      {disabled}
+      {autocomplete}
+      class={className}
+    />
   {/if}
   {#if !label && helper}<Helper {helper} />{/if}
   <FieldError {error} />

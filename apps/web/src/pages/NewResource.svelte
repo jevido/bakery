@@ -301,7 +301,7 @@
   })
 
   const cardClass =
-    'group flex min-h-48 cursor-pointer flex-col rounded-xl border border-neutral-200 bg-white p-4 text-left transition-colors hover:border-neutral-300 focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-none dark:border-white/[0.08] dark:bg-white/[0.05] dark:hover:border-white/[0.14]'
+    'group flex min-h-48 cursor-pointer flex-col rounded-xl border border-neutral-200 bg-white p-4 text-left transition-colors hover:border-neutral-300 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none dark:border-white/[0.08] dark:bg-white/[0.05] dark:hover:border-white/[0.14]'
   const logoBox =
     'flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50 dark:border-white/[0.08] dark:bg-white/[0.04]'
   const serverIcon =
@@ -397,7 +397,7 @@
                 type="search"
                 placeholder="Search resources"
                 aria-label="Search resources"
-                class="input h-8! w-full rounded-lg! border-neutral-200! bg-white! py-0! pr-8! pl-8! text-[12px]! shadow-none! placeholder:text-neutral-400 focus:border-accent! focus:ring-0! dark:border-white/[0.08]! dark:bg-white/[0.035]! dark:text-fg! dark:placeholder:text-fg-faint"
+                class="input h-8! w-full rounded-lg! border-neutral-200! bg-white! py-0! pr-8! pl-8! text-[12px]! shadow-none! placeholder:text-neutral-400 focus:border-ring! focus:ring-0! dark:border-white/[0.08]! dark:bg-white/[0.035]! dark:text-fg! dark:placeholder:text-fg-faint"
               />
             </div>
 
@@ -425,7 +425,7 @@
                       }}
                     >
                       <span>{option.label}</span>
-                      {#if resourceType === option.value}<Icon name="check-circle" class="size-3.5 text-accent" />{/if}
+                      {#if resourceType === option.value}<Icon name="check-circle" class="size-3.5 text-primary" />{/if}
                     </button>
                   {/each}
                 {/snippet}
@@ -476,7 +476,7 @@
                         }}
                       >
                         <span>All categories</span>
-                        {#if selectedCategory === ''}<Icon name="check-circle" class="size-3.5 text-accent" />{/if}
+                        {#if selectedCategory === ''}<Icon name="check-circle" class="size-3.5 text-primary" />{/if}
                       </button>
                       {#each shownCategories as category (category)}
                         <button
@@ -490,7 +490,7 @@
                           }}
                         >
                           <span class="truncate">{category}</span>
-                          {#if selectedCategory === category}<Icon name="check-circle" class="size-3.5 text-accent" />{/if}
+                          {#if selectedCategory === category}<Icon name="check-circle" class="size-3.5 text-primary" />{/if}
                         </button>
                       {/each}
                     </div>

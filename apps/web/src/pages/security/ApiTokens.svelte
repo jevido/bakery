@@ -151,7 +151,7 @@
   const badge: Record<Permission, string> = {
     root: 'border-error/20 bg-error/10 text-error',
     write: 'border-warning/20 bg-warning/10 text-warning',
-    deploy: 'border-coollabs/20 bg-coollabs/10 text-coollabs dark:border-warning/20 dark:bg-warning/10 dark:text-warning',
+    deploy: 'border-coollabs/20 bg-coollabs/10 text-coollabs',
     read: 'border-neutral-200 bg-neutral-100 text-neutral-600 dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-fg-dim',
     'read:sensitive': 'border-neutral-200 bg-neutral-100 text-neutral-600 dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-fg-dim',
   }
@@ -275,7 +275,7 @@
               type="search"
               placeholder="Search tokens"
               aria-label="Search tokens"
-              class="input h-8! w-full rounded-lg! border-neutral-200! bg-white! py-0! pr-8! pl-8! text-[12px]! shadow-none! placeholder:text-neutral-400 focus:border-accent! focus:ring-0! dark:border-white/[0.08]! dark:bg-white/[0.035]! dark:text-fg! dark:placeholder:text-fg-faint"
+              class="input h-8! w-full rounded-lg! border-neutral-200! bg-white! py-0! pr-8! pl-8! text-[12px]! shadow-none! placeholder:text-neutral-400 focus:border-ring! focus:ring-0! dark:border-white/[0.08]! dark:bg-white/[0.035]! dark:text-fg! dark:placeholder:text-fg-faint"
             />
             {#if search}
               <button

@@ -296,7 +296,7 @@
             type="search"
             placeholder="Search resources"
             aria-label="Search resources"
-            class="input h-8! w-full rounded-lg! border-neutral-200! bg-white! py-0! pr-8! pl-8! text-[12px]! shadow-none! placeholder:text-neutral-400 focus:border-accent! focus:ring-0! dark:border-white/[0.08]! dark:bg-white/[0.035]! dark:text-fg! dark:placeholder:text-fg-faint"
+            class="input h-8! w-full rounded-lg! border-neutral-200! bg-white! py-0! pr-8! pl-8! text-[12px]! shadow-none! placeholder:text-neutral-400 focus:border-ring! focus:ring-0! dark:border-white/[0.08]! dark:bg-white/[0.035]! dark:text-fg! dark:placeholder:text-fg-faint"
           />
           {#if search}
             <button
@@ -358,7 +358,7 @@
                             class={[
                               'flex size-4 shrink-0 items-center justify-center rounded-[5px] border',
                               selected
-                                ? 'border-coollabs bg-coollabs text-white dark:border-warning dark:bg-warning dark:text-black'
+                                ? 'border-coollabs bg-coollabs text-primary-foreground'
                                 : 'border-neutral-300 bg-white dark:border-white/[0.14] dark:bg-white/[0.045]',
                             ]}
                           >

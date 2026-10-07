@@ -1,25 +1,28 @@
 <script lang="ts">
-  // Coolify's toast stack (resources/views/components/toast.blade.php),
-  // bottom-right. The `html` toasts Coolify can show are left out: Bakery's
-  // toasts carry plain text only.
+  // Paperclip's toast stack (components/ToastViewport.tsx): a tinted card per
+  // toast with a status dot, title, body and dismiss button, here in the
+  // status tokens and kept bottom-right where Coolify has it. Coolify's copy
+  // button for the details stays. Bakery's toasts carry plain text only.
   import { fly } from 'svelte/transition'
-  import Icon, { type IconName } from '../Icon.svelte'
+  import Check from '@lucide/svelte/icons/check'
+  import Copy from '@lucide/svelte/icons/copy'
+  import X from '@lucide/svelte/icons/x'
   import { dismiss, hold, schedule, toasts, type ToastType } from './toast.svelte'
 
-  const badge: Record<ToastType, string> = {
-    success: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-    info: 'bg-coollabs/10 text-coollabs dark:bg-warning/10 dark:text-warning',
-    warning: 'bg-amber-100 text-amber-700 dark:bg-warning/10 dark:text-warning',
-    danger: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400',
-    default: 'bg-neutral-100 text-neutral-600 dark:bg-white/[0.06] dark:text-fg-dim',
+  const tone: Record<ToastType, string> = {
+    success: 'border-success/30 bg-success/10',
+    info: 'border-border bg-popover',
+    warning: 'border-warning/30 bg-warning/10',
+    danger: 'border-destructive/30 bg-destructive/10',
+    default: 'border-border bg-popover',
   }
 
-  const icon: Record<ToastType, IconName> = {
-    success: 'check-circle',
-    info: 'info-circle',
-    default: 'info-circle',
-    warning: 'alert-triangle',
-    danger: 'alert-circle',
+  const dot: Record<ToastType, string> = {
+    success: 'bg-success',
+    info: 'bg-primary',
+    warning: 'bg-warning',
+    danger: 'bg-destructive',
+    default: 'bg-muted-foreground',
   }
 
   let copied = $state<number | null>(null)
@@ -31,57 +34,45 @@
   }
 </script>
 
-<ul class="chrome fixed right-4 bottom-4 z-9999 flex w-[calc(100%-2rem)] flex-col-reverse gap-2.5 sm:max-w-[26rem]" aria-live="polite">
+<ul class="chrome pointer-events-none fixed right-3 bottom-3 z-9999 flex w-[calc(100%-1.5rem)] flex-col-reverse gap-2 sm:max-w-sm" aria-live="polite">
   {#each toasts as item (item.id)}
     <li
-      in:fly={{ y: 8, duration: 200 }}
+      in:fly={{ y: 12, duration: 200 }}
       out:fly={{ y: 4, duration: 150 }}
       onmouseenter={() => hold(item.id)}
       onmouseleave={() => schedule(item.id)}
-      class="surface-popover group relative flex w-full items-start rounded-lg p-3.5 pr-20"
+      class={['group pointer-events-auto rounded-sm border bg-background text-foreground shadow-lg backdrop-blur-xl', tone[item.type]]}
     >
-      <div class="flex min-w-0 items-start gap-3">
-        <div class={['flex size-8 shrink-0 items-center justify-center rounded-lg', badge[item.type]]}>
-          <Icon name={icon[item.type]} class="size-4" />
-        </div>
-        <div class="min-w-0 flex-1 pt-0.5">
-          <p class="text-sm leading-5 font-semibold text-neutral-950 dark:text-fg">{item.title}</p>
+      <div class="flex items-start gap-3 px-3 py-2.5">
+        <span class={['mt-1.5 size-2 shrink-0 rounded-full', dot[item.type]]}></span>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm leading-5 font-semibold">{item.title}</p>
           {#if item.text}
-            <div class="mt-0.5 w-full text-xs leading-5 break-words whitespace-pre-wrap text-neutral-600 dark:text-fg-dim">{item.text}</div>
+            <p class="mt-1 text-xs leading-4 break-words whitespace-pre-wrap opacity-70">{item.text}</p>
           {/if}
         </div>
-      </div>
-      {#if item.text}
+        {#if item.text}
+          <button
+            type="button"
+            onclick={() => copy(item.id, item.text)}
+            title={copied === item.id ? 'Copied' : 'Copy details'}
+            class={[
+              'mt-0.5 shrink-0 rounded p-1 opacity-0 transition-opacity group-hover:opacity-50 hover:bg-accent hover:opacity-100! focus-visible:opacity-100',
+              copied === item.id && 'text-success opacity-100!',
+            ]}
+          >
+            {#if copied === item.id}<Check class="size-3.5" />{:else}<Copy class="size-3.5" />{/if}
+          </button>
+        {/if}
         <button
           type="button"
-          onclick={() => copy(item.id, item.text)}
-          title={copied === item.id ? 'Copied' : 'Copy details'}
-          class={[
-            'absolute top-2.5 right-10 flex size-7 items-center justify-center rounded-md text-neutral-400 opacity-0 transition-colors group-hover:opacity-100 hover:bg-black/5 hover:text-neutral-700 dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg',
-            copied === item.id && 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-          ]}
+          onclick={() => dismiss(item.id)}
+          aria-label="Dismiss"
+          class="mt-0.5 shrink-0 rounded p-1 opacity-50 hover:bg-accent hover:opacity-100"
         >
-          {#if copied === item.id}
-            <Icon name="check" class="size-3.5" />
-          {:else}
-            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M8.25 7.5V6a2.25 2.25 0 012.25-2.25h7.5A2.25 2.25 0 0120.25 6v7.5A2.25 2.25 0 0118 15.75h-1.5m-8.25-8.25H6A2.25 2.25 0 003.75 9.75v7.5A2.25 2.25 0 006 19.5h7.5a2.25 2.25 0 002.25-2.25V15m-7.5-7.5h5.25A2.25 2.25 0 0115.75 9.75V15"
-              />
-            </svg>
-          {/if}
+          <X class="size-3.5" />
         </button>
-      {/if}
-      <button
-        type="button"
-        onclick={() => dismiss(item.id)}
-        aria-label="Dismiss"
-        class="absolute top-2.5 right-2.5 flex size-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-black/5 hover:text-neutral-700 dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg"
-      >
-        <Icon name="x" class="size-3.5" />
-      </button>
+      </div>
     </li>
   {/each}
 </ul>

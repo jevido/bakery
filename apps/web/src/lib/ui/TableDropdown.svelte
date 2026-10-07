@@ -2,6 +2,9 @@
   // Coolify's table dropdown (resources/views/components/table/dropdown.blade.php):
   // a trigger and a listbox panel placed fixed under the trigger's right edge,
   // or above it when there is no room below. Rows inside use `listbox-option`.
+  // The panel is Paperclip's dropdown menu content; it stays this hand-placed
+  // panel rather than bits-ui's DropdownMenu, whose roving focus and typeahead
+  // would change the rows callers render.
   import type { Snippet } from 'svelte'
   import { scale } from 'svelte/transition'
 
@@ -66,7 +69,10 @@
       style={panelStyle}
       {role}
       transition:scale={{ start: 0.98, duration: 120 }}
-      class={['listbox-panel fixed! right-auto! bottom-auto! z-[90]! mt-0! origin-top', panelClass]}
+      class={[
+        'fixed! right-auto! bottom-auto! z-[90]! mt-0! flex max-h-64 w-max max-w-[min(24rem,calc(100vw-1.5rem))] origin-top flex-col gap-px overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md',
+        panelClass,
+      ]}
     >
       {@render children(close)}
     </div>

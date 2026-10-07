@@ -12,7 +12,7 @@
   }: { title?: string; description?: string; children?: Snippet; footer?: Snippet } = $props()
 </script>
 
-<main class="chrome h-full bg-neutral-50 dark:bg-base">
+<main class="chrome h-full bg-neutral-50 dark:bg-background">
   <section class="auth-shell">
     <div class="auth-shell-content">
       <div class="auth-card">

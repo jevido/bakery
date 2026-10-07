@@ -17,10 +17,14 @@
   // endpoints do not take one, so step 2's button is the final "Confirm", as
   // Coolify's is when the password step is skipped.
   // Like Coolify, confirming closes the dialog and runs `onconfirm`; if that
-  // throws, the dialog opens again.
+  // throws, the dialog opens again. Drawn as Paperclip's alert dialog, on the
+  // same portal and focus trap as Modal.
   import type { Snippet } from 'svelte'
   import { fade, scale } from 'svelte/transition'
-  import Icon from '../Icon.svelte'
+  import Trash from '@lucide/svelte/icons/trash-2'
+  import X from '@lucide/svelte/icons/x'
+  import { Input as UiInput } from '$lib/components/ui/input'
+  import { Label } from '$lib/components/ui/label'
   import Button from './Button.svelte'
   import Callout from './Callout.svelte'
   import Checkbox from './Checkbox.svelte'
@@ -125,28 +129,27 @@
   <div class="chrome" {@attach portal}>
     {#if open}
       <div class="fixed inset-0 z-99 flex min-h-full items-center justify-center overflow-y-auto p-4">
-        <div class="absolute inset-0 bg-black/50 backdrop-blur-[2px]" transition:fade={{ duration: 200 }}></div>
+        <div class="absolute inset-0 bg-black/50" transition:fade={{ duration: 150 }}></div>
         <div
           role="dialog"
           aria-modal="true"
           aria-label={title}
           {@attach focusTrap}
-          transition:scale={{ start: 0.95, duration: 200 }}
-          class="application-settings-form application-settings-section relative flex max-h-[calc(100dvh-2rem)] w-full flex-col lg:max-w-2xl lg:min-w-[36rem]"
-          style="box-shadow: 0 0 0 1px var(--coollabs-hairline), var(--shadow-modal)"
+          transition:scale={{ start: 0.97, duration: 150 }}
+          class="relative flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-lg border bg-background text-foreground shadow-lg lg:max-w-2xl lg:min-w-[36rem]"
         >
-          <header class="flex-nowrap!">
-            <h3 class="min-w-0 flex-1 truncate">{title}</h3>
+          <header class="flex items-start gap-2 px-6 pt-6 pb-4">
+            <h3 class="min-w-0 flex-1 truncate text-lg leading-none font-semibold">{title}</h3>
             <button
               type="button"
               onclick={close}
               aria-label="Close"
-              class="flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg"
+              class="-mt-1 -mr-2 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-70 transition-opacity outline-none hover:opacity-100 focus-visible:ring-(length:--rad-3) focus-visible:ring-ring/50"
             >
-              <Icon name="x" class="size-4" />
+              <X class="size-4" />
             </button>
           </header>
-          <div class="application-settings-section-body min-h-0 flex-1 overflow-y-auto" style="-webkit-overflow-scrolling: touch;">
+          <div class="min-h-0 flex-1 overflow-y-auto px-6 pb-6" style="-webkit-overflow-scrolling: touch;">
             {#if step === 1}
               <div>
                 {#each checkboxes as checkbox (checkbox.id)}
@@ -154,34 +157,32 @@
                     <Checkbox fullWidth label={checkbox.label} bind:checked={selected[checkbox.id]} />
                   </div>
                 {/each}
-                <div class="mt-4 flex flex-wrap justify-end gap-2 border-t border-neutral-200 pt-4 dark:border-white/[0.08]">
+                <div class="mt-4 flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
                   <Button variant="error" class="w-auto" onclick={() => step++}>{step1ButtonText}</Button>
                 </div>
               </div>
             {:else}
               <div>
                 <Callout type="danger" title="Warning" class="mb-4">{warningMessage}</Callout>
-                <div class="mb-2 text-[12px] font-medium text-neutral-700 dark:text-fg-dim">The following actions will be performed:</div>
+                <div class="mb-2 text-sm font-medium text-foreground">The following actions will be performed:</div>
                 <ul class="mb-4 space-y-2">
                   {#each listed as action, i (i)}
-                    <li class="flex items-start gap-2 text-[12px] leading-5 text-red-600 dark:text-red-400">
-                      <Icon name="trash" class="mt-0.5 size-3.5 shrink-0" />
+                    <li class="flex items-start gap-2 text-sm leading-5 text-destructive">
+                      <Trash class="mt-0.5 size-3.5 shrink-0" />
                       <span>{action}</span>
                     </li>
                   {/each}
                 </ul>
                 {#if confirmWithText}
                   <div class="mb-4">
-                    <h4 class="mb-1 text-[12px] font-semibold">Confirm actions</h4>
-                    <p class="mb-2 text-[12px] leading-5 text-neutral-500 dark:text-fg-dim">{confirmationLabel}</p>
+                    <h4 class="mb-1 text-sm font-semibold">Confirm actions</h4>
+                    <p class="mb-2 text-sm text-muted-foreground">{confirmationLabel}</p>
                     <CopyText text={confirmationText} />
-                    <label for={inputId} class="mt-4 mb-1.5 block text-[12px] font-medium text-neutral-700 dark:text-fg-dim">
-                      {shortConfirmationLabel}
-                    </label>
-                    <input id={inputId} type="text" bind:value={typed} class="input w-full" autocomplete="off" />
+                    <Label for={inputId} class="mt-4 mb-1.5">{shortConfirmationLabel}</Label>
+                    <UiInput id={inputId} type="text" bind:value={typed} autocomplete="off" />
                   </div>
                 {/if}
-                <div class="mt-4 flex flex-wrap justify-end gap-2 border-t border-neutral-200 pt-4 dark:border-white/[0.08]">
+                <div class="mt-4 flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
                   {#if checkboxes.length > 0}
                     <Button onclick={() => step--}>Back</Button>
                   {:else}

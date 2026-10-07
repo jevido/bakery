@@ -136,7 +136,7 @@
               required
               oninput={authenticatorInput}
               {@attach focus}
-              class="mx-auto h-14 w-64 rounded-md border border-neutral-300 bg-white px-4 text-center text-xl font-semibold tracking-[0.5em] text-neutral-900 transition-colors focus:border-warning focus:ring-1 focus:ring-warning focus:outline-none dark:border-white/10 dark:bg-coolgray-100 dark:text-white"
+              class="mx-auto h-14 w-64 rounded-md border border-neutral-300 bg-white px-4 text-center text-xl font-semibold tracking-[0.5em] text-neutral-900 transition-colors focus:border-ring focus:ring-1 focus:ring-ring/50 focus:outline-none dark:border-white/10 dark:bg-coolgray-100 dark:text-white"
             />
             <button type="button" class="auth-text-link self-center" onclick={() => switchCode(true)}>Use a recovery code</button>
           </div>

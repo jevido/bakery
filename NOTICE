@@ -10,8 +10,16 @@ logo and brand are not used.
 The guild, agent and work model (Guilds, Memberships, Agents, Goals, Issues
 and the rest) follows Paperclip (https://github.com/paperclipai/paperclip),
 Copyright (c) 2025 Paperclip AI, licensed under the MIT License. The
-dashboard's look will be adapted from Paperclip's user interface, rewritten
-for Svelte and Tailwind CSS; Paperclip's name and logo are not used.
+dashboard's look is adapted from Paperclip's user interface (its design
+tokens in ui/src/index.css and its components in ui/src/components),
+rewritten for Svelte and Tailwind CSS; Paperclip's name and logo are not used.
+
+The dashboard's components are built with shadcn-svelte
+(https://github.com/huntabyte/shadcn-svelte) on bits-ui
+(https://github.com/huntabyte/bits-ui), both licensed under the MIT License.
+
+The dashboard uses Lucide icons (https://github.com/lucide-icons/lucide),
+Copyright (c) Lucide Contributors, licensed under the ISC License.
 
 The New Resource page uses icons copied unchanged from Coolify v4.3.23's
 public/svgs/ under the same license: resources/public-repo.svg,
@@ -27,6 +35,6 @@ pushover.svg, copied unchanged from Coolify v4.3.23's public/svgs/ under the
 same license (in apps/web/public/svgs/). Discord, Telegram, Slack and
 Pushover are trademarks of their owners.
 
-The dashboard uses the Geist and Geist Mono fonts, Copyright 2024 The Geist
-Project Authors (https://github.com/vercel/geist-font), licensed under the
-SIL Open Font License, Version 1.1.
+The dashboard uses the Inter font, Copyright 2016 The Inter Project Authors
+(https://github.com/rsms/inter), licensed under the SIL Open Font License,
+Version 1.1.

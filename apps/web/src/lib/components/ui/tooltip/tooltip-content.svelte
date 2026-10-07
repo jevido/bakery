@@ -1,0 +1,48 @@
+<script lang="ts">
+	import { Tooltip as TooltipPrimitive } from "bits-ui";
+	import { cn } from "$lib/utils.js";
+	import type { WithoutChildrenOrChild } from "$lib/utils.js";
+	import TooltipPortal from "./tooltip-portal.svelte";
+	import type { ComponentProps } from "svelte";
+
+	let {
+		ref = $bindable(null),
+		class: className,
+		sideOffset = 0,
+		side = "top",
+		children,
+		arrowClasses,
+		portalProps,
+		...restProps
+	}: TooltipPrimitive.ContentProps & {
+		arrowClasses?: string;
+		portalProps?: WithoutChildrenOrChild<ComponentProps<typeof TooltipPortal>>;
+	} = $props();
+</script>
+
+<TooltipPortal {...portalProps}>
+	<TooltipPrimitive.Content
+		bind:ref
+		data-slot="tooltip-content"
+		{sideOffset}
+		{side}
+		class={cn(
+			"bg-foreground text-background animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-fit origin-(--bits-tooltip-content-transform-origin) rounded-md px-3 py-1.5 text-xs text-balance",
+			className
+		)}
+		{...restProps}
+	>
+		{@render children?.()}
+		<TooltipPrimitive.Arrow>
+			{#snippet child({ props })}
+				<div
+					class={cn(
+						"bg-foreground fill-foreground z-50 size-2.5 translate-y-(--sz-calc-28) rotate-45 rounded-(--rad-2)",
+						arrowClasses
+					)}
+					{...props}
+				></div>
+			{/snippet}
+		</TooltipPrimitive.Arrow>
+	</TooltipPrimitive.Content>
+</TooltipPortal>

@@ -1,7 +1,8 @@
 <script lang="ts">
   // Coolify's helper (resources/views/components/helper.blade.php): the `?`
   // (info-circle) that opens a fixed popup on hover, focus or tap, placed
-  // under the trigger and kept inside the viewport.
+  // under the trigger and kept inside the viewport, drawn as Paperclip's
+  // popover.
   import type { Snippet } from 'svelte'
   import Icon from '../Icon.svelte'
 
@@ -82,10 +83,7 @@
     {#if icon}
       {@render icon()}
     {:else}
-      <Icon
-        name="info-circle"
-        class="size-3.5 text-neutral-400 transition-colors hover:text-neutral-600 dark:text-fg-faint dark:hover:text-fg-dim"
-      />
+      <Icon name="info-circle" class="size-3.5 text-muted-foreground transition-colors hover:text-foreground" />
     {/if}
   </button>
   {#if open}
@@ -94,11 +92,11 @@
       {id}
       role="tooltip"
       {style}
-      class="info-helper-popup fixed z-[10000] w-max max-w-[min(20rem,calc(100vw-2rem))] whitespace-normal"
+      class="info-helper-popup fixed z-[10000] w-max max-w-[min(20rem,calc(100vw-2rem))] rounded-md border bg-popover break-words whitespace-normal text-popover-foreground shadow-md"
       onmouseenter={show}
       onmouseleave={hide}
     >
-      <div class="px-3 py-2.5 text-[13px] leading-5">
+      <div class="px-3 py-2 text-xs leading-5">
         {#if typeof helper === 'string'}{helper}{:else}{@render helper()}{/if}
       </div>
     </div>

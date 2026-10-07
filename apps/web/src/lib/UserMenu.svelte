@@ -115,7 +115,7 @@
             >
               <span>{option.label}</span>
               {#if theme.current === option.value}
-                <svg class="size-3.5 text-coollabs dark:text-warning" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <svg class="size-3.5 text-coollabs" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                   <path d="m2.5 6.25 2.1 2.1 4.9-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
               {/if}

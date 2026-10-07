@@ -1,6 +1,7 @@
 <script lang="ts">
-  // Coolify's empty (resources/views/components/empty.blade.php): a dashed
-  // card with an optional icon badge, a title, a description and actions.
+  // Paperclip's EmptyState (components/EmptyState.tsx) under Coolify's empty
+  // props: an optional icon on a muted square, a title, a description and
+  // actions, centred.
   import type { Snippet } from 'svelte'
   import Icon, { type IconName } from '../Icon.svelte'
 
@@ -20,42 +21,20 @@
     children?: Snippet
   } = $props()
 
-  const minHeight = $derived({ sm: 'min-h-44', base: 'min-h-80', lg: 'min-h-96' }[size])
-  const iconBox = $derived({ sm: 'mb-3 size-10', base: 'mb-4 size-11', lg: 'mb-4 size-12' }[size])
-  const iconSize = $derived({ sm: 'size-4.5', base: 'size-5', lg: 'size-6' }[size])
-  const titleClass = $derived(
-    {
-      sm: 'text-[14px] font-semibold text-black dark:text-fg',
-      base: 'text-[15px] font-semibold text-black dark:text-fg',
-      lg: 'text-base font-semibold text-black dark:text-fg',
-    }[size],
-  )
-  const descriptionClass = $derived(
-    size === 'sm'
-      ? 'mt-1 max-w-sm text-[12px] leading-5 text-neutral-500 dark:text-fg-dim'
-      : 'mt-1 max-w-sm text-[13px] leading-5 text-neutral-500 dark:text-fg-dim',
-  )
+  const spacing = $derived({ sm: 'min-h-44 py-8', base: 'min-h-80 py-16', lg: 'min-h-96 py-16' }[size])
+  const iconBox = $derived({ sm: 'mb-3 p-3', base: 'mb-4 p-4', lg: 'mb-4 p-4' }[size])
+  const iconSize = $derived({ sm: 'size-6', base: 'size-10', lg: 'size-12' }[size])
+  const titleClass = $derived(size === 'sm' ? 'text-sm font-semibold text-foreground' : 'text-base font-semibold text-foreground')
 </script>
 
-<div
-  class={[
-    'chrome empty-state flex w-full flex-col items-center justify-center rounded-xl border border-dashed border-neutral-300 px-6 py-10 text-center dark:border-white/[0.1]',
-    minHeight,
-    className,
-  ]}
->
+<div class={['chrome empty-state flex w-full flex-col items-center justify-center px-6 text-center', spacing, className]}>
   {#if icon}
-    <div
-      class={[
-        'flex items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-400 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.035] dark:text-fg-faint',
-        iconBox,
-      ]}
-    >
-      <Icon name={icon} class={iconSize} />
+    <div class={['bg-muted/50', iconBox]}>
+      <Icon name={icon} class={[iconSize, 'text-muted-foreground/50'].join(' ')} />
     </div>
   {/if}
   <h2 class={titleClass}>{title}</h2>
-  {#if description}<p class={descriptionClass}>{description}</p>{/if}
+  {#if description}<p class="mt-1.5 max-w-md text-sm text-muted-foreground">{description}</p>{/if}
   {#if children}
     <div class="mt-4 flex flex-wrap items-center justify-center gap-2">{@render children()}</div>
   {/if}

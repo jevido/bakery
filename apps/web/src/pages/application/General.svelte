@@ -205,7 +205,7 @@
       <section id="public-access-section">
         <h3 class="mb-3 text-sm font-semibold text-black dark:text-fg">Public access</h3>
         <div
-          class="group relative flex items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50/60 px-4 py-3 transition-colors focus-within:ring-2 focus-within:ring-coollabs/40 hover:bg-neutral-100 dark:border-white/[0.07] dark:bg-white/[0.05] dark:focus-within:ring-warning/40 dark:hover:bg-white/[0.08]"
+          class="group relative flex items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50/60 px-4 py-3 transition-colors focus-within:ring-2 focus-within:ring-coollabs/40 hover:bg-neutral-100 dark:border-white/[0.07] dark:bg-white/[0.05] dark:hover:bg-white/[0.08]"
         >
           <a
             class="flex min-w-0 flex-1 items-center gap-3 after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"

@@ -32,7 +32,7 @@
   }
   span {
     font-size: 0.8rem;
-    color: var(--muted);
+    color: var(--muted-foreground);
   }
   .error {
     color: var(--danger);

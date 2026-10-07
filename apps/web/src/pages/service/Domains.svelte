@@ -208,7 +208,7 @@
                         href={`https://${d}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        class="min-w-0 flex-1 truncate text-[13px] text-black underline decoration-neutral-300 underline-offset-2 hover:decoration-coollabs dark:text-fg dark:decoration-white/20 dark:hover:decoration-warning"
+                        class="min-w-0 flex-1 truncate text-[13px] text-black underline decoration-neutral-300 underline-offset-2 hover:decoration-coollabs dark:text-fg dark:decoration-white/20"
                         title={`https://${d}`}
                       >
                         https://{d}

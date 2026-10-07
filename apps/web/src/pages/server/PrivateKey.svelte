@@ -89,7 +89,7 @@
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
                 <p class="truncate text-sm font-medium text-neutral-950 dark:text-fg">{server.name}</p>
-                <span class="rounded-md border border-coollabs/40 px-1.5 py-0.5 font-mono text-[11px] text-coollabs dark:border-warning/40 dark:text-warning" data-testid="key-type">{keyType}</span>
+                <span class="rounded-md border border-coollabs/40 px-1.5 py-0.5 font-mono text-[11px] text-coollabs" data-testid="key-type">{keyType}</span>
               </div>
               <p class="mt-1 text-xs text-neutral-500 dark:text-fg-dim">
                 Add it for <span class="font-mono">{server.user}</span> on the server, then Check connection.

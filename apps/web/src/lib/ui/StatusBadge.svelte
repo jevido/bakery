@@ -29,8 +29,9 @@
 </script>
 
 <script lang="ts">
-  // Coolify's status-badge (resources/views/components/status-badge.blade.php):
-  // a pill with a coloured dot. `href` renders a link, `onclick` a button.
+  // Paperclip's StatusBadge (components/StatusBadge.tsx): a pill tinted by
+  // its status, here the success, warning and error tokens. `href` renders a
+  // link, `onclick` a button.
   import type { Snippet } from 'svelte'
 
   let {
@@ -53,15 +54,14 @@
     children?: Snippet
   } = $props()
 
-  const dot: Record<StatusType, string> = {
-    neutral: 'bg-neutral-400 dark:bg-neutral-500',
-    success: 'bg-emerald-500',
-    warning: 'bg-warning',
-    error: 'bg-red-500',
+  const tone: Record<StatusType, string> = {
+    neutral: 'bg-muted text-muted-foreground',
+    success: 'bg-success/10 text-success',
+    warning: 'bg-warning/10 text-warning',
+    error: 'bg-destructive/10 text-destructive',
   }
 
-  const base =
-    'chrome inline-flex h-6 max-w-full items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-100 px-2 text-xs leading-none font-medium whitespace-nowrap text-neutral-700 dark:border-white/[0.12] dark:bg-white/[0.07] dark:text-white'
+  const base = 'chrome inline-flex max-w-full shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap'
   const text = $derived([label, status].filter(Boolean).join(' '))
 </script>
 
@@ -69,15 +69,14 @@
   {#if children}
     {@render children()}
   {:else}
-    <span class={['size-1.5 shrink-0 rounded-full', dot[type]]}></span>
     <span class="truncate">{text}</span>
   {/if}
 {/snippet}
 
 {#if href}
-  <a {href} {title} class={[base, 'transition-colors', className]}>{@render body()}</a>
+  <a {href} {title} class={[base, tone[type], 'transition-opacity hover:opacity-80', className]}>{@render body()}</a>
 {:else if onclick}
-  <button type="button" {onclick} {title} class={[base, 'transition-colors', className]}>{@render body()}</button>
+  <button type="button" {onclick} {title} class={[base, tone[type], 'cursor-pointer transition-opacity hover:opacity-80', className]}>{@render body()}</button>
 {:else}
-  <span {title} class={[base, className]}>{@render body()}</span>
+  <span {title} class={[base, tone[type], className]}>{@render body()}</span>
 {/if}
