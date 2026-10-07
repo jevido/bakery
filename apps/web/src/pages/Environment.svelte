@@ -18,7 +18,7 @@
     type ResourceItem,
   } from '../lib/resources'
   import { applicationPath, databasePath, href, servicePath } from '../lib/router.svelte'
-  import { session } from '../lib/session.svelte'
+  import { projectAccess } from '../lib/projectAccess.svelte'
   import type { Database, Deployment, Environment, Server, Service } from '../lib/types'
   import ClientPagination from '../lib/ui/ClientPagination.svelte'
   import Empty from '../lib/ui/Empty.svelte'
@@ -255,7 +255,7 @@
           in {environment.project_name}
         </p>
       </div>
-      {#if session.can('manage_applications')}
+      {#if projectAccess.can('manage_applications')}
         <div class="flex w-fit shrink-0 items-center gap-2">
           <a
             href={href(`/project/${projectId}/environment/${id}/edit`)}
@@ -276,7 +276,7 @@
 
     {#if resources.length === 0}
       <Empty title="No resources yet" description="Add an application, database, or service to this environment." icon="layers">
-        {#if session.can('manage_applications')}
+        {#if projectAccess.can('manage_applications')}
           <a href={newHref} class="button">
             <Icon name="plus" class="size-3.5" />
             Add resource

@@ -10,8 +10,10 @@
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import EnvironmentVariables from '../lib/EnvironmentVariables.svelte'
+  import Icon from '../lib/Icon.svelte'
   import { projectResources, type ProjectResources } from '../lib/projectCounts'
   import { go, href } from '../lib/router.svelte'
+  import { projectAccess } from '../lib/projectAccess.svelte'
   import { session } from '../lib/session.svelte'
   import type { Project } from '../lib/types'
   import ConfirmationModal from '../lib/ui/ConfirmationModal.svelte'
@@ -41,7 +43,7 @@
   })
 
   const project = $derived(resources?.project)
-  const dirty = $derived(!!project && session.can('manage_applications') && (name !== project.name || description !== (project.description ?? '')))
+  const dirty = $derived(!!project && projectAccess.can('manage_applications') && (name !== project.name || description !== (project.description ?? '')))
   const empty = $derived(
     !!resources &&
       resources.databases.length === 0 &&
@@ -99,6 +101,12 @@
     <header class="mb-5">
       <h1 class="truncate text-[24px]! leading-7! font-semibold! tracking-tight!">{project.name}</h1>
       <p class="mt-1 text-[13px] text-neutral-500 dark:text-fg-dim">Project settings</p>
+      {#if session.can('manage_roles')}
+        <a href={href(`/project/${id}/permissions`)} class="button mt-3 w-fit">
+          <Icon name="lock" class="size-3.5" />
+          Permissions
+        </a>
+      {/if}
     </header>
 
     <div class="flex flex-col gap-6">
@@ -108,7 +116,7 @@
           save()
         }}
       >
-        {#if session.can('manage_applications')}
+        {#if projectAccess.can('manage_applications')}
           <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
         {/if}
         <section class="application-settings-section">
@@ -119,8 +127,8 @@
             </div>
           </div>
           <div class="application-settings-section-body grid gap-4 sm:grid-cols-2">
-            <Input label="Name" bind:value={name} error={errors.name} disabled={!session.can('manage_applications')} />
-            <Input label="Description" bind:value={description} error={errors.description} disabled={!session.can('manage_applications')} />
+            <Input label="Name" bind:value={name} error={errors.name} disabled={!projectAccess.can('manage_applications')} />
+            <Input label="Description" bind:value={description} error={errors.description} disabled={!projectAccess.can('manage_applications')} />
           </div>
         </section>
       </form>
@@ -131,7 +139,7 @@
         helper="Every application in this project gets these, unless its environment or the application sets the same name."
       />
 
-      {#if session.can('manage_applications')}
+      {#if projectAccess.can('manage_applications')}
         <section class="overflow-hidden rounded-[10px] border border-red-300 bg-red-50/80 dark:border-red-500/25 dark:bg-red-500/[0.06]">
           <div class="flex items-start justify-between gap-4 px-5 py-4">
             <div>

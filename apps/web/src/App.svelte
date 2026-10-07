@@ -2,6 +2,7 @@
   import { setUnauthorizedHandler } from './lib/api'
   import { breadcrumb } from './lib/breadcrumb.svelte'
   import Layout from './lib/Layout.svelte'
+  import { projectAccess, projectOf } from './lib/projectAccess.svelte'
   import { router } from './lib/router.svelte'
   import { session } from './lib/session.svelte'
   import Login from './pages/Login.svelte'
@@ -18,6 +19,7 @@
   import NewResource from './pages/NewResource.svelte'
   import Project from './pages/Project.svelte'
   import ProjectEdit from './pages/ProjectEdit.svelte'
+  import ProjectPermissions from './pages/ProjectPermissions.svelte'
   import Projects from './pages/Projects.svelte'
   import NewServer from './pages/server/New.svelte'
   import Server from './pages/server/Server.svelte'
@@ -47,6 +49,12 @@
     void router.route
     breadcrumb.clear()
   })
+
+  // Pages under a Project ask its Permissions, overrides applied.
+  $effect.pre(() => {
+    const signedIn = session.state === 'signed-in'
+    projectAccess.follow(signedIn ? projectOf(router.route) : null, session.guild?.id ?? null)
+  })
 </script>
 
 {#if failed}
@@ -70,6 +78,9 @@
     {#key session.guild?.id}
     {#if session.guild === null && router.route.name !== 'profile'}
       <NewGuild noGuild />
+    {:else if projectAccess.missing}
+      <!-- A Project that is gone, in another Guild, or not to be viewed: the API answered 404. -->
+      <NotFound />
     {:else if router.route.name === 'dashboard'}
       <Dashboard />
     {:else if router.route.name === 'projects'}
@@ -78,6 +89,8 @@
       <Project id={router.route.id} />
     {:else if router.route.name === 'project-edit'}
       <ProjectEdit id={router.route.id} />
+    {:else if router.route.name === 'project-permissions'}
+      <ProjectPermissions id={router.route.id} />
     {:else if router.route.name === 'environment'}
       <Environment projectId={router.route.projectId} id={router.route.id} />
     {:else if router.route.name === 'environment-edit'}

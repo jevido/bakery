@@ -10,7 +10,7 @@
   import { ago } from '../../lib/format'
   import Icon from '../../lib/Icon.svelte'
   import { applicationPath, go } from '../../lib/router.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Application, Deployment } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
@@ -106,7 +106,7 @@
                 ({image.deployment.commit_sha.slice(0, 7)}){/if}
             </p>
           </div>
-          {#if session.can('deploy')}
+          {#if projectAccess.can('deploy')}
             {#if image.current}
               <Button disabled title="This image is currently running.">Rollback</Button>
             {:else}

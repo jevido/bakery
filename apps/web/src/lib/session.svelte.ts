@@ -50,6 +50,11 @@ export type GuildPlace = { id: number; name: string; role: Exclude<Role, 'owner'
 /** The Guild the Session acts in. */
 export type CurrentGuild = { id: number; name: string }
 
+/** Whether permissions (a Member's, as /me or a Project answers them) allow p; administrator allows everything. */
+export function canIn(permissions: readonly Permission[], p: Permission): boolean {
+  return permissions.includes('administrator') || permissions.includes(p)
+}
+
 type Me = {
   member: Member
   guild: CurrentGuild | null
@@ -81,7 +86,7 @@ class Session {
 
   /** Whether the Member may use p in the Current guild; administrator allows everything. */
   can(p: Permission): boolean {
-    return this.permissions.includes('administrator') || this.permissions.includes(p)
+    return canIn(this.permissions, p)
   }
 
   /** What the Member goes by in the Current guild: Guild Master, else their highest Role. */

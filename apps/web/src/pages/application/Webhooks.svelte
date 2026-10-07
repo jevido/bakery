@@ -10,7 +10,7 @@
   // Deploy webhook (/api/v1/deploy) comes with the /api/v1 API.
   import { api, ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Application, Webhook } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
@@ -26,7 +26,7 @@
   $effect(() => {
     webhook = null
     // The Webhook comes with its secret, which a viewer may not read.
-    if (!session.can('see_secrets')) return
+    if (!projectAccess.can('see_secrets')) return
     api<{ webhook: Webhook }>('GET', `/applications/${application.id}/webhook`)
       .then((r) => (webhook = r.webhook))
       .catch((err) => toast.error('Webhook not loaded', err.message))
@@ -77,7 +77,7 @@
               <Icon name="external-link" class="size-3.5" />
             </a>
           {/if}
-          {#if session.can('manage_applications') && session.can('see_secrets')}
+          {#if projectAccess.can('manage_applications') && projectAccess.can('see_secrets')}
             <ConfirmationModal
               title="Rotate webhook secret?"
               buttonTitle="Rotate"
@@ -102,7 +102,7 @@
             </div>
             <div class="grid gap-4 md:grid-cols-2">
               <CopyButton label="Webhook URL" text={url} testid="webhook-url" />
-              {#if session.can('see_secrets')}
+              {#if projectAccess.can('see_secrets')}
                 <Input
                   type="password"
                   label="Webhook secret"

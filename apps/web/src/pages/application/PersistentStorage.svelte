@@ -11,7 +11,7 @@
   import { untrack } from 'svelte'
   import { ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Storage } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
@@ -33,7 +33,7 @@
     helper?: string
   } = $props()
 
-  const canUpdate = $derived(session.can('manage_applications') && !!onsave)
+  const canUpdate = $derived(projectAccess.can('manage_applications') && !!onsave)
 
   // The rows being edited, as typed; reset whenever the saved list changes.
   let forms = $state<Storage[]>([])

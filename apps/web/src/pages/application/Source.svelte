@@ -10,7 +10,7 @@
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Application } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
@@ -23,7 +23,7 @@
 
   let { application, onchange }: { application: Application; onchange: (a: Application) => void } = $props()
 
-  const canUpdate = $derived(session.can('manage_applications'))
+  const canUpdate = $derived(projectAccess.can('manage_applications'))
 
   let gitUrl = $state('')
   let gitBranch = $state('')

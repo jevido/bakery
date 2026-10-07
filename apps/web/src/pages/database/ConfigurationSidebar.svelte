@@ -7,7 +7,7 @@
   import Icon, { type IconName } from '../../lib/Icon.svelte'
   import { databasePath, go, href, type DatabasePage } from '../../lib/router.svelte'
   import { scrollToSettingsSection, scrollToSettingsSectionLater } from '../../lib/settingsSection.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Database } from '../../lib/types'
 
   let { database, page }: { database: Database; page: DatabasePage } = $props()
@@ -21,7 +21,7 @@
     { label: 'Servers', page: 'servers', icon: 'servers' },
     { label: 'Runtime Logs', page: 'logs', icon: 'unordered-list' },
     { label: 'Resource Limits', page: 'resource-limits', icon: 'cpu' },
-    { label: 'Danger Zone', page: 'danger', icon: 'shield-alert', visible: session.can('manage_applications') },
+    { label: 'Danger Zone', page: 'danger', icon: 'shield-alert', visible: projectAccess.can('manage_applications') },
   ])
   const items = $derived(all.filter((i) => i.visible ?? true))
 

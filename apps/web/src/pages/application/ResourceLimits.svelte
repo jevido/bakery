@@ -10,7 +10,7 @@
   import { untrack } from 'svelte'
   import { ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { ResourceLimits } from '../../lib/types'
   import Input from '../../lib/ui/Input.svelte'
   import SettingsSection from '../../lib/ui/SettingsSection.svelte'
@@ -29,7 +29,7 @@
     applied: string
   } = $props()
 
-  const canUpdate = $derived(session.can('manage_applications'))
+  const canUpdate = $derived(projectAccess.can('manage_applications'))
   const saved = $derived(limits)
   const savedCpus = $derived(saved.cpus == null ? '0' : String(saved.cpus))
   const savedMemory = $derived(saved.memory_mb == null ? '0' : `${saved.memory_mb}m`)

@@ -6,7 +6,7 @@
   import { api, ApiError } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import { href, servicePath, type ServicePage } from '../../lib/router.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Environment, Service } from '../../lib/types'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
@@ -108,7 +108,7 @@
   // stopped, any other is deployed.
   const busy = $derived(acting || !!service?.busy)
   const actions = $derived<Action[]>(
-    !session.can('deploy') || !service
+    !projectAccess.can('deploy') || !service
       ? []
       : service.status === 'running' || service.status === 'degraded'
         ? [
@@ -142,7 +142,7 @@
   <div class="chrome"><Spinner text="Loading…" /></div>
 {:else}
   <Heading name={service.name} {urls} {status} {actions} resource="service" error={service.last_error} />
-  {#if session.can('deploy')}
+  {#if projectAccess.can('deploy')}
     <div class="hidden" aria-hidden="true">
       <ConfirmationModal
         title="Confirm Service Restart?"
@@ -184,7 +184,7 @@
           <PersistentStorage {service} />
         {:else if page === 'logs'}
           <RuntimeLogs {service} />
-        {:else if page === 'danger' && session.can('manage_applications')}
+        {:else if page === 'danger' && projectAccess.can('manage_applications')}
           <!-- Coolify's network, configuration and Docker cleanup checkboxes
                are left out: a Service's network is its own and always goes,
                and it has no files or built images on the server. -->

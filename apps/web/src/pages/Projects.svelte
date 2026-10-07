@@ -12,7 +12,7 @@
   import Icon from '../lib/Icon.svelte'
   import { projectCounts, type ProjectCounts } from '../lib/projectCounts'
   import { go, href } from '../lib/router.svelte'
-  import { session } from '../lib/session.svelte'
+  import { canIn, session } from '../lib/session.svelte'
   import type { Project } from '../lib/types'
   import Button from '../lib/ui/Button.svelte'
   import ClientPagination from '../lib/ui/ClientPagination.svelte'
@@ -89,11 +89,13 @@
     localStorage.setItem(viewKey, mode)
   }
 
+  // A Project may override manage_applications, so its own buttons ask the Project.
+  const canManage = (p: Project) => !!counts[p.id] && canIn(counts[p.id].permissions, 'manage_applications')
   const addResourceHref = (p: Project) => {
     const first = counts[p.id]?.firstEnvironment
-    return first && session.can('manage_applications') ? href(`/project/${p.id}/environment/${first}/new`) : null
+    return first && canManage(p) ? href(`/project/${p.id}/environment/${first}/new`) : null
   }
-  const settingsHref = (p: Project) => (session.can('manage_applications') ? href(`/project/${p.id}/edit`) : null)
+  const settingsHref = (p: Project) => (canManage(p) ? href(`/project/${p.id}/edit`) : null)
 
   // New Project.
   let creating = $state(false)

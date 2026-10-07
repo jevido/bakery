@@ -6,7 +6,7 @@
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import { databaseTypeLabel } from '../../lib/databaseTypes'
   import { databasePath, href, type DatabasePage, type ScheduledBackupSection } from '../../lib/router.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Database, DatabaseInput, Environment, Server } from '../../lib/types'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
@@ -146,11 +146,11 @@
     detail={`${databaseTypeLabel(database.type)} ${database.version}`}
     error={database.error}
     stopped={database.desired_state === 'stopped'}
-    canDeploy={session.can('deploy')}
+    canDeploy={projectAccess.can('deploy')}
     {busy}
     onstart={() => act('start')}
   />
-  {#if session.can('deploy')}
+  {#if projectAccess.can('deploy')}
     <div class="hidden" aria-hidden="true">
       <ConfirmationModal
         title="Confirm Database Restart?"
@@ -205,7 +205,7 @@
             <RuntimeLogs url={`/api/databases/${database.id}/logs`} container={database.status === 'stopped' ? '' : database.container} />
           {:else if page === 'backups' && database.backups_supported}
             <Backups {database} />
-          {:else if page === 'danger' && session.can('manage_applications')}
+          {:else if page === 'danger' && projectAccess.can('manage_applications')}
             <!-- Coolify calls a Database a "resource" here. Its network,
                  configuration and Docker cleanup checkboxes have nothing
                  behind them for a Database. -->

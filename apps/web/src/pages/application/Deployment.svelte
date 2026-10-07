@@ -8,7 +8,7 @@
   import type { Attachment } from 'svelte/attachments'
   import { api, ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Application, Deployment, LogLine } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
@@ -300,7 +300,7 @@
               </div>
               <div class="logs-viewer-end">
                 <!-- deployment-navbar.blade.php: Cancel deployment while it is queued or running. -->
-                {#if running && session.can('deploy')}
+                {#if running && projectAccess.can('deploy')}
                   <div class="logs-viewer-deployment-actions">
                     <div class="flex flex-wrap items-center justify-end gap-2">
                       <Button variant="error" class="logs-viewer-deployment-btn logs-viewer-cancel-btn" loading={cancelling} onclick={cancel}

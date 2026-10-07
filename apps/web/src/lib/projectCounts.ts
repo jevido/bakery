@@ -1,8 +1,9 @@
 import { api } from './api'
+import type { Permission } from './session.svelte'
 import type { Database, Project, Service } from './types'
 
-/** What a Project card or row shows beside its name. */
-export type ProjectCounts = { environments: number; firstEnvironment?: number; resources: number }
+/** What a Project card or row shows beside its name, and the signed-in Member's Permissions there for its buttons. */
+export type ProjectCounts = { environments: number; firstEnvironment?: number; resources: number; permissions: Permission[] }
 
 /** A Project with its Databases and Services, which are their own contexts with their own endpoints. */
 export type ProjectResources = { project: Project; databases: Database[]; services: Service[] }
@@ -39,5 +40,6 @@ export async function projectCounts(id: number): Promise<ProjectCounts | null> {
     environments: environments.length,
     firstEnvironment: environments[0]?.id,
     resources: applications + r.databases.length + r.services.length,
+    permissions: r.project.permissions ?? [],
   }
 }

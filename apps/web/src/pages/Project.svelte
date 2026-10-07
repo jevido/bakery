@@ -9,6 +9,7 @@
   import Icon from '../lib/Icon.svelte'
   import { environmentResourceCount, projectResources, type ProjectResources } from '../lib/projectCounts'
   import { go, href } from '../lib/router.svelte'
+  import { projectAccess } from '../lib/projectAccess.svelte'
   import { session } from '../lib/session.svelte'
   import type { Environment } from '../lib/types'
   import Button from '../lib/ui/Button.svelte'
@@ -84,8 +85,8 @@
   }
 
   const environmentHref = (env: Environment) => href(`/project/${id}/environment/${env.id}`)
-  const addResourceHref = (env: Environment) => (session.can('manage_applications') ? href(`/project/${id}/environment/${env.id}/new`) : null)
-  const settingsHref = (env: Environment) => (session.can('manage_applications') ? href(`/project/${id}/environment/${env.id}/edit`) : null)
+  const addResourceHref = (env: Environment) => (projectAccess.can('manage_applications') ? href(`/project/${id}/environment/${env.id}/new`) : null)
+  const settingsHref = (env: Environment) => (projectAccess.can('manage_applications') ? href(`/project/${id}/environment/${env.id}/edit`) : null)
 
   // New Environment.
   let creating = $state(false)
@@ -135,8 +136,15 @@
         </p>
       </div>
 
-      {#if session.can('manage_applications')}
+      {#if projectAccess.can('manage_applications') || session.can('manage_roles')}
         <div class="flex w-fit shrink-0 items-center gap-2">
+          {#if session.can('manage_roles')}
+            <a href={href(`/project/${id}/permissions`)} class="button" title="Project permissions" aria-label="Open permissions for {project.name}">
+              <Icon name="lock" class="size-3.5" />
+              Permissions
+            </a>
+          {/if}
+          {#if projectAccess.can('manage_applications')}
           <a href={href(`/project/${id}/edit`)} class="button" title="Project settings" aria-label="Open settings for {project.name}">
             <Icon name="settings" class="size-3.5" />
             Settings
@@ -157,6 +165,7 @@
               </footer>
             </form>
           </Modal>
+          {/if}
         </div>
       {/if}
     </header>

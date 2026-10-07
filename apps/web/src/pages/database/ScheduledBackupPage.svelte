@@ -6,7 +6,7 @@
   import { api } from '../../lib/api'
   import Icon, { type IconName } from '../../lib/Icon.svelte'
   import { databasePath, href, type ScheduledBackupSection } from '../../lib/router.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Database, S3Storage, ScheduledBackup } from '../../lib/types'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import BackupEdit from './BackupEdit.svelte'
@@ -35,7 +35,7 @@
       .catch((e) => (loadError = e.message))
   })
   $effect(() => {
-    if (!session.can('see_secrets')) return
+    if (!projectAccess.can('see_secrets')) return
     api<{ s3_storages: S3Storage[] }>('GET', '/s3-storages')
       .then((r) => (storages = r.s3_storages))
       .catch(() => (storages = []))
@@ -48,7 +48,7 @@
     { key: 'executions', label: 'Executions', icon: 'browser-terminal' },
     { key: 'danger', label: 'Danger Zone', icon: 'shield-alert' },
   ]
-  const shownItems = $derived(items.filter((i) => i.key !== 'danger' || session.can('manage_applications')))
+  const shownItems = $derived(items.filter((i) => i.key !== 'danger' || projectAccess.can('manage_applications')))
   const base = $derived(`${databasePath(database, 'backups')}/${id}`)
 </script>
 
@@ -84,7 +84,7 @@
         <div class="chrome"><Spinner text="Loading…" /></div>
       {:else if section === 'executions'}
         <BackupExecutions {database} {scheduledBackup} {ondatabase} />
-      {:else if section === 'danger' && !session.can('manage_applications')}
+      {:else if section === 'danger' && !projectAccess.can('manage_applications')}
         <div class="chrome">
           <h2 class="text-[15px]! font-semibold! text-black dark:text-fg">Not available</h2>
           <p class="mt-2 text-[13px] text-neutral-600 dark:text-fg-dim">Viewers cannot delete a Scheduled backup.</p>

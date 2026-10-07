@@ -10,7 +10,7 @@
   // as Coolify's instantSave does.
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import { scrollToPendingSettingsSection } from '../../lib/settingsSection.svelte'
   import type { Database, DatabaseInput, DatabaseType } from '../../lib/types'
   import CopyButton from '../../lib/ui/CopyButton.svelte'
@@ -51,7 +51,7 @@
   const hiddenValue = 'Hidden (viewers cannot see it)'
   const urlHelper = 'The Bakery generated the credentials in this URL when it created the database; they never change.'
 
-  const canUpdate = $derived(session.can('manage_applications'))
+  const canUpdate = $derived(projectAccess.can('manage_applications'))
 
   let name = $state('')
   let description = $state('')

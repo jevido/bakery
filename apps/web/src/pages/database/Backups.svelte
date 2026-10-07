@@ -10,7 +10,7 @@
   import { api, ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
   import { databasePath, go, href } from '../../lib/router.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { BackupExecution, Database, S3Storage, ScheduledBackup, ScheduledBackupInput } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
@@ -41,7 +41,7 @@
   $effect(() => {
     void database.id
     load().catch((e) => (loadError = e.message))
-    if (session.can('see_secrets')) {
+    if (projectAccess.can('see_secrets')) {
       api<{ s3_storages: S3Storage[] }>('GET', '/s3-storages')
         .then((r) => (storages = r.s3_storages))
         .catch(() => {})
@@ -119,7 +119,7 @@
     helper="Automate database backups and track the latest execution for each schedule."
   >
     {#snippet actions()}
-      {#if session.can('manage_applications')}
+      {#if projectAccess.can('manage_applications')}
         <Modal title="New Scheduled Backup" bind:open={adding} onclose={() => (addErrors = {})}>
           {#snippet trigger(show)}
             <Button variant="highlighted" onclick={show}>+ Add</Button>

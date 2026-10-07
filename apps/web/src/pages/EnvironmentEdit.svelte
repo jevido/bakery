@@ -12,7 +12,7 @@
   import EnvironmentVariables from '../lib/EnvironmentVariables.svelte'
   import { environmentResourceCount, projectResources, type ProjectResources } from '../lib/projectCounts'
   import { go, href } from '../lib/router.svelte'
-  import { session } from '../lib/session.svelte'
+  import { projectAccess } from '../lib/projectAccess.svelte'
   import type { Environment } from '../lib/types'
   import ConfirmationModal from '../lib/ui/ConfirmationModal.svelte'
   import Input from '../lib/ui/Input.svelte'
@@ -44,7 +44,7 @@
   const project = $derived(resources?.project)
   const environment = $derived(project?.environments?.find((e) => e.id === id))
   const dirty = $derived(
-    !!environment && session.can('manage_applications') && (name !== environment.name || description !== (environment.description ?? '')),
+    !!environment && projectAccess.can('manage_applications') && (name !== environment.name || description !== (environment.description ?? '')),
   )
   const empty = $derived(!!resources && environmentResourceCount(resources, id) === 0)
 
@@ -116,7 +116,7 @@
           save()
         }}
       >
-        {#if session.can('manage_applications')}
+        {#if projectAccess.can('manage_applications')}
           <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
         {/if}
         <section class="application-settings-section">
@@ -127,8 +127,8 @@
             </div>
           </div>
           <div class="application-settings-section-body grid gap-4 sm:grid-cols-2">
-            <Input label="Name" bind:value={name} error={errors.name} disabled={!session.can('manage_applications')} />
-            <Input label="Description" bind:value={description} error={errors.description} disabled={!session.can('manage_applications')} />
+            <Input label="Name" bind:value={name} error={errors.name} disabled={!projectAccess.can('manage_applications')} />
+            <Input label="Description" bind:value={description} error={errors.description} disabled={!projectAccess.can('manage_applications')} />
           </div>
         </section>
       </form>
@@ -139,7 +139,7 @@
         helper={`Every application in ${environment.name} gets these, unless it sets the same name. They win over the project's.`}
       />
 
-      {#if session.can('manage_applications')}
+      {#if projectAccess.can('manage_applications')}
         <section class="overflow-hidden rounded-[10px] border border-red-300 bg-red-50/80 dark:border-red-500/25 dark:bg-red-500/[0.06]">
           <div class="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
             <div class="min-w-0">

@@ -18,7 +18,7 @@
   import PrivateGitRepository from '../lib/new/PrivateGitRepository.svelte'
   import PublicGitRepository from '../lib/new/PublicGitRepository.svelte'
   import { databasePath, go, href, serverPath, servicePath } from '../lib/router.svelte'
-  import { session } from '../lib/session.svelte'
+  import { projectAccess } from '../lib/projectAccess.svelte'
   import type { Database, DatabaseType, Environment, Server, Service, ServiceTemplate } from '../lib/types'
   import Callout from '../lib/ui/Callout.svelte'
   import Empty from '../lib/ui/Empty.svelte'
@@ -165,7 +165,7 @@
     environment = null
     loadError = ''
     // A viewer has no create rights: the Environment page instead.
-    if (!session.can('manage_applications')) {
+    if (!projectAccess.can('manage_applications')) {
       location.replace(href(`/project/${projectId}/environment/${id}`))
       return
     }

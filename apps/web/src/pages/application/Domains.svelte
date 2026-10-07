@@ -11,7 +11,7 @@
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Application, Redirect, RouteSettings, Server } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import Callout from '../../lib/ui/Callout.svelte'
@@ -29,7 +29,7 @@
     onchange,
   }: { application: Application; server: Server | null; onchange: (a: Application) => void } = $props()
 
-  const canUpdate = $derived(session.can('manage_applications'))
+  const canUpdate = $derived(projectAccess.can('manage_applications'))
   const domains = $derived(application.domains)
 
   let routing = $state.raw<RouteSettings | null>(null)

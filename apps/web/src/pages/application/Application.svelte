@@ -6,7 +6,7 @@
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import EnvironmentVariables from '../../lib/EnvironmentVariables.svelte'
   import { applicationPath, go, href, type ApplicationPage } from '../../lib/router.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Application, ApplicationInput, Deployment, Environment, Server } from '../../lib/types'
   import Callout from '../../lib/ui/Callout.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
@@ -167,7 +167,7 @@
   // Application is exited, and the phone menu lists them in its own order.
   const busy = $derived(deploying || queued)
   const actions = $derived<Action[]>(
-    !session.can('deploy') || !status
+    !projectAccess.can('deploy') || !status
       ? []
       : exited
         ? [
@@ -190,7 +190,7 @@
           ],
   )
   const mobileActions = $derived<Action[]>(
-    !session.can('deploy') || !status || exited
+    !projectAccess.can('deploy') || !status || exited
       ? actions
       : [
           { label: 'Deploy', icon: 'refresh', run: deploy, disabled: busy },
@@ -225,7 +225,7 @@
   <div class="chrome"><Spinner text="Loading…" /></div>
 {:else}
   <Heading name={application.name} urls={application.public_urls} {status} {actions} {mobileActions} />
-  {#if session.can('deploy')}
+  {#if projectAccess.can('deploy')}
     <div class="hidden" aria-hidden="true">
       <ConfirmationModal
         title={exited ? 'Confirm Container Removal?' : 'Confirm Application Stopping?'}
@@ -305,7 +305,7 @@
           <Rollback {application} />
         {:else if page === 'advanced'}
           <Advanced {application} />
-        {:else if page === 'danger' && session.can('manage_applications')}
+        {:else if page === 'danger' && projectAccess.can('manage_applications')}
           <Danger
             label="application"
             name={application.name}

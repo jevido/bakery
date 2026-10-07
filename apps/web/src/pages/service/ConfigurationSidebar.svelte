@@ -8,7 +8,7 @@
   import Icon, { type IconName } from '../../lib/Icon.svelte'
   import { href, servicePath, type ServicePage } from '../../lib/router.svelte'
   import { scrollToSettingsSection } from '../../lib/settingsSection.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Service } from '../../lib/types'
   import { headline, storageSectionID } from './PersistentStorage.svelte'
 
@@ -22,7 +22,7 @@
     { label: 'Environment Variables', page: 'environment-variables', icon: 'variables' },
     { label: 'Persistent Storage', page: 'storages', icon: 'storages' },
     { label: 'Runtime Logs', page: 'logs', icon: 'unordered-list' },
-    { label: 'Danger Zone', page: 'danger', icon: 'shield-alert', visible: session.can('manage_applications') },
+    { label: 'Danger Zone', page: 'danger', icon: 'shield-alert', visible: projectAccess.can('manage_applications') },
   ])
   const items = $derived(all.filter((i) => i.visible ?? true))
 

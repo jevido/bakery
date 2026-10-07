@@ -11,7 +11,7 @@
   import { api, ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
   import { applicationPath, href } from '../../lib/router.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import { scrollToPendingSettingsSection } from '../../lib/settingsSection.svelte'
   import type { Application, ApplicationInput, BuildPack, RouteSettings } from '../../lib/types'
   import Input from '../../lib/ui/Input.svelte'
@@ -42,7 +42,7 @@
   }
 
   const gitBased = $derived(application.build_pack !== 'dockerimage')
-  const canUpdate = $derived(session.can('manage_applications'))
+  const canUpdate = $derived(projectAccess.can('manage_applications'))
 
   let name = $state('')
   let description = $state('')

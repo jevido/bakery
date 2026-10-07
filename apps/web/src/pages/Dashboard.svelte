@@ -14,7 +14,7 @@
   import Icon from '../lib/Icon.svelte'
   import { projectCounts, type ProjectCounts } from '../lib/projectCounts'
   import { href, serverPath } from '../lib/router.svelte'
-  import { session } from '../lib/session.svelte'
+  import { canIn, session } from '../lib/session.svelte'
   import type { Project, Server } from '../lib/types'
   import Empty from '../lib/ui/Empty.svelte'
   import SectionHeading from '../lib/ui/SectionHeading.svelte'
@@ -109,7 +109,7 @@
                 </p>
 
                 <div class="relative z-10 flex shrink-0 items-center gap-0.5">
-                  {#if c?.firstEnvironment && session.can('manage_applications')}
+                  {#if c?.firstEnvironment && canIn(c.permissions, 'manage_applications')}
                     <a
                       href={href(`/project/${project.id}/environment/${c.firstEnvironment}/new`)}
                       class="flex size-6.5 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg"
@@ -119,7 +119,7 @@
                       <Icon name="plus" class="size-3" />
                     </a>
                   {/if}
-                  {#if session.can('manage_applications')}
+                  {#if c && canIn(c.permissions, 'manage_applications')}
                     <a
                       href={href(`/project/${project.id}/edit`)}
                       class="flex size-6.5 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg"

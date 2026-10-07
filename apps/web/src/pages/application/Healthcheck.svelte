@@ -9,7 +9,7 @@
   // port, expected code and response text.
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Application, HealthCheck } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
@@ -25,7 +25,7 @@
     onchange,
   }: { application: Application; status: string | null; onchange: (a: Application) => void } = $props()
 
-  const canUpdate = $derived(session.can('manage_applications'))
+  const canUpdate = $derived(projectAccess.can('manage_applications'))
   const saved = $derived(application.health_check)
 
   let path = $state('')

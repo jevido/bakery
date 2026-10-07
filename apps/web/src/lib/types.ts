@@ -106,6 +106,8 @@ export type Project = {
   name: string
   description: string
   environments?: Environment[]
+  /** The signed-in Member's Permissions in the Project, overrides applied; only on GET /api/projects/{id}. */
+  permissions?: import('./session.svelte').Permission[]
 }
 
 /** build: handed to the build as a build arg; runtime: set in the container. */

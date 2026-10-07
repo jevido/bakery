@@ -13,7 +13,7 @@
   import { api, ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
   import { href, servicePath } from '../../lib/router.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Component, Environment, Service, ServiceTemplate } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import CopyButton from '../../lib/ui/CopyButton.svelte'
@@ -35,7 +35,7 @@
 
   const hiddenValue = 'Hidden (viewers cannot see it)'
   const appliesOnRestart = 'The change applies on the next Restart.'
-  const canUpdate = $derived(session.can('manage_applications'))
+  const canUpdate = $derived(projectAccess.can('manage_applications'))
 
   // --- Service details and Service configuration: one form.
   let name = $state('')

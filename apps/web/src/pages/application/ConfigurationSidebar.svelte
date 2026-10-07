@@ -8,7 +8,7 @@
   import Icon, { type IconName } from '../../lib/Icon.svelte'
   import { applicationPath, go, href, type ApplicationPage } from '../../lib/router.svelte'
   import { scrollToSettingsSection, scrollToSettingsSectionLater } from '../../lib/settingsSection.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Application } from '../../lib/types'
 
   let { application, page }: { application: Application; page: ApplicationPage } = $props()
@@ -33,7 +33,7 @@
       { label: 'Healthcheck', page: 'healthcheck', icon: 'feedback' },
       { label: 'Rollback', page: 'rollback', icon: 'time-back' },
       { label: 'Resource Limits', page: 'resource-limits', icon: 'cpu' },
-    { label: 'Danger Zone', page: 'danger', icon: 'shield-alert', visible: session.can('manage_applications') },
+    { label: 'Danger Zone', page: 'danger', icon: 'shield-alert', visible: projectAccess.can('manage_applications') },
   ])
   const items = $derived(all.filter((i) => i.visible ?? true))
 

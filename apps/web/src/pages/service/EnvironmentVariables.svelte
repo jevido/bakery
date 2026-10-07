@@ -11,7 +11,7 @@
   import { api, ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
   import { href, servicePath } from '../../lib/router.svelte'
-  import { session } from '../../lib/session.svelte'
+  import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Service, ServiceVariable } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import ClientPagination from '../../lib/ui/ClientPagination.svelte'
@@ -74,7 +74,7 @@
   let saving = $state(false)
 
   const editingVar = $derived<ServiceVariable | undefined>(vars.find((v) => v.name === editingName))
-  const canEditValue = $derived(session.can('manage_applications') && !!editingVar && !editingVar.magic && !editingVar.hidden)
+  const canEditValue = $derived(projectAccess.can('manage_applications') && !!editingVar && !editingVar.magic && !editingVar.hidden)
   const dirty = $derived(canEditValue && value !== editingVar?.value)
 
   function openEdit(v: ServiceVariable) {
