@@ -1,11 +1,12 @@
 <script lang="ts">
   // Coolify's Database configuration sidebar
   // (resources/views/components/database/configuration-sidebar.blade.php,
-  // Apache-2.0, see NOTICE): the sub-pages in Coolify's groups, one column on
-  // wide screens and a grid of links above the page on narrower ones. Only the
+  // Apache-2.0, see NOTICE): the sub-pages in Coolify's groups, drawn by
+  // ResourceNav as a column on wide screens and a select on narrower ones. Only the
   // sub-pages The Bakery has something behind are listed.
-  import Icon, { type IconName } from '../../lib/Icon.svelte'
-  import { databasePath, go, href, type DatabasePage } from '../../lib/router.svelte'
+  import type { IconName } from '../../lib/Icon.svelte'
+  import ResourceNav, { type ResourceNavItem } from '../../lib/ResourceNav.svelte'
+  import { databasePath, go, type DatabasePage } from '../../lib/router.svelte'
   import { scrollToSettingsSection, scrollToSettingsSectionLater } from '../../lib/settingsSection.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Database } from '../../lib/types'
@@ -49,58 +50,34 @@
     activeSection = ''
   })
 
-  function openSection(item: Item, id: string) {
+  function openSection(item: ResourceNavItem, id: string) {
     activeSection = id
-    if (item.page === page) {
+    if (item.active) {
       scrollToSettingsSection(id)
       return
     }
     scrollToSettingsSectionLater(id)
-    go(databasePath(database, item.page))
+    go(item.path)
   }
 
   const grouped = $derived(
     groups
-      .map(([label, labels]) => ({ label, items: labels.map((l) => items.find((i) => i.label === l)).filter((i): i is Item => !!i) }))
+      .map(([label, labels]) => ({
+        label,
+        items: labels
+          .map((l) => items.find((i) => i.label === l))
+          .filter((i): i is Item => !!i)
+          .map((i) => ({
+            label: i.label,
+            path: databasePath(database, i.page),
+            icon: i.icon,
+            active: i.page === page,
+            // Coolify lists General's sections only while General is open.
+            sections: i.page === page ? sections[i.page] : undefined,
+          })),
+      }))
       .filter((g) => g.items.length > 0),
   )
 </script>
 
-<aside class="chrome min-w-0 xl:self-start">
-  <nav
-    aria-label="Database settings"
-    class="grid grid-cols-2 gap-0.5 border-y border-neutral-200 py-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-1 xl:border-y-0 xl:py-0 dark:border-white/[0.06]"
-  >
-    {#each grouped as group, i (group.label)}
-      {#if i > 0}
-        <div class="my-2 hidden border-t border-neutral-200 xl:block dark:border-white/[0.06]" aria-hidden="true"></div>
-      {/if}
-      <div class="nav-section hidden xl:block">{group.label}</div>
-      {#each group.items as item (item.label)}
-        <div>
-          <a
-            class={['menu-item', item.page === page && 'menu-item-active']}
-            href={href(databasePath(database, item.page))}
-            aria-current={item.page === page ? 'page' : undefined}
-          >
-            <Icon name={item.icon} class="menu-item-icon" />
-            <span class="menu-item-label">{item.label}</span>
-          </a>
-          {#if item.page === page && sections[item.page]?.length}
-            <div class="nav-children hidden flex-col gap-0.5 py-1 xl:flex">
-              {#each sections[item.page] ?? [] as section (section.id)}
-                <button
-                  type="button"
-                  class={['menu-subitem', activeSection === section.id && 'menu-subitem-active']}
-                  onclick={() => openSection(item, section.id)}
-                >
-                  <span class="menu-item-label text-left">{section.label}</span>
-                </button>
-              {/each}
-            </div>
-          {/if}
-        </div>
-      {/each}
-    {/each}
-  </nav>
-</aside>
+<ResourceNav groups={grouped} label="Database settings" {activeSection} onsection={openSection} />

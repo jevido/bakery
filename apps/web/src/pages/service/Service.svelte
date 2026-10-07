@@ -9,6 +9,7 @@
   import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Environment, Service } from '../../lib/types'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
+  import Empty from '../../lib/ui/Empty.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import Danger from '../application/Danger.svelte'
@@ -137,71 +138,68 @@
 </script>
 
 {#if loadError}
-  <p class="chrome text-sm text-error">{loadError}</p>
+  <p class="chrome text-sm text-destructive">{loadError}</p>
 {:else if !service}
   <div class="chrome"><Spinner text="Loading…" /></div>
 {:else}
-  <Heading name={service.name} {urls} {status} {actions} resource="service" error={service.last_error} />
-  {#if projectAccess.can('deploy')}
-    <div class="hidden" aria-hidden="true">
-      <ConfirmationModal
-        title="Confirm Service Restart?"
-        buttonTitle="Restart"
-        actions={['This service will be restarted.']}
-        confirmWithText={false}
-        onconfirm={() => act('restart')}
-      >
-        {#snippet trigger(show)}
-          <button id="service-restart-trigger" type="button" onclick={show}>Restart</button>
-        {/snippet}
-      </ConfirmationModal>
-      <ConfirmationModal
-        title="Confirm Service Stopping?"
-        buttonTitle="Stop"
-        actions={['This service will be stopped.', 'All non-persistent data will be deleted.']}
-        confirmWithText={false}
-        onconfirm={() => act('stop')}
-      >
-        {#snippet trigger(show)}
-          <button id="service-stop-trigger" type="button" onclick={show}>Stop</button>
-        {/snippet}
-      </ConfirmationModal>
-    </div>
-  {/if}
-
-  <section class="mt-4 w-full max-w-none lg:mt-0">
-    <div class="grid min-w-0 gap-8 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
-      <ConfigurationSidebar {service} {page} />
-
-      <div class="min-w-0">
-        {#if page === ''}
-          <General {service} {environment} onchange={(s) => (service = s)} />
-        {:else if page === 'domains'}
-          <Domains {service} onchange={(s) => (service = s)} />
-        {:else if page === 'environment-variables'}
-          <EnvironmentVariables {service} onchange={(s) => (service = s)} />
-        {:else if page === 'storages'}
-          <PersistentStorage {service} />
-        {:else if page === 'logs'}
-          <RuntimeLogs {service} />
-        {:else if page === 'danger' && projectAccess.can('manage_applications')}
-          <!-- Coolify's network, configuration and Docker cleanup checkboxes
-               are left out: a Service's network is its own and always goes,
-               and it has no files or built images on the server. -->
-          <Danger
-            label="service"
-            name={service.name}
-            url={`/services/${service.id}`}
-            checkboxes={[{ id: 'delete_volumes', label: 'Permanently delete all volumes associated with this resource.', checked: true }]}
-            back={`/project/${projectId}/environment/${environmentId}`}
-          />
-        {:else}
-          <div class="chrome">
-            <h2 class="text-[15px]! font-semibold! text-black dark:text-fg">Not available</h2>
-            <p class="mt-2 text-[13px] text-neutral-600 dark:text-fg-dim">This Service has no such page.</p>
-          </div>
-        {/if}
+  <div class="chrome w-full space-y-6">
+    <Heading name={service.name} {urls} {status} {actions} resource="service" error={service.last_error} />
+    {#if projectAccess.can('deploy')}
+      <div class="hidden" aria-hidden="true">
+        <ConfirmationModal
+          title="Confirm Service Restart?"
+          buttonTitle="Restart"
+          actions={['This service will be restarted.']}
+          confirmWithText={false}
+          onconfirm={() => act('restart')}
+        >
+          {#snippet trigger(show)}
+            <button id="service-restart-trigger" type="button" onclick={show}>Restart</button>
+          {/snippet}
+        </ConfirmationModal>
+        <ConfirmationModal
+          title="Confirm Service Stopping?"
+          buttonTitle="Stop"
+          actions={['This service will be stopped.', 'All non-persistent data will be deleted.']}
+          confirmWithText={false}
+          onconfirm={() => act('stop')}
+        >
+          {#snippet trigger(show)}
+            <button id="service-stop-trigger" type="button" onclick={show}>Stop</button>
+          {/snippet}
+        </ConfirmationModal>
       </div>
-    </div>
-  </section>
+    {/if}
+
+    <div class="grid min-w-0 gap-6 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
+        <ConfigurationSidebar {service} {page} />
+
+        <div class="min-w-0">
+          {#if page === ''}
+            <General {service} {environment} onchange={(s) => (service = s)} />
+          {:else if page === 'domains'}
+            <Domains {service} onchange={(s) => (service = s)} />
+          {:else if page === 'environment-variables'}
+            <EnvironmentVariables {service} onchange={(s) => (service = s)} />
+          {:else if page === 'storages'}
+            <PersistentStorage {service} />
+          {:else if page === 'logs'}
+            <RuntimeLogs {service} />
+          {:else if page === 'danger' && projectAccess.can('manage_applications')}
+            <!-- Coolify's network, configuration and Docker cleanup checkboxes
+                 are left out: a Service's network is its own and always goes,
+                 and it has no files or built images on the server. -->
+            <Danger
+              label="service"
+              name={service.name}
+              url={`/services/${service.id}`}
+              checkboxes={[{ id: 'delete_volumes', label: 'Permanently delete all volumes associated with this resource.', checked: true }]}
+              back={`/project/${projectId}/environment/${environmentId}`}
+            />
+          {:else}
+            <Empty title="Not available" description="This Service has no such page." />
+          {/if}
+        </div>
+      </div>
+  </div>
 {/if}

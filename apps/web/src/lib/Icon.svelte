@@ -59,7 +59,7 @@
     X,
   } from '@lucide/svelte'
 
-  const icons = {
+  export const icons = {
     'dashboard': LayoutDashboard,
     'projects': FolderOpen,
     'servers': Server,

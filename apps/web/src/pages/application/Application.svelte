@@ -10,6 +10,7 @@
   import type { Application, ApplicationInput, Deployment, Environment, Server } from '../../lib/types'
   import Callout from '../../lib/ui/Callout.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
+  import Empty from '../../lib/ui/Empty.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import Advanced from './Advanced.svelte'
@@ -220,110 +221,107 @@
 </script>
 
 {#if loadError}
-  <p class="chrome text-sm text-error">{loadError}</p>
+  <p class="chrome text-sm text-destructive">{loadError}</p>
 {:else if !application}
   <div class="chrome"><Spinner text="Loading…" /></div>
 {:else}
-  <Heading name={application.name} urls={application.public_urls} {status} {actions} {mobileActions} />
-  {#if projectAccess.can('deploy')}
-    <div class="hidden" aria-hidden="true">
-      <ConfirmationModal
-        title={exited ? 'Confirm Container Removal?' : 'Confirm Application Stopping?'}
-        buttonTitle={exited ? 'Remove container' : 'Stop'}
-        actions={[
-          exited ? 'The exited application container will be removed.' : 'This application will be stopped.',
-          exited ? 'Anonymous volumes may become eligible for cleanup.' : 'All non-persistent data of this application will be deleted.',
-        ]}
-        confirmWithText={false}
-        onconfirm={stop}
-      >
-        {#snippet trigger(show)}
-          <button id="application-stop-trigger" type="button" onclick={show}>Stop</button>
-        {/snippet}
-      </ConfirmationModal>
-      <ConfirmationModal
-        title="Confirm Application Restart?"
-        buttonTitle="Restart"
-        actions={['This application will be restarted without rebuilding.']}
-        confirmWithText={false}
-        onconfirm={restart}
-      >
-        {#snippet trigger(show)}
-          <button id="application-restart-trigger" type="button" onclick={show}>Restart</button>
-        {/snippet}
-      </ConfirmationModal>
-    </div>
-  {/if}
-
-  <section class="mt-4 w-full max-w-none lg:mt-0">
-    <div class="grid min-w-0 gap-8 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
-      <ConfigurationSidebar {application} {page} />
-
-      <div class="min-w-0">
-        {#if application.deploy_key_public && deployments.length === 0 && page !== 'source'}
-          <div class="chrome mb-6">
-            <Callout title="Deploy key">
-              Private repository: add the deploy key from <a class="underline" href={href(applicationPath(application, 'source'))}>Git Source</a> to the
-              repository before the first deploy.
-            </Callout>
-          </div>
-        {/if}
-
-        {#if page === ''}
-          <General {application} onchange={(a) => (application = a)} />
-        {:else if page === 'domains'}
-          <Domains {application} {server} onchange={(a) => (application = a)} />
-        {:else if page === 'environment-variables'}
-          <EnvironmentVariables path={`/applications/${application.id}/environment-variables`} />
-        {:else if page === 'deployment'}
-          {#if deploymentId}
-            <DeploymentPage {application} {deploymentId} {serverNames} onchange={() => loadDeployments().catch(() => {})} />
-          {:else}
-            <DeploymentHistory {application} {serverNames} />
-          {/if}
-        {:else if page === 'logs'}
-          <RuntimeLogs url={`/api/applications/${application.id}/logs`} container={appStatus ? appStatus.container : null} />
-        {:else if page === 'source' && application.build_pack !== 'dockerimage'}
-          <Source {application} onchange={(a) => (application = a)} />
-        {:else if page === 'webhooks'}
-          <Webhooks {application} />
-        {:else if page === 'preview-deployments'}
-          <Previews {application} onchange={() => loadDeployments().catch(() => {})} />
-        {:else if page === 'servers'}
-          <Servers {server} {status} />
-        {:else if page === 'persistent-storage'}
-          <PersistentStorage storages={application.storages} onsave={(storages) => patch({ storages })} />
-        {:else if page === 'resource-limits'}
-          <ResourceLimits
-            limits={application.resource_limits}
-            onsave={(resource_limits) => patch({ resource_limits })}
-            applied="Redeploy to apply them."
-          />
-        {:else if page === 'healthcheck'}
-          <Healthcheck {application} {status} onchange={(a) => (application = a)} />
-        {:else if page === 'rollback'}
-          <Rollback {application} />
-        {:else if page === 'advanced'}
-          <Advanced {application} />
-        {:else if page === 'danger' && projectAccess.can('manage_applications')}
-          <Danger
-            label="application"
-            name={application.name}
-            url={`/applications/${application.id}`}
-            checkboxes={[
-              { id: 'delete_volumes', label: 'Permanently delete all volumes associated with this resource.', checked: true },
-              // In place of Coolify's Docker cleanup.
-              { id: 'delete_images', label: 'Remove the images its deployments built or pulled.', checked: true },
-            ]}
-            back={`/project/${application.project_id}/environment/${application.environment_id}`}
-          />
-        {:else}
-          <div class="chrome">
-            <h2 class="text-[15px]! font-semibold! text-black dark:text-fg">Not available</h2>
-            <p class="mt-2 text-[13px] text-neutral-600 dark:text-fg-dim">This Application has no such page.</p>
-          </div>
-        {/if}
+  <div class="chrome w-full space-y-6">
+    <Heading name={application.name} urls={application.public_urls} {status} {actions} {mobileActions} />
+    {#if projectAccess.can('deploy')}
+      <div class="hidden" aria-hidden="true">
+        <ConfirmationModal
+          title={exited ? 'Confirm Container Removal?' : 'Confirm Application Stopping?'}
+          buttonTitle={exited ? 'Remove container' : 'Stop'}
+          actions={[
+            exited ? 'The exited application container will be removed.' : 'This application will be stopped.',
+            exited ? 'Anonymous volumes may become eligible for cleanup.' : 'All non-persistent data of this application will be deleted.',
+          ]}
+          confirmWithText={false}
+          onconfirm={stop}
+        >
+          {#snippet trigger(show)}
+            <button id="application-stop-trigger" type="button" onclick={show}>Stop</button>
+          {/snippet}
+        </ConfirmationModal>
+        <ConfirmationModal
+          title="Confirm Application Restart?"
+          buttonTitle="Restart"
+          actions={['This application will be restarted without rebuilding.']}
+          confirmWithText={false}
+          onconfirm={restart}
+        >
+          {#snippet trigger(show)}
+            <button id="application-restart-trigger" type="button" onclick={show}>Restart</button>
+          {/snippet}
+        </ConfirmationModal>
       </div>
-    </div>
-  </section>
+    {/if}
+
+    <div class="grid min-w-0 gap-6 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
+        <ConfigurationSidebar {application} {page} />
+
+        <div class="min-w-0">
+          {#if application.deploy_key_public && deployments.length === 0 && page !== 'source'}
+            <div class="mb-6">
+              <Callout title="Deploy key">
+                Private repository: add the deploy key from <a class="underline" href={href(applicationPath(application, 'source'))}>Git Source</a> to the
+                repository before the first deploy.
+              </Callout>
+            </div>
+          {/if}
+
+          {#if page === ''}
+            <General {application} onchange={(a) => (application = a)} />
+          {:else if page === 'domains'}
+            <Domains {application} {server} onchange={(a) => (application = a)} />
+          {:else if page === 'environment-variables'}
+            <EnvironmentVariables path={`/applications/${application.id}/environment-variables`} />
+          {:else if page === 'deployment'}
+            {#if deploymentId}
+              <DeploymentPage {application} {deploymentId} {serverNames} onchange={() => loadDeployments().catch(() => {})} />
+            {:else}
+              <DeploymentHistory {application} {serverNames} />
+            {/if}
+          {:else if page === 'logs'}
+            <RuntimeLogs url={`/api/applications/${application.id}/logs`} container={appStatus ? appStatus.container : null} />
+          {:else if page === 'source' && application.build_pack !== 'dockerimage'}
+            <Source {application} onchange={(a) => (application = a)} />
+          {:else if page === 'webhooks'}
+            <Webhooks {application} />
+          {:else if page === 'preview-deployments'}
+            <Previews {application} onchange={() => loadDeployments().catch(() => {})} />
+          {:else if page === 'servers'}
+            <Servers {server} {status} />
+          {:else if page === 'persistent-storage'}
+            <PersistentStorage storages={application.storages} onsave={(storages) => patch({ storages })} />
+          {:else if page === 'resource-limits'}
+            <ResourceLimits
+              limits={application.resource_limits}
+              onsave={(resource_limits) => patch({ resource_limits })}
+              applied="Redeploy to apply them."
+            />
+          {:else if page === 'healthcheck'}
+            <Healthcheck {application} {status} onchange={(a) => (application = a)} />
+          {:else if page === 'rollback'}
+            <Rollback {application} />
+          {:else if page === 'advanced'}
+            <Advanced {application} />
+          {:else if page === 'danger' && projectAccess.can('manage_applications')}
+            <Danger
+              label="application"
+              name={application.name}
+              url={`/applications/${application.id}`}
+              checkboxes={[
+                { id: 'delete_volumes', label: 'Permanently delete all volumes associated with this resource.', checked: true },
+                // In place of Coolify's Docker cleanup.
+                { id: 'delete_images', label: 'Remove the images its deployments built or pulled.', checked: true },
+              ]}
+              back={`/project/${application.project_id}/environment/${application.environment_id}`}
+            />
+          {:else}
+            <Empty title="Not available" description="This Application has no such page." />
+          {/if}
+        </div>
+      </div>
+  </div>
 {/if}

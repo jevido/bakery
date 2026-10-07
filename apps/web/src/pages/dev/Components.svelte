@@ -13,6 +13,7 @@
   import CollectionToolbar from '../../lib/CollectionToolbar.svelte'
   import EntityRow from '../../lib/EntityRow.svelte'
   import PageHeader from '../../lib/PageHeader.svelte'
+  import ResourceNav, { type ResourceNavGroup } from '../../lib/ResourceNav.svelte'
   import SearchField from '../../lib/SearchField.svelte'
   import SortPopover from '../../lib/SortPopover.svelte'
   import ViewToggle from '../../lib/ViewToggle.svelte'
@@ -61,6 +62,26 @@
   $effect(() => breadcrumb.set({ label: 'Components' }))
 
   let name = $state('whoami')
+  let navSection = $state('details')
+  const navGroups: ResourceNavGroup[] = [
+    {
+      label: 'Settings',
+      items: [
+        {
+          label: 'General',
+          path: '/dev/components',
+          icon: 'settings',
+          active: true,
+          sections: [
+            { id: 'details', label: 'Application details' },
+            { id: 'networking', label: 'Networking' },
+          ],
+        },
+        { label: 'Domains', path: '/dev/components', icon: 'globe', active: false },
+      ],
+    },
+    { label: 'Observe & troubleshoot', items: [{ label: 'Runtime Logs', path: '/dev/components', icon: 'unordered-list', active: false }] },
+  ]
   let password = $state('s3cret-value')
   let dockerfile = $state('FROM nginx:alpine\nCOPY . /usr/share/nginx/html')
   let buildPack = $state('nixpacks')
@@ -414,6 +435,13 @@
         <UiButton size="sm"><Plus class="size-4" />New environment</UiButton>
       {/snippet}
     </PageHeader>
+  </section>
+
+  <section id="resource-nav">
+    <SectionHeading title="ResourceNav" subtitle="Grouped sub-pages with in-page sections; a select below xl" />
+    <div class="max-w-[210px]">
+      <ResourceNav groups={navGroups} label="Example sections" activeSection={navSection} onsection={(_, id) => (navSection = id)} />
+    </div>
   </section>
 
   <section id="entity-row">

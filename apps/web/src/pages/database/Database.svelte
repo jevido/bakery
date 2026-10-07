@@ -9,6 +9,7 @@
   import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Database, DatabaseInput, Environment, Server } from '../../lib/types'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
+  import Empty from '../../lib/ui/Empty.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import Danger from '../application/Danger.svelte'
@@ -136,95 +137,92 @@
 </script>
 
 {#if loadError}
-  <p class="chrome text-sm text-error">{loadError}</p>
+  <p class="chrome text-sm text-destructive">{loadError}</p>
 {:else if !database}
   <div class="chrome"><Spinner text="Loading…" /></div>
 {:else}
-  <Heading
-    name={database.name}
-    status={status ?? database.status}
-    detail={`${databaseTypeLabel(database.type)} ${database.version}`}
-    error={database.error}
-    stopped={database.desired_state === 'stopped'}
-    canDeploy={projectAccess.can('deploy')}
-    {busy}
-    onstart={() => act('start')}
-  />
-  {#if projectAccess.can('deploy')}
-    <div class="hidden" aria-hidden="true">
-      <ConfirmationModal
-        title="Confirm Database Restart?"
-        buttonTitle="Restart"
-        actions={['This database will be unavailable during the restart.', 'If the database is currently in use, data could be lost.']}
-        confirmWithText={false}
-        step2ButtonText="Restart Database"
-        onconfirm={() => act('restart')}
-      >
-        {#snippet trigger(show)}
-          <button id="database-restart-trigger" type="button" onclick={show}>Restart</button>
-        {/snippet}
-      </ConfirmationModal>
-      <ConfirmationModal
-        title="Confirm Database Stopping?"
-        buttonTitle="Stop"
-        actions={['This database will be stopped.', 'If the database is currently in use, data could be lost.']}
-        confirmWithText={false}
-        onconfirm={() => act('stop')}
-      >
-        {#snippet trigger(show)}
-          <button id="database-stop-trigger" type="button" onclick={show}>Stop</button>
-        {/snippet}
-      </ConfirmationModal>
-    </div>
-  {/if}
-
-  {#if page === 'backups' && scheduledBackupId && database.backups_supported}
-    <ScheduledBackupPage {database} id={scheduledBackupId} section={backupSection} ondatabase={(d) => (database = d)} />
-  {:else}
-    <section class="mt-4 w-full max-w-none lg:mt-0">
-      <div class="grid min-w-0 gap-8 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
-        <ConfigurationSidebar {database} {page} />
-
-        <div class="min-w-0">
-          {#if page === ''}
-            <General {database} onchange={(d) => (database = d)} />
-          {:else if page === 'resource-limits'}
-            <ResourceLimits
-              limits={database.resource_limits}
-              onsave={(resource_limits) => patch({ resource_limits })}
-              applied="The database restarts with them."
-            />
-          {:else if page === 'persistent-storage'}
-            <PersistentStorage
-              storages={[database.volume]}
-              helper="The database keeps its data in this volume, which outlives restarts, settings changes and new images."
-            />
-          {:else if page === 'servers'}
-            <Servers {server} {status} />
-          {:else if page === 'logs'}
-            <RuntimeLogs url={`/api/databases/${database.id}/logs`} container={database.status === 'stopped' ? '' : database.container} />
-          {:else if page === 'backups' && database.backups_supported}
-            <Backups {database} />
-          {:else if page === 'danger' && projectAccess.can('manage_applications')}
-            <!-- Coolify calls a Database a "resource" here. Its network,
-                 configuration and Docker cleanup checkboxes have nothing
-                 behind them for a Database. -->
-            <Danger
-              label="resource"
-              name={database.name}
-              url={`/databases/${database.id}`}
-              checkboxes={[{ id: 'delete_volumes', label: 'Permanently delete all volumes associated with this resource.', checked: true }]}
-              notes={['Its Backup executions on this server are removed; copies in S3 storage stay.']}
-              back={`/project/${projectId}/environment/${environmentId}`}
-            />
-          {:else}
-            <div class="chrome">
-              <h2 class="text-[15px]! font-semibold! text-black dark:text-fg">Not available</h2>
-              <p class="mt-2 text-[13px] text-neutral-600 dark:text-fg-dim">This Database has no such page.</p>
-            </div>
-          {/if}
-        </div>
+  <div class="chrome w-full space-y-6">
+    <Heading
+      name={database.name}
+      status={status ?? database.status}
+      detail={`${databaseTypeLabel(database.type)} ${database.version}`}
+      error={database.error}
+      stopped={database.desired_state === 'stopped'}
+      canDeploy={projectAccess.can('deploy')}
+      {busy}
+      onstart={() => act('start')}
+    />
+    {#if projectAccess.can('deploy')}
+      <div class="hidden" aria-hidden="true">
+        <ConfirmationModal
+          title="Confirm Database Restart?"
+          buttonTitle="Restart"
+          actions={['This database will be unavailable during the restart.', 'If the database is currently in use, data could be lost.']}
+          confirmWithText={false}
+          step2ButtonText="Restart Database"
+          onconfirm={() => act('restart')}
+        >
+          {#snippet trigger(show)}
+            <button id="database-restart-trigger" type="button" onclick={show}>Restart</button>
+          {/snippet}
+        </ConfirmationModal>
+        <ConfirmationModal
+          title="Confirm Database Stopping?"
+          buttonTitle="Stop"
+          actions={['This database will be stopped.', 'If the database is currently in use, data could be lost.']}
+          confirmWithText={false}
+          onconfirm={() => act('stop')}
+        >
+          {#snippet trigger(show)}
+            <button id="database-stop-trigger" type="button" onclick={show}>Stop</button>
+          {/snippet}
+        </ConfirmationModal>
       </div>
-    </section>
-  {/if}
+    {/if}
+
+    {#if page === 'backups' && scheduledBackupId && database.backups_supported}
+      <ScheduledBackupPage {database} id={scheduledBackupId} section={backupSection} ondatabase={(d) => (database = d)} />
+    {:else}
+      <div class="grid min-w-0 gap-6 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
+          <ConfigurationSidebar {database} {page} />
+
+          <div class="min-w-0">
+            {#if page === ''}
+              <General {database} onchange={(d) => (database = d)} />
+            {:else if page === 'resource-limits'}
+              <ResourceLimits
+                limits={database.resource_limits}
+                onsave={(resource_limits) => patch({ resource_limits })}
+                applied="The database restarts with them."
+              />
+            {:else if page === 'persistent-storage'}
+              <PersistentStorage
+                storages={[database.volume]}
+                helper="The database keeps its data in this volume, which outlives restarts, settings changes and new images."
+              />
+            {:else if page === 'servers'}
+              <Servers {server} {status} />
+            {:else if page === 'logs'}
+              <RuntimeLogs url={`/api/databases/${database.id}/logs`} container={database.status === 'stopped' ? '' : database.container} />
+            {:else if page === 'backups' && database.backups_supported}
+              <Backups {database} />
+            {:else if page === 'danger' && projectAccess.can('manage_applications')}
+              <!-- Coolify calls a Database a "resource" here. Its network,
+                   configuration and Docker cleanup checkboxes have nothing
+                   behind them for a Database. -->
+              <Danger
+                label="resource"
+                name={database.name}
+                url={`/databases/${database.id}`}
+                checkboxes={[{ id: 'delete_volumes', label: 'Permanently delete all volumes associated with this resource.', checked: true }]}
+                notes={['Its Backup executions on this server are removed; copies in S3 storage stay.']}
+                back={`/project/${projectId}/environment/${environmentId}`}
+              />
+            {:else}
+              <Empty title="Not available" description="This Database has no such page." />
+            {/if}
+          </div>
+        </div>
+    {/if}
+  </div>
 {/if}
