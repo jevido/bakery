@@ -76,3 +76,12 @@ Invite open outside it.
 at 1440×900 and 390×844, dark and light. It fails on a console or page
 error, a sideways scrollbar at 390px, a page outside the shell, or the words
 "Coolify" or "Paperclip" anywhere a person reads them.
+
+`e2e/servers.ts` (`task web:servers`, needs `task dev`) checks the Servers
+pages and S3 Storage, one section per flow (`bun e2e/servers.ts remote`
+runs one): the list, the Server frame, Resources, Metrics, Cleanup, the
+Remote server stand-in (`task remote:up`, else skipped), General and S3
+Storage, each once in the dark theme at 1440×900, plus a Viewer pass. The
+Server switcher sits beside the Server's name in its page header
+(`src/pages/server/Heading.svelte`); the breadcrumb bar has no portal slots
+any more, so nothing renders into it from a page.

@@ -372,24 +372,17 @@
  * foreground/muted-foreground, the old accent from primary.
  */
 @theme {
-  --shadow-modal:
-    0 24px 64px rgb(0 0 0 / 0.55), 0 4px 16px rgb(0 0 0 / 0.4);
   --shadow-dropdown: 0 4px 12px rgb(0 0 0 / 0.12), 0 2px 4px rgb(0 0 0 / 0.08);
 
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @theme inline {
-  --color-raised: var(--muted);
-  --color-selected: var(--accent);
   --color-fg: var(--foreground);
   --color-fg-dim: color-mix(in oklab, var(--foreground) 80%, var(--muted-foreground));
   --color-fg-faint: var(--muted-foreground);
   --color-coollabs: var(--primary);
-  --color-coolgray-100: var(--card);
-  --color-coolgray-400: var(--input);
   --color-warning-700: color-mix(in oklab, var(--warning) 65%, black);
 }
 
@@ -452,14 +445,6 @@
 
 @utility button-highlighted {
   @apply border-transparent bg-primary text-primary-foreground shadow-none hover:bg-primary/90 hover:text-primary-foreground dark:border-transparent dark:bg-primary dark:hover:bg-primary/90;
-}
-
-@utility control-selected {
-  @apply bg-primary text-primary-foreground;
-}
-
-@utility view-toggle {
-  @apply flex h-9 items-center rounded-md border bg-background shadow-xs dark:border-input dark:bg-input/30;
 }
 
 @utility dropdown-item {
@@ -560,7 +545,7 @@
 }
 
 .application-settings-section
-  > :is(header, .application-settings-section-header) {
+  > header {
   display: flex;
   min-height: 3rem;
   flex-wrap: wrap;
@@ -575,7 +560,7 @@
 }
 
 .application-settings-section
-  > :is(header, .application-settings-section-header)
+  > header
   :is(h2, h3) {
   font-size: 0.875rem;
   font-weight: 500;
@@ -586,17 +571,11 @@
 
 .dark
   .application-settings-section
-  > :is(header, .application-settings-section-header)
+  > header
   :is(h2, h3) {
   color: var(--color-fg-dim);
 }
 
-.application-settings-section > .application-settings-section-header p {
-  margin-top: 0.125rem;
-  font-size: 0.75rem;
-  line-height: 1rem;
-  color: var(--coollabs-subtle);
-}
 
 .application-settings-section-body {
   position: relative;

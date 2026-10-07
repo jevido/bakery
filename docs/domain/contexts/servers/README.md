@@ -97,6 +97,16 @@ Local server. It does not keep a metrics history either.
 
 ## Why it's shaped this way
 
+- **The Server switcher sits beside the Server's name, not in the top
+  bar.** Coolify docks it in the breadcrumb after the Server's name. The
+  Bakery's pages use Paperclip's detail header, which has the name in the
+  title row, so the switcher follows the name there and the top bar stays
+  Paperclip's plain breadcrumb with nothing rendered into it from a page.
+- **The usage charts use the theme's chart colors, not Coolify's.** The
+  dashboard follows Paperclip's look, so the CPU and memory charts draw in
+  its chart colors and follow the dark/light switch; what they show (the
+  last hour, refreshed every five seconds) is Coolify's.
+
 - **A Server's Resources come in one request, assembled here.** The
   dashboard first composed the list from every Project, Application and
   Deployment list, one request each, which took seconds on a Guild with

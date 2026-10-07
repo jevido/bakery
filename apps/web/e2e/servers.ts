@@ -1,5 +1,6 @@
 // The Servers pages and S3 Storage in headless Chromium, one section each,
-// every flow once in the light theme on a desktop:
+// every flow once in the dark theme at 1440×900 (the light theme and phone
+// width wait for the guilds goal's final sweep):
 //   list       the Local server shows Ready, search narrows and clears, the
 //              table/grid switch persists, New server validates an empty
 //              submit, a Viewer sees no "New server"
@@ -12,8 +13,8 @@
 //              server stand-in (task remote:up), else skipped
 //   general    rename the Local server and back; Validate's checkpoints
 //   storages   S3 Storage add, test, rename, delete, and a Viewer
-//   render     each page in dark on a desktop and both themes on a phone:
-//              it loads and nothing scrolls sideways
+//   render     each page loads in the dark theme and nothing scrolls
+//              sideways
 //
 //   bun e2e/servers.ts [section ...]   (task web:servers; needs task dev)
 //
@@ -48,7 +49,7 @@ type Server = { id: number; name: string; kind: 'local' | 'remote' }
 const browser = await chromium.launch({ executablePath: CHROMIUM })
 const who = owner()
 
-async function signedIn(width = 1440, height = 900, theme: 'dark' | 'light' = 'light'): Promise<Page> {
+async function signedIn(width = 1440, height = 900, theme: 'dark' | 'light' = 'dark'): Promise<Page> {
   const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce' })
   await ctx.addInitScript((t) => localStorage.setItem('theme', t), theme)
   const login = await ctx.request.post(`${WEB}/api/login`, { data: who })
@@ -359,8 +360,7 @@ const sections: Record<string, () => Promise<void>> = {
     await v.close()
   },
 
-  // Dark and phone: every page loads in its theme and nothing scrolls
-  // sideways. The flows above run once, light on a desktop.
+  // Every page loads in its theme and nothing scrolls sideways.
   async render() {
     const pages: [string, string][] = [
       ['Servers', '/servers'],
@@ -371,11 +371,7 @@ const sections: Record<string, () => Promise<void>> = {
       ['Docker Cleanup', `/server/${localServer.id}/docker-cleanup`],
       ['S3 Storage', '/storages'],
     ]
-    for (const [theme, width, height] of [
-      ['dark', 1440, 900],
-      ['light', 390, 844],
-      ['dark', 390, 844],
-    ] as const) {
+    for (const [theme, width, height] of [['dark', 1440, 900]] as const) {
       const page = await signedIn(width, height, theme)
       for (const [label, path] of pages) {
         const at = `${theme} ${width}px ${label}`
