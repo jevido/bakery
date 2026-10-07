@@ -7,16 +7,23 @@
   //
   // Left out: Clone environment (no cloning yet). Added: the Environment's
   // shared variables, until the Shared Variables pages arrive.
+  //
+  // Laid out as a Paperclip settings page (ui/src/pages/CompanySettings.tsx;
+  // MIT, see NOTICE), as Project settings is: a General group and a Danger
+  // Zone group, in the primary sidebar under its Project.
+  import { Layers } from '@lucide/svelte'
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import EnvironmentVariables from '../lib/EnvironmentVariables.svelte'
   import { environmentResourceCount, projectResources, type ProjectResources } from '../lib/projectCounts'
   import { go, href } from '../lib/router.svelte'
+  import PageSkeleton from '../lib/PageSkeleton.svelte'
   import { projectAccess } from '../lib/projectAccess.svelte'
+  import SettingsGroup from '../lib/settings/SettingsGroup.svelte'
+  import SettingsPage from '../lib/settings/SettingsPage.svelte'
   import type { Environment } from '../lib/types'
   import ConfirmationModal from '../lib/ui/ConfirmationModal.svelte'
   import Input from '../lib/ui/Input.svelte'
-  import Spinner from '../lib/ui/Spinner.svelte'
   import { toast } from '../lib/ui/toast.svelte'
   import UnsavedBar from '../lib/ui/UnsavedBar.svelte'
 
@@ -99,72 +106,52 @@
 </script>
 
 {#if loadError}
-  <p class="text-sm text-error">{loadError}</p>
+  <p class="text-sm text-destructive">{loadError}</p>
 {:else if !project || !environment}
-  <Spinner text="Loading…" />
+  <PageSkeleton />
 {:else}
-  <div class="chrome w-full max-w-none">
-    <header class="mb-5">
-      <h1 class="truncate text-[24px]! leading-7! font-semibold! tracking-tight!">{environment.name}</h1>
-      <p class="mt-1 text-[13px] text-neutral-500 dark:text-fg-dim">Environment settings in {project.name}</p>
-    </header>
-
-    <div class="flex flex-col gap-6">
-      <form
-        onsubmit={(e) => {
-          e.preventDefault()
-          save()
-        }}
-      >
-        {#if projectAccess.can('manage_applications')}
-          <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
-        {/if}
-        <section class="application-settings-section">
-          <div class="application-settings-section-header">
-            <div>
-              <h2>Environment details</h2>
-              <p>Name and describe this environment inside {project.name}.</p>
-            </div>
-          </div>
-          <div class="application-settings-section-body grid gap-4 sm:grid-cols-2">
-            <Input label="Name" bind:value={name} error={errors.name} disabled={!projectAccess.can('manage_applications')} />
-            <Input label="Description" bind:value={description} error={errors.description} disabled={!projectAccess.can('manage_applications')} />
-          </div>
-        </section>
-      </form>
-
-      <EnvironmentVariables
-        path={`/environments/${id}/variables`}
-        title="Shared variables"
-        helper={`Every application in ${environment.name} gets these, unless it sets the same name. They win over the project's.`}
-      />
-
+  <SettingsPage icon={Layers} title="Environment settings">
+    <form
+      class="space-y-8"
+      onsubmit={(e) => {
+        e.preventDefault()
+        save()
+      }}
+    >
       {#if projectAccess.can('manage_applications')}
-        <section class="overflow-hidden rounded-[10px] border border-red-300 bg-red-50/80 dark:border-red-500/25 dark:bg-red-500/[0.06]">
-          <div class="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-            <div class="min-w-0">
-              <h2 class="text-sm font-semibold text-red-800 dark:text-red-300">Delete environment</h2>
-              <p class="mt-1 max-w-2xl text-sm text-red-700/80 dark:text-red-200/70">
-                Remove every resource before permanently deleting this environment.
-              </p>
-            </div>
-            <div class="shrink-0 sm:pt-0.5">
-              <ConfirmationModal
-                title="Confirm Environment Deletion?"
-                buttonTitle="Delete"
-                variant="error"
-                disabled={!empty}
-                actions={['This will delete the selected environment.']}
-                confirmationText={environment.name}
-                confirmationLabel="Please confirm the execution of the actions by entering the Environment Name below"
-                shortConfirmationLabel="Environment Name"
-                step2ButtonText="Permanently Delete"
-                onconfirm={remove}
-              />
-            </div>
-          </div>
-        </section>
+        <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
       {/if}
-    </div>
-  </div>
+      <SettingsGroup label="General" hint="Name and describe this environment inside {project.name}." data-testid="environment-general">
+        <Input label="Name" bind:value={name} error={errors.name} disabled={!projectAccess.can('manage_applications')} />
+        <Input label="Description" bind:value={description} error={errors.description} disabled={!projectAccess.can('manage_applications')} />
+      </SettingsGroup>
+    </form>
+
+    <EnvironmentVariables
+      path={`/environments/${id}/variables`}
+      title="Shared variables"
+      helper={`Every application in ${environment.name} gets these, unless it sets the same name. They win over the project's.`}
+    />
+
+    {#if projectAccess.can('manage_applications')}
+      <SettingsGroup label="Danger Zone" destructive data-testid="environment-delete">
+        <p class="text-sm text-muted-foreground">
+          Permanently delete <strong class="font-medium text-foreground">{environment.name}</strong>. Remove every resource before deleting
+          this environment.
+        </p>
+        <ConfirmationModal
+          title="Confirm Environment Deletion?"
+          buttonTitle="Delete"
+          variant="error"
+          disabled={!empty}
+          actions={['This will delete the selected environment.']}
+          confirmationText={environment.name}
+          confirmationLabel="Please confirm the execution of the actions by entering the Environment Name below"
+          shortConfirmationLabel="Environment Name"
+          step2ButtonText="Permanently Delete"
+          onconfirm={remove}
+        />
+      </SettingsGroup>
+    {/if}
+  </SettingsPage>
 {/if}

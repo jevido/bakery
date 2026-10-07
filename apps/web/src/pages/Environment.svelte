@@ -4,9 +4,21 @@
   // Apache-2.0, see NOTICE): every Application, Database and Service of one
   // Environment with search, Filter, Sort, a remembered table/grid switch and
   // client-side pages. Tags are left out until Tags exist.
+  //
+  // Laid out as Paperclip's ProjectDetail (ui/src/pages/ProjectDetail.tsx,
+  // MIT), as the Project page is: its header with the name and actions, the
+  // list toolbar, then the Resources as EntityRows in one card or as cards.
+  import { buttonVariants } from '$lib/components/ui/button'
+  import { Card } from '$lib/components/ui/card'
+  import * as Popover from '$lib/components/ui/popover'
   import { api } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
+  import CollectionToolbar from '../lib/CollectionToolbar.svelte'
+  import EntityRow from '../lib/EntityRow.svelte'
   import Icon from '../lib/Icon.svelte'
+  import PageHeader from '../lib/PageHeader.svelte'
+  import PageSkeleton from '../lib/PageSkeleton.svelte'
+  import ProjectTile from '../lib/ProjectTile.svelte'
   import {
     displayDomain,
     firstDomain,
@@ -19,12 +31,13 @@
   } from '../lib/resources'
   import { applicationPath, databasePath, href, servicePath } from '../lib/router.svelte'
   import { projectAccess } from '../lib/projectAccess.svelte'
+  import SearchField from '../lib/SearchField.svelte'
+  import SortPopover from '../lib/SortPopover.svelte'
   import type { Database, Deployment, Environment, Server, Service } from '../lib/types'
   import ClientPagination from '../lib/ui/ClientPagination.svelte'
   import Empty from '../lib/ui/Empty.svelte'
-  import Spinner from '../lib/ui/Spinner.svelte'
   import StatusBadge from '../lib/ui/StatusBadge.svelte'
-  import TableDropdown from '../lib/ui/TableDropdown.svelte'
+  import ViewToggle from '../lib/ViewToggle.svelte'
 
   let { projectId, id }: { projectId: number; id: number } = $props()
 
@@ -45,7 +58,7 @@
   let resources = $state.raw<ResourceItem[]>([])
   let loadError = $state('')
 
-  let search = $state('')
+  let searchText = $state('')
   let filters = $state<Record<FilterKey, string[]>>({ typeFilters: [], serverFilters: [], statusFilters: [] })
   let sortBy = $state<SortKey>('name-asc')
   let viewMode = $state<ViewMode>(localStorage.getItem(viewKey) === 'grid' ? 'grid' : 'table')
@@ -55,7 +68,7 @@
   // The search box filters 150 ms after the last key, as Coolify's debounce does.
   let query = $state('')
   $effect(() => {
-    const value = search
+    const value = searchText
     const timer = setTimeout(() => (query = value.trim().toLowerCase()), 150)
     return () => clearTimeout(timer)
   })
@@ -207,10 +220,11 @@
 
   const newHref = $derived(href(`/project/${projectId}/environment/${id}/new`))
 
-  const toggleIdle =
-    'text-neutral-400 hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg'
-  const iconBox =
-    'flex size-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-500 dark:border-white/[0.08] dark:text-fg-dim'
+  const selectedFilters = $derived(
+    filterGroups.flatMap((g) => g.options.filter((o) => filters[g.key].includes(o.value)).map((o) => ({ group: g.key, ...o }))),
+  )
+  const listCard = 'block gap-0 overflow-hidden py-0'
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
   const typeIcons = { application: 'browser-code', database: 'database', service: 'layers' } as const
 
   const crumbs = $derived(environment ? { project: environment.project_name ?? '', environment: environment.name } : null)
@@ -228,347 +242,181 @@
   <StatusBadge status={statusLabel(item)} type={statusTone(item)} title={statusTitle(item)} />
 {/snippet}
 
-{#snippet noMatches(boxed: boolean)}
-  <div
-    class={[
-      'flex min-h-52 flex-col items-center justify-center px-6 text-center',
-      boxed && 'rounded-xl border border-neutral-200 bg-white dark:border-white/[0.08] dark:bg-white/[0.05]',
-    ]}
+{#snippet domain(item: ResourceItem, className: string)}
+  <a
+    href={firstDomain(item.fqdn)}
+    target="_blank"
+    rel="noopener noreferrer"
+    class={['relative z-10 truncate text-xs text-muted-foreground hover:text-foreground hover:underline', className]}
+    title={displayDomain(item.fqdn)}>{displayDomain(item.fqdn)}</a
   >
-    <Icon name="search" class="mb-3 size-6 text-neutral-300 dark:text-fg-faint" />
-    <p class="text-[13px] font-medium">No matching resources</p>
-    <p class="mt-1 text-[12px] text-neutral-500 dark:text-fg-dim">Try a different search or filter.</p>
-  </div>
 {/snippet}
 
 {#if loadError}
-  <p class="text-sm text-error">{loadError}</p>
+  <p class="text-sm text-destructive">{loadError}</p>
 {:else if !environment}
-  <Spinner text="Loading…" />
+  <PageSkeleton />
 {:else}
-  <div class="chrome w-full">
-    <header class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div class="min-w-0">
-        <h1 class="truncate text-[24px]! leading-7! font-semibold! tracking-tight!">{environment.name}</h1>
-        <p class="mt-1 text-[13px] text-neutral-500 dark:text-fg-dim">
-          <span>{resources.length} {resources.length === 1 ? 'resource' : 'resources'}</span>
-          in {environment.project_name}
-        </p>
-      </div>
-      {#if projectAccess.can('manage_applications')}
-        <div class="flex w-fit shrink-0 items-center gap-2">
+  <div class="chrome w-full space-y-4">
+    <PageHeader title={environment.name} description={environment.description || undefined}>
+      {#snippet leading()}<ProjectTile size="lg" icon="layers" />{/snippet}
+      {#snippet meta()}<span>{plural(resources.length, 'resource')} in {environment?.project_name}</span>{/snippet}
+      {#snippet actions()}
+        {#if projectAccess.can('manage_applications')}
           <a
             href={href(`/project/${projectId}/environment/${id}/edit`)}
-            class="button whitespace-nowrap"
+            class={buttonVariants({ variant: 'outline', size: 'sm' })}
             title="Environment settings"
-            aria-label="Open settings for {environment.name}"
+            aria-label="Open settings for {environment?.name}"
           >
             <Icon name="settings" class="size-3.5" />
             Settings
           </a>
-          <a href={newHref} class="button button-highlighted whitespace-nowrap">
+          <a href={newHref} class={buttonVariants({ size: 'sm' })}>
             <Icon name="plus" class="size-3.5" />
             New resource
           </a>
-        </div>
-      {/if}
-    </header>
+        {/if}
+      {/snippet}
+    </PageHeader>
 
     {#if resources.length === 0}
       <Empty title="No resources yet" description="Add an application, database, or service to this environment." icon="layers">
         {#if projectAccess.can('manage_applications')}
-          <a href={newHref} class="button">
+          <a href={newHref} class={buttonVariants({ variant: 'outline', size: 'sm' })}>
             <Icon name="plus" class="size-3.5" />
             Add resource
           </a>
         {/if}
       </Empty>
     {:else}
-      <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div class="relative w-full sm:max-w-sm">
-          <Icon
-            name="search"
-            class="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-neutral-400 dark:text-fg-faint"
-          />
-          <input
-            bind:value={search}
-            oninput={() => (page = 1)}
-            type="search"
-            placeholder="Search resources"
-            aria-label="Search resources"
-            class="input h-8! w-full rounded-lg! border-neutral-200! bg-white! py-0! pr-8! pl-8! text-[12px]! shadow-none! placeholder:text-neutral-400 focus:border-ring! focus:ring-0! dark:border-white/[0.08]! dark:bg-white/[0.035]! dark:text-fg! dark:placeholder:text-fg-faint"
-          />
-          {#if search}
-            <button
-              type="button"
-              onclick={() => {
-                search = ''
-                page = 1
-              }}
-              class="absolute top-1/2 right-2 flex size-5 -translate-y-1/2 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.07] dark:hover:text-fg"
-              aria-label="Clear search"
+      <CollectionToolbar ariaLabel="Resources controls">
+        {#snippet search()}
+          <SearchField bind:value={searchText} label="Search resources" oninput={() => (page = 1)} />
+        {/snippet}
+        {#snippet controls()}
+          <Popover.Root>
+            <Popover.Trigger
+              class={buttonVariants({ variant: 'ghost', size: 'sm', class: ['max-w-64 text-xs', activeFilterCount > 0 && 'bg-accent'].join(' ') })}
+              title={activeFilterCount > 0 ? filterButtonText : 'Filter'}
             >
-              <span class="text-sm leading-none">×</span>
-            </button>
-          {/if}
-        </div>
-
-        <div class="flex items-center gap-2">
-          <TableDropdown panelClass="w-64! overflow-hidden! p-0!">
-            {#snippet trigger({ open, toggle })}
-              <button
-                type="button"
-                class={['button max-w-64', activeFilterCount > 0 && 'button-highlighted']}
-                title={activeFilterCount > 0 ? filterButtonText : 'Filter'}
-                aria-haspopup="listbox"
-                aria-expanded={open}
-                onclick={toggle}
-              >
-                <svg class="size-3.5 opacity-65" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
-                </svg>
-                <span class="truncate">{activeFilterCount > 0 ? filterButtonText : 'Filter'}</span>
-                {#if activeFilterCount > 0}
-                  <span
-                    class="shrink-0 rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 dark:bg-white/[0.07] dark:text-fg-dim"
-                    >{activeFilterCount}</span
-                  >
-                {/if}
-              </button>
-            {/snippet}
-            {#snippet children()}
-              <div class="max-h-80 overflow-y-auto p-1" aria-multiselectable="true">
+              <Icon name="filter" class="size-3.5 sm:size-3" />
+              <span class="truncate">{activeFilterCount > 0 ? filterButtonText : 'Filter'}</span>
+              {#if activeFilterCount > 0}
+                <span class="shrink-0 rounded-full bg-muted px-1.5 text-[10px] font-medium text-muted-foreground tabular-nums">{activeFilterCount}</span>
+              {/if}
+            </Popover.Trigger>
+            <Popover.Content align="start" class="w-64 p-0">
+              <div class="max-h-80 overflow-y-auto p-2" role="listbox" aria-label="Filter resources" aria-multiselectable="true">
                 {#each filterGroups as group (group.key)}
                   {#if group.options.length > 0}
-                    <div>
-                      <div class="px-2 pt-2 pb-1 text-[10px] font-semibold tracking-wide text-neutral-400 uppercase dark:text-fg-faint">
-                        {group.label}
-                      </div>
-                      {#each group.options as option (`${group.key}-${option.value}`)}
-                        {@const selected = filters[group.key].includes(option.value)}
-                        <button
-                          type="button"
-                          role="option"
-                          aria-selected={selected}
-                          class="listbox-option"
-                          onclick={() => toggleFilter(group.key, option.value)}
+                    <div class="px-2 pt-2 pb-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">{group.label}</div>
+                    {#each group.options as option (`${group.key}-${option.value}`)}
+                      {@const selected = filters[group.key].includes(option.value)}
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        class={[
+                          'flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-sm',
+                          selected ? 'bg-accent/50 text-foreground' : 'text-muted-foreground hover:bg-accent/50',
+                        ]}
+                        onclick={() => toggleFilter(group.key, option.value)}
+                      >
+                        <span class="min-w-0 flex-1 truncate text-left">{option.label}</span>
+                        <span
+                          class={[
+                            'flex size-4 shrink-0 items-center justify-center rounded-sm border',
+                            selected ? 'border-primary bg-primary text-primary-foreground' : 'border-input',
+                          ]}
                         >
-                          <span class="min-w-0 flex-1 truncate">{option.label}</span>
-                          <span
-                            class={[
-                              'flex size-4 shrink-0 items-center justify-center rounded-[5px] border',
-                              selected
-                                ? 'border-coollabs bg-coollabs text-primary-foreground'
-                                : 'border-neutral-300 bg-white dark:border-white/[0.14] dark:bg-white/[0.045]',
-                            ]}
-                          >
-                            {#if selected}
-                              <svg class="size-3" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                                <path
-                                  d="m2.25 6.15 2.35 2.3 5.15-5"
-                                  stroke="currentColor"
-                                  stroke-width="1.8"
-                                  stroke-linecap="round"
-                                  stroke-linejoin="round"
-                                />
-                              </svg>
-                            {/if}
-                          </span>
-                        </button>
-                      {/each}
-                    </div>
+                          {#if selected}<Icon name="check" class="size-3" />{/if}
+                        </span>
+                      </button>
+                    {/each}
                   {/if}
                 {/each}
               </div>
-              <div class="border-t border-neutral-200 bg-white p-1 dark:border-white/10 dark:bg-raised">
-                <button type="button" class="listbox-option justify-center! text-center!" onclick={clearFilters}>Clear filters</button>
-              </div>
-            {/snippet}
-          </TableDropdown>
-
-          <TableDropdown panelClass="w-48!">
-            {#snippet trigger({ open, toggle })}
-              <button type="button" class="button" aria-haspopup="listbox" aria-expanded={open} onclick={toggle}>
-                <svg class="size-3.5 opacity-65" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path
-                    d="M8 5v14m0 0-3-3m3 3 3-3M16 19V5m0 0-3 3m3-3 3 3"
-                    stroke="currentColor"
-                    stroke-width="1.7"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-                Sort
-              </button>
-            {/snippet}
-            {#snippet children(close)}
-              {#each sortOptions as option (option.value)}
+              <div class="border-t border-border p-2">
                 <button
                   type="button"
-                  role="option"
-                  aria-selected={sortBy === option.value}
-                  class="flex h-9 w-full items-center rounded-md px-2 text-left text-[12px] text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-dim dark:hover:bg-white/[0.06] dark:hover:text-fg"
-                  onclick={() => {
-                    sortBy = option.value
-                    close()
-                    page = 1
-                  }}
+                  class="w-full rounded-sm px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                  onclick={clearFilters}>Clear filters</button
                 >
-                  <span class="flex-1">{option.label}</span>
-                  {#if sortBy === option.value}
-                    <svg class="size-3.5 text-foreground" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                      <path d="m2.5 6.25 2.1 2.1 4.9-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                  {/if}
-                </button>
-              {/each}
-            {/snippet}
-          </TableDropdown>
-
-          <div class="view-toggle">
-            <button
-              type="button"
-              onclick={() => setViewMode('table')}
-              class={['flex size-7.5 items-center justify-center rounded-md transition-colors', viewMode === 'table' ? 'control-selected' : toggleIdle]}
-              aria-label="Table view"
-              aria-pressed={viewMode === 'table'}
-              title="Table view"
-            >
-              <Icon name="unordered-list" class="size-3.5" />
-            </button>
-            <button
-              type="button"
-              onclick={() => setViewMode('grid')}
-              class={['flex size-7.5 items-center justify-center rounded-md transition-colors', viewMode === 'grid' ? 'control-selected' : toggleIdle]}
-              aria-label="Grid view"
-              aria-pressed={viewMode === 'grid'}
-              title="Grid view"
-            >
-              <Icon name="grid" class="size-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {#if viewMode === 'table'}
-        <div class="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-white/[0.05]">
-          <div
-            class="environment-resource-grid border-b border-neutral-200 bg-neutral-50 px-4 py-2.5 text-[11px] font-medium text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-fg-faint"
-          >
-            <div>Resource</div>
-            <div class="resource-type">Type</div>
-            <div>Status</div>
-            <div class="resource-domain">Domain</div>
-            <div class="resource-server">Server</div>
-          </div>
-
-          {#each paginated as item (item.key)}
-            <div
-              class="environment-resource-grid group relative min-h-14 items-center border-b border-neutral-200 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-neutral-50 dark:border-white/[0.07] dark:hover:bg-white/[0.025]"
-            >
-              <a href={item.href} class="absolute inset-0" aria-label="Open {item.name}"></a>
-              <div class="flex min-w-0 items-center gap-3">
-                <div class={[iconBox, 'dark:bg-white/[0.035]']}>
-                  <Icon name={typeIcons[item.type]} class="size-4" />
-                </div>
-                <div class="min-w-0">
-                  <div class="flex min-w-0 items-center gap-1.5">
-                    <a href={item.href} class="relative block truncate text-[13px] font-semibold text-black hover:underline dark:text-fg">{item.name}</a>
-                  </div>
-                  <p class="min-h-4 truncate text-[11px] text-neutral-500 dark:text-fg-faint">
-                    {#if item.description}<span>{item.description}</span>{/if}
-                  </p>
-                  <div class="mobile-resource-domain min-w-0">
-                    {#if item.fqdn}
-                      <a
-                        href={firstDomain(item.fqdn)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="relative z-10 block truncate text-[11px] text-neutral-500 hover:underline dark:text-fg-dim">{displayDomain(item.fqdn)}</a
-                      >
-                    {/if}
-                  </div>
-                </div>
               </div>
-
-              <div class="resource-type truncate text-[12px] text-neutral-600 dark:text-fg-dim">{item.typeLabel}</div>
-
-              <div>{@render status(item)}</div>
-
-              <div class="resource-domain min-w-0">
-                {#if item.fqdn}
-                  <a
-                    href={firstDomain(item.fqdn)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="relative inline-block max-w-full truncate align-middle text-[12px] text-neutral-600 hover:underline dark:text-fg-dim"
-                    >{displayDomain(item.fqdn)}</a
+            </Popover.Content>
+          </Popover.Root>
+          <SortPopover bind:value={sortBy} options={sortOptions} label="Sort resources" onchange={() => (page = 1)} />
+          <ViewToggle value={viewMode} onchange={setViewMode} />
+        {/snippet}
+        {#snippet feedback()}
+          {#if selectedFilters.length > 0}
+            <div class="flex flex-wrap items-center gap-1.5">
+              {#each selectedFilters as chip (`${chip.group}-${chip.value}`)}
+                <span class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 py-0.5 pr-1 pl-2 text-xs">
+                  {chip.label}
+                  <button
+                    type="button"
+                    class="flex size-4 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+                    aria-label="Remove filter {chip.label}"
+                    onclick={() => toggleFilter(chip.group, chip.value)}
                   >
-                {:else}
-                  <span class="text-[12px] text-neutral-400 dark:text-fg-faint">-</span>
-                {/if}
-              </div>
-
-              <div class="resource-server truncate text-[12px] text-neutral-600 dark:text-fg-dim">{item.server}</div>
+                    <Icon name="x" class="size-2.5" />
+                  </button>
+                </span>
+              {/each}
+              <button type="button" class="px-1 text-xs text-muted-foreground hover:text-foreground hover:underline" onclick={clearFilters}>
+                Clear all
+              </button>
             </div>
-          {/each}
-
-          {#if filtered.length === 0}
-            {@render noMatches(false)}
-          {:else}
-            <ClientPagination bind:page bind:pageSize total={filtered.length} storageKey={pageSizeKey} />
           {/if}
-        </div>
+        {/snippet}
+      </CollectionToolbar>
+
+      {#if filtered.length === 0}
+        <Card class="block py-0">
+          <Empty title="No matching resources" description="Try a different search or filter." icon="search" size="sm" />
+        </Card>
+      {:else if viewMode === 'table'}
+        <Card class={listCard}>
+          {#each paginated as item (item.key)}
+            <EntityRow title={item.name} subtitle={item.description || displayDomain(item.fqdn) || undefined} reserveSubtitleSpace href={item.href}>
+              {#snippet leading()}<ProjectTile size="sm" icon={typeIcons[item.type]} />{/snippet}
+              {#snippet trailing()}
+                {#if item.fqdn && item.description}{@render domain(item, 'hidden max-w-56 xl:block')}{/if}
+                <span class="hidden w-40 truncate text-right text-xs text-muted-foreground lg:inline" title="{item.typeLabel} on {item.server}"
+                  >{item.typeLabel} · {item.server}</span
+                >
+                {@render status(item)}
+              {/snippet}
+            </EntityRow>
+          {/each}
+          <ClientPagination bind:page bind:pageSize total={filtered.length} storageKey={pageSizeKey} />
+        </Card>
       {:else}
-        <div>
+        <div class="space-y-3">
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {#each paginated as item (item.key)}
-              <article
-                class="group relative flex min-h-28 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.05] dark:hover:border-white/[0.14]"
-              >
-                <a href={item.href} class="absolute inset-0 rounded-xl" aria-label="Open {item.name}"></a>
-
+              <Card interactive class="relative min-h-28 gap-0 p-4">
+                <a href={item.href} class="absolute inset-0 rounded-lg" aria-label="Open {item.name}"></a>
                 <div class="flex items-start gap-3">
-                  <div class={[iconBox, 'dark:bg-white/[0.04]']}>
-                    <Icon name={typeIcons[item.type]} class="size-4" />
-                  </div>
+                  <ProjectTile size="lg" icon={typeIcons[item.type]} />
                   <div class="min-w-0 flex-1">
-                    <div class="flex min-w-0 items-center gap-1.5">
-                      <h2 class="truncate text-[13px]! leading-4! font-semibold! text-black dark:text-fg">{item.name}</h2>
-                    </div>
-                    <p class="mt-0.5 text-[11px] text-neutral-500 dark:text-fg-faint">{item.typeLabel}</p>
+                    <h2 class="truncate text-sm font-medium" title={item.name}>{item.name}</h2>
+                    <p class="mt-0.5 truncate text-xs text-muted-foreground">{item.typeLabel} · {item.server}</p>
                   </div>
                   {@render status(item)}
                 </div>
                 <div class="mt-auto flex min-w-0 flex-col gap-0.5 pt-4">
-                  <p class="min-h-4 truncate text-[11px] text-neutral-500 dark:text-fg-faint">
-                    {#if item.description}<span>{item.description}</span>{/if}
-                  </p>
-                  {#if item.fqdn}
-                    <a
-                      href={firstDomain(item.fqdn)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="relative z-10 max-w-full self-start truncate text-[11px] text-neutral-500 hover:underline dark:text-fg-dim"
-                      title={displayDomain(item.fqdn)}>{displayDomain(item.fqdn)}</a
-                    >
-                  {/if}
+                  <p class="min-h-4 truncate text-xs text-muted-foreground">{item.description}</p>
+                  {#if item.fqdn}{@render domain(item, 'max-w-full self-start')}{/if}
                 </div>
-              </article>
+              </Card>
             {/each}
           </div>
-
-          {#if filtered.length === 0}
-            {@render noMatches(true)}
-          {:else}
-            <ClientPagination
-              bind:page
-              bind:pageSize
-              total={filtered.length}
-              storageKey={pageSizeKey}
-              class="mt-3 rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
-            />
-          {/if}
+          <Card class={listCard}>
+            <ClientPagination bind:page bind:pageSize total={filtered.length} storageKey={pageSizeKey} />
+          </Card>
         </div>
       {/if}
     {/if}
