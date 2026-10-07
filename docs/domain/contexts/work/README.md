@@ -43,13 +43,14 @@ Priority, Assignee, Issue prefix, Issue identifier, Comment) are in
 ### Commands
 
 Who may run each is in brackets, by Permission in the Current guild. Reading
-needs `view_resources`; an Issue or Goal with a Project also needs
-`view_resources` in that Project after its Permission overrides, and is
-otherwise hidden (404), in lists as on its own.
+needs `view_resources`; an Issue with a Project also needs `view_resources`
+in that Project after its Permission overrides, and is otherwise hidden
+(404), in lists as on its own. A Goal has no Project.
 
 - `CreateGoal(title, description, level, status, parent, owner)`,
   `ChangeGoal(...)`, `DeleteGoal()` [`manage_work`]. Deleting a Goal
-  leaves its Sub-goals without a parent and its Issues without a Goal.
+  moves its Sub-goals under its own parent (none for a top Goal) and
+  leaves its Issues without a Goal.
 - `CreateIssue(title, description, status, priority, assignee, project,
   goal, parent)` [`manage_work`]: takes the Guild's next number.
 - `ChangeIssue(...)` [`manage_work`]: any field but its number; a status
@@ -76,9 +77,11 @@ None yet. Inbox and Activity, in a later phase, are where they start.
     identifier) and `guilds.IsMember(ctx, guild, member)` (for Assignees and
     owners). It registers `guilds.OnGuildDeleting`, so a Guild with Goals or
     Issues is not deleted.
+  - from identity: `identity.Members(ctx, ids)`, for the names of Goal
+    owners.
   - from projects: `projects.ProjectInGuild(ctx, id, guildID)` before an
-    Issue or Goal takes a Project, and `projects.OnProjectDeleted`: the
-    Project's Issues and Goals keep existing and lose their Project.
+    Issue takes a Project, and `projects.OnProjectDeleted`: the
+    Project's Issues keep existing and lose their Project.
 
 ## Why it's shaped this way
 
@@ -102,3 +105,7 @@ None yet. Inbox and Activity, in a later phase, are where they start.
 - **The Issue prefix lives on the Guild, in guilds.** It is a Guild's
   property, edited on its General page, and work reads it through
   `guilds.IssuePrefix` instead of keeping a copy.
+- **A deleted Goal's Sub-goals move up a level.** Paperclip's foreign key
+  refuses to delete a Goal that has Sub-goals. Moving them under the
+  deleted Goal's parent keeps the rest of the tree where it was, so
+  deleting a middle Goal does not scatter its subtree to the top.

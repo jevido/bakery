@@ -1,0 +1,231 @@
+// Package http is the work JSON API: Goals, and later Issues and their
+// Comments.
+package http
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"strconv"
+	"time"
+
+	contractshttp "github.com/goravel/framework/contracts/http"
+
+	"github.com/jevido/bakery/services/api/app/respond"
+	"github.com/jevido/bakery/services/api/contexts/work/app"
+	"github.com/jevido/bakery/services/api/contexts/work/domain"
+)
+
+// Member is a Member as a Goal or an Issue shows them.
+type Member struct {
+	ID   uint64 `json:"id"`
+	Name string `json:"name"`
+}
+
+type Controller struct {
+	service *app.Service
+	// guild is the Current guild of a request.
+	guild func(ctx contractshttp.Context) uint64
+	// members names the Members with these ids (identity.Members); a
+	// removed Member is left out.
+	members func(ctx context.Context, ids []uint64) ([]Member, error)
+}
+
+func NewController(service *app.Service, guild func(ctx contractshttp.Context) uint64, members func(ctx context.Context, ids []uint64) ([]Member, error)) *Controller {
+	return &Controller{service: service, guild: guild, members: members}
+}
+
+// optional is a JSON field that may be absent, null or a value: a patch
+// tells "leave it" (absent) from "clear it" (null).
+type optional[T any] struct {
+	Set   bool
+	Value *T
+}
+
+func (o *optional[T]) UnmarshalJSON(b []byte) error {
+	o.Set = true
+	return json.Unmarshal(b, &o.Value)
+}
+
+// idOf reads an optional id; null and 0 are none.
+func idOf(o optional[uint64]) *uint64 {
+	if !o.Set {
+		return nil
+	}
+	v := value(o.Value)
+	return &v
+}
+
+func (o optional[T]) ptr() *T {
+	if !o.Set || o.Value == nil {
+		return nil
+	}
+	return o.Value
+}
+
+type goalJSON struct {
+	ID          uint64    `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Level       string    `json:"level"`
+	Status      string    `json:"status"`
+	ParentID    *uint64   `json:"parent_id"`
+	Owner       *Member   `json:"owner"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// goalsJSON shows Goals with their owners' names, asked for in one go.
+func (c *Controller) goalsJSON(ctx context.Context, gs []domain.Goal) ([]goalJSON, error) {
+	var ids []uint64
+	for _, g := range gs {
+		if g.OwnerID != 0 {
+			ids = append(ids, g.OwnerID)
+		}
+	}
+	names := map[uint64]Member{}
+	if len(ids) > 0 {
+		ms, err := c.members(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range ms {
+			names[m.ID] = m
+		}
+	}
+	out := make([]goalJSON, len(gs))
+	for i, g := range gs {
+		out[i] = goalJSON{
+			ID: g.ID, Title: g.Title, Description: g.Description, Level: string(g.Level), Status: string(g.Status),
+			CreatedAt: g.CreatedAt, UpdatedAt: g.UpdatedAt,
+		}
+		if g.ParentID != 0 {
+			p := g.ParentID
+			out[i].ParentID = &p
+		}
+		if m, ok := names[g.OwnerID]; ok {
+			out[i].Owner = &m
+		}
+	}
+	return out, nil
+}
+
+type goalRequest struct {
+	Title       optional[string] `json:"title"`
+	Description optional[string] `json:"description"`
+	Level       optional[string] `json:"level"`
+	Status      optional[string] `json:"status"`
+	ParentID    optional[uint64] `json:"parent_id"`
+	OwnerID     optional[uint64] `json:"owner_id"`
+}
+
+func value[T any](p *T) T {
+	var zero T
+	if p == nil {
+		return zero
+	}
+	return *p
+}
+
+func (r goalRequest) input() app.GoalInput {
+	return app.GoalInput{
+		Title: value(r.Title.ptr()), Description: value(r.Description.ptr()), Level: value(r.Level.ptr()), Status: value(r.Status.ptr()),
+		ParentID: value(idOf(r.ParentID)), OwnerID: value(idOf(r.OwnerID)),
+	}
+}
+
+func (r goalRequest) patch() app.GoalPatch {
+	p := app.GoalPatch{Title: r.Title.ptr(), Description: r.Description.ptr(), Level: r.Level.ptr(), Status: r.Status.ptr(), ParentID: idOf(r.ParentID), OwnerID: idOf(r.OwnerID)}
+	if r.Description.Set && p.Description == nil {
+		// A null description is an empty one.
+		p.Description = new(string)
+	}
+	return p
+}
+
+func routeID(ctx contractshttp.Context) (uint64, bool) {
+	v, err := strconv.ParseUint(ctx.Request().Route("id"), 10, 64)
+	return v, err == nil
+}
+
+func notFound(ctx contractshttp.Context) contractshttp.Response {
+	return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
+}
+
+func fail(ctx contractshttp.Context, err error) contractshttp.Response {
+	var fe *domain.FieldError
+	switch {
+	case errors.As(err, &fe):
+		return respond.Invalid(ctx, fe.Field, fe.Message)
+	case errors.Is(err, app.ErrNotFound):
+		return notFound(ctx)
+	}
+	return respond.ServerError(ctx, err)
+}
+
+func (c *Controller) oneGoal(ctx contractshttp.Context, status int, g domain.Goal, err error) contractshttp.Response {
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out, err := c.goalsJSON(ctx.Context(), []domain.Goal{g})
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Json(status, contractshttp.Json{"goal": out[0]})
+}
+
+// ListGoals answers the Current guild's Goals as a flat list, oldest
+// first; the dashboard builds the tree from parent_id.
+func (c *Controller) ListGoals(ctx contractshttp.Context) contractshttp.Response {
+	gs, err := c.service.Goals(ctx.Context(), c.guild(ctx))
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out, err := c.goalsJSON(ctx.Context(), gs)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"goals": out})
+}
+
+func (c *Controller) CreateGoal(ctx contractshttp.Context) contractshttp.Response {
+	var req goalRequest
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	g, err := c.service.CreateGoal(ctx.Context(), c.guild(ctx), req.input())
+	return c.oneGoal(ctx, contractshttp.StatusCreated, g, err)
+}
+
+func (c *Controller) ShowGoal(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	g, err := c.service.Goal(ctx.Context(), id)
+	return c.oneGoal(ctx, contractshttp.StatusOK, g, err)
+}
+
+func (c *Controller) UpdateGoal(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req goalRequest
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	g, err := c.service.ChangeGoal(ctx.Context(), id, req.patch())
+	return c.oneGoal(ctx, contractshttp.StatusOK, g, err)
+}
+
+func (c *Controller) DeleteGoal(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	if err := c.service.DeleteGoal(ctx.Context(), id); err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().NoContent()
+}
