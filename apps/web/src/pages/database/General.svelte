@@ -12,11 +12,12 @@
   import { api, ApiError } from '../../lib/api'
   import { projectAccess } from '../../lib/projectAccess.svelte'
   import { scrollToPendingSettingsSection } from '../../lib/settingsSection.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import type { Database, DatabaseInput, DatabaseType } from '../../lib/types'
   import CopyButton from '../../lib/ui/CopyButton.svelte'
+  import CopyText from '../../lib/ui/CopyText.svelte'
   import Input from '../../lib/ui/Input.svelte'
   import Select from '../../lib/ui/Select.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
 
@@ -169,7 +170,7 @@
 </script>
 
 <form
-  class="application-settings-form flex flex-col"
+  class="flex flex-col gap-6"
   onsubmit={(e) => {
     e.preventDefault()
     save()
@@ -178,96 +179,96 @@
   {#if canUpdate}
     <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
   {/if}
-  <div class="flex flex-col gap-6">
-    <SettingsSection
-      id="database-details-section"
-      title="Database details"
-      helper={`Manage the identity and container image for this ${product[database.type]} database.`}
-    >
-      <div class="grid gap-4 lg:grid-cols-2">
-        <Input label="Name" bind:value={name} error={errors.name} required disabled={!canUpdate} />
-        <Input label="Description" bind:value={description} error={errors.description} disabled={!canUpdate} />
-        <div class="lg:col-span-2">
-          <Input
-            label="Image"
-            bind:value={image}
-            error={errors.image ?? errors.version}
-            required
-            helper={`Use a published ${product[database.type]} image from Docker Hub. Only its tag can change; a new image restarts the database and keeps its data.`}
-            disabled={!canUpdate}
-          />
-        </div>
-      </div>
-    </SettingsSection>
-
-    <SettingsSection
-      id="credentials-section"
-      title="Credentials"
-      helper={`The Bakery generated these when it created the database and configured ${product[database.type]} with them. They cannot be changed.`}
-    >
-      <div class="grid gap-4 lg:grid-cols-2" data-testid="database-credentials">
-        {#if database.secrets_hidden}
-          {#each credentials as field (field.label)}
-            <Input label={field.label} disabled value={hiddenValue} />
-          {/each}
-        {:else}
-          {#each credentials as field (field.label)}
-            <CopyButton label={field.label} text={field.value} secret={field.secret} />
-          {/each}
-        {/if}
-      </div>
-    </SettingsSection>
-
-    <SettingsSection
-      id="runtime-network-section"
-      title="Runtime and network"
-      helper="How applications and clients connect to this database."
-    >
-      <div class="space-y-5">
-        {#if database.secrets_hidden}
-          <Input label={`${urlLabel[database.type]} URL (internal)`} disabled value={hiddenValue} />
-          <Input label={`${urlLabel[database.type]} URL (public)`} disabled value={hiddenValue} />
-        {:else}
-          <CopyButton label={`${urlLabel[database.type]} URL (internal)`} text={database.internal_url ?? ''} secret testid="internal-url" />
-          {#if database.public_url}
-            <CopyButton label={`${urlLabel[database.type]} URL (public)`} text={database.public_url} secret testid="public-url" />
-          {/if}
-          <p class="text-xs text-neutral-500 dark:text-fg-dim">
-            {urlHelper} Applications in any project reach the database on the internal URL: paste it into an environment
-            variable such as <span class="font-mono">DATABASE_URL</span>.
-          </p>
-        {/if}
-      </div>
-    </SettingsSection>
-
-    <SettingsSection
-      id="public-access-section"
-      title="Public access"
-      helper="Publish this database on a port of the server, so clients outside it can connect. Switching access restarts the database; its data stays."
-    >
-      <div class="grid gap-4 lg:grid-cols-2">
-        <Select
-          label="Access"
-          value={isPublic ? 'public' : 'private'}
-          onchange={(e) => accessChanged(e.currentTarget.value)}
-          disabled={!canUpdate || switching}
-          data-testid="database-access"
-        >
-          <option value="private">Private</option>
-          <option value="public" disabled={!isPublic && !portTyped}>
-            {!isPublic && !portTyped ? 'Public on its port (set public port first)' : 'Public on its port'}
-          </option>
-        </Select>
+  <SettingsGroup
+    id="database-details-section"
+    label="Database details"
+    hint={`Manage the identity and container image for this ${product[database.type]} database.`}
+  >
+    <div class="grid gap-3 lg:grid-cols-2">
+      <Input label="Name" bind:value={name} error={errors.name} required disabled={!canUpdate} />
+      <Input label="Description" bind:value={description} error={errors.description} disabled={!canUpdate} />
+      <div class="lg:col-span-2">
         <Input
-          label="Public port"
-          type="number"
-          bind:value={publicPort}
-          error={errors.public_port}
-          placeholder={String(defaultPort[database.type])}
-          disabled={!canUpdate || isPublic}
-          helper="A free port on the server, between 1024 and 65535."
+          label="Image"
+          bind:value={image}
+          error={errors.image ?? errors.version}
+          required
+          helper={`Use a published ${product[database.type]} image from Docker Hub. Only its tag can change; a new image restarts the database and keeps its data.`}
+          disabled={!canUpdate}
         />
       </div>
-    </SettingsSection>
-  </div>
+    </div>
+  </SettingsGroup>
+
+  <SettingsGroup
+    id="credentials-section"
+    label="Credentials"
+    hint={`The Bakery generated these when it created the database and configured ${product[database.type]} with them. They cannot be changed.`}
+  >
+    <div class="grid gap-3 lg:grid-cols-2" data-testid="database-credentials">
+      {#if database.secrets_hidden}
+        {#each credentials as field (field.label)}
+          <Input label={field.label} disabled value={hiddenValue} />
+        {/each}
+      {:else}
+        {#each credentials as field (field.label)}
+          <CopyButton label={field.label} text={field.value} secret={field.secret} />
+        {/each}
+      {/if}
+    </div>
+  </SettingsGroup>
+
+  <SettingsGroup id="runtime-network-section" label="Runtime and network" hint="How applications and clients connect to this database.">
+    <div class="space-y-4">
+      {#if database.secrets_hidden}
+        <Input label={`${urlLabel[database.type]} URL (internal)`} disabled value={hiddenValue} />
+        <Input label={`${urlLabel[database.type]} URL (public)`} disabled value={hiddenValue} />
+      {:else}
+        <div>
+          <span class="mb-1.5 block text-sm font-medium text-foreground">{`${urlLabel[database.type]} URL (internal)`}</span>
+          <CopyText text={database.internal_url ?? ''} />
+        </div>
+        {#if database.public_url}
+          <div>
+            <span class="mb-1.5 block text-sm font-medium text-foreground">{`${urlLabel[database.type]} URL (public)`}</span>
+            <CopyText text={database.public_url} />
+          </div>
+        {/if}
+        <p class="text-xs text-muted-foreground">
+          {urlHelper} Applications in any project reach the database on the internal URL: paste it into an environment
+          variable such as <span class="font-mono">DATABASE_URL</span>.
+        </p>
+      {/if}
+    </div>
+  </SettingsGroup>
+
+  <SettingsGroup
+    id="public-access-section"
+    label="Public access"
+    hint="Publish this database on a port of the server, so clients outside it can connect. Switching access restarts the database; its data stays."
+  >
+    <div class="grid gap-3 lg:grid-cols-2">
+      <Select
+        label="Access"
+        value={isPublic ? 'public' : 'private'}
+        onchange={(e) => accessChanged(e.currentTarget.value)}
+        disabled={!canUpdate || switching}
+        data-testid="database-access"
+      >
+        <option value="private">Private</option>
+        <option value="public" disabled={!isPublic && !portTyped}>
+          {!isPublic && !portTyped ? 'Public on its port (set public port first)' : 'Public on its port'}
+        </option>
+      </Select>
+      <Input
+        label="Public port"
+        type="number"
+        bind:value={publicPort}
+        error={errors.public_port}
+        placeholder={String(defaultPort[database.type])}
+        disabled={!canUpdate || isPublic}
+        helper="A free port on the server, between 1024 and 65535."
+      />
+    </div>
+  </SettingsGroup>
 </form>

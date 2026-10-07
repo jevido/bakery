@@ -2,11 +2,16 @@
   // Coolify's Scheduled backup page
   // (resources/views/livewire/project/database/backup/execution.blade.php and
   // components/backup-sidebar.blade.php, Apache-2.0, see NOTICE): the backup
-  // sidebar in place of the Database's, and the section the URL names.
+  // sidebar in place of the Database's, and the section the URL names,
+  // drawn with ResourceNav as the Database's own ConfigurationSidebar is
+  // (the choice over Paperclip's PageTabBar is recorded in NOTES).
+  import ArrowLeft from '@lucide/svelte/icons/arrow-left'
   import { api } from '../../lib/api'
-  import Icon, { type IconName } from '../../lib/Icon.svelte'
+  import type { IconName } from '../../lib/Icon.svelte'
   import { databasePath, href, type ScheduledBackupSection } from '../../lib/router.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
+  import ResourceNav from '../../lib/ResourceNav.svelte'
+  import SidebarNavItem from '../../lib/SidebarNavItem.svelte'
   import type { Database, S3Storage, ScheduledBackup } from '../../lib/types'
   import Spinner from '../../lib/ui/Spinner.svelte'
   import BackupEdit from './BackupEdit.svelte'
@@ -50,44 +55,38 @@
   ]
   const shownItems = $derived(items.filter((i) => i.key !== 'danger' || projectAccess.can('manage_applications')))
   const base = $derived(`${databasePath(database, 'backups')}/${id}`)
+
+  const groups = $derived([
+    {
+      label: 'Backup',
+      items: shownItems.map((item) => ({
+        label: item.label,
+        path: item.key ? `${base}/${item.key}` : base,
+        icon: item.icon,
+        active: section === item.key,
+      })),
+    },
+  ])
 </script>
 
 <section class="mt-4 w-full max-w-none lg:mt-0">
   <div class="grid min-w-0 gap-8 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
-    <aside class="chrome min-w-0 xl:self-start">
-      <nav
-        aria-label="Backup settings"
-        class="grid grid-cols-2 gap-0.5 border-y border-neutral-200 py-3 sm:grid-cols-3 xl:grid-cols-1 xl:border-y-0 xl:py-0 dark:border-white/[0.06]"
-      >
-        <div class="nav-section hidden xl:block">Backup</div>
-        <a class="menu-item" href={href(databasePath(database, 'backups'))}>
-          <Icon name="logout" class="menu-item-icon rotate-180" />
-          <span class="menu-item-label">Back to database</span>
-        </a>
-        {#each shownItems as item (item.key)}
-          <a
-            class={['menu-item', section === item.key && 'menu-item-active']}
-            href={href(item.key ? `${base}/${item.key}` : base)}
-            aria-current={section === item.key ? 'page' : undefined}
-          >
-            <Icon name={item.icon} class="menu-item-icon" />
-            <span class="menu-item-label">{item.label}</span>
-          </a>
-        {/each}
-      </nav>
-    </aside>
+    <div class="flex min-w-0 flex-col gap-3 xl:self-start">
+      <SidebarNavItem href={href(databasePath(database, 'backups'))} label="Back to database" icon={ArrowLeft} inline />
+      <ResourceNav {groups} label="Backup settings" />
+    </div>
 
     <div class="min-w-0">
       {#if loadError}
-        <p class="chrome text-sm text-error">{loadError}</p>
+        <p class="text-sm text-destructive">{loadError}</p>
       {:else if !scheduledBackup}
-        <div class="chrome"><Spinner text="Loading…" /></div>
+        <Spinner text="Loading…" />
       {:else if section === 'executions'}
         <BackupExecutions {database} {scheduledBackup} {ondatabase} />
       {:else if section === 'danger' && !projectAccess.can('manage_applications')}
-        <div class="chrome">
-          <h2 class="text-[15px]! font-semibold! text-black dark:text-fg">Not available</h2>
-          <p class="mt-2 text-[13px] text-neutral-600 dark:text-fg-dim">Viewers cannot delete a Scheduled backup.</p>
+        <div>
+          <h2 class="text-sm font-semibold text-foreground">Not available</h2>
+          <p class="mt-2 text-sm text-muted-foreground">Viewers cannot delete a Scheduled backup.</p>
         </div>
       {:else}
         {#key `${scheduledBackup.id}-${section}`}

@@ -10,16 +10,17 @@
   // Retention count for local and S3 copies together, and the local copy is
   // always kept.
   import { untrack } from 'svelte'
+  import { buttonVariants } from '$lib/components/ui/button'
   import { api, ApiError } from '../../lib/api'
   import { databasePath, go, href, type ScheduledBackupSection } from '../../lib/router.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import type { BackupExecution, Database, S3Storage, ScheduledBackup, ScheduledBackupInput } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
   import Input from '../../lib/ui/Input.svelte'
   import Select from '../../lib/ui/Select.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
 
@@ -129,56 +130,57 @@
 </script>
 
 {#if section === 'danger'}
-  <div class="application-settings-form">
-    <SettingsSection
-      id="delete-backup-schedule-section"
-      title="Delete backup schedule"
-      helper="Permanently remove this schedule and optionally its backup archives."
-    >
-      <div class="chrome flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div class="min-w-0">
-          <h4 class="text-sm font-semibold text-red-700 dark:text-red-300">This action cannot be undone.</h4>
-          <div class="mt-2 max-w-2xl space-y-2 text-[13px] leading-5 text-red-700/80 dark:text-red-300/80">
-            <p>You can select which backup archives to remove.</p>
-          </div>
-        </div>
-        <div class="shrink-0">
-          <ConfirmationModal
-            title="Confirm Backup Schedule Deletion?"
-            buttonTitle="Delete schedule"
-            variant="error"
-            checkboxes={[
-              { id: 'delete_associated_backups_locally', label: 'All backups will be permanently deleted from local storage.' },
-              {
-                id: 'delete_associated_backups_s3',
-                label: 'All backups will be permanently deleted (associated with this backup job) from the selected S3 Storage.',
-              },
-            ]}
-            actions={[
-              'The selected backup schedule will be deleted.',
-              'Scheduled backups for this database will stop if this is its only schedule.',
-            ]}
-            confirmationText={database.name}
-            confirmationLabel="Enter the database name to confirm deletion."
-            shortConfirmationLabel="Database Name"
-            onconfirm={remove}
-          />
+  <SettingsGroup
+    id="delete-backup-schedule-section"
+    label="Delete backup schedule"
+    hint="Permanently remove this schedule and optionally its backup archives."
+    destructive
+  >
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="min-w-0">
+        <h4 class="text-sm font-medium text-destructive">This action cannot be undone.</h4>
+        <div class="mt-2 max-w-2xl space-y-2 text-sm text-muted-foreground">
+          <p>You can select which backup archives to remove.</p>
         </div>
       </div>
-    </SettingsSection>
-  </div>
+      <div class="shrink-0">
+        <ConfirmationModal
+          title="Confirm Backup Schedule Deletion?"
+          buttonTitle="Delete schedule"
+          variant="error"
+          checkboxes={[
+            { id: 'delete_associated_backups_locally', label: 'All backups will be permanently deleted from local storage.' },
+            {
+              id: 'delete_associated_backups_s3',
+              label: 'All backups will be permanently deleted (associated with this backup job) from the selected S3 Storage.',
+            },
+          ]}
+          actions={[
+            'The selected backup schedule will be deleted.',
+            'Scheduled backups for this database will stop if this is its only schedule.',
+          ]}
+          confirmationText={database.name}
+          confirmationLabel="Enter the database name to confirm deletion."
+          shortConfirmationLabel="Database Name"
+          onconfirm={remove}
+        />
+      </div>
+    </div>
+  </SettingsGroup>
 {:else if section === 's3'}
   {#if storages && storages.length === 0}
-    <SettingsSection id="s3-storage-section" title="S3 storage" helper="Send backup archives to a validated object storage destination." flush>
+    <SettingsGroup id="s3-storage-section" label="S3 storage" hint="Send backup archives to a validated object storage destination.">
       <Empty title="No validated S3 storage" description="Add and validate an S3 storage destination before enabling remote backups." icon="storages">
-        {#if projectAccess.can('manage_servers')}<a class="button" href={href('/storages')}>Open S3 storage</a>{/if}
+        {#if projectAccess.can('manage_servers')}
+          <a class={buttonVariants({ variant: 'outline' })} href={href('/storages')}>Open S3 storage</a>
+        {/if}
       </Empty>
-    </SettingsSection>
+    </SettingsGroup>
   {:else}
-    <SettingsSection
+    <SettingsGroup
       id="s3-storage-section"
-      title="S3 storage"
-      helper="Choose where remote backups are stored. The Bakery always keeps the local copy too."
+      label="S3 storage"
+      hint="Choose where remote backups are stored. The Bakery always keeps the local copy too."
     >
       {#snippet actions()}
         {#if canUpdate && storages}
@@ -211,7 +213,7 @@
         {/if}
         <Input label="Status" disabled value={sb.s3_storage_id == null ? 'Disabled' : 'Enabled'} data-testid="backup-s3-status" />
       </div>
-    </SettingsSection>
+    </SettingsGroup>
   {/if}
 {:else}
   <form
@@ -224,13 +226,13 @@
       <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
     {/if}
     {#if section === 'retention'}
-      <SettingsSection
+      <SettingsGroup
         id="retention-section"
-        title="Retention"
-        helper="Once more backups exist than you keep, the oldest is removed, from local storage and S3 storage together."
+        label="Retention"
+        hint="Once more backups exist than you keep, the oldest is removed, from local storage and S3 storage together."
       >
         <div>
-          <h3 class="mb-3 text-sm font-semibold text-black dark:text-fg">Local backups</h3>
+          <h3 class="mb-3 text-sm font-semibold text-foreground">Local backups</h3>
           <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Input
               label="Backups to keep"
@@ -245,9 +247,9 @@
             />
           </div>
         </div>
-      </SettingsSection>
+      </SettingsGroup>
     {:else}
-      <SettingsSection id="backup-schedule-section" title="Backup schedule" helper="Choose when the backup runs.">
+      <SettingsGroup id="backup-schedule-section" label="Backup schedule" hint="Choose when the backup runs.">
         {#snippet actions()}
           {#if canUpdate}
             <div class="flex items-center gap-2">
@@ -276,7 +278,7 @@
             />
             <Input label="Timezone" disabled value="UTC" required helper="Scheduled backups run in UTC." />
           </div>
-          <p class="text-xs text-neutral-500 dark:text-fg-dim" data-testid="next-backup">
+          <p class="text-xs text-muted-foreground" data-testid="next-backup">
             {#if sb.enabled && sb.next_backup_at}
               Next backup: {utc.format(new Date(sb.next_backup_at))} UTC
             {:else}
@@ -284,7 +286,7 @@
             {/if}
           </p>
         </div>
-      </SettingsSection>
+      </SettingsGroup>
     {/if}
   </form>
 {/if}
