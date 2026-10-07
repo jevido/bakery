@@ -15,8 +15,6 @@
   // Bakery does not have, so this is one list.
   import { buttonVariants } from '$lib/components/ui/button'
   import { Card } from '$lib/components/ui/card'
-  import { Input as UiInput } from '$lib/components/ui/input'
-  import * as Popover from '$lib/components/ui/popover'
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import CollectionToolbar from '../lib/CollectionToolbar.svelte'
@@ -26,13 +24,16 @@
   import ProjectTile from '../lib/ProjectTile.svelte'
   import { projectCounts, type ProjectCounts } from '../lib/projectCounts'
   import { go, href } from '../lib/router.svelte'
+  import SearchField from '../lib/SearchField.svelte'
   import { canIn, session } from '../lib/session.svelte'
+  import SortPopover from '../lib/SortPopover.svelte'
   import type { Project } from '../lib/types'
   import Button from '../lib/ui/Button.svelte'
   import ClientPagination from '../lib/ui/ClientPagination.svelte'
   import Empty from '../lib/ui/Empty.svelte'
   import Input from '../lib/ui/Input.svelte'
   import Modal from '../lib/ui/Modal.svelte'
+  import ViewToggle from '../lib/ViewToggle.svelte'
 
   type SortKey = 'name-asc' | 'name-desc' | 'resources' | 'environments'
   type ViewMode = 'table' | 'grid'
@@ -137,7 +138,6 @@
 
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
   const countsLine = (p: Project) => `${plural(environmentCount(p), 'env')} · ${plural(resourceCount(p), 'resource')}`
-  const sortLabel = $derived(sortOptions.find((o) => o.value === sortBy)?.label ?? 'Name A–Z')
   const listCard = 'block gap-0 overflow-hidden py-0'
   const rowAction =
     'flex size-6.5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
@@ -190,80 +190,13 @@
     <CollectionToolbar ariaLabel="Projects controls">
       {#snippet search()}
         {#if projects?.length}
-          <div class="relative w-full sm:max-w-sm">
-            <Icon name="search" class="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <UiInput
-              bind:value={searchText}
-              oninput={() => (page = 1)}
-              type="search"
-              placeholder="Search projects"
-              aria-label="Search projects"
-              class="h-8 pr-8 pl-8 text-sm [&::-webkit-search-cancel-button]:hidden"
-            />
-            {#if searchText}
-              <button
-                type="button"
-                onclick={() => {
-                  searchText = ''
-                  page = 1
-                }}
-                class="absolute top-1/2 right-1.5 flex size-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                aria-label="Clear search"
-              >
-                <Icon name="x" class="size-3" />
-              </button>
-            {/if}
-          </div>
+          <SearchField bind:value={searchText} label="Search projects" oninput={() => (page = 1)} />
         {/if}
       {/snippet}
       {#snippet controls()}
         {#if projects?.length}
-          <Popover.Root>
-            <Popover.Trigger class={buttonVariants({ variant: 'ghost', size: 'sm', class: 'w-fit text-xs' })} title="Sort">
-              <Icon name="sort-direction" class="size-3.5 sm:size-3" />
-              <span>Sort: {sortLabel}</span>
-            </Popover.Trigger>
-            <Popover.Content align="start" class="w-48 p-2">
-              <div class="space-y-0.5" role="listbox" aria-label="Sort projects">
-                {#each sortOptions as option (option.value)}
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={sortBy === option.value}
-                    class={[
-                      'flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-sm',
-                      sortBy === option.value ? 'bg-accent/50 text-foreground' : 'text-muted-foreground hover:bg-accent/50',
-                    ]}
-                    onclick={() => {
-                      sortBy = option.value
-                      page = 1
-                    }}
-                  >
-                    <span>{option.label}</span>
-                    {#if sortBy === option.value}<Icon name="check" class="size-3 text-muted-foreground" />{/if}
-                  </button>
-                {/each}
-              </div>
-            </Popover.Content>
-          </Popover.Root>
-          <div class="flex items-center" role="group" aria-label="View">
-            {#each [{ mode: 'table', icon: 'unordered-list', label: 'Table view' }, { mode: 'grid', icon: 'grid', label: 'Grid view' }] as const as v (v.mode)}
-              <button
-                type="button"
-                onclick={() => setViewMode(v.mode)}
-                class={buttonVariants({
-                  variant: 'ghost',
-                  size: 'icon-sm',
-                  class: ['size-8', viewMode === v.mode ? 'bg-accent text-foreground' : 'text-muted-foreground'].join(' '),
-                })}
-                aria-label={v.label}
-                aria-pressed={viewMode === v.mode}
-                title={v.label}
-              >
-                <Icon name={v.icon} class="size-3.5" />
-              </button>
-            {/each}
-          </div>
+          <SortPopover bind:value={sortBy} options={sortOptions} label="Sort projects" onchange={() => (page = 1)} />
+          <ViewToggle value={viewMode} onchange={setViewMode} />
         {/if}
       {/snippet}
       {#snippet actions()}

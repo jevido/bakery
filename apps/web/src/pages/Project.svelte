@@ -4,21 +4,33 @@
   // Apache-2.0, see NOTICE): the Project's Environments with search, Sort, a
   // remembered table/grid switch and client-side pages, and "New environment"
   // in a modal.
+  //
+  // Laid out as Paperclip's ProjectDetail (ui/src/pages/ProjectDetail.tsx,
+  // MIT): its header with the tile, name and actions, then the Environments
+  // as on the Projects page, EntityRows in one card or cards in the grid.
+  import { buttonVariants } from '$lib/components/ui/button'
+  import { Card } from '$lib/components/ui/card'
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
+  import CollectionToolbar from '../lib/CollectionToolbar.svelte'
+  import EntityRow from '../lib/EntityRow.svelte'
   import Icon from '../lib/Icon.svelte'
+  import PageHeader from '../lib/PageHeader.svelte'
+  import PageSkeleton from '../lib/PageSkeleton.svelte'
+  import ProjectTile from '../lib/ProjectTile.svelte'
   import { environmentResourceCount, projectResources, type ProjectResources } from '../lib/projectCounts'
   import { go, href } from '../lib/router.svelte'
   import { projectAccess } from '../lib/projectAccess.svelte'
+  import SearchField from '../lib/SearchField.svelte'
   import { session } from '../lib/session.svelte'
+  import SortPopover from '../lib/SortPopover.svelte'
   import type { Environment } from '../lib/types'
   import Button from '../lib/ui/Button.svelte'
   import ClientPagination from '../lib/ui/ClientPagination.svelte'
   import Empty from '../lib/ui/Empty.svelte'
   import Input from '../lib/ui/Input.svelte'
   import Modal from '../lib/ui/Modal.svelte'
-  import Spinner from '../lib/ui/Spinner.svelte'
-  import TableDropdown from '../lib/ui/TableDropdown.svelte'
+  import ViewToggle from '../lib/ViewToggle.svelte'
 
   let { id }: { id: number } = $props()
 
@@ -36,7 +48,7 @@
   let resources = $state.raw<ProjectResources | null>(null)
   let loadError = $state('')
 
-  let search = $state('')
+  let searchText = $state('')
   let sortBy = $state<SortKey>('name-asc')
   let viewMode = $state<ViewMode>(localStorage.getItem(viewKey) === 'table' ? 'table' : 'grid')
   let page = $state(1)
@@ -45,7 +57,7 @@
   // The search box filters 150 ms after the last key, as Coolify's debounce does.
   let query = $state('')
   $effect(() => {
-    const value = search
+    const value = searchText
     const timer = setTimeout(() => (query = value.trim().toLowerCase()), 150)
     return () => clearTimeout(timer)
   })
@@ -110,10 +122,10 @@
     }
   }
 
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+  const listCard = 'block gap-0 overflow-hidden py-0'
   const rowAction =
-    'flex items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg'
-  const toggleIdle =
-    'text-neutral-400 hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg'
+    'flex size-6.5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
 
   const crumbName = $derived(project?.name)
   $effect(() => {
@@ -121,38 +133,55 @@
   })
 </script>
 
-{#if loadError}
-  <p class="text-sm text-error">{loadError}</p>
-{:else if !project}
-  <Spinner text="Loading…" />
-{:else}
-  <div class="chrome application-settings-form w-full">
-    <header class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div class="min-w-0">
-        <h1 class="truncate text-[24px]! leading-7! font-semibold! tracking-tight!">{project.name}</h1>
-        <p class="mt-1 text-[13px] text-neutral-500 dark:text-fg-dim">
-          <span>{environments.length} {environments.length === 1 ? 'environment' : 'environments'}</span>
-          in this project
-        </p>
-      </div>
+{#snippet rowActions(environment: Environment)}
+  {@const addHref = addResourceHref(environment)}
+  {@const editHref = settingsHref(environment)}
+  {#if addHref}
+    <a href={addHref} class={rowAction} title="Add resource" aria-label="Add resource to {environment.name}">
+      <Icon name="plus" class="size-3.5" />
+    </a>
+  {/if}
+  {#if editHref}
+    <a href={editHref} class={rowAction} title="Environment settings" aria-label="Open settings for {environment.name}">
+      <Icon name="settings" class="size-3.5" />
+    </a>
+  {/if}
+{/snippet}
 
-      {#if projectAccess.can('manage_applications') || session.can('manage_roles')}
-        <div class="flex shrink-0 flex-wrap items-center gap-2">
-          {#if session.can('manage_roles')}
-            <a href={href(`/project/${id}/permissions`)} class="button" title="Project permissions" aria-label="Open permissions for {project.name}">
-              <Icon name="lock" class="size-3.5" />
-              Permissions
-            </a>
-          {/if}
-          {#if projectAccess.can('manage_applications')}
-          <a href={href(`/project/${id}/edit`)} class="button" title="Project settings" aria-label="Open settings for {project.name}">
+{#if loadError}
+  <p class="text-sm text-destructive">{loadError}</p>
+{:else if !project}
+  <PageSkeleton />
+{:else}
+  <div class="chrome w-full space-y-4">
+    <PageHeader title={project.name} description={project.description || undefined}>
+      {#snippet leading()}<ProjectTile size="lg" />{/snippet}
+      {#snippet meta()}<span>{plural(environments.length, 'environment')} in this project</span>{/snippet}
+      {#snippet actions()}
+        {#if session.can('manage_roles')}
+          <a
+            href={href(`/project/${id}/permissions`)}
+            class={buttonVariants({ variant: 'outline', size: 'sm' })}
+            title="Project permissions"
+            aria-label="Open permissions for {project.name}"
+          >
+            <Icon name="lock" class="size-3.5" />
+            Permissions
+          </a>
+        {/if}
+        {#if projectAccess.can('manage_applications')}
+          <a
+            href={href(`/project/${id}/edit`)}
+            class={buttonVariants({ variant: 'outline', size: 'sm' })}
+            title="Project settings"
+            aria-label="Open settings for {project.name}"
+          >
             <Icon name="settings" class="size-3.5" />
             Settings
           </a>
-
-          <Modal title="New Environment" bind:open={creating}>
+          <Modal title="New Environment" variant="none" bind:open={creating}>
             {#snippet trigger(show)}
-              <button type="button" class="button button-highlighted" onclick={show}>
+              <button type="button" class={buttonVariants({ size: 'sm' })} onclick={show}>
                 <Icon name="plus" class="size-3.5" />
                 New environment
               </button>
@@ -160,230 +189,75 @@
             <form class="space-y-4" onsubmit={create}>
               <Input placeholder="staging" label="Name" required bind:value={name} error={errors.name} />
 
-              <footer class="flex justify-end border-t border-neutral-200 pt-4 dark:border-white/[0.08]">
+              <footer class="flex justify-end border-t border-border pt-4">
                 <Button type="submit" variant="highlighted" loading={busy}>Create environment</Button>
               </footer>
             </form>
           </Modal>
-          {/if}
-        </div>
-      {/if}
-    </header>
+        {/if}
+      {/snippet}
+    </PageHeader>
 
     {#if environments.length === 0}
       <Empty title="No environments yet" description="Add an environment to start organizing this project's resources." icon="layers" />
     {:else}
-      <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div class="relative w-full sm:max-w-sm">
-          <Icon
-            name="search"
-            class="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-neutral-400 dark:text-fg-faint"
-          />
-          <input
-            bind:value={search}
-            oninput={() => (page = 1)}
-            type="search"
-            placeholder="Search environments"
-            aria-label="Search environments"
-            class="input h-8! w-full rounded-lg! border-neutral-200! bg-white! py-0! pr-8! pl-8! text-[12px]! shadow-none! placeholder:text-neutral-400 focus:border-ring! focus:ring-0! dark:border-white/[0.08]! dark:bg-white/[0.035]! dark:text-fg! dark:placeholder:text-fg-faint"
-          />
-          {#if search}
-            <button
-              type="button"
-              onclick={() => {
-                search = ''
-                page = 1
-              }}
-              class="absolute top-1/2 right-2 flex size-5 -translate-y-1/2 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.07] dark:hover:text-fg"
-              aria-label="Clear search"
-            >
-              <span class="text-sm leading-none">×</span>
-            </button>
-          {/if}
-        </div>
-
-        <div class="flex items-center gap-2">
-          <TableDropdown panelClass="w-48!">
-            {#snippet trigger({ open, toggle })}
-              <button type="button" class="button" aria-haspopup="listbox" aria-expanded={open} onclick={toggle}>
-                <svg class="size-3.5 opacity-65" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path
-                    d="M8 5v14m0 0-3-3m3 3 3-3M16 19V5m0 0-3 3m3-3 3 3"
-                    stroke="currentColor"
-                    stroke-width="1.7"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-                Sort
-              </button>
-            {/snippet}
-            {#snippet children(close)}
-              {#each sortOptions as option (option.value)}
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={sortBy === option.value}
-                  class="flex h-9 w-full items-center rounded-md px-2 text-left text-[12px] text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-black dark:text-fg-dim dark:hover:bg-white/[0.06] dark:hover:text-fg"
-                  onclick={() => {
-                    sortBy = option.value
-                    close()
-                    page = 1
-                  }}
-                >
-                  <span class="flex-1">{option.label}</span>
-                  {#if sortBy === option.value}
-                    <svg class="size-3.5 text-foreground" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                      <path d="m2.5 6.25 2.1 2.1 4.9-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                  {/if}
-                </button>
-              {/each}
-            {/snippet}
-          </TableDropdown>
-
-          <div class="view-toggle">
-            <button
-              type="button"
-              onclick={() => setViewMode('table')}
-              class={['flex size-7.5 items-center justify-center rounded-md transition-colors', viewMode === 'table' ? 'control-selected' : toggleIdle]}
-              aria-label="Table view"
-              aria-pressed={viewMode === 'table'}
-              title="Table view"
-            >
-              <Icon name="unordered-list" class="size-3.5" />
-            </button>
-            <button
-              type="button"
-              onclick={() => setViewMode('grid')}
-              class={['flex size-7.5 items-center justify-center rounded-md transition-colors', viewMode === 'grid' ? 'control-selected' : toggleIdle]}
-              aria-label="Grid view"
-              aria-pressed={viewMode === 'grid'}
-              title="Grid view"
-            >
-              <Icon name="grid" class="size-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
+      <CollectionToolbar ariaLabel="Environments controls">
+        {#snippet search()}
+          <SearchField bind:value={searchText} label="Search environments" oninput={() => (page = 1)} />
+        {/snippet}
+        {#snippet controls()}
+          <SortPopover bind:value={sortBy} options={sortOptions} label="Sort environments" onchange={() => (page = 1)} />
+          <ViewToggle value={viewMode} onchange={setViewMode} />
+        {/snippet}
+      </CollectionToolbar>
 
       {#if filtered.length === 0}
-        <div
-          class="flex min-h-52 flex-col items-center justify-center rounded-xl border border-neutral-200 bg-white px-6 text-center dark:border-white/[0.08] dark:bg-white/[0.05]"
-        >
-          <Icon name="search" class="mb-3 size-6 text-neutral-300 dark:text-fg-faint" />
-          <p class="text-[13px] font-medium">No matching environments</p>
-          <p class="mt-1 text-[12px] text-neutral-500 dark:text-fg-dim">Try a different search.</p>
-        </div>
+        <Card class="block py-0">
+          <Empty title="No matching environments" description="Try a different search." icon="search" size="sm" />
+        </Card>
       {:else if viewMode === 'grid'}
-        <div>
+        <div class="space-y-3">
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {#each paginated as environment (environment.id)}
-              {@const addHref = addResourceHref(environment)}
-              {@const editHref = settingsHref(environment)}
-              {@const count = resourceCount(environment)}
-              <article
-                class="group relative flex min-h-28 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.05] dark:hover:border-white/[0.14]"
-              >
-                <a href={environmentHref(environment)} class="absolute inset-0 rounded-xl" aria-label="Open {environment.name}"></a>
-
+              <Card interactive class="relative min-h-28 gap-0 p-4">
+                <a href={environmentHref(environment)} class="absolute inset-0 rounded-lg" aria-label="Open {environment.name}"></a>
                 <div class="flex items-start gap-3">
-                  <div
-                    class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-fg-dim"
-                  >
-                    <Icon name="layers" class="size-4" />
-                  </div>
+                  <ProjectTile size="lg" icon="layers" />
                   <div class="min-w-0 flex-1">
-                    <h2 class="truncate text-[13px]! leading-4! font-semibold! text-black dark:text-fg">{environment.name}</h2>
-                    <p class="mt-0.5 truncate text-[11px] text-neutral-500 dark:text-fg-faint">{environment.description || 'Environment'}</p>
+                    <h2 class="truncate text-sm font-medium" title={environment.name}>{environment.name}</h2>
+                    <p class="mt-0.5 min-h-4 truncate text-xs text-muted-foreground">{environment.description || ''}</p>
                   </div>
                 </div>
-
                 <div class="mt-auto flex items-center justify-between gap-3 pt-4">
-                  <p class="min-w-0 truncate text-[11px] text-neutral-500 dark:text-fg-dim">
-                    {count}
-                    {count === 1 ? 'resource' : 'resources'}
-                  </p>
-
-                  <div class="relative z-10 flex shrink-0 items-center gap-0.5">
-                    {#if addHref}
-                      <a href={addHref} class={['size-7.5', rowAction]} title="Add resource" aria-label="Add resource to {environment.name}">
-                        <Icon name="plus" class="size-3" />
-                      </a>
-                    {/if}
-                    {#if editHref}
-                      <a
-                        href={editHref}
-                        class={['size-7.5', rowAction]}
-                        title="Environment settings"
-                        aria-label="Open settings for {environment.name}"
-                      >
-                        <Icon name="settings" class="size-3" />
-                      </a>
-                    {/if}
-                  </div>
+                  <p class="min-w-0 truncate text-xs text-muted-foreground tabular-nums">{plural(resourceCount(environment), 'resource')}</p>
+                  <div class="relative z-10 flex shrink-0 items-center gap-0.5">{@render rowActions(environment)}</div>
                 </div>
-              </article>
+              </Card>
             {/each}
           </div>
-          <ClientPagination
-            bind:page
-            bind:pageSize
-            total={filtered.length}
-            options={[12, 24, 48, 96]}
-            storageKey={pageSizeKey}
-            class="mt-3 rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
-          />
+          <Card class={listCard}>
+            <ClientPagination bind:page bind:pageSize total={filtered.length} options={[12, 24, 48, 96]} storageKey={pageSizeKey} />
+          </Card>
         </div>
       {:else}
-        <div class="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-white/[0.05]">
-          <div
-            class="environments-table-grid border-b border-neutral-200 bg-neutral-50 px-4 py-2.5 text-[11px] font-medium text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-fg-faint"
-          >
-            <div>Environment</div>
-            <div class="environment-resource-count">Resources</div>
-            <div class="environment-description">Description</div>
-            <div></div>
-          </div>
-
+        <Card class={listCard}>
           {#each paginated as environment (environment.id)}
-            {@const addHref = addResourceHref(environment)}
-            {@const editHref = settingsHref(environment)}
-            <div
-              class="environments-table-grid group relative min-h-14 items-center border-b border-neutral-200 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-neutral-50 dark:border-white/[0.07] dark:hover:bg-white/[0.025]"
+            <EntityRow
+              title={environment.name}
+              subtitle={environment.description || undefined}
+              reserveSubtitleSpace
+              href={environmentHref(environment)}
+              class="group"
             >
-              <a href={environmentHref(environment)} class="absolute inset-0" aria-label="Open {environment.name}"></a>
-              <div class="flex min-w-0 items-center gap-3">
-                <div
-                  class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.035] dark:text-fg-dim"
-                >
-                  <Icon name="layers" class="size-4" />
-                </div>
-                <a
-                  href={environmentHref(environment)}
-                  class="relative truncate text-[13px] font-semibold text-black hover:underline dark:text-fg">{environment.name}</a
-                >
-              </div>
-
-              <div class="environment-resource-count text-[12px] text-neutral-600 dark:text-fg-dim">{resourceCount(environment)}</div>
-              <p class="environment-description truncate text-[12px] text-neutral-500 dark:text-fg-dim">{environment.description || '-'}</p>
-
-              <div class="relative flex items-center justify-end gap-0.5">
-                {#if addHref}
-                  <a href={addHref} class={['size-7', rowAction]} title="Add resource" aria-label="Add resource to {environment.name}">
-                    <Icon name="plus" class="size-3.5" />
-                  </a>
-                {/if}
-                {#if editHref}
-                  <a href={editHref} class={['size-7', rowAction]} title="Environment settings" aria-label="Open settings for {environment.name}">
-                    <Icon name="settings" class="size-3.5" />
-                  </a>
-                {/if}
-              </div>
-            </div>
+              {#snippet leading()}<ProjectTile size="sm" icon="layers" />{/snippet}
+              {#snippet trailing()}
+                <span class="hidden text-xs text-muted-foreground tabular-nums sm:inline">{plural(resourceCount(environment), 'resource')}</span>
+                <div class="flex items-center gap-0.5">{@render rowActions(environment)}</div>
+              {/snippet}
+            </EntityRow>
           {/each}
           <ClientPagination bind:page bind:pageSize total={filtered.length} options={[12, 24, 48, 96]} storageKey={pageSizeKey} />
-        </div>
+        </Card>
       {/if}
     {/if}
   </div>

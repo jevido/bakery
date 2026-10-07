@@ -7,18 +7,26 @@
   //
   // Left out: the Project icon section (Projects have no icons here). Added:
   // the Project's shared variables, until the Shared Variables pages arrive.
+  //
+  // Laid out as a Paperclip settings page (ui/src/pages/CompanySettings.tsx;
+  // MIT, see NOTICE): a General group and a Danger Zone group. It stays in
+  // the primary sidebar under its Project, not among the settings pages.
+  import { FolderCog } from '@lucide/svelte'
+  import { buttonVariants } from '$lib/components/ui/button'
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import EnvironmentVariables from '../lib/EnvironmentVariables.svelte'
   import Icon from '../lib/Icon.svelte'
+  import PageSkeleton from '../lib/PageSkeleton.svelte'
   import { projectResources, type ProjectResources } from '../lib/projectCounts'
   import { go, href } from '../lib/router.svelte'
   import { projectAccess } from '../lib/projectAccess.svelte'
   import { session } from '../lib/session.svelte'
+  import SettingsGroup from '../lib/settings/SettingsGroup.svelte'
+  import SettingsPage from '../lib/settings/SettingsPage.svelte'
   import type { Project } from '../lib/types'
   import ConfirmationModal from '../lib/ui/ConfirmationModal.svelte'
   import Input from '../lib/ui/Input.svelte'
-  import Spinner from '../lib/ui/Spinner.svelte'
   import { toast } from '../lib/ui/toast.svelte'
   import UnsavedBar from '../lib/ui/UnsavedBar.svelte'
 
@@ -93,74 +101,60 @@
 </script>
 
 {#if loadError}
-  <p class="text-sm text-error">{loadError}</p>
+  <p class="text-sm text-destructive">{loadError}</p>
 {:else if !project}
-  <Spinner text="Loading…" />
+  <PageSkeleton />
 {:else}
-  <div class="chrome w-full max-w-none">
-    <header class="mb-5">
-      <h1 class="truncate text-[24px]! leading-7! font-semibold! tracking-tight!">{project.name}</h1>
-      <p class="mt-1 text-[13px] text-neutral-500 dark:text-fg-dim">Project settings</p>
+  <SettingsPage icon={FolderCog} title="Project settings">
+    {#snippet actions()}
       {#if session.can('manage_roles')}
-        <a href={href(`/project/${id}/permissions`)} class="button mt-3 w-fit">
+        <a href={href(`/project/${id}/permissions`)} class={buttonVariants({ variant: 'outline', size: 'sm' })}>
           <Icon name="lock" class="size-3.5" />
           Permissions
         </a>
       {/if}
-    </header>
-
-    <div class="flex flex-col gap-6">
-      <form
-        onsubmit={(e) => {
-          e.preventDefault()
-          save()
-        }}
-      >
-        {#if projectAccess.can('manage_applications')}
-          <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
-        {/if}
-        <section class="application-settings-section">
-          <div class="application-settings-section-header">
-            <div>
-              <h2>Project details</h2>
-              <p>Name and describe this project across the dashboard.</p>
-            </div>
-          </div>
-          <div class="application-settings-section-body grid gap-4 sm:grid-cols-2">
-            <Input label="Name" bind:value={name} error={errors.name} disabled={!projectAccess.can('manage_applications')} />
-            <Input label="Description" bind:value={description} error={errors.description} disabled={!projectAccess.can('manage_applications')} />
-          </div>
-        </section>
-      </form>
-
-      <EnvironmentVariables
-        path={`/projects/${id}/variables`}
-        title="Shared variables"
-        helper="Every application in this project gets these, unless its environment or the application sets the same name."
-      />
-
+    {/snippet}
+    <form
+      class="space-y-8"
+      onsubmit={(e) => {
+        e.preventDefault()
+        save()
+      }}
+    >
       {#if projectAccess.can('manage_applications')}
-        <section class="overflow-hidden rounded-[10px] border border-red-300 bg-red-50/80 dark:border-red-500/25 dark:bg-red-500/[0.06]">
-          <div class="flex items-start justify-between gap-4 px-5 py-4">
-            <div>
-              <h2 class="text-sm font-semibold text-red-800 dark:text-red-300">Delete project</h2>
-              <p class="mt-1 max-w-2xl text-sm text-red-700/80 dark:text-red-200/70">Empty the project before permanently deleting it.</p>
-            </div>
-            <ConfirmationModal
-              title="Confirm Project Deletion?"
-              buttonTitle="Delete Project"
-              variant="error"
-              disabled={!empty}
-              actions={['This will delete the selected project', 'All Environments inside the project will be deleted as well.']}
-              confirmationText={project.name}
-              confirmationLabel="Please confirm the execution of the actions by entering the Project Name below"
-              shortConfirmationLabel="Project Name"
-              step2ButtonText="Permanently Delete"
-              onconfirm={remove}
-            />
-          </div>
-        </section>
+        <UnsavedBar {dirty} {saving} onsave={save} onreset={reset} />
       {/if}
-    </div>
-  </div>
+      <SettingsGroup label="General" hint="Name and describe this project across the dashboard." data-testid="project-general">
+        <Input label="Name" bind:value={name} error={errors.name} disabled={!projectAccess.can('manage_applications')} />
+        <Input label="Description" bind:value={description} error={errors.description} disabled={!projectAccess.can('manage_applications')} />
+      </SettingsGroup>
+    </form>
+
+    <EnvironmentVariables
+      path={`/projects/${id}/variables`}
+      title="Shared variables"
+      helper="Every application in this project gets these, unless its environment or the application sets the same name."
+    />
+
+    {#if projectAccess.can('manage_applications')}
+      <SettingsGroup label="Danger Zone" destructive data-testid="project-delete">
+        <p class="text-sm text-muted-foreground">
+          Permanently delete <strong class="font-medium text-foreground">{project.name}</strong> and its environments. Empty the project before
+          deleting it.
+        </p>
+        <ConfirmationModal
+          title="Confirm Project Deletion?"
+          buttonTitle="Delete Project"
+          variant="error"
+          disabled={!empty}
+          actions={['This will delete the selected project', 'All Environments inside the project will be deleted as well.']}
+          confirmationText={project.name}
+          confirmationLabel="Please confirm the execution of the actions by entering the Project Name below"
+          shortConfirmationLabel="Project Name"
+          step2ButtonText="Permanently Delete"
+          onconfirm={remove}
+        />
+      </SettingsGroup>
+    {/if}
+  </SettingsPage>
 {/if}

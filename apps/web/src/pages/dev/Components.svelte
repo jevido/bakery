@@ -12,6 +12,10 @@
   import Empty from '../../lib/ui/Empty.svelte'
   import CollectionToolbar from '../../lib/CollectionToolbar.svelte'
   import EntityRow from '../../lib/EntityRow.svelte'
+  import PageHeader from '../../lib/PageHeader.svelte'
+  import SearchField from '../../lib/SearchField.svelte'
+  import SortPopover from '../../lib/SortPopover.svelte'
+  import ViewToggle from '../../lib/ViewToggle.svelte'
   import ProjectTile from '../../lib/ProjectTile.svelte'
   import MetricCard from '../../lib/MetricCard.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
@@ -65,6 +69,13 @@
   let deleted = $state<string[] | null>(null)
   let loading = $state(false)
   let modalOpen = $state(false)
+  let demoSearch = $state('')
+  let demoSort = $state<'name-asc' | 'name-desc'>('name-asc')
+  const demoSortOptions = [
+    { value: 'name-asc' as const, label: 'Name A–Z' },
+    { value: 'name-desc' as const, label: 'Name Z–A' },
+  ]
+  let demoView = $state<'table' | 'grid'>('table')
   let savedTitle = $state('My project')
   let draftTitle = $state('My project')
   let draftSaving = $state(false)
@@ -380,14 +391,29 @@
   </section>
 
   <section id="collection-toolbar">
-    <SectionHeading title="CollectionToolbar" subtitle="CollectionToolbar: context, search, controls, actions, feedback" />
+    <SectionHeading title="CollectionToolbar" subtitle="CollectionToolbar with SearchField, SortPopover and ViewToggle: context, search, controls, actions, feedback" />
     <CollectionToolbar>
       {#snippet context()}<span class="text-sm text-muted-foreground">3 projects</span>{/snippet}
-      {#snippet search()}<UiInput type="search" placeholder="Search projects" class="h-8 sm:max-w-sm" />{/snippet}
-      {#snippet controls()}<UiButton variant="ghost" size="sm" class="text-xs">Sort: Name A–Z</UiButton>{/snippet}
+      {#snippet search()}<SearchField bind:value={demoSearch} label="Search projects" />{/snippet}
+      {#snippet controls()}
+        <SortPopover bind:value={demoSort} options={demoSortOptions} label="Sort projects" />
+        <ViewToggle value={demoView} onchange={(v) => (demoView = v)} />
+      {/snippet}
       {#snippet actions()}<UiButton variant="outline" size="sm"><Plus class="size-4" />New project</UiButton>{/snippet}
       {#snippet feedback()}<Badge variant="secondary">Filtered by name</Badge>{/snippet}
     </CollectionToolbar>
+  </section>
+
+  <section id="page-header">
+    <SectionHeading title="PageHeader" subtitle="PageHeader: leading tile, title, description, meta, actions" />
+    <PageHeader title="Bakery" description="The deployment platform">
+      {#snippet leading()}<ProjectTile size="lg" />{/snippet}
+      {#snippet meta()}<span>2 environments in this project</span>{/snippet}
+      {#snippet actions()}
+        <UiButton variant="outline" size="sm">Settings</UiButton>
+        <UiButton size="sm"><Plus class="size-4" />New environment</UiButton>
+      {/snippet}
+    </PageHeader>
   </section>
 
   <section id="entity-row">
