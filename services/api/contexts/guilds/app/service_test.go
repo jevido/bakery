@@ -41,30 +41,36 @@ func (m *memStore) All(context.Context) ([]domain.Guild, error) {
 	return append([]domain.Guild(nil), m.guilds...), nil
 }
 
-func (m *memStore) Create(_ context.Context, g domain.Guild, adminID uint64) (domain.Guild, error) {
+func (m *memStore) Create(_ context.Context, g domain.Guild) (domain.Guild, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.create(g, adminID), nil
+	return m.create(g), nil
 }
 
-func (m *memStore) create(g domain.Guild, adminID uint64) domain.Guild {
+func (m *memStore) MasteredBy(_ context.Context, memberID uint64) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.ContainsFunc(m.guilds, func(g domain.Guild) bool { return g.MasterID == memberID }), nil
+}
+
+func (m *memStore) create(g domain.Guild) domain.Guild {
 	g.ID = uint64(len(m.guilds) + 1)
 	m.guilds = append(m.guilds, g)
 	for _, r := range domain.SeedRoles(g.ID) {
 		r.ID = uint64(len(m.roles) + 1)
 		m.roles = append(m.roles, r)
 	}
-	m.add(g.ID, adminID, "admin")
+	m.add(g.ID, g.MasterID, "admin")
 	return g
 }
 
-func (m *memStore) CreateFirstIfNone(_ context.Context, g domain.Guild, adminID uint64) (domain.Guild, bool, error) {
+func (m *memStore) CreateFirstIfNone(_ context.Context, g domain.Guild) (domain.Guild, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if len(m.guilds) > 0 {
 		return domain.Guild{}, false, nil
 	}
-	return m.create(g, adminID), true, nil
+	return m.create(g), true, nil
 }
 
 func (m *memStore) Update(_ context.Context, g domain.Guild) error {
@@ -178,15 +184,16 @@ func (m *memStore) add(guildID, memberID uint64, former string) {
 	})
 }
 
-func (m *memStore) Change(ctx context.Context, guildID, memberID uint64, to []uint64, remove bool, check func([]domain.Membership) error) (domain.Membership, error) {
+func (m *memStore) Change(ctx context.Context, guildID, memberID uint64, to []uint64, remove bool, check func(domain.Guild, []domain.Membership) error) (domain.Membership, error) {
 	ms, _ := m.ListForGuild(ctx, guildID)
+	g, _, _ := m.ByID(ctx, guildID)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	i := slices.IndexFunc(m.memberships, func(x domain.Membership) bool { return x.GuildID == guildID && x.MemberID == memberID })
 	if i < 0 {
 		return domain.Membership{}, ErrMembershipNotFound
 	}
-	if err := check(ms); err != nil {
+	if err := check(g, ms); err != nil {
 		return domain.Membership{}, err
 	}
 	changed := m.memberships[i]
@@ -250,7 +257,7 @@ func newTestService() (*Service, *memStore) {
 func newTestServiceWithMembers() (*Service, *memStore, *memMembers) {
 	m := &memStore{}
 	members := &memMembers{}
-	return NewService(m, m, m, &memInvitations{store: m}, members), m, members
+	return NewService(m, m, m, &memInvitations{store: m}, &memOffers{store: m}, members), m, members
 }
 
 func TestMakeFirstGuildOnlyOnce(t *testing.T) {
@@ -324,7 +331,7 @@ func TestPlace(t *testing.T) {
 	}{
 		{"no cookie: the first Guild", 3, false, 0, 0, 1, memberPerms},
 		{"the cookie's Guild", 3, false, 0, 2, 2, viewerPerms},
-		{"a cookie of a Guild you are not in falls back", 2, false, 0, 1, 2, adminPerms},
+		{"a cookie of a Guild you are not in falls back; the Guild Master holds every Permission", 2, false, 0, 1, 2, domain.AllPermissions},
 		{"a cookie of no Guild falls back", 3, false, 0, 99, 1, memberPerms},
 		{"the Instance admin holds every Permission anywhere", 1, true, 0, 2, 2, domain.AllPermissions},
 		{"a token acts in its Guild", 3, false, 2, 1, 2, viewerPerms},
@@ -377,13 +384,16 @@ func TestChangeRoleAndRemoveMembership(t *testing.T) {
 	if _, err := s.ChangeRole(ctx, 1, 3, adminPerms, 1, "member"); !errors.Is(err, domain.ErrInstanceAdminFixed) {
 		t.Errorf("demote the Instance admin: %v", err)
 	}
-	// The Instance admin, admin anywhere, takes Ann's admin away: Bakers
-	// would have none.
-	if _, err := s.ChangeRole(ctx, 2, 1, adminPerms, 2, "member"); !errors.Is(err, domain.ErrLastAdmin) {
-		t.Errorf("demote the last admin: %v", err)
+	// Not even the Instance admin, admin anywhere, re-roles or removes
+	// Ann, the Guild Master of Bakers.
+	if _, err := s.ChangeRole(ctx, 2, 1, domain.AllPermissions, 2, "member"); !errors.Is(err, domain.ErrGuildMaster) {
+		t.Errorf("re-role the Guild Master: %v", err)
 	}
-	if err := s.RemoveMembership(ctx, 2, 1, adminPerms, 2); !errors.Is(err, domain.ErrLastAdmin) {
-		t.Errorf("remove the last admin: %v", err)
+	if err := s.RemoveMembership(ctx, 2, 1, domain.AllPermissions, 2); !errors.Is(err, domain.ErrGuildMaster) {
+		t.Errorf("remove the Guild Master: %v", err)
+	}
+	if err := s.ResetTwoFactor(ctx, 2, 1, domain.AllPermissions, 2); !errors.Is(err, domain.ErrGuildMaster) {
+		t.Errorf("reset the Guild Master's two-factor: %v", err)
 	}
 	if err := s.RemoveMembership(ctx, 2, 2, adminPerms, 3); err != nil {
 		t.Fatal(err)

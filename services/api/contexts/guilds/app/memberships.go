@@ -13,13 +13,16 @@ var ErrMembershipNotFound = errors.New("member not found")
 type Place struct {
 	Guild       domain.Guild
 	Permissions domain.Permissions
+	// GuildMaster is set when the Member is the Guild's Guild Master.
+	GuildMaster bool
 }
 
 // Place finds the Current guild of a Member's request: for an API token
 // (tokenGuild set) the Guild it was made in; for a Session the wanted one
 // (the Guild cookie) when the Member is in it, else their first Guild by
-// id. The Instance admin holds every Permission in every Guild, and with no Membership at
-// all acts in the first Guild there is. False when there is no Guild to act
+// id. The Guild Master holds every Permission in their Guild, the Instance
+// admin in every Guild, and with no Membership at all acts in the first
+// Guild there is. False when there is no Guild to act
 // in.
 func (s *Service) Place(ctx context.Context, memberID uint64, instanceAdmin bool, tokenGuild, wanted uint64) (Place, bool, error) {
 	if tokenGuild != 0 {
@@ -43,7 +46,7 @@ func (s *Service) Place(ctx context.Context, memberID uint64, instanceAdmin bool
 		if err != nil || len(all) == 0 {
 			return Place{}, false, err
 		}
-		return Place{Guild: all[0], Permissions: domain.AllPermissions}, true, nil
+		return Place{Guild: all[0], Permissions: domain.AllPermissions, GuildMaster: all[0].MasterID == memberID}, true, nil
 	}
 	return Place{}, false, nil
 }
@@ -53,8 +56,9 @@ func (s *Service) placeIn(ctx context.Context, guildID, memberID uint64, instanc
 	if err != nil || !found {
 		return Place{}, false, err
 	}
-	if instanceAdmin {
-		return Place{Guild: g, Permissions: domain.AllPermissions}, true, nil
+	master := g.MasterID == memberID
+	if instanceAdmin || master {
+		return Place{Guild: g, Permissions: domain.AllPermissions, GuildMaster: master}, true, nil
 	}
 	perms, ok, err := s.PermissionsIn(ctx, guildID, memberID)
 	if err != nil || !ok {
@@ -74,7 +78,7 @@ func (s *Service) GuildsFor(ctx context.Context, memberID uint64, instanceAdmin 
 		}
 		out := make([]Place, len(all))
 		for i, g := range all {
-			out[i] = Place{Guild: g, Permissions: domain.AllPermissions}
+			out[i] = Place{Guild: g, Permissions: domain.AllPermissions, GuildMaster: g.MasterID == memberID}
 		}
 		return out, nil
 	}
@@ -89,6 +93,10 @@ func (s *Service) GuildsFor(ctx context.Context, memberID uint64, instanceAdmin 
 			return nil, err
 		}
 		if !found {
+			continue
+		}
+		if g.MasterID == memberID {
+			out = append(out, Place{Guild: g, Permissions: domain.AllPermissions, GuildMaster: true})
 			continue
 		}
 		roles, err := s.roles.ForGuild(ctx, m.GuildID)
@@ -106,8 +114,7 @@ func (s *Service) MembershipsIn(ctx context.Context, guildID uint64) ([]domain.M
 }
 
 // ChangeRole replaces a Member's Roles in the Guild with the seeded Role a
-// former role ("viewer", "member" or "admin") names, by the domain's rules;
-// the Guild keeps an admin.
+// former role ("viewer", "member" or "admin") names, by the domain's rules.
 func (s *Service) ChangeRole(ctx context.Context, guildID, actorID uint64, actor domain.Permissions, memberID uint64, former string) (domain.Membership, error) {
 	roles, err := s.roles.ForGuild(ctx, guildID)
 	if err != nil {
@@ -120,42 +127,34 @@ func (s *Service) ChangeRole(ctx context.Context, guildID, actorID uint64, actor
 	if !found {
 		return domain.Membership{}, domain.ErrInvalidRole
 	}
-	return s.change(ctx, guildID, actorID, actor, memberID, roles, []uint64{r.ID}, false)
+	return s.change(ctx, guildID, actorID, actor, memberID, []uint64{r.ID}, false)
 }
 
 // RemoveMembership takes a Member out of the Guild; their API tokens of the
-// Guild go with it, and they keep their account and other Memberships.
+// Guild and a Transfer offer to them go with it, and they keep their
+// account and other Memberships.
 func (s *Service) RemoveMembership(ctx context.Context, guildID, actorID uint64, actor domain.Permissions, memberID uint64) error {
-	roles, err := s.roles.ForGuild(ctx, guildID)
-	if err != nil {
+	if _, err := s.change(ctx, guildID, actorID, actor, memberID, nil, true); err != nil {
 		return err
 	}
-	if _, err := s.change(ctx, guildID, actorID, actor, memberID, roles, nil, true); err != nil {
+	if err := s.offers.WithdrawTo(ctx, guildID, memberID); err != nil {
 		return err
 	}
 	return s.members.RevokeAPITokens(ctx, memberID, guildID)
 }
 
-func (s *Service) change(ctx context.Context, guildID, actorID uint64, actor domain.Permissions, memberID uint64, roles []domain.Role, to []uint64, remove bool) (domain.Membership, error) {
+func (s *Service) change(ctx context.Context, guildID, actorID uint64, actor domain.Permissions, memberID uint64, to []uint64, remove bool) (domain.Membership, error) {
 	instanceAdmin, err := s.members.IsInstanceAdmin(ctx, memberID)
 	if err != nil {
 		return domain.Membership{}, err
 	}
-	return s.memberships.Change(ctx, guildID, memberID, to, remove, func(ms []domain.Membership) error {
-		after := make([]domain.Membership, 0, len(ms))
+	return s.memberships.Change(ctx, guildID, memberID, to, remove, func(g domain.Guild, ms []domain.Membership) error {
 		for _, m := range ms {
 			if m.MemberID == memberID {
-				if err := domain.CanManage(actorID, actor, m, instanceAdmin); err != nil {
-					return err
-				}
-				if remove {
-					continue
-				}
-				m.RoleIDs = to
+				return domain.CanManage(g, actorID, actor, m, instanceAdmin)
 			}
-			after = append(after, m)
 		}
-		return domain.KeepsAnAdmin(roles, after)
+		return ErrMembershipNotFound
 	})
 }
 
@@ -173,7 +172,11 @@ func (s *Service) ResetTwoFactor(ctx context.Context, guildID, actorID uint64, a
 	if err != nil {
 		return err
 	}
-	if err := domain.CanManage(actorID, actor, target, instanceAdmin); err != nil {
+	g, err := s.Guild(ctx, guildID)
+	if err != nil {
+		return err
+	}
+	if err := domain.CanManage(g, actorID, actor, target, instanceAdmin); err != nil {
 		return err
 	}
 	return s.members.ResetTwoFactor(ctx, memberID)

@@ -1,9 +1,29 @@
 import { api, ApiError } from './api'
 
 export type Role = 'viewer' | 'member' | 'admin' | 'owner'
-export type Member = { id: number; name: string; email: string; role: Role; two_factor: boolean; instance_admin: boolean }
+export type Member = {
+  id: number
+  name: string
+  email: string
+  role: Role
+  two_factor: boolean
+  instance_admin: boolean
+  /** Whether they are the Current guild's Guild Master. */
+  guild_master: boolean
+}
 /** A Member as sign-in and the Profile answer them: the Role is per Guild, so only /me has it. */
-export type Account = Omit<Member, 'role' | 'instance_admin'>
+export type Account = Omit<Member, 'role' | 'instance_admin' | 'guild_master'>
+/** A Member named on a Guild Master or a Transfer offer. */
+export type Person = { id: number; name: string; email: string }
+/** An open Transfer offer of a Guild's Guild Master; `guild` only on the offers to the signed-in Member. */
+export type Offer = {
+  id: number
+  guild?: { id: number; name: string }
+  from: Person | null
+  to: Person | null
+  created_at: string
+  expires_at: string
+}
 
 /** A Permission's wire key, from the glossary's fixed list. */
 export type Permission =
@@ -31,6 +51,8 @@ type Me = {
   guild: CurrentGuild | null
   guilds: GuildPlace[]
   instance_admin: boolean
+  guild_master: boolean
+  offers: Offer[]
   permissions: Permission[]
 }
 
@@ -45,6 +67,10 @@ class Session {
   guilds = $state.raw<GuildPlace[]>([])
   /** Whether the Member runs the installation (the Local server among it). */
   instanceAdmin = $state(false)
+  /** Whether the Member is the Current guild's Guild Master. */
+  guildMaster = $state(false)
+  /** The open Transfer offers to the Member, in every Guild. */
+  offers = $state.raw<Offer[]>([])
 
   /** The Member's Permissions in the Current guild. */
   permissions = $state.raw<Permission[]>([])
@@ -95,6 +121,8 @@ class Session {
     this.guild = me.guild
     this.guilds = me.guilds
     this.instanceAdmin = me.instance_admin
+    this.guildMaster = me.guild_master
+    this.offers = me.offers
     this.permissions = me.permissions
     this.state = 'signed-in'
   }
@@ -104,6 +132,8 @@ class Session {
     this.guild = null
     this.guilds = []
     this.instanceAdmin = false
+    this.guildMaster = false
+    this.offers = []
     this.permissions = []
     this.state = 'signed-out'
   }

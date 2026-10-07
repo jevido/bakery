@@ -402,7 +402,7 @@ export type ContainerMetrics = {
 
 export type Metrics = { server: ServerMetrics; containers: ContainerMetrics[] }
 
-export type { CurrentGuild, GuildPlace, Member, Role } from './session.svelte'
+export type { CurrentGuild, GuildPlace, Member, Offer, Person, Role } from './session.svelte'
 
 /** The Current guild as its General and Danger Zone pages show it. */
 export type GuildDetails = {
@@ -411,6 +411,10 @@ export type GuildDetails = {
   description: string
   /** What still keeps it from being deleted, e.g. "projects". */
   blocking: string[]
+  /** Its Guild Master; left out after an edit. */
+  guild_master?: import('./session.svelte').Person
+  /** Its open Transfer offer, null without one. */
+  offer: import('./session.svelte').Offer | null
 }
 
 export type Invitation = {

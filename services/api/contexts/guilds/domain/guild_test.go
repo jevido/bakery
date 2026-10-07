@@ -20,7 +20,7 @@ func TestNewGuild(t *testing.T) {
 		{"Bakers", strings.Repeat("x", 256), ErrDescriptionTooLong},
 	}
 	for _, c := range cases {
-		g, err := NewGuild(c.name, c.description)
+		g, err := NewGuild(c.name, c.description, 1)
 		if !errors.Is(err, c.want) {
 			t.Errorf("NewGuild(%q, %q): err = %v, want %v", c.name, c.description, err, c.want)
 		}
@@ -31,7 +31,7 @@ func TestNewGuild(t *testing.T) {
 }
 
 func TestRenameKeepsTheOldNameOnError(t *testing.T) {
-	g, _ := NewGuild("Bakers", "")
+	g, _ := NewGuild("Bakers", "", 1)
 	if err := g.Rename(""); !errors.Is(err, ErrInvalidName) {
 		t.Fatalf("err = %v", err)
 	}
@@ -151,21 +151,9 @@ func TestPermissionsOf(t *testing.T) {
 	}
 }
 
-func TestKeepsAnAdmin(t *testing.T) {
-	roles := seeded()
-	if err := KeepsAnAdmin(roles, []Membership{{MemberID: 1, RoleIDs: []uint64{3}}}); !errors.Is(err, ErrLastAdmin) {
-		t.Errorf("no admin: %v", err)
-	}
-	if err := KeepsAnAdmin(roles, nil); !errors.Is(err, ErrLastAdmin) {
-		t.Errorf("nobody: %v", err)
-	}
-	if err := KeepsAnAdmin(roles, []Membership{{MemberID: 1, RoleIDs: []uint64{3}}, {MemberID: 2, RoleIDs: []uint64{3, 4}}}); err != nil {
-		t.Errorf("an admin stays: %v", err)
-	}
-}
-
 func TestCanManage(t *testing.T) {
 	dev := Membership{MemberID: 3, RoleIDs: []uint64{3}}
+	g := Guild{ID: 1, MasterID: 4}
 	admin, member := Of(PermissionAdministrator), Of(PermissionManageApplications)
 	cases := []struct {
 		actor         uint64
@@ -179,9 +167,11 @@ func TestCanManage(t *testing.T) {
 		{1, member, dev, false, ErrNotAdmin},
 		{1, admin, Membership{MemberID: 2}, true, ErrInstanceAdminFixed},
 		{3, admin, dev, false, ErrSelf},
+		{1, admin, Membership{MemberID: 4, RoleIDs: []uint64{4}}, false, ErrGuildMaster},
+		{4, AllPermissions, Membership{MemberID: 4}, false, ErrSelf},
 	}
 	for _, c := range cases {
-		if err := CanManage(c.actor, c.perms, c.target, c.instanceAdmin); !errors.Is(err, c.want) {
+		if err := CanManage(g, c.actor, c.perms, c.target, c.instanceAdmin); !errors.Is(err, c.want) {
 			t.Errorf("%d (%v) manages %d: %v, want %v", c.actor, c.perms.Keys(), c.target.MemberID, err, c.want)
 		}
 	}

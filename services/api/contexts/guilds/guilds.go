@@ -1,6 +1,6 @@
 // Package guilds is what other contexts, the router and bootstrap may use
 // from the guilds context: the Auth, Deploy, Can and Owns middlewares,
-// Current and Allows, the routes, the
+// Current and Allows, IsGuildMaster, the routes, the
 // InvitationCreated event, the OnGuildDeleting check, and Boot. Nothing else in contexts/guilds is for
 // outside use.
 package guilds
@@ -21,7 +21,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/identity"
 )
 
-var service = app.NewService(infra.Guilds{}, infra.Memberships{}, infra.Roles{}, infra.Invitations{}, members{})
+var service = app.NewService(infra.Guilds{}, infra.Memberships{}, infra.Roles{}, infra.Invitations{}, infra.Offers{}, members{})
 
 // Auth refuses requests that come from no Member (401), from a Member in no
 // Guild (403 `you are in no guild`), reading without view_resources in the
@@ -92,6 +92,16 @@ func Routes(r route.Router) {
 		r.Get("/api/guilds", c.Guilds)
 		r.Post("/api/guilds", c.CreateGuild)
 		r.Post("/api/guilds/{id}/switch", c.SwitchGuild)
+		// The offered Member answers a Transfer offer of any Guild they are
+		// in, whichever is Current.
+		r.Post("/api/guild-master-offers/{id}/accept", c.AcceptOffer)
+		r.Post("/api/guild-master-offers/{id}/decline", c.DeclineOffer)
+	})
+	// Only the Guild Master offers the Guild Master (the service checks),
+	// and only with a Session.
+	r.Middleware(guildshttp.Auth{Service: service, SelfService: true}).Group(func(r route.Router) {
+		r.Post("/api/guilds/current/guild-master-offer", c.OfferGuildMaster)
+		r.Delete("/api/guilds/current/guild-master-offer", c.WithdrawOffer)
 	})
 	// Every Member reads their Guild's General page and Members, as in
 	// Coolify.
@@ -114,6 +124,13 @@ func Routes(r route.Router) {
 // answers true while it does, and the deletion is refused (409) naming kind.
 func OnGuildDeleting(kind string, inUse func(ctx context.Context, guildID uint64) (bool, error)) {
 	service.OnGuildDeleting(kind, inUse)
+}
+
+// IsGuildMaster reports whether the Member is the Guild Master of any
+// Guild. Such a Member cannot leave that Guild or have their account
+// deleted; whatever deletes an account or leaves a Guild asks this first.
+func IsGuildMaster(ctx context.Context, memberID uint64) (bool, error) {
+	return service.IsGuildMaster(ctx, memberID)
 }
 
 // Boot subscribes guilds to what identity announces: Setup's Instance admin

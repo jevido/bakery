@@ -104,6 +104,12 @@ Who may run each is in brackets.
 - **Consumes:** nothing. Identity never imports guilds; where the first
   Member needs a Guild, guilds subscribes to `SetUp`, and where identity's
   routes need the Current guild, guilds hands it over with `ActIn`.
+- **Account deletion, when it comes,** must refuse a Member who is a Guild
+  Master of any Guild (they transfer it or delete the Guild first). Since
+  identity never imports guilds, it will publish a check hook that guilds
+  subscribes to with `guilds.IsGuildMaster`, as it subscribes to `SetUp`.
+  The database refuses it too: `guilds.master_id` references the Member
+  without a cascade.
 
 ## Why it's shaped this way
 

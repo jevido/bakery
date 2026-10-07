@@ -21,6 +21,10 @@ type currentGuildJSON struct {
 	Description string `json:"description"`
 	// Blocking names what keeps the Guild from being deleted.
 	Blocking []string `json:"blocking"`
+	// GuildMaster is the Guild's Guild Master; Offer its open Transfer
+	// offer, nil without one.
+	GuildMaster *personJSON `json:"guild_master,omitempty"`
+	Offer       *offerJSON  `json:"offer"`
 }
 
 // guildFailure answers the errors of Guilds.
@@ -86,8 +90,16 @@ func (c *Controller) CurrentGuild(ctx contractshttp.Context) contractshttp.Respo
 	if err != nil {
 		return respond.ServerError(ctx, err)
 	}
+	master, err := person(ctx, g.MasterID)
+	if err != nil {
+		return respond.ServerError(ctx, err)
+	}
+	offer, err := c.openOffer(ctx, g.ID)
+	if err != nil {
+		return respond.ServerError(ctx, err)
+	}
 	return ctx.Response().Success().Json(contractshttp.Json{
-		"guild": currentGuildJSON{ID: g.ID, Name: g.Name, Description: g.Description, Blocking: blocking},
+		"guild": currentGuildJSON{ID: g.ID, Name: g.Name, Description: g.Description, Blocking: blocking, GuildMaster: master, Offer: offer},
 	})
 }
 

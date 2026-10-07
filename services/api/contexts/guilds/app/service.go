@@ -17,12 +17,15 @@ type Guilds interface {
 	// All lists every Guild by id.
 	All(ctx context.Context) ([]domain.Guild, error)
 	// Create stores g with its seeded Roles (domain.SeedRoles) and a
-	// Membership holding Admin for adminID, in one transaction.
-	Create(ctx context.Context, g domain.Guild, adminID uint64) (domain.Guild, error)
+	// Membership holding Admin for its Guild Master, in one transaction.
+	Create(ctx context.Context, g domain.Guild) (domain.Guild, error)
 	// CreateFirstIfNone is Create unless a Guild exists already, in which
 	// case it stores nothing and reports false. The check and the insert are
 	// one step, so racing calls cannot both create one.
-	CreateFirstIfNone(ctx context.Context, g domain.Guild, adminID uint64) (domain.Guild, bool, error)
+	CreateFirstIfNone(ctx context.Context, g domain.Guild) (domain.Guild, bool, error)
+	// MasteredBy reports whether the Member is the Guild Master of any
+	// Guild.
+	MasteredBy(ctx context.Context, memberID uint64) (bool, error)
 	// Update stores g's name and description.
 	Update(ctx context.Context, g domain.Guild) error
 	// Delete removes the Guild with its Memberships, Invitations and API
@@ -40,11 +43,11 @@ type Memberships interface {
 	// Of is the Member's Membership in the Guild, false without one.
 	Of(ctx context.Context, guildID, memberID uint64) (domain.Membership, bool, error)
 	// Change gives memberID's Membership in the Guild the Roles to, or
-	// deletes it when remove is set, once check accepts every Membership of
-	// the Guild as they are. Check and change are one step, so two admins
-	// demoting each other cannot leave the Guild without one.
+	// deletes it when remove is set, once check accepts the Guild and every
+	// Membership of it as they are. Check and change are one step, so an
+	// accepted Transfer offer cannot slip between them.
 	// ErrMembershipNotFound when memberID holds none there.
-	Change(ctx context.Context, guildID, memberID uint64, to []uint64, remove bool, check func([]domain.Membership) error) (domain.Membership, error)
+	Change(ctx context.Context, guildID, memberID uint64, to []uint64, remove bool, check func(domain.Guild, []domain.Membership) error) (domain.Membership, error)
 }
 
 // Roles stores the Roles of every Guild.
@@ -71,6 +74,7 @@ type Service struct {
 	memberships Memberships
 	roles       Roles
 	invitations Invitations
+	offers      Offers
 	members     Members
 	// Now is the clock; time.Now unless a test sets it.
 	Now func() time.Time
@@ -93,30 +97,37 @@ func (e ErrGuildInUse) Error() string {
 	return "the guild still owns resources; delete them first"
 }
 
-func NewService(guilds Guilds, memberships Memberships, roles Roles, invitations Invitations, members Members) *Service {
-	return &Service{guilds: guilds, memberships: memberships, roles: roles, invitations: invitations, members: members, Now: time.Now}
+func NewService(guilds Guilds, memberships Memberships, roles Roles, invitations Invitations, offers Offers, members Members) *Service {
+	return &Service{guilds: guilds, memberships: memberships, roles: roles, invitations: invitations, offers: offers, members: members, Now: time.Now}
 }
 
-// CreateGuild makes a Guild with the seeded Roles and creatorID holding
-// Admin.
+// CreateGuild makes a Guild with the seeded Roles and creatorID its Guild
+// Master, also holding Admin so the Role shows on the Members page.
 func (s *Service) CreateGuild(ctx context.Context, name, description string, creatorID uint64) (domain.Guild, error) {
-	g, err := domain.NewGuild(name, description)
+	g, err := domain.NewGuild(name, description, creatorID)
 	if err != nil {
 		return domain.Guild{}, err
 	}
-	return s.guilds.Create(ctx, g, creatorID)
+	return s.guilds.Create(ctx, g)
 }
 
 // MakeFirstGuild makes the installation's first Guild, "Default", with
-// memberID (the Instance admin Setup just created) holding Admin; nothing
-// when a Guild exists already, as after the migration from before Guilds.
+// memberID (the Instance admin Setup just created) its Guild Master holding
+// Admin; nothing when a Guild exists already, as after the migration from
+// before Guilds.
 func (s *Service) MakeFirstGuild(ctx context.Context, memberID uint64) error {
-	g, err := domain.NewGuild(domain.FirstGuildName, "")
+	g, err := domain.NewGuild(domain.FirstGuildName, "", memberID)
 	if err != nil {
 		return err
 	}
-	_, _, err = s.guilds.CreateFirstIfNone(ctx, g, memberID)
+	_, _, err = s.guilds.CreateFirstIfNone(ctx, g)
 	return err
+}
+
+// IsGuildMaster reports whether the Member is the Guild Master of any
+// Guild: such a Member cannot leave it or have their account deleted.
+func (s *Service) IsGuildMaster(ctx context.Context, memberID uint64) (bool, error) {
+	return s.guilds.MasteredBy(ctx, memberID)
 }
 
 // GuildsOf lists the Guilds the Member holds a Membership in.
@@ -124,12 +135,17 @@ func (s *Service) GuildsOf(ctx context.Context, memberID uint64) ([]domain.Membe
 	return s.memberships.ListForMember(ctx, memberID)
 }
 
-// PermissionsIn is what the Member's Membership in the Guild allows, false
-// without one.
+// PermissionsIn is what the Member's Membership in the Guild allows, every
+// Permission for its Guild Master; false without one.
 func (s *Service) PermissionsIn(ctx context.Context, guildID, memberID uint64) (domain.Permissions, bool, error) {
 	m, ok, err := s.memberships.Of(ctx, guildID, memberID)
 	if err != nil || !ok {
 		return 0, false, err
+	}
+	if g, found, err := s.guilds.ByID(ctx, guildID); err != nil {
+		return 0, false, err
+	} else if found && g.MasterID == memberID {
+		return domain.AllPermissions, true, nil
 	}
 	roles, err := s.roles.ForGuild(ctx, guildID)
 	if err != nil {

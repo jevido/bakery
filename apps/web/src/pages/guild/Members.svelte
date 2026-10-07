@@ -1,11 +1,14 @@
 <script lang="ts">
-  // The Current guild's Members: everyone reads the list; admins invite,
-  // change Roles, remove, reset two-factor and see the open Invitations.
+  // The Current guild's Members: everyone reads the list, the Guild Master
+  // first; admins invite, change Roles, remove, reset two-factor and see
+  // the open Invitations; the Guild Master offers the Guild Master to
+  // another Member and can withdraw the offer.
   import { api, ApiError } from '../../lib/api'
   import CopyButton from '../../lib/CopyButton.svelte'
   import Field from '../../lib/Field.svelte'
   import { session } from '../../lib/session.svelte'
-  import type { Invitation, Member, Role } from '../../lib/types'
+  import type { GuildDetails, Invitation, Member, Offer, Role } from '../../lib/types'
+  import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
 
   const grantable: Invitation['role'][] = ['admin', 'member', 'viewer']
   const describe: Record<Role, string> = {
@@ -17,6 +20,9 @@
 
   let members = $state.raw<Member[] | null>(null)
   let invitations = $state.raw<Invitation[]>([])
+  // The Guild's open Transfer offer, null without one.
+  let offer = $state.raw<Offer | null>(null)
+  let offerError = $state('')
   let loadError = $state('')
   let rowError = $state<Record<number, string>>({})
 
@@ -28,18 +34,40 @@
   let invited = $state.raw<{ email: string; link: string; emailed: boolean; emailError?: string } | null>(null)
 
   async function load() {
-    const [m, i] = await Promise.all([
+    const [m, i, g] = await Promise.all([
       api<{ members: Member[] }>('GET', '/members'),
       session.can('manage_members') ? api<{ invitations: Invitation[] }>('GET', '/invitations') : { invitations: [] },
+      api<{ guild: GuildDetails }>('GET', '/guilds/current'),
     ])
     members = m.members
     invitations = i.invitations
+    offer = g.guild.offer
   }
   load().catch((e) => (loadError = e.message))
 
-  /** Whether the signed-in person may change this Member: an admin, not for the Instance admin, not for themselves. */
+  /** Whether the signed-in person may change this Member: with manage_members, never for the Guild Master or the Instance admin, never for themselves. */
   function manageable(m: Member): boolean {
-    return session.can('manage_members') && !m.instance_admin && m.id !== session.member?.id
+    return session.can('manage_members') && !m.guild_master && !m.instance_admin && m.id !== session.member?.id
+  }
+
+  async function offerGuildMaster(m: Member) {
+    offerError = ''
+    try {
+      await api('POST', '/guilds/current/guild-master-offer', { member_id: m.id })
+    } catch (err) {
+      offerError = err instanceof Error ? err.message : String(err)
+    }
+    await load()
+  }
+
+  async function withdrawOffer() {
+    offerError = ''
+    try {
+      await api('DELETE', '/guilds/current/guild-master-offer')
+    } catch (err) {
+      offerError = err instanceof Error ? err.message : String(err)
+    }
+    await load()
   }
 
   async function invite(e: SubmitEvent) {
@@ -152,6 +180,20 @@
 {:else if members === null}
   <p class="muted">Loading…</p>
 {:else}
+  {#if offer}
+    <div class="card offer" data-testid="guild-master-offer">
+      <p>
+        {#if offer.to?.id === session.member?.id}
+          You are offered the Guild Master of this guild. Nothing changes until you accept it above.
+        {:else}
+          The Guild Master is offered to <strong>{offer.to?.name}</strong> ({offer.to?.email}). Nothing changes until
+          they accept; the offer expires on {when.format(new Date(offer.expires_at))}.
+        {/if}
+      </p>
+      {#if session.guildMaster}<button onclick={withdrawOffer}>Withdraw</button>{/if}
+    </div>
+  {/if}
+  {#if offerError}<p class="error">{offerError}</p>{/if}
   <table>
     <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>2FA</th><th></th></tr></thead>
     <tbody>
@@ -164,6 +206,12 @@
               <select value={m.role} aria-label="Role of {m.email}" onchange={(e) => changeRole(m, e.currentTarget.value as Role)}>
                 {#each grantable as r (r)}<option value={r}>{r}</option>{/each}
               </select>
+            {:else if m.guild_master}
+              <span
+                class="inline-flex items-center rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-amber-800 dark:text-amber-300"
+                data-testid="guild-master">Guild Master</span
+              >
+              {#if m.instance_admin}<span class="muted">· Instance admin</span>{/if}
             {:else if m.instance_admin}
               Instance admin
             {:else}
@@ -173,12 +221,27 @@
           </td>
           <td class={m.two_factor ? '' : 'muted'}>{m.two_factor ? 'on' : 'off'}</td>
           <td>
-            {#if manageable(m)}
-              <div class="row-actions">
+            <div class="row-actions">
+              {#if session.guildMaster && !m.guild_master && !offer}
+                <ConfirmationModal
+                  title="Transfer Guild Master?"
+                  buttonTitle="Transfer Guild Master"
+                  actions={[
+                    `${m.name} is offered the Guild Master of ${session.guild?.name}.`,
+                    'Nothing changes until they accept. Until then you can withdraw the offer, and it expires after 7 days.',
+                    'Once they accept, they are the Guild Master and you are not. You both keep your other Roles.',
+                  ]}
+                  warningMessage="Only the Guild Master can transfer it, so you cannot take it back yourself once it is accepted."
+                  confirmWithText={false}
+                  step2ButtonText="Offer"
+                  onconfirm={() => offerGuildMaster(m)}
+                />
+              {/if}
+              {#if manageable(m)}
                 {#if m.two_factor}<button onclick={() => resetTwoFactor(m)}>Reset 2FA</button>{/if}
                 <button class="danger" onclick={() => remove(m)}>Remove</button>
-              </div>
-            {/if}
+              {/if}
+            </div>
           </td>
         </tr>
       {/each}
@@ -208,6 +271,16 @@
 {/if}
 
 <style>
+  .offer {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .offer p {
+    margin: 0;
+  }
   .row-actions {
     display: flex;
     gap: 0.4rem;

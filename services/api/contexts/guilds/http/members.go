@@ -38,6 +38,8 @@ type memberJSON struct {
 	Role          string `json:"role"`
 	TwoFactor     bool   `json:"two_factor"`
 	InstanceAdmin bool   `json:"instance_admin"`
+	// GuildMaster is set for the Current guild's Guild Master.
+	GuildMaster bool `json:"guild_master"`
 }
 
 func toJSON(m identity.Member, role string) memberJSON {
@@ -76,18 +78,27 @@ func (c *Controller) Me(ctx contractshttp.Context) contractshttp.Response {
 	if p.guild.ID != 0 {
 		current = &guildJSON{ID: p.guild.ID, Name: p.guild.Name, Permissions: p.permissions.Keys()}
 	}
+	offers, err := c.offersTo(ctx, m.ID)
+	if err != nil {
+		return respond.ServerError(ctx, err)
+	}
+	master := p.guild.ID != 0 && p.guild.MasterID == m.ID
+	me := toJSON(m, wireRole(p.permissions))
+	me.GuildMaster = master
 	return ctx.Response().Success().Json(contractshttp.Json{
-		"member":         toJSON(m, wireRole(p.permissions)),
+		"member":         me,
 		"role":           wireRole(p.permissions),
 		"permissions":    p.permissions.Keys(),
 		"instance_admin": m.InstanceAdmin,
+		"guild_master":   master,
+		"offers":         offers,
 		"guild":          current,
 		"guilds":         guilds,
 	})
 }
 
-// Members lists the Members of the Current guild, the Instance admin first,
-// then by name.
+// Members lists the Members of the Current guild, its Guild Master first,
+// then the Instance admin, then by name.
 func (c *Controller) Members(ctx contractshttp.Context) contractshttp.Response {
 	ms, err := c.service.MembershipsIn(ctx.Context(), Current(ctx))
 	if err != nil {
@@ -106,9 +117,16 @@ func (c *Controller) Members(ctx contractshttp.Context) contractshttp.Response {
 	if err != nil {
 		return respond.ServerError(ctx, err)
 	}
-	out := make([]memberJSON, len(members))
-	for i, m := range members {
-		out[i] = toJSON(m, roles[m.ID])
+	master := placeOf(ctx).guild.MasterID
+	out := make([]memberJSON, 0, len(members))
+	for _, m := range members {
+		j := toJSON(m, roles[m.ID])
+		if m.ID == master {
+			j.GuildMaster = true
+			out = append([]memberJSON{j}, out...)
+			continue
+		}
+		out = append(out, j)
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"members": out})
 }
@@ -169,6 +187,8 @@ func (c *Controller) ResetTwoFactor(ctx contractshttp.Context) contractshttp.Res
 		return respond.Error(ctx, contractshttp.StatusForbidden, "the instance admin's two-factor can only be reset on the server")
 	case errors.Is(err, domain.ErrSelf):
 		return respond.Error(ctx, contractshttp.StatusForbidden, "switch your own two-factor off on your Profile page")
+	case errors.Is(err, domain.ErrGuildMaster):
+		return respond.Error(ctx, contractshttp.StatusForbidden, "the guild master's two-factor can only be reset on the server")
 	case errors.Is(err, identity.ErrTwoFactorOff):
 		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
 	case errors.Is(err, identity.ErrMemberNotFound):
@@ -184,10 +204,9 @@ func membershipFailure(ctx contractshttp.Context, err error) contractshttp.Respo
 	switch {
 	case errors.Is(err, domain.ErrInvalidRole):
 		return respond.Invalid(ctx, "role", err.Error())
-	case errors.Is(err, domain.ErrNotAdmin), errors.Is(err, domain.ErrInstanceAdminFixed), errors.Is(err, domain.ErrSelf):
+	case errors.Is(err, domain.ErrNotAdmin), errors.Is(err, domain.ErrInstanceAdminFixed), errors.Is(err, domain.ErrSelf),
+		errors.Is(err, domain.ErrGuildMaster):
 		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
-	case errors.Is(err, domain.ErrLastAdmin):
-		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
 	case errors.Is(err, app.ErrMembershipNotFound):
 		return respond.Error(ctx, contractshttp.StatusNotFound, "member not found")
 	}

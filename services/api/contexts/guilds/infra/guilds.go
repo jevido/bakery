@@ -19,13 +19,14 @@ type guildRecord struct {
 	ID          uint64 `gorm:"primaryKey"`
 	Name        string
 	Description string
+	MasterID    uint64
 	orm.Timestamps
 }
 
 func (guildRecord) TableName() string { return "guilds" }
 
 func (r guildRecord) toDomain() domain.Guild {
-	return domain.Guild{ID: r.ID, Name: r.Name, Description: r.Description}
+	return domain.Guild{ID: r.ID, Name: r.Name, Description: r.Description, MasterID: r.MasterID}
 }
 
 type membershipRecord struct {
@@ -102,11 +103,11 @@ func (Guilds) All(ctx context.Context) ([]domain.Guild, error) {
 	return out, nil
 }
 
-func (Guilds) Create(ctx context.Context, g domain.Guild, adminID uint64) (domain.Guild, error) {
+func (Guilds) Create(ctx context.Context, g domain.Guild) (domain.Guild, error) {
 	var rec guildRecord
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		var err error
-		rec, err = create(tx, g, adminID)
+		rec, err = create(tx, g)
 		return err
 	})
 	if err != nil {
@@ -115,7 +116,7 @@ func (Guilds) Create(ctx context.Context, g domain.Guild, adminID uint64) (domai
 	return rec.toDomain(), nil
 }
 
-func (Guilds) CreateFirstIfNone(ctx context.Context, g domain.Guild, adminID uint64) (domain.Guild, bool, error) {
+func (Guilds) CreateFirstIfNone(ctx context.Context, g domain.Guild) (domain.Guild, bool, error) {
 	var rec guildRecord
 	created := false
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
@@ -128,7 +129,7 @@ func (Guilds) CreateFirstIfNone(ctx context.Context, g domain.Guild, adminID uin
 		if err != nil || n > 0 {
 			return err
 		}
-		rec, err = create(tx, g, adminID)
+		rec, err = create(tx, g)
 		created = err == nil
 		return err
 	})
@@ -136,6 +137,11 @@ func (Guilds) CreateFirstIfNone(ctx context.Context, g domain.Guild, adminID uin
 		return domain.Guild{}, false, err
 	}
 	return rec.toDomain(), true, nil
+}
+
+func (Guilds) MasteredBy(ctx context.Context, memberID uint64) (bool, error) {
+	n, err := query(ctx).Model(&guildRecord{}).Where("master_id", memberID).Count()
+	return n > 0, err
 }
 
 func (Guilds) Update(ctx context.Context, g domain.Guild) error {
@@ -155,10 +161,10 @@ func (Guilds) Delete(ctx context.Context, id uint64) error {
 	return err
 }
 
-// create stores the Guild, its seeded Roles and adminID's Membership
-// holding Admin.
-func create(tx contractsorm.Query, g domain.Guild, adminID uint64) (guildRecord, error) {
-	rec := guildRecord{Name: g.Name, Description: g.Description}
+// create stores the Guild, its seeded Roles and its Guild Master's
+// Membership holding Admin.
+func create(tx contractsorm.Query, g domain.Guild) (guildRecord, error) {
+	rec := guildRecord{Name: g.Name, Description: g.Description, MasterID: g.MasterID}
 	if err := tx.Create(&rec); err != nil {
 		return guildRecord{}, err
 	}
@@ -172,7 +178,7 @@ func create(tx contractsorm.Query, g domain.Guild, adminID uint64) (guildRecord,
 			admin = rr.ID
 		}
 	}
-	m := membershipRecord{GuildID: rec.ID, UserID: adminID}
+	m := membershipRecord{GuildID: rec.ID, UserID: g.MasterID}
 	if err := tx.Create(&m); err != nil {
 		return guildRecord{}, err
 	}
@@ -228,11 +234,16 @@ func list(tx, q contractsorm.Query) ([]domain.Membership, error) {
 	return out, nil
 }
 
-func (Memberships) Change(ctx context.Context, guildID, memberID uint64, to []uint64, remove bool, check func([]domain.Membership) error) (domain.Membership, error) {
+func (Memberships) Change(ctx context.Context, guildID, memberID uint64, to []uint64, remove bool, check func(domain.Guild, []domain.Membership) error) (domain.Membership, error) {
 	var changed domain.Membership
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
-		// Locks the Guild's Memberships, so a concurrent change waits and
-		// then checks what this one left.
+		// Locks the Guild, then its Memberships, in the order Offers.Accept
+		// does, so a concurrent change or accept waits and then checks what
+		// this one left.
+		g, err := lockGuild(tx, guildID)
+		if err != nil {
+			return err
+		}
 		ms, err := list(tx, tx.Where("guild_id", guildID).OrderBy("id").LockForUpdate())
 		if err != nil {
 			return err
@@ -246,7 +257,7 @@ func (Memberships) Change(ctx context.Context, guildID, memberID uint64, to []ui
 		if !found {
 			return app.ErrMembershipNotFound
 		}
-		if err := check(ms); err != nil {
+		if err := check(g, ms); err != nil {
 			return err
 		}
 		if remove {
@@ -268,6 +279,18 @@ func (Memberships) Change(ctx context.Context, guildID, memberID uint64, to []ui
 		return domain.Membership{}, err
 	}
 	return changed, nil
+}
+
+// lockGuild reads the Guild and locks its row until tx ends.
+func lockGuild(tx contractsorm.Query, id uint64) (domain.Guild, error) {
+	var rec guildRecord
+	if err := tx.Where("id", id).LockForUpdate().FirstOrFail(&rec); err != nil {
+		if errors.Is(err, frameworkerrors.OrmRecordNotFound) {
+			return domain.Guild{}, app.ErrGuildNotFound
+		}
+		return domain.Guild{}, err
+	}
+	return rec.toDomain(), nil
 }
 
 type Roles struct{}

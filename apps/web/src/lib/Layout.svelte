@@ -11,6 +11,7 @@
   import { session } from './session.svelte'
   import StatusBadge from './ui/StatusBadge.svelte'
   import StatusSummary from './ui/StatusSummary.svelte'
+  import TransferOffers from './TransferOffers.svelte'
   import UserMenu from './UserMenu.svelte'
 
   let { children }: { children: Snippet } = $props()
@@ -283,6 +284,7 @@
     ]}
   >
     <div class="w-full max-w-none">
+      <TransferOffers />
       {@render children()}
     </div>
   </main>

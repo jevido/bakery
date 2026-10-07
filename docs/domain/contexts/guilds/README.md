@@ -169,26 +169,41 @@ other changes with `write`, `administrator` only with `root`.
   - `guilds.Current(ctx) uint64`: the Current guild's id, which every other
     context stores on what it creates (or reaches through something that
     does) and filters every list and read by.
+  - `guilds.IsGuildMaster(ctx, member) bool`: whether the Member is the
+    Guild Master of any Guild. Whatever deletes an account or lets a Member
+    leave a Guild asks it first and refuses while it is true.
   - `guilds.OnGuildDeleting(kind, f)` and `guilds.OnInvitationCreated(f)`:
     see Domain events. Projects, servers, databases (S3 storages) and
     notifications register `OnGuildDeleting`.
 - **Serves:** `GET /api/me` (the Member, their `permissions` in the Current
   guild as wire keys, `administrator` meaning every one, the former `role`
-  derived from them for scripts, `instance_admin`, the Current `guild` and
-  every Guild they may switch to with their `permissions` and `role`
-  there). The Guilds, with a Session only and also for a Member in no
+  derived from them for scripts, `instance_admin`, `guild_master` (whether
+  they are the Current guild's), `offers` (the open Transfer offers to them
+  in any Guild: `id`, `guild` `{id, name}`, `from`, `to`, `created_at`,
+  `expires_at`), the Current `guild` and every Guild they may switch to
+  with their `permissions` and `role` there). The Guilds, with a Session only and also for a Member in no
   Guild: `GET /api/guilds` (every Guild they may switch to, with their
   `permissions` and `role`), `POST /api/guilds` (`{"name", "description"}`; 201, and
   it becomes the Current guild) and `POST /api/guilds/{id}/switch` (204; 404
   for a Guild they may not act in). The Current guild:
-  `GET /api/guilds/current` (`name`, `description` and `blocking`, what
-  keeps it from being deleted) for every Member, `PATCH /api/guilds/current`
+  `GET /api/guilds/current` (`name`, `description`, `blocking`, what
+  keeps it from being deleted, `guild_master` `{id, name, email}` and
+  `offer`, the open Transfer offer or null) for every Member, `PATCH /api/guilds/current`
   (`{"name", "description"}`) with `manage_guild` and `DELETE
   /api/guilds/current` (204, or 409 with `blocking`) with `administrator`.
   The Members of the Current guild: `GET /api/members` for every Member,
   and with `manage_members` `PATCH /api/members/{id}` (`{"role"}`), `DELETE /api/members/{id}` and
   `DELETE /api/members/{id}/two-factor`. On the wire the Instance admin's `role` reads `owner`, with
-  `instance_admin: true`. The Invitations of the Current guild, with
+  `instance_admin: true`; the Guild Master comes first in the list, marked
+  `guild_master: true`. Transfer offers, with a Session only:
+  `POST /api/guilds/current/guild-master-offer` (`{"member_id"}`; 201 with
+  the `offer`; 403 for anyone but the Guild Master, 422 for themselves or
+  someone outside the Guild, 409 while one is open) and `DELETE
+  /api/guilds/current/guild-master-offer` (withdraw; 204, 404 without
+  one) for the Current guild; `POST /api/guild-master-offers/{id}/accept`
+  and `/decline` (204) for the offered Member, in whichever Guild is
+  Current, 404 for anyone else and 409 `this offer has expired` or `this
+  offer is no longer open`. The Invitations of the Current guild, with
   `manage_members`:
   `GET /api/invitations`, `POST /api/invitations` (`{"email", "role"}`) and
   `DELETE /api/invitations/{id}`; another Guild's id answers 404. Open to
@@ -355,6 +370,23 @@ other changes with `write`, `administrator` only with `root`.
   swapped, and only with the receiving person's consent, as Discord's
   ownership transfer asks the new owner. The offer expires after 7 days so a
   forgotten one cannot be accepted months later.
+- **The Guild Master replaces "a Guild keeps an admin".** Phase 25 refused
+  any change that left a Guild without a Member holding `administrator`.
+  The Guild Master always holds every Permission and can never be removed
+  or re-roled, so that check went: an admin may now demote the last other
+  admin, because the Guild Master is still there.
+- **Expiry is read, not swept.** An open offer past `expires_at` counts as
+  expired wherever it is read, and is written `expired` then (or when a new
+  offer is made for the Guild). No scheduler runs for it, and nothing can
+  act on an offer between its expiry and that write.
+- **"Cannot leave" is enforced where removal exists.** No "leave guild"
+  and no account deletion exist yet, so the Guild Master's Membership is
+  protected by refusing its removal (and its Roles' change) to everyone;
+  both future actions must ask `guilds.IsGuildMaster` first.
+- **The offers banner shows offers of every Guild.** The offered Member
+  sees each open offer under the top bar of every page, naming its Guild,
+  not only while that Guild is Current: otherwise someone who never
+  switches to it would never learn of the offer before it expires.
 - **`administrator` may delete an empty Guild.** Discord lets only the owner
   delete a server. Today's admins can delete a Guild that owns nothing, and
   the seeded `Admin` Role keeps that.

@@ -81,5 +81,7 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000066CreateRolesTable{},
 		&migrations.M20260930000067CreateMembershipRolesTable{},
 		&migrations.M20260930000068SeedRolesFromMemberships{},
+		&migrations.M20260930000069AddGuildMasterToGuilds{},
+		&migrations.M20260930000070CreateGuildMasterOffersTable{},
 	}
 }
