@@ -35,7 +35,7 @@ cleanup() {
 		podman images --format '{{.Repository}}:{{.Tag}}' | grep "^localhost/bakery/${entry#* }:" | xargs -r podman rmi -f >/dev/null 2>&1
 	done
 	if [ -n "$PROJECT_ID" ]; then bakery DELETE "/api/projects/$PROJECT_ID" >/dev/null; fi
-	for id in $(bakery GET /api/known-hosts 2>/dev/null | json "' '.join(str(h['id']) for h in d['known_hosts'] if h['host']=='[127.0.0.1]:4952')"); do
+	for id in $(bakery GET /api/known-hosts 2>/dev/null | json "' '.join(str(h['id']) for h in d.get('known_hosts', []) if h['host']=='[127.0.0.1]:4952')"); do
 		bakery DELETE "/api/known-hosts/$id" >/dev/null
 	done
 	if [ -z "$KEEP_FORGEJO" ]; then

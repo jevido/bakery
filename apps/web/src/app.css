@@ -12,7 +12,6 @@
      tokens in theme.css, so they follow the dark/light switch on their own. */
   :root {
     --bg: var(--background);
-    --panel: var(--sidebar);
     --hover: var(--muted-foreground);
     --text: var(--foreground);
     --danger: var(--destructive);

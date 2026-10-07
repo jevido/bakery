@@ -320,3 +320,13 @@ reaches an Application (routing).
   an Environment either: their routes ask `ProjectOf` through
   `guilds.InProject`, and none of them lists across Projects. Slugs and Domains stay unique across every Guild: one Proxy
   serves them all, and Images and Containers are named by the Slug.
+- **Projects in Paperclip's list layout, without its Project color, icon or
+  grouping.** The Projects, Project and Environment pages use Paperclip's
+  toolbar, entity rows and Project tiles, but a Project has no color or icon
+  of its own: the tile is the same for every Project until Projects need one
+  to tell them apart. Paperclip groups Projects into "My Projects" and "Other
+  Projects" by membership; a Bakery Project has no members of its own (who
+  may do what comes from Roles and the Project's Permission overrides), so
+  there is one list. The list/grid switch and the pagination are Coolify's
+  and stay, since a Guild can hold more Projects and Resources than fit one
+  screen.

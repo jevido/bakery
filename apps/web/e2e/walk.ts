@@ -84,6 +84,10 @@ const routes = [
   `/project/${project}/environment/${environment}`,
   `/project/${project}/environment/${environment}/edit`,
   `/project/${project}/environment/${environment}/new`,
+  // New Resource's steps: picking a Server, then each form on it.
+  `/project/${project}/environment/${environment}/new?type=public`,
+  ...['public', 'private-deploy-key', 'docker-image'].map((t) => `/project/${project}/environment/${environment}/new?type=${t}&server=${server.id}`),
+  `/project/${project}/environment/${environment}/new?type=docker-compose-empty`,
   ...pages('applicationPages').map((p) => sub(appBase, p)),
   ...(deployment ? [`${appBase}/deployment/${deployment.id}`] : []),
   ...pages('databasePages').map((p) => sub(dbBase, p)),

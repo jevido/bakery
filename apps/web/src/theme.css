@@ -376,7 +376,6 @@
 }
 
 @theme inline {
-  --color-app: var(--background);
   --color-panel: var(--sidebar);
   --color-surface: var(--card);
   --color-raised: var(--muted);
@@ -385,34 +384,15 @@
   --color-fg-dim: color-mix(in oklab, var(--foreground) 80%, var(--muted-foreground));
   --color-fg-faint: var(--muted-foreground);
   --color-hairline: var(--border);
-  --color-nav-text: var(--muted-foreground);
-  --color-nav-muted: var(--muted-foreground);
-  --color-nav-active: var(--foreground);
   --color-log: var(--card);
   --color-coollabs: var(--primary);
-  --color-coollabs-50: var(--accent);
-  --color-coollabs-100: var(--primary);
-  --color-coollabs-200: var(--primary);
-  --color-coollabs-300: var(--primary);
   --color-coolgray-100: var(--card);
   --color-coolgray-200: var(--muted);
-  --color-coolgray-300: var(--accent);
   --color-coolgray-400: var(--input);
-  --color-coolgray-500: var(--ring);
-  --color-warning-50: color-mix(in oklab, var(--warning) 8%, var(--background));
-  --color-warning-100: color-mix(in oklab, var(--warning) 15%, var(--background));
-  --color-warning-200: color-mix(in oklab, var(--warning) 30%, var(--background));
-  --color-warning-300: color-mix(in oklab, var(--warning) 50%, var(--background));
-  --color-warning-400: var(--warning);
-  --color-warning-500: var(--warning);
-  --color-warning-600: color-mix(in oklab, var(--warning) 80%, black);
   --color-warning-700: color-mix(in oklab, var(--warning) 65%, black);
-  --color-warning-800: color-mix(in oklab, var(--warning) 55%, black);
-  --color-warning-900: color-mix(in oklab, var(--warning) 45%, black);
 }
 
 :root {
-  --coollabs-canvas: var(--background);
   --coollabs-elevated: var(--card);
   --coollabs-recessed: var(--background);
   --coollabs-base: var(--card);
@@ -422,8 +402,8 @@
   --coollabs-subtle: var(--muted-foreground);
 }
 
-/* `button` is Paperclip's outline button, `button-highlighted` its default
-   and `button-error` its destructive one (ui/src/components/ui/button.tsx). */
+/* `button` is Paperclip's outline button and `button-highlighted` its
+   default one (ui/src/components/ui/button.tsx). */
 .button,
 .icon-button,
 .app-tab {
@@ -433,7 +413,6 @@
 }
 
 /* Reserve space for a visibility toggle or copy button inside an input. */
-.input.input-with-password-toggle,
 .input[type="password"],
 .input.input-with-copy-button {
   padding-right: 2.5rem;
@@ -445,10 +424,6 @@
   :root select {
     font-size: 16px !important;
   }
-}
-
-@utility input-focus {
-  @apply focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none;
 }
 
 @utility input-select {
@@ -481,20 +456,12 @@
   @apply border-transparent bg-primary text-primary-foreground shadow-none hover:bg-primary/90 hover:text-primary-foreground dark:border-transparent dark:bg-primary dark:hover:bg-primary/90;
 }
 
-@utility button-error {
-  @apply border-transparent bg-destructive text-white shadow-none hover:bg-destructive/90 hover:text-white focus-visible:ring-destructive/20 dark:border-transparent dark:bg-destructive/60 dark:hover:bg-destructive/50 dark:focus-visible:ring-destructive/40;
-}
-
 @utility control-selected {
   @apply bg-primary text-primary-foreground;
 }
 
 @utility view-toggle {
   @apply flex h-9 items-center rounded-md border bg-background shadow-xs dark:border-input dark:bg-input/30;
-}
-
-@utility loading-indicator {
-  @apply text-muted-foreground;
 }
 
 @utility icon-button {
@@ -505,48 +472,12 @@
   @apply inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground;
 }
 
-@utility app-tab-active {
-  @apply bg-accent text-foreground hover:bg-accent;
-}
-
-@utility alert-success {
-  @apply flex items-center gap-2 text-success;
-}
-
-@utility alert-error {
-  @apply flex items-center gap-2 text-destructive;
-}
-
-@utility user-menu-item {
-  @apply flex h-8 w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground;
-}
-
 @utility dropdown-item {
   @apply relative flex w-full cursor-pointer items-center justify-start gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50;
 }
 
-@utility dropdown-item-touch {
-  @apply min-h-10 px-3 py-2 text-sm;
-}
-
 @utility badge {
   @apply inline-block h-3 w-3 rounded-full border border-background text-xs leading-none font-bold;
-}
-
-@utility badge-dashboard {
-  @apply absolute top-1 right-1 h-2.5 w-2.5 rounded-full border border-background text-xs leading-none font-bold;
-}
-
-@utility badge-success {
-  @apply bg-success;
-}
-
-@utility badge-warning {
-  @apply bg-warning;
-}
-
-@utility badge-error {
-  @apply bg-destructive;
 }
 
 @utility menu {
@@ -581,20 +512,8 @@
   @apply bg-accent text-foreground hover:bg-accent;
 }
 
-@utility sub-menu-wrapper {
-  @apply flex w-full shrink-0 flex-col gap-0.5 md:w-52;
-}
-
-@utility sub-menu-item {
-  @apply relative flex h-8 w-full min-w-0 items-center gap-2 truncate rounded-md px-3 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground;
-}
-
 @utility icon {
   @apply h-6 w-6 hover:text-foreground;
-}
-
-@utility navbar-main {
-  @apply flex h-fit flex-col justify-items-start gap-4 border-b pb-3 text-muted-foreground sm:justify-between md:flex-row md:items-center;
 }
 
 @utility loading {
@@ -603,18 +522,6 @@
 
 @utility box {
   @apply relative flex min-h-[4rem] cursor-pointer flex-col rounded-xl border bg-card p-3 text-card-foreground transition-colors hover:bg-accent/50 hover:text-card-foreground hover:no-underline lg:flex-row;
-}
-
-@utility coolbox {
-  @apply relative flex min-h-[4.5rem] cursor-pointer items-center rounded-xl border bg-card p-4 text-card-foreground transition-colors hover:bg-accent/50;
-}
-
-@utility box-title {
-  @apply font-semibold text-foreground;
-}
-
-@utility box-description {
-  @apply text-xs font-medium text-muted-foreground;
 }
 
 @utility description {
@@ -641,10 +548,6 @@
   @apply pt-2 pb-9;
 }
 
-@utility surface-popover {
-  @apply border bg-popover text-popover-foreground shadow-md;
-}
-
 @utility log-highlight {
   @apply bg-warning/30;
 }
@@ -663,23 +566,6 @@
 
 @utility log-info {
   @apply bg-blue-500/10 dark:bg-blue-500/15;
-}
-
-@media (min-width: 1024px) {
-  .sidebar-collapsed .menu-item {
-    justify-content: center;
-    width: var(--button-h, 2rem);
-    height: var(--button-h, 2rem);
-    min-height: var(--button-h, 2rem);
-    padding-left: 0;
-    padding-right: 0;
-    gap: 0;
-    margin-inline: auto;
-  }
-
-  .sidebar-collapsed .sidebar-collapsed-label {
-    display: none;
-  }
 }
 
 /* Dropdown panels and their rows (the user menu, the breadcrumb switchers),
@@ -703,20 +589,6 @@
   border: 1px solid var(--coollabs-line);
   background: var(--coollabs-recessed);
   box-shadow: var(--shadow-dropdown);
-}
-
-@media (max-width: 767px) {
-  /* The mobile top bar's backdrop filter makes it the containing block for
-     fixed descendants; keep the user menu anchored below its trigger. */
-  .listbox-panel.top-user-menu-panel {
-    position: absolute !important;
-    top: calc(100% + 0.25rem) !important;
-    right: 0 !important;
-    left: auto !important;
-    max-height: calc(100dvh - 4.5rem) !important;
-    overflow-y: auto !important;
-    transform: none !important;
-  }
 }
 
 .listbox-option {
@@ -1509,33 +1381,6 @@
   color: #d4d4d4 !important;
 }
 
-/* Section header status (proxy/sentinel) stays inline with title on mobile */
-.logs-settings-section > :is(header, .application-settings-section-header) {
-  flex-wrap: nowrap;
-  gap: 0.5rem;
-}
-
-.logs-settings-section
-  > :is(header, .application-settings-section-header)
-  > div:first-child {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.logs-settings-section
-  > :is(header, .application-settings-section-header)
-  > div:nth-child(2) {
-  width: auto !important;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.logs-section-status-badge {
-  height: 1.5rem !important;
-  padding-inline: 0.5rem !important;
-  font-size: 0.6875rem !important;
-}
-
 /* Full-width action strip on mobile — icons never sit beside Lines */
 .logs-viewer-actions {
   display: flex;
@@ -1839,10 +1684,6 @@
   border-radius: 8px;
   background: var(--coollabs-base);
   box-shadow: 0 0 0 1px var(--coollabs-fill);
-}
-
-.settings-log-panel .runtime-log-panel {
-  box-shadow: none;
 }
 
 .runtime-log-toolbar {

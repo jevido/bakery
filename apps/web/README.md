@@ -31,10 +31,17 @@ type ladders, plus The Bakery's status colors (`success`, `warning`,
 maps the names pages use). The components are shadcn-svelte on bits-ui in
 `src/lib/components/ui` (imported as `$lib/components/ui/...`) with
 Paperclip's classes; the `src/lib/ui` kit is built on them with its props
-unchanged. `#/dev/components` (dev builds only) shows all of them. The
-legacy names from the Coolify port (`bg-app`, `text-fg-dim`, `button`,
-`input`, `menu-item`, …) are kept, defined from the new tokens, and removed
-as pages are restyled. The theme is `localStorage.theme` (`dark`, `light` or
+unchanged. `#/dev/components` (dev builds only) shows all of them. List
+pages are built from Paperclip's list pieces in `src/lib`: `PageHeader` (tile,
+name, description, actions), `CollectionToolbar` (search, controls, actions)
+with `SearchField`, `SortPopover` and `ViewToggle`, `EntityRow`,
+`ProjectTile` and `PageSkeleton`; settings pages from
+`src/lib/settings/SettingsPage` and `SettingsGroup`. The legacy names from
+the Coolify port that the Resource, Server, Notifications, Profile and
+Settings pages still use (`text-fg-dim`, `text-fg-faint`, `bg-surface`,
+`button`, `input`, `select`, `menu-item`, `box`, the `coollabs` colors, …)
+are kept, defined from the new tokens, and removed as those pages are
+restyled; the Projects and Environment pages use none of them. The theme is `localStorage.theme` (`dark`, `light` or
 `system`, dark by default): `index.html` applies it before first paint and
 `src/lib/theme.svelte.ts` keeps it in step. `src/app.css` is the legacy layer
 for pages not yet ported: plain CSS in Tailwind's base layer whose variables

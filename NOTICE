@@ -13,6 +13,11 @@ Copyright (c) 2025 Paperclip AI, licensed under the MIT License. The
 dashboard's look is adapted from Paperclip's user interface (its design
 tokens in ui/src/index.css, its components in ui/src/components and its
 page layouts in ui/src/pages), rewritten for Svelte and Tailwind CSS; Paperclip's name and logo are not used.
+The Projects, Project, Environment, New Resource and their settings pages
+port ui/src/components/CollectionToolbar.tsx, EntityRow.tsx, ProjectTile.tsx,
+EmptyState.tsx and PageSkeleton.tsx (as apps/web/src/lib/CollectionToolbar,
+EntityRow, ProjectTile, PageSkeleton and lib/ui/Empty), and the layouts of
+ui/src/pages/Projects.tsx and ProjectDetail.tsx.
 
 The dashboard's components are built with shadcn-svelte
 (https://github.com/huntabyte/shadcn-svelte) on bits-ui
