@@ -5,17 +5,21 @@
   // nothing at a cloud provider. It generates one key per Server instead of
   // picking a Private key, and has no build servers, so neither is asked.
   // User has no default, so the collapsible that holds it starts open.
+  //
+  // Laid out as a Paperclip settings page (ui/src/pages/CompanySettings.tsx,
+  // MIT, see NOTICE): one group, its fields.
+  import { Server as ServerIcon } from '@lucide/svelte'
   import { api, ApiError } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import Icon from '../../lib/Icon.svelte'
   import { go, href, serverPath } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
+  import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
+  import SettingsPage from '../../lib/settings/SettingsPage.svelte'
   import type { Server } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import Input from '../../lib/ui/Input.svelte'
-  import SettingsSection from '../../lib/ui/SettingsSection.svelte'
 
-  let selected = $state(false)
   let name = $state('')
   let description = $state('')
   let host = $state('')
@@ -50,75 +54,28 @@
   $effect(() => breadcrumb.set({ label: 'Servers', href: href('/servers') }, { label: 'New server' }))
 </script>
 
-<div class="chrome w-full">
-  <div class="mb-5 flex min-h-9 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-    <h1 class="min-w-0 text-[24px]! leading-7! font-semibold! tracking-tight!">New server</h1>
-    {#if selected}
-      <div class="flex flex-wrap items-center gap-2">
-        <Button onclick={() => (selected = false)}>Change method</Button>
-      </div>
-    {/if}
+{#if !session.can('manage_servers')}
+  <div class="chrome w-full">
+    <p class="text-sm text-muted-foreground">Only an admin of this guild adds servers.</p>
   </div>
+{:else}
+  <SettingsPage icon={ServerIcon} title="New server">
+    <form onsubmit={add}>
+      <SettingsGroup id="new-server-section" label="Connect a server" hint="Add an existing Linux server using its SSH connection details.">
+        <Input
+          label="IP address or domain"
+          helper="For example 127.0.0.1 or server.example.com."
+          bind:value={host}
+          error={errors.host}
+          required
+        />
 
-  {#if !session.can('manage_servers')}
-    <p class="text-sm text-neutral-500 dark:text-fg-dim">Only an admin of this guild adds servers.</p>
-  {:else if !selected}
-    <div class="application-settings-form flex flex-col gap-6">
-      <section class="application-settings-section">
-        <div class="application-settings-section-header">
-          <h2 class="application-settings-section-title">Add a server</h2>
-          <p class="application-settings-section-description">Connect a server you already manage.</p>
-        </div>
-        <div class="application-settings-section-body is-flush">
-          <div class="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
-            <button
-              type="button"
-              onclick={() => (selected = true)}
-              class="group flex min-h-32 cursor-pointer flex-col rounded-xl border border-neutral-200 bg-white p-3 text-left shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.05] dark:hover:border-white/[0.14]"
-              data-testid="add-by-ip"
-            >
-              <div class="flex items-start">
-                <span
-                  class="flex size-8 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-fg-dim"
-                >
-                  <Icon name="servers" class="size-4" />
-                </span>
-              </div>
-              <div class="mt-auto pt-5">
-                <h3 class="text-[13px]! font-semibold! text-black dark:text-fg">IP address or domain</h3>
-                <p class="mt-1 text-[11px] leading-4 text-neutral-500 dark:text-fg-faint">Connect an existing server over SSH.</p>
-              </div>
-            </button>
-          </div>
-        </div>
-      </section>
-    </div>
-  {:else}
-    <form class="application-settings-form" onsubmit={add}>
-      <SettingsSection id="new-server-section" title="Connect a server" helper="Add an existing Linux server using its SSH connection details.">
-        {#snippet actions()}
-          <Button type="submit" variant="highlighted" loading={busy}>
-            Continue
-            <Icon name="arrow-right" class="size-3.5" />
-          </Button>
-        {/snippet}
-
-        <div class="mb-5">
-          <Input
-            label="IP address or domain"
-            helper="For example 127.0.0.1 or server.example.com."
-            bind:value={host}
-            error={errors.host}
-            required
-          />
-        </div>
-
-        <div class="grid gap-4 border-t border-neutral-200 pt-4 lg:grid-cols-2 dark:border-white/[0.08]">
+        <div class="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
           <Input label="Name" bind:value={name} error={errors.name} required />
           <Input label="Description" bind:value={description} error={errors.description} />
         </div>
 
-        <div class="mt-5 flex flex-col gap-4 border-t border-neutral-200 pt-4 dark:border-white/[0.08]">
+        <div class="flex flex-col gap-4 border-t border-border pt-4">
           <button
             type="button"
             onclick={() => (advanced = !advanced)}
@@ -134,8 +91,8 @@
             </svg>
             Advanced settings
           </button>
-          <div class={['rounded-lg border border-neutral-200 p-4 dark:border-coolgray-400', !advanced && 'hidden']}>
-            <div class="grid gap-4 lg:grid-cols-2">
+          <div class={['rounded-lg border border-border p-4', !advanced && 'hidden']}>
+            <div class="grid gap-4 sm:grid-cols-2">
               <Input
                 label="User"
                 helper="A Linux user with rootless Podman, e.g. bakery. The Bakery runs everything as this user."
@@ -148,7 +105,14 @@
             </div>
           </div>
         </div>
-      </SettingsSection>
+
+        <div class="flex justify-end border-t border-border pt-4">
+          <Button type="submit" variant="highlighted" loading={busy}>
+            Add server
+            <Icon name="arrow-right" class="size-3.5" />
+          </Button>
+        </div>
+      </SettingsGroup>
     </form>
-  {/if}
-</div>
+  </SettingsPage>
+{/if}

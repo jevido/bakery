@@ -25,6 +25,12 @@ tasks:
     cmds:
       - bun e2e/rail.ts
 
+  servers:
+    desc: Check the Servers flows in headless Chromium (needs task dev)
+    deps: [install]
+    cmds:
+      - bun e2e/servers.ts
+
   check:
     desc: svelte-check, tsc and a production build
     deps: [install]
