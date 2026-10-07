@@ -18,6 +18,14 @@
 //                  key and is left pending (never on), so the owner's
 //                  password and two-factor stay as the other scripts expect
 //
+//   instance       Settings (Known hosts) shows its rows or the empty state;
+//                  Forget opens the confirmation and cancels
+//
+//   viewer         a Viewer sees no Notifications and no Settings in the
+//                  settings sidebar; #/settings and #/notifications/email
+//                  show the permission Empty; Keys & Tokens and Profile
+//                  still open
+//
 //   bun e2e/settings.ts [section ...]   (task web:settings; needs task dev)
 //
 // The same environment as e2e/walk.ts overrides what it uses.
@@ -60,6 +68,21 @@ async function signedIn(width = 1440, height = 900, theme: 'dark' | 'light' = 'd
 
 async function channels(page: Page): Promise<Channel[]> {
   return ((await (await page.request.get(`${WEB}/api/notification-channels`)).json()) as { channels: Channel[] }).channels
+}
+
+// A Viewer: the owner with manage_servers, manage_notifications and
+// administrator taken out of what /api/me says (as e2e/servers.ts makes one).
+async function viewer(): Promise<Page> {
+  const page = await signedIn()
+  const strip = ['manage_servers', 'manage_notifications', 'administrator']
+  await page.route('**/api/me', async (route) => {
+    const r = await route.fetch()
+    const body = await r.json()
+    body.permissions = body.permissions.filter((p: string) => !strip.includes(p))
+    for (const g of body.guilds ?? []) g.permissions = (g.permissions ?? []).filter((p: string) => !strip.includes(p))
+    await route.fulfill({ response: r, json: body })
+  })
+  return page
 }
 
 type ApiToken = { id: number; name: string }
@@ -306,6 +329,58 @@ const sections: Record<string, () => Promise<void>> = {
     }
 
     await page.close()
+  },
+
+  // Settings (Known hosts): its rows or the empty state; Forget opens the
+  // confirmation and cancels.
+  async instance() {
+    const page = await signedIn()
+    await page.goto(`${WEB}/#/settings`)
+    await page.locator('#main-content').getByRole('heading', { name: 'Settings', level: 1 }).waitFor()
+    await page.waitForFunction(() => document.querySelector('[data-testid="known-host"], [data-testid="known-hosts-empty"]'), null, { timeout: 5000 })
+    const rows = page.getByTestId('known-host')
+    const count = await rows.count()
+    if (count === 0) {
+      expect('Settings shows the empty state', (await page.getByTestId('known-hosts-empty').count()) === 1)
+    } else {
+      await rows.first().getByTestId('forget-known-host').click()
+      const dialog = page.getByRole('dialog', { name: 'Forget this host key?' })
+      await dialog.waitFor()
+      expect('Forget opens a confirmation', await dialog.isVisible())
+      await dialog.getByRole('button', { name: 'Cancel' }).click()
+      await page.waitForTimeout(200)
+      expect('Cancel closes the confirmation', (await dialog.count()) === 0)
+    }
+    await page.close()
+  },
+
+  // A Viewer sees no Notifications and no Settings in the settings sidebar;
+  // #/settings and #/notifications/email show the permission Empty; Keys &
+  // Tokens and Profile still open.
+  async viewer() {
+    const v = await viewer()
+    await v.goto(`${WEB}/#/settings`)
+    const sidebar = v.getByTestId('settings-sidebar')
+    await sidebar.waitFor()
+    expect('a Viewer sees no Notifications in the settings sidebar', (await sidebar.getByRole('link', { name: 'Notifications' }).count()) === 0)
+    expect('a Viewer sees no Settings in the settings sidebar', (await sidebar.getByRole('link', { name: 'Settings', exact: true }).count()) === 0)
+    expect('#/settings shows the permission Empty', (await v.getByText('Settings need the Manage servers permission').count()) === 1)
+
+    await v.goto(`${WEB}/#/notifications/email`)
+    expect(
+      '#/notifications/email shows the permission Empty',
+      (await v.getByText('Notifications need the Manage notifications permission').count()) === 1,
+    )
+
+    await v.goto(`${WEB}/#/security/api-tokens`)
+    await v.locator('#main-content').getByRole('heading', { name: 'Keys & Tokens', level: 1 }).waitFor()
+    expect('Keys & Tokens still opens for a Viewer', true)
+
+    await v.goto(`${WEB}/#/profile`)
+    await v.getByTestId('profile-card').waitFor()
+    expect('Profile still opens for a Viewer', true)
+
+    await v.close()
   },
 }
 
