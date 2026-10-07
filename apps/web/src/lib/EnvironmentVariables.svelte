@@ -10,8 +10,16 @@
   // variables, Literal, Multiline, Lock, comments, Preview Deployments
   // variables, the order and build secrets choices.
   import { untrack } from 'svelte'
+  import Pencil from '@lucide/svelte/icons/pencil'
+  import { Badge } from '$lib/components/ui/badge'
+  import { buttonVariants } from '$lib/components/ui/button'
   import { api, ApiError } from './api'
+  import CollectionToolbar from './CollectionToolbar.svelte'
+  import FilterPopover from './FilterPopover.svelte'
   import Icon from './Icon.svelte'
+  import SearchField from './SearchField.svelte'
+  import SettingsGroup from './settings/SettingsGroup.svelte'
+  import SortPopover from './SortPopover.svelte'
   import { projectAccess } from './projectAccess.svelte'
   import type { EnvironmentVariable, InheritedVariable } from './types'
   import Button from './ui/Button.svelte'
@@ -23,9 +31,7 @@
   import Input from './ui/Input.svelte'
   import Modal from './ui/Modal.svelte'
   import Select from './ui/Select.svelte'
-  import SettingsSection from './ui/SettingsSection.svelte'
   import Spinner from './ui/Spinner.svelte'
-  import TableDropdown from './ui/TableDropdown.svelte'
   import Textarea from './ui/Textarea.svelte'
   import { toast } from './ui/toast.svelte'
   import UnsavedBar from './ui/UnsavedBar.svelte'
@@ -50,9 +56,16 @@
   let loadError = $state('')
   let view = $state<'normal' | 'dev'>('normal')
 
-  let search = $state('')
-  let filters = $state<('buildtime' | 'runtime')[]>([])
+  let searchText = $state('')
+  let filters = $state<string[]>([])
   let sort = $state<'default' | 'name_asc' | 'name_desc'>('default')
+  const sortOptions: { value: typeof sort; label: string }[] = [
+    { value: 'default', label: 'Default order' },
+    { value: 'name_asc', label: 'Name A–Z' },
+    { value: 'name_desc', label: 'Name Z–A' },
+  ]
+  // Values stay masked until their row's eye is pressed.
+  let revealed = $state<string[]>([])
   let page = $state(1)
   let pageSize = $state(Number(localStorage.getItem('bakery.page-size.environment-variables')) || 25)
 
@@ -104,11 +117,17 @@
     }
   }
 
-  const filterLabels = { buildtime: 'Buildtime', runtime: 'Runtime' } as const
-  const activeFilterText = $derived(filters.map((f) => filterLabels[f]).join(', '))
+  const filterGroups = [
+    {
+      options: [
+        { value: 'buildtime', label: 'Buildtime' },
+        { value: 'runtime', label: 'Runtime' },
+      ],
+    },
+  ]
 
   const rows = $derived.by(() => {
-    const q = search.trim().toLowerCase()
+    const q = searchText.trim().toLowerCase()
     const out = vars.filter(
       (v) =>
         (!q || v.name.toLowerCase().includes(q)) &&
@@ -120,11 +139,10 @@
     return out
   })
   const pageRows = $derived(rows.slice((page - 1) * pageSize, page * pageSize))
-  const searching = $derived(search.trim() !== '' || filters.length > 0)
+  const searching = $derived(searchText.trim() !== '' || filters.length > 0)
 
-  function toggleFilter(f: 'buildtime' | 'runtime') {
-    filters = filters.includes(f) ? filters.filter((x) => x !== f) : [...filters, f]
-    page = 1
+  function toggleReveal(n: string) {
+    revealed = revealed.includes(n) ? revealed.filter((x) => x !== n) : [...revealed, n]
   }
 
   function openAdd() {
@@ -250,27 +268,16 @@
     toast.success('Environment variables updated.')
   }
 
-  function switchView() {
-    view = view === 'normal' ? 'dev' : 'normal'
+  function switchView(next: 'normal' | 'dev') {
+    if (view === next) return
+    view = next
     developer = format(vars)
     developerErrors = []
   }
 </script>
 
-{#snippet check(on: boolean)}
-  {#if on}
-    <span class="data-table-cell-check">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="size-4">
-        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-      </svg>
-    </span>
-  {:else}
-    <span class="data-table-cell-dash">-</span>
-  {/if}
-{/snippet}
-
 {#snippet flags()}
-  <div class="grid gap-4 border-t border-neutral-200 pt-4 sm:grid-cols-2 dark:border-white/[0.07]">
+  <div class="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
     <Select
       label="Build time"
       helper="Make this variable available during the Docker build process. Useful for build secrets and dependencies."
@@ -285,277 +292,187 @@
     </Select>
   </div>
   {#if build}
-    <p class="text-[12px] text-neutral-500 dark:text-fg-dim">
+    <p class="text-xs text-muted-foreground">
       Build variables are handed to the Dockerfile's <code>ARG</code>s and end up in the image's history; keep secrets runtime only.
     </p>
   {/if}
 {/snippet}
 
-<div class="chrome flex flex-col gap-4">
-  <SettingsSection id="environment-variables-section" {title} {helper}>
-    {#snippet actions()}
-      {#if projectAccess.can('manage_applications') && loaded}
-        <Button onclick={switchView}>{view === 'normal' ? 'Developer view' : 'Normal view'}</Button>
-      {/if}
-    {/snippet}
-    {#if !projectAccess.can('see_secrets')}
-      <p class="text-sm text-neutral-500 dark:text-fg-dim">Values are hidden (they need the See secrets permission).</p>
-    {:else if view === 'normal'}
-      <p class="text-sm text-neutral-500 dark:text-fg-dim">
-        Manage this resource's environment variables below. Values are stored encrypted and apply on the next deploy.
-      </p>
-    {:else}
-      <form
-        class="flex w-full flex-col gap-4"
-        onsubmit={(e) => {
-          e.preventDefault()
-          submitDeveloper()
-        }}
-      >
-        <Callout type="info" title="Note">
-          Inline comments with space before # (e.g., <code class="font-mono">KEY=value #comment</code>) are stripped.
-        </Callout>
-        <Textarea
-          rows={10}
-          class="font-sans whitespace-pre-wrap"
-          label="Production"
-          bind:value={developer}
-          spellcheck={false}
-          oninput={() => (developerErrors = [])}
-        />
-        {#each developerErrors as message (message)}<FieldError error={message} />{/each}
-        <UnsavedBar
-          dirty={developerDirty}
-          {saving}
-          onsave={submitDeveloper}
-          onreset={() => {
-            developer = format(vars)
-            developerErrors = []
-          }}
-        />
-      </form>
-    {/if}
-  </SettingsSection>
+{#snippet chips(v: EnvironmentVariable)}
+  {#if v.build}<Badge variant="outline">Buildtime</Badge>{/if}
+  {#if v.runtime}<Badge variant="outline">Runtime</Badge>{/if}
+{/snippet}
 
-  {#if projectAccess.can('see_secrets') && view === 'normal'}
-    <div class="table-toolbar mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-      <div class="w-full min-w-0 flex-1 sm:max-w-md">
-        <div class="table-search relative w-full min-w-0">
-          <input
-            type="search"
-            placeholder="Search environment variables"
-            aria-label="Search environment variables"
-            class="input w-full pl-8!"
-            bind:value={search}
-            oninput={() => (page = 1)}
-            disabled={!loaded}
-          />
-          <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5">
-            <Icon name="search" class="size-3.5 text-neutral-400 dark:text-fg-faint" />
-          </div>
-        </div>
+{#snippet masked(v: EnvironmentVariable)}
+  {@const shown = revealed.includes(v.name)}
+  <span class="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground" data-testid={`variable-value-${v.name}`}>
+    {#if !shown}••••••••{:else if v.value === ''}<span class="italic">(empty)</span>{:else}{v.value}{/if}
+  </span>
+{/snippet}
+
+<SettingsGroup id="environment-variables-section" label={title} hint={helper} wide>
+  {#snippet actions()}
+    {#if projectAccess.can('manage_applications') && loaded}
+      <div class="flex items-center" role="group" aria-label="View">
+        {#each [['normal', 'Normal view'], ['dev', 'Developer view']] as const as [mode, label] (mode)}
+          <button
+            type="button"
+            onclick={() => switchView(mode)}
+            class={buttonVariants({
+              variant: 'ghost',
+              size: 'sm',
+              class: ['text-xs', view === mode ? 'bg-accent text-foreground' : 'text-muted-foreground'].join(' '),
+            })}
+            aria-pressed={view === mode}
+          >
+            {label}
+          </button>
+        {/each}
       </div>
-      <div class="flex flex-wrap items-center gap-2 sm:ml-auto">
-        <div class="table-filter">
-          <TableDropdown panelClass="w-44! overflow-hidden! p-0!">
-            {#snippet trigger({ open, toggle })}
-              <button
-                type="button"
-                aria-haspopup="listbox"
-                aria-expanded={open}
-                title={activeFilterText || undefined}
-                class={['button max-w-80 min-w-0', filters.length > 0 && 'button-highlighted']}
-                onclick={toggle}
-              >
-                <Icon name="filter" class="size-3.5 shrink-0" />
-                <span class="truncate">{activeFilterText || 'Filter'}</span>
-                {#if filters.length > 0}
-                  <span
-                    class="shrink-0 rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 dark:bg-white/[0.07] dark:text-fg-dim"
-                    >{filters.length}</span
-                  >
-                {/if}
-              </button>
-            {/snippet}
-            {#snippet children(close)}
-              <div class="max-h-80 overflow-y-auto p-1">
-                {#each ['buildtime', 'runtime'] as const as f (f)}
-                  {@const selected = filters.includes(f)}
-                  <button type="button" class="listbox-option" role="option" aria-selected={selected} onclick={() => toggleFilter(f)}>
-                    <span>{filterLabels[f]}</span>
-                    <span
-                      class={[
-                        'flex size-4 shrink-0 items-center justify-center rounded-[5px] border',
-                        selected
-                          ? 'border-coollabs bg-coollabs text-primary-foreground'
-                          : 'border-neutral-300 bg-white dark:border-white/[0.14] dark:bg-white/[0.045]',
-                      ]}
-                    >
-                      {#if selected}
-                        <svg class="size-3" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                          <path d="m2.25 6.15 2.35 2.3 5.15-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                      {/if}
-                    </span>
-                  </button>
-                {/each}
-              </div>
-              <div class="border-t border-neutral-200 bg-white p-1 dark:border-white/10 dark:bg-raised">
-                <button
-                  type="button"
-                  class="listbox-option text-neutral-500 dark:text-fg-dim"
-                  disabled={filters.length === 0}
-                  onclick={() => {
-                    filters = []
-                    page = 1
-                    close()
-                  }}
-                >
-                  <span>Reset filters</span>
-                  <Icon name="x" class="size-3.5" />
-                </button>
-              </div>
-            {/snippet}
-          </TableDropdown>
-        </div>
-        <TableDropdown panelClass="w-44!">
-          {#snippet trigger({ open, toggle })}
-            <button type="button" class="button" aria-haspopup="listbox" aria-expanded={open} onclick={toggle}>
-              <svg class="size-3.5 opacity-65" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path
-                  d="M8 5v14m0 0-3-3m3 3 3-3M16 19V5m0 0-3 3m3-3 3 3"
-                  stroke="currentColor"
-                  stroke-width="1.7"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-              Sort
-            </button>
-          {/snippet}
-          {#snippet children(close)}
-            {#each [['default', 'Default order'], ['name_asc', 'Name A–Z'], ['name_desc', 'Name Z–A']] as const as [key, label] (key)}
-              <button
-                type="button"
-                class="listbox-option"
-                role="option"
-                aria-selected={sort === key}
-                onclick={() => {
-                  sort = key
-                  close()
-                }}
-              >
-                <span>{label}</span>
-                {#if sort === key}<span>✓</span>{/if}
-              </button>
-            {/each}
-          {/snippet}
-        </TableDropdown>
+    {/if}
+  {/snippet}
+
+  {#if !projectAccess.can('see_secrets')}
+    <p class="text-sm text-muted-foreground">Values are hidden (they need the See secrets permission).</p>
+  {:else if view === 'dev'}
+    <form
+      class="flex w-full flex-col gap-4"
+      onsubmit={(e) => {
+        e.preventDefault()
+        submitDeveloper()
+      }}
+    >
+      <Callout type="info" title="Note">
+        Inline comments with space before # (e.g., <code class="font-mono">KEY=value #comment</code>) are stripped.
+      </Callout>
+      <Textarea
+        rows={10}
+        monospace
+        class="whitespace-pre-wrap"
+        label="Production"
+        bind:value={developer}
+        spellcheck={false}
+        oninput={() => (developerErrors = [])}
+      />
+      {#each developerErrors as message (message)}<FieldError error={message} />{/each}
+      <UnsavedBar
+        dirty={developerDirty}
+        {saving}
+        onsave={submitDeveloper}
+        onreset={() => {
+          developer = format(vars)
+          developerErrors = []
+        }}
+      />
+    </form>
+  {:else}
+    <p class="text-sm text-muted-foreground">
+      Manage this resource's environment variables below. Values are stored encrypted and apply on the next deploy.
+    </p>
+    <CollectionToolbar ariaLabel="Environment variables controls">
+      {#snippet search()}
+        <SearchField bind:value={searchText} label="Search environment variables" oninput={() => (page = 1)} />
+      {/snippet}
+      {#snippet controls()}
+        <FilterPopover bind:selected={filters} groups={filterGroups} label="Filter environment variables" clearLabel="Reset filters" onchange={() => (page = 1)} />
+        <SortPopover bind:value={sort} options={sortOptions} label="Sort environment variables" onchange={() => (page = 1)} />
+      {/snippet}
+      {#snippet actions()}
         {#if projectAccess.can('manage_applications')}
-          <button type="button" class="button button-highlighted" onclick={openAdd}>
-            <Icon name="plus" class="size-3.5" />
+          <button type="button" class={buttonVariants({ variant: 'outline', size: 'sm' })} onclick={openAdd} disabled={!loaded}>
+            <Icon name="plus" class="size-4" />
             Add
           </button>
         {/if}
-      </div>
-    </div>
+      {/snippet}
+    </CollectionToolbar>
 
-    {#if !loaded}
-      <div class="application-settings-section-body mt-1 flex min-h-40 w-full items-center justify-center">
-        {#if loadError}<p class="text-sm text-error">{loadError}</p>{:else}<Spinner text="Loading environment variables..." />{/if}
-      </div>
-    {:else}
-      <div
-        id="environment-table-section"
-        class={['application-settings-section-body relative mt-1 w-full scroll-mt-28', rows.length > 0 && 'is-flush']}
-      >
-        {#if searching && rows.length === 0}
-          <Empty size="sm" title="No environment variables found" description="No variables match your search." />
-        {:else if rows.length > 0}
-          <div class="data-table w-full">
-            <div class="environment-table-scroll relative">
-              <div class="data-table-header env-table-grid">
-                <span>Name</span>
-                <span class="text-center">Buildtime</span>
-                <span class="text-center">Runtime</span>
-                <span></span>
-              </div>
-              {#each pageRows as v (v.name)}
-                <div class="env-table-item">
-                  <div class="data-table-row env-table-grid">
-                    <div class="flex min-w-0 items-center gap-2">
-                      <button
-                        type="button"
-                        class="env-key-label min-w-0 truncate text-left font-mono text-[13px] text-black dark:text-fg"
-                        title={v.name}
-                        onclick={() => openEdit(v)}
-                      >
-                        {v.name}
-                      </button>
-                    </div>
-                    {@render check(v.build)}
-                    {@render check(v.runtime)}
-                    <div class="justify-self-end">
-                      <button
-                        type="button"
-                        class="icon-button shrink-0"
-                        title="Edit environment variable"
-                        aria-label={`Edit ${v.name}`}
-                        onclick={() => openEdit(v)}
-                      >
-                        <Icon name="settings" class="size-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              {/each}
+    <div id="environment-table-section" class="scroll-mt-28 overflow-hidden rounded-md border border-border">
+      {#if !loaded}
+        <div class="flex min-h-40 items-center justify-center p-4">
+          {#if loadError}<p class="text-sm text-destructive">{loadError}</p>{:else}<Spinner text="Loading environment variables..." />{/if}
+        </div>
+      {:else if searching && rows.length === 0}
+        <div class="p-4"><Empty size="sm" title="No environment variables found" description="No variables match your search." /></div>
+      {:else if rows.length > 0}
+        {#each pageRows as v (v.name)}
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-2 last:border-b-0" data-testid={`variable-row-${v.name}`}>
+            {#if projectAccess.can('manage_applications')}
+              <button
+                type="button"
+                class="max-w-full min-w-0 truncate text-left font-mono text-sm hover:underline sm:max-w-64"
+                title={v.name}
+                onclick={() => openEdit(v)}>{v.name}</button
+              >
+            {:else}
+              <span class="max-w-full min-w-0 truncate font-mono text-sm sm:max-w-64" title={v.name}>{v.name}</span>
+            {/if}
+            {@render masked(v)}
+            <div class="flex items-center gap-1">
+              {@render chips(v)}
+              <button
+                type="button"
+                class={buttonVariants({ variant: 'ghost', size: 'icon-sm', class: 'text-muted-foreground' })}
+                title={revealed.includes(v.name) ? 'Hide value' : 'Show value'}
+                aria-label={`${revealed.includes(v.name) ? 'Hide' : 'Show'} ${v.name}`}
+                aria-pressed={revealed.includes(v.name)}
+                onclick={() => toggleReveal(v.name)}
+              >
+                <Icon name={revealed.includes(v.name) ? 'eye-off' : 'eye'} class="size-3.5" />
+              </button>
+              {#if projectAccess.can('manage_applications')}
+                <button
+                  type="button"
+                  class={buttonVariants({ variant: 'ghost', size: 'icon-sm', class: 'text-muted-foreground' })}
+                  title="Edit environment variable"
+                  aria-label={`Edit ${v.name}`}
+                  onclick={() => openEdit(v)}
+                >
+                  <Pencil class="size-3.5" />
+                </button>
+              {/if}
             </div>
-            <ClientPagination bind:page bind:pageSize total={rows.length} storageKey="bakery.page-size.environment-variables" />
           </div>
-        {:else}
+        {/each}
+        <ClientPagination bind:page bind:pageSize total={rows.length} storageKey="bakery.page-size.environment-variables" />
+      {:else}
+        <div class="p-4">
           <Empty
             size="sm"
             title="No environment variables"
             description={projectAccess.can('manage_applications') ? 'Add your first variable with the + Add button above.' : undefined}
             icon="variables"
           />
-        {/if}
-      </div>
-    {/if}
-
-    {#if inherited.length > 0}
-      <!-- The Bakery's own: what the Project and the Environment hand down. -->
-      <SettingsSection
-        id="inherited-variables-section"
-        title="Shared variables"
-        helper="Inherited from the environment and the project. The application's own variables win."
-        flush
-      >
-        <div class="data-table w-full">
-          <div class="data-table-header env-table-grid-inherited">
-            <span>Name</span>
-            <span>From</span>
-            <span class="text-center">Buildtime</span>
-            <span class="text-center">Runtime</span>
-          </div>
-          {#each inherited as v (v.from + v.name)}
-            <div class="env-table-item">
-              <div class="data-table-row env-table-grid-inherited">
-                <div class="flex min-w-0 items-center gap-2">
-                  <span class={['min-w-0 truncate font-mono text-[13px]', v.overridden && 'line-through opacity-60']} title={v.name}>{v.name}</span>
-                  {#if v.overridden}<span class="table-badge shrink-0">Overridden</span>{/if}
-                </div>
-                <span class="text-[13px] text-neutral-500 capitalize dark:text-fg-dim">{v.from}</span>
-                {@render check(v.build)}
-                {@render check(v.runtime)}
-              </div>
-            </div>
-          {/each}
         </div>
-      </SettingsSection>
-    {/if}
+      {/if}
+    </div>
   {/if}
-</div>
+</SettingsGroup>
+
+{#if projectAccess.can('see_secrets') && view === 'normal' && inherited.length > 0}
+  <!-- The Bakery's own: what the Project and the Environment hand down. -->
+  <SettingsGroup
+    id="inherited-variables-section"
+    label="Shared variables"
+    hint="Inherited from the environment and the project. The application's own variables win."
+    wide
+  >
+    <div class="overflow-hidden rounded-md border border-border">
+      {#each inherited as v (v.from + v.name)}
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-2 last:border-b-0">
+          <span class={['max-w-full min-w-0 truncate font-mono text-sm sm:max-w-64', v.overridden && 'line-through opacity-60']} title={v.name}
+            >{v.name}</span
+          >
+          <span class="min-w-0 flex-1 text-xs text-muted-foreground capitalize">{v.from}</span>
+          <div class="flex items-center gap-1">
+            {#if v.overridden}<Badge variant="secondary">Overridden</Badge>{/if}
+            {@render chips(v)}
+          </div>
+        </div>
+      {/each}
+    </div>
+  </SettingsGroup>
+{/if}
 
 {#if projectAccess.can('manage_applications')}
   <Modal title="New Environment Variable" variant="none" closeOutside={false} bind:open={adding}>
@@ -564,7 +481,7 @@
       <Input placeholder="production" label="Value" type="password" bind:value />
       {@render flags()}
       <FieldError error={formError} />
-      <div class="flex justify-end border-t border-neutral-200 pt-4 dark:border-white/[0.07]">
+      <div class="flex justify-end border-t border-border pt-4">
         <Button type="submit" loading={saving}>Add variable</Button>
       </div>
     </form>
@@ -576,7 +493,7 @@
       <Input label="Value" type="password" bind:value />
       {@render flags()}
       <FieldError error={formError} />
-      <div class="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-200 pt-4 dark:border-white/[0.07]">
+      <div class="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
         <div>
           <ConfirmationModal
             title="Confirm Environment Variable Deletion?"
