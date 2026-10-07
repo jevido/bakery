@@ -5,12 +5,20 @@
   // override with deny / inherit / allow on the right. Only a Role below
   // one's own highest (or @everyone) and a Member ranked below one are
   // changed, and only Permissions one holds in this Project are switched
-  // (the server's SetOverride and CanGrant).
+  // (the server's SetOverride and CanGrant). In Paperclip's settings page
+  // frame and groups, the targets as its EntityRows and each setting as a
+  // segmented button group (ui/src/pages/CompanySettings.tsx; MIT, see NOTICE).
+  import { Check, Lock, Plus, Slash, X } from '@lucide/svelte'
+  import type { Component } from 'svelte'
   import { untrack } from 'svelte'
+  import * as Avatar from '$lib/components/ui/avatar'
+  import { buttonVariants } from '$lib/components/ui/button'
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { canEditRole, canManage } from '../lib/hierarchy'
-  import Icon from '../lib/Icon.svelte'
+  import EntityRow from '../lib/EntityRow.svelte'
+  import PageSkeleton from '../lib/PageSkeleton.svelte'
   import { projectAccess } from '../lib/projectAccess.svelte'
   import { href } from '../lib/router.svelte'
   import type { Member, Permission } from '../lib/session.svelte'
@@ -18,9 +26,8 @@
   import Button from '../lib/ui/Button.svelte'
   import Callout from '../lib/ui/Callout.svelte'
   import ConfirmationModal from '../lib/ui/ConfirmationModal.svelte'
-  import SettingsSection from '../lib/ui/SettingsSection.svelte'
-  import Spinner from '../lib/ui/Spinner.svelte'
-  import TableDropdown from '../lib/ui/TableDropdown.svelte'
+  import SettingsGroup from '../lib/settings/SettingsGroup.svelte'
+  import SettingsPage from '../lib/settings/SettingsPage.svelte'
   import { toast } from '../lib/ui/toast.svelte'
   import UnsavedBar from '../lib/ui/UnsavedBar.svelte'
 
@@ -122,7 +129,7 @@
     void id
     untrack(() =>
       load().catch((e) => {
-        loadError = e instanceof ApiError && e.status === 403 ? 'You need the Manage roles permission to change project permissions.' : e.message
+        loadError = e instanceof ApiError && e.status === 403 ? 'forbidden' : e.message
       }),
     )
   })
@@ -179,11 +186,16 @@
     pick(t)
   }
 
-  const segments: { value: Setting; label: string; icon: string; on: string }[] = [
-    { value: 'deny', label: 'Deny', icon: '✕', on: 'bg-red-600 text-white' },
-    { value: 'inherit', label: 'Inherit', icon: '/', on: 'bg-neutral-500 text-white dark:bg-neutral-600' },
-    { value: 'allow', label: 'Allow', icon: '✓', on: 'bg-green-600 text-white' },
+  const segments: { value: Setting; label: string; icon: Component<{ class?: string }>; on: string }[] = [
+    { value: 'deny', label: 'Deny', icon: X, on: 'bg-destructive/15 text-destructive' },
+    { value: 'inherit', label: 'Inherit', icon: Slash, on: 'bg-accent text-foreground' },
+    { value: 'allow', label: 'Allow', icon: Check, on: 'bg-green-500/15 text-green-700 dark:text-green-400' },
   ]
+
+  function initials(m: Member): string {
+    const words = m.name.trim().split(/\s+/).filter(Boolean)
+    return (words.length > 1 ? words[0][0] + words[words.length - 1][0] : (words[0] ?? m.email).slice(0, 2)).toUpperCase()
+  }
 
   const crumbName = $derived(project?.name)
   $effect(() => {
@@ -192,110 +204,94 @@
   })
 </script>
 
-{#if loadError}
-  <p class="text-sm text-error">{loadError}</p>
-{:else if !project}
-  <Spinner text="Loading…" />
-{:else}
-  <div class="chrome application-settings-form w-full">
-    <header class="mb-5">
-      <h1 class="truncate text-[24px]! leading-7! font-semibold! tracking-tight!">{project.name}</h1>
-      <p class="mt-1 text-[13px] text-neutral-500 dark:text-fg-dim">
-        Project permissions: allow or deny a role or a member something in this project only. A member's own override beats
-        their roles', and a role's deny beats a role's allow.
-      </p>
-    </header>
+{#snippet leadingOf(t: Target)}
+  {@const r = isRole(t) ? roleOf(t) : null}
+  {@const m = isRole(t) ? null : memberOf(t)}
+  {#if r}
+    <span class="size-2.5 shrink-0 rounded-full" style:background-color={r.color}></span>
+  {:else if m}
+    <Avatar.Root size="sm"><Avatar.Fallback>{initials(m)}</Avatar.Fallback></Avatar.Root>
+  {/if}
+{/snippet}
 
-    <div class="grid gap-6 lg:grid-cols-[16rem_1fr]">
-      <aside class="flex flex-col gap-2">
-        <div class="flex items-center justify-between">
-          <h2 class="text-xs font-semibold tracking-wide text-neutral-500 uppercase dark:text-fg-faint">Roles and members</h2>
+{#if loadError === 'forbidden'}
+  <SettingsPage icon={Lock} title="Project permissions">
+    <Callout type="info" title="Read only">You need the Manage roles permission to see or change project permissions.</Callout>
+  </SettingsPage>
+{:else if loadError}
+  <p class="text-sm text-destructive">{loadError}</p>
+{:else if !project}
+  <PageSkeleton />
+{:else}
+  <SettingsPage icon={Lock} title="Project permissions" data-testid="project-permissions">
+    {#snippet actions()}
+      <a href={href(`/project/${id}/edit`)} class={buttonVariants({ variant: 'outline', size: 'sm' })}>Project settings</a>
+    {/snippet}
+    <p class="-mt-4 max-w-2xl text-sm text-muted-foreground">
+      Allow or deny a role or a member something in <strong class="font-medium text-foreground">{project.name}</strong> only. A member's own
+      override beats their roles', and a role's deny beats a role's allow.
+    </p>
+
+    <div class="grid gap-8 lg:grid-cols-[18rem_1fr]">
+      <section class="min-w-0 space-y-4">
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Roles and members</div>
           {#if addable.roles.length + addable.members.length > 0}
-            <TableDropdown panelClass="w-60! max-h-80 overflow-y-auto">
-              {#snippet trigger({ open, toggle })}
-                <button
-                  type="button"
-                  class="flex size-7 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-black dark:text-fg-faint dark:hover:bg-white/[0.06] dark:hover:text-fg"
-                  aria-haspopup="listbox"
-                  aria-expanded={open}
-                  aria-label="Add role or member"
-                  title="Add role or member"
-                  onclick={toggle}
-                >
-                  <Icon name="plus" class="size-3.5" />
-                </button>
-              {/snippet}
-              {#snippet children(close)}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger
+                class={buttonVariants({ variant: 'ghost', size: 'icon-sm' })}
+                aria-label="Add role or member"
+                title="Add role or member"
+              >
+                <Plus class="size-4" />
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Content align="end" class="max-h-80 w-60 overflow-y-auto">
                 {#if addable.roles.length > 0}
-                  <p class="px-2 pt-1 pb-1 text-[11px] font-semibold text-neutral-500 uppercase dark:text-fg-faint">Roles</p>
+                  <DropdownMenu.Label>Roles</DropdownMenu.Label>
                   {#each addable.roles as r (r.id)}
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected="false"
-                      class="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[12px] hover:bg-neutral-100 dark:hover:bg-white/[0.06]"
-                      onclick={() => {
-                        add(`role:${r.id}`)
-                        close()
-                      }}
-                    >
+                    <DropdownMenu.Item onSelect={() => add(`role:${r.id}`)} data-testid="add-target" data-target="role:{r.id}">
                       <span class="size-2.5 shrink-0 rounded-full" style:background-color={r.color}></span>
-                      {r.name}
-                    </button>
+                      <span class="truncate">{r.name}</span>
+                    </DropdownMenu.Item>
                   {/each}
                 {/if}
+                {#if addable.roles.length > 0 && addable.members.length > 0}<DropdownMenu.Separator />{/if}
                 {#if addable.members.length > 0}
-                  <p class="px-2 pt-2 pb-1 text-[11px] font-semibold text-neutral-500 uppercase dark:text-fg-faint">Members</p>
+                  <DropdownMenu.Label>Members</DropdownMenu.Label>
                   {#each addable.members as m (m.id)}
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected="false"
-                      class="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[12px] hover:bg-neutral-100 dark:hover:bg-white/[0.06]"
-                      onclick={() => {
-                        add(`member:${m.id}`)
-                        close()
-                      }}
-                    >
-                      <Icon name="profile" class="size-3" />
-                      {m.name}
-                    </button>
+                    <DropdownMenu.Item onSelect={() => add(`member:${m.id}`)} data-testid="add-target" data-target="member:{m.id}">
+                      <Avatar.Root size="sm"><Avatar.Fallback>{initials(m)}</Avatar.Fallback></Avatar.Root>
+                      <span class="truncate">{m.name}</span>
+                    </DropdownMenu.Item>
                   {/each}
                 {/if}
-              {/snippet}
-            </TableDropdown>
+              </DropdownMenu.Content>
+            </DropdownMenu.Root>
           {/if}
         </div>
-        <ul class="flex flex-col gap-0.5" data-testid="override-targets">
+        <div class="overflow-hidden rounded-md border border-border" data-testid="override-targets">
           {#each targets as t (t)}
-            {@const r = isRole(t) ? roleOf(t) : null}
-            <li>
-              <button
-                type="button"
-                class={[
-                  'flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] transition-colors',
-                  picked === t ? 'control-selected' : 'hover:bg-neutral-100 dark:hover:bg-white/[0.06]',
-                ]}
-                aria-pressed={picked === t}
-                data-testid="override-target"
-                onclick={() => pick(t)}
-              >
-                {#if r}
-                  <span class="size-2.5 shrink-0 rounded-full" style:background-color={r.color}></span>
-                {:else}
-                  <Icon name="profile" class="size-3" />
-                {/if}
-                <span class="truncate">{nameOf(t)}</span>
-              </button>
-            </li>
+            <EntityRow
+              title={nameOf(t)}
+              subtitle={isRole(t) ? (roleOf(t)?.base ? 'Every member' : 'Role') : (memberOf(t)?.email ?? 'Member')}
+              selected={picked === t}
+              class={picked === t ? 'bg-accent/70!' : ''}
+              onclick={() => pick(t)}
+              data-testid="override-target"
+            >
+              {#snippet leading()}{@render leadingOf(t)}{/snippet}
+              {#snippet trailing()}
+                {#if !byTarget.has(t) && added.includes(t)}<span class="text-xs text-muted-foreground">Unsaved</span>{/if}
+              {/snippet}
+            </EntityRow>
           {/each}
-        </ul>
-      </aside>
+        </div>
+      </section>
 
       {#if picked}
         {@const canEdit = editable(picked)}
         <form
-          class="flex flex-col gap-4"
+          class="min-w-0 space-y-8"
           onsubmit={(e) => {
             e.preventDefault()
             save()
@@ -308,25 +304,21 @@
               {isRole(picked) ? 'This role is' : 'This member is'} at or above your highest role, so you cannot change their override.
             </Callout>
           {/if}
-          {#if formError}<p class="text-sm text-red-600 dark:text-red-400" data-testid="override-error">{formError}</p>{/if}
+          {#if formError}<p class="text-sm text-destructive" data-testid="override-error">{formError}</p>{/if}
 
-          <SettingsSection
-            id="override-section"
-            title={nameOf(picked)}
-            helper="Inherit keeps what the guild's roles give. You can only switch permissions you hold in this project."
+          <SettingsGroup
+            label={nameOf(picked)}
+            hint="Inherit keeps what the guild's roles give. You can only switch permissions you hold in this project."
+            data-testid="override-section"
           >
-            <ul class="flex flex-col divide-y divide-neutral-200 dark:divide-white/[0.06]">
+            <div class="divide-y divide-border">
               {#each permissions as p (p.key)}
-                <li class="flex items-center justify-between gap-4 py-2.5" data-testid="override-permission" data-permission={p.key}>
+                <div class="flex items-center justify-between gap-4 py-3 first:pt-0" data-testid="override-permission" data-permission={p.key}>
                   <span class="min-w-0">
                     <span class="block text-sm font-medium">{p.name}</span>
-                    <span class="block text-xs text-neutral-500 dark:text-fg-faint">{p.description}</span>
+                    <span class="block text-xs text-muted-foreground">{p.description}</span>
                   </span>
-                  <div
-                    class="flex shrink-0 overflow-hidden rounded-md border border-neutral-200 dark:border-white/[0.08]"
-                    role="radiogroup"
-                    aria-label={p.name}
-                  >
+                  <div class="flex shrink-0 items-center overflow-hidden rounded-md border border-border" role="radiogroup" aria-label={p.name}>
                     {#each segments as s (s.value)}
                       <button
                         type="button"
@@ -337,39 +329,41 @@
                         data-setting={s.value}
                         disabled={!canEdit || !projectAccess.can(p.key)}
                         class={[
-                          'flex size-8 items-center justify-center text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-                          settings[p.key] === s.value ? s.on : 'text-neutral-500 hover:bg-neutral-100 dark:text-fg-faint dark:hover:bg-white/[0.06]',
+                          'flex size-8 items-center justify-center border-l border-border transition-colors first:border-l-0 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none focus-visible:ring-inset disabled:cursor-not-allowed disabled:opacity-50',
+                          settings[p.key] === s.value ? s.on : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
                         ]}
                         onclick={() => (settings[p.key] = s.value)}
                       >
-                        {s.icon}
+                        <s.icon class="size-3.5" />
                       </button>
                     {/each}
                   </div>
-                </li>
+                </div>
               {/each}
-            </ul>
-          </SettingsSection>
-
-          {#if canEdit && (byTarget.has(picked) || added.includes(picked))}
-            <div>
-              {#if byTarget.has(picked)}
-                <ConfirmationModal
-                  title="Remove override?"
-                  buttonTitle="Remove override"
-                  variant="error"
-                  actions={[`${nameOf(picked)} goes back to what the guild's roles give in this project.`]}
-                  confirmWithText={false}
-                  step2ButtonText="Remove"
-                  onconfirm={remove}
-                />
-              {:else}
-                <Button onclick={remove}>Cancel</Button>
-              {/if}
             </div>
+          </SettingsGroup>
+
+          {#if canEdit && byTarget.has(picked)}
+            <SettingsGroup label="Danger Zone" destructive>
+              <p class="text-sm text-muted-foreground">
+                Removing the override sends <strong class="font-medium text-foreground">{nameOf(picked)}</strong> back to what the guild's roles
+                give in this project.
+              </p>
+              <ConfirmationModal
+                title="Remove override?"
+                buttonTitle="Remove override"
+                variant="error"
+                actions={[`${nameOf(picked)} goes back to what the guild's roles give in this project.`]}
+                confirmWithText={false}
+                step2ButtonText="Remove"
+                onconfirm={remove}
+              />
+            </SettingsGroup>
+          {:else if canEdit && added.includes(picked)}
+            <div><Button onclick={remove}>Cancel</Button></div>
           {/if}
         </form>
       {/if}
     </div>
-  </div>
+  </SettingsPage>
 {/if}
