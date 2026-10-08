@@ -13,7 +13,7 @@ It hosts no bounded context of its own: it is a client of `services/api`, like
 task desktop:dev     # the window with live reload (needs a display; Vite on 127.0.0.1:4990)
 task desktop:build   # the binary, bin/bakery-desktop (wails3 build)
 task desktop:serve   # no window: the frontend and the Go methods on http://127.0.0.1:4991
-task desktop:e2e     # the frontend in headless Chromium against serve (needs task desktop:serve)
+task desktop:e2e     # the frontend in headless Chromium against its own serve (needs task dev)
 task desktop:check   # gofmt, go vet, go test, svelte-check, tsc
 ```
 

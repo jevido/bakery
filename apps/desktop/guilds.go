@@ -152,14 +152,12 @@ func (d *Desktop) Guilds(address string) ([]bakery.Guild, error) {
 
 // Agents lists the Agents of the Guild guildID on the Bakery at address on
 // the tab status, and keeps them current with `agents` events while the
-// window shows them.
+// window shows them. It always asks the Bakery: only the shown tab is
+// refreshed, so the answer kept for another tab may be stale (an Agent
+// terminated while Paused was shown would still be under All).
 func (d *Desktop) Agents(address string, guildID uint64, status string) ([]bakery.Agent, error) {
 	d.show(func(s *shown) { *s = shown{address: address, guildID: guildID, status: status} })
 	key := agentsKey(address, guildID, status)
-	var out []bakery.Agent
-	if d.usable(address) && d.recall(key, &out) {
-		return out, nil
-	}
 	out, err := ask(d, address, func(ctx context.Context, c *bakery.Client) ([]bakery.Agent, error) {
 		return c.Agents(ctx, guildID, status)
 	})

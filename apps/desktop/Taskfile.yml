@@ -52,7 +52,7 @@ tasks:
       - bun run check
 
   e2e:
-    desc: Drive the Desktop app's frontend in headless Chromium (needs task desktop:serve)
-    deps: [common:install:frontend:deps]
+    desc: Drive the Desktop app's frontend in headless Chromium against its own serve on 127.0.0.1:4991 (needs task dev)
+    deps: [common:build:frontend]
     cmds:
       - bun e2e/desktop.ts {{.CLI_ARGS}}

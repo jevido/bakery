@@ -38,7 +38,9 @@ export function Agent(address: string, guildID: number, id: number): $Cancellabl
 /**
  * Agents lists the Agents of the Guild guildID on the Bakery at address on
  * the tab status, and keeps them current with `agents` events while the
- * window shows them.
+ * window shows them. It always asks the Bakery: only the shown tab is
+ * refreshed, so the answer kept for another tab may be stale (an Agent
+ * terminated while Paused was shown would still be under All).
  */
 export function Agents(address: string, guildID: number, status: string): $CancellablePromise<bakery$0.Agent[] | null> {
     return $Call.ByID(3701220266, address, guildID, status);

@@ -154,9 +154,9 @@ func TestRefreshSendsWhatChanged(t *testing.T) {
 		t.Fatalf("unexpected %s event", e.Name)
 	default:
 	}
-	// The cache answers the list with the hire without asking again.
+	// Asked again, the list has the hire.
 	if agents, _ := d.Agents(srv.URL, 7, "all"); len(agents) != 2 {
-		t.Fatalf("cached %+v", agents)
+		t.Fatalf("agents %+v", agents)
 	}
 
 	// A 401 marks the Bakery signed out and stops the refresh.

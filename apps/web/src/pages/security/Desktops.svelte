@@ -51,7 +51,7 @@
     {:else}
       <div class="overflow-hidden rounded-md border border-border">
         {#each desktops as desktop (desktop.id)}
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-4 py-2.5 last:border-b-0" data-testid="desktop">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-4 py-2.5 last:border-b-0" data-testid="desktop" data-id={desktop.id}>
             <span class="min-w-0 flex-1 truncate text-sm font-medium text-foreground" data-testid="desktop-name">{desktop.name}</span>
             <span class="shrink-0 text-xs text-muted-foreground">Connected {ago(desktop.created_at)}</span>
             <span class="shrink-0 text-xs text-muted-foreground" data-testid="desktop-last-seen">
