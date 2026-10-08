@@ -142,7 +142,7 @@ func (c *Controller) SaveDocument(ctx contractshttp.Context) contractshttp.Respo
 
 // DeleteDocument deletes the document and every Revision of it.
 func (c *Controller) DeleteDocument(ctx contractshttp.Context) contractshttp.Response {
-	if err := c.service.DeleteDocument(ctx.Context(), c.guild(ctx), ctx.Request().Route("id"), ctx.Request().Route("key"), c.visible(ctx)); err != nil {
+	if err := c.service.DeleteDocument(ctx.Context(), c.guild(ctx), c.Member(ctx), ctx.Request().Route("id"), ctx.Request().Route("key"), c.visible(ctx)); err != nil {
 		return fail(ctx, err)
 	}
 	return ctx.Response().NoContent()

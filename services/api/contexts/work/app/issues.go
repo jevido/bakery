@@ -36,7 +36,8 @@ type Issues interface {
 	FindIssues(ctx context.Context, guildID uint64, q IssueQuery) ([]domain.Issue, error)
 	// IssueProjects lists the Projects the Guild's Issues are in.
 	IssueProjects(ctx context.Context, guildID uint64) ([]uint64, error)
-	// LeaveProject takes every Issue out of the Project.
+	// LeaveProject takes every Issue, and every Activity event, out of the
+	// Project.
 	LeaveProject(ctx context.Context, projectID uint64) error
 	HasIssues(ctx context.Context, guildID uint64) (bool, error)
 }
@@ -264,7 +265,11 @@ func (s *Service) CreateIssue(ctx context.Context, guildID, memberID uint64, in 
 	if err := s.relate(ctx, &i, in.AssigneeID, in.ProjectID, in.GoalID, in.ParentID, visible); err != nil {
 		return domain.Issue{}, err
 	}
-	return s.issues.CreateIssue(ctx, i)
+	if i, err = s.issues.CreateIssue(ctx, i); err != nil {
+		return domain.Issue{}, err
+	}
+	s.publish(ctx, domain.IssueCreated{Happened: s.happened(memberID), Issue: i})
+	return i, nil
 }
 
 // relate sets an Issue's Assignee, Project, Goal and parent, each checked.
@@ -287,6 +292,7 @@ func (s *Service) ChangeIssue(ctx context.Context, guildID, memberID uint64, ref
 	if err != nil {
 		return domain.Issue{}, err
 	}
+	e := domain.IssueChanged{Happened: s.happened(memberID), Before: i}
 	if p.Title != nil {
 		if err := i.Rename(*p.Title); err != nil {
 			return domain.Issue{}, err
@@ -330,10 +336,14 @@ func (s *Service) ChangeIssue(ctx context.Context, guildID, memberID uint64, ref
 		}
 	}
 	if p.BlockedByIDs != nil {
+		if e.BlockersBefore, err = s.visibleBlockers(ctx, i, visible); err != nil {
+			return domain.Issue{}, err
+		}
 		blockedBy, err := s.blockWith(ctx, i, *p.BlockedByIDs, visible)
 		if err != nil {
 			return domain.Issue{}, err
 		}
+		e.BlockersAfter = *p.BlockedByIDs
 		err = s.issues.SaveIssueBlockedBy(ctx, i, blockedBy, memberID)
 	} else {
 		err = s.issues.SaveIssue(ctx, i)
@@ -341,8 +351,30 @@ func (s *Service) ChangeIssue(ctx context.Context, guildID, memberID uint64, ref
 	if err != nil {
 		return domain.Issue{}, err
 	}
-	i, _, err = s.issues.Issue(ctx, i.ID)
-	return i, err
+	if e.After, _, err = s.issues.Issue(ctx, i.ID); err != nil {
+		return domain.Issue{}, err
+	}
+	if len(e.Changes()) > 0 {
+		s.publish(ctx, e)
+	}
+	return e.After, nil
+}
+
+// visibleBlockers is the ids of the Issue's Blockers the person may see.
+func (s *Service) visibleBlockers(ctx context.Context, i domain.Issue, visible Visible) ([]uint64, error) {
+	have, err := s.issues.Blockers(ctx, []uint64{i.ID})
+	if err != nil {
+		return nil, err
+	}
+	shown, err := s.VisibleIssues(ctx, have[i.ID], visible)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uint64, len(shown))
+	for n, b := range shown {
+		ids[n] = b.ID
+	}
+	return ids, nil
 }
 
 // blockWith checks ids as the Blockers the person sets on the Issue, each
@@ -386,12 +418,12 @@ func (s *Service) blockWith(ctx context.Context, i domain.Issue, ids []uint64, v
 	if err != nil {
 		return nil, err
 	}
-	shown, err := s.VisibleIssues(ctx, have[i.ID], visible)
+	shown, err := s.visibleBlockers(ctx, i, visible)
 	if err != nil {
 		return nil, err
 	}
 	for _, id := range have[i.ID] {
-		if !slices.ContainsFunc(shown, func(v domain.Issue) bool { return v.ID == id }) && !slices.Contains(set, id) {
+		if !slices.Contains(shown, id) && !slices.Contains(set, id) {
 			set = append(set, id)
 		}
 	}
@@ -438,16 +470,22 @@ func (s *Service) Blockers(ctx context.Context, is []domain.Issue, visible Visib
 	return pick(by), pick(ing), nil
 }
 
-// DeleteIssue deletes the Issue; its Sub-issues lose their parent.
-func (s *Service) DeleteIssue(ctx context.Context, guildID uint64, ref string, visible Visible) error {
+// DeleteIssue deletes the Issue by the Member; its Sub-issues lose their
+// parent.
+func (s *Service) DeleteIssue(ctx context.Context, guildID, memberID uint64, ref string, visible Visible) error {
 	i, err := s.Issue(ctx, guildID, ref, visible)
 	if err != nil {
 		return err
 	}
-	return s.issues.DeleteIssue(ctx, i.ID)
+	if err := s.issues.DeleteIssue(ctx, i.ID); err != nil {
+		return err
+	}
+	s.publish(ctx, domain.IssueDeleted{Happened: s.happened(memberID), Issue: i})
+	return nil
 }
 
-// ForgetProject takes every Issue out of a Project that was deleted.
+// ForgetProject takes every Issue, and every Activity event, out of a
+// Project that was deleted.
 func (s *Service) ForgetProject(ctx context.Context, projectID uint64) error {
 	return s.issues.LeaveProject(ctx, projectID)
 }

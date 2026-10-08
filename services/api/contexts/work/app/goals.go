@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
@@ -40,11 +41,15 @@ type Service struct {
 	docs     Documents
 	guilds   Guilds
 	projects Projects
+	activity Activity
 	now      func() time.Time
+	// Logf logs what a request cannot report, such as an Activity event
+	// that was not recorded.
+	Logf func(format string, args ...any)
 }
 
-func NewService(goals Goals, issues Issues, comments Comments, docs Documents, guilds Guilds, projects Projects) *Service {
-	return &Service{goals: goals, issues: issues, comments: comments, docs: docs, guilds: guilds, projects: projects, now: time.Now}
+func NewService(goals Goals, issues Issues, comments Comments, docs Documents, guilds Guilds, projects Projects, activity Activity) *Service {
+	return &Service{goals: goals, issues: issues, comments: comments, docs: docs, guilds: guilds, projects: projects, activity: activity, now: time.Now, Logf: log.Printf}
 }
 
 // GoalInput is a new Goal as typed. Empty Level and Status take their
@@ -88,7 +93,8 @@ func (s *Service) Goal(ctx context.Context, id uint64) (domain.Goal, error) {
 	return g, err
 }
 
-func (s *Service) CreateGoal(ctx context.Context, guildID uint64, in GoalInput) (domain.Goal, error) {
+// CreateGoal creates a Goal in the Guild by the Member.
+func (s *Service) CreateGoal(ctx context.Context, guildID, memberID uint64, in GoalInput) (domain.Goal, error) {
 	level, status := domain.TaskLevel, domain.Planned
 	var err error
 	if in.Level != "" {
@@ -111,14 +117,21 @@ func (s *Service) CreateGoal(ctx context.Context, guildID uint64, in GoalInput) 
 	if err := s.setOwner(ctx, &g, in.OwnerID); err != nil {
 		return domain.Goal{}, err
 	}
-	return s.goals.CreateGoal(ctx, g)
+	g, err = s.goals.CreateGoal(ctx, g)
+	if err != nil {
+		return domain.Goal{}, err
+	}
+	s.publish(ctx, domain.GoalCreated{Happened: s.happened(memberID), Goal: g})
+	return g, nil
 }
 
-func (s *Service) ChangeGoal(ctx context.Context, id uint64, p GoalPatch) (domain.Goal, error) {
+// ChangeGoal changes the Goal by the Member.
+func (s *Service) ChangeGoal(ctx context.Context, memberID, id uint64, p GoalPatch) (domain.Goal, error) {
 	g, err := s.Goal(ctx, id)
 	if err != nil {
 		return domain.Goal{}, err
 	}
+	before := g
 	if p.Title != nil {
 		if err := g.Rename(*p.Title); err != nil {
 			return domain.Goal{}, err
@@ -154,16 +167,28 @@ func (s *Service) ChangeGoal(ctx context.Context, id uint64, p GoalPatch) (domai
 	if err := s.goals.SaveGoal(ctx, g); err != nil {
 		return domain.Goal{}, err
 	}
-	return s.Goal(ctx, id)
+	g, err = s.Goal(ctx, id)
+	if err != nil {
+		return domain.Goal{}, err
+	}
+	if e := (domain.GoalChanged{Happened: s.happened(memberID), Before: before, After: g}); len(e.Changes()) > 0 {
+		s.publish(ctx, e)
+	}
+	return g, nil
 }
 
-// DeleteGoal deletes the Goal; its Sub-goals move under its parent.
-func (s *Service) DeleteGoal(ctx context.Context, id uint64) error {
+// DeleteGoal deletes the Goal by the Member; its Sub-goals move under its
+// parent.
+func (s *Service) DeleteGoal(ctx context.Context, memberID, id uint64) error {
 	g, err := s.Goal(ctx, id)
 	if err != nil {
 		return err
 	}
-	return s.goals.DeleteGoal(ctx, g)
+	if err := s.goals.DeleteGoal(ctx, g); err != nil {
+		return err
+	}
+	s.publish(ctx, domain.GoalDeleted{Happened: s.happened(memberID), Goal: g})
+	return nil
 }
 
 // moveUnder looks up the parent Goal and its ancestors and hands them to

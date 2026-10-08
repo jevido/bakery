@@ -37,29 +37,34 @@ func (s *Service) WriteComment(ctx context.Context, guildID, memberID uint64, re
 	if err != nil {
 		return domain.Comment{}, err
 	}
-	return s.comments.CreateComment(ctx, c)
+	c, err = s.comments.CreateComment(ctx, c)
+	if err != nil {
+		return domain.Comment{}, err
+	}
+	s.publish(ctx, domain.CommentWritten{Happened: s.happened(memberID), Issue: i, Comment: c})
+	return c, nil
 }
 
 // comment finds a Comment on the Issue; one on another Issue is
 // ErrNotFound.
-func (s *Service) comment(ctx context.Context, guildID uint64, ref string, commentID uint64, visible Visible) (domain.Comment, error) {
+func (s *Service) comment(ctx context.Context, guildID uint64, ref string, commentID uint64, visible Visible) (domain.Issue, domain.Comment, error) {
 	i, err := s.Issue(ctx, guildID, ref, visible)
 	if err != nil {
-		return domain.Comment{}, err
+		return domain.Issue{}, domain.Comment{}, err
 	}
 	c, found, err := s.comments.Comment(ctx, commentID)
 	if err != nil {
-		return domain.Comment{}, err
+		return domain.Issue{}, domain.Comment{}, err
 	}
 	if !found || c.IssueID != i.ID {
-		return domain.Comment{}, ErrNotFound
+		return domain.Issue{}, domain.Comment{}, ErrNotFound
 	}
-	return c, nil
+	return i, c, nil
 }
 
 // EditComment replaces the body of the Member's own Comment.
 func (s *Service) EditComment(ctx context.Context, guildID, memberID uint64, ref string, commentID uint64, body string, visible Visible) (domain.Comment, error) {
-	c, err := s.comment(ctx, guildID, ref, commentID, visible)
+	_, c, err := s.comment(ctx, guildID, ref, commentID, visible)
 	if err != nil {
 		return domain.Comment{}, err
 	}
@@ -72,13 +77,16 @@ func (s *Service) EditComment(ctx context.Context, guildID, memberID uint64, ref
 // DeleteComment deletes the Member's own Comment; it stays in the thread
 // as deleted.
 func (s *Service) DeleteComment(ctx context.Context, guildID, memberID uint64, ref string, commentID uint64, visible Visible) error {
-	c, err := s.comment(ctx, guildID, ref, commentID, visible)
+	i, c, err := s.comment(ctx, guildID, ref, commentID, visible)
 	if err != nil {
 		return err
 	}
 	if err := c.Delete(memberID, s.now()); err != nil {
 		return err
 	}
-	_, err = s.comments.SaveComment(ctx, c)
-	return err
+	if _, err = s.comments.SaveComment(ctx, c); err != nil {
+		return err
+	}
+	s.publish(ctx, domain.CommentDeleted{Happened: s.happened(memberID), Issue: i, Comment: c})
+	return nil
 }

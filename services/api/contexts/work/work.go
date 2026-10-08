@@ -9,6 +9,7 @@ import (
 
 	"github.com/goravel/framework/contracts/route"
 
+	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/identity"
 	"github.com/jevido/bakery/services/api/contexts/projects"
@@ -24,7 +25,8 @@ var (
 
 func svc() *app.Service {
 	once.Do(func() {
-		service = app.NewService(infra.Goals{}, infra.Issues{}, infra.Comments{}, infra.Documents{}, guildsOfWork{}, projectsOfWork{})
+		service = app.NewService(infra.Goals{}, infra.Issues{}, infra.Comments{}, infra.Documents{}, guildsOfWork{}, projectsOfWork{}, infra.Activity{})
+		service.Logf = facades.Log().Errorf
 		guilds.OnGuildDeleting("goals", func(ctx context.Context, guildID uint64) (bool, error) {
 			gs, err := service.Goals(ctx, guildID)
 			return len(gs) > 0, err

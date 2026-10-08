@@ -267,8 +267,15 @@ func (s Issues) IssueProjects(ctx context.Context, guildID uint64) ([]uint64, er
 }
 
 func (s Issues) LeaveProject(ctx context.Context, projectID uint64) error {
-	_, err := s.query(ctx).Exec(`UPDATE issues SET project_id = NULL, updated_at = now() WHERE project_id = ?`, projectID)
-	return err
+	return facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		if _, err := tx.Exec(`UPDATE issues SET project_id = NULL, updated_at = now() WHERE project_id = ?`, projectID); err != nil {
+			return err
+		}
+		// An event keeps its Issue's Project to hide it; one that no longer
+		// exists hides nothing.
+		_, err := tx.Exec(`UPDATE activity_events SET project_id = NULL WHERE project_id = ?`, projectID)
+		return err
+	})
 }
 
 func (s Issues) HasIssues(ctx context.Context, guildID uint64) (bool, error) {

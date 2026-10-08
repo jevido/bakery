@@ -62,30 +62,31 @@ func (s *Service) Documents(ctx context.Context, guildID uint64, ref string, vis
 	return s.docs.Documents(ctx, i.ID)
 }
 
-// document finds the Issue's document under key; an unknown key is
-// ErrNotFound and a malformed one a FieldError.
-func (s *Service) document(ctx context.Context, guildID uint64, ref, key string, visible Visible) (domain.IssueDocument, error) {
+// document finds the Issue's document under key, with the Issue; an
+// unknown key is ErrNotFound and a malformed one a FieldError.
+func (s *Service) document(ctx context.Context, guildID uint64, ref, key string, visible Visible) (domain.Issue, domain.IssueDocument, error) {
 	i, err := s.Issue(ctx, guildID, ref, visible)
 	if err != nil {
-		return domain.IssueDocument{}, err
+		return domain.Issue{}, domain.IssueDocument{}, err
 	}
 	k, err := domain.ParseDocumentKey(key)
 	if err != nil {
-		return domain.IssueDocument{}, err
+		return domain.Issue{}, domain.IssueDocument{}, err
 	}
 	d, found, err := s.docs.Document(ctx, i.ID, k)
 	if err != nil {
-		return domain.IssueDocument{}, err
+		return domain.Issue{}, domain.IssueDocument{}, err
 	}
 	if !found {
-		return domain.IssueDocument{}, ErrNotFound
+		return domain.Issue{}, domain.IssueDocument{}, ErrNotFound
 	}
-	return d, nil
+	return i, d, nil
 }
 
 // Document is one Issue document.
 func (s *Service) Document(ctx context.Context, guildID uint64, ref, key string, visible Visible) (domain.IssueDocument, error) {
-	return s.document(ctx, guildID, ref, key, visible)
+	_, d, err := s.document(ctx, guildID, ref, key, visible)
+	return d, err
 }
 
 // stale answers a refused save with the document as it now is.
@@ -124,8 +125,11 @@ func (s *Service) SaveDocument(ctx context.Context, guildID, memberID uint64, re
 		if err != nil {
 			return domain.IssueDocument{}, false, err
 		}
-		d, err = s.docs.CreateDocument(ctx, d, r)
-		return d, true, err
+		if d, err = s.docs.CreateDocument(ctx, d, r); err != nil {
+			return domain.IssueDocument{}, false, err
+		}
+		s.publish(ctx, domain.DocumentSaved{Happened: s.happened(memberID), Issue: i, Document: d, First: true})
+		return d, true, nil
 	}
 	// The Base revision travels as an id; one that is not this document's
 	// is no Revision of it, so stale.
@@ -150,21 +154,30 @@ func (s *Service) SaveDocument(ctx context.Context, guildID, memberID uint64, re
 	if errors.Is(err, domain.ErrStaleRevision) {
 		return domain.IssueDocument{}, false, s.stale(ctx, d)
 	}
-	return saved, false, err
+	if err != nil {
+		return domain.IssueDocument{}, false, err
+	}
+	s.publish(ctx, domain.DocumentSaved{Happened: s.happened(memberID), Issue: i, Document: saved})
+	return saved, false, nil
 }
 
-// DeleteDocument deletes the Issue's document and its Revisions.
-func (s *Service) DeleteDocument(ctx context.Context, guildID uint64, ref, key string, visible Visible) error {
-	d, err := s.document(ctx, guildID, ref, key, visible)
+// DeleteDocument deletes the Issue's document and its Revisions, by the
+// Member.
+func (s *Service) DeleteDocument(ctx context.Context, guildID, memberID uint64, ref, key string, visible Visible) error {
+	i, d, err := s.document(ctx, guildID, ref, key, visible)
 	if err != nil {
 		return err
 	}
-	return s.docs.DeleteDocument(ctx, d.ID)
+	if err := s.docs.DeleteDocument(ctx, d.ID); err != nil {
+		return err
+	}
+	s.publish(ctx, domain.DocumentDeleted{Happened: s.happened(memberID), Issue: i, Document: d})
+	return nil
 }
 
 // Revisions lists a document's Revisions, newest first.
 func (s *Service) Revisions(ctx context.Context, guildID uint64, ref, key string, visible Visible) ([]domain.Revision, error) {
-	d, err := s.document(ctx, guildID, ref, key, visible)
+	_, d, err := s.document(ctx, guildID, ref, key, visible)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +186,7 @@ func (s *Service) Revisions(ctx context.Context, guildID uint64, ref, key string
 
 // RestoreRevision saves an older Revision of the document as its newest.
 func (s *Service) RestoreRevision(ctx context.Context, guildID, memberID uint64, ref, key string, revisionID uint64, visible Visible) (domain.IssueDocument, error) {
-	d, err := s.document(ctx, guildID, ref, key, visible)
+	i, d, err := s.document(ctx, guildID, ref, key, visible)
 	if err != nil {
 		return domain.IssueDocument{}, err
 	}
@@ -192,5 +205,9 @@ func (s *Service) RestoreRevision(ctx context.Context, guildID, memberID uint64,
 	if errors.Is(err, domain.ErrStaleRevision) {
 		return domain.IssueDocument{}, s.stale(ctx, d)
 	}
-	return saved, err
+	if err != nil {
+		return domain.IssueDocument{}, err
+	}
+	s.publish(ctx, domain.DocumentSaved{Happened: s.happened(memberID), Issue: i, Document: saved, RestoredFrom: old.Number})
+	return saved, nil
 }

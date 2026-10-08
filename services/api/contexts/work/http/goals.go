@@ -211,7 +211,7 @@ func (c *Controller) CreateGoal(ctx contractshttp.Context) contractshttp.Respons
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	g, err := c.service.CreateGoal(ctx.Context(), c.guild(ctx), req.input())
+	g, err := c.service.CreateGoal(ctx.Context(), c.guild(ctx), c.Member(ctx), req.input())
 	return c.oneGoal(ctx, contractshttp.StatusCreated, g, err)
 }
 
@@ -248,7 +248,7 @@ func (c *Controller) UpdateGoal(ctx contractshttp.Context) contractshttp.Respons
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	g, err := c.service.ChangeGoal(ctx.Context(), id, req.patch())
+	g, err := c.service.ChangeGoal(ctx.Context(), c.Member(ctx), id, req.patch())
 	return c.oneGoal(ctx, contractshttp.StatusOK, g, err)
 }
 
@@ -257,7 +257,7 @@ func (c *Controller) DeleteGoal(ctx contractshttp.Context) contractshttp.Respons
 	if !ok {
 		return notFound(ctx)
 	}
-	if err := c.service.DeleteGoal(ctx.Context(), id); err != nil {
+	if err := c.service.DeleteGoal(ctx.Context(), c.Member(ctx), id); err != nil {
 		return fail(ctx, err)
 	}
 	return ctx.Response().NoContent()

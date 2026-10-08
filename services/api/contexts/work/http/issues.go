@@ -357,7 +357,7 @@ func (c *Controller) UpdateIssue(ctx contractshttp.Context) contractshttp.Respon
 }
 
 func (c *Controller) DeleteIssue(ctx contractshttp.Context) contractshttp.Response {
-	if err := c.service.DeleteIssue(ctx.Context(), c.guild(ctx), ctx.Request().Route("id"), c.visible(ctx)); err != nil {
+	if err := c.service.DeleteIssue(ctx.Context(), c.guild(ctx), c.Member(ctx), ctx.Request().Route("id"), c.visible(ctx)); err != nil {
 		return fail(ctx, err)
 	}
 	return ctx.Response().NoContent()
