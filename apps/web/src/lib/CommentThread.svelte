@@ -10,11 +10,12 @@
   // timeline, queued Comments, mentions, image uploads, feedback votes and
   // reassigning from the composer.
   import { Pencil, Trash2 } from '@lucide/svelte'
+  import { untrack } from 'svelte'
   import * as AlertDialog from '@bakery/ui/components/ui/alert-dialog'
   import { Button, buttonVariants } from '@bakery/ui/components/ui/button'
   import { ApiError } from './api'
   import { ago, formatDate } from './format'
-  import Identity from './Identity.svelte'
+  import Actor from './Actor.svelte'
   import Markdown from '@bakery/ui/Markdown.svelte'
   import MarkdownField from './MarkdownField.svelte'
   import { session } from './session.svelte'
@@ -25,6 +26,7 @@
     issue,
     editable,
     onchange,
+    version = 0,
   }: {
     /** The Issue's id or identifier. */
     issue: number | string
@@ -32,6 +34,8 @@
     editable: boolean
     /** After a Comment was written, changed or deleted, so the Issue shows its new updated time. */
     onchange?: () => void
+    /** Bumped to read the Comments again, e.g. while an Agent's Run may write them. */
+    version?: number
   } = $props()
 
   let comments = $state.raw<Comment[] | null>(null)
@@ -48,7 +52,10 @@
       .then((cs) => (comments = cs))
       .catch((e) => toast.error(e instanceof Error ? e.message : String(e)))
   }
-  load()
+  $effect(() => {
+    void version
+    untrack(load)
+  })
 
   function failed(e: unknown) {
     toast.error(e instanceof ApiError ? (Object.values(e.errors)[0] ?? e.message) : String(e))
@@ -104,12 +111,12 @@
           class={['min-w-0 overflow-hidden rounded-sm border border-border p-3', c.deleted && 'bg-muted/30 text-muted-foreground']}
         >
           <div class="mb-1 flex items-center justify-between gap-2">
-            {#if c.author}<Identity name={c.author.id === me ? 'You' : c.author.name} size="sm" />{:else}<Identity name="Someone" size="sm" />{/if}
+            <Actor member={c.author} agent={c.author_agent} {me} />
             <span class="flex items-center gap-1.5">
               <a href="#comment-{c.id}" onclick={(e) => e.preventDefault()} class="text-xs text-muted-foreground no-underline transition-colors hover:text-foreground hover:underline" title={formatDate(c.created_at)}>
                 {ago(c.created_at)}{#if c.edited && !c.deleted}<span title="Edited {ago(c.updated_at)}"> · edited</span>{/if}
               </a>
-              {#if editable && !c.deleted && c.author?.id === me && editing !== c.id}
+              {#if editable && !c.deleted && !c.author_agent && c.author?.id === me && editing !== c.id}
                 <Button
                   variant="ghost"
                   size="icon-xs"

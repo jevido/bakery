@@ -18,6 +18,9 @@ export type WorkMember = { id: number; name: string }
 /** An Agent as the author or Actor of something in work. */
 export type WorkAgent = { id: number; name: string; icon: string }
 
+/** A Run's hold on an Issue while its Agent works on it. */
+export type IssueCheckout = { run_id: number; agent: WorkAgent | null; checked_out_at: string }
+
 export type Goal = {
   id: number
   title: string
@@ -94,6 +97,8 @@ export type Issue = {
   parent: IssueRef | null
   created_by: WorkMember | null
   created_by_agent?: WorkAgent | null
+  /** The live Run holding the Issue's Checkout and its Agent; null when none does. */
+  checkout?: IssueCheckout | null
   started_at: string | null
   completed_at: string | null
   cancelled_at: string | null

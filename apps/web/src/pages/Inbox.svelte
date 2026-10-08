@@ -280,7 +280,7 @@
               <span class="block truncate font-medium">{approvalLabel(a.type, a.payload)}</span>
               <span class="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                 <span class="capitalize">{a.status.replaceAll('_', ' ')}</span>
-                {#if a.requester}<span>requested by {a.requester.name}</span>{/if}
+                {#if a.requester_agent || a.requester}<span>requested by {a.requester_agent?.name ?? a.requester?.name}</span>{/if}
                 <span>updated {ago(a.updated_at)}</span>
               </span>
             </span>

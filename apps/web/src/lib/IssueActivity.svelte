@@ -5,7 +5,7 @@
   // words (issueActivitySentence) and how long ago. Nothing here is
   // editable. Issues from before Activity was recorded have none.
   import { ago } from './format'
-  import Identity from './Identity.svelte'
+  import Actor from './Actor.svelte'
   import { href } from './router.svelte'
   import { issueActivitySentence, listIssueActivity, type ActivityEvent } from './work'
 
@@ -46,7 +46,7 @@
   {:else}
     {#each events as event (event.id)}
       <div class="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs" data-activity={event.action}>
-        <Identity name={event.actor?.name ?? 'Board'} size="xs" class="shrink-0 font-medium" />
+        <Actor member={event.actor} agent={event.actor_agent} fallback="Board" size="xs" class="shrink-0 font-medium" />
         <span class="min-w-0 truncate">
           {#each issueActivitySentence(event) as part, n (n)}
             {#if typeof part === 'string'}{part}{:else if 'issue' in part}<a href={href(`/issues/${part.issue}`)} class="font-mono">{part.issue}</a

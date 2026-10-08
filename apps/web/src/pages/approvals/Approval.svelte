@@ -34,7 +34,7 @@
   } from '../../lib/approvals'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import { ago, formatDate } from '../../lib/format'
-  import Identity from '../../lib/Identity.svelte'
+  import Actor from '../../lib/Actor.svelte'
   import Markdown from '@bakery/ui/Markdown.svelte'
   import MarkdownField from '../../lib/MarkdownField.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
@@ -166,10 +166,10 @@
         <StatusBadge status={approval.status}>{approval.status.replace(/_/g, ' ')}</StatusBadge>
       </div>
       <div class="space-y-1 text-sm">
-        {#if approval.requester}
+        {#if approval.requester || approval.requester_agent}
           <div class="flex items-center gap-2">
             <span class="text-xs text-muted-foreground">Requested by</span>
-            <Identity name={approval.requester.name} size="sm" />
+            <Actor member={approval.requester} agent={approval.requester_agent} />
           </div>
         {/if}
         <ApprovalPayload type={approval.type} payload={approval.payload} />
@@ -226,7 +226,7 @@
         {#each comments as c (c.id)}
           <div class="rounded-md border border-border/60 p-3" data-comment={c.id}>
             <div class="mb-1 flex items-center justify-between gap-2">
-              <Identity name={c.author ? (c.author.id === session.member?.id ? 'You' : c.author.name) : 'Someone'} size="sm" />
+              <Actor member={c.author} agent={c.author_agent} me={session.member?.id} />
               <span class="text-xs text-muted-foreground" title={formatDate(c.created_at)}>{ago(c.created_at)}</span>
             </div>
             <Markdown source={c.body} class="text-sm" />

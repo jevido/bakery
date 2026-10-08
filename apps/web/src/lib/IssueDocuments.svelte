@@ -18,7 +18,7 @@
   import { ApiError } from './api'
   import DocumentDiff from './DocumentDiff.svelte'
   import { ago, formatDate } from './format'
-  import Identity from './Identity.svelte'
+  import Actor from './Actor.svelte'
   import Markdown from '@bakery/ui/Markdown.svelte'
   import MarkdownField from './MarkdownField.svelte'
   import { toast } from './ui/toast.svelte'
@@ -266,7 +266,7 @@
                           {#if current}<Badge variant="outline" class="border-border px-1.5 text-[10px] tracking-widest text-muted-foreground uppercase">Current</Badge>{/if}
                         </div>
                         <div class="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-                          <span class="truncate" title={formatDate(r.created_at)}>{ago(r.created_at)} • {r.created_by?.name ?? 'Someone'}</span>
+                          <span class="truncate" title={formatDate(r.created_at)}>{ago(r.created_at)} • {r.created_by_agent?.name ?? r.created_by?.name ?? 'Someone'}</span>
                         </div>
                         {#if r.change_summary}<span class="mt-0.5 truncate text-[11px] text-muted-foreground">{r.change_summary}</span>{/if}
                       </div>
@@ -279,8 +279,8 @@
               updated {ago(shown.created_at)}
             </a>
           </div>
-          {#if doc.updated_by && !preview}
-            <div class="mt-1 text-[11px] text-muted-foreground"><Identity name={doc.updated_by.name} size="xs" /></div>
+          {#if (doc.updated_by || doc.updated_by_agent) && !preview}
+            <div class="mt-1 text-[11px] text-muted-foreground"><Actor member={doc.updated_by} agent={doc.updated_by_agent} size="xs" /></div>
           {/if}
         </div>
         <div class="flex shrink-0 items-center gap-1">

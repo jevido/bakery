@@ -4,12 +4,14 @@
   // MIT, see NOTICE): every change to the Guild's Goals, Issues and Approvals, newest
   // first, fifty at a time under "Load more". The entity and Actor selects
   // live in the hash query (#/activity?entity=issue&actor=3), so a reload
-  // keeps them. Left out: the Agent Actions mode, the action and date
-  // filters and the CSV export, which wait for agents.
+  // keeps them; an Agent as Actor is agent:<id> there. Left out: the Agent
+  // Actions mode, the action and date filters and the CSV export.
   import { untrack } from 'svelte'
   import * as Avatar from '@bakery/ui/components/ui/avatar'
   import { Button as UiButton } from '@bakery/ui/components/ui/button'
   import * as Select from '@bakery/ui/components/ui/select'
+  import AgentIcon from '@bakery/ui/AgentIcon.svelte'
+  import { listAgents, type Agent } from '../lib/agents'
   import { api } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { ago } from '../lib/format'
@@ -36,7 +38,7 @@
     const query = new URLSearchParams(location.hash.split('?')[1] ?? '')
     const e = query.get('entity')
     const a = query.get('actor') ?? ''
-    return { entity: e === 'issue' || e === 'goal' || e === 'approval' || e === 'agent' ? e : 'all', actor: /^\d+$/.test(a) ? a : 'everyone' }
+    return { entity: e === 'issue' || e === 'goal' || e === 'approval' || e === 'agent' ? e : 'all', actor: /^(agent:)?\d+$/.test(a) ? a : 'everyone' }
   }
   const initial = fromHash()
   let entity = $state(initial.entity)
@@ -65,6 +67,8 @@
   let loadError = $state('')
   let members = $state.raw<Member[]>([])
   api<{ members: Member[] }>('GET', '/members').then((r) => (members = r.members)).catch(() => {})
+  let agents = $state.raw<Agent[]>([])
+  listAgents().then((r) => (agents = r)).catch(() => {})
 
   // Each change of the filters asks again from the newest; a late answer
   // for filters already left behind is dropped.
@@ -73,7 +77,7 @@
     const ask = ++asked
     return listActivity({
       entity: entity === 'all' ? undefined : (entity as ActivityEntity),
-      actor: actor === 'everyone' ? undefined : Number(actor),
+      actor: actor === 'everyone' ? undefined : actor.startsWith('agent:') ? (actor as `agent:${number}`) : Number(actor),
       before,
       limit: pageSize,
     })
@@ -98,7 +102,13 @@
   }
 
   const filtered = $derived(entity !== 'all' || actor !== 'everyone')
-  const actorLabel = $derived(actor === 'everyone' ? 'Everyone' : (members.find((m) => String(m.id) === actor)?.name ?? 'Member'))
+  const actorLabel = $derived(
+    actor === 'everyone'
+      ? 'Everyone'
+      : actor.startsWith('agent:')
+        ? (agents.find((a) => `agent:${a.id}` === actor)?.name ?? 'Agent')
+        : (members.find((m) => String(m.id) === actor)?.name ?? 'Member'),
+  )
   const paths: Record<ActivityEntity, (e: ActivityEvent) => string> = {
     issue: (e) => `/issues/${e.entity.identifier}`,
     goal: (e) => `/goals/${e.entity.id}`,
@@ -134,6 +144,9 @@
           {#each members as m (m.id)}
             <Select.Item value={String(m.id)} label={m.name} />
           {/each}
+          {#each agents as a (a.id)}
+            <Select.Item value="agent:{a.id}" label={a.name}><AgentIcon icon={a.icon} class="size-3.5" />{a.name}</Select.Item>
+          {/each}
         </Select.Content>
       </Select.Root>
     </label>
@@ -152,7 +165,7 @@
   {:else if events}
     <ul class="overflow-hidden rounded-lg border border-border" aria-label="Activity">
       {#each events as event (event.id)}
-        {@const name = event.actor?.name ?? 'Board'}
+        {@const name = event.actor_agent?.name ?? event.actor?.name ?? 'Board'}
         {@const verb = activityVerb(event.action)}
         {@const to = link(event)}
         <li class="border-b border-border last:border-b-0" data-activity={event.action}>
@@ -161,9 +174,15 @@
             href={to}
             class={['dashboard-list-row flex items-center gap-2 text-sm text-inherit no-underline', to && 'cursor-pointer transition-colors hover:bg-accent/50']}
           >
-            <Avatar.Root size="sm" aria-hidden="true">
-              <Avatar.Fallback>{initials(name)}</Avatar.Fallback>
-            </Avatar.Root>
+            {#if event.actor_agent}
+              <span class="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-muted" aria-hidden="true" data-actor-agent={event.actor_agent.id}>
+                <AgentIcon icon={event.actor_agent.icon} class="size-3.5" />
+              </span>
+            {:else}
+              <Avatar.Root size="sm" aria-hidden="true">
+                <Avatar.Fallback>{initials(name)}</Avatar.Fallback>
+              </Avatar.Root>
+            {/if}
             <p class="flex h-6 min-w-0 flex-1 items-center gap-1.5">
               <span class="max-w-1/2 shrink-0 truncate" title="{name} {verb}"><span>{name}</span> <span class="text-muted-foreground">{verb}</span></span>
               <span class="min-w-0 flex-1 truncate" title={event.entity.title}>{event.entity.title}</span>

@@ -106,11 +106,21 @@
 //           and its page without Approve, Reject or Request revision,
 //           comments on it, and does not see its Linked issue in a scratch
 //           Project whose Member Role is denied View resources
+//   agent-actor  an Agent acting through its Run key without a Runner: a
+//           scratch Agent's Run is claimed with a Desktop key minted as the
+//           Desktop app does, and the Run key checks the Issue out, writes a
+//           Comment and saves a plan document; the Issue page shows "Checked
+//           out by" the Agent, the Comment under the Agent's icon and name
+//           (linking to its page, no Edit or Delete), the revision by it,
+//           and the Activity tab and the Guild's Activity (filtered to
+//           agent:<id>) name it; after the Run finishes, the Checkout row
+//           is gone
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
 // The same environment as e2e/walk.ts overrides what it uses.
 import { spawn, type ChildProcess } from 'node:child_process'
+import { createHash, randomBytes } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -1266,6 +1276,87 @@ const sections: Record<string, () => Promise<void>> = {
     } finally {
       await desktop.stop()
       for (const i of made) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+      await page.request.post(`${WEB}/api/agents/${hire.agent.id}/terminate`)
+      await page.close()
+    }
+  },
+
+  'agent-actor': async () => {
+    const page = await signedIn()
+    const name = 'Actor e2e agent'
+    const title = 'Actor e2e: check out and comment'
+    for (const i of (await issues(page)).filter((i) => i.title === title)) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    const { agents } = (await (await page.request.get(`${WEB}/api/agents`)).json()) as { agents: { id: number; name: string }[] }
+    for (const a of agents.filter((a) => a.name === name)) await page.request.post(`${WEB}/api/agents/${a.id}/terminate`)
+    // The seeded Member Role, so its Run key may manage work.
+    const { roles } = (await (await page.request.get(`${WEB}/api/roles`)).json()) as { roles: { id: number; name: string }[] }
+    const member = roles.find((r) => r.name === 'Member')!
+    const hire = (await (await page.request.post(`${WEB}/api/agents`, { data: { name, job: 'engineer', icon: 'bot', role_ids: [member.id] } })).json()) as { agent: { id: number; approval_id: number } }
+    await page.request.post(`${WEB}/api/approvals/${hire.agent.approval_id}/approve`, { data: {} })
+    // In backlog, so the assignment wakes nobody and only the Run below exists.
+    const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title, status: 'backlog', assignee_agent_id: hire.agent.id } })).json()) as { issue: Issue }
+
+    // A Desktop key minted and approved as the Desktop app's sign-in does,
+    // then the Run claimed with it: its answer carries the Run key.
+    const token = 'bky_signin_' + randomBytes(24).toString('hex')
+    const desktopKey = 'bky_desk_' + randomBytes(24).toString('hex')
+    const signIn = (await (
+      await page.request.post(`${WEB}/api/desktop-sign-ins`, { data: { client_name: 'actor-e2e', token, desktop_key_hash: createHash('sha256').update(desktopKey).digest('hex') } })
+    ).json()) as { id: number }
+    const approved = (await (await page.request.post(`${WEB}/api/desktop-sign-ins/${signIn.id}/approve`, { data: { token } })).json()) as { desktop_id: number }
+    const desktop = { Authorization: `Bearer ${desktopKey}` }
+    try {
+      const { run } = (await (await page.request.post(`${WEB}/api/agents/${hire.agent.id}/runs`, { data: { issue_id: issue.id } })).json()) as { run: { id: number } }
+      const claimed = await page.request.post(`${WEB}/api/runs/${run.id}/claim`, { headers: desktop, data: {} })
+      const runKey = ((await claimed.json()) as { run: { run_key?: string } }).run.run_key ?? ''
+      expect('the claim answers a Run key', claimed.ok() && runKey.startsWith('bky_run_'), claimed.status())
+      const agent = { Authorization: `Bearer ${runKey}` }
+      const checkout = await page.request.post(`${WEB}/api/issues/${issue.id}/checkout`, { headers: agent, data: {} })
+      expect('the Run key checks the Issue out', checkout.ok(), `${checkout.status()} ${await checkout.text()}`)
+      const comment = await page.request.post(`${WEB}/api/issues/${issue.id}/comments`, { headers: agent, data: { body: 'Picked this up from the e2e.' } })
+      expect('and writes a Comment', comment.ok(), comment.status())
+      const doc = await page.request.put(`${WEB}/api/issues/${issue.id}/documents/plan`, { headers: agent, data: { title: 'Plan', body: '1. Check out\n2. Comment' } })
+      expect('and saves a plan document', doc.ok(), `${doc.status()} ${await doc.text()}`)
+
+      await page.goto(`${WEB}/#/issues/${issue.identifier}`)
+      const row = page.locator('[data-property-row="Checkout"]')
+      await row.waitFor()
+      const rowText = await row.innerText()
+      expect('the properties show "Checked out by" the Agent and its Run', rowText.includes('Checked out by') && rowText.includes(name) && rowText.includes(`Run #${run.id}`), rowText)
+      const card = page.getByRole('region', { name: 'Comments' }).locator('[data-comment]', { hasText: 'Picked this up from the e2e.' })
+      await card.waitFor()
+      const author = card.locator(`a[data-actor-agent="${hire.agent.id}"]`)
+      expect("the Comment shows the Agent's name", (await author.innerText()).includes(name), await card.innerText())
+      expect("and links to the Agent's page", ((await author.getAttribute('href')) ?? '').endsWith(`/agents/${hire.agent.id}`))
+      expect('and has no Edit or Delete for people', (await card.getByRole('button', { name: /Edit comment|Delete comment/ }).count()) === 0)
+      await page.getByRole('button', { name: 'Revision history of plan' }).click()
+      const revision = page.locator('[data-revision="1"]')
+      await revision.waitFor()
+      expect('the revision menu names the Agent', (await revision.innerText()).includes(`• ${name}`), await revision.innerText())
+      await page.keyboard.press('Escape')
+
+      await page.goto(`${WEB}/#/issues/${issue.identifier}?tab=activity`)
+      const commented = page.locator('[data-activity="issue.comment_added"]').first()
+      await commented.waitFor()
+      expect("the Issue's Activity names the Agent", (await commented.locator(`[data-actor-agent="${hire.agent.id}"]`).count()) === 1, await commented.innerText())
+      const checkedOut = page.locator('[data-activity="issue.checked_out"]').first()
+      expect('with "checked out"', (await checkedOut.innerText()).includes('checked out'), await checkedOut.innerText())
+
+      await page.goto(`${WEB}/#/activity?actor=agent:${hire.agent.id}`)
+      await page.getByRole('list', { name: 'Activity' }).waitFor()
+      const feed = page.getByRole('list', { name: 'Activity' }).locator('li')
+      const lines = await feed.allInnerTexts()
+      expect("the Guild's Activity filtered to the Agent lists only it", lines.length >= 3 && lines.every((l) => l.includes(name)), lines)
+      expect('and the Actor select names it', (await page.locator('[aria-label="Actor"]').innerText()).includes(name))
+
+      const finished = await page.request.post(`${WEB}/api/runs/${run.id}/finish`, { headers: desktop, data: { status: 'succeeded', exit_code: 0, usage: {} } })
+      expect('the Desktop finishes the Run', finished.ok(), `${finished.status()} ${await finished.text()}`)
+      await page.goto(`${WEB}/#/issues/${issue.identifier}`)
+      await page.getByRole('region', { name: 'Comments' }).locator('[data-comment]').first().waitFor()
+      expect('the Checkout row is gone once the Run is final', (await page.locator('[data-property-row="Checkout"]').count()) === 0)
+    } finally {
+      await page.request.delete(`${WEB}/api/desktops/${approved.desktop_id}`)
+      await page.request.delete(`${WEB}/api/issues/${issue.id}`)
       await page.request.post(`${WEB}/api/agents/${hire.agent.id}/terminate`)
       await page.close()
     }

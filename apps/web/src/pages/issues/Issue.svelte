@@ -32,7 +32,7 @@
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import CommentThread from '../../lib/CommentThread.svelte'
   import { ago } from '../../lib/format'
-  import Identity from '../../lib/Identity.svelte'
+  import Actor from '../../lib/Actor.svelte'
   import IssueActivity from '../../lib/IssueActivity.svelte'
   import InlineEditor from '../../lib/InlineEditor.svelte'
   import IssueDocuments from '../../lib/IssueDocuments.svelte'
@@ -145,14 +145,32 @@
   $effect(() => {
     if (issueId) loadRuns(issueId)
   })
-  // While a Run waits or runs, the list is read again every 5 seconds, so a
-  // Desktop's claim and the end show without a reload.
+  // While a Run waits or runs, the list, the Issue and its Comments are read
+  // again every 5 seconds, so a Desktop's claim, what the Agent does through
+  // The Bakery's API (its Checkout, status and Comments) and the end show
+  // without a reload; the end reads them once more.
+  let commentsVersion = $state(0)
+  function follow(id: number) {
+    loadRuns(id)
+    getIssue(id)
+      .then((i) => (issue = i))
+      .catch(() => {})
+    commentsVersion++
+    activityVersion++
+  }
   $effect(() => {
     if (!running || !issueId) return
     const id = issueId
-    const t = setInterval(() => loadRuns(id), 5000)
-    return () => clearInterval(t)
+    const t = setInterval(() => follow(id), 5000)
+    return () => {
+      clearInterval(t)
+      follow(id)
+    }
   })
+  /** Scrolls to the Run among the Issue's Runs. */
+  function showRun(id: number) {
+    document.querySelector(`[data-run="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
   /** A Run as its live stream last reported it. */
   const updated = (r: Run) => (runs = runs.map((x) => (x.id === r.id ? r : x)))
 
@@ -285,9 +303,9 @@
           {:else}
             <span class="-mx-1 inline-flex items-center gap-1 px-1 py-0.5 text-xs text-muted-foreground opacity-50">No project</span>
           {/if}
-          {#if i.created_by}
+          {#if i.created_by || i.created_by_agent}
             <span class="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Identity name={i.created_by.name} size="xs" /> opened {ago(i.created_at)}
+              <Actor member={i.created_by} agent={i.created_by_agent} size="xs" /> opened {ago(i.created_at)}
             </span>
           {/if}
           <div class="ml-auto flex shrink-0 items-center gap-1">
@@ -379,7 +397,7 @@
           <Tabs.Trigger value="activity" class="flex-none gap-1.5"><Activity class="size-3.5" />Activity</Tabs.Trigger>
         </Tabs.List>
         <Tabs.Content value="comments" class="pt-3">
-          <CommentThread issue={i.id} {editable} onchange={refresh} />
+          <CommentThread issue={i.id} {editable} onchange={refresh} version={commentsVersion} />
         </Tabs.Content>
         <Tabs.Content value="activity" class="pt-3">
           {#if tab === 'activity'}<IssueActivity issue={i.id} version={activityVersion} />{/if}
@@ -399,7 +417,7 @@
         <h3 class="text-sm font-medium">Properties</h3>
         {#if saving > 0}<span class="text-xs text-muted-foreground" role="status">Saving...</span>{/if}
       </div>
-      <IssueProperties issue={i} {members} {agents} {projects} {goals} {issues} {editable} onsave={save} />
+      <IssueProperties issue={i} {members} {agents} {projects} {goals} {issues} {editable} onsave={save} onrun={showRun} />
     </aside>
   </div>
 

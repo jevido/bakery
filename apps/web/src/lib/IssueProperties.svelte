@@ -3,7 +3,9 @@
   // (ui/src/components/issue-properties/IssueProperties.tsx and
   // primitives.tsx; MIT, see NOTICE): the Issue's status, priority,
   // Assignee, Project, Goal and parent, each a picker, then who created it
-  // and when it started, completed, was cancelled and last changed. Every
+  // and when it started, completed, was cancelled and last changed. While a
+  // Run holds the Issue's Checkout, a row under Assignee names its Agent and
+  // jumps to that Run through `onrun`. Every
   // pick is one PATCH, sent through `onsave`. Without `editable` the values
   // are only shown, a Project, Goal or parent as a link. "Blocked by" and
   // "Blocking" follow Parent, each Issue as a pill linking to it. Left out
@@ -15,7 +17,7 @@
   import { Separator } from '@bakery/ui/components/ui/separator'
   import { formatDate } from './format'
   import Assignee from './Assignee.svelte'
-  import Identity from './Identity.svelte'
+  import Actor from './Actor.svelte'
   import type { Agent } from './agents'
   import OptionPopover from './OptionPopover.svelte'
   import PriorityIcon from './PriorityIcon.svelte'
@@ -33,6 +35,7 @@
     issues,
     editable,
     onsave,
+    onrun,
   }: {
     issue: IssueDetail
     members: Member[]
@@ -44,6 +47,8 @@
     issues: Issue[]
     editable: boolean
     onsave: (patch: IssueInput) => unknown
+    /** Shows the Run holding the Checkout among the Issue's Runs. */
+    onrun?: (id: number) => void
   } = $props()
 
   // An Issue cannot move under itself or one of its own Sub-issues.
@@ -132,6 +137,19 @@
       {/if}
     {/snippet}
     {@render row('Assignee', assignee)}
+    {#if issue.checkout}
+      {@const checkout = issue.checkout}
+      {#snippet checkedOut()}
+        <span class="inline-flex min-w-0 items-center gap-1.5 text-xs" title="Checked out {formatDate(checkout.checked_out_at)}">
+          <span class="shrink-0 text-muted-foreground">Checked out by</span>
+          {#if checkout.agent}<Actor member={null} agent={checkout.agent} />{/if}
+          <button type="button" class="shrink-0 font-mono text-muted-foreground hover:text-foreground hover:underline" data-checkout-run={checkout.run_id} onclick={() => onrun?.(checkout.run_id)}>
+            Run #{checkout.run_id}
+          </button>
+        </span>
+      {/snippet}
+      {@render row('Checkout', checkedOut)}
+    {/if}
     {#snippet project()}
       {#if editable}
         <OptionPopover align="end" label="Project" value={issue.project?.id ?? null} options={projectOptions} onpick={(project_id) => onsave({ project_id })}>
@@ -195,7 +213,7 @@
   <Separator />
   <div class="space-y-1">
     {#snippet createdBy()}
-      {#if issue.created_by}<Identity name={issue.created_by.name} size="sm" />{:else}{@render muted('Unknown')}{/if}
+      {#if issue.created_by || issue.created_by_agent}<Actor member={issue.created_by} agent={issue.created_by_agent} />{:else}{@render muted('Unknown')}{/if}
     {/snippet}
     {@render row('Created by', createdBy)}
     {#if issue.started_at}

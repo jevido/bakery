@@ -26,7 +26,7 @@
   import { approvalSubject, approvalTypeIcon, approvalTypeLabel, isActionable, type Approval } from './approvals'
   import ApprovalPayload from './ApprovalPayload.svelte'
   import { ago } from './format'
-  import Identity from './Identity.svelte'
+  import Actor from './Actor.svelte'
 
   let {
     approval,
@@ -63,10 +63,10 @@
           <Badge variant="outline" class="border-border/70 bg-background/70 px-2 py-0.5 text-(length:--text-micro) font-medium tracking-(--tracking-label) text-muted-foreground uppercase">
             {kind}
           </Badge>
-          {#if approval.requester}
+          {#if approval.requester || approval.requester_agent}
             <span class="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
               <span>Requested by</span>
-              <Identity name={approval.requester.name} size="sm" />
+              <Actor member={approval.requester} agent={approval.requester_agent} />
             </span>
           {/if}
         </div>
