@@ -24,3 +24,26 @@ export const runStatusTones: Record<RunStatus, StatusType> = {
   cancelled: 'neutral',
   lost: 'warning',
 }
+
+/** What started a Run, as the agents document names them. */
+export type InvocationSource = 'timer' | 'assignment' | 'on_demand' | 'automation'
+
+/** Why a Run was woken, as the agents document names them. */
+export type WakeReason = 'manual' | 'heartbeat_invoked' | 'issue_assigned' | 'issue_commented' | 'heartbeat_timer'
+
+/** Paperclip's labels for the Invocation sources (AgentDetail's sourceLabels). */
+export const invocationSourceLabels: Record<InvocationSource, string> = {
+  timer: 'Timer',
+  assignment: 'Assignment',
+  on_demand: 'On-demand',
+  automation: 'Automation',
+}
+
+/** How a Wake reason reads beside the source. */
+export const wakeReasonLabels: Record<WakeReason, string> = {
+  manual: 'Run',
+  heartbeat_invoked: 'Run heartbeat',
+  issue_assigned: 'Assigned',
+  issue_commented: 'New comment',
+  heartbeat_timer: 'Interval',
+}

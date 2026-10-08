@@ -159,8 +159,9 @@
   async function run() {
     starting = true
     try {
+      // A Run already queued on the Issue is joined, not listed twice.
       const r = await startRun(agent!.id, issue!.id)
-      runs = [r, ...runs]
+      runs = [r, ...runs.filter((x) => x.id !== r.id)]
       activityVersion++
     } catch (e) {
       toast.error(e instanceof ApiError ? (Object.values(e.errors)[0] ?? e.message) : String(e))
@@ -202,6 +203,8 @@
     try {
       issue = await updateIssue(issue!.id, patch)
       activityVersion++
+      // Assigning the Issue to an Agent wakes it with a Run.
+      loadRuns(issue.id)
       if (patch.parent_id !== undefined || patch.blocked_by_ids !== undefined) listIssues().then((is) => (issues = is)).catch(() => {})
     } catch (e) {
       toast.error(e instanceof ApiError ? (Object.values(e.errors)[0] ?? e.message) : String(e))
@@ -236,6 +239,8 @@
 
   function refresh() {
     activityVersion++
+    // A comment wakes the Agent assignee or joins its queued Run.
+    loadRuns(issue!.id)
     getIssue(issue!.id)
       .then((i) => (issue = i))
       .catch(() => {})

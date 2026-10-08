@@ -2,11 +2,13 @@
   // Paperclip's IssueRunLedger (ui/src/components/IssueRunLedger.tsx; MIT,
   // see NOTICE) trimmed to what a Run here has: each Run's status, Agent
   // (or Issue, on an Agent's page), start, run time and tokens, newest
-  // first, each unfolding to its Transcript. Its liveness, child-work and
-  // stop-reason summaries are left out: they come from Heartbeats.
+  // first, each with what started it (AgentDetail's source badge) and
+  // unfolding to its Transcript. Its liveness, child-work and stop-reason
+  // summaries are left out: The Bakery's Runs do not report them.
   import { ChevronDown, ChevronRight } from '@lucide/svelte'
   import { SvelteSet } from 'svelte/reactivity'
   import AgentIcon from '@bakery/ui/AgentIcon.svelte'
+  import RunSource from '@bakery/ui/RunSource.svelte'
   import RunStatus from '@bakery/ui/RunStatus.svelte'
   import { compactCount, runDuration } from '@bakery/ui/runTranscript'
   import { ago } from './format'
@@ -38,6 +40,7 @@
             <span class="font-medium text-foreground">Run #{r.id}</span>
           </button>
           <RunStatus status={r.status} />
+          <RunSource source={r.invocation_source} reason={r.wake_reason} count={r.wake_count} />
           {#if show === 'agent'}
             <span class="inline-flex items-center gap-1 text-foreground"><AgentIcon icon={r.agent.icon} class="size-3.5" />{r.agent.name}</span>
           {:else if r.issue}

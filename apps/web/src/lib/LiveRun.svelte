@@ -6,6 +6,7 @@
   // its stream is followed already, so the claim shows as it happens.
   import { LoaderCircle, Square } from '@lucide/svelte'
   import AgentIcon from '@bakery/ui/AgentIcon.svelte'
+  import RunSource from '@bakery/ui/RunSource.svelte'
   import RunStatus from '@bakery/ui/RunStatus.svelte'
   import { ago } from './format'
   import { href } from './router.svelte'
@@ -34,6 +35,7 @@
         <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span class="inline-flex items-center rounded-full border border-border/70 bg-background/70 px-2 py-1 font-mono">Run #{run.id}</span>
           <RunStatus status={run.status} />
+          <RunSource source={run.invocation_source} reason={run.wake_reason} count={run.wake_count} />
           <span>{run.started_at ? `started ${ago(run.started_at)}` : `queued ${ago(run.created_at)}`}</span>
           {#if run.desktop}<span>on {run.desktop.name}</span>{/if}
         </div>

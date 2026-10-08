@@ -29,6 +29,11 @@
 //           Admin) hires their own Agent, with Admin not offered; giving it
 //           Admin answers 422 and pausing the owner's Agent 403; removing
 //           them from the Guild terminates their Agent.
+//   heartbeat  a scratch Agent's page shows the Run Policy card; Heartbeat
+//           on interval switched on at 120 seconds survives a reload; 30
+//           shows the server's range error; Run heartbeat adds an
+//           "On-demand" Run to the Runs card; with Wake on demand off, Run
+//           heartbeat is disabled.
 //
 //   bun e2e/agents.ts [section ...]   (task web:agents; needs task dev)
 //
@@ -405,6 +410,45 @@ const sections: Record<string, () => Promise<void>> = {
     expect('removing them from the Guild terminates their Agent', left.status === 'terminated', left.status)
     await terminate(page, [mine])
     await page.request.delete(`${WEB}/api/roles/${scratch}`)
+    await page.context().close()
+  },
+
+  async heartbeat() {
+    const page = await signedIn()
+    const name = `Beat ${run}`
+    const agent = await hired(page, { name, job: 'engineer' })
+    await page.goto(`${WEB}/#/agents/${agent.id}`)
+    const policy = page.getByTestId('run-policy')
+    await policy.waitFor()
+    expect('the Run Policy card shows', await policy.getByText('Heartbeat on interval').isVisible())
+
+    await policy.getByRole('switch', { name: 'Heartbeat on interval' }).click()
+    const every = policy.getByRole('spinbutton', { name: 'Run heartbeat every' })
+    await every.waitFor()
+    await every.fill('120')
+    await every.press('Enter')
+    await page.waitForResponse((r) => r.url().includes(`/api/agents/${agent.id}`) && r.request().method() === 'PATCH')
+    await page.reload()
+    await every.waitFor()
+    expect('Heartbeat on interval at 120 survives a reload', (await every.inputValue()) === '120', await every.inputValue())
+
+    await every.fill('30')
+    await every.press('Enter')
+    const tooShort = policy.getByTestId('interval-error')
+    await tooShort.waitFor()
+    expect('30 seconds shows the range error', /60 to 86400/.test(await tooShort.innerText()), await tooShort.innerText())
+
+    const beat = page.getByRole('button', { name: 'Run heartbeat', exact: true })
+    await beat.click()
+    const onDemand = page.getByTestId('run-ledger').locator('[data-run-source="on_demand"]')
+    await onDemand.first().waitFor()
+    expect('Run heartbeat adds an On-demand Run', (await onDemand.first().innerText()).includes('On-demand'), await onDemand.first().innerText())
+
+    await policy.getByRole('switch', { name: 'Wake on demand' }).click()
+    await page.waitForResponse((r) => r.url().includes(`/api/agents/${agent.id}`) && r.request().method() === 'PATCH')
+    expect('with Wake on demand off Run heartbeat is disabled', await beat.isDisabled())
+
+    await terminate(page, [name])
     await page.context().close()
   },
 }

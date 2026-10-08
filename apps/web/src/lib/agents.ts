@@ -98,7 +98,9 @@ export const getOrg = () =>
   api<{ org: OrgNode[] }>("GET", "/org").then((r) => r.org);
 
 /** Any of an Agent's editable fields; reports_to null reports to no one. */
-export type AgentPatch = Partial<Omit<Hire, "role_ids">>;
+export type AgentPatch = Partial<Omit<Hire, "role_ids">> & {
+  heartbeat?: Partial<Omit<HeartbeatPolicy, "last_heartbeat_at">>;
+};
 
 const agentOf = (r: { agent: Agent }) => r.agent;
 export const editAgent = (id: number, patch: AgentPatch) =>

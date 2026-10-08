@@ -35,6 +35,10 @@
 //           live on the page, the Run ends Succeeded in Runs with its result
 //           footer and tokens, and the Agent page lists it; a [slow] Issue's
 //           Run is cancelled from the page and ends Cancelled
+//   wakes   a scratch Issue in todo assigned to a scratch Agent lists a
+//           queued "Assignment" Run without Run being pressed; a comment
+//           joins it ("×2", still one Run); after it is cancelled, another
+//           comment queues an "Automation" Run
 //   hidden  a Member, invited for the run, sees an Issue in a scratch
 //           Project until the Project's permissions page denies the Member
 //           Role View resources there: then it is gone from the list, by its
@@ -1262,6 +1266,49 @@ const sections: Record<string, () => Promise<void>> = {
     } finally {
       await desktop.stop()
       for (const i of made) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+      await page.request.post(`${WEB}/api/agents/${hire.agent.id}/terminate`)
+      await page.close()
+    }
+  },
+
+  wakes: async () => {
+    const page = await signedIn()
+    const name = 'Wakes e2e agent'
+    const title = 'Wakes e2e: wake on assignment'
+    for (const i of (await issues(page)).filter((i) => i.title === title)) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    const { agents } = (await (await page.request.get(`${WEB}/api/agents`)).json()) as { agents: { id: number; name: string }[] }
+    for (const a of agents.filter((a) => a.name === name)) await page.request.post(`${WEB}/api/agents/${a.id}/terminate`)
+
+    const hire = (await (await page.request.post(`${WEB}/api/agents`, { data: { name, job: 'engineer', icon: 'bot' } })).json()) as { agent: { id: number; approval_id: number } }
+    await page.request.post(`${WEB}/api/approvals/${hire.agent.approval_id}/approve`, { data: {} })
+    const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title, status: 'todo' } })).json()) as { issue: Issue }
+    try {
+      const assign = await page.request.patch(`${WEB}/api/issues/${issue.id}`, { data: { assignee_agent_id: hire.agent.id } })
+      expect('assigning the Issue to the Agent answers 200', assign.ok(), assign.status())
+
+      await page.goto(`${WEB}/#/issues/${issue.identifier}`)
+      const ledger = page.getByTestId('run-ledger')
+      const rows = ledger.locator('[data-run]')
+      await rows.first().waitFor()
+      const first = rows.first()
+      expect('a queued Assignment Run is listed without pressing Run', (await rows.count()) === 1 && (await first.locator('[data-run-source="assignment"]').innerText()).includes('Assignment'), await ledger.innerText())
+      expect('it is queued', await first.locator('[data-run-status="queued"]').isVisible())
+
+      const thread = page.getByRole('region', { name: 'Comments' })
+      await thread.getByLabel('Comment', { exact: true }).fill('Please look at the guild rail too.')
+      await page.keyboard.press('Control+Enter')
+      await first.locator('[data-wake-count="2"]').waitFor()
+      expect('a comment joins the queued Run (×2, still one Run)', (await rows.count()) === 1, await rows.count())
+
+      await page.getByTestId('live-run').getByRole('button', { name: 'Cancel' }).click()
+      await first.locator('[data-run-status="cancelled"]').waitFor({ timeout: 15_000 })
+      await thread.getByLabel('Comment', { exact: true }).fill('And now the Issues list.')
+      await page.keyboard.press('Control+Enter')
+      const automation = ledger.locator('[data-run]', { has: page.locator('[data-run-source="automation"]') })
+      await automation.waitFor()
+      expect('a comment after it ended queues an Automation Run', (await automation.innerText()).includes('Automation') && (await rows.count()) === 2, await ledger.innerText())
+    } finally {
+      await page.request.delete(`${WEB}/api/issues/${issue.id}`)
       await page.request.post(`${WEB}/api/agents/${hire.agent.id}/terminate`)
       await page.close()
     }

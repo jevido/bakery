@@ -2,10 +2,10 @@
 // `claude` on its Hirer's desktop app, and each Run's Transcript. Every
 // call answers in the Current guild.
 import { api } from './api'
-import type { RunStatus } from '@bakery/ui/runStatus'
+import type { InvocationSource, RunStatus, WakeReason } from '@bakery/ui/runStatus'
 import type { RunEvent } from '@bakery/ui/runTranscript'
 
-export type { RunStatus } from '@bakery/ui/runStatus'
+export type { InvocationSource, RunStatus, WakeReason } from '@bakery/ui/runStatus'
 export type { RunEvent } from '@bakery/ui/runTranscript'
 
 /** What a Run used, as the CLI reported it; the cost is an equivalent only. */
@@ -22,7 +22,10 @@ export type Run = {
   id: number
   agent: { id: number; name: string; icon: string }
   issue: { id: number; identifier: string; title: string } | null
-  invocation_source: string
+  invocation_source: InvocationSource
+  wake_reason: WakeReason
+  /** How many Wakes this Run took: more than one when later ones joined it. */
+  wake_count: number
   status: RunStatus
   requested_by: { id: number; name: string } | null
   desktop: { id: number; name: string } | null
@@ -47,6 +50,9 @@ export const listRuns = (f: RunFilter) => {
 }
 export const startRun = (agentId: number, issueId: number) =>
   api<{ run: Run }>('POST', `/agents/${agentId}/runs`, { issue_id: issueId }).then((r) => r.run)
+/** Wakes the Agent on demand without an Issue; joins its queued Run if it has one. */
+export const runHeartbeat = (agentId: number) =>
+  api<{ run: Run }>('POST', `/agents/${agentId}/heartbeat`).then((r) => r.run)
 export const cancelRun = (id: number) => api<{ run: Run }>('POST', `/runs/${id}/cancel`).then((r) => r.run)
 export const runEvents = (id: number, after = 0) =>
   api<{ events: RunEvent[] }>('GET', `/runs/${id}/events?after=${after}`).then((r) => r.events)

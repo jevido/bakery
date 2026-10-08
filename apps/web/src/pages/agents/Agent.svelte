@@ -3,10 +3,12 @@
   // has meaning without Runs (MIT, see NOTICE): the header with the Agent
   // icon, name and Job · Title, and AgentActionButtons
   // (ui/src/components/AgentActionButtons.tsx: Pause / Resume and the
-  // overflow menu with Copy Agent ID and Terminate); then AgentOverview's
-  // cards (Identity, Capabilities) with AgentProperties's rows. Run, Clear
-  // error, Reset sessions, Duplicate and Assign Task wait for Runs, and so
-  // do Paperclip's other tabs, so the page has no tab bar. The Roles card is
+  // overflow menu with Copy Agent ID and Terminate, and Run heartbeat);
+  // then AgentOverview's cards (Identity, Capabilities) with
+  // AgentProperties's rows, and AgentConfigForm's Run Policy card trimmed to
+  // the Heartbeat policy (Heartbeat on interval, Wake on demand). Clear
+  // error, Reset sessions, Duplicate and Assign Task are left out, and so
+  // are Paperclip's other tabs, so the page has no tab bar. The Roles card is
   // The Bakery's, in the place of Paperclip's Governance permissions: the
   // Roles the Agent holds as chips, and only Roles below both the asker's
   // highest and the Hirer's highest can be added. Whoever may manage the
@@ -14,11 +16,13 @@
   // server stays the judge of every change. A Runs card under the others
   // lists the Agent's last 20 Runs as Paperclip's Runs tab does, each
   // linking to its Issue and unfolding to its Transcript.
-  import { Copy, MoreHorizontal, Pause, Play, Plus, Trash2, X } from '@lucide/svelte'
+  import { CircleHelp, Copy, Heart, MoreHorizontal, Pause, Play, Plus, Trash2, X } from '@lucide/svelte'
   import * as AlertDialog from '@bakery/ui/components/ui/alert-dialog'
   import { Button as UiButton } from '@bakery/ui/components/ui/button'
   import * as Popover from '@bakery/ui/components/ui/popover'
   import { Separator } from '@bakery/ui/components/ui/separator'
+  import { Switch } from '@bakery/ui/components/ui/switch'
+  import * as Tooltip from '@bakery/ui/components/ui/tooltip'
   import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import AgentIconPicker from '../../lib/AgentIconPicker.svelte'
   import {
@@ -39,13 +43,13 @@
   } from '../../lib/agents'
   import { api, ApiError } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
-  import { formatDate } from '../../lib/format'
+  import { ago, formatDate } from '../../lib/format'
   import { myRank, rankOf } from '../../lib/hierarchy'
   import InlineEditor from '../../lib/InlineEditor.svelte'
   import OptionPopover from '../../lib/OptionPopover.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
   import RunLedger from '../../lib/RunLedger.svelte'
-  import { listRuns, type Run } from '../../lib/runs'
+  import { listRuns, runHeartbeat, type Run } from '../../lib/runs'
   import { href } from '../../lib/router.svelte'
   import type { Member } from '../../lib/session.svelte'
   import type { GuildRole } from '../../lib/types'
@@ -68,6 +72,9 @@
   let terminating = $state(false)
   let reportsToError = $state('')
   let runs = $state.raw<Run[]>([])
+  // The interval as typed, committed on blur or Enter; null shows the Agent's.
+  let intervalDraft = $state<number | null>(null)
+  let intervalError = $state('')
 
   // The page is keyed by id, so loading once is enough.
   function load() {
@@ -132,9 +139,33 @@
       agent = await editAgent(id, patch)
       others = others.map((a) => (a.id === id ? agent! : a))
       if ('reports_to' in patch) reportsToError = ''
+      if (patch.heartbeat) intervalError = ''
     } catch (e) {
       if ('reports_to' in patch && e instanceof ApiError && e.errors.reports_to) reportsToError = e.errors.reports_to
+      else if (patch.heartbeat && e instanceof ApiError && e.errors['heartbeat.interval_sec']) intervalError = e.errors['heartbeat.interval_sec']
       else toast.error(message(e))
+    }
+  }
+
+  async function commitInterval() {
+    if (intervalDraft === null || intervalDraft === agent?.heartbeat.interval_sec) {
+      intervalDraft = null
+      return
+    }
+    await save({ heartbeat: { interval_sec: intervalDraft } })
+    if (!intervalError) intervalDraft = null
+  }
+
+  async function heartbeat() {
+    busy = true
+    try {
+      const r = await runHeartbeat(id)
+      runs = [r, ...runs.filter((x) => x.id !== r.id)]
+      toast.success(r.wake_count > 1 ? 'Joined the queued run.' : 'Heartbeat queued.')
+    } catch (e) {
+      toast.error(message(e))
+    } finally {
+      busy = false
     }
   }
 
@@ -154,6 +185,17 @@
     <span class="mt-0.5 w-24 shrink-0 text-xs text-muted-foreground">{label}</span>
     <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">{@render value()}</div>
   </div>
+{/snippet}
+
+{#snippet hint(label: string, text: string)}
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      {#snippet child({ props })}
+        <button {...props} type="button" aria-label={`About ${label}`} class="inline-flex text-muted-foreground/50 transition-colors hover:text-muted-foreground"><CircleHelp class="size-3" /></button>
+      {/snippet}
+    </Tooltip.Trigger>
+    <Tooltip.Content side="top" class="max-w-xs">{text}</Tooltip.Content>
+  </Tooltip.Root>
 {/snippet}
 
 {#snippet muted(text: string)}<span class="text-sm text-muted-foreground">{text}</span>{/snippet}
@@ -191,6 +233,23 @@
       {#if a.status !== 'terminated'}
         <div class="flex flex-wrap items-center gap-2">
           {#if a.can_manage}
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <span {...props} class="inline-flex">
+                    <UiButton
+                      variant="outline"
+                      size="sm"
+                      disabled={busy || !a.heartbeat.wake_on_demand || a.status === 'pending_approval'}
+                      onclick={heartbeat}><Play class="size-3.5" />Run heartbeat</UiButton
+                    >
+                  </span>
+                {/snippet}
+              </Tooltip.Trigger>
+              {#if !a.heartbeat.wake_on_demand}
+                <Tooltip.Content side="bottom">Wake on demand is off.</Tooltip.Content>
+              {/if}
+            </Tooltip.Root>
             {#if a.status === 'paused'}
               <UiButton variant="outline" size="sm" disabled={busy} onclick={() => act(() => resumeAgent(id))}><Play class="size-3.5" />Resume</UiButton>
             {:else}
@@ -311,6 +370,61 @@
           onsave={(capabilities) => save({ capabilities })}
         />
         {/if}
+      </section>
+
+      <section class="rounded-lg border border-border md:col-span-2" aria-labelledby="agent-run-policy-heading" data-testid="run-policy">
+        <h3 id="agent-run-policy-heading" class="flex items-center gap-2 px-4 pt-4 pb-3 text-sm font-medium"><Heart class="size-3" />Run Policy</h3>
+        <div class="space-y-3 px-4 pb-4">
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs text-muted-foreground">Heartbeat on interval</span>
+                {@render hint('Heartbeat on interval', 'Run this agent automatically on a timer while it has open issues assigned.')}
+              </div>
+              <Switch
+                checked={a.heartbeat.enabled}
+                disabled={!editable}
+                aria-label="Heartbeat on interval"
+                onCheckedChange={(enabled) => save({ heartbeat: { enabled } })}
+              />
+            </div>
+            {#if a.heartbeat.enabled}
+              <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span>Run heartbeat every</span>
+                <input
+                  type="number"
+                  min="60"
+                  max="86400"
+                  aria-label="Run heartbeat every"
+                  class="w-20 rounded-md border border-border bg-transparent px-2 py-0.5 text-center font-mono text-xs outline-none disabled:opacity-60"
+                  disabled={!editable}
+                  value={intervalDraft ?? a.heartbeat.interval_sec}
+                  oninput={(e) => (intervalDraft = e.currentTarget.valueAsNumber)}
+                  onblur={commitInterval}
+                  onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                />
+                <span>sec</span>
+                {@render hint('the interval', 'Seconds between automatic heartbeat invocations, 60 to 86400.')}
+              </div>
+              {#if intervalError}<p class="text-xs text-destructive" data-testid="interval-error">{intervalError}</p>{/if}
+              <p class="text-xs text-muted-foreground" data-testid="last-heartbeat">
+                {a.heartbeat.last_heartbeat_at ? `Last heartbeat ${ago(a.heartbeat.last_heartbeat_at)}` : 'No heartbeat yet.'}
+              </p>
+            {/if}
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs text-muted-foreground">Wake on demand</span>
+              {@render hint('Wake on demand', 'Allow this agent to be woken by assignments, comments and Run heartbeat.')}
+            </div>
+            <Switch
+              checked={a.heartbeat.wake_on_demand}
+              disabled={!editable}
+              aria-label="Wake on demand"
+              onCheckedChange={(wake_on_demand) => save({ heartbeat: { wake_on_demand } })}
+            />
+          </div>
+        </div>
       </section>
 
       <section class="rounded-lg border border-border p-4 md:col-span-2" aria-labelledby="agent-roles-heading">
