@@ -62,6 +62,14 @@ func (r approvalRecord) toDomain(issueIDs []uint64) (domain.Approval, error) {
 	return a, nil
 }
 
+func payloadJSON(p domain.BoardApprovalPayload) (string, error) {
+	b, err := json.Marshal(boardApprovalPayload{
+		Title: p.Title, Summary: p.Summary, RecommendedAction: p.RecommendedAction,
+		NextActionOnApproval: p.NextActionOnApproval, Risks: p.Risks,
+	})
+	return string(b), err
+}
+
 // Approvals keeps Approvals and their Linked issues.
 type Approvals struct{}
 
@@ -72,11 +80,7 @@ func (Approvals) query(ctx context.Context) contractsorm.Query {
 // CreateApproval inserts the Approval and its Linked issues in one
 // transaction.
 func (s Approvals) CreateApproval(ctx context.Context, a domain.Approval) (domain.Approval, error) {
-	p := a.Payload
-	payload, err := json.Marshal(boardApprovalPayload{
-		Title: p.Title, Summary: p.Summary, RecommendedAction: p.RecommendedAction,
-		NextActionOnApproval: p.NextActionOnApproval, Risks: p.Risks,
-	})
+	payload, err := payloadJSON(a.Payload)
 	if err != nil {
 		return domain.Approval{}, err
 	}
@@ -85,7 +89,7 @@ func (s Approvals) CreateApproval(ctx context.Context, a domain.Approval) (domai
 		var ids []uint64
 		if err := tx.Raw(`INSERT INTO approvals (guild_id, type, status, payload, requested_by_member_id, created_at, updated_at)
 			VALUES (?, ?, ?, ?::jsonb, ?, ?, ?) RETURNING id`,
-			a.GuildID, string(a.Type), string(a.Status), string(payload), nullable(a.RequesterID), a.CreatedAt, a.UpdatedAt).Scan(&ids); err != nil {
+			a.GuildID, string(a.Type), string(a.Status), payload, nullable(a.RequesterID), a.CreatedAt, a.UpdatedAt).Scan(&ids); err != nil {
 			return err
 		}
 		id = ids[0]
@@ -164,4 +168,63 @@ func (s Approvals) find(ctx context.Context, clause string, args ...any) ([]doma
 		out = append(out, a)
 	}
 	return out, nil
+}
+
+// SaveApproval writes the Approval's status, payload and Decision only
+// while it is still in one of the statuses it was moved from; saved is
+// false when someone else moved it first.
+func (s Approvals) SaveApproval(ctx context.Context, a domain.Approval, from []domain.ApprovalStatus) (bool, error) {
+	payload, err := payloadJSON(a.Payload)
+	if err != nil {
+		return false, err
+	}
+	keys := make([]string, len(from))
+	for i, st := range from {
+		keys[i] = string(st)
+	}
+	var note *string
+	if a.DecisionNote != "" {
+		note = &a.DecisionNote
+	}
+	res, err := s.query(ctx).Exec(`UPDATE approvals SET status = ?, payload = ?::jsonb, decided_by_member_id = ?, decision_note = ?, decided_at = ?, updated_at = ?
+		WHERE id = ? AND status IN ?`,
+		string(a.Status), payload, nullable(a.DeciderID), note, a.DecidedAt, a.UpdatedAt, a.ID, keys)
+	if err != nil {
+		return false, err
+	}
+	return res.RowsAffected == 1, nil
+}
+
+type approvalCommentRecord struct {
+	ID             uint64
+	ApprovalID     uint64
+	AuthorMemberID *uint64
+	Body           string
+	CreatedAt      time.Time
+}
+
+func (r approvalCommentRecord) toDomain() domain.ApprovalComment {
+	return domain.ApprovalComment{ID: r.ID, ApprovalID: r.ApprovalID, AuthorID: deref(r.AuthorMemberID), Body: r.Body, CreatedAt: r.CreatedAt.UTC()}
+}
+
+// ApprovalComments lists the Approval's comments, oldest first.
+func (s Approvals) ApprovalComments(ctx context.Context, approvalID uint64) ([]domain.ApprovalComment, error) {
+	var recs []approvalCommentRecord
+	if err := s.query(ctx).Raw(`SELECT * FROM approval_comments WHERE approval_id = ? ORDER BY created_at, id`, approvalID).Scan(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]domain.ApprovalComment, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+	}
+	return out, nil
+}
+
+func (s Approvals) CreateApprovalComment(ctx context.Context, c domain.ApprovalComment) (domain.ApprovalComment, error) {
+	var recs []approvalCommentRecord
+	if err := s.query(ctx).Raw(`INSERT INTO approval_comments (approval_id, author_member_id, body, created_at) VALUES (?, ?, ?, ?) RETURNING *`,
+		c.ApprovalID, nullable(c.AuthorID), c.Body, c.CreatedAt).Scan(&recs); err != nil {
+		return domain.ApprovalComment{}, err
+	}
+	return recs[0].toDomain(), nil
 }

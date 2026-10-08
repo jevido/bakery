@@ -8,18 +8,23 @@ import (
 // Actions: the dotted names of what happened to a Goal, an Issue or an
 // Approval, as Paperclip names them.
 const (
-	GoalCreatedAction     = "goal.created"
-	GoalUpdatedAction     = "goal.updated"
-	GoalDeletedAction     = "goal.deleted"
-	IssueCreatedAction    = "issue.created"
-	IssueUpdatedAction    = "issue.updated"
-	IssueDeletedAction    = "issue.deleted"
-	CommentAddedAction    = "issue.comment_added"
-	CommentDeletedAction  = "issue.comment_deleted"
-	DocumentCreatedAction = "issue.document_created"
-	DocumentUpdatedAction = "issue.document_updated"
-	DocumentDeletedAction = "issue.document_deleted"
-	ApprovalCreatedAction = "approval.created"
+	GoalCreatedAction          = "goal.created"
+	GoalUpdatedAction          = "goal.updated"
+	GoalDeletedAction          = "goal.deleted"
+	IssueCreatedAction         = "issue.created"
+	IssueUpdatedAction         = "issue.updated"
+	IssueDeletedAction         = "issue.deleted"
+	CommentAddedAction         = "issue.comment_added"
+	CommentDeletedAction       = "issue.comment_deleted"
+	DocumentCreatedAction      = "issue.document_created"
+	DocumentUpdatedAction      = "issue.document_updated"
+	DocumentDeletedAction      = "issue.document_deleted"
+	ApprovalCreatedAction      = "approval.created"
+	ApprovalApprovedAction     = "approval.approved"
+	ApprovalRejectedAction     = "approval.rejected"
+	RevisionRequestedAction    = "approval.revision_requested"
+	ApprovalResubmittedAction  = "approval.resubmitted"
+	ApprovalCommentAddedAction = "approval.comment_added"
 )
 
 // The kinds of thing an Activity event is about.
@@ -78,6 +83,15 @@ func (h Happened) issue(i Issue, action string, details map[string]any) Activity
 func (h Happened) approval(a Approval, action string, details map[string]any) ActivityEvent {
 	details["type"], details["title"] = a.Type, a.Payload.Title
 	return ActivityEvent{GuildID: a.GuildID, ActorID: h.ActorID, Action: action, EntityType: ApprovalEntity, EntityID: a.ID, Details: details, CreatedAt: h.At}
+}
+
+// snippet is the first SnippetLength characters of a comment's body.
+func snippet(body string) string {
+	r := []rune(body)
+	if len(r) > SnippetLength {
+		r = r[:SnippetLength]
+	}
+	return string(r)
 }
 
 // change is one field's from → to; a reference is its id, null for none.
@@ -230,11 +244,7 @@ type CommentWritten struct {
 }
 
 func (e CommentWritten) Activity() ActivityEvent {
-	snippet := []rune(e.Comment.Body)
-	if len(snippet) > SnippetLength {
-		snippet = snippet[:SnippetLength]
-	}
-	return e.issue(e.Issue, CommentAddedAction, map[string]any{"comment_id": e.Comment.ID, "snippet": string(snippet)})
+	return e.issue(e.Issue, CommentAddedAction, map[string]any{"comment_id": e.Comment.ID, "snippet": snippet(e.Comment.Body)})
 }
 
 type CommentDeleted struct {
@@ -287,4 +297,59 @@ type ApprovalRequested struct {
 
 func (e ApprovalRequested) Activity() ActivityEvent {
 	return e.approval(e.Approval, ApprovalCreatedAction, map[string]any{"issue_ids": e.Approval.IssueIDs})
+}
+
+// decided is the details of a Decision: its note, when there is one.
+func decided(a Approval) map[string]any {
+	d := map[string]any{}
+	if a.DecisionNote != "" {
+		d["decision_note"] = a.DecisionNote
+	}
+	return d
+}
+
+type ApprovalApproved struct {
+	Happened
+	Approval Approval
+}
+
+func (e ApprovalApproved) Activity() ActivityEvent {
+	return e.approval(e.Approval, ApprovalApprovedAction, decided(e.Approval))
+}
+
+type ApprovalRejected struct {
+	Happened
+	Approval Approval
+}
+
+func (e ApprovalRejected) Activity() ActivityEvent {
+	return e.approval(e.Approval, ApprovalRejectedAction, decided(e.Approval))
+}
+
+type RevisionRequested struct {
+	Happened
+	Approval Approval
+}
+
+func (e RevisionRequested) Activity() ActivityEvent {
+	return e.approval(e.Approval, RevisionRequestedAction, decided(e.Approval))
+}
+
+type ApprovalResubmitted struct {
+	Happened
+	Approval Approval
+}
+
+func (e ApprovalResubmitted) Activity() ActivityEvent {
+	return e.approval(e.Approval, ApprovalResubmittedAction, map[string]any{})
+}
+
+type ApprovalCommentWritten struct {
+	Happened
+	Approval Approval
+	Comment  ApprovalComment
+}
+
+func (e ApprovalCommentWritten) Activity() ActivityEvent {
+	return e.approval(e.Approval, ApprovalCommentAddedAction, map[string]any{"comment_id": e.Comment.ID, "snippet": snippet(e.Comment.Body)})
 }

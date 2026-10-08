@@ -159,7 +159,10 @@ func notFound(ctx contractshttp.Context) contractshttp.Response {
 func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 	var fe *domain.FieldError
 	var stale *app.StaleRevisionError
+	var refused *domain.ApprovalRefusedError
 	switch {
+	case errors.As(err, &refused):
+		return respond.Error(ctx, contractshttp.StatusUnprocessableEntity, err.Error())
 	case errors.As(err, &stale):
 		// The newest Revision goes along, so the dashboard can offer to
 		// reload instead of overwriting it.
@@ -172,7 +175,7 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 		return respond.Invalid(ctx, fe.Field, fe.Message)
 	case errors.Is(err, app.ErrNotFound):
 		return notFound(ctx)
-	case errors.Is(err, domain.ErrNotAuthor):
+	case errors.Is(err, domain.ErrNotAuthor), errors.Is(err, domain.ErrNotRequester):
 		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
 	case errors.Is(err, domain.ErrCommentDeleted), errors.Is(err, domain.ErrRestoreNewest),
 		errors.Is(err, app.ErrDocumentExists), errors.Is(err, app.ErrNoDocumentYet):

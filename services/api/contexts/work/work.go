@@ -81,7 +81,8 @@ var approvalInGuild = guilds.Owns("approval", func(ctx context.Context, id, guil
 
 // Routes registers the Current guild's Goals, Issues, Comments, Issue
 // documents, Activity, Inbox and Approvals API: reading (and a Member's own Read marks
-// and Inbox archives) needs view_resources, changing manage_work, and
+// and Inbox archives) needs view_resources, changing manage_work, deciding an
+// Approval approve, and
 // changing a Comment also being its author. An Issue's {id} is its id or its
 // Issue identifier, so the service, not guilds.Owns, answers 404 for one
 // outside the Current guild or in a Project the request may not view.
@@ -138,5 +139,15 @@ func Routes(r route.Router) {
 	r.Middleware(guilds.Auth, approvalInGuild, view).Group(func(r route.Router) {
 		r.Get("/api/approvals/{id}", c.ShowApproval)
 		r.Get("/api/approvals/{id}/issues", c.ListApprovalIssues)
+		r.Get("/api/approvals/{id}/comments", c.ListApprovalComments)
+	})
+	r.Middleware(guilds.Auth, approvalInGuild, guilds.Can("approve")).Group(func(r route.Router) {
+		r.Post("/api/approvals/{id}/approve", c.ApproveApproval)
+		r.Post("/api/approvals/{id}/reject", c.RejectApproval)
+		r.Post("/api/approvals/{id}/request-revision", c.RequestApprovalRevision)
+	})
+	r.Middleware(guilds.Auth, approvalInGuild, manage).Group(func(r route.Router) {
+		r.Post("/api/approvals/{id}/resubmit", c.ResubmitApproval)
+		r.Post("/api/approvals/{id}/comments", c.AddApprovalComment)
 	})
 }

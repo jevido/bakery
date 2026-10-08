@@ -259,6 +259,12 @@ const activityVerbs: Record<string, string> = {
   'goal.created': 'created',
   'goal.updated': 'updated',
   'goal.deleted': 'deleted',
+  'approval.created': 'requested approval',
+  'approval.approved': 'approved',
+  'approval.rejected': 'rejected',
+  'approval.revision_requested': 'asked for a revision of',
+  'approval.resubmitted': 'resubmitted',
+  'approval.comment_added': 'commented on',
 }
 /** The verb of an Activity row: "commented on" for issue.comment_added. */
 export const activityVerb = (action: string) => activityVerbs[action] ?? action.replace(/[._]/g, ' ')

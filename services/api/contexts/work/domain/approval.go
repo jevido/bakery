@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -28,14 +29,14 @@ func ParseApprovalType(s string) (ApprovalType, error) {
 type ApprovalStatus string
 
 const (
-	ApprovalPending   ApprovalStatus = "pending"
-	RevisionRequested ApprovalStatus = "revision_requested"
-	ApprovalApproved  ApprovalStatus = "approved"
-	ApprovalRejected  ApprovalStatus = "rejected"
+	StatusPending           ApprovalStatus = "pending"
+	StatusRevisionRequested ApprovalStatus = "revision_requested"
+	StatusApproved          ApprovalStatus = "approved"
+	StatusRejected          ApprovalStatus = "rejected"
 )
 
 // ApprovalStatuses lists every Approval status.
-var ApprovalStatuses = []ApprovalStatus{ApprovalPending, RevisionRequested, ApprovalApproved, ApprovalRejected}
+var ApprovalStatuses = []ApprovalStatus{StatusPending, StatusRevisionRequested, StatusApproved, StatusRejected}
 
 // ParseApprovalStatus reads an Approval status by its wire key.
 func ParseApprovalStatus(s string) (ApprovalStatus, error) {
@@ -48,7 +49,7 @@ func ParseApprovalStatus(s string) (ApprovalStatus, error) {
 // Actionable is whether an Approval in this status still waits for a
 // Decision.
 func (s ApprovalStatus) Actionable() bool {
-	return s == ApprovalPending || s == RevisionRequested
+	return s == StatusPending || s == StatusRevisionRequested
 }
 
 // The limits of a request_board_approval payload, in characters.
@@ -139,8 +140,110 @@ func RequestApproval(guildID, requesterID uint64, t ApprovalType, p BoardApprova
 			ids = append(ids, id)
 		}
 	}
-	return Approval{GuildID: guildID, Type: t, Status: ApprovalPending, Payload: p, RequesterID: requesterID, IssueIDs: ids}, nil
+	return Approval{GuildID: guildID, Type: t, Status: StatusPending, Payload: p, RequesterID: requesterID, IssueIDs: ids}, nil
 }
 
 // Actionable is whether the Approval still waits for a Decision.
 func (a Approval) Actionable() bool { return a.Status.Actionable() }
+
+// ApprovalRefusedError is a move the Approval's status does not allow;
+// the HTTP layer answers it 422.
+type ApprovalRefusedError struct{ Message string }
+
+func (e *ApprovalRefusedError) Error() string { return e.Message }
+
+// ErrNotRequester is a Resubmit by anyone but the Approval's Requester.
+var ErrNotRequester = errors.New("Only the Requester can resubmit this approval")
+
+// MaxDecisionNote is the longest Decision note, in characters.
+const MaxDecisionNote = 20000
+
+func decisionNote(note string) (string, error) {
+	n := strings.TrimSpace(note)
+	if utf8.RuneCountInString(n) > MaxDecisionNote {
+		return "", invalid("decision_note", "decision_note is at most %d characters", MaxDecisionNote)
+	}
+	return n, nil
+}
+
+// decide makes a Decision to the status, recording its decider, time and
+// note.
+func (a *Approval) decide(to ApprovalStatus, by uint64, note string, at time.Time) error {
+	n, err := decisionNote(note)
+	if err != nil {
+		return err
+	}
+	a.Status, a.DeciderID, a.DecisionNote, a.DecidedAt, a.UpdatedAt = to, by, n, &at, at
+	return nil
+}
+
+// resolve approves or rejects an Actionable Approval. One that already
+// has that status is unchanged (changed is false), as Paperclip's
+// applied: false.
+func (a *Approval) resolve(to ApprovalStatus, verb string, by uint64, note string, at time.Time) (bool, error) {
+	if !a.Actionable() {
+		if a.Status == to {
+			return false, nil
+		}
+		return false, &ApprovalRefusedError{"Only pending or revision requested approvals can be " + verb}
+	}
+	return true, a.decide(to, by, note, at)
+}
+
+// Approve is the Board's yes, from pending or revision_requested.
+func (a *Approval) Approve(by uint64, note string, at time.Time) (bool, error) {
+	return a.resolve(StatusApproved, "approved", by, note, at)
+}
+
+// Reject is the Board's no, from pending or revision_requested.
+func (a *Approval) Reject(by uint64, note string, at time.Time) (bool, error) {
+	return a.resolve(StatusRejected, "rejected", by, note, at)
+}
+
+// RequestRevision sends a pending Approval back to its Requester.
+func (a *Approval) RequestRevision(by uint64, note string, at time.Time) error {
+	if a.Status != StatusPending {
+		return &ApprovalRefusedError{"Only pending approvals can request revision"}
+	}
+	return a.decide(StatusRevisionRequested, by, note, at)
+}
+
+// Resubmit makes a revision_requested Approval pending again, with a new
+// payload when there is one; only its Requester may. It clears the
+// decider, the Decision note and the decision time.
+func (a *Approval) Resubmit(by uint64, p *BoardApprovalPayload, at time.Time) error {
+	if by == 0 || by != a.RequesterID {
+		return ErrNotRequester
+	}
+	if a.Status != StatusRevisionRequested {
+		return &ApprovalRefusedError{"Only revision requested approvals can be resubmitted"}
+	}
+	if p != nil {
+		v, err := p.Validated()
+		if err != nil {
+			return err
+		}
+		a.Payload = v
+	}
+	a.Status, a.DeciderID, a.DecisionNote, a.DecidedAt, a.UpdatedAt = StatusPending, 0, "", nil, at
+	return nil
+}
+
+// ApprovalComment is a Member's message on an Approval. It is never edited
+// or deleted. AuthorID is 0 once the author's account is gone.
+type ApprovalComment struct {
+	ID         uint64
+	ApprovalID uint64
+	AuthorID   uint64
+	Body       string
+	CreatedAt  time.Time
+}
+
+// NewApprovalComment is a comment by a Member on an Approval.
+func NewApprovalComment(approvalID, authorID uint64, body string) (ApprovalComment, error) {
+	b, err := commentBody(body)
+	if err != nil {
+		return ApprovalComment{}, err
+	}
+	return ApprovalComment{ApprovalID: approvalID, AuthorID: authorID, Body: b}, nil
+}

@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
 )
@@ -18,6 +20,12 @@ type Approvals interface {
 	Approvals(ctx context.Context, guildID uint64, statuses []domain.ApprovalStatus) ([]domain.Approval, error)
 	// IssueApprovals lists the Approvals linked to the Issue, newest first.
 	IssueApprovals(ctx context.Context, issueID uint64) ([]domain.Approval, error)
+	// SaveApproval writes the Approval only while its stored status is one
+	// of from; saved is false when someone else moved it first.
+	SaveApproval(ctx context.Context, a domain.Approval, from []domain.ApprovalStatus) (saved bool, err error)
+	// ApprovalComments lists the Approval's comments, oldest first.
+	ApprovalComments(ctx context.Context, approvalID uint64) ([]domain.ApprovalComment, error)
+	CreateApprovalComment(ctx context.Context, c domain.ApprovalComment) (domain.ApprovalComment, error)
 }
 
 // Actionable is the status filter for every Approval still waiting for a
@@ -34,7 +42,7 @@ func ApprovalStatuses(filter string) ([]domain.ApprovalStatus, error) {
 		case "":
 			continue
 		case Actionable:
-			out = append(out, domain.ApprovalPending, domain.RevisionRequested)
+			out = append(out, domain.StatusPending, domain.StatusRevisionRequested)
 			continue
 		}
 		st, err := domain.ParseApprovalStatus(s)
@@ -144,4 +152,119 @@ func (s *Service) IssueApprovals(ctx context.Context, guildID uint64, ref string
 		return nil, err
 	}
 	return s.approvals.IssueApprovals(ctx, i.ID)
+}
+
+// move is one change to an Approval: the statuses it may start from, the
+// change itself (changed is false for the same Decision made again) and
+// its event.
+type move struct {
+	from  []domain.ApprovalStatus
+	apply func(a *domain.Approval, at time.Time) (changed bool, err error)
+	event func(h domain.Happened, a domain.Approval) domain.Event
+}
+
+// moveApproval applies the move to one of the Guild's Approvals and saves
+// it guarded by its from statuses, as Paperclip's resolveApproval: when
+// someone else moved it first, the move is applied again to what they
+// left, which answers it unchanged or refuses it.
+func (s *Service) moveApproval(ctx context.Context, guildID, memberID, id uint64, m move) (domain.Approval, error) {
+	for range 3 {
+		a, err := s.Approval(ctx, guildID, id)
+		if err != nil {
+			return domain.Approval{}, err
+		}
+		changed, err := m.apply(&a, s.now())
+		if err != nil || !changed {
+			return a, err
+		}
+		saved, err := s.approvals.SaveApproval(ctx, a, m.from)
+		if err != nil {
+			return domain.Approval{}, err
+		}
+		if saved {
+			s.publish(ctx, m.event(s.happened(memberID), a))
+			return a, nil
+		}
+	}
+	return domain.Approval{}, errors.New("approval kept changing while it was being decided")
+}
+
+var actionable = []domain.ApprovalStatus{domain.StatusPending, domain.StatusRevisionRequested}
+
+// ApproveApproval is the Member's yes on one of the Guild's Approvals.
+func (s *Service) ApproveApproval(ctx context.Context, guildID, memberID, id uint64, note string) (domain.Approval, error) {
+	return s.moveApproval(ctx, guildID, memberID, id, move{
+		from:  actionable,
+		apply: func(a *domain.Approval, at time.Time) (bool, error) { return a.Approve(memberID, note, at) },
+		event: func(h domain.Happened, a domain.Approval) domain.Event {
+			return domain.ApprovalApproved{Happened: h, Approval: a}
+		},
+	})
+}
+
+// RejectApproval is the Member's no on one of the Guild's Approvals.
+func (s *Service) RejectApproval(ctx context.Context, guildID, memberID, id uint64, note string) (domain.Approval, error) {
+	return s.moveApproval(ctx, guildID, memberID, id, move{
+		from:  actionable,
+		apply: func(a *domain.Approval, at time.Time) (bool, error) { return a.Reject(memberID, note, at) },
+		event: func(h domain.Happened, a domain.Approval) domain.Event {
+			return domain.ApprovalRejected{Happened: h, Approval: a}
+		},
+	})
+}
+
+// RequestApprovalRevision sends a pending Approval back to its Requester.
+func (s *Service) RequestApprovalRevision(ctx context.Context, guildID, memberID, id uint64, note string) (domain.Approval, error) {
+	return s.moveApproval(ctx, guildID, memberID, id, move{
+		from: []domain.ApprovalStatus{domain.StatusPending},
+		apply: func(a *domain.Approval, at time.Time) (bool, error) {
+			return true, a.RequestRevision(memberID, note, at)
+		},
+		event: func(h domain.Happened, a domain.Approval) domain.Event {
+			return domain.RevisionRequested{Happened: h, Approval: a}
+		},
+	})
+}
+
+// ResubmitApproval makes the Member's own revision_requested Approval
+// pending again, with a new payload when p is not nil.
+func (s *Service) ResubmitApproval(ctx context.Context, guildID, memberID, id uint64, p *domain.BoardApprovalPayload) (domain.Approval, error) {
+	return s.moveApproval(ctx, guildID, memberID, id, move{
+		from: []domain.ApprovalStatus{domain.StatusRevisionRequested},
+		apply: func(a *domain.Approval, at time.Time) (bool, error) {
+			return true, a.Resubmit(memberID, p, at)
+		},
+		event: func(h domain.Happened, a domain.Approval) domain.Event {
+			return domain.ApprovalResubmitted{Happened: h, Approval: a}
+		},
+	})
+}
+
+// ApprovalComments is the comment thread of one of the Guild's Approvals,
+// oldest first.
+func (s *Service) ApprovalComments(ctx context.Context, guildID, id uint64) ([]domain.ApprovalComment, error) {
+	if _, err := s.Approval(ctx, guildID, id); err != nil {
+		return nil, err
+	}
+	return s.approvals.ApprovalComments(ctx, id)
+}
+
+// AddApprovalComment adds the Member's comment to one of the Guild's
+// Approvals.
+func (s *Service) AddApprovalComment(ctx context.Context, guildID, memberID, id uint64, body string) (domain.ApprovalComment, error) {
+	a, err := s.Approval(ctx, guildID, id)
+	if err != nil {
+		return domain.ApprovalComment{}, err
+	}
+	c, err := domain.NewApprovalComment(a.ID, memberID, body)
+	if err != nil {
+		return domain.ApprovalComment{}, err
+	}
+	c.CreatedAt = s.now()
+	c, err = s.approvals.CreateApprovalComment(ctx, c)
+	if err != nil {
+		return domain.ApprovalComment{}, err
+	}
+	s.publish(ctx, domain.ApprovalCommentWritten{Happened: s.happened(memberID), Approval: a, Comment: c})
+	return c, nil
 }

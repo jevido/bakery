@@ -177,3 +177,133 @@ func (c *Controller) ListIssueApprovals(ctx contractshttp.Context) contractshttp
 	as, err := c.service.IssueApprovals(ctx.Context(), c.guild(ctx), ctx.Request().Route("id"), c.visible(ctx))
 	return c.approvalsResponse(ctx, as, err)
 }
+
+type decisionRequest struct {
+	DecisionNote string `json:"decision_note"`
+}
+
+// decide runs a Decision on the route's Approval with the request's
+// Decision note.
+func (c *Controller) decide(ctx contractshttp.Context, do func(ctx context.Context, guildID, memberID, id uint64, note string) (domain.Approval, error)) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req decisionRequest
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	a, err := do(ctx.Context(), c.guild(ctx), c.Member(ctx), id, req.DecisionNote)
+	return c.oneApproval(ctx, contractshttp.StatusOK, a, err)
+}
+
+func (c *Controller) ApproveApproval(ctx contractshttp.Context) contractshttp.Response {
+	return c.decide(ctx, c.service.ApproveApproval)
+}
+
+func (c *Controller) RejectApproval(ctx contractshttp.Context) contractshttp.Response {
+	return c.decide(ctx, c.service.RejectApproval)
+}
+
+func (c *Controller) RequestApprovalRevision(ctx contractshttp.Context) contractshttp.Response {
+	return c.decide(ctx, c.service.RequestApprovalRevision)
+}
+
+// ResubmitApproval makes one's own Approval pending again, with a new
+// payload when the body has one.
+func (c *Controller) ResubmitApproval(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req struct {
+		Payload json.RawMessage `json:"payload"`
+	}
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	var p *domain.BoardApprovalPayload
+	if len(req.Payload) > 0 && string(req.Payload) != "null" {
+		bp, err := boardPayload(req.Payload)
+		if err != nil {
+			return fail(ctx, err)
+		}
+		p = &bp
+	}
+	a, err := c.service.ResubmitApproval(ctx.Context(), c.guild(ctx), c.Member(ctx), id, p)
+	return c.oneApproval(ctx, contractshttp.StatusOK, a, err)
+}
+
+// approvalCommentJSON is a comment in an Approval's thread.
+type approvalCommentJSON struct {
+	ID        uint64    `json:"id"`
+	Body      string    `json:"body"`
+	Author    *Member   `json:"author"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// approvalCommentsJSON shows Approval comments with their authors' names,
+// asked for in one go.
+func (c *Controller) approvalCommentsJSON(ctx context.Context, cs []domain.ApprovalComment) ([]approvalCommentJSON, error) {
+	var ids []uint64
+	for _, cm := range cs {
+		if cm.AuthorID != 0 {
+			ids = append(ids, cm.AuthorID)
+		}
+	}
+	names := map[uint64]Member{}
+	if len(ids) > 0 {
+		ms, err := c.members(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range ms {
+			names[m.ID] = m
+		}
+	}
+	out := make([]approvalCommentJSON, len(cs))
+	for i, cm := range cs {
+		out[i] = approvalCommentJSON{ID: cm.ID, Body: cm.Body, CreatedAt: cm.CreatedAt}
+		if m, ok := names[cm.AuthorID]; ok {
+			out[i].Author = &m
+		}
+	}
+	return out, nil
+}
+
+// ListApprovalComments answers the Approval's thread, oldest first.
+func (c *Controller) ListApprovalComments(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	cs, err := c.service.ApprovalComments(ctx.Context(), c.guild(ctx), id)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out, err := c.approvalCommentsJSON(ctx.Context(), cs)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"comments": out})
+}
+
+func (c *Controller) AddApprovalComment(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req commentRequest
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	cm, err := c.service.AddApprovalComment(ctx.Context(), c.guild(ctx), c.Member(ctx), id, req.Body)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out, err := c.approvalCommentsJSON(ctx.Context(), []domain.ApprovalComment{cm})
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Json(contractshttp.StatusCreated, contractshttp.Json{"comment": out[0]})
+}
