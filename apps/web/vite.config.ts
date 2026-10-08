@@ -13,6 +13,8 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 4930,
     strictPort: true,
-    proxy: { '/api': 'http://127.0.0.1:4910' },
+    // xfwd passes the address the browser used on, for links the API builds
+    // (the Desktop sign-in's approve link).
+    proxy: { '/api': { target: 'http://127.0.0.1:4910', changeOrigin: true, xfwd: true } },
   },
 })

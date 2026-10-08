@@ -33,7 +33,7 @@ context.
 | Login challenge | The 5 minutes between a correct password and the second step, carried in the `bakery_login` cookie; at most 5 wrong codes. |
 | Desktop app | The Bakery's app a Member installs on their own machine (`apps/desktop`). It talks to one or more Bakeries only through the published HTTP API, signs in through a Desktop sign-in, and keeps its Desktop key in a file only its user can read. |
 | Desktop | One signed-in copy of the Desktop app as the server knows it: its Member, a name (the machine's hostname unless the app says otherwise), created, last seen, signed out. |
-| Desktop sign-in | A request the Desktop app makes to be approved in the browser: an id, a secret only the app knows (`bky_signin_…`, stored hashed), the hash of the Desktop key it minted, the name it asks for, and its status `pending`, `approved`, `cancelled` or `expired`. |
+| Desktop sign-in | A request the Desktop app makes to be approved in the browser: an id, a secret the app mints (`bky_signin_` and 48 hex characters, stored hashed), the hash of the Desktop key it minted, the name it asks for, and its status `pending`, `approved`, `cancelled` or `expired`. |
 | Desktop key | The `bky_desk_…` bearer secret of a Desktop, stored only as its SHA-256. It acts as its Member in any of their Guilds; the request header `Bakery-Guild` names which. |
 | Sessions valid from | The moment before which a Member's Sessions no longer count; set by a password change, "sign out everywhere else" and a two-factor reset. |
 
@@ -66,7 +66,7 @@ Who may run each is in brackets.
 - `RegenerateRecoveryCodes(code)` [the Member, with a Session]: 10 new Recovery codes; the old ones stop working.
 - `DisableTwoFactor(password, code or Recovery code)` [the Member, with a Session].
 - `LoginTwoFactor(challenge, code or Recovery code)` [anyone holding a Login challenge]: returns a Session; the fifth wrong code ends the challenge.
-- `StartDesktopSignIn(name, secret hash, key hash)` [anyone]: the Desktop app's request; answers its id and the approve link (`#/desktop-sign-in/{id}?token=<secret>`).
+- `StartDesktopSignIn(name, secret, key hash)` [anyone]: the Desktop app's request; answers its id and the approve link (`#/desktop-sign-in/{id}?token=<secret>`).
 - `DescribeDesktopSignIn(id, secret)` [whoever holds the secret]: its status, the name asked for, when it expires, and who approved it.
 - `ApproveDesktopSignIn(id, secret)` [any Member, with a Session]: see the invariants.
 - `CancelDesktopSignIn(id, secret)` [whoever holds the secret].
@@ -142,10 +142,13 @@ leave or delete Guilds or act on Guild Master Transfer offers: those answer
 - **The Desktop sign-in is Paperclip's CLI auth, with four differences.**
   It follows Paperclip's `/cli-auth/*` routes (`server/src/routes/access.ts`,
   `server/src/services/board-auth.ts`, `ui/src/pages/CliAuth.tsx`): the app
-  mints both its secret and its key, sends only their hashes, opens the
-  browser on the approve page and polls until approved, so the key never
-  travels from the server and no password is typed into the app. It
-  differs in four ways. There is no `instance_admin_required` access: the
+  opens the browser on the approve page and polls until approved, so no
+  password is typed into the app. It differs in five ways. The app mints
+  its secret and its Desktop key itself and sends the secret and only the
+  key's hash, where Paperclip's server mints both and answers the key: here
+  the key never leaves the machine that uses it, and the secret, which only
+  reads, approves with a Session or cancels the sign-in, is in the approve
+  link anyway. There is no `instance_admin_required` access: the
   Desktop app never needs the Instance admin, it acts as whoever approves
   it. A Desktop key counts until 30 days after it was last used, not 30
   days after it was made: an unattended desktop running Agents must not

@@ -24,7 +24,7 @@ import (
 )
 
 var service = func() *app.Service {
-	s := app.NewService(infra.Members{}, infra.APITokens{}, infra.Hasher{})
+	s := app.NewService(infra.Members{}, infra.APITokens{}, infra.DesktopSignIns{}, infra.Hasher{})
 	s.SetUpDone = publishSetUp
 	return s
 }()
@@ -203,7 +203,7 @@ func RevokeAPITokens(ctx context.Context, memberID, guildID uint64) error {
 	return service.RevokeAPITokensIn(ctx, memberID, guildID)
 }
 
-// Routes registers setup, login, logout (all open) and a Member's own
+// Routes registers setup, login, logout, the Desktop sign-in (all open) and a Member's own
 // Profile and two-factor (a Session only).
 func Routes(r route.Router) {
 	c := controller
@@ -212,6 +212,12 @@ func Routes(r route.Router) {
 	r.Post("/api/login", c.Login)
 	r.Post("/api/login/two-factor", c.LoginTwoFactor)
 	r.Post("/api/logout", c.Logout)
+	// The Desktop app's sign-in: open, guarded by the secret the app holds;
+	// approve reads the Session itself.
+	r.Post("/api/desktop-sign-ins", c.StartDesktopSignIn)
+	r.Get("/api/desktop-sign-ins/{id}", c.DescribeDesktopSignIn)
+	r.Post("/api/desktop-sign-ins/{id}/approve", c.ApproveDesktopSignIn)
+	r.Post("/api/desktop-sign-ins/{id}/cancel", c.CancelDesktopSignIn)
 	r.Middleware(identityhttp.Auth{Service: service}).Group(func(r route.Router) {
 		r.Patch("/api/me", c.ChangeName)
 		r.Post("/api/me/password", c.ChangePassword)

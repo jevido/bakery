@@ -70,7 +70,9 @@ type Hasher interface {
 type Service struct {
 	members   Members
 	apiTokens APITokens
-	hasher    Hasher
+	// desktopSignIns also stores the Desktops.
+	desktopSignIns DesktopSignIns
+	hasher         Hasher
 	// Now is the clock; time.Now unless a test sets it.
 	Now func() time.Time
 	// Random is where secrets come from; crypto/rand unless a test sets it.
@@ -81,8 +83,8 @@ type Service struct {
 	SetUpDone func(ctx context.Context, instanceAdminID uint64) error
 }
 
-func NewService(members Members, apiTokens APITokens, hasher Hasher) *Service {
-	return &Service{members: members, apiTokens: apiTokens, hasher: hasher, Now: time.Now, Random: rand.Reader}
+func NewService(members Members, apiTokens APITokens, desktopSignIns DesktopSignIns, hasher Hasher) *Service {
+	return &Service{members: members, apiTokens: apiTokens, desktopSignIns: desktopSignIns, hasher: hasher, Now: time.Now, Random: rand.Reader}
 }
 
 func (s *Service) now() time.Time { return s.Now() }

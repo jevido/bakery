@@ -83,7 +83,7 @@ func (m *memMembers) ByIDs(_ context.Context, ids []uint64) ([]domain.Member, er
 
 func newTestService() *Service {
 	members := &memMembers{}
-	return NewService(members, &memAPITokens{}, plainHasher{})
+	return NewService(members, &memAPITokens{}, &memDesktopSignIns{}, plainHasher{})
 }
 
 type plainHasher struct{}
