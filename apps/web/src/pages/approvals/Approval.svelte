@@ -35,7 +35,7 @@
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import { ago, formatDate } from '../../lib/format'
   import Identity from '../../lib/Identity.svelte'
-  import Markdown from '../../lib/Markdown.svelte'
+  import Markdown from '@bakery/ui/Markdown.svelte'
   import MarkdownField from '../../lib/MarkdownField.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
   import RequestApprovalDialog from '../../lib/RequestApprovalDialog.svelte'

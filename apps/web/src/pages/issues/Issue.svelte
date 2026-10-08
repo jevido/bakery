@@ -12,9 +12,14 @@
   // description; the Documents follow the description. The Issue's Approvals
   // sit as cards above the tabs, as Paperclip's linkedApprovals above its
   // thread; "Request approval" in the More actions menu asks for a new one
-  // (The Bakery's own: only Paperclip's agents ask). Left out until the
-  // Issue has them: agents and runs, checkout, attachments and work products.
-  import { Activity, ChevronRight, Ellipsis, MessageSquare, Plus, ShieldCheck, Trash2 } from '@lucide/svelte'
+  // (The Bakery's own: only Paperclip's agents ask). When an Agent is the
+  // Assignee, "Run" queues a Run of it (for whoever may manage it), the
+  // newest queued or running Run shows live under the description as
+  // Paperclip's LiveRunWidget, and every Run of the Issue is listed below
+  // the tabs as its IssueRunLedger. Left out until the Issue has them:
+  // checkout, attachments and work products.
+  import { Activity, ChevronRight, Ellipsis, MessageSquare, Play, Plus, ShieldCheck, Trash2 } from '@lucide/svelte'
+  import { runIsFinal } from '@bakery/ui/runStatus'
   import * as AlertDialog from '@bakery/ui/components/ui/alert-dialog'
   import { Button, buttonVariants } from '@bakery/ui/components/ui/button'
   import * as DropdownMenu from '@bakery/ui/components/ui/dropdown-menu'
@@ -33,6 +38,9 @@
   import IssueDocuments from '../../lib/IssueDocuments.svelte'
   import IssueBlockedNotice from '../../lib/IssueBlockedNotice.svelte'
   import IssueProperties from '../../lib/IssueProperties.svelte'
+  import LiveRun from '../../lib/LiveRun.svelte'
+  import RunLedger from '../../lib/RunLedger.svelte'
+  import { cancelRun, listRuns, startRun, type Run } from '../../lib/runs'
   import NewIssueDialog from '../../lib/NewIssueDialog.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
   import RequestApprovalDialog from '../../lib/RequestApprovalDialog.svelte'
@@ -62,6 +70,9 @@
   let approvals = $state.raw<Approval[]>([])
   let requesting = $state(false)
   let deciding = $state<{ id: number; action: 'approve' | 'reject' } | null>(null)
+  let runs = $state.raw<Run[]>([])
+  let starting = $state(false)
+  let stopping = $state(false)
 
   const editable = $derived(session.can('manage_work'))
   const canDecide = $derived(session.can('approve'))
@@ -112,6 +123,62 @@
   listAgents().then((as) => (agents = as)).catch(() => {})
   listGoals().then((gs) => (goals = gs)).catch(() => {})
   listIssues().then((is) => (issues = is)).catch(() => {})
+
+  // The Agent the Issue is assigned to, as the Agents list has it (its
+  // status, Hirer and whether the asker may manage it).
+  const agent = $derived(issue?.assignee?.kind === 'agent' ? (agents.find((a) => a.id === issue!.assignee!.id) ?? null) : null)
+  const unrunnable: Record<string, string> = {
+    paused: 'is paused',
+    pending_approval: 'waits for its hire to be approved',
+    terminated: 'is terminated',
+  }
+  const runBlocked = $derived(agent ? unrunnable[agent.status] : undefined)
+  /** The newest Run still waiting or running; Runs are listed newest first. */
+  const liveRun = $derived(runs.find((r) => !runIsFinal(r.status)) ?? null)
+
+  const loadRuns = (id: number) =>
+    listRuns({ issue: id })
+      .then((rs) => (runs = rs))
+      .catch(() => {})
+  const issueId = $derived(issue?.id)
+  const running = $derived(liveRun !== null)
+  $effect(() => {
+    if (issueId) loadRuns(issueId)
+  })
+  // While a Run waits or runs, the list is read again every 5 seconds, so a
+  // Desktop's claim and the end show without a reload.
+  $effect(() => {
+    if (!running || !issueId) return
+    const id = issueId
+    const t = setInterval(() => loadRuns(id), 5000)
+    return () => clearInterval(t)
+  })
+  /** A Run as its live stream last reported it. */
+  const updated = (r: Run) => (runs = runs.map((x) => (x.id === r.id ? r : x)))
+
+  async function run() {
+    starting = true
+    try {
+      const r = await startRun(agent!.id, issue!.id)
+      runs = [r, ...runs]
+      activityVersion++
+    } catch (e) {
+      toast.error(e instanceof ApiError ? (Object.values(e.errors)[0] ?? e.message) : String(e))
+    } finally {
+      starting = false
+    }
+  }
+
+  async function cancel(r: Run) {
+    stopping = true
+    try {
+      updated(await cancelRun(r.id))
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : String(e))
+    } finally {
+      stopping = false
+    }
+  }
 
   $effect(() => breadcrumb.set({ label: 'Issues', href: href('/issues') }, { label: issue?.identifier ?? key }))
 
@@ -218,8 +285,13 @@
               <Identity name={i.created_by.name} size="xs" /> opened {ago(i.created_at)}
             </span>
           {/if}
-          {#if editable}
-            <div class="ml-auto flex shrink-0 items-center">
+          <div class="ml-auto flex shrink-0 items-center gap-1">
+            {#if agent?.can_manage}
+              <span title={runBlocked ? `${agent.name} ${runBlocked}` : `Run ${agent.name} on this issue on ${agent.hirer?.name ?? 'its hirer'}'s desktop`}>
+                <Button size="xs" variant="outline" class="shadow-none" disabled={!!runBlocked || starting} onclick={run}><Play class="size-3" />Run</Button>
+              </span>
+            {/if}
+            {#if editable}
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger class={buttonVariants({ variant: 'ghost', size: 'icon-xs' })} aria-label="More issue actions" title="More issue actions">
                   <Ellipsis class="size-4" />
@@ -230,8 +302,8 @@
                   <DropdownMenu.Item variant="destructive" onSelect={() => (deleting = true)}><Trash2 />Delete issue</DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Root>
-            </div>
-          {/if}
+            {/if}
+          </div>
         </div>
 
         <InlineEditor label="Title" value={i.title} {editable} as="h2" class="text-xl font-bold" onsave={(title) => save({ title })} />
@@ -246,6 +318,10 @@
           onsave={(description) => save({ description })}
         />
       </div>
+
+      {#if liveRun}
+        <LiveRun run={liveRun} hirer={liveRun.agent.id === agent?.id ? (agent.hirer?.name ?? null) : (agents.find((a) => a.id === liveRun.agent.id)?.hirer?.name ?? null)} {stopping} oncancel={() => cancel(liveRun)} onstatus={updated} />
+      {/if}
 
       <IssueDocuments issue={i.id} {editable} onchange={refresh} />
 
@@ -304,6 +380,13 @@
           {#if tab === 'activity'}<IssueActivity issue={i.id} version={activityVersion} />{/if}
         </Tabs.Content>
       </Tabs.Root>
+
+      {#if runs.length > 0 || i.assignee?.kind === 'agent'}
+        <section class="space-y-3" aria-label="Runs">
+          <h3 class="text-sm font-medium text-muted-foreground">Runs</h3>
+          <RunLedger {runs} onstatus={updated} />
+        </section>
+      {/if}
     </div>
 
     <aside class="w-full shrink-0 border-t pt-4 lg:w-80 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6" aria-label="Properties">

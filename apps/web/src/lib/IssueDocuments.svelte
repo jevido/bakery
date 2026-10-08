@@ -19,7 +19,7 @@
   import DocumentDiff from './DocumentDiff.svelte'
   import { ago, formatDate } from './format'
   import Identity from './Identity.svelte'
-  import Markdown from './Markdown.svelte'
+  import Markdown from '@bakery/ui/Markdown.svelte'
   import MarkdownField from './MarkdownField.svelte'
   import { toast } from './ui/toast.svelte'
   import {

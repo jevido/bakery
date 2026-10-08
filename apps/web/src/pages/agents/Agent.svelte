@@ -11,7 +11,9 @@
   // Roles the Agent holds as chips, and only Roles below both the asker's
   // highest and the Hirer's highest can be added. Whoever may manage the
   // Agent (can_manage) edits it in place while it is idle or paused; the
-  // server stays the judge of every change.
+  // server stays the judge of every change. A Runs card under the others
+  // lists the Agent's last 20 Runs as Paperclip's Runs tab does, each
+  // linking to its Issue and unfolding to its Transcript.
   import { Copy, MoreHorizontal, Pause, Play, Plus, Trash2, X } from '@lucide/svelte'
   import * as AlertDialog from '@bakery/ui/components/ui/alert-dialog'
   import { Button as UiButton } from '@bakery/ui/components/ui/button'
@@ -42,6 +44,8 @@
   import InlineEditor from '../../lib/InlineEditor.svelte'
   import OptionPopover from '../../lib/OptionPopover.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
+  import RunLedger from '../../lib/RunLedger.svelte'
+  import { listRuns, type Run } from '../../lib/runs'
   import { href } from '../../lib/router.svelte'
   import type { Member } from '../../lib/session.svelte'
   import type { GuildRole } from '../../lib/types'
@@ -63,6 +67,7 @@
   let addingRole = $state(false)
   let terminating = $state(false)
   let reportsToError = $state('')
+  let runs = $state.raw<Run[]>([])
 
   // The page is keyed by id, so loading once is enough.
   function load() {
@@ -72,6 +77,9 @@
         if (e instanceof ApiError && e.status === 404) missing = true
         else loadError = e.message
       })
+    listRuns({ agent: id, limit: 20 })
+      .then((rs) => (runs = rs))
+      .catch(() => {})
     // The Guild's live Agents, for Reports to and the direct reports.
     listAgents('all')
       .then((as) => (others = as))
@@ -359,6 +367,11 @@
           {/each}
         </div>
         <p class="mt-3 text-xs text-muted-foreground">An agent holds @everyone too, and only ever roles below the one who hired it.</p>
+      </section>
+
+      <section class="rounded-lg border border-border p-4 md:col-span-2" aria-labelledby="agent-runs-heading">
+        <h3 id="agent-runs-heading" class="mb-3 text-sm font-medium">Runs</h3>
+        <RunLedger {runs} show="issue" onstatus={(r) => (runs = runs.map((x) => (x.id === r.id ? r : x)))} />
       </section>
     </div>
   </div>

@@ -18,6 +18,11 @@ compile the `.svelte` and `.ts` files with their own Vite.
   status palette), `EntityRow.svelte` (a row of a bordered list), and
   `AgentRow.svelte` with `@bakery/ui/agentStatus` (an Agent in the Agents
   list, its status words and hues).
+- `@bakery/ui/Markdown.svelte`: Markdown rendered by marked and sanitized
+  by DOMPurify, in the theme's tokens.
+- `@bakery/ui/RunTranscript.svelte` with `@bakery/ui/runTranscript` (a Run's
+  events as the blocks it draws), and `RunStatus.svelte` with
+  `@bakery/ui/runStatus` (a Run's status words and hues).
 
 Only presentational code lives here: nothing that calls the API, routes or
 knows the session. Inside the package, imports are relative (no `$lib`), so it

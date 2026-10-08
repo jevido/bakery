@@ -5,7 +5,7 @@
   // one shows its Markdown rendered and saves when it loses focus. Escape
   // throws the change away. Unchanged text is not saved. Without `editable`
   // it is plain text. Left out: autosave while typing and image uploads.
-  import Markdown from './Markdown.svelte'
+  import Markdown from '@bakery/ui/Markdown.svelte'
 
   let {
     value,

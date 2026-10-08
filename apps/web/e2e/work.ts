@@ -28,6 +28,13 @@
 //           list, Goals and an Issue's page but no New Issue, New Goal,
 //           composer, pickers, Add sub-issue or Delete, and the API answers
 //           403 to their Issue and Comment
+//   runs    an Issue assigned to a scratch Agent the owner hired: Run queues
+//           a Run that waits for the owner's desktop; a headless Desktop
+//           runner (apps/desktop `runner`, connected through `login` and
+//           running the claude stand-in) claims it, the Transcript grows
+//           live on the page, the Run ends Succeeded in Runs with its result
+//           footer and tokens, and the Agent page lists it; a [slow] Issue's
+//           Run is cancelled from the page and ends Cancelled
 //   hidden  a Member, invited for the run, sees an Issue in a scratch
 //           Project until the Project's permissions page denies the Member
 //           Role View resources there: then it is gone from the list, by its
@@ -99,7 +106,10 @@
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
 // The same environment as e2e/walk.ts overrides what it uses.
-import { readFileSync } from 'node:fs'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { chromium, type Page } from 'playwright-core'
 
 const WEB = (process.env.BAKERY_WEB ?? 'http://127.0.0.1:4930').replace(/\/$/, '')
@@ -162,6 +172,51 @@ async function cleanIssues(page: Page) {
   for (const i of (await issues(page)).filter((i) => scratchIssues.includes(i.title))) await page.request.delete(`${WEB}/api/issues/${i.id}`)
   const { projects } = (await (await page.request.get(`${WEB}/api/projects`)).json()) as { projects: { id: number; name: string }[] }
   for (const p of projects.filter((p) => p.name === scratchProject)) await page.request.delete(`${WEB}/api/projects/${p.id}`)
+}
+
+const DESKTOP_DIR = new URL('../../desktop/', import.meta.url).pathname
+
+/**
+ * A headless Desktop runner for the owner: `login` connected to the dev
+ * Bakery (its approve link approved through the API), then `runner` with the
+ * claude stand-in, each in its own process group. stop() ends it and signs
+ * its Desktop out again.
+ */
+async function desktopRunner(page: Page): Promise<{ stop: () => Promise<void> }> {
+  const home = mkdtempSync(join(tmpdir(), 'bakery-work-e2e-'))
+  const env = {
+    ...process.env,
+    BAKERY_DESKTOP_HOME: home,
+    BAKERY_CLAUDE: process.env.BAKERY_CLAUDE ?? join(DESKTOP_DIR, 'bin/claude-standin'),
+    // Slow enough that the Transcript is seen growing.
+    BAKERY_STANDIN_DELAY: process.env.BAKERY_STANDIN_DELAY ?? '1s',
+  }
+  const login = spawn('go', ['run', '.', 'login', '--server', WEB, '--no-browser'], { cwd: DESKTOP_DIR, env, stdio: ['ignore', 'pipe', 'inherit'] })
+  let out = ''
+  const link = await new Promise<URL>((resolve, reject) => {
+    login.stdout!.on('data', (b: Buffer) => {
+      out += b.toString()
+      const m = out.match(/https?:\/\/\S+desktop-sign-in\S+/)
+      if (m) resolve(new URL(m[0]))
+    })
+    login.on('exit', (code) => reject(new Error(`login exited ${code}: ${out}`)))
+  })
+  const [, id] = link.hash.match(/desktop-sign-in\/(\d+)/)!
+  const token = new URLSearchParams(link.hash.split('?')[1]).get('token')
+  const approved = await page.request.post(`${WEB}/api/desktop-sign-ins/${id}/approve`, { data: { token } })
+  if (!approved.ok()) throw new Error(`approve the desktop: ${approved.status()}`)
+  const { desktop_id } = (await approved.json()) as { desktop_id: number }
+  await new Promise((resolve) => login.on('exit', resolve))
+  const runner: ChildProcess = spawn('go', ['run', '.', 'runner'], { cwd: DESKTOP_DIR, env, detached: true, stdio: ['ignore', 'inherit', 'inherit'] })
+  return {
+    stop: async () => {
+      try {
+        process.kill(-runner.pid!, 'SIGTERM')
+      } catch {}
+      await page.request.delete(`${WEB}/api/desktops/${desktop_id}`)
+      rmSync(home, { recursive: true, force: true })
+    },
+  }
 }
 
 /** Picks an option of a dialog chip or popover by its accessible names. */
@@ -1136,6 +1191,79 @@ const sections: Record<string, () => Promise<void>> = {
 
     await page.request.delete(`${WEB}/api/issues/${issue.id}`)
     await page.close()
+  },
+
+  runs: async () => {
+    const page = await signedIn()
+    const name = 'Runs e2e agent'
+    const titles = ['Runs e2e: say hello', 'Runs e2e: [slow] count']
+    for (const i of (await issues(page)).filter((i) => titles.includes(i.title))) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    const { agents } = (await (await page.request.get(`${WEB}/api/agents`)).json()) as { agents: { id: number; name: string }[] }
+    for (const a of agents.filter((a) => a.name === name)) await page.request.post(`${WEB}/api/agents/${a.id}/terminate`)
+
+    const me = ((await (await page.request.get(`${WEB}/api/me`)).json()) as { member: { name: string } }).member
+    const hire = (await (await page.request.post(`${WEB}/api/agents`, { data: { name, job: 'engineer', icon: 'bot' } })).json()) as { agent: { id: number; approval_id: number } }
+    await page.request.post(`${WEB}/api/approvals/${hire.agent.approval_id}/approve`, { data: {} })
+    const made: Issue[] = []
+    for (const title of titles) {
+      const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title, assignee_agent_id: hire.agent.id } })).json()) as { issue: Issue }
+      made.push(issue)
+    }
+    const [hello, slow] = made
+
+    // Run queues a Run that waits for the owner's desktop, none running yet.
+    await page.goto(`${WEB}/#/issues/${hello.identifier}`)
+    const header = page.getByTestId('issue-detail-header')
+    await header.getByRole('button', { name: 'Run', exact: true }).click()
+    const live = page.getByTestId('live-run')
+    await live.getByTestId('run-waiting').waitFor()
+    const waiting = await live.getByTestId('run-waiting').innerText()
+    expect("the queued Run waits for the hirer's desktop", waiting.includes(`Waiting for ${me.name}'s desktop`), waiting)
+    expect('it is listed in Runs as Queued', await page.getByTestId('run-ledger').locator('[data-run-status="queued"]').isVisible())
+
+    // The runner claims it and the Transcript grows live.
+    const desktop = await desktopRunner(page)
+    try {
+      const blocks = live.locator('[data-testid="run-transcript"][data-live="true"] [data-block]')
+      await blocks.first().waitFor({ timeout: 120_000 })
+      const first = await blocks.count()
+      const grew = await page
+        .waitForFunction((n) => document.querySelectorAll('[data-testid="live-run"] [data-block]').length > n, first, { timeout: 20_000 })
+        .then(() => true, () => false)
+      expect('the Transcript grows live on the Issue page', grew, first)
+      expect('the assistant text shows', await live.locator('[data-block="assistant"]').first().isVisible())
+      await live.waitFor({ state: 'detached', timeout: 60_000 })
+      const row = page.getByTestId('run-ledger').locator('[data-run]').first()
+      await row.locator('[data-run-status="succeeded"]').waitFor({ timeout: 10_000 })
+      expect('the Run ends Succeeded in Runs', true)
+      await row.getByRole('button', { name: /^Run #/ }).click()
+      const footer = row.locator('[data-block="result"]')
+      await footer.waitFor()
+      const tokens = await footer.getByTestId('run-tokens').innerText()
+      expect('its result footer shows the tokens', /[\d.]+k? in · [\d.]+k? out tokens/.test(tokens), tokens)
+      expect('and the cost as an equivalent', (await footer.innerText()).includes('equivalent'))
+      expect('a tool call shows as one row', (await row.locator('[data-block="tool"]').count()) > 0)
+
+      // The Agent page lists it, linking to the Issue.
+      await page.goto(`${WEB}/#/agents/${hire.agent.id}`)
+      await page.getByTestId('run-ledger').getByRole('link', { name: new RegExp(hello.identifier) }).waitFor()
+      expect('the Agent page lists the Run with its Issue', true)
+
+      // A [slow] Run is cancelled from the page.
+      await page.goto(`${WEB}/#/issues/${slow.identifier}`)
+      await header.getByRole('button', { name: 'Run', exact: true }).click()
+      await live.locator('[data-run-status="running"]').waitFor({ timeout: 60_000 })
+      await live.locator('[data-block]').first().waitFor({ timeout: 20_000 })
+      await live.getByRole('button', { name: 'Cancel' }).click()
+      await page.getByTestId('run-ledger').locator('[data-run]').first().locator('[data-run-status="cancelled"]').waitFor({ timeout: 15_000 })
+      expect('the cancelled Run ends Cancelled', true)
+      expect('and leaves the live block', !(await live.isVisible()))
+    } finally {
+      await desktop.stop()
+      for (const i of made) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+      await page.request.post(`${WEB}/api/agents/${hire.agent.id}/terminate`)
+      await page.close()
+    }
   },
 }
 

@@ -9,7 +9,7 @@
   // do not have. Left out until budgets bring it: the budget payload.
   import type { ApprovalPayload, HirePayload } from './approvals'
   import { jobLabel } from './approvals'
-  import Markdown from './Markdown.svelte'
+  import Markdown from '@bakery/ui/Markdown.svelte'
   import { href } from './router.svelte'
 
   let {

@@ -4,7 +4,7 @@
   // NOTICE). What is stored is the Markdown either way. Ctrl/⌘+Enter calls
   // `onsubmit`, as Paperclip's dialogs and comment box do.
   import * as Tabs from '@bakery/ui/components/ui/tabs'
-  import Markdown from './Markdown.svelte'
+  import Markdown from '@bakery/ui/Markdown.svelte'
   import Textarea from './ui/Textarea.svelte'
 
   let {

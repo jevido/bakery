@@ -11,12 +11,16 @@
     "./agentStatus": "./src/agentStatus.ts",
     "./theme": "./src/theme.svelte.ts",
     "./components/ui/*": "./src/components/ui/*/index.ts",
-    "./*.svelte": "./src/*.svelte"
+    "./*.svelte": "./src/*.svelte",
+    "./runStatus": "./src/runStatus.ts",
+    "./runTranscript": "./src/runTranscript.ts"
   },
   "dependencies": {
     "@lucide/svelte": "^1.52.0",
     "bits-ui": "^2.18.0",
     "clsx": "^2.1.1",
+    "dompurify": "^3.4.16",
+    "marked": "^18.1.0",
     "tailwind-merge": "^3.7.0",
     "tailwind-variants": "^3.3.0"
   },
