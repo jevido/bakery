@@ -210,6 +210,28 @@ func (s *Service) RunHeartbeat(ctx context.Context, guildID uint64, actor Actor,
 	return s.wake(ctx, a, WakeInput{Source: domain.OnDemand, Reason: domain.HeartbeatInvoked, ActorID: actor.ID})
 }
 
+// IssueAssigned wakes the Agent an open Issue was just assigned to, on
+// that Issue, with the person who assigned it as its Actor. A Wake the
+// Agent's status or Heartbeat policy refuses is dropped.
+func (s *Service) IssueAssigned(ctx context.Context, guildID, issueID, agentID, actorID uint64) error {
+	return dropRefused(s.Wake(ctx, guildID, agentID, WakeInput{Source: domain.Assignment, Reason: domain.IssueAssigned, IssueID: issueID, ActorID: actorID}))
+}
+
+// IssueCommented wakes the Agent assignee of an Issue a person just
+// commented on, on that Issue, bringing the comment. A Wake the Agent's
+// status or Heartbeat policy refuses is dropped.
+func (s *Service) IssueCommented(ctx context.Context, guildID, issueID, agentID, commentID, actorID uint64) error {
+	return dropRefused(s.Wake(ctx, guildID, agentID, WakeInput{Source: domain.Automation, Reason: domain.IssueCommented, IssueID: issueID, ActorID: actorID, CommentID: commentID}))
+}
+
+func dropRefused(_ domain.Run, _ bool, err error) error {
+	var status *domain.StatusError
+	if errors.As(err, &status) || errors.As(err, new(domain.WakeRefused)) {
+		return nil
+	}
+	return err
+}
+
 // WakeInput is one Wake: what started it and why, its Issue (0 for none),
 // the person behind it (0 for none) and the comment it brings (0 for none).
 type WakeInput struct {

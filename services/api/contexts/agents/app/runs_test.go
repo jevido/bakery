@@ -352,3 +352,51 @@ func TestPromptFor(t *testing.T) {
 		t.Errorf("no issues %q", got)
 	}
 }
+
+func TestWakesFromWork(t *testing.T) {
+	ctx := context.Background()
+	s, _, _, w := newTest()
+	runs := s.runs.(*fakeRuns)
+	ada := hired(t, s, "Ada", 0)
+	w.issues = map[uint64]IssueBrief{30: {ID: 30, Identifier: "BAK-3", Title: "Fix it", Status: "todo", AgentAssigneeID: ada.ID}}
+	if err := s.IssueAssigned(ctx, 1, 30, ada.ID, 7); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.IssueCommented(ctx, 1, 30, ada.ID, 51, 7); err != nil {
+		t.Fatal(err)
+	}
+	if len(runs.rows) != 1 {
+		t.Fatalf("runs %+v", runs.rows)
+	}
+	for _, r := range runs.rows {
+		if r.InvocationSource != domain.Assignment || r.WakeReason != domain.IssueAssigned || r.IssueID != 30 ||
+			r.WakeCount != 2 || r.RequestedByID != 7 || !slices.Equal(r.WakeContext.CommentIDs, []uint64{51}) {
+			t.Fatalf("run %+v", r)
+		}
+	}
+	// Wake on demand off refuses both, and that is no error for work.
+	off := false
+	if _, err := s.Edit(ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID, domain.Patch{Heartbeat: &domain.HeartbeatPatch{WakeOnDemand: &off}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.IssueAssigned(ctx, 1, 30, ada.ID, 7); err != nil {
+		t.Errorf("assigned without wake on demand: %v", err)
+	}
+	if err := s.IssueCommented(ctx, 1, 30, ada.ID, 52, 7); err != nil {
+		t.Errorf("commented without wake on demand: %v", err)
+	}
+	if len(runs.rows) != 1 {
+		t.Errorf("refused wakes queued %+v", runs.rows)
+	}
+	// So does a paused Agent.
+	if _, err := s.Pause(ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.IssueAssigned(ctx, 1, 30, ada.ID, 7); err != nil || len(runs.rows) != 1 {
+		t.Errorf("assigned to a paused agent: %v %d", err, len(runs.rows))
+	}
+	// An Agent that is not there is an error work logs.
+	if err := s.IssueAssigned(ctx, 1, 30, 999, 7); err == nil {
+		t.Error("unknown agent woke")
+	}
+}

@@ -1,8 +1,8 @@
 // Package agents is what the router may use from the agents context: its
 // routes (the Current guild's Agents, hiring and managing one, its Org
 // chart, their Runs), the Desktop's routes for the Runs it runs, and the
-// sweep of lost Runs (Start). It hears work's Decisions on hire_agent Approvals and Members
-// leaving a Guild, names Agents as Issue Assignees for work, and keeps a Guild with Agents from being deleted. Nothing else in contexts/agents is for outside use.
+// sweep of lost Runs (Start). It hears work's Decisions on hire_agent Approvals, Issues
+// assigned to and commented on for its Agents, and Members leaving a Guild, names Agents as Issue Assignees for work, and keeps a Guild with Agents from being deleted. Nothing else in contexts/agents is for outside use.
 package agents
 
 import (
@@ -37,6 +37,12 @@ func svc() *app.Service {
 			return service.Decided(ctx, app.Decision{GuildID: d.GuildID, AgentID: d.AgentID, DeciderID: d.DeciderID, Approved: d.Approved})
 		})
 		work.OnAgentNames(service.Names)
+		work.OnIssueAssigned(func(ctx context.Context, e work.IssueAssigned) error {
+			return service.IssueAssigned(ctx, e.GuildID, e.IssueID, e.AgentID, e.ActorID)
+		})
+		work.OnIssueCommented(func(ctx context.Context, e work.IssueCommented) error {
+			return service.IssueCommented(ctx, e.GuildID, e.IssueID, e.AgentID, e.CommentID, e.ActorID)
+		})
 		work.OnAgentAssignees(func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]work.AssigneeAgent, error) {
 			as, err := service.Assignees(ctx, guildID, ids)
 			if err != nil {
@@ -144,15 +150,28 @@ func (workOfAgents) IssueForRun(ctx context.Context, guildID, issueID uint64) (a
 	return app.IssueBrief(i), ok, err
 }
 
-// OpenIssuesOfAgent and CommentsForRun answer nothing until work
-// publishes them (phase 40, task 04): a Heartbeat's prompt then says the
-// Agent has no open Issues and a Run quotes no comments.
-func (workOfAgents) OpenIssuesOfAgent(context.Context, uint64, uint64) ([]app.IssueBrief, error) {
-	return nil, nil
+func (workOfAgents) OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]app.IssueBrief, error) {
+	is, err := work.OpenIssuesOfAgent(ctx, guildID, agentID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]app.IssueBrief, len(is))
+	for n, i := range is {
+		out[n] = app.IssueBrief(i)
+	}
+	return out, nil
 }
 
-func (workOfAgents) CommentsForRun(context.Context, uint64, []uint64) ([]app.RunComment, error) {
-	return nil, nil
+func (workOfAgents) CommentsForRun(ctx context.Context, guildID uint64, ids []uint64) ([]app.RunComment, error) {
+	cs, err := work.CommentsForRun(ctx, guildID, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]app.RunComment, len(cs))
+	for n, c := range cs {
+		out[n] = app.RunComment(c)
+	}
+	return out, nil
 }
 
 func memberNames(ctx context.Context, ids []uint64) ([]agentshttp.Named, error) {

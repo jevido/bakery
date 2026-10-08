@@ -2,8 +2,9 @@
 // work context: its routes (Goals, Issues, Comments, Issue documents, the
 // Activity, the Inbox and Approvals), and for the agents context
 // RequestApproval, CancelApproval, OnApprovalDecided, RecordActivity,
-// OnAgentNames, OnAgentAssignees, UnassignAgent and IssueForRun. Nothing else in
-// contexts/work is for outside use.
+// OnAgentNames, OnAgentAssignees, UnassignAgent, IssueForRun,
+// OpenIssuesOfAgent, CommentsForRun, OnIssueAssigned and OnIssueCommented.
+// Nothing else in contexts/work is for outside use.
 package work
 
 import (
@@ -33,6 +34,8 @@ func svc() *app.Service {
 		service.Logf = facades.Log().Errorf
 		service.Decided = approvalDecided
 		service.Agents = assigneeAgents
+		service.Assigned = issueAssigned
+		service.Commented = issueCommented
 		guilds.OnGuildDeleting("goals", func(ctx context.Context, guildID uint64) (bool, error) {
 			gs, err := service.Goals(ctx, guildID)
 			return len(gs) > 0, err
@@ -164,6 +167,121 @@ func IssueForRun(ctx context.Context, guildID, issueID uint64) (IssueBrief, bool
 		ID: i.ID, ProjectID: i.ProjectID, Identifier: domain.Identifier(prefix, i.Number), Title: i.Title,
 		Description: i.Description, Status: string(i.Status), AgentAssigneeID: i.AssigneeAgentID,
 	}, true, nil
+}
+
+// OpenIssuesOfAgent lists the Guild's Issues the Agent is the assignee of
+// that are todo, in progress or in review, by Issue identifier, whatever
+// Project they are in.
+func OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]IssueBrief, error) {
+	is, prefix, err := svc().AgentWork(ctx, guildID, agentID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]IssueBrief, len(is))
+	for n, i := range is {
+		out[n] = IssueBrief{
+			ID: i.ID, ProjectID: i.ProjectID, Identifier: domain.Identifier(prefix, i.Number), Title: i.Title,
+			Description: i.Description, Status: string(i.Status), AgentAssigneeID: i.AssigneeAgentID,
+		}
+	}
+	return out, nil
+}
+
+// RunComment is a Comment as a Run's prompt quotes it, with its author's
+// name.
+type RunComment struct {
+	ID         uint64
+	AuthorName string
+	Body       string
+}
+
+// CommentsForRun tells the Guild's Comments with these ids, in that order;
+// deleted ones and ids that are not the Guild's are left out.
+func CommentsForRun(ctx context.Context, guildID uint64, ids []uint64) ([]RunComment, error) {
+	cs, err := svc().CommentsOfGuild(ctx, guildID, ids)
+	if err != nil || len(cs) == 0 {
+		return nil, err
+	}
+	authors := make([]uint64, len(cs))
+	for n, c := range cs {
+		authors[n] = c.AuthorID
+	}
+	ms, err := memberNames(ctx, authors)
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[uint64]string, len(ms))
+	for _, m := range ms {
+		names[m.ID] = m.Name
+	}
+	out := make([]RunComment, len(cs))
+	for n, c := range cs {
+		out[n] = RunComment{ID: c.ID, AuthorName: names[c.AuthorID], Body: c.Body}
+	}
+	return out, nil
+}
+
+// IssueAssigned is an Issue, once stored, that its Agent assignee now has
+// to work on: assigned to it while open and out of the backlog, or moved
+// out of the backlog while it is the Assignee. ActorID is the person who
+// changed it.
+type IssueAssigned struct {
+	GuildID uint64
+	IssueID uint64
+	AgentID uint64
+	ActorID uint64
+}
+
+// IssueCommented is a Comment, once stored, on an Issue an Agent is the
+// Assignee of and that is not done or cancelled. ActorID is its author.
+type IssueCommented struct {
+	GuildID   uint64
+	IssueID   uint64
+	AgentID   uint64
+	CommentID uint64
+	ActorID   uint64
+}
+
+var (
+	hooksMu     sync.RWMutex
+	onAssigned  func(ctx context.Context, e IssueAssigned) error
+	onCommented func(ctx context.Context, e IssueCommented) error
+)
+
+// OnIssueAssigned registers f to hear every IssueAssigned. Its error is
+// logged; the change it follows still succeeds.
+func OnIssueAssigned(f func(ctx context.Context, e IssueAssigned) error) {
+	hooksMu.Lock()
+	defer hooksMu.Unlock()
+	onAssigned = f
+}
+
+// OnIssueCommented registers f to hear every IssueCommented. Its error is
+// logged; the Comment is still written.
+func OnIssueCommented(f func(ctx context.Context, e IssueCommented) error) {
+	hooksMu.Lock()
+	defer hooksMu.Unlock()
+	onCommented = f
+}
+
+func issueAssigned(ctx context.Context, i domain.Issue, actorID uint64) error {
+	hooksMu.RLock()
+	f := onAssigned
+	hooksMu.RUnlock()
+	if f == nil {
+		return nil
+	}
+	return f(ctx, IssueAssigned{GuildID: i.GuildID, IssueID: i.ID, AgentID: i.AssigneeAgentID, ActorID: actorID})
+}
+
+func issueCommented(ctx context.Context, i domain.Issue, c domain.Comment) error {
+	hooksMu.RLock()
+	f := onCommented
+	hooksMu.RUnlock()
+	if f == nil {
+		return nil
+	}
+	return f(ctx, IssueCommented{GuildID: i.GuildID, IssueID: i.ID, AgentID: i.AssigneeAgentID, CommentID: c.ID, ActorID: c.AuthorID})
 }
 
 // OnApprovalDecided registers f to hear every approve or reject of an

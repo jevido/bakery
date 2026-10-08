@@ -369,7 +369,27 @@ func (s *Service) CreateIssue(ctx context.Context, guildID, memberID uint64, in 
 		return domain.Issue{}, err
 	}
 	s.publish(ctx, domain.IssueCreated{Happened: s.happened(memberID), Issue: i})
+	if i.AssigneeAgentID != 0 && agentWorksOn(i.Status) {
+		s.assigned(ctx, i, memberID)
+	}
 	return i, nil
+}
+
+// agentWorksOn tells whether an Agent assignee has work in an Issue with
+// the status: it is open and out of the backlog.
+func agentWorksOn(st domain.IssueStatus) bool {
+	return st != domain.Backlog && st != domain.Done && st != domain.IssueCancelled
+}
+
+// assigned tells Assigned about an Issue that is stored. Its error is
+// logged: the change it follows already happened.
+func (s *Service) assigned(ctx context.Context, i domain.Issue, actorID uint64) {
+	if s.Assigned == nil {
+		return
+	}
+	if err := s.Assigned(ctx, i, actorID); err != nil {
+		s.Logf("work: after assigning issue %d to agent %d: %v", i.ID, i.AssigneeAgentID, err)
+	}
 }
 
 // relate sets an Issue's Project, Goal and parent, each checked.
@@ -451,6 +471,10 @@ func (s *Service) ChangeIssue(ctx context.Context, guildID, memberID uint64, ref
 	}
 	if len(e.Changes()) > 0 {
 		s.publish(ctx, e)
+	}
+	if a := e.After; a.AssigneeAgentID != 0 && agentWorksOn(a.Status) &&
+		(a.AssigneeAgentID != e.Before.AssigneeAgentID || e.Before.Status == domain.Backlog) {
+		s.assigned(ctx, a, memberID)
 	}
 	return e.After, nil
 }
@@ -636,6 +660,27 @@ func (s *Service) AssigneeAgents(ctx context.Context, guildID uint64, ids []uint
 		return map[uint64]AssigneeAgent{}, nil
 	}
 	return s.Agents(ctx, guildID, ids)
+}
+
+// AgentWork lists the Guild's Issues the Agent is the assignee of that are
+// todo, in progress or in review, by number, with the Guild's Issue
+// prefix: what a Heartbeat tells the Agent to work on.
+func (s *Service) AgentWork(ctx context.Context, guildID, agentID uint64) (is []domain.Issue, prefix string, err error) {
+	all, err := s.issues.OpenIssuesOfAgent(ctx, guildID, agentID)
+	if err != nil {
+		return nil, "", err
+	}
+	for _, i := range all {
+		if i.Status == domain.Todo || i.Status == domain.InProgress || i.Status == domain.InReview {
+			is = append(is, i)
+		}
+	}
+	if len(is) == 0 {
+		return nil, "", nil
+	}
+	slices.SortFunc(is, func(a, b domain.Issue) int { return a.Number - b.Number })
+	prefix, err = s.guilds.IssuePrefix(ctx, guildID)
+	return is, prefix, err
 }
 
 // UnassignAgent takes a terminated Agent off the Guild's Issues that are

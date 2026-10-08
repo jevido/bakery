@@ -55,6 +55,13 @@ type Service struct {
 	// (agents, through work.OnAgentAssignees); nil knows no Agent, so none
 	// can be an Assignee.
 	Agents func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]AssigneeAgent, error)
+	// Assigned hears an Issue, once stored, that an Agent now has to work
+	// on: assigned to it while open and out of the backlog, or moved out
+	// of the backlog while it is the Assignee. nil hears nothing.
+	Assigned func(ctx context.Context, i domain.Issue, actorID uint64) error
+	// Commented hears a Comment, once stored, on an Issue an Agent is the
+	// Assignee of and that is not done or cancelled. nil hears nothing.
+	Commented func(ctx context.Context, i domain.Issue, c domain.Comment) error
 }
 
 func NewService(goals Goals, issues Issues, comments Comments, docs Documents, guilds Guilds, projects Projects, activity Activity, inbox Inbox, approvals Approvals) *Service {

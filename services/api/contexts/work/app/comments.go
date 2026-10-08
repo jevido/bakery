@@ -42,6 +42,11 @@ func (s *Service) WriteComment(ctx context.Context, guildID, memberID uint64, re
 		return domain.Comment{}, err
 	}
 	s.publish(ctx, domain.CommentWritten{Happened: s.happened(memberID), Issue: i, Comment: c})
+	if s.Commented != nil && i.AssigneeAgentID != 0 && i.Status != domain.Done && i.Status != domain.IssueCancelled {
+		if err := s.Commented(ctx, i, c); err != nil {
+			s.Logf("work: after comment %d on issue %d: %v", c.ID, i.ID, err)
+		}
+	}
 	return c, nil
 }
 
@@ -89,4 +94,33 @@ func (s *Service) DeleteComment(ctx context.Context, guildID, memberID uint64, r
 	}
 	s.publish(ctx, domain.CommentDeleted{Happened: s.happened(memberID), Issue: i, Comment: c})
 	return nil
+}
+
+// CommentsOfGuild returns the Guild's Comments with these ids, in that
+// order, leaving out deleted ones and ids that are not the Guild's.
+func (s *Service) CommentsOfGuild(ctx context.Context, guildID uint64, ids []uint64) ([]domain.Comment, error) {
+	inGuild := map[uint64]bool{}
+	var out []domain.Comment
+	for _, id := range ids {
+		c, found, err := s.comments.Comment(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if !found || c.DeletedAt != nil {
+			continue
+		}
+		ok, seen := inGuild[c.IssueID]
+		if !seen {
+			i, found, err := s.issues.Issue(ctx, c.IssueID)
+			if err != nil {
+				return nil, err
+			}
+			ok = found && i.GuildID == guildID
+			inGuild[c.IssueID] = ok
+		}
+		if ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }

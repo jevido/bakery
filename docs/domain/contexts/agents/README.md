@@ -300,8 +300,9 @@ records nothing more.
     number, title and description (for a Run's check and its prompt), and
     the call that clears a terminated Agent as Assignee, `work.OnIssueAssigned`
     and `work.OnIssueCommented` (registered, to wake the Agent assignee),
-    and `work.OpenIssuesOfAgent` for the timer's check and the Heartbeat
-    prompts. It registers the
+    `work.OpenIssuesOfAgent` for the timer's check and the Heartbeat
+    prompts, and `work.CommentsForRun` for the comments a Run's prompt
+    quotes. It registers the
     hook by which work asks whether an Agent may be an Assignee (in the
     Guild, not terminated).
   - from identity: the Desktop key principal (its person, across Guilds)
