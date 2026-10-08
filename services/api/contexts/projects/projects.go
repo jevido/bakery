@@ -16,6 +16,7 @@ import (
 	"github.com/jevido/bakery/services/api/app/facades"
 	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/projects/app"
+	"github.com/jevido/bakery/services/api/contexts/projects/domain"
 	projectshttp "github.com/jevido/bakery/services/api/contexts/projects/http"
 	"github.com/jevido/bakery/services/api/contexts/projects/infra"
 	"github.com/jevido/bakery/services/api/contexts/servers"
@@ -291,6 +292,30 @@ func ApplicationInProject(ctx context.Context, guildID, projectID, applicationID
 		return found(a, err)
 	}
 	return a.ProjectID == projectID, nil
+}
+
+// GitRepository is an Application's git source as agents needs it for a
+// Run's Workspace: the Application's name, its Git repository URL and its
+// branch. It never carries the Deploy key: the laptop pushes with its
+// person's own git access.
+type GitRepository struct {
+	Name   string
+	URL    string
+	Branch string
+}
+
+// ApplicationRepository tells the Guild's Application's git source; found
+// is false when it is another Guild's, there is none, or it has no git
+// source (the dockerimage build pack).
+func ApplicationRepository(ctx context.Context, guildID, applicationID uint64) (GitRepository, bool, error) {
+	a, err := svc().Application(app.InGuild(ctx, guildID), applicationID)
+	if errors.Is(err, app.ErrNotFound) {
+		return GitRepository{}, false, nil
+	}
+	if err != nil || a.BuildPack == domain.DockerImage || a.GitURL == "" {
+		return GitRepository{}, false, err
+	}
+	return GitRepository{Name: a.Name, URL: a.GitURL, Branch: a.GitBranch}, true, nil
 }
 
 // ApplicationNames names the Guild's Applications among ids; an id that is

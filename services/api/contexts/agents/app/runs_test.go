@@ -351,21 +351,26 @@ func cancelled(r domain.Run) domain.Run {
 func TestPromptFor(t *testing.T) {
 	ada := domain.Agent{Name: "Ada", Job: domain.Job("engineer")}
 	i := IssueBrief{ID: 30, Identifier: "BAK-3", Title: "Fix it", Description: "The button."}
-	if got := PromptFor(ada, domain.Manual, i, nil, nil); got != "BAK-3: Fix it\n\nThe button.\n\nYou are Ada, the guild's Engineer." {
+	if got := PromptFor(ada, domain.Manual, i, nil, nil, nil); got != "BAK-3: Fix it\n\nThe button.\n\nYou are Ada, the guild's Engineer." {
 		t.Errorf("manual %q", got)
 	}
-	if got := PromptFor(ada, domain.IssueAssigned, i, nil, nil); !strings.HasPrefix(got, "You were assigned this issue.\n\nBAK-3: Fix it") {
+	if got := PromptFor(ada, domain.IssueAssigned, i, nil, nil, nil); !strings.HasPrefix(got, "You were assigned this issue.\n\nBAK-3: Fix it") {
 		t.Errorf("assigned %q", got)
 	}
-	got := PromptFor(ada, domain.IssueAssigned, i, []RunComment{{AuthorName: "Grace", Body: "Also the link."}, {AuthorName: "Linus", Body: "And the icon."}}, nil)
+	got := PromptFor(ada, domain.IssueAssigned, i, nil, []RunComment{{AuthorName: "Grace", Body: "Also the link."}, {AuthorName: "Linus", Body: "And the icon."}}, nil)
 	if !strings.HasSuffix(got, "Engineer.\n\nNew comments:\n\nGrace wrote:\nAlso the link.\n\nLinus wrote:\nAnd the icon.") {
 		t.Errorf("comments %q", got)
 	}
+	ws := &Workspace{ApplicationName: "shop", BaseBranch: "main", Branch: "bakery/bak-3"}
+	if got := PromptFor(ada, domain.Manual, i, ws, nil, nil); !strings.HasSuffix(got, "Engineer.\n\nYou work in a git worktree of shop's repository on branch bakery/bak-3, based on main. "+
+		"Commit your changes, push the branch to origin and open the Pull request with bakeryOpenPullRequest; a Preview of it will appear on the Issue.") {
+		t.Errorf("workspace %q", got)
+	}
 	open := []IssueBrief{{Identifier: "BAK-3", Status: "todo", Title: "Fix it"}, {Identifier: "BAK-4", Status: "in_review", Title: "Ship it"}}
-	if got := PromptFor(ada, domain.HeartbeatTimer, IssueBrief{}, nil, open); got != "Heartbeat.\n\nYou are Ada, the guild's Engineer.\n\nYour open issues:\n- BAK-3 [todo]: Fix it\n- BAK-4 [in_review]: Ship it" {
+	if got := PromptFor(ada, domain.HeartbeatTimer, IssueBrief{}, nil, nil, open); got != "Heartbeat.\n\nYou are Ada, the guild's Engineer.\n\nYour open issues:\n- BAK-3 [todo]: Fix it\n- BAK-4 [in_review]: Ship it" {
 		t.Errorf("heartbeat %q", got)
 	}
-	if got := PromptFor(ada, domain.HeartbeatInvoked, IssueBrief{}, nil, nil); !strings.HasSuffix(got, "Engineer.\n\nYou have no open issues.") {
+	if got := PromptFor(ada, domain.HeartbeatInvoked, IssueBrief{}, nil, nil, nil); !strings.HasSuffix(got, "Engineer.\n\nYou have no open issues.") {
 		t.Errorf("no issues %q", got)
 	}
 }

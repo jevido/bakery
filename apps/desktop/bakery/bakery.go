@@ -393,6 +393,18 @@ type DesktopRun struct {
 	// RunKey is only in the claim's answer: the Run key the Runner hands to
 	// this Run's claude. It is kept in memory only, never stored or logged.
 	RunKey string `json:"run_key,omitempty"`
+	// Workspace is only in the claim's answer: the git Worktree the Run
+	// works in. Nil when its Issue names no Application with a repository.
+	Workspace *RunWorkspace `json:"workspace"`
+}
+
+// RunWorkspace is where a claimed Run works: the Issue's Application, its
+// git repository and base branch, and the Agent branch to work on.
+type RunWorkspace struct {
+	Application Named  `json:"application"`
+	Repository  string `json:"repository"`
+	BaseBranch  string `json:"base_branch"`
+	Branch      string `json:"branch"`
 }
 
 // RunEvent is one thing a Run's claude printed, numbered by Seq from 1.

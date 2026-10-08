@@ -125,6 +125,7 @@ func (f *fakeGuilds) RoleNames(_ context.Context, _ uint64, ids []uint64) ([]str
 }
 
 type fakeWork struct {
+	repos     map[uint64]GitRepository
 	fail      error
 	requests  []HireRequest
 	actions   []string
@@ -167,6 +168,16 @@ func (f *fakeWork) IssueForRun(_ context.Context, _, issueID uint64) (IssueBrief
 	return i, ok, nil
 }
 
+// ApplicationRepository answers for projects too: the Applications in
+// repos, and failure for id 99.
+func (f *fakeWork) ApplicationRepository(_ context.Context, _, applicationID uint64) (GitRepository, bool, error) {
+	if applicationID == 99 {
+		return GitRepository{}, false, errors.New("projects is down")
+	}
+	r, ok := f.repos[applicationID]
+	return r, ok, nil
+}
+
 func (f *fakeWork) UnassignAgent(_ context.Context, _, agentID, _ uint64) error {
 	f.unassigned = append(f.unassigned, agentID)
 	return nil
@@ -192,7 +203,7 @@ func (f *fakeWork) RecordActivity(_ context.Context, e Activity) error {
 
 func newTest() (*Service, *fakeAgents, *fakeGuilds, *fakeWork) {
 	a, g, w := &fakeAgents{rows: map[uint64]domain.Agent{}}, &fakeGuilds{joined: map[uint64][]uint64{}, rank: map[uint64]int{}}, &fakeWork{}
-	return NewService(a, &fakeRuns{rows: map[uint64]domain.Run{}, events: map[uint64][]domain.RunEvent{}, agents: a}, g, w), a, g, w
+	return NewService(a, &fakeRuns{rows: map[uint64]domain.Run{}, events: map[uint64][]domain.RunEvent{}, agents: a}, g, w, w), a, g, w
 }
 
 func TestHireAndDecide(t *testing.T) {

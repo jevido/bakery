@@ -186,6 +186,8 @@ type IssueBrief struct {
 	Description     string
 	Status          string
 	AgentAssigneeID uint64
+	// ApplicationID is the Issue's Application, 0 for none.
+	ApplicationID uint64
 }
 
 // IssueForRun tells the Guild's Issue; found is false when it is
@@ -197,7 +199,7 @@ func IssueForRun(ctx context.Context, guildID, issueID uint64) (IssueBrief, bool
 	}
 	return IssueBrief{
 		ID: i.ID, ProjectID: i.ProjectID, Identifier: domain.Identifier(prefix, i.Number), Title: i.Title,
-		Description: i.Description, Status: string(i.Status), AgentAssigneeID: i.AssigneeAgentID,
+		Description: i.Description, Status: string(i.Status), AgentAssigneeID: i.AssigneeAgentID, ApplicationID: i.ApplicationID,
 	}, true, nil
 }
 
@@ -213,7 +215,7 @@ func OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]IssueBri
 	for n, i := range is {
 		out[n] = IssueBrief{
 			ID: i.ID, ProjectID: i.ProjectID, Identifier: domain.Identifier(prefix, i.Number), Title: i.Title,
-			Description: i.Description, Status: string(i.Status), AgentAssigneeID: i.AssigneeAgentID,
+			Description: i.Description, Status: string(i.Status), AgentAssigneeID: i.AssigneeAgentID, ApplicationID: i.ApplicationID,
 		}
 	}
 	return out, nil

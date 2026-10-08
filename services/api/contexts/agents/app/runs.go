@@ -55,6 +55,8 @@ type IssueBrief struct {
 	Description     string
 	Status          string
 	AgentAssigneeID uint64
+	// ApplicationID is the Issue's Application, 0 for none.
+	ApplicationID uint64
 }
 
 // RunComment is a comment on an Issue as a Run's prompt quotes it.
@@ -86,12 +88,12 @@ const (
 
 // PromptFor is what claude is asked in a Run of the Agent for the Wake
 // reason. A Run on an Issue gets the Issue as "{identifier}: {title}", a
-// blank line and its description, then one line naming the Agent, then the
-// comments that woke it or joined it; an Assignment Run starts with "You
-// were assigned this issue.". A Heartbeat Run without an Issue gets
-// "Heartbeat.", the Agent line and its open Issues. The Agent cannot reach
-// The Bakery's API yet, so the prompt carries all it knows.
-func PromptFor(a domain.Agent, reason domain.WakeReason, i IssueBrief, comments []RunComment, open []IssueBrief) string {
+// blank line and its description, then one line naming the Agent, then
+// where it works when the Run has a Workspace, then the comments that woke
+// it or joined it; an Assignment Run starts with "You were assigned this
+// issue.". A Heartbeat Run without an Issue gets "Heartbeat.", the Agent
+// line and its open Issues.
+func PromptFor(a domain.Agent, reason domain.WakeReason, i IssueBrief, ws *Workspace, comments []RunComment, open []IssueBrief) string {
 	var b strings.Builder
 	if i.ID == 0 && (reason == domain.HeartbeatInvoked || reason == domain.HeartbeatTimer) {
 		b.WriteString("Heartbeat.\n\n")
@@ -116,6 +118,11 @@ func PromptFor(a domain.Agent, reason domain.WakeReason, i IssueBrief, comments 
 		}
 	}
 	agentLine(&b, a)
+	if ws != nil {
+		fmt.Fprintf(&b, "\n\nYou work in a git worktree of %s's repository on branch %s, based on %s. "+
+			"Commit your changes, push the branch to origin and open the Pull request with bakeryOpenPullRequest; "+
+			"a Preview of it will appear on the Issue.", ws.ApplicationName, ws.Branch, ws.BaseBranch)
+	}
 	if len(comments) > 0 {
 		b.WriteString("\n\nNew comments:")
 		for _, c := range comments {
@@ -139,8 +146,8 @@ func agentLine(b *strings.Builder, a domain.Agent) {
 
 // promptOf writes the queued Run's prompt from what work tells now: its
 // Issue, the comments its Wakes carry, and for a Heartbeat the Agent's
-// open Issues.
-func (s *Service) promptOf(ctx context.Context, a domain.Agent, r domain.Run) (string, error) {
+// open Issues; with it the Run's Workspace, nil for none.
+func (s *Service) promptOf(ctx context.Context, a domain.Agent, r domain.Run) (string, *Workspace, error) {
 	var (
 		i        IssueBrief
 		comments []RunComment
@@ -150,20 +157,21 @@ func (s *Service) promptOf(ctx context.Context, a domain.Agent, r domain.Run) (s
 	if r.IssueID != 0 {
 		var ok bool
 		if i, ok, err = s.work.IssueForRun(ctx, r.GuildID, r.IssueID); err != nil {
-			return "", err
+			return "", nil, err
 		}
 		if !ok {
 			i = IssueBrief{}
 		}
 	} else if open, err = s.work.OpenIssuesOfAgent(ctx, r.GuildID, a.ID); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if len(r.WakeContext.CommentIDs) > 0 {
 		if comments, err = s.work.CommentsForRun(ctx, r.GuildID, r.WakeContext.CommentIDs); err != nil {
-			return "", err
+			return "", nil, err
 		}
 	}
-	return PromptFor(a, r.WakeReason, i, comments, open), nil
+	ws := s.workspaceOf(ctx, r.GuildID, i)
+	return PromptFor(a, r.WakeReason, i, ws, comments, open), ws, nil
 }
 
 // issueOf is the Guild's Issue as work tells it, when the person may view

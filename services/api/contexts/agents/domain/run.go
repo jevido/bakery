@@ -188,6 +188,13 @@ func (r *Run) Join(wc WakeContext, at time.Time) error {
 	return nil
 }
 
+// AgentBranch is the git branch an Agent works on for the Issue with the
+// identifier: "bakery/" and the identifier in lower case, so "DEF-12" is
+// "bakery/def-12".
+func AgentBranch(identifier string) string {
+	return "bakery/" + strings.ToLower(identifier)
+}
+
 // RunKeyPrefix starts every Run key, so a leaked one is recognisable and
 // never mistaken for a Desktop key or an API token.
 const RunKeyPrefix = "bky_run_"

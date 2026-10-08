@@ -21,6 +21,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/agents/infra"
 	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/identity"
+	"github.com/jevido/bakery/services/api/contexts/projects"
 	"github.com/jevido/bakery/services/api/contexts/work"
 )
 
@@ -31,7 +32,7 @@ var (
 
 func svc() *app.Service {
 	once.Do(func() {
-		service = app.NewService(infra.Agents{}, infra.Runs{}, guildsOfAgents{}, workOfAgents{})
+		service = app.NewService(infra.Agents{}, infra.Runs{}, guildsOfAgents{}, workOfAgents{}, repositoriesOfAgents{})
 		service.Logf = facades.Log().Errorf
 		work.OnApprovalDecided("hire_agent", func(ctx context.Context, d work.ApprovalDecided) error {
 			return service.Decided(ctx, app.Decision{GuildID: d.GuildID, AgentID: d.AgentID, DeciderID: d.DeciderID, Approved: d.Approved})
@@ -63,6 +64,15 @@ func svc() *app.Service {
 		guilds.OnMemberLeaving(service.HirerLeft)
 	})
 	return service
+}
+
+// repositoriesOfAgents is projects' answer about an Issue's Application, in
+// agents' terms.
+type repositoriesOfAgents struct{}
+
+func (repositoriesOfAgents) ApplicationRepository(ctx context.Context, guildID, applicationID uint64) (app.GitRepository, bool, error) {
+	r, ok, err := projects.ApplicationRepository(ctx, guildID, applicationID)
+	return app.GitRepository(r), ok, err
 }
 
 // guildsOfAgents is guilds' answer about Agent memberships, in agents'

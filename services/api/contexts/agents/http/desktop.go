@@ -72,6 +72,15 @@ type desktopRunJSON struct {
 	LeaseExpiresAt *time.Time    `json:"lease_expires_at"`
 	// RunKey is only in the claim's answer, the one time it is shown.
 	RunKey string `json:"run_key,omitempty"`
+	// Workspace is only filled in the claim's answer; null otherwise.
+	Workspace *workspaceJSON `json:"workspace"`
+}
+
+type workspaceJSON struct {
+	Application namedJSON `json:"application"`
+	Repository  string    `json:"repository"`
+	BaseBranch  string    `json:"base_branch"`
+	Branch      string    `json:"branch"`
 }
 
 func desktopRunOf(q app.QueuedRun) desktopRunJSON {
@@ -85,6 +94,12 @@ func desktopRunOf(q app.QueuedRun) desktopRunJSON {
 	}
 	if q.HasIssue {
 		j.Issue = &runIssueJSON{ID: q.Issue.ID, Identifier: q.Issue.Identifier, Title: q.Issue.Title}
+	}
+	if w := q.Workspace; w != nil {
+		j.Workspace = &workspaceJSON{
+			Application: namedJSON{ID: w.ApplicationID, Name: w.ApplicationName},
+			Repository:  w.Repository, BaseBranch: w.BaseBranch, Branch: w.Branch,
+		}
 	}
 	if r.RetryOfRunID != 0 {
 		id := r.RetryOfRunID

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -235,5 +236,45 @@ func TestRunKeyLivesWithItsRun(t *testing.T) {
 	}
 	if _, ok, _ := s.RunKeyHolder(ctx, secret.Hash(q.RunKey)); ok {
 		t.Error("the key outlived its run")
+	}
+}
+
+func TestClaimCarriesTheWorkspace(t *testing.T) {
+	ctx := context.Background()
+	laptop := Desktop{ID: 3, MemberID: 7}
+	claim := func(applicationID uint64, repos map[uint64]GitRepository) QueuedRun {
+		t.Helper()
+		s, _, _, w := newTest()
+		w.repos = repos
+		ada := hired(t, s, "Ada", 0)
+		w.issues = map[uint64]IssueBrief{30: {ID: 30, Identifier: "DEF-12", Title: "Fix it", AgentAssigneeID: ada.ID, ApplicationID: applicationID}}
+		r, err := startRun(s, ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID, 30, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if qs, _ := s.DesktopRuns(ctx, laptop); len(qs) != 1 || qs[0].Workspace != nil {
+			t.Errorf("the queue carries a workspace: %+v", qs)
+		}
+		q, err := s.ClaimRun(ctx, laptop, r.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return q
+	}
+	shop := map[uint64]GitRepository{
+		7: {Name: "shop", URL: "http://127.0.0.1:4950/e2e/shop.git", Branch: "main"},
+	}
+	q := claim(7, shop)
+	want := Workspace{ApplicationID: 7, ApplicationName: "shop", Repository: "http://127.0.0.1:4950/e2e/shop.git", BaseBranch: "main", Branch: "bakery/def-12"}
+	if q.Workspace == nil || *q.Workspace != want {
+		t.Fatalf("workspace %+v", q.Workspace)
+	}
+	if !strings.Contains(q.Run.Prompt, "on branch bakery/def-12, based on main") {
+		t.Errorf("prompt %q", q.Run.Prompt)
+	}
+	for name, id := range map[string]uint64{"no application": 0, "a deleted one or an image": 9, "a failing lookup": 99} {
+		if q := claim(id, shop); q.Workspace != nil || strings.Contains(q.Run.Prompt, "worktree") {
+			t.Errorf("%s: %+v %q", name, q.Workspace, q.Run.Prompt)
+		}
 	}
 }

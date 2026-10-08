@@ -54,6 +54,41 @@ type QueuedRun struct {
 	// RunKey is the Run key, filled only in ClaimRun's answer: the one
 	// time it exists outside the Desktop.
 	RunKey string
+	// Workspace is where the Run works, filled only in ClaimRun's answer;
+	// nil when its Issue names no Application with a git repository.
+	Workspace *Workspace
+}
+
+// Workspace is a Run's git Worktree as the Desktop makes it: the Issue's
+// Application, its repository and branch to start from, and the Agent
+// branch to work on.
+type Workspace struct {
+	ApplicationID   uint64
+	ApplicationName string
+	Repository      string
+	BaseBranch      string
+	Branch          string
+}
+
+// workspaceOf is the Workspace of a Run on the Issue; nil for no Issue, no
+// Application, or one without a git source. An Application that cannot
+// be read is logged and leaves the Run without one: the Run still runs.
+func (s *Service) workspaceOf(ctx context.Context, guildID uint64, i IssueBrief) *Workspace {
+	if i.ID == 0 || i.ApplicationID == 0 {
+		return nil
+	}
+	r, ok, err := s.repositories.ApplicationRepository(ctx, guildID, i.ApplicationID)
+	if err != nil {
+		s.Logf("agents: the workspace of issue %d: %v", i.ID, err)
+		return nil
+	}
+	if !ok {
+		return nil
+	}
+	return &Workspace{
+		ApplicationID: i.ApplicationID, ApplicationName: r.Name, Repository: r.URL,
+		BaseBranch: r.Branch, Branch: domain.AgentBranch(i.Identifier),
+	}
 }
 
 // DesktopRuns lists the Runs waiting for the Desktop's Member, oldest
@@ -163,7 +198,8 @@ func (s *Service) ClaimRun(ctx context.Context, d Desktop, runID uint64) (Queued
 			}
 			return QueuedRun{}, &domain.StatusError{Status: a.Status, Action: "run"}
 		}
-		if r.Prompt, err = s.promptOf(ctx, a, r); err != nil {
+		var ws *Workspace
+		if r.Prompt, ws, err = s.promptOf(ctx, a, r); err != nil {
 			return QueuedRun{}, err
 		}
 		moved, err := s.runs.SaveRun(ctx, r, domain.RunQueued)
@@ -187,7 +223,7 @@ func (s *Service) ClaimRun(ctx context.Context, d Desktop, runID uint64) (Queued
 			return QueuedRun{}, err
 		}
 		q, err := s.queued(ctx, r, map[uint64]string{}, map[uint64]domain.Agent{a.ID: a})
-		q.RunKey = key
+		q.RunKey, q.Workspace = key, ws
 		return q, err
 	}
 	return QueuedRun{}, fmt.Errorf("agents: run %d kept being joined while it was claimed", runID)

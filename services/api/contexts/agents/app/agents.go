@@ -125,19 +125,37 @@ type Work interface {
 	CommentsForRun(ctx context.Context, guildID uint64, ids []uint64) ([]RunComment, error)
 }
 
+// GitRepository is an Application's git source as projects tells it: the
+// Application's name, its Git repository URL and its branch.
+type GitRepository struct {
+	Name   string
+	URL    string
+	Branch string
+}
+
+// Repositories is what agents asks projects about the Application a Run's
+// Issue names.
+type Repositories interface {
+	// ApplicationRepository tells the Guild's Application's git source;
+	// found is false for another Guild's, none, or one without a git
+	// source.
+	ApplicationRepository(ctx context.Context, guildID, applicationID uint64) (r GitRepository, found bool, err error)
+}
+
 type Service struct {
-	agents Agents
-	runs   Runs
-	guilds Guilds
-	work   Work
-	now    func() time.Time
+	agents       Agents
+	runs         Runs
+	guilds       Guilds
+	work         Work
+	repositories Repositories
+	now          func() time.Time
 	// Logf logs what a request cannot report, such as an Activity event
 	// that was not recorded.
 	Logf func(format string, args ...any)
 }
 
-func NewService(agents Agents, runs Runs, guilds Guilds, work Work) *Service {
-	return &Service{agents: agents, runs: runs, guilds: guilds, work: work, now: time.Now, Logf: log.Printf}
+func NewService(agents Agents, runs Runs, guilds Guilds, work Work, repositories Repositories) *Service {
+	return &Service{agents: agents, runs: runs, guilds: guilds, work: work, repositories: repositories, now: time.Now, Logf: log.Printf}
 }
 
 // HireInput is a new Agent as typed: ManagerID 0 reports to no one,
