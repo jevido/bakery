@@ -93,6 +93,8 @@ export type Issue = {
   priority: Priority
   assignee: IssueAssignee | null
   project: { id: number; name: string } | null
+  /** The Issue's Application: one Application of its Project, which its Runs work in. */
+  application?: { id: number; name: string } | null
   goal: { id: number; title: string } | null
   parent: IssueRef | null
   created_by: WorkMember | null
@@ -127,6 +129,8 @@ export type IssueInput = Partial<{
   /** An Agent as the Assignee instead of a Member; not both. */
   assignee_agent_id: number | null
   project_id: number | null
+  /** One Application of the Issue's Project; moving the Issue to another Project clears it. */
+  application_id: number | null
   goal_id: number | null
   parent_id: number | null
   /** The whole set of Issues that block it; [] clears them. */
@@ -285,6 +289,7 @@ const activityVerbs: Record<string, string> = {
   'issue.deleted': 'deleted',
   'issue.checked_out': 'checked out',
   'issue.released': 'released',
+  'issue.application_changed': 'changed the application of',
   'issue.comment_added': 'commented on',
   'issue.comment_deleted': 'deleted a comment on',
   'issue.document_created': 'created document for',
@@ -364,6 +369,10 @@ export function issueActivitySentence(event: ActivityEvent): ActivityPart[] {
       return ['created the issue']
     case 'issue.updated':
       return issueChanges((d.changes as Record<string, unknown>) ?? {})
+    case 'issue.application_changed': {
+      const to = d.to as Named
+      return [to ? `set the application to ${named(to, 'an application')}` : 'removed the application']
+    }
     case 'issue.comment_added':
       return typeof d.snippet === 'string' && d.snippet ? ['commented ', { muted: d.snippet }] : ['commented']
     case 'issue.comment_deleted':

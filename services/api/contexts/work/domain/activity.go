@@ -8,35 +8,38 @@ import (
 // Actions: the dotted names of what happened to a Goal, an Issue, an
 // Approval or an Agent, as Paperclip names them.
 const (
-	GoalCreatedAction          = "goal.created"
-	GoalUpdatedAction          = "goal.updated"
-	GoalDeletedAction          = "goal.deleted"
-	IssueCreatedAction         = "issue.created"
-	IssueUpdatedAction         = "issue.updated"
-	IssueDeletedAction         = "issue.deleted"
-	IssueCheckedOutAction      = "issue.checked_out"
-	IssueReleasedAction        = "issue.released"
-	CommentAddedAction         = "issue.comment_added"
-	CommentDeletedAction       = "issue.comment_deleted"
-	DocumentCreatedAction      = "issue.document_created"
-	DocumentUpdatedAction      = "issue.document_updated"
-	DocumentDeletedAction      = "issue.document_deleted"
-	ApprovalCreatedAction      = "approval.created"
-	ApprovalApprovedAction     = "approval.approved"
-	ApprovalRejectedAction     = "approval.rejected"
-	RevisionRequestedAction    = "approval.revision_requested"
-	ApprovalResubmittedAction  = "approval.resubmitted"
-	ApprovalCommentAddedAction = "approval.comment_added"
-	ApprovalCancelledAction    = "approval.cancelled"
-	AgentHiredAction           = "agent.hired"
-	AgentUpdatedAction         = "agent.updated"
-	AgentPausedAction          = "agent.paused"
-	AgentResumedAction         = "agent.resumed"
-	AgentTerminatedAction      = "agent.terminated"
-	AgentRoleAddedAction       = "agent.role_added"
-	AgentRoleRemovedAction     = "agent.role_removed"
-	RunStartedAction           = "run.started"
-	RunFinishedAction          = "run.finished"
+	GoalCreatedAction     = "goal.created"
+	GoalUpdatedAction     = "goal.updated"
+	GoalDeletedAction     = "goal.deleted"
+	IssueCreatedAction    = "issue.created"
+	IssueUpdatedAction    = "issue.updated"
+	IssueDeletedAction    = "issue.deleted"
+	IssueCheckedOutAction = "issue.checked_out"
+	IssueReleasedAction   = "issue.released"
+	// IssueApplicationChangedAction is not Paperclip's: its Issues name
+	// no Application.
+	IssueApplicationChangedAction = "issue.application_changed"
+	CommentAddedAction            = "issue.comment_added"
+	CommentDeletedAction          = "issue.comment_deleted"
+	DocumentCreatedAction         = "issue.document_created"
+	DocumentUpdatedAction         = "issue.document_updated"
+	DocumentDeletedAction         = "issue.document_deleted"
+	ApprovalCreatedAction         = "approval.created"
+	ApprovalApprovedAction        = "approval.approved"
+	ApprovalRejectedAction        = "approval.rejected"
+	RevisionRequestedAction       = "approval.revision_requested"
+	ApprovalResubmittedAction     = "approval.resubmitted"
+	ApprovalCommentAddedAction    = "approval.comment_added"
+	ApprovalCancelledAction       = "approval.cancelled"
+	AgentHiredAction              = "agent.hired"
+	AgentUpdatedAction            = "agent.updated"
+	AgentPausedAction             = "agent.paused"
+	AgentResumedAction            = "agent.resumed"
+	AgentTerminatedAction         = "agent.terminated"
+	AgentRoleAddedAction          = "agent.role_added"
+	AgentRoleRemovedAction        = "agent.role_removed"
+	RunStartedAction              = "run.started"
+	RunFinishedAction             = "run.finished"
 )
 
 // AgentActions lists the Actions the agents context records through work.
@@ -266,6 +269,33 @@ type IssueDeleted struct {
 
 func (e IssueDeleted) Activity() ActivityEvent {
 	return e.issue(e.Issue, IssueDeletedAction, map[string]any{})
+}
+
+// IssueApplicationChanged is the Issue's Application named, changed or
+// let go of. From and To are Applications by name, nil for none; the
+// names are kept, so the event still reads after one is deleted.
+type IssueApplicationChanged struct {
+	Happened
+	Issue    Issue
+	From, To *NamedApplication
+}
+
+// NamedApplication is an Application of a Project as work knows it: its
+// id and name.
+type NamedApplication struct {
+	ID   uint64
+	Name string
+}
+
+func (a *NamedApplication) details() any {
+	if a == nil {
+		return nil
+	}
+	return map[string]any{"id": a.ID, "name": a.Name}
+}
+
+func (e IssueApplicationChanged) Activity() ActivityEvent {
+	return e.issue(e.Issue, IssueApplicationChangedAction, map[string]any{"from": e.From.details(), "to": e.To.details()})
 }
 
 // IssueCheckedOut is a Run taking an Issue's Checkout.

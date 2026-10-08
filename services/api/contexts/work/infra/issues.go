@@ -26,6 +26,7 @@ type issueRecord struct {
 	AssigneeMemberID  *uint64
 	AssigneeAgentID   *uint64
 	ProjectID         *uint64
+	ApplicationID     *uint64
 	GoalID            *uint64
 	ParentID          *uint64
 	CreatedByMemberID *uint64
@@ -52,8 +53,8 @@ func (r issueRecord) toDomain() domain.Issue {
 	i := domain.Issue{
 		ID: r.ID, GuildID: r.GuildID, Number: r.Number, Title: r.Title, Description: r.Description,
 		Status: domain.IssueStatus(r.Status), Priority: domain.Priority(r.Priority),
-		AssigneeID: deref(r.AssigneeMemberID), AssigneeAgentID: deref(r.AssigneeAgentID), ProjectID: deref(r.ProjectID), GoalID: deref(r.GoalID),
-		ParentID: deref(r.ParentID), CreatedBy: actor(r.CreatedByMemberID, r.CreatedByAgentID),
+		AssigneeID: deref(r.AssigneeMemberID), AssigneeAgentID: deref(r.AssigneeAgentID), ProjectID: deref(r.ProjectID), ApplicationID: deref(r.ApplicationID),
+		GoalID: deref(r.GoalID), ParentID: deref(r.ParentID), CreatedBy: actor(r.CreatedByMemberID, r.CreatedByAgentID),
 		CheckoutRunID: deref(r.CheckoutRunID), CheckedOutAt: utc(r.CheckedOutAt),
 		StartedAt: utc(r.StartedAt), CompletedAt: utc(r.CompletedAt), CancelledAt: utc(r.CancelledAt),
 	}
@@ -82,8 +83,8 @@ func (Issues) query(ctx context.Context) contractsorm.Query {
 func (Issues) CreateIssue(ctx context.Context, i domain.Issue) (domain.Issue, error) {
 	rec := issueRecord{
 		GuildID: i.GuildID, Title: i.Title, Description: i.Description, Status: string(i.Status), Priority: string(i.Priority),
-		AssigneeMemberID: nullable(i.AssigneeID), AssigneeAgentID: nullable(i.AssigneeAgentID), ProjectID: nullable(i.ProjectID), GoalID: nullable(i.GoalID),
-		ParentID: nullable(i.ParentID), CreatedByMemberID: nullable(i.CreatedBy.MemberID), CreatedByAgentID: nullable(i.CreatedBy.AgentID),
+		AssigneeMemberID: nullable(i.AssigneeID), AssigneeAgentID: nullable(i.AssigneeAgentID), ProjectID: nullable(i.ProjectID), ApplicationID: nullable(i.ApplicationID),
+		GoalID: nullable(i.GoalID), ParentID: nullable(i.ParentID), CreatedByMemberID: nullable(i.CreatedBy.MemberID), CreatedByAgentID: nullable(i.CreatedBy.AgentID),
 		StartedAt: i.StartedAt, CompletedAt: i.CompletedAt, CancelledAt: i.CancelledAt,
 	}
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
@@ -145,11 +146,11 @@ func (s Issues) SaveIssue(ctx context.Context, i domain.Issue) error {
 
 func (Issues) save(q contractsorm.Query, i domain.Issue) error {
 	_, err := q.Exec(`UPDATE issues SET title = ?, description = ?, status = ?, priority = ?,
-		assignee_member_id = ?, assignee_agent_id = ?, project_id = ?, goal_id = ?, parent_id = ?,
+		assignee_member_id = ?, assignee_agent_id = ?, project_id = ?, application_id = ?, goal_id = ?, parent_id = ?,
 		checkout_run_id = ?, checked_out_at = ?,
 		started_at = ?, completed_at = ?, cancelled_at = ?, updated_at = now() WHERE id = ?`,
 		i.Title, i.Description, string(i.Status), string(i.Priority),
-		nullable(i.AssigneeID), nullable(i.AssigneeAgentID), nullable(i.ProjectID), nullable(i.GoalID), nullable(i.ParentID),
+		nullable(i.AssigneeID), nullable(i.AssigneeAgentID), nullable(i.ProjectID), nullable(i.ApplicationID), nullable(i.GoalID), nullable(i.ParentID),
 		nullable(i.CheckoutRunID), i.CheckedOutAt,
 		i.StartedAt, i.CompletedAt, i.CancelledAt, i.ID)
 	return err
@@ -354,7 +355,7 @@ func (s Issues) IssueProjects(ctx context.Context, guildID uint64) ([]uint64, er
 
 func (s Issues) LeaveProject(ctx context.Context, projectID uint64) error {
 	return facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
-		if _, err := tx.Exec(`UPDATE issues SET project_id = NULL, updated_at = now() WHERE project_id = ?`, projectID); err != nil {
+		if _, err := tx.Exec(`UPDATE issues SET project_id = NULL, application_id = NULL, updated_at = now() WHERE project_id = ?`, projectID); err != nil {
 			return err
 		}
 		// An event keeps its Issue's Project to hide it; one that no longer
@@ -362,6 +363,11 @@ func (s Issues) LeaveProject(ctx context.Context, projectID uint64) error {
 		_, err := tx.Exec(`UPDATE activity_events SET project_id = NULL WHERE project_id = ?`, projectID)
 		return err
 	})
+}
+
+func (s Issues) LeaveApplication(ctx context.Context, applicationID uint64) error {
+	_, err := s.query(ctx).Exec(`UPDATE issues SET application_id = NULL, updated_at = now() WHERE application_id = ?`, applicationID)
+	return err
 }
 
 func (s Issues) HasIssues(ctx context.Context, guildID uint64) (bool, error) {

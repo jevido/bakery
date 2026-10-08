@@ -281,3 +281,29 @@ func TestIssueAssigneeChangeEndsCheckout(t *testing.T) {
 		t.Error("a member kept the checkout")
 	}
 }
+
+func TestIssueApplication(t *testing.T) {
+	i := Issue{GuildID: 1}
+	if err := i.SetApplication(4); err == nil {
+		t.Fatal("an Issue without a Project named an Application")
+	}
+	i.PlaceIn(2)
+	if err := i.SetApplication(4); err != nil || i.ApplicationID != 4 {
+		t.Fatalf("SetApplication(4) = %v, %d", err, i.ApplicationID)
+	}
+	i.PlaceIn(2)
+	if i.ApplicationID != 4 {
+		t.Fatal("staying in the Project let go of the Application")
+	}
+	i.PlaceIn(3)
+	if i.ApplicationID != 0 {
+		t.Fatal("moving to another Project kept the old Project's Application")
+	}
+	if err := i.SetApplication(5); err != nil {
+		t.Fatal(err)
+	}
+	i.PlaceIn(0)
+	if i.ApplicationID != 0 {
+		t.Fatal("leaving every Project kept the Application")
+	}
+}

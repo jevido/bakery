@@ -68,7 +68,8 @@ func ParsePriority(s string) (Priority, error) {
 
 // Issue is one piece of work in a Guild. Its Assignee is a Member
 // (AssigneeID) or an Agent (AssigneeAgentID), never both. AssigneeID,
-// AssigneeAgentID, ProjectID, GoalID and ParentID are 0 for none, and
+// AssigneeAgentID, ProjectID, ApplicationID, GoalID and ParentID are 0 for
+// none, and
 // CreatedBy is the Member or Agent that created it; the times are nil until the
 // Issue status sets them.
 type Issue struct {
@@ -83,9 +84,12 @@ type Issue struct {
 	// AssigneeAgentID is the Agent the Issue is assigned to.
 	AssigneeAgentID uint64
 	ProjectID       uint64
-	GoalID          uint64
-	ParentID        uint64
-	CreatedBy       Actor
+	// ApplicationID is the Issue's Application: one Application of its
+	// Project, which a Run on the Issue works in.
+	ApplicationID uint64
+	GoalID        uint64
+	ParentID      uint64
+	CreatedBy     Actor
 	// CheckoutRunID is the Run holding the Issue's Checkout, 0 for none;
 	// CheckedOutAt is when it took it.
 	CheckoutRunID uint64
@@ -258,8 +262,24 @@ func (i *Issue) Release(runID uint64, now time.Time) error {
 }
 
 // PlaceIn puts the Issue in a Project, already known to be one of the
-// Guild's; 0 is none.
-func (i *Issue) PlaceIn(projectID uint64) { i.ProjectID = projectID }
+// Guild's; 0 is none. Moving it to another Project lets go of the Issue's
+// Application, which belongs to the old one.
+func (i *Issue) PlaceIn(projectID uint64) {
+	if projectID != i.ProjectID {
+		i.ApplicationID = 0
+	}
+	i.ProjectID = projectID
+}
+
+// SetApplication names the Issue's Application, already known to be one
+// of its Project's; 0 is none. An Issue without a Project has none.
+func (i *Issue) SetApplication(applicationID uint64) error {
+	if applicationID != 0 && i.ProjectID == 0 {
+		return invalid("application_id", "the application is not in the issue's project")
+	}
+	i.ApplicationID = applicationID
+	return nil
+}
 
 // ServeGoal ties the Issue to a Goal, which must be the Guild's; nil is
 // none.

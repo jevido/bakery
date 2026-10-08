@@ -45,6 +45,11 @@ func svc() *app.Service {
 		})
 		guilds.OnGuildDeleting("issues", service.HasIssues)
 		projects.OnProjectDeleted(service.ForgetProject)
+		projects.OnApplicationDeleted(func(ctx context.Context, e projects.ApplicationDeleted) {
+			if err := service.ForgetApplication(ctx, e.ApplicationID); err != nil {
+				service.Logf("work: forgetting deleted application %d: %v", e.ApplicationID, err)
+			}
+		})
 	})
 	return service
 }
@@ -451,11 +456,20 @@ func (guildsOfWork) IssuePrefix(ctx context.Context, guildID uint64) (string, er
 	return guilds.IssuePrefix(ctx, guildID)
 }
 
-// projectsOfWork is projects' answer about Project names.
+// projectsOfWork is projects' answer about Project and Application names,
+// and which Project an Application is in.
 type projectsOfWork struct{}
 
 func (projectsOfWork) ProjectNames(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error) {
 	return projects.ProjectNames(ctx, guildID, ids)
+}
+
+func (projectsOfWork) ApplicationNames(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error) {
+	return projects.ApplicationNames(ctx, guildID, ids)
+}
+
+func (projectsOfWork) ApplicationInProject(ctx context.Context, guildID, projectID, applicationID uint64) (bool, error) {
+	return projects.ApplicationInProject(ctx, guildID, projectID, applicationID)
 }
 
 func memberNames(ctx context.Context, ids []uint64) ([]workhttp.Member, error) {

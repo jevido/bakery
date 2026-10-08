@@ -2,8 +2,11 @@
   // Paperclip's IssueProperties with its PropertyRow
   // (ui/src/components/issue-properties/IssueProperties.tsx and
   // primitives.tsx; MIT, see NOTICE): the Issue's status, priority,
-  // Assignee, Project, Goal and parent, each a picker, then who created it
-  // and when it started, completed, was cancelled and last changed. While a
+  // Assignee, Project, Application, Goal and parent, each a picker, then
+  // who created it
+  // and when it started, completed, was cancelled and last changed. The
+  // Application row lists the Project's Applications, read once per Project,
+  // and stands in for Paperclip's project workspace. While a
   // Run holds the Issue's Checkout, a row under Assignee names its Agent and
   // jumps to that Run through `onrun`. Every
   // pick is one PATCH, sent through `onsave`. Without `editable` the values
@@ -12,6 +15,8 @@
   // with what the Issue does not have yet: labels, reviewers and approvers,
   // the execution workspace and the agent's model.
   import { X } from '@lucide/svelte'
+  import { api } from './api'
+  import type { Project } from './types'
   import type { Snippet } from 'svelte'
   import BlockerPicker from './BlockerPicker.svelte'
   import { Separator } from '@bakery/ui/components/ui/separator'
@@ -74,6 +79,24 @@
     ...agents.map((a) => ({ value: assigneeKey({ id: a.id, kind: 'agent' }), label: a.name })),
   ])
   const projectOptions = $derived([{ value: null, label: 'No project' }, ...projects.map((p) => ({ value: p.id as number | null, label: p.name }))])
+  // The Applications of the Issue's Project, in its Environments' order.
+  let applications = $state<{ id: number; name: string }[]>([])
+  const projectId = $derived(issue.project?.id ?? null)
+  $effect(() => {
+    const id = projectId
+    applications = []
+    if (id === null) return
+    let stale = false
+    api<{ project: Project }>('GET', `/projects/${id}`)
+      .then(({ project }) => {
+        if (!stale) applications = (project.environments ?? []).flatMap((e) => (e.applications ?? []).map((a) => ({ id: a.id, name: a.name })))
+      })
+      .catch(() => {})
+    return () => {
+      stale = true
+    }
+  })
+  const applicationOptions = $derived([{ value: null, label: 'No application' }, ...applications.map((a) => ({ value: a.id as number | null, label: a.name }))])
   const goalOptions = $derived([{ value: null, label: 'No goal' }, ...goals.map((g) => ({ value: g.id as number | null, label: g.title }))])
   const parentOptions = $derived([
     { ...none, label: 'No parent' },
@@ -162,6 +185,20 @@
       {/if}
     {/snippet}
     {@render row('Project', project)}
+    {#if issue.project}
+      {#snippet application()}
+        {#if editable}
+          <OptionPopover align="end" label="Application" value={issue.application?.id ?? null} options={applicationOptions} onpick={(application_id) => onsave({ application_id })}>
+            {#if issue.application}<span class="truncate text-sm">{issue.application.name}</span>{:else}{@render muted('No application')}{/if}
+          </OptionPopover>
+        {:else if issue.application}
+          <a href={href(`/applications/${issue.application.id}`)} class="truncate text-sm hover:underline">{issue.application.name}</a>
+        {:else}
+          {@render muted('No application')}
+        {/if}
+      {/snippet}
+      {@render row('Application', application)}
+    {/if}
     {#snippet goal()}
       {#if editable}
         <OptionPopover align="end" label="Goal" value={issue.goal?.id ?? null} options={goalOptions} onpick={(goal_id) => onsave({ goal_id })}>

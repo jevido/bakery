@@ -17,13 +17,15 @@
 //   issue   a scratch Issue opens by its identifier; its title is renamed in
 //           place and a reload keeps it; status In Progress shows the
 //           Started time, priority and the Assignee and Goal change from the
-//           properties panel; a scratch Agent picked as the Assignee shows its
+//           properties panel; a scratch Project's Application is picked as
+//           the Issue's Application and let go of when the Issue leaves the
+//           Project; a scratch Agent picked as the Assignee shows its
 //           name and icon, and terminating it unassigns the Issue; Add sub-issue creates one under it, listed and
 //           opening its own page with the parent link; a Markdown comment
 //           with a code block is posted, edited and deleted (the placeholder
 //           stays); the Goal's page and the Issues list open it from
 //           their rows; #/issues/DEF-99999 shows the not-found state; the scratch
-//           Issues and Goal are deleted again
+//           Issues, Goal and Project are deleted again
 //   viewer  a Viewer, invited for the run and removed again, sees the Issues
 //           list, Goals and an Issue's page but no New Issue, New Goal,
 //           composer, pickers, Add sub-issue or Delete, and the API answers
@@ -182,7 +184,7 @@ async function clean(page: Page) {
   for (const g of left) await page.request.delete(`${WEB}/api/goals/${g.id}`)
 }
 
-type Issue = { id: number; identifier: string; title: string; status: string; priority: string; assignee: { id: number; name: string; kind: 'member' | 'agent' } | null; project: { id: number } | null }
+type Issue = { id: number; identifier: string; title: string; status: string; priority: string; assignee: { id: number; name: string; kind: 'member' | 'agent' } | null; project: { id: number } | null; application?: { id: number; name: string } | null }
 async function issues(page: Page): Promise<Issue[]> {
   return ((await (await page.request.get(`${WEB}/api/issues`)).json()) as { issues: Issue[] }).issues
 }
@@ -459,6 +461,12 @@ const sections: Record<string, () => Promise<void>> = {
     const tidy = async () => {
       for (const i of (await issues(page)).filter((i) => titles.includes(i.title))) await page.request.delete(`${WEB}/api/issues/${i.id}`)
       for (const g of (await goals(page)).filter((g) => g.title === 'Issue page goal')) await page.request.delete(`${WEB}/api/goals/${g.id}`)
+      const { projects } = (await (await page.request.get(`${WEB}/api/projects`)).json()) as { projects: { id: number; name: string }[] }
+      for (const p of projects.filter((p) => p.name === 'Issue page project')) {
+        const { project } = (await (await page.request.get(`${WEB}/api/projects/${p.id}`)).json()) as { project: { environments: { applications: { id: number }[] }[] } }
+        for (const a of project.environments.flatMap((e) => e.applications)) await page.request.delete(`${WEB}/api/applications/${a.id}`)
+        await page.request.delete(`${WEB}/api/projects/${p.id}`)
+      }
     }
     await tidy()
     const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title: titles[0], status: 'todo' } })).json()) as { issue: Issue }
@@ -491,6 +499,24 @@ const sections: Record<string, () => Promise<void>> = {
     await properties.getByRole('button', { name: 'Goal' }).getByText('Issue page goal').waitFor()
     const saved = ((await (await page.request.get(`${WEB}/api/issues/${issue.identifier}`)).json()) as { issue: Issue & { goal: { title: string } | null; started_at: string | null } }).issue
     expect('status, priority, Assignee and Goal are saved', saved.status === 'in_progress' && saved.priority === 'high' && saved.assignee?.name === me && saved.goal?.title === 'Issue page goal' && !!saved.started_at, saved)
+
+    // The Issue's Application, picked from its Project's once it has one.
+    const scratch = (await (await page.request.post(`${WEB}/api/projects`, { data: { name: 'Issue page project' } })).json()) as { project: { id: number } }
+    const env = ((await (await page.request.get(`${WEB}/api/projects/${scratch.project.id}`)).json()) as { project: { environments: { id: number }[] } }).project.environments[0]
+    await page.request.post(`${WEB}/api/environments/${env.id}/applications`, { data: { name: 'issue-page-web', build_pack: 'dockerimage', docker_image: 'ghcr.io/traefik/whoami:v1.10', port: 80 } })
+    await page.reload()
+    await header.getByText(issue.identifier, { exact: true }).waitFor()
+    expect('no Application row without a Project', (await properties.locator('[data-property-row="Application"]').count()) === 0)
+    await pick(page, properties, 'Project', 'Issue page project')
+    await properties.locator('[data-property-row="Application"]').waitFor()
+    await pick(page, properties, 'Application', 'issue-page-web')
+    await properties.getByRole('button', { name: 'Application' }).getByText('issue-page-web').waitFor()
+    const withApp = ((await (await page.request.get(`${WEB}/api/issues/${issue.identifier}`)).json()) as { issue: Issue }).issue
+    expect("the Issue's Application is saved", withApp.application?.name === 'issue-page-web' && withApp.project?.id === scratch.project.id, withApp)
+    await pick(page, properties, 'Project', 'No project')
+    await properties.locator('[data-property-row="Application"]').waitFor({ state: 'detached' })
+    const moved = ((await (await page.request.get(`${WEB}/api/issues/${issue.identifier}`)).json()) as { issue: Issue }).issue
+    expect('leaving the Project lets go of the Application', moved.application === null, moved)
 
     // An Agent of the Guild as the Assignee, picked under the Members.
     const hire = (await (await page.request.post(`${WEB}/api/agents`, { data: { name: 'Issue page agent', job: 'engineer', icon: 'rocket' } })).json()) as { agent: { id: number; approval_id: number } }

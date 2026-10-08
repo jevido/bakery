@@ -68,6 +68,7 @@ type issueFields struct {
 	AssigneeID      *uint64  `json:"assignee_id,omitempty" jsonschema:"the Member to assign it to"`
 	AssigneeAgentID *uint64  `json:"assignee_agent_id,omitempty" jsonschema:"the Agent to assign it to"`
 	ProjectID       *uint64  `json:"project_id,omitempty" jsonschema:"the Project it belongs to"`
+	ApplicationID   *uint64  `json:"application_id,omitempty" jsonschema:"the Application of its Project that it changes; Runs on the Issue work in its repository"`
 	GoalID          *uint64  `json:"goal_id,omitempty" jsonschema:"the Goal it serves"`
 	ParentID        *uint64  `json:"parent_id,omitempty" jsonschema:"the parent Issue's id, for a sub-issue"`
 	BlockedByIDs    []uint64 `json:"blocked_by_ids,omitempty" jsonschema:"the ids of the Issues that block it"`

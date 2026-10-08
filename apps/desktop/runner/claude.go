@@ -298,6 +298,8 @@ func (r *Runner) execute(ctx context.Context, c *bakery.Client, run bakery.Deskt
 	}
 	// Whatever claude's children left behind goes too.
 	kill(cmd)
+	// The Run key goes with claude, before anyone hears that the Run ended.
+	os.RemoveAll(scratch)
 	if interrupted {
 		return
 	}

@@ -45,6 +45,8 @@ type Issues interface {
 	// LeaveProject takes every Issue, and every Activity event, out of the
 	// Project.
 	LeaveProject(ctx context.Context, projectID uint64) error
+	// LeaveApplication takes the Application off every Issue naming it.
+	LeaveApplication(ctx context.Context, applicationID uint64) error
 	HasIssues(ctx context.Context, guildID uint64) (bool, error)
 	// SaveCheckout stores the Issue's Checkout, Assignee and status only
 	// while its row still has before's holder, Assignee and status; moved
@@ -62,10 +64,14 @@ type AssigneeAgent struct {
 	Terminated bool
 }
 
-// Projects names the Guild's Projects among ids (projects.ProjectNames); an
-// id that is not one of them is left out.
+// Projects names the Guild's Projects among ids (projects.ProjectNames) and
+// its Applications (projects.ApplicationNames); an id that is not one of
+// them is left out. ApplicationInProject tells whether the Application is
+// in one of the Project's Environments.
 type Projects interface {
 	ProjectNames(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)
+	ApplicationNames(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)
+	ApplicationInProject(ctx context.Context, guildID, projectID, applicationID uint64) (bool, error)
 }
 
 // Visible keeps the Projects among ids that the person asking may view
@@ -154,12 +160,14 @@ type IssueInput struct {
 	// AssigneeAgentID is an Agent Assignee, instead of a Member.
 	AssigneeAgentID uint64
 	ProjectID       uint64
-	GoalID          uint64
-	ParentID        uint64
+	// ApplicationID is the Issue's Application, one of the Project's.
+	ApplicationID uint64
+	GoalID        uint64
+	ParentID      uint64
 }
 
 // IssuePatch changes the fields that are not nil. An id of 0 removes the
-// Assignee, Project, Goal or parent.
+// Assignee, Project, Application, Goal or parent.
 type IssuePatch struct {
 	Title       *string
 	Description *string
@@ -170,6 +178,7 @@ type IssuePatch struct {
 	// be set to one.
 	AssigneeAgentID *uint64
 	ProjectID       *uint64
+	ApplicationID   *uint64
 	GoalID          *uint64
 	ParentID        *uint64
 	// BlockedByIDs replaces the Blockers the person can see; empty removes
@@ -369,10 +378,14 @@ func (s *Service) CreateIssue(ctx context.Context, guildID uint64, by domain.Act
 	if err := s.relate(ctx, &i, in.ProjectID, in.GoalID, in.ParentID, visible); err != nil {
 		return domain.Issue{}, err
 	}
+	if err := s.changeApplication(ctx, &i, in.ApplicationID); err != nil {
+		return domain.Issue{}, err
+	}
 	if i, err = s.issues.CreateIssue(ctx, i); err != nil {
 		return domain.Issue{}, err
 	}
 	s.publish(ctx, domain.IssueCreated{Happened: s.happened(by), Issue: i})
+	s.applicationChanged(ctx, by, i, 0)
 	if i.AssigneeAgentID != 0 && agentWorksOn(i.Status) {
 		s.assigned(ctx, i, by.MemberID)
 	}
@@ -447,6 +460,11 @@ func (s *Service) ChangeIssue(ctx context.Context, guildID uint64, by domain.Act
 			return domain.Issue{}, err
 		}
 	}
+	if p.ApplicationID != nil {
+		if err := s.changeApplication(ctx, &i, *p.ApplicationID); err != nil {
+			return domain.Issue{}, err
+		}
+	}
 	if p.GoalID != nil {
 		if err := s.serveGoal(ctx, &i, *p.GoalID); err != nil {
 			return domain.Issue{}, err
@@ -479,6 +497,7 @@ func (s *Service) ChangeIssue(ctx context.Context, guildID uint64, by domain.Act
 	if len(e.Changes()) > 0 {
 		s.publish(ctx, e)
 	}
+	s.applicationChanged(ctx, by, e.After, e.Before.ApplicationID)
 	if a := e.After; a.AssigneeAgentID != 0 && agentWorksOn(a.Status) &&
 		(a.AssigneeAgentID != e.Before.AssigneeAgentID || e.Before.Status == domain.Backlog) {
 		s.assigned(ctx, a, by.MemberID)
@@ -905,6 +924,52 @@ func (s *Service) placeIn(ctx context.Context, i *domain.Issue, projectID uint64
 	}
 	i.PlaceIn(projectID)
 	return nil
+}
+
+// changeApplication names one of the Issue's Project's Applications as
+// the Issue's Application; 0 is none.
+func (s *Service) changeApplication(ctx context.Context, i *domain.Issue, applicationID uint64) error {
+	if applicationID != 0 && i.ProjectID != 0 {
+		ok, err := s.projects.ApplicationInProject(ctx, i.GuildID, i.ProjectID, applicationID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return &domain.FieldError{Field: "application_id", Message: "the application is not in the issue's project"}
+		}
+	}
+	return i.SetApplication(applicationID)
+}
+
+// applicationChanged records the stored Issue's Application changing from
+// fromID, by name; nothing when it did not change. A name that cannot be
+// read is logged and the event recorded without it.
+func (s *Service) applicationChanged(ctx context.Context, by domain.Actor, i domain.Issue, fromID uint64) {
+	if i.ApplicationID == fromID {
+		return
+	}
+	names, err := s.projects.ApplicationNames(ctx, i.GuildID, []uint64{fromID, i.ApplicationID})
+	if err != nil {
+		s.Logf("work: naming the applications of issue %d: %v", i.ID, err)
+	}
+	named := func(id uint64) *domain.NamedApplication {
+		if id == 0 {
+			return nil
+		}
+		return &domain.NamedApplication{ID: id, Name: names[id]}
+	}
+	s.publish(ctx, domain.IssueApplicationChanged{Happened: s.happened(by), Issue: i, From: named(fromID), To: named(i.ApplicationID)})
+}
+
+// ApplicationNames names the Guild's Applications among ids.
+func (s *Service) ApplicationNames(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error) {
+	return s.projects.ApplicationNames(ctx, guildID, ids)
+}
+
+// ForgetApplication lets go of a deleted Application on every Issue that
+// names it.
+func (s *Service) ForgetApplication(ctx context.Context, applicationID uint64) error {
+	return s.issues.LeaveApplication(ctx, applicationID)
 }
 
 func (s *Service) serveGoal(ctx context.Context, i *domain.Issue, goalID uint64) error {

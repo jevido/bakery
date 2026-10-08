@@ -56,6 +56,7 @@ type issueJSON struct {
 	Priority       string        `json:"priority"`
 	Assignee       *assigneeJSON `json:"assignee"`
 	Project        *projectJSON  `json:"project"`
+	Application    *projectJSON  `json:"application"`
 	Goal           *goalRefJSON  `json:"goal"`
 	Parent         *issueRefJSON `json:"parent"`
 	CreatedBy      *Member       `json:"created_by"`
@@ -103,7 +104,7 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 	if err != nil {
 		return nil, err
 	}
-	var memberIDs, agentIDs, projectIDs, parentIDs []uint64
+	var memberIDs, agentIDs, projectIDs, applicationIDs, parentIDs []uint64
 	for _, i := range is {
 		for _, id := range []uint64{i.AssigneeAgentID, i.CreatedBy.AgentID} {
 			if id != 0 {
@@ -117,6 +118,9 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 		}
 		if i.ProjectID != 0 {
 			projectIDs = append(projectIDs, i.ProjectID)
+		}
+		if i.ApplicationID != 0 {
+			applicationIDs = append(applicationIDs, i.ApplicationID)
 		}
 		if i.ParentID != 0 {
 			parentIDs = append(parentIDs, i.ParentID)
@@ -137,6 +141,10 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 		return nil, err
 	}
 	projects, err := c.service.ProjectNames(cx, guildID, projectIDs)
+	if err != nil {
+		return nil, err
+	}
+	applications, err := c.service.ApplicationNames(cx, guildID, applicationIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -186,6 +194,9 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 		if name, ok := projects[i.ProjectID]; ok {
 			out[n].Project = &projectJSON{ID: i.ProjectID, Name: name}
 		}
+		if name, ok := applications[i.ApplicationID]; ok {
+			out[n].Application = &projectJSON{ID: i.ApplicationID, Name: name}
+		}
 		if title, ok := goals[i.GoalID]; ok {
 			out[n].Goal = &goalRefJSON{ID: i.GoalID, Title: title}
 		}
@@ -213,6 +224,7 @@ type issueRequest struct {
 	// AssigneeAgentID assigns an Agent instead of a Member.
 	AssigneeAgentID optional[uint64] `json:"assignee_agent_id"`
 	ProjectID       optional[uint64] `json:"project_id"`
+	ApplicationID   optional[uint64] `json:"application_id"`
 	GoalID          optional[uint64] `json:"goal_id"`
 	ParentID        optional[uint64] `json:"parent_id"`
 	// BlockedByIDs is PATCH only; null clears like [].
@@ -222,14 +234,14 @@ type issueRequest struct {
 func (r issueRequest) input() app.IssueInput {
 	return app.IssueInput{
 		Title: value(r.Title.ptr()), Description: value(r.Description.ptr()), Status: value(r.Status.ptr()), Priority: value(r.Priority.ptr()),
-		AssigneeID: value(idOf(r.AssigneeID)), AssigneeAgentID: value(idOf(r.AssigneeAgentID)), ProjectID: value(idOf(r.ProjectID)), GoalID: value(idOf(r.GoalID)), ParentID: value(idOf(r.ParentID)),
+		AssigneeID: value(idOf(r.AssigneeID)), AssigneeAgentID: value(idOf(r.AssigneeAgentID)), ProjectID: value(idOf(r.ProjectID)), ApplicationID: value(idOf(r.ApplicationID)), GoalID: value(idOf(r.GoalID)), ParentID: value(idOf(r.ParentID)),
 	}
 }
 
 func (r issueRequest) patch() app.IssuePatch {
 	p := app.IssuePatch{
 		Title: r.Title.ptr(), Description: r.Description.ptr(), Status: r.Status.ptr(), Priority: r.Priority.ptr(),
-		AssigneeID: idOf(r.AssigneeID), AssigneeAgentID: idOf(r.AssigneeAgentID), ProjectID: idOf(r.ProjectID), GoalID: idOf(r.GoalID), ParentID: idOf(r.ParentID),
+		AssigneeID: idOf(r.AssigneeID), AssigneeAgentID: idOf(r.AssigneeAgentID), ProjectID: idOf(r.ProjectID), ApplicationID: idOf(r.ApplicationID), GoalID: idOf(r.GoalID), ParentID: idOf(r.ParentID),
 	}
 	if r.BlockedByIDs.Set {
 		ids := value(r.BlockedByIDs.Value)

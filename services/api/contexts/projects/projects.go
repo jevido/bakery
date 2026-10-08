@@ -282,6 +282,38 @@ func ApplicationInGuild(ctx context.Context, applicationID, guildID uint64) (boo
 	return found(svc().Application(app.InGuild(ctx, guildID), applicationID))
 }
 
+// ApplicationInProject reports whether the Application exists, belongs to
+// the Guild and sits in one of the Project's Environments, for work's
+// Issues that name an Application of their Project.
+func ApplicationInProject(ctx context.Context, guildID, projectID, applicationID uint64) (bool, error) {
+	a, err := svc().Application(app.InGuild(ctx, guildID), applicationID)
+	if err != nil {
+		return found(a, err)
+	}
+	return a.ProjectID == projectID, nil
+}
+
+// ApplicationNames names the Guild's Applications among ids; an id that is
+// not one of the Guild's Applications is left out.
+func ApplicationNames(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error) {
+	ctx = app.InGuild(ctx, guildID)
+	out := map[uint64]string{}
+	for _, id := range ids {
+		if _, done := out[id]; done {
+			continue
+		}
+		a, err := svc().Application(ctx, id)
+		if errors.Is(err, app.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		out[id] = a.Name
+	}
+	return out, nil
+}
+
 func found[T any](_ T, err error) (bool, error) {
 	if errors.Is(err, app.ErrNotFound) {
 		return false, nil
