@@ -7,6 +7,11 @@
 //           list shows Ada as Pending approval; after Approve on her card
 //           on #/approvals/pending, All and Active show Ada as Idle. A run
 //           before is cleaned up by terminating its Ada first.
+//   org     with Org Ada (CTO) and Org Bob reporting to her, hired and
+//           approved through the API, the Org chart view shows Bob's card
+//           below Ada's joined by a line; dragging moves the chart; zoom in
+//           changes the scale; Fit brings both into view; ?view=org survives
+//           a reload; the Paused tab hides both; clicking Bob opens his page.
 //
 //   bun e2e/agents.ts [section ...]   (task web:agents; needs task dev)
 //
@@ -61,6 +66,21 @@ async function terminate(page: Page, names: string[]) {
   }
 }
 
+/** Hires an Agent through the API and approves its hire. */
+async function hired(page: Page, hire: { name: string; job: string; reports_to?: number }): Promise<Agent> {
+  const r = await page.request.post(`${WEB}/api/agents`, { data: { title: '', icon: 'bot', capabilities: '', role_ids: [], reports_to: null, ...hire } })
+  if (!r.ok()) throw new Error(`hire ${hire.name}: ${r.status()} ${await r.text()}`)
+  const { agent, approval_id } = (await r.json()) as { agent: Agent; approval_id: number }
+  const ok = await page.request.post(`${WEB}/api/approvals/${approval_id}/approve`, { data: {} })
+  if (!ok.ok()) throw new Error(`approve ${hire.name}: ${ok.status()} ${await ok.text()}`)
+  return agent
+}
+
+/** The card layer's transform: its translate and scale. */
+async function cardLayer(page: Page): Promise<string> {
+  return (await page.getByTestId('org-chart-card-layer').getAttribute('style')) ?? ''
+}
+
 const row = (page: Page, name: string) => page.getByTestId('agent-row').filter({ hasText: name })
 
 const sections: Record<string, () => Promise<void>> = {
@@ -107,6 +127,61 @@ const sections: Record<string, () => Promise<void>> = {
       await row(page, 'Ada').waitFor()
       expect(`${tab} shows Ada as Idle`, (await row(page, 'Ada').textContent())!.includes('Idle'), await row(page, 'Ada').textContent())
     }
+    await page.context().close()
+  },
+
+  async org() {
+    const page = await signedIn()
+    await terminate(page, ['Org Ada', 'Org Bob'])
+    const ada = await hired(page, { name: 'Org Ada', job: 'cto' })
+    const bob = await hired(page, { name: 'Org Bob', job: 'engineer', reports_to: ada.id })
+
+    await page.goto(`${WEB}/#/agents/all`)
+    await page.getByRole('button', { name: 'Org chart view' }).click()
+    const card = (name: string) => page.getByTestId('org-chart-card').filter({ hasText: name })
+    await card('Org Bob').waitFor()
+    expect('the view is in the hash query', page.url().endsWith('#/agents/all?view=org'), page.url())
+    const [a, b] = [await card('Org Ada').boundingBox(), await card('Org Bob').boundingBox()]
+    expect("Bob's card is below Ada's", !!a && !!b && b.y > a.y + a.height, { a, b })
+    expect('a line joins them', (await page.getByTestId('org-chart-edge').count()) > 0)
+    expect("Bob's card shows his Job", (await card('Org Bob').textContent())!.includes('Engineer'))
+
+    const viewport = (await page.getByTestId('org-chart-viewport').boundingBox())!
+    const inside = (box: { x: number; y: number; width: number; height: number } | null) =>
+      !!box && box.x >= viewport.x && box.y >= viewport.y && box.x + box.width <= viewport.x + viewport.width && box.y + box.height <= viewport.y + viewport.height
+    expect('it fits both on first show', inside(await card('Org Ada').boundingBox()) && inside(await card('Org Bob').boundingBox()))
+
+    const before = (await card('Org Ada').boundingBox())!
+    await page.mouse.move(viewport.x + 20, viewport.y + viewport.height - 20)
+    await page.mouse.down()
+    await page.mouse.move(viewport.x + 220, viewport.y + viewport.height - 120, { steps: 5 })
+    await page.mouse.up()
+    const after = (await card('Org Ada').boundingBox())!
+    expect('dragging moves the chart', Math.abs(after.x - before.x - 200) < 2 && Math.abs(after.y - before.y + 100) < 2, { before, after })
+
+    const unzoomed = await cardLayer(page)
+    await page.getByRole('button', { name: 'Zoom in' }).click()
+    const zoomed = await cardLayer(page)
+    expect('zoom in changes the scale', zoomed !== unzoomed && /scale\(/.test(zoomed), { unzoomed, zoomed })
+    for (let i = 0; i < 4; i++) await page.getByRole('button', { name: 'Zoom in' }).click()
+    await page.getByRole('button', { name: 'Fit chart to screen' }).click()
+    expect('Fit brings both into view', inside(await card('Org Ada').boundingBox()) && inside(await card('Org Bob').boundingBox()))
+
+    await page.reload()
+    await card('Org Bob').waitFor()
+    expect('?view=org survives a reload', page.url().endsWith('?view=org'))
+
+    await page.getByRole('tab', { name: 'Paused' }).click()
+    await page.waitForURL(/#\/agents\/paused\?view=org$/)
+    await page.getByRole('tab', { name: 'Paused', selected: true }).waitFor()
+    await page.waitForTimeout(300)
+    expect('the Paused tab hides both', (await card('Org Ada').count()) === 0 && (await card('Org Bob').count()) === 0)
+
+    await page.getByRole('tab', { name: 'All' }).click()
+    await card('Org Bob').click()
+    await page.waitForURL(new RegExp(`#/agents/${bob.id}$`))
+    expect('clicking Bob opens his page', true)
+    await terminate(page, ['Org Ada', 'Org Bob'])
     await page.context().close()
   },
 }

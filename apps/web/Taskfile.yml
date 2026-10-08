@@ -44,14 +44,15 @@ tasks:
       - bun e2e/work.ts
 
   agents:
-    desc: Check the Agents pages (the list, Hire agent and its Approval) in headless Chromium (needs task dev)
+    desc: Check the Agents pages (the list, Hire agent and its Approval, the Org chart) in headless Chromium (needs task dev)
     deps: [install]
     cmds:
       - bun e2e/agents.ts
 
   check:
-    desc: svelte-check, tsc and a production build
+    desc: svelte-check, tsc, the unit tests and a production build
     deps: [install]
     cmds:
       - bun run check
+      - bun test src
       - bun run build

@@ -6,14 +6,19 @@
   // status as AgentStatusBadge draws it. Paperclip's Error and Built-in tabs
   // wait for Runs and built-in agents; Terminated is The Bakery's, since it
   // keeps terminated Agents as records. Paperclip's environment, model and
-  // live-run columns belong to the runtime and are left out.
+  // live-run columns belong to the runtime and are left out. The Org chart
+  // view shows GET /api/org through OrgChart, filtered by the tab as
+  // Paperclip's filterOrgTree does; the view lives in the hash query
+  // (?view=org) so a reload and the tabs keep it.
   import { Bot, List, Network, Plus } from '@lucide/svelte'
   import { Button as UiButton } from '$lib/components/ui/button'
   import * as Tabs from '$lib/components/ui/tabs'
   import AgentIcon from '../../lib/AgentIcon.svelte'
-  import { agentStatusLabel, listAgents, type Agent, type AgentStatus } from '../../lib/agents'
+  import { agentStatusLabel, getOrg, listAgents, type Agent, type AgentStatus, type OrgNode } from '../../lib/agents'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import HireAgentDialog from '../../lib/HireAgentDialog.svelte'
+  import OrgChart from '../../lib/OrgChart.svelte'
+  import { filterOrgTree } from '../../lib/orgLayout'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
   import { agentsTabs, go, href, type AgentsTab } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
@@ -31,16 +36,36 @@
 
   let agents = $state.raw<Agent[] | null>(null)
   let loadError = $state('')
-  let view = $state<'list' | 'org'>('list')
+  // The statuses each tab shows, as GET /api/agents?status= filters them.
+  const tabStatuses: Record<AgentsTab, AgentStatus[]> = {
+    all: ['pending_approval', 'idle', 'paused'],
+    active: ['idle'],
+    paused: ['paused'],
+    terminated: ['terminated'],
+  }
+
+  const viewInHash = () => (new URLSearchParams(location.hash.split('?')[1] ?? '').get('view') === 'org' ? 'org' : 'list')
+  let org = $state.raw<OrgNode[] | null>(null)
+  let view = $state<'list' | 'org'>(viewInHash())
   let hiring = $state(false)
 
   const load = () =>
-    listAgents(tab)
-      .then((as) => {
+    Promise.all([listAgents(tab), getOrg()])
+      .then(([as, tree]) => {
         agents = as
+        org = tree
         loadError = ''
       })
       .catch((e) => (loadError = e.message))
+
+  const viewQuery = $derived(view === 'org' ? '?view=org' : '')
+  // The view into the hash query, in place: no history entry per switch.
+  $effect(() => {
+    const next = `#/agents/${tab}${viewQuery}`
+    if (location.hash !== next) history.replaceState(history.state, '', next)
+  })
+
+  const shownOrg = $derived(filterOrgTree(org ?? [], tabStatuses[tab]))
 
   $effect(() => {
     void tab
@@ -53,7 +78,7 @@
 
 <div class="chrome space-y-4">
   <div class="flex flex-wrap items-center justify-between gap-3">
-    <Tabs.Root value={tab} onValueChange={(v) => go(`/agents/${v}`)}>
+    <Tabs.Root value={tab} onValueChange={(v) => go(`/agents/${v}${viewQuery}`)}>
       <Tabs.List variant="line" class="justify-start">
         {#each agentsTabs as t (t)}<Tabs.Trigger value={t}>{tabLabels[t]}</Tabs.Trigger>{/each}
       </Tabs.List>
@@ -81,8 +106,14 @@
 
   {#if agents === null && !loadError}
     <PageSkeleton />
-  {:else if agents && view === 'org'}
-    <p class="py-8 text-center text-sm text-muted-foreground">No organizational hierarchy defined.</p>
+  {:else if org && view === 'org'}
+    {#if shownOrg.length > 0}
+      <OrgChart org={shownOrg} />
+    {:else if org.length > 0 || tab === 'terminated'}
+      <p class="py-8 text-center text-sm text-muted-foreground">No agents match the selected status.</p>
+    {:else}
+      <p class="py-8 text-center text-sm text-muted-foreground">No organizational hierarchy defined.</p>
+    {/if}
   {:else if agents && agents.length === 0 && tab === 'all'}
     <div class="flex flex-col items-center justify-center py-16 text-center">
       <div class="mb-4 rounded-md bg-muted/50 p-4"><Bot class="size-10 text-muted-foreground/50" /></div>

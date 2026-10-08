@@ -18,5 +18,7 @@
     "moduleDetection": "force",
     "paths": { "$lib": ["./src/lib"], "$lib/*": ["./src/lib/*"] }
   },
-  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"]
+  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"],
+  // bun test files: bun runs them with its own types, which the app does not carry.
+  "exclude": ["src/**/*.test.ts"]
 }
