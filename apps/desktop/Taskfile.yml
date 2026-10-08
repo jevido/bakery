@@ -51,8 +51,15 @@ tasks:
       - go test ./...
       - bun run check
 
+  standin:
+    desc: Build the claude stand-in (stream-json, never a model) to apps/desktop/bin/claude-standin
+    sources: [standin/claude/*.go]
+    generates: ["{{.BIN_DIR}}/claude-standin"]
+    cmds:
+      - go build -o {{.BIN_DIR}}/claude-standin ./standin/claude
+
   e2e:
     desc: Drive the Desktop app's frontend in headless Chromium against its own serve on 127.0.0.1:4991 (needs task dev)
-    deps: [common:build:frontend]
+    deps: [common:build:frontend, standin]
     cmds:
       - bun e2e/desktop.ts {{.CLI_ARGS}}

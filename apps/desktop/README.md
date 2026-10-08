@@ -89,8 +89,14 @@ claude --print --output-format stream-json --verbose
 with the Issue as its prompt, in the scratch directory
 `$BAKERY_DESKTOP_HOME/runs/<run id>`, and with `ANTHROPIC_API_KEY` removed
 from its environment so `claude` uses the person's own login and never an
-API key. `BAKERY_CLAUDE` names another binary (the checks use a stand-in
-that prints the same `stream-json`). Every line `claude` prints becomes a
+API key. `BAKERY_CLAUDE` names another binary: every check uses the
+stand-in in `standin/claude` (`task desktop:standin` builds it to
+`bin/claude-standin`), which prints the same `stream-json` and never calls a
+model. It exits 3 when `ANTHROPIC_API_KEY` is in its environment, so each
+check also proves the Runner removed it, and words in the prompt pick what it
+does: `[slow]` (20 lines a second apart), `[fail]`, `[crash]` (no result
+line) and `[limit]` (the CLI's usage-limit message).
+`BAKERY_STANDIN_DELAY` sets its pause between lines (300 ms by default). Every line `claude` prints becomes a
 Run event, sent in order by `seq`; when `claude` is quiet the Runner keeps
 the Run's Lease. When it exits, the Runner finishes the Run with the usage
 from the final `result` line: `succeeded`, or `failed` with the reason.
