@@ -27,7 +27,8 @@
 //
 // It starts `go run . serve` on 127.0.0.1:4991 itself, with a fresh
 // BAKERY_DESKTOP_HOME, and stops it at the end; the frontend must be built
-// (task desktop:e2e builds it). BAKERY_DESKTOP points it at a serve already
+// (task desktop:e2e builds it, and the claude stand-in its Runner runs).
+// BAKERY_DESKTOP points it at a serve already
 // running instead (then bakeries.json is not checked), BAKERY_WEB at another
 // dev Bakery, CHROMIUM at another browser. The owner comes from
 // BAKERY_OWNER_EMAIL and BAKERY_OWNER_PASSWORD or infra/dev/state/owner.env.
@@ -356,7 +357,12 @@ if (unknown.length) {
 const serve = HOME
   ? spawn('go', ['run', '.', 'serve', '--addr', new URL(DESKTOP).host], {
       cwd: new URL('..', import.meta.url).pathname,
-      env: { ...process.env, BAKERY_DESKTOP_HOME: HOME },
+      // Its Runner runs the stand-in, never the real claude.
+      env: {
+        ...process.env,
+        BAKERY_DESKTOP_HOME: HOME,
+        BAKERY_CLAUDE: process.env.BAKERY_CLAUDE ?? new URL('../bin/claude-standin', import.meta.url).pathname,
+      },
       detached: true,
       stdio: ['ignore', 'inherit', 'inherit'],
     })

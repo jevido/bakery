@@ -5,6 +5,7 @@
 package bakery
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -324,4 +325,237 @@ func (c *Client) Agent(ctx context.Context, guildID, id uint64) (Agent, error) {
 		return Agent{}, err
 	}
 	return out.Agent, nil
+}
+
+// RunAgent is the Agent a Run is of.
+type RunAgent struct {
+	ID   uint64 `json:"id"`
+	Name string `json:"name"`
+	Icon string `json:"icon"`
+}
+
+// RunIssue is the Issue a Run works on.
+type RunIssue struct {
+	ID         uint64 `json:"id"`
+	Identifier string `json:"identifier"`
+	Title      string `json:"title"`
+}
+
+// DesktopRun is a Run as the Bakery hands it to a Desktop
+// (services/api contexts/agents/http/desktop.go).
+type DesktopRun struct {
+	ID             uint64     `json:"id"`
+	Status         string     `json:"status"`
+	Guild          Named      `json:"guild"`
+	Agent          RunAgent   `json:"agent"`
+	Issue          *RunIssue  `json:"issue"`
+	Prompt         string     `json:"prompt"`
+	RetryOfRunID   *uint64    `json:"retry_of_run_id"`
+	SessionID      string     `json:"session_id"`
+	NextSeq        int64      `json:"next_seq"`
+	CreatedAt      time.Time  `json:"created_at"`
+	StartedAt      *time.Time `json:"started_at"`
+	LeaseExpiresAt *time.Time `json:"lease_expires_at"`
+}
+
+// RunEvent is one thing a Run's claude printed, numbered by Seq from 1.
+type RunEvent struct {
+	Seq     int64           `json:"seq"`
+	Kind    string          `json:"kind"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+// RunState is where a Run stands after a report.
+type RunState struct {
+	ID             uint64     `json:"id"`
+	Status         string     `json:"status"`
+	NextSeq        int64      `json:"next_seq"`
+	SessionID      string     `json:"session_id"`
+	LeaseExpiresAt *time.Time `json:"lease_expires_at"`
+}
+
+// Usage is a Run's usage as the claude CLI reported it; the cost is an
+// equivalent, never billed.
+type Usage struct {
+	InputTokens       int64   `json:"input_tokens"`
+	CachedInputTokens int64   `json:"cached_input_tokens"`
+	OutputTokens      int64   `json:"output_tokens"`
+	Turns             int64   `json:"turns"`
+	CostEquivalentUSD float64 `json:"cost_equivalent_usd"`
+	DurationMS        int64   `json:"duration_ms"`
+}
+
+// Finish is how a Run ended on this Desktop: succeeded or failed.
+type Finish struct {
+	Status   string `json:"status"`
+	ExitCode *int   `json:"exit_code"`
+	Error    string `json:"error"`
+	Usage    Usage  `json:"usage"`
+}
+
+// IsStatus says whether err is the Bakery refusing with status.
+func IsStatus(err error, status int) bool {
+	var e *Error
+	return errors.As(err, &e) && e.Status == status
+}
+
+// DesktopRuns lists the queued Runs of the person's Agents and the running
+// Runs this Desktop holds, across every Guild, oldest first.
+func (c *Client) DesktopRuns(ctx context.Context) ([]DesktopRun, error) {
+	var out struct {
+		Runs []DesktopRun `json:"runs"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/api/desktop/runs", 0, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Runs, nil
+}
+
+// ClaimRun takes the queued Run id for this Desktop. A 409 means another
+// Desktop of the person took it first, or its Agent cannot take it now.
+func (c *Client) ClaimRun(ctx context.Context, id uint64) (DesktopRun, error) {
+	var out struct {
+		Run DesktopRun `json:"run"`
+	}
+	if err := c.do(ctx, http.MethodPost, fmt.Sprintf("/api/runs/%d/claim", id), 0, nil, &out); err != nil {
+		return DesktopRun{}, err
+	}
+	return out.Run, nil
+}
+
+func (c *Client) runState(ctx context.Context, path string, body any) (RunState, error) {
+	var out struct {
+		Run RunState `json:"run"`
+	}
+	if err := c.do(ctx, http.MethodPost, path, 0, body, &out); err != nil {
+		return RunState{}, err
+	}
+	return out.Run, nil
+}
+
+// AppendRunEvents reports Run events in order by seq. The Bakery ignores a
+// seq it already has, so a report that failed can be sent again; a 409
+// means the Run is no longer running (cancelled, or lost).
+func (c *Client) AppendRunEvents(ctx context.Context, id uint64, events []RunEvent) (RunState, error) {
+	return c.runState(ctx, fmt.Sprintf("/api/runs/%d/events", id), map[string]any{"events": events})
+}
+
+// KeepLease tells the Bakery the Run is still running when there is
+// nothing else to report.
+func (c *Client) KeepLease(ctx context.Context, id uint64) (RunState, error) {
+	return c.runState(ctx, fmt.Sprintf("/api/runs/%d/lease", id), nil)
+}
+
+// FinishRun ends the Run this Desktop ran. One cancelled meanwhile is
+// answered as it is.
+func (c *Client) FinishRun(ctx context.Context, id uint64, f Finish) (RunState, error) {
+	return c.runState(ctx, fmt.Sprintf("/api/runs/%d/finish", id), f)
+}
+
+// RunsWatcher is told what the Desktop's stream of Runs says: the whole
+// list whenever it changes, and each Run of this Desktop cancelled.
+type RunsWatcher struct {
+	Runs   func([]DesktopRun)
+	Cancel func(runID uint64)
+}
+
+// The stream's backoff between reconnects, and how long it may stay
+// silent (the Bakery pings far more often) before it counts as dropped.
+var (
+	streamBackoffMin = time.Second
+	streamBackoffMax = 30 * time.Second
+	streamSilence    = 90 * time.Second
+)
+
+// WatchRuns follows GET /api/desktop/runs/stream until ctx ends,
+// reconnecting with a backoff of 1 s doubling to 30 s. It returns
+// ErrSignedOut when the key stops working and ctx's error otherwise.
+func (c *Client) WatchRuns(ctx context.Context, w RunsWatcher) error {
+	backoff := streamBackoffMin
+	for {
+		connected, err := c.streamRuns(ctx, w)
+		if errors.Is(err, ErrSignedOut) {
+			return err
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if connected {
+			backoff = streamBackoffMin
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, streamBackoffMax)
+	}
+}
+
+// streamRuns reads one connection of the stream until it ends; connected
+// says whether the Bakery accepted it.
+func (c *Client) streamRuns(ctx context.Context, w RunsWatcher) (connected bool, err error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Address+"/api/desktop/runs/stream", nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Authorization", "Bearer "+c.Key)
+	// The stream outlives the client's request timeout: same transport,
+	// no timeout; a silent connection is dropped by the watchdog below.
+	res, err := (&http.Client{Transport: c.HTTP.Transport}).Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer res.Body.Close()
+	switch {
+	case res.StatusCode == http.StatusUnauthorized:
+		return false, ErrSignedOut
+	case res.StatusCode != http.StatusOK:
+		return false, &Error{Status: res.StatusCode}
+	}
+	watchdog := time.AfterFunc(streamSilence, cancel)
+	defer watchdog.Stop()
+	scanner := bufio.NewScanner(res.Body)
+	scanner.Buffer(make([]byte, 64<<10), 8<<20)
+	var event string
+	var data []string
+	for scanner.Scan() {
+		watchdog.Reset(streamSilence)
+		line := scanner.Text()
+		switch {
+		case line == "":
+			if event != "" || len(data) > 0 {
+				dispatch(w, event, strings.Join(data, "\n"))
+			}
+			event, data = "", nil
+		case strings.HasPrefix(line, ":"):
+		case strings.HasPrefix(line, "event:"):
+			event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+		case strings.HasPrefix(line, "data:"):
+			data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+		}
+	}
+	return true, scanner.Err()
+}
+
+func dispatch(w RunsWatcher, event, data string) {
+	switch event {
+	case "runs":
+		var m struct {
+			Runs []DesktopRun `json:"runs"`
+		}
+		if json.Unmarshal([]byte(data), &m) == nil && w.Runs != nil {
+			w.Runs(m.Runs)
+		}
+	case "cancel":
+		var m struct {
+			RunID uint64 `json:"run_id"`
+		}
+		if json.Unmarshal([]byte(data), &m) == nil && m.RunID != 0 && w.Cancel != nil {
+			w.Cancel(m.RunID)
+		}
+	}
 }

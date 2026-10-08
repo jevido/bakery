@@ -213,8 +213,15 @@ records nothing more.
   it now. A Run event is `{seq, kind, payload, created_at}`, its `kind` one
   of `init`, `assistant`, `thinking`, `tool_call`, `tool_result`,
   `result`, `stderr` and `system`, and its `payload` the JSON the Desktop
-  sent. Tasks that build these routes keep this table in step with what
-  they ship.
+  sent. The Desktop's Runner sends `init` `{session_id, model}`,
+  `assistant`, `thinking`, `stderr` and `system` `{text, truncated?}`,
+  `tool_call` `{id, name, input}`, `tool_result` `{tool_use_id, content,
+  is_error, truncated?}` (content cut to 16 KiB) and `result` as the CLI's
+  result line `{subtype, is_error, result, num_turns, duration_ms,
+  total_cost_usd, session_id, usage: {input_tokens, output_tokens,
+  cache_creation_input_tokens, cache_read_input_tokens}}`; the Run usage's
+  cached input tokens are `cache_read_input_tokens`. Tasks that build these
+  routes keep this table in step with what they ship.
 
   An Agent is `{id, name, job, job_label, title, icon, capabilities, status,
   reports_to: {id, name} | null, hirer: {id, name} | null, roles: [{id,

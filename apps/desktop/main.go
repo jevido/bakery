@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"flag"
@@ -12,7 +13,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
 
+	"github.com/jevido/bakery/apps/desktop/runner"
 	"github.com/jevido/bakery/apps/desktop/store"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -33,10 +38,12 @@ func main() {
 		err = runServe(args[1:])
 	case args[0] == "login":
 		err = runLogin(args[1:])
+	case args[0] == "runner":
+		err = runRunner()
 	case args[0] == "version":
 		fmt.Println(version)
 	default:
-		err = fmt.Errorf("unknown command %q; commands: serve [--addr 127.0.0.1:4991], login --server <address> [--no-browser], version", args[0])
+		err = fmt.Errorf("unknown command %q; commands: serve [--addr 127.0.0.1:4991] [--no-runner], runner, login --server <address> [--no-browser], version", args[0])
 	}
 	if err != nil {
 		log.Fatal(err)
@@ -50,6 +57,17 @@ func openStore() (*store.Store, error) {
 		return nil, err
 	}
 	return store.New(path), nil
+}
+
+// newRunner is the Runner for the Bakeries in bakeries, with its Runs'
+// working directories beside bakeries.json and its updates sent to events
+// (nil in `runner`, which has no frontend).
+func newRunner(bakeries *store.Store, events *Events) *runner.Runner {
+	r := &runner.Runner{Store: bakeries, Home: filepath.Dir(bakeries.Path)}
+	if events != nil {
+		r.Events = events.Emit
+	}
+	return r
 }
 
 // openInBrowser opens url in the system browser through Wails' browser
@@ -72,6 +90,9 @@ func runWindow() error {
 		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 	})
 	events.SetWindow(func(name string, data any) { app.Event.Emit(name, data) })
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	newRunner(bakeries, events).Start(ctx)
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "The Bakery",
 		Width:  1280,
@@ -86,6 +107,7 @@ func runWindow() error {
 func runServe(args []string) error {
 	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
 	addr := flags.String("addr", "127.0.0.1:4991", "loopback address to listen on")
+	noRunner := flags.Bool("no-runner", false, "do not run this person's Runs")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -111,9 +133,32 @@ func runServe(args []string) error {
 		return err
 	}
 	log.Printf("The Bakery desktop app serving on http://%s", ln.Addr())
-	err = http.Serve(ln, newServer(NewDesktop(NewEvents(), bakeries, nil), dist))
+	events := NewEvents()
+	if !*noRunner {
+		newRunner(bakeries, events).Start(context.Background())
+	}
+	err = http.Serve(ln, newServer(NewDesktop(events, bakeries, nil), dist))
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
 	return err
+}
+
+// runRunner runs only the Runner, until SIGINT or SIGTERM. The claude
+// processes it started are stopped and their Runs left running on the
+// Bakery, which marks them lost and queues them again.
+func runRunner() error {
+	bakeries, err := openStore()
+	if err != nil {
+		return err
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	r := newRunner(bakeries, nil)
+	log.Printf("The Bakery desktop app running Runs for the Bakeries in %s", bakeries.Path)
+	r.Start(ctx)
+	<-ctx.Done()
+	r.Wait()
+	log.Print("runner stopped")
+	return nil
 }

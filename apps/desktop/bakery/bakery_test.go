@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNormalizeAddress(t *testing.T) {
@@ -133,5 +135,107 @@ func TestErrorMessageAndGuildHeader(t *testing.T) {
 	}
 	if err := c.do(context.Background(), http.MethodGet, "/api/agents", 4, nil, nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRunRoutes(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/desktop/runs", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"runs":[{"id":4,"status":"queued","guild":{"id":1,"name":"Bakers"},"agent":{"id":2,"name":"Ada","icon":""},"issue":{"id":9,"identifier":"BAK-9","title":"Fix it"},"prompt":"Fix it","next_seq":1}]}`))
+	})
+	mux.HandleFunc("POST /api/runs/4/claim", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"message":"a running run cannot be claimed"}`))
+	})
+	mux.HandleFunc("POST /api/runs/4/events", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Events []RunEvent `json:"events"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		if len(in.Events) != 2 || in.Events[1].Seq != 2 || in.Events[0].Kind != "init" || string(in.Events[0].Payload) != `{"session_id":"s"}` {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			return
+		}
+		_, _ = w.Write([]byte(`{"run":{"id":4,"status":"running","next_seq":3,"session_id":"s"}}`))
+	})
+	mux.HandleFunc("POST /api/runs/4/finish", func(w http.ResponseWriter, r *http.Request) {
+		var in map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		usage, _ := in["usage"].(map[string]any)
+		if in["status"] != "succeeded" || in["exit_code"] != float64(0) || usage["turns"] != float64(3) {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			return
+		}
+		_, _ = w.Write([]byte(`{"run":{"id":4,"status":"succeeded","next_seq":3}}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	c := New(srv.URL, "bky_desk_x")
+	ctx := context.Background()
+	runs, err := c.DesktopRuns(ctx)
+	if err != nil || len(runs) != 1 || runs[0].Issue.Identifier != "BAK-9" || runs[0].Agent.Name != "Ada" {
+		t.Fatalf("runs %+v, %v", runs, err)
+	}
+	if _, err := c.ClaimRun(ctx, 4); !IsStatus(err, http.StatusConflict) || err.Error() != "a running run cannot be claimed" {
+		t.Fatalf("claim: %v", err)
+	}
+	st, err := c.AppendRunEvents(ctx, 4, []RunEvent{{Seq: 1, Kind: "init", Payload: json.RawMessage(`{"session_id":"s"}`)}, {Seq: 2, Kind: "assistant", Payload: json.RawMessage(`{"text":"hi"}`)}})
+	if err != nil || st.NextSeq != 3 || st.SessionID != "s" {
+		t.Fatalf("events %+v, %v", st, err)
+	}
+	code := 0
+	if st, err := c.FinishRun(ctx, 4, Finish{Status: "succeeded", ExitCode: &code, Usage: Usage{Turns: 3}}); err != nil || st.Status != "succeeded" {
+		t.Fatalf("finish %+v, %v", st, err)
+	}
+}
+
+func TestWatchRuns(t *testing.T) {
+	streamBackoffMin = 10 * time.Millisecond
+	var connects int
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/desktop/runs/stream", func(w http.ResponseWriter, r *http.Request) {
+		connects++
+		if r.Header.Get("Authorization") != "Bearer bky_desk_x" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		if connects == 1 {
+			// The first connection drops at once; the watcher comes back.
+			_, _ = w.Write([]byte(": ping\n\n"))
+			return
+		}
+		_, _ = w.Write([]byte("event: runs\ndata: {\"runs\":[{\"id\":4,\"status\":\"queued\"}]}\n\n: ping\n\nevent: cancel\ndata: {\"run_id\":7}\n\n"))
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	got := make(chan string, 4)
+	done := make(chan error, 1)
+	go func() {
+		done <- New(srv.URL, "bky_desk_x").WatchRuns(ctx, RunsWatcher{
+			Runs:   func(rs []DesktopRun) { got <- fmt.Sprintf("runs %d %s", rs[0].ID, rs[0].Status) },
+			Cancel: func(id uint64) { got <- fmt.Sprintf("cancel %d", id) },
+		})
+	}()
+	for _, want := range []string{"runs 4 queued", "cancel 7"} {
+		select {
+		case g := <-got:
+			if g != want {
+				t.Fatalf("got %q, want %q", g, want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("no %q", want)
+		}
+	}
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("watch ended with %v", err)
+	}
+	if err := New(srv.URL, "bky_desk_wrong").WatchRuns(context.Background(), RunsWatcher{}); !errors.Is(err, ErrSignedOut) {
+		t.Fatalf("a refused key: %v", err)
 	}
 }
