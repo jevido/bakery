@@ -27,13 +27,13 @@
   // the Guilds into an order (nothing stores one). Switching opens the other
   // Guild's Dashboard.
   import { Check, ChevronsUpDown, LogOut, Plus, UserPlus } from '@lucide/svelte'
-  import { buttonVariants } from '$lib/components/ui/button'
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
-  import GuildIcon from './GuildIcon.svelte'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import * as DropdownMenu from '@bakery/ui/components/ui/dropdown-menu'
+  import GuildIcon from '@bakery/ui/GuildIcon.svelte'
   import { guildPath, href } from './router.svelte'
   import { RAIL_HIDDEN_LABEL } from './sidebar.svelte'
   import Modal from './ui/Modal.svelte'
-  import { cn } from './utils'
+  import { cn } from '@bakery/ui/utils'
   import Create from '../pages/guild/Create.svelte'
 
   let open = $state(false)

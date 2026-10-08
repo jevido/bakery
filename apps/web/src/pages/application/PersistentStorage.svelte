@@ -10,8 +10,8 @@
   // Volumes/Files/Directories tabs, volume backups and the preview suffix.
   import { untrack } from 'svelte'
   import { ApiError } from '../../lib/api'
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
-  import { buttonVariants } from '$lib/components/ui/button'
+  import * as DropdownMenu from '@bakery/ui/components/ui/dropdown-menu'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import Icon from '../../lib/Icon.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'

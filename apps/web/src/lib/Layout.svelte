@@ -6,7 +6,7 @@
   // over a scrim. Left out until Issues and agents exist:
   // the command palette, search, the properties panel and the mobile bottom nav.
   import type { Snippet } from 'svelte'
-  import * as Tooltip from '$lib/components/ui/tooltip'
+  import * as Tooltip from '@bakery/ui/components/ui/tooltip'
   import AccountMenu from './AccountMenu.svelte'
   import BreadcrumbBar from './BreadcrumbBar.svelte'
   import GuildRail from './GuildRail.svelte'
@@ -15,7 +15,7 @@
   import Sidebar from './Sidebar.svelte'
   import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, SIDEBAR_RAIL_WIDTH, SIDEBAR_WIDTH_STEP, sidebar } from './sidebar.svelte'
   import TransferOffers from './TransferOffers.svelte'
-  import { cn } from './utils'
+  import { cn } from '@bakery/ui/utils'
 
   let { children }: { children: Snippet } = $props()
 

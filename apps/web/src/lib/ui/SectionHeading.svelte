@@ -4,7 +4,7 @@
   // and a right-aligned action, either "View all" to `href` (Paperclip's
   // small outline button) or the `actions` snippet.
   import type { Snippet } from 'svelte'
-  import { Button as UiButton } from '$lib/components/ui/button'
+  import { Button as UiButton } from '@bakery/ui/components/ui/button'
   import Icon, { type IconName } from '../Icon.svelte'
 
   let {

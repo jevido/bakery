@@ -9,7 +9,7 @@
   // redirect and response headers.
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
-  import { buttonVariants } from '$lib/components/ui/button'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
   import Icon from '../../lib/Icon.svelte'
   import { applicationPath, href } from '../../lib/router.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'

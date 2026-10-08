@@ -11,7 +11,7 @@
   // view, nesting, columns and live runs, which wait for agents.
   import { ChevronRight, OctagonAlert, Plus } from '@lucide/svelte'
   import { untrack } from 'svelte'
-  import { Button as UiButton } from '$lib/components/ui/button'
+  import { Button as UiButton } from '@bakery/ui/components/ui/button'
   import { api } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import CollectionToolbar from '../../lib/CollectionToolbar.svelte'

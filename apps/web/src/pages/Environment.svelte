@@ -8,9 +8,9 @@
   // Laid out as Paperclip's ProjectDetail (ui/src/pages/ProjectDetail.tsx,
   // MIT), as the Project page is: its header with the name and actions, the
   // list toolbar, then the Resources as EntityRows in one card or as cards.
-  import { buttonVariants } from '$lib/components/ui/button'
-  import { Card } from '$lib/components/ui/card'
-  import * as Popover from '$lib/components/ui/popover'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import { Card } from '@bakery/ui/components/ui/card'
+  import * as Popover from '@bakery/ui/components/ui/popover'
   import { api } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import CollectionToolbar from '../lib/CollectionToolbar.svelte'

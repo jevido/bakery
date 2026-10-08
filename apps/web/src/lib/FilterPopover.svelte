@@ -3,8 +3,8 @@
   // MIT, see NOTICE), as the Environment page draws it: a ghost button naming
   // what is picked, a list of checkable options in optional groups and a
   // footer that clears them. Option values are unique across groups.
-  import { buttonVariants } from '$lib/components/ui/button'
-  import * as Popover from '$lib/components/ui/popover'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import * as Popover from '@bakery/ui/components/ui/popover'
   import Icon from './Icon.svelte'
 
   type Option = { value: string; label: string }

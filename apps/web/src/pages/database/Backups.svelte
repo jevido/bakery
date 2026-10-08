@@ -11,7 +11,7 @@
   // Laid out as Paperclip's list pattern (ui/src/pages/ProjectDetail.tsx,
   // MIT), as Deployment history is: a CollectionToolbar, the Scheduled
   // backups as EntityRows in one card.
-  import { Card } from '$lib/components/ui/card'
+  import { Card } from '@bakery/ui/components/ui/card'
   import { api, ApiError } from '../../lib/api'
   import CollectionToolbar from '../../lib/CollectionToolbar.svelte'
   import EntityRow from '../../lib/EntityRow.svelte'

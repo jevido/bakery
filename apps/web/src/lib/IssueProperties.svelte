@@ -12,7 +12,7 @@
   import { X } from '@lucide/svelte'
   import type { Snippet } from 'svelte'
   import BlockerPicker from './BlockerPicker.svelte'
-  import { Separator } from '$lib/components/ui/separator'
+  import { Separator } from '@bakery/ui/components/ui/separator'
   import { formatDate } from './format'
   import Identity from './Identity.svelte'
   import OptionPopover from './OptionPopover.svelte'

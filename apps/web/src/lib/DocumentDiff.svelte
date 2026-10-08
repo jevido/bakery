@@ -5,8 +5,8 @@
   // new line number. Paperclip picks both sides from Select menus of the
   // Revisions; here the caller names them, because the Issue page compares
   // one Revision with the current one, or the newest with an unsaved draft.
-  import { Badge } from '$lib/components/ui/badge'
-  import * as Dialog from '$lib/components/ui/dialog'
+  import { Badge } from '@bakery/ui/components/ui/badge'
+  import * as Dialog from '@bakery/ui/components/ui/dialog'
   import { buildLineDiff, type DiffRowKind } from './lineDiff'
 
   /** One side of the comparison: its label (like "rev 1") and its text. */

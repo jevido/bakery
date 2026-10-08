@@ -11,9 +11,9 @@
   // Paperclip's filterOrgTree does; the view lives in the hash query
   // (?view=org) so a reload and the tabs keep it.
   import { Bot, List, Network, Plus } from '@lucide/svelte'
-  import { Button as UiButton } from '$lib/components/ui/button'
-  import * as Tabs from '$lib/components/ui/tabs'
-  import AgentIcon from '../../lib/AgentIcon.svelte'
+  import { Button as UiButton } from '@bakery/ui/components/ui/button'
+  import * as Tabs from '@bakery/ui/components/ui/tabs'
+  import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import { agentStatusLabel, agentStatusTones, getOrg, listAgents, type Agent, type AgentStatus, type OrgNode } from '../../lib/agents'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import HireAgentDialog from '../../lib/HireAgentDialog.svelte'

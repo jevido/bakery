@@ -1,0 +1,398 @@
+/*
+ * The Bakery's design tokens: Paperclip's token layer (ui/src/index.css, MIT;
+ * see NOTICE), its semantic tier only. The domain tiers (agent gradients,
+ * chips, annotations, markdown, task chat) come with the pages that use them.
+ * The shadcn components in src/components/ui read these tokens.
+ *
+ * A consumer imports Tailwind (and @tailwindcss/forms) first, then this file,
+ * and adds an @source for this package so its components' classes are built.
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans:
+    "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-log: var(--log);
+  --color-log-foreground: var(--log-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  /* The Bakery's status colors, beside Paperclip's destructive. */
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  /* Paperclip's multiplicative radius ladder on the one --radius knob. */
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --font-heading: var(--font-sans);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  color-scheme: light;
+  --radius: 0.5rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  /* The log panel: Paperclip's run log, neutral-100 in light and
+     neutral-950 in dark (ui/src/pages/AgentDetail.tsx). */
+  --log: oklch(0.97 0 0);
+  --log-foreground: oklch(0.205 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --scrollbar-thumb: oklch(0.7 0 0);
+  --scrollbar-thumb-hover: oklch(0.6 0 0);
+  --scrollbar-size: 8px;
+  --scrollbar-radius: 999px;
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.88 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+  /* Status colors are mostly text in light mode, so they are dark enough to
+     clear WCAG AA on white. */
+  --success: oklch(48% 0.135 149.58);
+  --warning: oklch(50% 0.105 80);
+  --error: var(--destructive);
+
+  /* Paperclip's named type ladder and the tokens its components use in
+     place of arbitrary values (ui/src/index.css, extracted-token blocks). */
+  --text-nano: 10px;
+  --text-micro: 11px;
+  --text-compact: 13px;
+  --tracking-label: 0.08em;
+  --tracking-eyebrow: 0.14em;
+  --tracking-caps: 0.2em;
+  --sz-3px: 3px;
+  --sz-60px: 60px;
+  --sz-220px: 220px;
+  --sz-300px: 300px;
+  --sz-8rem: 8rem;
+  --sz-neg-5px: -5px;
+  --sz-calc-24: calc(100vw - 1rem);
+  --sz-calc-25: calc(100% - 2rem);
+  --sz-calc-26: max(1rem, env(safe-area-inset-top));
+  --sz-calc-27: calc(100% - 1px);
+  --sz-calc-29: calc(-50% + 2px);
+  --sz-calc-30: calc(-50% + 1px);
+  --sz-calc-31: calc(50% + 2px);
+  --sz-calc-32: calc(50% - 3px);
+  --rad-2: 2px;
+  --rad-3: 3px;
+  --rad-4: 4px;
+  --pct-50: 50%;
+  --pct-neg-50: -50%;
+  --gtc-17: 1fr auto;
+  --gtc-36: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+  --gtr-1: auto auto;
+  --status-task-done: #22c55e;
+  --tp-color-box-shadow: color, box-shadow;
+  --tp-color-background-color-border-color-box-shadow-opacity:
+    color, background-color, border-color, box-shadow, opacity;
+  --tp-color-background-color-border-color-box-shadow:
+    color, background-color, border-color, box-shadow;
+  --tp-border-color-background-color: border-color, background-color;
+  --tp-transform-opacity: transform, opacity;
+  --tp-width: width;
+  --e-cubic-bezier-0_16-1-0_3-1: cubic-bezier(0.16, 1, 0.3, 1);
+  --drop-shadow-extract-1: 0 1px 2px rgba(0, 0, 0, 0.65);
+
+  /* The account and guild menus' popovers (Paperclip's profile and
+     organization popover tokens). */
+  --profile-popover-width: 248px;
+  --profile-popover-header-height: 76px;
+  --profile-popover-row-height: 38px;
+  --profile-popover-row-gap: 9px;
+  --profile-popover-label-line-height: 18px;
+  --profile-popover-meta-line-height: 15px;
+  --shadow-profile-popover: 0 18px 45px oklch(0 0 0 / 18%);
+  /* The rail's badge dot outline; matches the sidebar surface. */
+  --shadow-sidebar-icon-badge: 0 0 0 2px var(--muted);
+  --organization-popover-width: 248px;
+  --organization-popover-header-height: 48px;
+  --organization-popover-company-row-height: 44px;
+  --organization-popover-action-row-height: 38px;
+  --organization-popover-avatar-size: 30px;
+  --organization-popover-row-gap: 9px;
+  --organization-popover-name-line-height: 17px;
+  --organization-popover-prefix-line-height: 13px;
+  --organization-popover-action-line-height: 18px;
+  /* Paperclip's Issue status glyph hues (ui/src/index.css), AA-tuned per mode. */
+  --status-task-icon-backlog: #52585d;
+  --status-task-icon-todo: #cc7a00;
+  --status-task-icon-in_progress: var(--color-blue-600);
+  --status-task-icon-in_review: #7c3aed;
+  --status-task-icon-done: #16a34a;
+  --status-task-icon-blocked: #dc2626;
+  --status-task-icon-cancelled: #52585d;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.205 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --log: oklch(0.145 0 0);
+  --log-foreground: oklch(0.922 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.637 0.237 25.331);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --scrollbar-thumb: oklch(0.4 0 0);
+  --scrollbar-thumb-hover: oklch(0.5 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.32 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+  --success: oklch(72.27% 0.192 149.58);
+  --warning: oklch(88.13% 0.1507 91.7);
+  --error: var(--destructive);
+  --status-task-icon-backlog: #9a958a;
+  --status-task-icon-todo: #fbbf24;
+  --status-task-icon-in_progress: var(--color-blue-400);
+  --status-task-icon-in_review: #9474f0;
+  --status-task-icon-done: #34d06f;
+  --status-task-icon-cancelled: #9a958a;
+}
+
+/* Paperclip's sidebar surface (the row action fade reads it). */
+.primary-sidebar-surface {
+  --sidebar-action-rest-surface: color-mix(in srgb, var(--border) 50%, var(--background));
+  background-color: var(--sidebar-action-rest-surface);
+}
+
+.dark .primary-sidebar-surface {
+  --sidebar-action-rest-surface: var(--muted);
+}
+
+/* Paperclip's scrollbars: thin dark ones in dark mode, and the auto-hide
+   variant whose thumb shows only on hover. */
+.dark *::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+.dark *::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+.dark *::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+.dark *::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.scrollbar-auto-hide {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.scrollbar-auto-hide::-webkit-scrollbar {
+  width: var(--scrollbar-size) !important;
+  height: var(--scrollbar-size) !important;
+  background: transparent !important;
+}
+
+.scrollbar-auto-hide::-webkit-scrollbar-track,
+.scrollbar-auto-hide::-webkit-scrollbar-thumb {
+  background: transparent !important;
+}
+
+.scrollbar-auto-hide:hover {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.scrollbar-auto-hide:hover::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb) !important;
+  border-radius: var(--scrollbar-radius) !important;
+}
+
+.scrollbar-auto-hide:hover::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover) !important;
+}
+
+@layer base {
+  /* Paperclip's autofill: Chrome's blue fill repainted in the app's colors. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-text-fill-color: var(--foreground);
+    caret-color: var(--foreground);
+    box-shadow: inset 0 0 0 1000px var(--muted);
+    transition: background-color 100000s ease-in-out 0s;
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    -webkit-tap-highlight-color: color-mix(in oklab, var(--foreground) 20%, transparent);
+    @apply min-h-full w-full font-sans;
+  }
+
+  body {
+    min-height: 100dvh;
+    @apply w-full overflow-x-clip bg-background text-sm text-foreground antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  a,
+  button,
+  [role="button"],
+  input,
+  select,
+  textarea,
+  label {
+    touch-action: manipulation;
+  }
+
+  option {
+    @apply bg-popover text-popover-foreground;
+  }
+
+  /* The heading sizes the pages not yet restyled were laid out with. */
+  h1 {
+    @apply text-[24px] leading-7 font-semibold tracking-tight text-foreground;
+  }
+
+  h2 {
+    @apply text-xl font-bold text-foreground;
+  }
+
+  h3 {
+    @apply text-lg font-bold text-foreground;
+  }
+
+  h4 {
+    @apply text-base font-bold text-foreground;
+  }
+
+  a {
+    @apply hover:text-foreground;
+  }
+
+  button:focus-visible,
+  a:focus-visible {
+    @apply ring-[3px] ring-ring/50 outline-none;
+  }
+
+  label {
+    @apply text-muted-foreground;
+  }
+}
+
+/*
+ * Two values Paperclip's token layer does not have: the warning text on a
+ * tinted badge in the light theme (statusColors.ts) and Coolify's easing
+ * curves, which the shell's transitions use.
+ */
+@theme {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+@theme inline {
+  --color-warning-700: color-mix(in oklab, var(--warning) 65%, black);
+}
+
+@media (max-width: 767px) {
+  :root input,
+  :root textarea,
+  :root select {
+    font-size: 16px !important;
+  }
+}

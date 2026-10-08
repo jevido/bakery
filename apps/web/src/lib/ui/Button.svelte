@@ -5,9 +5,9 @@
   // button and shows the spinner.
   import type { Snippet } from 'svelte'
   import type { HTMLButtonAttributes } from 'svelte/elements'
-  import { buttonVariants, type ButtonVariant } from '$lib/components/ui/button'
+  import { buttonVariants, type ButtonVariant } from '@bakery/ui/components/ui/button'
   import type { ClassValue } from 'clsx'
-  import { cn } from '$lib/utils'
+  import { cn } from '@bakery/ui/utils'
   import Spinner from './Spinner.svelte'
 
   type Props = HTMLButtonAttributes & {

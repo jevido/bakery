@@ -6,8 +6,8 @@
   // shown only to those who may change it; Restart and Stop open the page's
   // confirmation modals by their hidden triggers, as Coolify's do.
   import { ChevronDown } from '@lucide/svelte'
-  import { buttonVariants } from '$lib/components/ui/button'
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import * as DropdownMenu from '@bakery/ui/components/ui/dropdown-menu'
   import Icon from '../../lib/Icon.svelte'
   import PageHeader from '../../lib/PageHeader.svelte'
   import StatusSummary from '../../lib/ui/StatusSummary.svelte'

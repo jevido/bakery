@@ -2,7 +2,7 @@
   // The open Transfer offers to the signed-in Member, under the breadcrumb bar
   // of every page: nothing changes until they accept one here.
   import { api } from './api'
-  import { Button } from '$lib/components/ui/button'
+  import { Button } from '@bakery/ui/components/ui/button'
   import { session, type Offer } from './session.svelte'
   import InlineBanner from './ui/InlineBanner.svelte'
 

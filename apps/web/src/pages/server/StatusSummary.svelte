@@ -4,7 +4,7 @@
   // opens the System status in Paperclip's popover. Only the Server row: Caddy
   // is one proxy for every Server here, and there is no Sentinel.
   import { ChevronDown } from '@lucide/svelte'
-  import * as Popover from '$lib/components/ui/popover'
+  import * as Popover from '@bakery/ui/components/ui/popover'
   import { statusBadgeClasses, statusDotClasses } from '../../lib/statusColors'
   import type { Server } from '../../lib/types'
   import { isFunctional } from './status'

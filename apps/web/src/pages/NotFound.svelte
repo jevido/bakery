@@ -3,8 +3,8 @@
   // a card with what was asked for and the way back. A page that knows what
   // is missing (an Issue, a Goal) says so in `title` and `description`.
   import { AlertTriangle, Compass } from '@lucide/svelte'
-  import { Button } from '$lib/components/ui/button'
-  import * as Card from '$lib/components/ui/card'
+  import { Button } from '@bakery/ui/components/ui/button'
+  import * as Card from '@bakery/ui/components/ui/card'
   import { href } from '../lib/router.svelte'
 
   let { title = 'Page not found', description = 'This route does not exist.' }: { title?: string; description?: string } = $props()

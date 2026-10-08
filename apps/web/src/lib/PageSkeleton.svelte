@@ -2,7 +2,7 @@
   // Paperclip's PageSkeleton (components/PageSkeleton.tsx, MIT, see NOTICE),
   // its `list` and `dashboard` variants. The dashboard one leaves out the
   // banner and the chart row, which The Bakery's Dashboard does not have.
-  import { Skeleton } from '$lib/components/ui/skeleton'
+  import { Skeleton } from '@bakery/ui/components/ui/skeleton'
 
   let { variant = 'list' }: { variant?: 'list' | 'dashboard' } = $props()
 </script>

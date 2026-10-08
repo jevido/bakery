@@ -13,7 +13,7 @@
   // Laid out as the Environment Variables list is (lib/EnvironmentVariables.svelte,
   // after phase 29 task 04): dense rows in a bordered card, ClientPagination
   // under them (Coolify's ten to a page, in the browser).
-  import { buttonVariants } from '$lib/components/ui/button'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
   import { api, ApiError } from '../../lib/api'
   import { ago, duration, size } from '../../lib/format'
   import Icon from '../../lib/Icon.svelte'

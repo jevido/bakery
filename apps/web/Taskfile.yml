@@ -2,10 +2,9 @@ version: "3"
 
 tasks:
   install:
-    desc: Install dependencies with bun
-    sources: [package.json, bun.lock]
+    desc: Install dependencies (the root Bun workspace)
     cmds:
-      - bun install
+      - task: :install
 
   dev:
     desc: Run the dashboard on 127.0.0.1:4930 (proxies /api to :4910)

@@ -10,7 +10,7 @@
   // Retention count for local and S3 copies together, and the local copy is
   // always kept.
   import { untrack } from 'svelte'
-  import { buttonVariants } from '$lib/components/ui/button'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
   import { api, ApiError } from '../../lib/api'
   import { databasePath, go, href, type ScheduledBackupSection } from '../../lib/router.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'

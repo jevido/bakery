@@ -14,8 +14,8 @@
   // (project/service/heading.blade.php) uses it too, with `resource="service"`.
   import { ChevronDown } from '@lucide/svelte'
   import { MediaQuery } from 'svelte/reactivity'
-  import { buttonVariants } from '$lib/components/ui/button'
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import * as DropdownMenu from '@bakery/ui/components/ui/dropdown-menu'
   import Icon from '../../lib/Icon.svelte'
   import PageHeader from '../../lib/PageHeader.svelte'
   import StatusSummary from '../../lib/ui/StatusSummary.svelte'

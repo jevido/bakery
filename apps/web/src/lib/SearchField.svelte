@@ -2,7 +2,7 @@
   // The search box of Paperclip's list toolbars (ui/src/pages/Projects.tsx;
   // MIT, see NOTICE): a magnifier, the input, and a clear button once
   // something is typed.
-  import { Input } from '$lib/components/ui/input'
+  import { Input } from '@bakery/ui/components/ui/input'
   import Icon from './Icon.svelte'
 
   let {

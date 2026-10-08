@@ -13,11 +13,11 @@
   // Agent (can_manage) edits it in place while it is idle or paused; the
   // server stays the judge of every change.
   import { Copy, MoreHorizontal, Pause, Play, Plus, Trash2, X } from '@lucide/svelte'
-  import * as AlertDialog from '$lib/components/ui/alert-dialog'
-  import { Button as UiButton } from '$lib/components/ui/button'
-  import * as Popover from '$lib/components/ui/popover'
-  import { Separator } from '$lib/components/ui/separator'
-  import AgentIcon from '../../lib/AgentIcon.svelte'
+  import * as AlertDialog from '@bakery/ui/components/ui/alert-dialog'
+  import { Button as UiButton } from '@bakery/ui/components/ui/button'
+  import * as Popover from '@bakery/ui/components/ui/popover'
+  import { Separator } from '@bakery/ui/components/ui/separator'
+  import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import AgentIconPicker from '../../lib/AgentIconPicker.svelte'
   import {
     addAgentRole,

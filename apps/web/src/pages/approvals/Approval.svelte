@@ -14,8 +14,8 @@
   // Deciding needs approve, commenting manage_work.
   import { ChevronRight, CircleCheck, Sparkles } from '@lucide/svelte'
   import { refreshBadges } from '../../lib/inbox.svelte'
-  import { Button } from '$lib/components/ui/button'
-  import { Textarea } from '$lib/components/ui/textarea'
+  import { Button } from '@bakery/ui/components/ui/button'
+  import { Textarea } from '@bakery/ui/components/ui/textarea'
   import { ApiError } from '../../lib/api'
   import ApprovalPayload from '../../lib/ApprovalPayload.svelte'
   import {

@@ -15,9 +15,9 @@
   // toolbar of Projects.tsx, Cards for the types, EntityRows for the Servers,
   // and a settings page (CompanySettings.tsx) around each create form.
   import { Plus } from '@lucide/svelte'
-  import { buttonVariants } from '$lib/components/ui/button'
-  import { Card } from '$lib/components/ui/card'
-  import * as Popover from '$lib/components/ui/popover'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import { Card } from '@bakery/ui/components/ui/card'
+  import * as Popover from '@bakery/ui/components/ui/popover'
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import CollectionToolbar from '../lib/CollectionToolbar.svelte'

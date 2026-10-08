@@ -10,7 +10,7 @@
   // search engine indexing and the www redirect (a Domain is a hostname
   // served over HTTPS on the Component's port).
   import { api, ApiError } from '../../lib/api'
-  import { buttonVariants } from '$lib/components/ui/button'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
   import Icon from '../../lib/Icon.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
   import SearchField from '../../lib/SearchField.svelte'

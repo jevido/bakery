@@ -4,7 +4,7 @@
   // Bakery generates one key per Server instead of picking one of the team's
   // Private Keys, so the key list is one card for the Server's own key, with
   // the command that authorises it and the pinned host key below it.
-  import { Badge } from '$lib/components/ui/badge'
+  import { Badge } from '@bakery/ui/components/ui/badge'
   import { api, ApiError } from '../../lib/api'
   import Icon from '../../lib/Icon.svelte'
   import { session } from '../../lib/session.svelte'

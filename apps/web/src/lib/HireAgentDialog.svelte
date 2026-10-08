@@ -10,9 +10,9 @@
   // waits for its Approval, so success shows Paperclip's "Agent submitted
   // for approval" with a link to it.
   import { Check } from '@lucide/svelte'
-  import { Input } from '$lib/components/ui/input'
-  import { Textarea } from '$lib/components/ui/textarea'
-  import AgentIcon from './AgentIcon.svelte'
+  import { Input } from '@bakery/ui/components/ui/input'
+  import { Textarea } from '@bakery/ui/components/ui/textarea'
+  import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import AgentIconPicker from './AgentIconPicker.svelte'
   import { hireAgent, jobLabel, jobs, listAgents, type Agent } from './agents'
   import { api, ApiError } from './api'

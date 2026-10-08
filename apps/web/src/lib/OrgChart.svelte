@@ -7,7 +7,7 @@
   // Paperclip's separate mouse and touch handlers. Its import and export
   // buttons are left out, as the agents document says.
   import { Maximize2, Minus, Plus } from '@lucide/svelte'
-  import AgentIcon from './AgentIcon.svelte'
+  import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import type { AgentStatus, OrgNode } from './agents'
   import {
     CARD_H,

@@ -8,6 +8,11 @@
 /services/*/dist/
 /packages/*/dist/
 
+# Dependencies (one Bun workspace at the root)
+/node_modules/
+/apps/*/node_modules/
+/packages/*/node_modules/
+
 # Tool caches
 /.task/
 

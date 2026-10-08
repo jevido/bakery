@@ -10,11 +10,11 @@
   // autosaves on blur. Left out with what the Issue does not have yet: locks,
   // annotations, folding, feedback votes, agents and plan approvals.
   import { Copy, Download, Ellipsis, FilePenLine, GitCompare, Plus, Trash2, ChevronDown, Check } from '@lucide/svelte'
-  import * as AlertDialog from '$lib/components/ui/alert-dialog'
-  import { Badge } from '$lib/components/ui/badge'
-  import { Button, buttonVariants } from '$lib/components/ui/button'
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
-  import { Input } from '$lib/components/ui/input'
+  import * as AlertDialog from '@bakery/ui/components/ui/alert-dialog'
+  import { Badge } from '@bakery/ui/components/ui/badge'
+  import { Button, buttonVariants } from '@bakery/ui/components/ui/button'
+  import * as DropdownMenu from '@bakery/ui/components/ui/dropdown-menu'
+  import { Input } from '@bakery/ui/components/ui/input'
   import { ApiError } from './api'
   import DocumentDiff from './DocumentDiff.svelte'
   import { ago, formatDate } from './format'

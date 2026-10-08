@@ -3,7 +3,7 @@
   // Paperclip's MDXEditor (ui/src/components/MarkdownEditor.tsx; MIT, see
   // NOTICE). What is stored is the Markdown either way. Ctrl/⌘+Enter calls
   // `onsubmit`, as Paperclip's dialogs and comment box do.
-  import * as Tabs from '$lib/components/ui/tabs'
+  import * as Tabs from '@bakery/ui/components/ui/tabs'
   import Markdown from './Markdown.svelte'
   import Textarea from './ui/Textarea.svelte'
 

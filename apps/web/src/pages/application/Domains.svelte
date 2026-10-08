@@ -10,7 +10,7 @@
   // and path of a domain (a Domain is a hostname served over HTTPS).
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
-  import { buttonVariants } from '$lib/components/ui/button'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
   import Icon from '../../lib/Icon.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Application, Redirect, RouteSettings, Server } from '../../lib/types'

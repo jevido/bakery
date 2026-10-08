@@ -9,8 +9,8 @@
   // are Managed and locked; a Member's are edited in the row's dialog. Left
   // out: the Developer view.
   import Pencil from '@lucide/svelte/icons/pencil'
-  import { Badge } from '$lib/components/ui/badge'
-  import { buttonVariants } from '$lib/components/ui/button'
+  import { Badge } from '@bakery/ui/components/ui/badge'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
   import { api, ApiError } from '../../lib/api'
   import CollectionToolbar from '../../lib/CollectionToolbar.svelte'
   import FilterPopover from '../../lib/FilterPopover.svelte'

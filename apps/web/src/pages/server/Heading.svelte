@@ -9,9 +9,9 @@
   //
   // Left out: the proxy actions (Caddy is one proxy for every Server here).
   import { Check, ChevronsUpDown, Search } from '@lucide/svelte'
-  import { buttonVariants } from '$lib/components/ui/button'
-  import { Input } from '$lib/components/ui/input'
-  import * as Popover from '$lib/components/ui/popover'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import { Input } from '@bakery/ui/components/ui/input'
+  import * as Popover from '@bakery/ui/components/ui/popover'
   import { api } from '../../lib/api'
   import PageHeader from '../../lib/PageHeader.svelte'
   import { href, serverPath, type ServerPage } from '../../lib/router.svelte'

@@ -7,7 +7,7 @@
   // rows are its EntityRow (ui/src/components/EntityRow.tsx; MIT, see NOTICE)
   // in a bordered list, under its settings page frame.
   import { ArrowDown, ArrowUp, GripVertical, Lock, Plus, Shield } from '@lucide/svelte'
-  import { Button } from '$lib/components/ui/button'
+  import { Button } from '@bakery/ui/components/ui/button'
   import { api } from '../../lib/api'
   import { myRank } from '../../lib/hierarchy'
   import { go, href, rolePath } from '../../lib/router.svelte'

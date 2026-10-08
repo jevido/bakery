@@ -4,9 +4,16 @@
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
   ],
-  // Read by the shadcn-svelte CLI to resolve its aliases; tsconfig.app.json
-  // holds the same paths for the type-check.
+  // Read by the shadcn-svelte CLI to resolve its aliases (components.json),
+  // so `bunx shadcn-svelte add` writes into packages/ui; tsconfig.app.json
+  // holds $lib for the type-check, and @bakery/ui resolves through the
+  // workspace there.
   "compilerOptions": {
-    "paths": { "$lib": ["./src/lib"], "$lib/*": ["./src/lib/*"] }
+    "paths": {
+      "$lib": ["./src/lib"],
+      "$lib/*": ["./src/lib/*"],
+      "@bakery/ui": ["../../packages/ui/src"],
+      "@bakery/ui/*": ["../../packages/ui/src/*"]
+    }
   }
 }

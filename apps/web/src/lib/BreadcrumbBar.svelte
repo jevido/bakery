@@ -5,13 +5,13 @@
   // keeps its status beside its name. The sidebar toggle leads it (the
   // drawer's hamburger on a phone).
   import { Menu, PanelLeft } from '@lucide/svelte'
-  import * as Breadcrumb from '$lib/components/ui/breadcrumb'
-  import { Button } from '$lib/components/ui/button'
+  import * as Breadcrumb from '@bakery/ui/components/ui/breadcrumb'
+  import { Button } from '@bakery/ui/components/ui/button'
   import { breadcrumb, type Crumb } from './breadcrumb.svelte'
   import { sidebar } from './sidebar.svelte'
   import StatusBadge from './ui/StatusBadge.svelte'
   import StatusSummary from './ui/StatusSummary.svelte'
-  import { cn } from './utils'
+  import { cn } from '@bakery/ui/utils'
 
   const crumbs = $derived(breadcrumb.crumbs)
 </script>

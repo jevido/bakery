@@ -5,7 +5,7 @@
   // and the ASCII field in the right half, hidden on a phone.
   import type { Snippet } from 'svelte'
   import AsciiArtAnimation from '../AsciiArtAnimation.svelte'
-  import BakeryLockup from '../BakeryLockup.svelte'
+  import BakeryLockup from '@bakery/ui/BakeryLockup.svelte'
   import ThemeToggle from '../ThemeToggle.svelte'
 
   let {

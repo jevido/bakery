@@ -3,7 +3,7 @@
   // on Paperclip's checkbox: the whole row is the hit area, its <label>
   // points at the box. `instantSave` stands in for wire:click="instantSave":
   // it is called with the new value on every change.
-  import { Checkbox as UiCheckbox } from '$lib/components/ui/checkbox'
+  import { Checkbox as UiCheckbox } from '@bakery/ui/components/ui/checkbox'
   import Helper from './Helper.svelte'
 
   let {

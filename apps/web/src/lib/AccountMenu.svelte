@@ -7,13 +7,13 @@
   // offers Dark, Light and System where Paperclip's toggles two.
   import { LogOut, Monitor, Moon, Settings, Sun, UserRound } from '@lucide/svelte'
   import type { Component } from 'svelte'
-  import * as Avatar from '$lib/components/ui/avatar'
-  import * as Popover from '$lib/components/ui/popover'
+  import * as Avatar from '@bakery/ui/components/ui/avatar'
+  import * as Popover from '@bakery/ui/components/ui/popover'
   import { guildPath, href } from './router.svelte'
   import { session } from './session.svelte'
   import { RAIL_HIDDEN_LABEL, sidebar } from './sidebar.svelte'
   import { theme, type Theme } from './theme.svelte'
-  import { cn } from './utils'
+  import { cn } from '@bakery/ui/utils'
 
   let open = $state(false)
 

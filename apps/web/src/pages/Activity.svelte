@@ -7,9 +7,9 @@
   // keeps them. Left out: the Agent Actions mode, the action and date
   // filters and the CSV export, which wait for agents.
   import { untrack } from 'svelte'
-  import * as Avatar from '$lib/components/ui/avatar'
-  import { Button as UiButton } from '$lib/components/ui/button'
-  import * as Select from '$lib/components/ui/select'
+  import * as Avatar from '@bakery/ui/components/ui/avatar'
+  import { Button as UiButton } from '@bakery/ui/components/ui/button'
+  import * as Select from '@bakery/ui/components/ui/select'
   import { api } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { ago } from '../lib/format'

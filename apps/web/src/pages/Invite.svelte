@@ -7,7 +7,7 @@
   // joins the guild with one click while signed in as that email. Anyone
   // with the link can decline it, which makes it stop working.
   import { api, ApiError } from '../lib/api'
-  import GuildIcon from '../lib/GuildIcon.svelte'
+  import GuildIcon from '@bakery/ui/GuildIcon.svelte'
   import { go, returnAfterLogin } from '../lib/router.svelte'
   import { session, type Account, type RoleRef } from '../lib/session.svelte'
   import AuthAlert from '../lib/ui/AuthAlert.svelte'

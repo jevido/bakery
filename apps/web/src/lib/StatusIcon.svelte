@@ -5,7 +5,7 @@
   // also the status picker; without it, only the glyph (and its label).
   import { Ban, Circle, CircleCheck, CircleDashed, CircleDot, CircleMinus } from '@lucide/svelte'
   import type { Component } from 'svelte'
-  import * as Popover from '$lib/components/ui/popover'
+  import * as Popover from '@bakery/ui/components/ui/popover'
   import { issueStatuses, workLabel, type IssueStatus } from './work'
 
   let {

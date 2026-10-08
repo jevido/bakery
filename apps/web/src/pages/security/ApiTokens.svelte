@@ -10,7 +10,7 @@
   // disabled, as GET /api/api-tokens/permissions says. Coolify's "API
   // disabled" state is left out: The Bakery has no instance switch for its API.
   import { ChevronsUpDown, Plus } from '@lucide/svelte'
-  import * as Popover from '$lib/components/ui/popover'
+  import * as Popover from '@bakery/ui/components/ui/popover'
   import { api, ApiError } from '../../lib/api'
   import CollectionToolbar from '../../lib/CollectionToolbar.svelte'
   import { ago } from '../../lib/format'

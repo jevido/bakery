@@ -15,7 +15,7 @@
   import Button from '../../lib/ui/Button.svelte'
   import FieldError from '../../lib/ui/FieldError.svelte'
   import FieldLabel from '../../lib/ui/FieldLabel.svelte'
-  import { Input } from '$lib/components/ui/input'
+  import { Input } from '@bakery/ui/components/ui/input'
   import Select from '../../lib/ui/Select.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'

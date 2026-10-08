@@ -6,7 +6,7 @@
   // servers and Add another server sections are left out, and the card names
   // the server's address instead of a Docker network.
   import { href, serverPath } from '../../lib/router.svelte'
-  import { buttonVariants } from '$lib/components/ui/button'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
   import Icon from '../../lib/Icon.svelte'
   import type { Server } from '../../lib/types'
   import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'

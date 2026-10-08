@@ -2,7 +2,7 @@
   // Coolify's client-pagination (resources/views/components/client-pagination.blade.php):
   // "start-end of total", the page size, and previous/next, for a list paged
   // in the browser.
-  import { buttonVariants } from '$lib/components/ui/button'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
   import Icon from '../Icon.svelte'
   import PageSizeSelect from './PageSizeSelect.svelte'
 

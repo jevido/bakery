@@ -4,13 +4,13 @@
   // its left edge, and "+" for a New guild. Paperclip v2026.1005.0 removed its
   // company rail; the goal asks for this one beside the Guild menu.
   import { Plus } from '@lucide/svelte'
-  import * as Tooltip from '$lib/components/ui/tooltip'
-  import GuildIcon from './GuildIcon.svelte'
+  import * as Tooltip from '@bakery/ui/components/ui/tooltip'
+  import GuildIcon from '@bakery/ui/GuildIcon.svelte'
   import { switchTo } from './GuildMenu.svelte'
   import { session } from './session.svelte'
   import { sidebar } from './sidebar.svelte'
   import Modal from './ui/Modal.svelte'
-  import { cn } from './utils'
+  import { cn } from '@bakery/ui/utils'
   import Create from '../pages/guild/Create.svelte'
 
   let creating = $state(false)

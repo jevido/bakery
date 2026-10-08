@@ -28,7 +28,7 @@
   import { go, href } from './router.svelte'
   import SidebarNavItem from './SidebarNavItem.svelte'
   import SidebarSection from './SidebarSection.svelte'
-  import { cn } from './utils'
+  import { cn } from '@bakery/ui/utils'
 
   let {
     groups,

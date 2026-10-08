@@ -3,7 +3,7 @@
   // shows the name to type in, on Paperclip's input.
   import Check from '@lucide/svelte/icons/check'
   import Copy from '@lucide/svelte/icons/copy'
-  import { Input as UiInput } from '$lib/components/ui/input'
+  import { Input as UiInput } from '@bakery/ui/components/ui/input'
 
   let { text }: { text: string } = $props()
   let copied = $state(false)

@@ -32,8 +32,8 @@
   // MIT), as the Environment page is: a CollectionToolbar, the Deployments
   // as EntityRows in one card, pagination under it.
   import { untrack } from 'svelte'
-  import { buttonVariants } from '$lib/components/ui/button'
-  import { Card } from '$lib/components/ui/card'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import { Card } from '@bakery/ui/components/ui/card'
   import { api } from '../../lib/api'
   import CollectionToolbar from '../../lib/CollectionToolbar.svelte'
   import EntityRow from '../../lib/EntityRow.svelte'

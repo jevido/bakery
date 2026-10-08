@@ -7,8 +7,8 @@
   import Copy from '@lucide/svelte/icons/copy'
   import Eye from '@lucide/svelte/icons/eye'
   import EyeOff from '@lucide/svelte/icons/eye-off'
-  import { Input as UiInput } from '$lib/components/ui/input'
-  import { Label } from '$lib/components/ui/label'
+  import { Input as UiInput } from '@bakery/ui/components/ui/input'
+  import { Label } from '@bakery/ui/components/ui/label'
 
   let { text, label, testid, secret = false }: { text: string; label?: string; testid?: string; secret?: boolean } = $props()
 

@@ -7,7 +7,7 @@
   // Laid out as Paperclip's company settings (ui/src/pages/CompanySettings.tsx,
   // MIT, see NOTICE): the Storages as EntityRows in one bordered card, the
   // add/edit form as a SettingsGroup below it.
-  import { Card } from '$lib/components/ui/card'
+  import { Card } from '@bakery/ui/components/ui/card'
   import { api, ApiError } from './api'
   import EntityRow from './EntityRow.svelte'
   import Icon from './Icon.svelte'

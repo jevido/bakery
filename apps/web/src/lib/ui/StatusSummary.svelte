@@ -54,7 +54,7 @@
   // Coolify's status-summary (resources/views/components/status-summary.blade.php,
   // Apache-2.0, see NOTICE): a status pill that opens the container's state
   // and its healthcheck, in Paperclip's popover.
-  import * as Popover from '$lib/components/ui/popover'
+  import * as Popover from '@bakery/ui/components/ui/popover'
   import Icon from '../Icon.svelte'
   import { statusBadgeClasses, statusDotClasses } from '../statusColors'
   import Helper from './Helper.svelte'

@@ -6,7 +6,7 @@
   import type { HTMLInputAttributes } from 'svelte/elements'
   import Eye from '@lucide/svelte/icons/eye'
   import EyeOff from '@lucide/svelte/icons/eye-off'
-  import { Input as UiInput } from '$lib/components/ui/input'
+  import { Input as UiInput } from '@bakery/ui/components/ui/input'
   import FieldError from './FieldError.svelte'
   import Helper from './Helper.svelte'
   import FieldLabel from './FieldLabel.svelte'

@@ -3,7 +3,7 @@
   // on Paperclip's textarea: `font-mono` for code, and Tab inserting two
   // spaces when `allowTab` is set. Sized by `rows` rather than its content.
   import type { HTMLTextareaAttributes } from 'svelte/elements'
-  import { Textarea as UiTextarea } from '$lib/components/ui/textarea'
+  import { Textarea as UiTextarea } from '@bakery/ui/components/ui/textarea'
   import FieldError from './FieldError.svelte'
   import FieldLabel from './FieldLabel.svelte'
 

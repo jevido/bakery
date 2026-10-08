@@ -3,9 +3,9 @@
   // see NOTICE): the trigger opens a popover with a search field over a
   // grid of the Agent icons; picking one closes it.
   import type { Snippet } from 'svelte'
-  import { Input } from '$lib/components/ui/input'
-  import * as Popover from '$lib/components/ui/popover'
-  import { agentIcons } from './AgentIcon.svelte'
+  import { Input } from '@bakery/ui/components/ui/input'
+  import * as Popover from '@bakery/ui/components/ui/popover'
+  import { agentIcons } from '@bakery/ui/AgentIcon.svelte'
   import { agentIconNames } from './agents'
 
   let {

@@ -6,13 +6,18 @@
 
 FROM docker.io/oven/bun:1.4 AS build
 WORKDIR /src
-COPY apps/web/package.json apps/web/bun.lock ./
-RUN bun install --frozen-lockfile
-COPY apps/web/ ./
-RUN bun run build
+# The root Bun workspace: its lockfile covers every app and package, so the
+# install needs each workspace member's package.json, even those not built.
+COPY package.json bun.lock ./
+COPY apps/web/package.json apps/web/
+COPY packages/ui/package.json packages/ui/
+RUN bun install --frozen-lockfile --filter @bakery/web
+COPY packages/ui/ packages/ui/
+COPY apps/web/ apps/web/
+RUN cd apps/web && bun run build
 
 FROM docker.io/library/caddy:2-alpine
 COPY infra/images/web/caddy.json /etc/caddy/caddy.json
-COPY --from=build /src/dist /srv
+COPY --from=build /src/apps/web/dist /srv
 EXPOSE 80
 CMD ["caddy", "run", "--config", "/etc/caddy/caddy.json"]

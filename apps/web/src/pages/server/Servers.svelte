@@ -9,8 +9,8 @@
   //
   // Left out: "Import transfer" (dev only in Coolify, no Transfer here) and the
   // grid card's metrics chart (Coolify draws it only with Sentinel metrics).
-  import { buttonVariants } from '$lib/components/ui/button'
-  import { Card } from '$lib/components/ui/card'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import { Card } from '@bakery/ui/components/ui/card'
   import { api } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import CollectionToolbar from '../../lib/CollectionToolbar.svelte'

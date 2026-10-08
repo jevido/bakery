@@ -6,9 +6,9 @@
   // one per line with empty lines dropped. Given an Issue it requests a new
   // Approval linked to it; given an Approval (Resubmit on its page) it opens
   // prefilled and resubmits the edited request. Ctrl/⌘+Enter sends it.
-  import { Input } from '$lib/components/ui/input'
+  import { Input } from '@bakery/ui/components/ui/input'
   import { refreshBadges } from './inbox.svelte'
-  import { Textarea } from '$lib/components/ui/textarea'
+  import { Textarea } from '@bakery/ui/components/ui/textarea'
   import { ApiError } from './api'
   import { requestApproval, resubmitApproval, type Approval, type ApprovalPayload } from './approvals'
   import MarkdownField from './MarkdownField.svelte'

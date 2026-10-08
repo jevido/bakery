@@ -25,13 +25,14 @@ task web:settings # the settings pages in headless Chromium (needs task dev)
 - `src/lib/api.ts` is the only place that calls `fetch`.
 
 Styling is Tailwind CSS v4 (through `@tailwindcss/vite`) in Paperclip's look.
-`src/theme.css` is the only token source: Paperclip's semantic tokens
+`@bakery/ui/theme.css` (`packages/ui`, imported by `src/theme.css`) is the only token source: Paperclip's semantic tokens
 (`background`, `foreground`, `card`, `primary`, `muted`, `accent`,
 `destructive`, `border`, `sidebar-*`, …) for dark and light, its radius and
 type ladders, plus The Bakery's status colors (`success`, `warning`,
 `error`). The font is Inter and the icons are lucide (`src/lib/Icon.svelte`
 maps the names pages use). The components are shadcn-svelte on bits-ui in
-`src/lib/components/ui` (imported as `$lib/components/ui/...`) with
+`packages/ui` (imported as `@bakery/ui/components/ui/...`, shared with the
+Desktop app) with
 Paperclip's classes; the `src/lib/ui` kit is built on them with its props
 unchanged. `#/dev/components` (dev builds only) shows all of them. List
 pages are built from Paperclip's list pieces in `src/lib`: `PageHeader` (tile,

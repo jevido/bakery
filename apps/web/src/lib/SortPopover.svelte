@@ -1,8 +1,8 @@
 <script lang="ts" generics="T extends string">
   // Paperclip's "Sort: <label>" popover (ui/src/pages/Projects.tsx; MIT, see
   // NOTICE): a ghost button naming the current order, opening the options.
-  import { buttonVariants } from '$lib/components/ui/button'
-  import * as Popover from '$lib/components/ui/popover'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import * as Popover from '@bakery/ui/components/ui/popover'
   import Icon from './Icon.svelte'
 
   let {

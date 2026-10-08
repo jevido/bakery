@@ -10,8 +10,8 @@
   // with the live updates of the page ports. The Servers empty state skips "A
   // private key is required": every Server here gets its own key when it is
   // added.
-  import { buttonVariants } from '$lib/components/ui/button'
-  import { Card } from '$lib/components/ui/card'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import { Card } from '@bakery/ui/components/ui/card'
   import { api } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { badges } from '../lib/inbox.svelte'

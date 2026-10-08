@@ -10,7 +10,7 @@
 <script lang="ts">
   // Paperclip's Identity (ui/src/components/Identity.tsx; MIT, see NOTICE):
   // an initials avatar and the name beside it. Members have no avatar image.
-  import * as Avatar from '$lib/components/ui/avatar'
+  import * as Avatar from '@bakery/ui/components/ui/avatar'
 
   let { name, size = 'default', class: className = '' }: { name: string; size?: 'xs' | 'sm' | 'default' | 'lg'; class?: string } = $props()
 </script>

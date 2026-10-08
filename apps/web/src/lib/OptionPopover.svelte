@@ -5,7 +5,7 @@
   // options and picking one closes it. `chip` draws the trigger as the
   // dialog's bordered chip, otherwise it is bare as in the properties panel.
   import type { Snippet } from 'svelte'
-  import * as Popover from '$lib/components/ui/popover'
+  import * as Popover from '@bakery/ui/components/ui/popover'
 
   let {
     value,

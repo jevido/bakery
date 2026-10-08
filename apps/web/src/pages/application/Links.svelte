@@ -5,8 +5,8 @@
   // Service's (components/services/links.blade.php) are the same without the
   // Production badge.
   import { ChevronDown, ExternalLink } from '@lucide/svelte'
-  import { buttonVariants } from '$lib/components/ui/button'
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import * as DropdownMenu from '@bakery/ui/components/ui/dropdown-menu'
 
   let { urls, resource = 'application' }: { urls: string[]; resource?: 'application' | 'service' } = $props()
 </script>

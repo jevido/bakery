@@ -1,5 +1,9 @@
 **
+!package.json
+!bun.lock
 !apps/web/
+!packages/ui/
 !infra/images/web/caddy.json
 apps/web/node_modules/
 apps/web/dist/
+packages/ui/node_modules/

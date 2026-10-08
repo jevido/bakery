@@ -11,8 +11,8 @@
   // variables, the order and build secrets choices.
   import { untrack } from 'svelte'
   import Pencil from '@lucide/svelte/icons/pencil'
-  import { Badge } from '$lib/components/ui/badge'
-  import { buttonVariants } from '$lib/components/ui/button'
+  import { Badge } from '@bakery/ui/components/ui/badge'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
   import { api, ApiError } from './api'
   import CollectionToolbar from './CollectionToolbar.svelte'
   import FilterPopover from './FilterPopover.svelte'

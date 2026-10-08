@@ -1,7 +1,7 @@
 <script lang="ts">
   // The list/grid switch of a list page's toolbar: two ghost icon buttons,
   // the current one filled.
-  import { buttonVariants } from '$lib/components/ui/button'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
   import Icon from './Icon.svelte'
 
   type ViewMode = 'table' | 'grid'

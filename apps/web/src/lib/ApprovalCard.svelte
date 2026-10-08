@@ -20,9 +20,9 @@
   // asked, the status pill, the request, the Decision note, and Approve and
   // Reject while the Approval is Actionable and the Member may approve.
   import { CircleCheck, CircleX, Clock } from '@lucide/svelte'
-  import { Badge } from '$lib/components/ui/badge'
-  import { Button, buttonVariants } from '$lib/components/ui/button'
-  import { Card } from '$lib/components/ui/card'
+  import { Badge } from '@bakery/ui/components/ui/badge'
+  import { Button, buttonVariants } from '@bakery/ui/components/ui/button'
+  import { Card } from '@bakery/ui/components/ui/card'
   import { approvalSubject, approvalTypeIcon, approvalTypeLabel, isActionable, type Approval } from './approvals'
   import ApprovalPayload from './ApprovalPayload.svelte'
   import { ago } from './format'

@@ -19,9 +19,9 @@
   // grouping, columns, nesting, keyboard navigation and swipe to archive.
   import { Archive, ArchiveRestore } from '@lucide/svelte'
   import { untrack } from 'svelte'
-  import * as AlertDialog from '$lib/components/ui/alert-dialog'
-  import { Button as UiButton } from '$lib/components/ui/button'
-  import * as Tabs from '$lib/components/ui/tabs'
+  import * as AlertDialog from '@bakery/ui/components/ui/alert-dialog'
+  import { Button as UiButton } from '@bakery/ui/components/ui/button'
+  import * as Tabs from '@bakery/ui/components/ui/tabs'
   import { ApiError } from '../lib/api'
   import { approvalLabel, approvalTypeIcon, decide, isActionable, listApprovals, type Approval } from '../lib/approvals'
   import { breadcrumb } from '../lib/breadcrumb.svelte'

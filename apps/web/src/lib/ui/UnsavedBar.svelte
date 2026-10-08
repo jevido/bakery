@@ -6,7 +6,7 @@
   // hides at once while saving, as Coolify's delayed classes do. On a phone
   // it sits above the on-screen keyboard. Drawn as Paperclip's popover
   // surface with its ghost and primary buttons.
-  import { Button } from '$lib/components/ui/button'
+  import { Button } from '@bakery/ui/components/ui/button'
 
   let {
     dirty,

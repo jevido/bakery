@@ -12,9 +12,9 @@
   // The list is Paperclip's EntityRow pattern (as the Environment page and
   // Deployment history are): one row per open Preview, its Deploy/Redeploy
   // and Remove actions as buttons on the row.
-  import { buttonVariants } from '$lib/components/ui/button'
-  import { Card } from '$lib/components/ui/card'
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import { Card } from '@bakery/ui/components/ui/card'
+  import * as DropdownMenu from '@bakery/ui/components/ui/dropdown-menu'
   import { api, ApiError } from '../../lib/api'
   import EntityRow from '../../lib/EntityRow.svelte'
   import Icon from '../../lib/Icon.svelte'

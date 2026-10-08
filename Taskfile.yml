@@ -26,6 +26,12 @@ tasks:
     cmds:
       - "{{.TASK_EXE}} --list"
 
+  install:
+    desc: Install the Bun workspace's dependencies (apps/* and packages/*) at the root
+    sources: [package.json, bun.lock, apps/*/package.json, packages/*/package.json]
+    cmds:
+      - bun install
+
   down:
     desc: Stop every dev server this repo started
     silent: true

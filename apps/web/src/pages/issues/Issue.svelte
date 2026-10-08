@@ -15,10 +15,10 @@
   // (The Bakery's own: only Paperclip's agents ask). Left out until the
   // Issue has them: agents and runs, checkout, attachments and work products.
   import { Activity, ChevronRight, Ellipsis, MessageSquare, Plus, ShieldCheck, Trash2 } from '@lucide/svelte'
-  import * as AlertDialog from '$lib/components/ui/alert-dialog'
-  import { Button, buttonVariants } from '$lib/components/ui/button'
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
-  import * as Tabs from '$lib/components/ui/tabs'
+  import * as AlertDialog from '@bakery/ui/components/ui/alert-dialog'
+  import { Button, buttonVariants } from '@bakery/ui/components/ui/button'
+  import * as DropdownMenu from '@bakery/ui/components/ui/dropdown-menu'
+  import * as Tabs from '@bakery/ui/components/ui/tabs'
   import { api, ApiError } from '../../lib/api'
   import ApprovalCard from '../../lib/ApprovalCard.svelte'
   import { decide, listIssueApprovals, type Approval } from '../../lib/approvals'

@@ -8,8 +8,8 @@
   // Paperclip's is an agent. Only a Member with manage_work changes or
   // deletes anything; Delete is The Bakery's own.
   import { Plus } from '@lucide/svelte'
-  import * as Tabs from '$lib/components/ui/tabs'
-  import { Separator } from '$lib/components/ui/separator'
+  import * as Tabs from '@bakery/ui/components/ui/tabs'
+  import { Separator } from '@bakery/ui/components/ui/separator'
   import { api, ApiError } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import { formatDate } from '../../lib/format'

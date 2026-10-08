@@ -9,7 +9,7 @@
   // and how to save them.
   import { untrack } from 'svelte'
   import { ApiError } from '../../lib/api'
-  import { buttonVariants } from '$lib/components/ui/button'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
   import Icon from '../../lib/Icon.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { ResourceLimits } from '../../lib/types'

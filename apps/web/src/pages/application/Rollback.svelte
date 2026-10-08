@@ -9,8 +9,8 @@
   //
   // Listed as Paperclip's EntityRow pattern (as the Environment page and
   // Deployment history are), under a SettingsGroup for the Reload action.
-  import { buttonVariants } from '$lib/components/ui/button'
-  import { Card } from '$lib/components/ui/card'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import { Card } from '@bakery/ui/components/ui/card'
   import { api, ApiError } from '../../lib/api'
   import EntityRow from '../../lib/EntityRow.svelte'
   import { ago } from '../../lib/format'

@@ -9,7 +9,7 @@
   // Gitea and Forgejo (their signature headers); Bitbucket is not. Coolify's
   // Deploy webhook (/api/v1/deploy) comes with the /api/v1 API.
   import { api, ApiError } from '../../lib/api'
-  import { buttonVariants } from '$lib/components/ui/button'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
   import Icon from '../../lib/Icon.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
   import type { Application, Webhook } from '../../lib/types'

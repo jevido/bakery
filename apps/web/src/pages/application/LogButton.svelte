@@ -4,9 +4,9 @@
   // MIT, see NOTICE). Other attributes, such as a menu trigger's, pass
   // through the tooltip's trigger, which merges them with its own.
   import type { Tooltip as TooltipPrimitive } from 'bits-ui'
-  import { Button } from '$lib/components/ui/button'
-  import * as Tooltip from '$lib/components/ui/tooltip'
-  import { cn } from '$lib/utils'
+  import { Button } from '@bakery/ui/components/ui/button'
+  import * as Tooltip from '@bakery/ui/components/ui/tooltip'
+  import { cn } from '@bakery/ui/utils'
   import Icon, { type IconName } from '../../lib/Icon.svelte'
 
   let {

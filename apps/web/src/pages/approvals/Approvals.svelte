@@ -6,7 +6,7 @@
   // Reject stays on the list. Only a Member with approve gets the buttons.
   import { ShieldCheck } from '@lucide/svelte'
   import { refreshBadges } from '../../lib/inbox.svelte'
-  import * as Tabs from '$lib/components/ui/tabs'
+  import * as Tabs from '@bakery/ui/components/ui/tabs'
   import ApprovalCard from '../../lib/ApprovalCard.svelte'
   import { decide, isActionable, listApprovals, type Approval } from '../../lib/approvals'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'

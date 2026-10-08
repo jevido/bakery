@@ -11,8 +11,8 @@
   // together through the unsaved bar, as Coolify's one form does.
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
-  import { buttonVariants } from '$lib/components/ui/button'
-  import { Card } from '$lib/components/ui/card'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import { Card } from '@bakery/ui/components/ui/card'
   import Icon from '../../lib/Icon.svelte'
   import { href, servicePath } from '../../lib/router.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'

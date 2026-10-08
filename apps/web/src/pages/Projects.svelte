@@ -13,8 +13,8 @@
   // "Open onboarding" link, until onboarding exists. Paperclip's "My
   // Projects" / "Other Projects" split follows Project membership, which The
   // Bakery does not have, so this is one list.
-  import { buttonVariants } from '$lib/components/ui/button'
-  import { Card } from '$lib/components/ui/card'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import { Card } from '@bakery/ui/components/ui/card'
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import CollectionToolbar from '../lib/CollectionToolbar.svelte'

@@ -4,8 +4,8 @@
   // with an n/m count, and a panel of check boxes; a click toggles one. Drawn
   // as phase 29's FilterPopover.svelte draws its options (src/lib/FilterPopover.svelte).
   import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down'
-  import { Checkbox } from '$lib/components/ui/checkbox'
-  import * as Popover from '$lib/components/ui/popover'
+  import { Checkbox } from '@bakery/ui/components/ui/checkbox'
+  import * as Popover from '@bakery/ui/components/ui/popover'
 
   let {
     id,

@@ -8,10 +8,10 @@
   // `badge` above 0 is a pill at the right; on the rail it is a dot on the
   // icon, and the link's name carries the count ("Inbox, 3 unread").
   import type { Component } from 'svelte'
-  import { Badge } from '$lib/components/ui/badge'
-  import * as Tooltip from '$lib/components/ui/tooltip'
+  import { Badge } from '@bakery/ui/components/ui/badge'
+  import * as Tooltip from '@bakery/ui/components/ui/tooltip'
   import { RAIL_HIDDEN_LABEL, sidebar } from './sidebar.svelte'
-  import { cn } from './utils'
+  import { cn } from '@bakery/ui/utils'
 
   let {
     href,

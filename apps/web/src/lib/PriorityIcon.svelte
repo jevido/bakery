@@ -4,7 +4,7 @@
   // arrow per Priority, critical a warning sign. With onchange it is also the
   // priority picker.
   import { AlertTriangle, ArrowDown, ArrowUp, Minus } from '@lucide/svelte'
-  import * as Popover from '$lib/components/ui/popover'
+  import * as Popover from '@bakery/ui/components/ui/popover'
   import { priorities, workLabel, type Priority } from './work'
 
   let {

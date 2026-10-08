@@ -10,8 +10,8 @@
   // as on the Projects page, EntityRows in one card or cards in the grid.
   // Its Issues tab is a link to the Issues list filtered to the Project, and
   // New issue opens the dialog with the Project preset.
-  import { buttonVariants } from '$lib/components/ui/button'
-  import { Card } from '$lib/components/ui/card'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
+  import { Card } from '@bakery/ui/components/ui/card'
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import CollectionToolbar from '../lib/CollectionToolbar.svelte'

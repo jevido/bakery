@@ -6,7 +6,7 @@
   // Apache-2.0, see NOTICE, goes; the settings sidebar already links here)
   // and Desktops, the desktop apps signed in as the person.
   import { KeyRound } from '@lucide/svelte'
-  import * as Tabs from '$lib/components/ui/tabs'
+  import * as Tabs from '@bakery/ui/components/ui/tabs'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import SettingsPage from '../../lib/settings/SettingsPage.svelte'
   import { go, securityPages, securityPath, type SecurityPage } from '../../lib/router.svelte'

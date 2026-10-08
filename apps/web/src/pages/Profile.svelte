@@ -7,7 +7,7 @@
   // the email is read-only text and the avatar shows initials.
   import { UserRoundPen } from '@lucide/svelte'
   import { renderSVG } from 'uqr'
-  import * as Avatar from '$lib/components/ui/avatar'
+  import * as Avatar from '@bakery/ui/components/ui/avatar'
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { session, type Account } from '../lib/session.svelte'

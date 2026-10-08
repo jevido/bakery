@@ -6,8 +6,8 @@
   // logs). Coolify polls the log every two seconds; here it streams from
   // `GET /api/deployments/{id}/log`, which ends with the Deployment.
   import type { Attachment } from 'svelte/attachments'
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
-  import { cn } from '$lib/utils'
+  import * as DropdownMenu from '@bakery/ui/components/ui/dropdown-menu'
+  import { cn } from '@bakery/ui/utils'
   import { api, ApiError } from '../../lib/api'
   import SearchField from '../../lib/SearchField.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'

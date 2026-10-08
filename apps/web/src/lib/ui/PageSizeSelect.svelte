@@ -3,7 +3,7 @@
   // the rows per page from a short list or "Custom…" (1–100), remembered under
   // `storageKey` when one is given.
   import { untrack } from 'svelte'
-  import * as Popover from '$lib/components/ui/popover'
+  import * as Popover from '@bakery/ui/components/ui/popover'
   import Icon from '../Icon.svelte'
 
   let {

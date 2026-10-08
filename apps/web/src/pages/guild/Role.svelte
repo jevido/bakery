@@ -7,7 +7,7 @@
   // page frame and groups, its Permissions as Paperclip's ToggleField rows
   // (ui/src/components/agent-config-primitives.tsx; MIT, see NOTICE).
   import { ArrowLeft, Shield } from '@lucide/svelte'
-  import { Switch } from '$lib/components/ui/switch'
+  import { Switch } from '@bakery/ui/components/ui/switch'
   import { untrack } from 'svelte'
   import { api, ApiError } from '../../lib/api'
   import { canAssign, canEditRole, canManage } from '../../lib/hierarchy'

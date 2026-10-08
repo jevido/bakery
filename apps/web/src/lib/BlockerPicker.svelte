@@ -5,7 +5,7 @@
   // Issues. Picking one toggles it in the set and keeps the list open, as
   // there; "No blockers" clears the set.
   import { Check, Plus } from '@lucide/svelte'
-  import * as Popover from '$lib/components/ui/popover'
+  import * as Popover from '@bakery/ui/components/ui/popover'
   import StatusIcon from './StatusIcon.svelte'
   import { listIssues, type Issue } from './work'
 

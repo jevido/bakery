@@ -12,7 +12,7 @@
   // MIT, see NOTICE): a General group and a Danger Zone group. It stays in
   // the primary sidebar under its Project, not among the settings pages.
   import { FolderCog } from '@lucide/svelte'
-  import { buttonVariants } from '$lib/components/ui/button'
+  import { buttonVariants } from '@bakery/ui/components/ui/button'
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import EnvironmentVariables from '../lib/EnvironmentVariables.svelte'

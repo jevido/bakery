@@ -8,7 +8,7 @@
   // notice with an icon, a title, a body and its actions on the right.
   import { CircleAlert, Info, TriangleAlert } from '@lucide/svelte'
   import type { Snippet } from 'svelte'
-  import { cn } from '../utils'
+  import { cn } from '@bakery/ui/utils'
 
   let {
     tone = 'info',

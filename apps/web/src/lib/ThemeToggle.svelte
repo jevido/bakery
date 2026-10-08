@@ -5,7 +5,7 @@
   // `system` becomes the opposite of what the system gives.
   import Moon from '@lucide/svelte/icons/moon'
   import Sun from '@lucide/svelte/icons/sun'
-  import { Button } from '$lib/components/ui/button'
+  import { Button } from '@bakery/ui/components/ui/button'
   import { theme } from './theme.svelte'
 
   let { class: className }: { class?: string } = $props()

@@ -10,8 +10,8 @@
   // timeline, queued Comments, mentions, image uploads, feedback votes and
   // reassigning from the composer.
   import { Pencil, Trash2 } from '@lucide/svelte'
-  import * as AlertDialog from '$lib/components/ui/alert-dialog'
-  import { Button, buttonVariants } from '$lib/components/ui/button'
+  import * as AlertDialog from '@bakery/ui/components/ui/alert-dialog'
+  import { Button, buttonVariants } from '@bakery/ui/components/ui/button'
   import { ApiError } from './api'
   import { ago, formatDate } from './format'
   import Identity from './Identity.svelte'
