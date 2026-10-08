@@ -30,8 +30,8 @@
 //   hidden  a Member, invited for the run, sees an Issue in a scratch
 //           Project until the Project's permissions page denies the Member
 //           Role View resources there: then it is gone from the list, by its
-//           identifier (404) and on its page; removing the override shows it
-//           again
+//           identifier (404), on its page, from the Activity feed and its own
+//           Activity (404); removing the override shows it again
 //   blockers  three scratch Issues: on the second, "Blocked by" picks the
 //           first through the search picker; the notice names it and the
 //           Issues list marks the row blocked; the first lists the second
@@ -606,7 +606,12 @@ const sections: Record<string, () => Promise<void>> = {
     const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title: 'Hidden with its Project', project_id: project.id } })).json()) as { issue: Issue }
     const m = await invited(page, 'member')
     const sees = async () => (await issues(m.page)).some((i) => i.id === issue.id)
+    const inFeed = async () => {
+      const { activity } = (await (await m.page.request.get(`${WEB}/api/activity?entity=issue&limit=200`)).json()) as { activity: { entity: { id: number } }[] }
+      return activity.some((e) => e.entity.id === issue.id)
+    }
     expect('a Member sees the Issue before the override', await sees())
+    expect('and its Activity in the feed', await inFeed())
 
     const { roles } = (await (await page.request.get(`${WEB}/api/roles`)).json()) as { roles: { id: number; name: string }[] }
     const memberRole = roles.find((r) => r.name === 'Member')!
@@ -621,6 +626,9 @@ const sections: Record<string, () => Promise<void>> = {
     expect('a Member no longer sees the Issue in the list', !(await sees()))
     const byId = await m.page.request.get(`${WEB}/api/issues/${issue.identifier}`)
     expect('nor by its identifier', byId.status() === 404, byId.status())
+    expect('nor its Activity in the feed', !(await inFeed()))
+    const itsActivity = await m.page.request.get(`${WEB}/api/issues/${issue.identifier}/activity`)
+    expect('and its own Activity is 404', itsActivity.status() === 404, itsActivity.status())
     await m.page.goto(`${WEB}/#/issues/${issue.identifier}`)
     await m.page.getByTestId('not-found').waitFor()
     expect('the Issue page shows the not-found state', true)

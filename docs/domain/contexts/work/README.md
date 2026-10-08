@@ -140,7 +140,7 @@ Goal event the Goal's title.
   | `DELETE /api/issues/{issue}/documents/{key}` | 204 |
   | `GET /api/issues/{issue}/documents/{key}/revisions` | `{"revisions": [Revision]}`, newest first |
   | `POST /api/issues/{issue}/documents/{key}/revisions/{revision}/restore` | `{"document": Issue document}`; 409 for the newest Revision |
-  | `GET /api/activity` | `{"activity": [Activity event]}`, newest first; filters `entity` (`issue` or `goal`), `actor` (a Member id), `before` (an Activity event id, for the next page) and `limit` (default 50, ≤ 200) |
+  | `GET /api/activity` | `{"activity": [Activity event]}`, newest first; filters `entity` (`issue` or `goal`), `actor` (a Member id), `before` (an Activity event id, for the next page) and `limit` (default 50, 1 to 200); anything else in them is 422. A page is never short while older events the person may see are left |
   | `GET /api/issues/{issue}/activity` | `{"activity": [Activity event]}`, oldest first, as Paperclip's issue activity |
 
   A Goal is `{id, title, description, level, status, parent_id, owner:
@@ -183,7 +183,9 @@ Goal event the Goal's title.
   | `issue.document_deleted` | `issue_number`, `issue_title`, `key`, `title` |
 
   References are stored as ids and answered with their names as they are
-  when read, null for none or one that no longer exists.
+  when read, null for none. One that no longer exists, or an Issue or
+  Project the person may not view, keeps its id with a null name (or
+  title and identifier), so the event never names what is hidden.
 - **Consumes:**
   - from guilds: `guilds.Auth`, `guilds.Can(permission)`,
     `guilds.Current(ctx)` (the Guild every Goal and Issue is stored and

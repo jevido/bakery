@@ -32,9 +32,10 @@ const (
 const SnippetLength = 140
 
 // ActivityEvent is one entry in the Guild's Activity: an Actor did an
-// Action to one Goal or Issue at a time, with what changed. ActorID and
-// ProjectID are 0 for none.
+// Action to one Goal or Issue at a time, with what changed. ID is 0 until
+// it is recorded; ActorID and ProjectID are 0 for none.
 type ActivityEvent struct {
+	ID         uint64
 	GuildID    uint64
 	ActorID    uint64
 	Action     string
