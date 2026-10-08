@@ -1,7 +1,7 @@
 <script lang="ts">
   // Paperclip's Activity page (ui/src/pages/audit/CompanyActivity.tsx over
   // AuditFeed.tsx in its "all" mode, rows from components/ActivityRow.tsx;
-  // MIT, see NOTICE): every change to the Guild's Goals and Issues, newest
+  // MIT, see NOTICE): every change to the Guild's Goals, Issues and Approvals, newest
   // first, fifty at a time under "Load more". The entity and Actor selects
   // live in the hash query (#/activity?entity=issue&actor=3), so a reload
   // keeps them. Left out: the Agent Actions mode, the action and date
@@ -19,13 +19,14 @@
   import { href } from '../lib/router.svelte'
   import type { Member } from '../lib/session.svelte'
   import Empty from '../lib/ui/Empty.svelte'
-  import { activityVerb, listActivity, type ActivityEvent } from '../lib/work'
+  import { activityVerb, listActivity, type ActivityEntity, type ActivityEvent } from '../lib/work'
 
   const pageSize = 50
   const entities = [
     { value: 'all', label: 'All activity' },
     { value: 'issue', label: 'Issues' },
     { value: 'goal', label: 'Goals' },
+    { value: 'approval', label: 'Approvals' },
   ]
 
   // The filters as the hash query holds them, read again when a link or Back
@@ -34,7 +35,7 @@
     const query = new URLSearchParams(location.hash.split('?')[1] ?? '')
     const e = query.get('entity')
     const a = query.get('actor') ?? ''
-    return { entity: e === 'issue' || e === 'goal' ? e : 'all', actor: /^\d+$/.test(a) ? a : 'everyone' }
+    return { entity: e === 'issue' || e === 'goal' || e === 'approval' ? e : 'all', actor: /^\d+$/.test(a) ? a : 'everyone' }
   }
   const initial = fromHash()
   let entity = $state(initial.entity)
@@ -70,7 +71,7 @@
   function load(before?: number) {
     const ask = ++asked
     return listActivity({
-      entity: entity === 'all' ? undefined : (entity as 'issue' | 'goal'),
+      entity: entity === 'all' ? undefined : (entity as ActivityEntity),
       actor: actor === 'everyone' ? undefined : Number(actor),
       before,
       limit: pageSize,
@@ -97,7 +98,12 @@
 
   const filtered = $derived(entity !== 'all' || actor !== 'everyone')
   const actorLabel = $derived(actor === 'everyone' ? 'Everyone' : (members.find((m) => String(m.id) === actor)?.name ?? 'Member'))
-  const link = (e: ActivityEvent) => (!e.entity.exists ? null : e.entity.type === 'issue' ? href(`/issues/${e.entity.identifier}`) : href(`/goals/${e.entity.id}`))
+  const paths: Record<ActivityEntity, (e: ActivityEvent) => string> = {
+    issue: (e) => `/issues/${e.entity.identifier}`,
+    goal: (e) => `/goals/${e.entity.id}`,
+    approval: (e) => `/approvals/${e.entity.id}`,
+  }
+  const link = (e: ActivityEvent) => (e.entity.exists ? href(paths[e.entity.type](e)) : null)
 
   $effect(() => breadcrumb.set({ label: 'Activity' }))
 </script>

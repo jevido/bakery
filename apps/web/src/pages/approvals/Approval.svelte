@@ -7,8 +7,9 @@
   // says the Requester can go ahead and the line about the requesting agent
   // under the Linked issues is left out; a "Decision note" field sits above
   // Approve, Reject and Request revision, since Paperclip's board cannot
-  // write one from its page; Resubmit is the Requester's alone and keeps the
-  // request as it is. Deciding needs approve, commenting manage_work.
+  // write one from its page; Resubmit is the Requester's alone and opens the
+  // request dialog prefilled, so the request can change with it. Deciding
+  // needs approve, commenting manage_work.
   import { ChevronRight, CircleCheck, Sparkles } from '@lucide/svelte'
   import { Button } from '$lib/components/ui/button'
   import { Textarea } from '$lib/components/ui/textarea'
@@ -22,7 +23,6 @@
     isActionable,
     listApprovalComments,
     listApprovalIssues,
-    resubmitApproval,
     writeApprovalComment,
     type Approval,
     type ApprovalComment,
@@ -34,6 +34,7 @@
   import Markdown from '../../lib/Markdown.svelte'
   import MarkdownField from '../../lib/MarkdownField.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
+  import RequestApprovalDialog from '../../lib/RequestApprovalDialog.svelte'
   import { go, href } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
   import StatusBadge from '../../lib/ui/StatusBadge.svelte'
@@ -47,7 +48,8 @@
   let comments = $state.raw<ApprovalComment[]>([])
   let missing = $state(false)
   let error = $state('')
-  let busy = $state<Decision | 'resubmit' | null>(null)
+  let busy = $state<Decision | null>(null)
+  let resubmitting = $state(false)
   let note = $state('')
   let body = $state('')
   let posting = $state(false)
@@ -95,18 +97,6 @@
       }
     } catch (e) {
       error = message(e, 'The decision failed')
-    } finally {
-      busy = null
-    }
-  }
-
-  async function resubmit() {
-    busy = 'resubmit'
-    try {
-      approval = await resubmitApproval(id)
-      error = ''
-    } catch (e) {
-      error = message(e, 'Resubmit failed')
     } finally {
       busy = null
     }
@@ -217,7 +207,7 @@
           <Button size="sm" variant="outline" disabled={!!busy} onclick={() => run('request-revision')}>Request revision</Button>
         {/if}
         {#if isRequester && approval.status === 'revision_requested'}
-          <Button size="sm" variant="outline" disabled={!!busy} onclick={resubmit}>Resubmit</Button>
+          <Button size="sm" variant="outline" disabled={!!busy} onclick={() => (resubmitting = true)}>Resubmit</Button>
         {/if}
       </div>
     </div>
@@ -243,4 +233,12 @@
       {/if}
     </section>
   </div>
+  <RequestApprovalDialog
+    bind:open={resubmitting}
+    {approval}
+    onsaved={(a) => {
+      approval = a
+      error = ''
+    }}
+  />
 {/if}

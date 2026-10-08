@@ -77,7 +77,13 @@
 //           its card opens its page with "Approval confirmed" and "Review
 //           linked issue"; All lists it approved and Pending no longer does;
 //           a second one gets Request revision with a Decision note, which
-//           its page shows, a comment, and Resubmit makes it pending again
+//           its page shows, a comment, and Resubmit opens the request
+//           dialog prefilled and makes it pending again with the edited
+//           title; on the scratch Issue's page "Request approval" in the
+//           More actions menu asks for a third through the dialog, whose
+//           card appears above the tabs and is approved there; and
+//           #/activity?entity=approval lists approval.created and
+//           approval.approved, linking to the Approval page
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -984,10 +990,45 @@ const sections: Record<string, () => Promise<void>> = {
     await page.getByRole('heading', { name: 'Comments (1)' }).waitFor()
     expect('the comment stays after a reload', true)
     await page.getByRole('button', { name: 'Resubmit' }).click()
+    const resubmitDialog = page.getByRole('dialog', { name: 'Resubmit approval' })
+    const titleField = resubmitDialog.getByRole('textbox', { name: 'Title' })
+    expect('Resubmit opens the request prefilled', (await titleField.inputValue()) === `${prefix} second`, await titleField.inputValue())
+    await titleField.fill(`${prefix} second, with rollback`)
+    await resubmitDialog.getByRole('button', { name: 'Resubmit' }).click()
     await page.locator(`[data-approval="${second.id}"][data-status="pending"]`).waitFor()
     expect('Resubmit makes it pending again', await page.getByRole('button', { name: 'Request revision' }).isVisible())
-
+    expect('Resubmit sends the edited request', await page.getByRole('heading', { name: `Board Approval: ${prefix} second, with rollback` }).isVisible())
     await page.request.post(`${WEB}/api/approvals/${second.id}/reject`, { data: {} })
+
+    await page.goto(`${WEB}/#/issues/${issue.identifier}`)
+    await page.getByRole('button', { name: 'More issue actions' }).click()
+    await page.getByRole('menuitem', { name: 'Request approval' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Request approval' })
+    await dialog.getByRole('textbox', { name: 'Title' }).fill(`${prefix} third`)
+    await dialog.getByRole('textbox', { name: 'Recommended action' }).fill('Ship it.')
+    await dialog.getByRole('textbox', { name: 'Risks' }).fill('Downtime\n\n  Cache misses  ')
+    await dialog.getByRole('button', { name: 'Request approval' }).click()
+    await dialog.waitFor({ state: 'detached' })
+    const third = (await all()).find((a) => a.payload.title === `${prefix} third`)!
+    expect('the dialog requests the Approval', !!third && third.status === 'pending')
+    const thirdRisks = (third.payload as { risks?: string[] }).risks
+    expect('empty lines are dropped from the Risks', JSON.stringify(thirdRisks) === '["Downtime","Cache misses"]', JSON.stringify(thirdRisks))
+    const approvalsOnIssue = page.getByRole('region', { name: 'Approvals' })
+    await approvalsOnIssue.locator(`[data-approval="${third.id}"]`).waitFor()
+    expect('its card appears on the Issue page', true)
+    await approvalsOnIssue.locator(`[data-approval="${third.id}"]`).getByRole('button', { name: 'Approve' }).click()
+    await approvalsOnIssue.locator(`[data-approval="${third.id}"][data-status="approved"]`).waitFor()
+    expect('Approve on the Issue page decides it there', true)
+
+    await page.goto(`${WEB}/#/activity?entity=approval`)
+    const created = page.locator('[data-activity="approval.created"]', { hasText: `${prefix} third` }).first()
+    await created.waitFor()
+    expect('the Activity lists approval.approved for it', await page.locator('[data-activity="approval.approved"]', { hasText: `${prefix} third` }).first().isVisible())
+    expect('the Entity filter keeps Approvals', page.url().endsWith('#/activity?entity=approval'), page.url())
+    await created.getByRole('link').click()
+    await page.waitForURL(new RegExp(`#/approvals/${third.id}$`))
+    expect('an approval event links to the Approval page', true)
+
     await page.request.delete(`${WEB}/api/issues/${issue.id}`)
     await page.close()
   },

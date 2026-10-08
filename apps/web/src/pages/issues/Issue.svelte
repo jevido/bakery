@@ -9,14 +9,19 @@
   // the page only reads. Delete sits in the More actions menu with Add
   // sub-issue, and is The Bakery's own: Paperclip hides an Issue instead.
   // While a Blocker is not done, IssueBlockedNotice sits above the
-  // description; the Documents follow the description. Left out until the
-  // Issue has them: agents and runs, checkout, attachments, work products and approvals.
-  import { Activity, ChevronRight, Ellipsis, MessageSquare, Plus, Trash2 } from '@lucide/svelte'
+  // description; the Documents follow the description. The Issue's Approvals
+  // sit as cards above the tabs, as Paperclip's linkedApprovals above its
+  // thread; "Request approval" in the More actions menu asks for a new one
+  // (The Bakery's own: only Paperclip's agents ask). Left out until the
+  // Issue has them: agents and runs, checkout, attachments and work products.
+  import { Activity, ChevronRight, Ellipsis, MessageSquare, Plus, ShieldCheck, Trash2 } from '@lucide/svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Button, buttonVariants } from '$lib/components/ui/button'
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
   import * as Tabs from '$lib/components/ui/tabs'
   import { api, ApiError } from '../../lib/api'
+  import ApprovalCard from '../../lib/ApprovalCard.svelte'
+  import { decide, listIssueApprovals, type Approval } from '../../lib/approvals'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import CommentThread from '../../lib/CommentThread.svelte'
   import { ago } from '../../lib/format'
@@ -28,6 +33,7 @@
   import IssueProperties from '../../lib/IssueProperties.svelte'
   import NewIssueDialog from '../../lib/NewIssueDialog.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
+  import RequestApprovalDialog from '../../lib/RequestApprovalDialog.svelte'
   import PriorityIcon from '../../lib/PriorityIcon.svelte'
   import { go, href } from '../../lib/router.svelte'
   import { session, type Member } from '../../lib/session.svelte'
@@ -50,8 +56,12 @@
   let issues = $state.raw<Issue[]>([])
   let creating = $state(false)
   let deleting = $state(false)
+  let approvals = $state.raw<Approval[]>([])
+  let requesting = $state(false)
+  let deciding = $state<{ id: number; action: 'approve' | 'reject' } | null>(null)
 
   const editable = $derived(session.can('manage_work'))
+  const canDecide = $derived(session.can('approve'))
 
   // The open tab as the hash query holds it, read again when a link or Back
   // changes the hash under the open page; Comments is the default.
@@ -89,6 +99,11 @@
       })
   }
   load()
+  const loadApprovals = () =>
+    listIssueApprovals(key)
+      .then((as) => (approvals = as))
+      .catch(() => {})
+  loadApprovals()
   api<{ members: Member[] }>('GET', '/members').then((r) => (members = r.members)).catch(() => {})
   api<{ projects: { id: number; name: string }[] }>('GET', '/projects').then((r) => (projects = r.projects)).catch(() => {})
   listGoals().then((gs) => (goals = gs)).catch(() => {})
@@ -131,6 +146,19 @@
       go('/issues')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  async function decideApproval(id: number, action: 'approve' | 'reject') {
+    deciding = { id, action }
+    try {
+      await decide(id, action)
+      activityVersion++
+      await loadApprovals()
+    } catch (e) {
+      toast.error(e instanceof ApiError ? (Object.values(e.errors)[0] ?? e.message) : String(e))
+    } finally {
+      deciding = null
     }
   }
 
@@ -193,6 +221,7 @@
                 </DropdownMenu.Trigger>
                 <DropdownMenu.Content align="end" class="w-52">
                   <DropdownMenu.Item onSelect={() => (creating = true)}><Plus />Add sub-issue</DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={() => (requesting = true)}><ShieldCheck />Request approval</DropdownMenu.Item>
                   <DropdownMenu.Item variant="destructive" onSelect={() => (deleting = true)}><Trash2 />Delete issue</DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Root>
@@ -243,6 +272,21 @@
         {/if}
       </section>
 
+      {#if approvals.length > 0}
+        <section class="space-y-3" aria-label="Approvals">
+          {#each approvals as a (a.id)}
+            <ApprovalCard
+              approval={a}
+              {canDecide}
+              onapprove={() => decideApproval(a.id, 'approve')}
+              onreject={() => decideApproval(a.id, 'reject')}
+              detailLink={href(`/approvals/${a.id}`)}
+              pending={deciding?.id === a.id ? deciding.action : null}
+            />
+          {/each}
+        </section>
+      {/if}
+
       <Tabs.Root bind:value={tab}>
         <Tabs.List variant="line" class="w-full justify-start gap-1">
           <Tabs.Trigger value="comments" class="flex-none gap-1.5"><MessageSquare class="size-3.5" />Comments</Tabs.Trigger>
@@ -281,5 +325,14 @@
     </AlertDialog.Content>
   </AlertDialog.Root>
 
+  <RequestApprovalDialog
+    bind:open={requesting}
+    issueId={i.id}
+    onsaved={(a) => {
+      toast.success('Approval requested', a.payload.title, { label: 'Open approval', href: href(`/approvals/${a.id}`) })
+      activityVersion++
+      loadApprovals()
+    }}
+  />
   <NewIssueDialog bind:open={creating} parentId={i.id} projectId={i.project?.id ?? null} goalId={i.goal?.id ?? null} oncreated={refresh} />
 {/if}

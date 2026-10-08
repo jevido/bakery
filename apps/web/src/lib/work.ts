@@ -219,21 +219,25 @@ export const restoreDocumentRevision = (issue: number | string, key: string, rev
   api<{ document: IssueDocument }>('POST', `/issues/${issue}/documents/${key}/revisions/${revision}/restore`).then((r) => r.document)
 
 /**
- * An Activity event: one Action to a Goal or an Issue by its Actor (null
- * once their account is gone). entity.exists is false once the Goal or
- * Issue is deleted; details hold what changed, by the Action.
+ * An Activity event: one Action to a Goal, an Issue or an Approval by its
+ * Actor (null once their account is gone). entity.exists is false once the
+ * Goal or Issue is deleted (Approvals never are); details hold what changed,
+ * by the Action.
  */
 export type ActivityEvent = {
   id: number
   action: string
   actor: WorkMember | null
-  entity: { type: 'issue' | 'goal'; id: number; identifier?: string; title: string; exists: boolean }
+  entity: { type: ActivityEntity; id: number; identifier?: string; title: string; exists: boolean }
   details: Record<string, unknown>
   created_at: string
 }
 
+/** What an Activity event is about. */
+export type ActivityEntity = 'issue' | 'goal' | 'approval'
+
 /** The Guild-wide feed's filters: entity kind, Actor, and before an event id for the next page. */
-export type ActivityFilter = Partial<{ entity: 'issue' | 'goal'; actor: number; before: number; limit: number }>
+export type ActivityFilter = Partial<{ entity: ActivityEntity; actor: number; before: number; limit: number }>
 
 export function listActivity(filter: ActivityFilter = {}) {
   const query = new URLSearchParams()
