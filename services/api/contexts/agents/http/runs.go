@@ -242,6 +242,9 @@ func (c *Controller) ListRuns(ctx contractshttp.Context) contractshttp.Response 
 	if !ok {
 		return respond.Invalid(ctx, "issue", "must be an issue id")
 	}
+	if me := c.agent(ctx); me != 0 {
+		agent = me
+	}
 	guild := c.Guild(ctx)
 	rs, err := c.service.Runs(ctx.Context(), guild, app.RunFilter{
 		AgentID: agent, IssueID: issue, Status: ctx.Request().Query("status", ""), Limit: ctx.Request().QueryInt("limit", 0),
@@ -264,6 +267,9 @@ func (c *Controller) ShowRun(ctx contractshttp.Context) contractshttp.Response {
 	r, err := c.service.Run(ctx.Context(), c.Guild(ctx), id)
 	if err != nil {
 		return runFail(ctx, err)
+	}
+	if me := c.agent(ctx); me != 0 && r.AgentID != me {
+		return notFound(ctx)
 	}
 	return c.runAnswer(ctx, contractshttp.StatusOK, r)
 }
@@ -290,6 +296,15 @@ func (c *Controller) ListRunEvents(ctx contractshttp.Context) contractshttp.Resp
 	after, err := strconv.ParseInt(ctx.Request().Query("after", "0"), 10, 64)
 	if err != nil {
 		return respond.Invalid(ctx, "after", "must be a seq")
+	}
+	if me := c.agent(ctx); me != 0 {
+		r, err := c.service.Run(ctx.Context(), c.Guild(ctx), id)
+		if err != nil {
+			return runFail(ctx, err)
+		}
+		if r.AgentID != me {
+			return notFound(ctx)
+		}
 	}
 	es, err := c.service.RunEvents(ctx.Context(), c.Guild(ctx), id, after, ctx.Request().QueryInt("limit", 0))
 	if err != nil {

@@ -32,6 +32,9 @@ type Controller struct {
 	// Members names the Members with these ids (identity.Members); a
 	// removed Member is left out.
 	Members func(ctx context.Context, ids []uint64) ([]Named, error)
+	// Agent is the Agent a Run key's request comes from, 0 for a
+	// person's (guilds.AgentID); nil reads as 0.
+	Agent func(ctx contractshttp.Context) uint64
 	// InstanceAdmin reports whether the request comes from the Instance
 	// admin.
 	InstanceAdmin func(ctx contractshttp.Context) bool
@@ -46,6 +49,15 @@ type Controller struct {
 
 func (c *Controller) actor(ctx contractshttp.Context) app.Actor {
 	return app.Actor{ID: c.Member(ctx), Permissions: c.Permissions(ctx), InstanceAdmin: c.InstanceAdmin(ctx)}
+}
+
+// agent is the Agent asking through its Run key, 0 for a person. An Agent
+// reads only its own Runs.
+func (c *Controller) agent(ctx contractshttp.Context) uint64 {
+	if c.Agent == nil {
+		return 0
+	}
+	return c.Agent(ctx)
 }
 
 func NewController(service *app.Service) *Controller {

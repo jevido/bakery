@@ -75,7 +75,8 @@ type Guilds interface {
 }
 
 // Actor is the person asking to change an Agent: their Permissions in the
-// Guild and whether they are the Instance admin.
+// Guild and whether they are the Instance admin. ID is 0 when an Agent
+// asks through its Run key.
 type Actor struct {
 	ID            uint64
 	Permissions   []string

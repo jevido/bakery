@@ -5,6 +5,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"time"
 
@@ -53,7 +54,9 @@ type place struct {
 // admin, read on every request so a changed Role counts at once, and capped
 // by an API token's Token permissions (effective). Reading needs
 // view_resources; an API token is refused anything its Token permissions do
-// not cover by method. Every change names its Permission with Can.
+// not cover by method. Every change names its Permission with Can. An
+// Agent principal (a Run key) gets in only where Agents says so, and acts
+// in its Run's Guild with its Agent membership's Permissions.
 type Auth struct {
 	Service *app.Service
 	// Deploy is for Coolify's deploy actions (deploy, restart, stop, start,
@@ -70,6 +73,9 @@ type Auth struct {
 	// Guildless lets a Member who is in no Guild through, with no Current
 	// guild (`GET /api/me`).
 	Guildless bool
+	// Agents lets an Agent principal in, acting in its Run's Guild with
+	// the Permissions its Roles there allow.
+	Agents bool
 }
 
 func (Auth) Signature() string { return "guilds.auth" }
@@ -81,6 +87,19 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 	}
 	if msg := a.refused(p); msg != "" {
 		_ = respond.Error(ctx, contractshttp.StatusForbidden, msg).Abort()
+		return
+	}
+	if p.AgentID != 0 {
+		pl, msg, err := agentPlace(ctx.Context(), a.Service, p, ctx.Request().Header(GuildHeader), ctx.Request().Method())
+		switch {
+		case err != nil:
+			_ = respond.ServerError(ctx, err).Abort()
+		case msg != "":
+			_ = respond.Error(ctx, contractshttp.StatusForbidden, msg).Abort()
+		default:
+			ctx.WithValue(placeKey{}, pl)
+			ctx.Request().Next()
+		}
 		return
 	}
 	named, wanted, ok := guildAsked(p, ctx.Request().Header(GuildHeader), cookieGuild(ctx))
@@ -124,11 +143,11 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 }
 
 // refused is why the route refuses the Principal outright, "" when it
-// does not: an Agent principal is let in nowhere yet, a SelfService route
-// takes only a Session, and a Desktop key where Desktop says so.
+// does not: an Agent principal only where Agents says so, a SelfService
+// route takes only a Session, and a Desktop key where Desktop says so.
 func (a Auth) refused(p identity.Principal) string {
 	switch {
-	case p.AgentID != 0:
+	case p.AgentID != 0 && (!a.Agents || a.SelfService || a.Guildless):
 		return identity.AgentsRefused
 	case a.SelfService && p.Token:
 		return "this needs a signed-in session, not an API token"
@@ -136,6 +155,27 @@ func (a Auth) refused(p identity.Principal) string {
 		return "this needs a signed-in session"
 	}
 	return ""
+}
+
+// agentPlace is where an Agent principal's request acts: its Run's Guild,
+// with the Agent membership's Permissions there and never an API token's
+// cap. A GuildHeader naming another Guild is refused, and reading needs
+// view_resources as for anyone; msg is the 403's message, "" when it may.
+func agentPlace(ctx context.Context, s *app.Service, p identity.Principal, header, method string) (place, string, error) {
+	if header != "" && header != strconv.FormatUint(p.GuildID, 10) {
+		return place{}, "not a member of this guild", nil
+	}
+	at, err := s.AgentPlace(ctx, p.GuildID, p.AgentID)
+	if errors.Is(err, app.ErrGuildNotFound) || errors.Is(err, app.ErrAgentNotFound) {
+		return place{}, "not a member of this guild", nil
+	}
+	if err != nil {
+		return place{}, "", err
+	}
+	if reads(method) && !at.Permissions.Has(domain.PermissionViewResources) {
+		return place{}, "you need the " + domain.PermissionViewResources.Name() + " permission", nil
+	}
+	return place{principal: p, guild: at.Guild, permissions: at.Permissions, held: at.Permissions, at: at}, "", nil
 }
 
 // guildAsked is the Guild the request names (Place's tokenGuild: it must
@@ -315,8 +355,16 @@ func wireRole(perms domain.Permissions) string {
 // InstanceAdmin reports whether the request comes from the Instance admin.
 func InstanceAdmin(ctx contractshttp.Context) bool { return placeOf(ctx).principal.InstanceAdmin }
 
-// MemberID is the Member the request comes from.
+// MemberID is the Member the request comes from, 0 for an Agent
+// principal.
 func MemberID(ctx contractshttp.Context) uint64 { return placeOf(ctx).principal.MemberID }
+
+// AgentID is the Agent an Agent principal's request comes from, 0 for a
+// Member's.
+func AgentID(ctx contractshttp.Context) uint64 { return placeOf(ctx).principal.AgentID }
+
+// RunID is the Run whose Run key the request carries, 0 for a Member's.
+func RunID(ctx contractshttp.Context) uint64 { return placeOf(ctx).principal.RunID }
 
 // Owns answers 404 when the route's {id} names something that is not in the
 // Current guild; Belongs is asked by the context that owns it. A malformed

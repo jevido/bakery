@@ -125,43 +125,47 @@ func (s *Service) LeaveAgent(ctx context.Context, guildID, agentID uint64) error
 // AgentPermissions is what the Agent's Roles in the Guild allow, the Base
 // role's included, as for any Membership.
 func (s *Service) AgentPermissions(ctx context.Context, guildID, agentID uint64) (domain.Permissions, error) {
-	m, ok, err := s.memberships.OfAgent(ctx, guildID, agentID)
-	if err != nil {
-		return 0, err
-	}
-	if !ok {
-		return 0, ErrAgentNotFound
-	}
-	roles, err := s.roles.ForGuild(ctx, guildID)
-	if err != nil {
-		return 0, err
-	}
-	return domain.PermissionsOf(roles, m), nil
+	p, err := s.agentPlace(ctx, domain.Guild{ID: guildID}, agentID)
+	return p.Permissions, err
 }
 
 // AgentInProject is what the Agent may do in one of the Guild's Projects:
 // its Permissions with the Project's Overrides of the Roles it holds
 // applied. A person's own override never names an Agent.
 func (s *Service) AgentInProject(ctx context.Context, guildID, agentID, projectID uint64) (domain.Permissions, error) {
-	m, ok, err := s.memberships.OfAgent(ctx, guildID, agentID)
+	p, err := s.agentPlace(ctx, domain.Guild{ID: guildID}, agentID)
 	if err != nil {
 		return 0, err
-	}
-	if !ok {
-		return 0, ErrAgentNotFound
-	}
-	roles, err := s.roles.ForGuild(ctx, guildID)
-	if err != nil {
-		return 0, err
-	}
-	p := Place{Guild: domain.Guild{ID: guildID}, Permissions: domain.PermissionsOf(roles, m)}
-	for _, r := range roles {
-		if r.Base {
-			p.BaseRoleID = r.ID
-			p.Held = append([]uint64{r.ID}, m.RoleIDs...)
-		}
 	}
 	return s.InProject(ctx, p, projectID)
+}
+
+// AgentPlace is where an Agent principal's request acts: the Guild of its
+// Run with its Agent membership's Permissions there, the Base role's
+// included, and the Roles it holds for InProject. MemberID stays 0, so no
+// person's own override applies. ErrGuildNotFound or ErrAgentNotFound when
+// either is gone.
+func (s *Service) AgentPlace(ctx context.Context, guildID, agentID uint64) (Place, error) {
+	g, err := s.Guild(ctx, guildID)
+	if err != nil {
+		return Place{}, err
+	}
+	return s.agentPlace(ctx, g, agentID)
+}
+
+func (s *Service) agentPlace(ctx context.Context, g domain.Guild, agentID uint64) (Place, error) {
+	m, ok, err := s.memberships.OfAgent(ctx, g.ID, agentID)
+	if err != nil {
+		return Place{}, err
+	}
+	if !ok {
+		return Place{}, ErrAgentNotFound
+	}
+	roles, err := s.roles.ForGuild(ctx, g.ID)
+	if err != nil {
+		return Place{}, err
+	}
+	return held(Place{Guild: g, Permissions: domain.PermissionsOf(roles, m)}, roles, m), nil
 }
 
 // AgentRoles lists the Roles the Agent holds in the Guild besides the Base

@@ -9,7 +9,8 @@ import (
 
 var ErrMembershipNotFound = errors.New("member not found")
 
-// Place is the Guild a request acts in and what the Member may do there.
+// Place is the Guild a request acts in and what the Member (or Agent) may
+// do there.
 type Place struct {
 	Guild       domain.Guild
 	Permissions domain.Permissions
@@ -73,14 +74,18 @@ func (s *Service) placeIn(ctx context.Context, guildID, memberID uint64, instanc
 	if err != nil {
 		return Place{}, false, err
 	}
-	p := Place{Guild: g, Permissions: domain.PermissionsOf(roles, m), MemberID: memberID}
+	return held(Place{Guild: g, Permissions: domain.PermissionsOf(roles, m), MemberID: memberID}, roles, m), true, nil
+}
+
+// held sets the Roles m holds on p, the Base role's first, for InProject.
+func held(p Place, roles []domain.Role, m domain.Membership) Place {
 	for _, r := range roles {
 		if r.Base {
 			p.BaseRoleID = r.ID
 			p.Held = append([]uint64{r.ID}, m.RoleIDs...)
 		}
 	}
-	return p, true, nil
+	return p
 }
 
 // GuildsFor lists the Guilds a Member may act in, by id, with their

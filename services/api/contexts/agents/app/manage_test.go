@@ -42,6 +42,8 @@ func TestMayManage(t *testing.T) {
 		{Actor{ID: 1, Permissions: hirer}, true},
 		{Actor{ID: 8, Permissions: []string{"view_resources"}}, false},
 		{Actor{ID: 9, Permissions: hirer, InstanceAdmin: true}, true},
+		// An Agent (its Run key: no person) manages none, whatever its Roles.
+		{Actor{ID: 0, Permissions: hirer}, false},
 	} {
 		if got, err := s.MayManage(ctx, c.actor, ada); err != nil || got != c.want {
 			t.Errorf("%+v: %v %v, want %v", c.actor, got, err, c.want)

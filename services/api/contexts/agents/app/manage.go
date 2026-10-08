@@ -10,9 +10,10 @@ import (
 
 // MayManage reports whether the actor may manage the Agent: they hold
 // hire_agents and are its Hirer, the Instance admin, or rank above the
-// Hirer (the Guild Master ranks above everyone).
+// Hirer (the Guild Master ranks above everyone). An Agent (ID 0: no
+// person) manages none.
 func (s *Service) MayManage(ctx context.Context, actor Actor, a domain.Agent) (bool, error) {
-	if !slices.Contains(actor.Permissions, "hire_agents") {
+	if actor.ID == 0 || !slices.Contains(actor.Permissions, "hire_agents") {
 		return false, nil
 	}
 	if actor.ID == a.HirerID || actor.InstanceAdmin {

@@ -74,7 +74,10 @@ reaches an Application (routing).
   Project's Permission overrides count. `ApplicationInGuild(id, guild)` for
   servers' Container owners. `GET /api/projects` leaves out the Projects
   `guilds.VisibleProjects` hides; `GET /api/projects/{id}` adds the
-  request's `permissions` there (`guilds.Permissions`). Deleting a Project
+  request's `permissions` there (`guilds.Permissions`). These two are the
+  only projects routes open to an Agent's Run key (`guilds.AuthAgents`),
+  read only; everything else answers it 403 `agents cannot use this
+  route` until the git and preview slice opens what it needs. Deleting a Project
   calls `guilds.ForgetProject`, and the Project's Permission override
   routes are registered here (`guilds.ProjectPermissionRoutes`).
   `Environment(id)` (id, Project id, Guild, name), `OnProjectDeleting(check)` and

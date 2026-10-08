@@ -204,15 +204,17 @@ var agentInGuild = guilds.Owns("agent", func(ctx context.Context, id, guildID ui
 // Routes registers the Current guild's Agents API: reading needs
 // view_resources, hiring hire_agents, managing an Agent (and starting or
 // cancelling its Runs) hire_agents and being its Hirer or ranking above
-// them. Registering them also subscribes
-// agents to work's hire_agent Decisions, Members leaving and Guild
-// deletions.
+// them. An Agent's Run key may read the Agents, the Org chart and the
+// Runs, its own only (guilds.AuthAgents); every change stays a
+// Member's. Registering them also subscribes agents to work's hire_agent
+// Decisions, Members leaving and Guild deletions.
 // controller builds the Agents API controller, wired to guilds and
 // identity; Routes and StreamRoutes each need one.
 func controller() *agentshttp.Controller {
 	c := agentshttp.NewController(svc())
 	c.Guild, c.Member, c.Permissions, c.Members = guilds.Current, guilds.MemberID, guilds.Permissions, memberNames
 	c.InstanceAdmin, c.Visible, c.Desktops = guilds.InstanceAdmin, guilds.VisibleProjects, identity.DesktopNames
+	c.Agent = guilds.AgentID
 	c.Shutdown = shutdown
 	return c
 }
@@ -220,18 +222,18 @@ func controller() *agentshttp.Controller {
 func Routes(r route.Router) {
 	c := controller()
 	view := guilds.Can("view_resources")
-	r.Middleware(guilds.Auth, view).Group(func(r route.Router) {
+	r.Middleware(guilds.AuthAgents, view).Group(func(r route.Router) {
 		r.Get("/api/agents", c.ListAgents)
 		r.Get("/api/org", c.ShowOrg)
 		r.Get("/api/runs", c.ListRuns)
 	})
-	r.Middleware(guilds.Auth, runInGuild, view).Group(func(r route.Router) {
+	r.Middleware(guilds.AuthAgents, runInGuild, view).Group(func(r route.Router) {
 		r.Get("/api/runs/{id}", c.ShowRun)
 		r.Get("/api/runs/{id}/events", c.ListRunEvents)
 	})
 	r.Middleware(guilds.Auth, runInGuild, guilds.Can("hire_agents")).Post("/api/runs/{id}/cancel", c.CancelRun)
 	r.Middleware(guilds.Auth, guilds.Can("hire_agents")).Post("/api/agents", c.HireAgent)
-	r.Middleware(guilds.Auth, agentInGuild, view).Get("/api/agents/{id}", c.ShowAgent)
+	r.Middleware(guilds.AuthAgents, agentInGuild, view).Get("/api/agents/{id}", c.ShowAgent)
 	r.Middleware(guilds.Auth, agentInGuild, guilds.Can("hire_agents")).Group(func(r route.Router) {
 		r.Patch("/api/agents/{id}", c.EditAgent)
 		r.Post("/api/agents/{id}/pause", c.PauseAgent)

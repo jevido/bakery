@@ -1,7 +1,10 @@
 package http
 
 import (
+	"context"
 	"testing"
+
+	"github.com/jevido/bakery/services/api/contexts/guilds/app"
 
 	"github.com/jevido/bakery/services/api/contexts/guilds/domain"
 	"github.com/jevido/bakery/services/api/contexts/identity"
@@ -138,6 +141,9 @@ func TestAuthRefuses(t *testing.T) {
 		{"a Desktop key on a Guild's route", Auth{}, desktop, false},
 		{"a Desktop key on GET /api/me", Auth{Guildless: true}, desktop, false},
 		{"a Run key on a Guild's route", Auth{}, agent, true},
+		{"a Run key where Agents lets it", Auth{Agents: true}, agent, false},
+		{"a Session where Agents lets a Run key", Auth{Agents: true}, session, false},
+		{"a Run key on a SelfService route that lets Agents", Auth{SelfService: true, Agents: true}, agent, true},
 		{"a Run key on GET /api/me", Auth{Guildless: true}, agent, true},
 		{"a Run key where Desktop lets a Desktop key", Auth{SelfService: true, Desktop: true}, agent, true},
 	}
@@ -155,5 +161,95 @@ func TestDesktopKeyIsUncapped(t *testing.T) {
 	}
 	if !desktop.Allows(identity.PermissionWrite) {
 		t.Error("a Desktop key is not limited by Token permissions")
+	}
+}
+
+type fakeGuilds struct{ app.Guilds }
+
+func (fakeGuilds) ByID(_ context.Context, id uint64) (domain.Guild, bool, error) {
+	return domain.Guild{ID: id, Name: "Bakers"}, id == 1, nil
+}
+
+// fakeAgents holds the Agent memberships of Guild 1, by Agent id.
+type fakeAgents struct {
+	app.Memberships
+	held map[uint64][]uint64
+}
+
+func (f fakeAgents) OfAgent(_ context.Context, guildID, agentID uint64) (domain.Membership, bool, error) {
+	roles, ok := f.held[agentID]
+	return domain.Membership{GuildID: guildID, AgentID: agentID, RoleIDs: roles}, ok && guildID == 1, nil
+}
+
+type fakeRoles struct {
+	app.Roles
+	all []domain.Role
+}
+
+func (f fakeRoles) ForGuild(context.Context, uint64) ([]domain.Role, error) { return f.all, nil }
+
+// TestAgentPlace: an Agent principal acts in its Run's Guild with what its
+// Roles allow (the Base role's included), never in another Guild, reads
+// only with view_resources, and a Project override on a Role it holds
+// counts for it as for a person.
+func TestAgentPlace(t *testing.T) {
+	const base, reader, writer = 1, 2, 3
+	roles := fakeRoles{all: []domain.Role{
+		{ID: base, Base: true},
+		{ID: reader, Permissions: viewer},
+		{ID: writer, Permissions: domain.Of(domain.PermissionManageWork)},
+	}}
+	// Agent 4 reads and writes; Agent 5 only writes; Agent 6 is not in the Guild.
+	agents := fakeAgents{held: map[uint64][]uint64{4: {reader, writer}, 5: {writer}}}
+	overrides := fakeOverrides{{GuildID: 1, ProjectID: 2, RoleID: reader, Deny: viewer}}
+	s := app.NewService(fakeGuilds{}, agents, roles, nil, nil, overrides, nil)
+	run := func(agentID uint64) identity.Principal {
+		return identity.Principal{AgentID: agentID, RunID: 9, GuildID: 1}
+	}
+	cases := []struct {
+		name      string
+		principal identity.Principal
+		header    string
+		method    string
+		refused   string
+	}{
+		{"reading with view_resources", run(4), "", "GET", ""},
+		{"naming its own Guild", run(4), "1", "GET", ""},
+		{"naming another Guild", run(4), "2", "GET", "not a member of this guild"},
+		{"reading without view_resources", run(5), "", "GET", "you need the View resources permission"},
+		{"changing without view_resources", run(5), "", "POST", ""},
+		{"an Agent no longer in the Guild", run(6), "", "GET", "not a member of this guild"},
+		{"a Run of a deleted Guild", identity.Principal{AgentID: 4, RunID: 9, GuildID: 7}, "", "GET", "not a member of this guild"},
+	}
+	for _, c := range cases {
+		pl, msg, err := agentPlace(context.Background(), s, c.principal, c.header, c.method)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if msg != c.refused {
+			t.Errorf("%s: refused %q, want %q", c.name, msg, c.refused)
+			continue
+		}
+		if msg == "" && (pl.guild.ID != 1 || pl.principal.AgentID != c.principal.AgentID) {
+			t.Errorf("%s: acts in Guild %d as Agent %d", c.name, pl.guild.ID, pl.principal.AgentID)
+		}
+	}
+
+	pl, _, _ := agentPlace(context.Background(), s, run(4), "", "GET")
+	if want := viewer.Union(domain.Of(domain.PermissionManageWork)); pl.permissions != want {
+		t.Errorf("Agent 4 may %v, want %v", pl.permissions.Keys(), want.Keys())
+	}
+	if pl.principal.MemberID != 0 {
+		t.Error("an Agent principal names a Member")
+	}
+	// Projects 1 and 2: the override denies the reader Role view_resources
+	// in Project 2, so the Agent finds it no more than another Guild's.
+	m := InProject{Service: s, Name: "project", ProjectOf: func(_ context.Context, id uint64) (uint64, uint64, bool, error) {
+		return id, 1, id <= 2, nil
+	}}
+	for id, want := range map[uint64]bool{1: true, 2: false, 3: false} {
+		if _, found, err := m.resolve(context.Background(), pl, id); err != nil || found != want {
+			t.Errorf("project %d: found %v (%v), want %v", id, found, err, want)
+		}
 	}
 }

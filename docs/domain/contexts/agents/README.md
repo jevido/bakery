@@ -269,7 +269,7 @@ records nothing more.
   | `GET /api/agents/me` | none | `{"agent": Agent, "run": Run, "permissions": [...]}` |
   | `GET /api/agents/me/inbox` | none | `{"issues": [...]}`, the Agent's open assigned Issues |
   | `GET /api/agents`, `GET /api/agents/{id}`, `GET /api/org` | `view_resources` | as for a person |
-  | `GET /api/runs/{id}`, `GET /api/runs/{id}/events` | `view_resources` | its own Runs only; another Agent's Run is 404 |
+  | `GET /api/runs`, `GET /api/runs/{id}`, `GET /api/runs/{id}/events` | `view_resources` | its own Runs only: the list as if `?agent=` named it, another Agent's Run is 404 |
 
   Every other agents route is 403 `agents cannot use this route` for it.
   agents registers the hook identity calls to resolve a Run key: the

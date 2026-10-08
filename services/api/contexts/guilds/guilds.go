@@ -1,6 +1,7 @@
 // Package guilds is what other contexts, the router and bootstrap may use
-// from the guilds context: the Auth, Deploy, Can, Owns and InProject
-// middlewares, Current, Allows, Permissions and VisibleProjects, a
+// from the guilds context: the Auth, AuthAgents, Deploy, Can, Owns and
+// InProject middlewares, Current, MemberID, AgentID, RunID, Allows,
+// Permissions and VisibleProjects, a
 // Project's Permission override routes and ForgetProject, IsGuildMaster,
 // IssuePrefix, GuildName and IsMember, Agent memberships (JoinAgent, AssignAgentRole,
 // RemoveAgentRole, LeaveAgent, AgentRoles, AgentPermissions, AgentCanIn,
@@ -35,6 +36,14 @@ var service = app.NewService(infra.Guilds{}, infra.Memberships{}, infra.Roles{},
 // first). Changes are refused only by Can, so every change route names its
 // Permission.
 var Auth contractshttp.Middleware = guildshttp.Auth{Service: service}
+
+// AuthAgents is Auth for a route open to Agents as well: an Agent
+// principal (a Run key) acts in its Run's Guild with the Permissions its
+// Roles there allow (Project overrides counted by InProject), and a
+// Bakery-Guild header naming another Guild is 403 `not a member of this
+// guild`. On every route behind Auth an Agent principal gets 403 `agents
+// cannot use this route`.
+var AuthAgents contractshttp.Middleware = guildshttp.Auth{Service: service, Agents: true}
 
 // Deploy is Auth for Coolify's deploy actions (deploy, restart, stop,
 // start, cancel, rollback): an API token needs the deploy Token permission
@@ -124,8 +133,16 @@ func ProjectPermissionRoutes(r route.Router, projectOf ProjectOf) {
 func Current(ctx contractshttp.Context) uint64 { return guildshttp.Current(ctx) }
 
 // MemberID is the Member the request comes from, after Auth (an API
-// token's Member for a token).
+// token's Member for a token); 0 for an Agent principal.
 func MemberID(ctx contractshttp.Context) uint64 { return guildshttp.MemberID(ctx) }
+
+// AgentID is the Agent the request comes from, after AuthAgents; 0 for a
+// Member's request.
+func AgentID(ctx contractshttp.Context) uint64 { return guildshttp.AgentID(ctx) }
+
+// RunID is the Run whose Run key the request carries, after AuthAgents; 0
+// for a Member's request.
+func RunID(ctx contractshttp.Context) uint64 { return guildshttp.RunID(ctx) }
 
 // InstanceAdmin reports, after Auth, whether the request comes from the
 // Instance admin, who runs the installation (the Local server among it).

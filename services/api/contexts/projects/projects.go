@@ -61,7 +61,8 @@ var ErrNotFound = app.ErrNotFound
 // by a Project, Environment or Application also behind guilds.InProject,
 // so its Permission overrides count. Changes need manage_applications,
 // reading variables see_secrets. A Project's Permission overrides are
-// guilds' routes, registered here with ProjectOf.
+// guilds' routes, registered here with ProjectOf. An Agent's Run key may
+// list and read Projects (guilds.AuthAgents), nothing more yet.
 func Routes(r route.Router) {
 	c := projectshttp.NewController(svc(), servers.LocalID, guilds.Current)
 	c.Visible = guilds.VisibleProjects
@@ -70,9 +71,9 @@ func Routes(r route.Router) {
 	environment := guilds.InProject("environment", ProjectOf("environment"))
 	application := guilds.InProject("application", ProjectOf("application"))
 	manage, secrets := guilds.Can("manage_applications"), guilds.Can("see_secrets")
-	r.Middleware(guilds.Auth).Get("/api/projects", c.ListProjects)
+	r.Middleware(guilds.AuthAgents).Get("/api/projects", c.ListProjects)
 	r.Middleware(guilds.Auth, manage).Post("/api/projects", c.CreateProject)
-	r.Middleware(guilds.Auth, project).Get("/api/projects/{id}", c.ShowProject)
+	r.Middleware(guilds.AuthAgents, project).Get("/api/projects/{id}", c.ShowProject)
 	r.Middleware(guilds.Auth, project, manage).Group(func(r route.Router) {
 		r.Patch("/api/projects/{id}", c.UpdateProject)
 		r.Delete("/api/projects/{id}", c.DeleteProject)

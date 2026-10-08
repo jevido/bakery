@@ -162,12 +162,13 @@ other changes with `write`, `administrator` only with `root`.
     with `guilds.Can`. For an Agent principal (a Run key), its Guild is
     the Run's (a `Bakery-Guild` header naming another is 403), its
     Permissions are its Agent membership's, Project overrides resolved as
-    for a Member, and it is let in only on routes marked open to Agents
-    (`guilds.AgentsAllowed`); every other route answers 403 `agents cannot
-    use this route`.
-  - `guilds.AgentsAllowed`: marks a route as open to Agent principals,
-    behind `guilds.Auth`; the owning context still names the route's
-    Permission with `guilds.Can`.
+    for a Member, never capped like an API token, and it is let in only
+    on routes behind `guilds.AuthAgents`; every route behind `guilds.Auth`
+    answers it 403 `agents cannot use this route`.
+  - `guilds.AuthAgents`: `guilds.Auth` for a route open to Agent principals
+    as well (`Auth{Agents: true}`); the owning context still names the
+    route's Permission with `guilds.Can`. An Agent principal that is no
+    longer in its Run's Guild is 403 `not a member of this guild`.
   - `guilds.Deploy`: `guilds.Auth` for Coolify's deploy actions, where an
     API token needs the `deploy` Token permission instead of `write`.
   - `guilds.Can(permission)`: after `guilds.Auth`, only requests that may
@@ -213,9 +214,11 @@ other changes with `write`, `administrator` only with `root`.
   - `guilds.Current(ctx) uint64`: the Current guild's id, which every other
     context stores on what it creates (or reaches through something that
     does) and filters every list and read by.
-  - `guilds.MemberID(ctx)` and `guilds.AgentID(ctx)`: who is asking. For an
-    Agent principal `MemberID` is 0 and `AgentID` names the Agent; for a
-    person it is the other way round.
+  - `guilds.MemberID(ctx)`, `guilds.AgentID(ctx)` and `guilds.RunID(ctx)`:
+    who is asking. For an Agent principal `MemberID` is 0, `AgentID` names
+    the Agent and `RunID` the Run its Run key belongs to; for a person
+    `AgentID` and `RunID` are 0. A handler that answers what the asker may
+    manage answers false for an Agent: an Agent manages nothing.
   - `guilds.IsGuildMaster(ctx, member) bool`: whether the Member is the
     Guild Master of any Guild. Whatever deletes an account or lets a Member
     leave a Guild asks it first and refuses while it is true.
@@ -235,9 +238,8 @@ other changes with `write`, `administrator` only with `root`.
     it), `guilds.AgentRoles` and `guilds.AgentPermissions` (the union of
     its Roles, as for any Membership), `guilds.AgentCanIn` (whether the
     Agent may use a Permission in one of the Guild's Projects, its Roles'
-    Permission overrides there counted as InProject counts a person's;
-    nothing calls it until the API has an Agent principal, which comes with
-    the desktop app), `guilds.RoleNames` (Role names for
+    Permission overrides there counted as InProject counts a person's),
+    `guilds.RoleNames` (Role names for
     a payload) and `guilds.RankAbove` (whether one person ranks above
     another). Giving a Role at or above the Hirer's highest is refused
     (`guilds.ErrAboveHirer`, 422), and so is a Role with a Permission the
