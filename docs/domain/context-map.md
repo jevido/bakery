@@ -16,7 +16,7 @@ depend on each other.
 | guilds | supporting | `services/api` (`contexts/guilds`) | Guilds, Memberships and their Roles, Permissions, the Guild Master and its Transfer offers, Permission overrides per Project, Invitations, the Current guild of a request |
 | identity | generic | `services/api` (`contexts/identity`) | Members, the Instance admin, Setup, Sessions, API tokens, Profiles and Two-factor authentication |
 | notifications | generic | `services/api` (`contexts/notifications`) | Notification channels and their Deliveries |
-| work | supporting | `services/api` (`contexts/work`) | Goals, Issues, Comments, Blockers and Issue documents a Guild's Board plans and tracks work with |
+| work | supporting | `services/api` (`contexts/work`) | Goals, Issues, Comments, Blockers and Issue documents a Guild's Board plans and tracks work with, and the Activity recording who changed them |
 
 - **Core:** where the project competes. Gets the most care and the richest model.
 - **Supporting:** needed and specific to this project, but not the differentiator.

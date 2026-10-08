@@ -9,19 +9,21 @@ Holds the work a Guild's Board plans and tracks together: the Guild's Goals
 (a tree of outcomes it works toward), its Issues (the pieces of work, each
 with a status, a Priority and an Assignee, tied to a Project and a Goal),
 the Comments people write on an Issue, which Issues block which (Blockers),
-and the Issue documents (plans, specs, notes) kept on an Issue with their
-Revisions. Every Goal and Issue belongs to exactly one Guild, and an Issue
+the Issue documents (plans, specs, notes) kept on an Issue with their
+Revisions, and the Activity: who did what to the Guild's Goals and Issues,
+and when. Every Goal and Issue belongs to exactly one Guild, and an Issue
 in a Project follows that Project's Permission overrides.
 
 It is **not** responsible (yet) for agents, Runs, checkout, document locks,
-the Inbox, Activity or Approvals: later phases of the guilds goal add them.
+the Inbox or Approvals: later phases of the guilds goal add them.
 It does not own Members, Guilds or Projects either; it stores their ids and asks guilds and projects about them.
 
 ## Language
 
 Shared terms (Board, Goal, Goal level, Goal status, Issue, Issue status,
 Priority, Assignee, Issue prefix, Issue identifier, Comment, Blocker, Issue
-document, Document key, Revision, Base revision, Restore) are in
+document, Document key, Revision, Base revision, Restore, Activity, Activity event,
+Action, Actor) are in
 [`glossary.md`](../../glossary.md).
 
 | Term | Meaning |
@@ -44,6 +46,7 @@ document, Document key, Revision, Base revision, Restore) are in
 | Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild, its Project is in the Guild and its Goal is in the Guild. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. |
 | Comment | Belongs to one Issue and is written by one Member. Body 1–20000 characters. Only its author edits or deletes it. A deleted Comment keeps its place in the thread, its body gone, shown as "deleted". |
 | Issue document | Belongs to one Issue and its Guild. Its Document key is unique per Issue and never changes. Title at most 200 characters (may be empty), body at most 524288 characters, Markdown only. Its Revisions are numbered 1, 2, … without gaps; each save and each Restore adds exactly one Revision, and Revisions are never changed. A save needs the newest Revision as its Base revision (none for the first save), or it is refused. Restoring the newest Revision is refused, since it would change nothing. Deleting the Issue document removes its Revisions. |
+| Activity event | Append-only. Belongs to one Guild and has one Actor (or none once that Member's account is gone) and one Action from the glossary's list, about exactly one Goal or Issue. It keeps the Issue's number and title, or the Goal's title, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
 
 ### Commands
 
@@ -83,9 +86,32 @@ in that Project after its Permission overrides, and is otherwise hidden
 Reading an Issue's Blockers, Issue documents and Revisions needs what
 reading the Issue needs.
 
+Reading the Activity needs `view_resources`. An event about an Issue
+follows the Issue's current Project: while the person may not view that
+Project, the Issue's own Activity is 404 and its events are left out of the
+Guild's feed.
+
 ### Domain events
 
-None yet. Inbox and Activity, in a later phase, are where they start.
+Each command publishes its event after its change is stored, and work
+records each one as one Activity event with the Action beside it. Editing a
+Comment publishes nothing (Paperclip records none).
+
+| Event | Published by | Action | Carries |
+| ----- | ------------ | ------ | ------- |
+| `GoalCreated` | `CreateGoal` | `goal.created` | title, Goal level, Goal status |
+| `GoalChanged` | `ChangeGoal`, when something changed | `goal.updated` | each changed field, from → to |
+| `GoalDeleted` | `DeleteGoal` | `goal.deleted` | title |
+| `IssueCreated` | `CreateIssue` | `issue.created` | number, title, Issue status, Priority |
+| `IssueChanged` | `ChangeIssue`, when something changed | `issue.updated` | each changed field, from → to; Blockers added and removed |
+| `IssueDeleted` | `DeleteIssue` | `issue.deleted` | number, title |
+| `CommentWritten` | `WriteComment` | `issue.comment_added` | the Comment and its first 140 characters |
+| `CommentDeleted` | `DeleteComment` | `issue.comment_deleted` | the Comment |
+| `DocumentSaved` | `SaveDocument`, `RestoreRevision` | `issue.document_created` on the first save, else `issue.document_updated` | Document key, title, Revision number, and the restored Revision's number for a Restore |
+| `DocumentDeleted` | `DeleteDocument` | `issue.document_deleted` | Document key, title |
+
+Every Issue event also carries the Issue's number, title and Project; every
+Goal event the Goal's title.
 
 ## Integration
 
@@ -114,6 +140,8 @@ None yet. Inbox and Activity, in a later phase, are where they start.
   | `DELETE /api/issues/{issue}/documents/{key}` | 204 |
   | `GET /api/issues/{issue}/documents/{key}/revisions` | `{"revisions": [Revision]}`, newest first |
   | `POST /api/issues/{issue}/documents/{key}/revisions/{revision}/restore` | `{"document": Issue document}`; 409 for the newest Revision |
+  | `GET /api/activity` | `{"activity": [Activity event]}`, newest first; filters `entity` (`issue` or `goal`), `actor` (a Member id), `before` (an Activity event id, for the next page) and `limit` (default 50, ≤ 200) |
+  | `GET /api/issues/{issue}/activity` | `{"activity": [Activity event]}`, oldest first, as Paperclip's issue activity |
 
   A Goal is `{id, title, description, level, status, parent_id, owner:
   {id, name} | null, created_at, updated_at}`; it is written with `title`,
@@ -136,7 +164,26 @@ None yet. Inbox and Activity, in a later phase, are where they start.
   the edit started from (left out for the first save), as Paperclip's
   `baseRevisionId`. A Revision is `{id, number, title, body,
   change_summary, created_by, created_at}`; a Restore's change summary is
-  "Restored from revision N".
+  "Restored from revision N". An Activity event is `{id, action, actor:
+  {id, name} | null, entity: {type: "issue" | "goal", id, identifier?,
+  title, exists}, details, created_at}`, `exists` false once the Goal or
+  Issue is deleted. Its `details` by Action:
+
+  | Action | `details` |
+  | ------ | --------- |
+  | `goal.created` | `title`, `level`, `status` |
+  | `goal.updated` | `title`, `changes`: field → `{from, to}` for `title`, `level`, `status`, `parent` (`{id, title}`) and `owner` (`{id, name}`), and `description: true` when the description changed |
+  | `goal.deleted` | `title` |
+  | `issue.created` | `issue_number`, `issue_title`, `status`, `priority` |
+  | `issue.updated` | `issue_number`, `issue_title`, `changes`: field → `{from, to}` for `title`, `status`, `priority`, `assignee` (`{id, name}`), `project` (`{id, name}`), `goal` (`{id, title}`) and `parent` (`{id, identifier, title}`), `description: true` when the description changed, and `blockers: {added, removed}`, lists of `{id, identifier, title}` |
+  | `issue.deleted` | `issue_number`, `issue_title` |
+  | `issue.comment_added` | `issue_number`, `issue_title`, `comment_id`, `snippet` |
+  | `issue.comment_deleted` | `issue_number`, `issue_title`, `comment_id` |
+  | `issue.document_created`, `issue.document_updated` | `issue_number`, `issue_title`, `key`, `title`, `revision_number`, and `restored_from` for a Restore |
+  | `issue.document_deleted` | `issue_number`, `issue_title`, `key`, `title` |
+
+  References are stored as ids and answered with their names as they are
+  when read, null for none or one that no longer exists.
 - **Consumes:**
   - from guilds: `guilds.Auth`, `guilds.Can(permission)`,
     `guilds.Current(ctx)` (the Guild every Goal and Issue is stored and
@@ -221,5 +268,26 @@ None yet. Inbox and Activity, in a later phase, are where they start.
   with an optional change summary, so History is not filled with half-typed
   states; on a conflict the draft stays and the person compares or reloads,
   never overwrites blindly.
+- **Activity lives in work, for now.** Paperclip keeps one company-wide
+  `activity_log` for every entity. Here only work's Goals and Issues have
+  Activity yet, so it is work's own table. When agents (their own context)
+  arrive, work subscribes to their published events and records them as it
+  does its own; a context of its own waits until something outside the
+  Guild's work needs the feed.
+- **Recorded after the change, not in its transaction.** One transaction
+  changes one aggregate. The Activity event is written by the event's
+  handler right after the change is stored, and a failure to record it is
+  logged, not shown to the person whose change already succeeded.
+- **Nothing is backfilled.** Goals, Issues and Comments from before
+  Activity have none; inventing events from `created_at` would give them an
+  Actor and a time the log never saw.
+- **Hidden by the Issue's current Project.** An event keeps the Issue's id,
+  and visibility is the Issue's as it is now, so moving an Issue into a
+  Project someone may not view hides its whole history from them, as it
+  hides the Issue. A deleted Issue's events keep the Project it was last in.
+- **No agents' mode, CSV export or action filter yet.** Paperclip's feed
+  has an Agent Actions mode, a CSV export and filters by agent and by kind
+  of action. With only the Board acting, entity kind and Actor are the
+  filters that mean something.
 - **No atomic checkout yet.** Paperclip's checkout takes an agent and a Run
   (`POST /issues/:id/checkout` with `agentId`), so it comes with agents.
