@@ -93,9 +93,13 @@ type HireRequest struct {
 	Roles       []string
 }
 
-// Activity is an Activity event about an Agent.
+// Activity is an Activity event about an Agent, or with Entity about a
+// Budget ("budget") or a Budget incident ("budget_incident") with
+// EntityID; AgentName is then the Budget scope's name.
 type Activity struct {
 	GuildID, ActorID, AgentID uint64
+	Entity                    string
+	EntityID                  uint64
 	Action                    string
 	AgentName                 string
 	Details                   map[string]any
@@ -151,14 +155,15 @@ type Service struct {
 	guilds       Guilds
 	work         Work
 	repositories Repositories
+	budgets      Budgets
 	now          func() time.Time
 	// Logf logs what a request cannot report, such as an Activity event
 	// that was not recorded.
 	Logf func(format string, args ...any)
 }
 
-func NewService(agents Agents, runs Runs, guilds Guilds, work Work, repositories Repositories) *Service {
-	return &Service{agents: agents, runs: runs, guilds: guilds, work: work, repositories: repositories, now: time.Now, Logf: log.Printf}
+func NewService(agents Agents, runs Runs, guilds Guilds, work Work, repositories Repositories, budgets Budgets) *Service {
+	return &Service{agents: agents, runs: runs, guilds: guilds, work: work, repositories: repositories, budgets: budgets, now: time.Now, Logf: log.Printf}
 }
 
 // HireInput is a new Agent as typed: ManagerID 0 reports to no one,

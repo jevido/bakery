@@ -11,6 +11,7 @@ package work
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -417,24 +418,36 @@ func approvalDecided(ctx context.Context, a domain.Approval) error {
 // AgentActivity is an Activity event about an Agent: its Actor (a Member,
 // or with ActorAgentID an Agent), one of
 // the glossary's agent.* and run.* Actions, the Agent's name (kept, so the event
-// still reads after a rename) and the details its Action carries.
+// still reads after a rename) and the details its Action carries. With
+// Entity "budget" or "budget_incident" it is about the Budget or Budget
+// incident EntityID, with a budget.* Action and the Budget scope's name.
 type AgentActivity struct {
 	GuildID      uint64
 	ActorID      uint64
 	ActorAgentID uint64
 	AgentID      uint64
+	Entity       string
+	EntityID     uint64
 	Action       string
 	AgentName    string
 	Details      map[string]any
 }
 
 // RecordActivity adds the event to the Guild's Activity. Anything but an
-// agent.* or run.* Action is refused.
+// agent.* or run.* Action about an Agent, or a budget.* one about what it
+// names, is refused.
 func RecordActivity(ctx context.Context, e AgentActivity) error {
-	return svc().RecordAgentActivity(ctx, domain.AgentEvent{
+	ev := domain.AgentEvent{
 		Happened: domain.Happened{Actor: domain.Actor{MemberID: e.ActorID, AgentID: e.ActorAgentID}}, GuildID: e.GuildID, AgentID: e.AgentID,
 		AgentName: e.AgentName, Action: e.Action, Details: e.Details,
-	})
+	}
+	if e.Entity != "" {
+		if domain.BudgetActions[e.Action] != e.Entity {
+			return fmt.Errorf("work: %s is not an action about a %s", e.Action, e.Entity)
+		}
+		ev.AgentID, ev.BudgetID = 0, e.EntityID
+	}
+	return svc().RecordAgentActivity(ctx, ev)
 }
 
 // OnAgentNames registers f to name the Guild's Agents among ids that still

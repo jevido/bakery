@@ -30,6 +30,7 @@
     { value: 'goal', label: 'Goals' },
     { value: 'approval', label: 'Approvals' },
     { value: 'agent', label: 'Agents' },
+    { value: 'budget', label: 'Budgets' },
   ]
 
   // The filters as the hash query holds them, read again when a link or Back
@@ -38,7 +39,7 @@
     const query = new URLSearchParams(location.hash.split('?')[1] ?? '')
     const e = query.get('entity')
     const a = query.get('actor') ?? ''
-    return { entity: e === 'issue' || e === 'goal' || e === 'approval' || e === 'agent' ? e : 'all', actor: /^(agent:)?\d+$/.test(a) ? a : 'everyone' }
+    return { entity: entities.some((x) => x.value === e && e !== 'all') ? e! : 'all', actor: /^(agent:)?\d+$/.test(a) ? a : 'everyone' }
   }
   const initial = fromHash()
   let entity = $state(initial.entity)
@@ -114,6 +115,8 @@
     goal: (e) => `/goals/${e.entity.id}`,
     approval: (e) => `/approvals/${e.entity.id}`,
     agent: (e) => `/agents/${e.entity.id}`,
+    budget: () => '/costs?tab=budgets',
+    budget_incident: () => '/costs?tab=budgets',
   }
   const link = (e: ActivityEvent) => (e.entity.exists ? href(paths[e.entity.type](e)) : null)
 

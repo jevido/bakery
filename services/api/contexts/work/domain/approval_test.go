@@ -321,12 +321,23 @@ func TestAgentEvent(t *testing.T) {
 		t.Errorf("agent event %+v", e)
 	}
 	for name, bad := range map[string]AgentEvent{
-		"not an agent action": {GuildID: 1, AgentID: 3, AgentName: "Ada", Action: "issue.created"},
-		"no agent":            {GuildID: 1, AgentName: "Ada", Action: AgentPausedAction},
-		"no name":             {GuildID: 1, AgentID: 3, Action: AgentPausedAction},
+		"not an agent action":      {GuildID: 1, AgentID: 3, AgentName: "Ada", Action: "issue.created"},
+		"no agent":                 {GuildID: 1, AgentName: "Ada", Action: AgentPausedAction},
+		"no name":                  {GuildID: 1, AgentID: 3, Action: AgentPausedAction},
+		"agent action on a budget": {GuildID: 1, BudgetID: 5, AgentName: "Shop", Action: AgentPausedAction},
 	} {
 		if _, err := bad.Validated(); err == nil {
 			t.Errorf("%s accepted", name)
 		}
+	}
+	// A Project's Budget is in its Project; a Budget incident is its own entity.
+	b, err := AgentEvent{Happened: Happened{Actor: ByMember(9)}, GuildID: 1, BudgetID: 5, AgentName: "Shop", Action: BudgetUpdatedAction,
+		Details: map[string]any{"scope_type": "project", "scope_id": uint64(12)}}.Validated()
+	if e := b.Activity(); err != nil || e.EntityType != BudgetEntity || e.EntityID != 5 || e.ProjectID != 12 || e.Details["name"] != "Shop" {
+		t.Errorf("budget event %+v %v", e, err)
+	}
+	i, err := AgentEvent{GuildID: 1, BudgetID: 6, AgentName: "Ada", Action: BudgetHardCrossedAction, Details: map[string]any{"scope_type": "agent", "scope_id": uint64(3)}}.Validated()
+	if e := i.Activity(); err != nil || e.EntityType != IncidentEntity || e.EntityID != 6 || e.ProjectID != 0 {
+		t.Errorf("incident event %+v %v", e, err)
 	}
 }

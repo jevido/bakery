@@ -32,7 +32,7 @@ var (
 
 func svc() *app.Service {
 	once.Do(func() {
-		service = app.NewService(infra.Agents{}, infra.Runs{}, guildsOfAgents{}, workOfAgents{}, repositoriesOfAgents{})
+		service = app.NewService(infra.Agents{}, infra.Runs{}, guildsOfAgents{}, workOfAgents{}, repositoriesOfAgents{}, infra.Budgets{})
 		service.Logf = facades.Log().Errorf
 		work.OnApprovalDecided("hire_agent", func(ctx context.Context, d work.ApprovalDecided) error {
 			return service.Decided(ctx, app.Decision{GuildID: d.GuildID, AgentID: d.AgentID, DeciderID: d.DeciderID, Approved: d.Approved})
@@ -62,6 +62,7 @@ func svc() *app.Service {
 		})
 		guilds.OnGuildDeleting("agents", service.HasAgents)
 		guilds.OnMemberLeaving(service.HirerLeft)
+		projects.OnProjectDeleted(service.ForgetProject)
 	})
 	return service
 }
@@ -156,7 +157,8 @@ func (workOfAgents) RequestHireApproval(ctx context.Context, guildID, hirerID ui
 
 func (workOfAgents) RecordActivity(ctx context.Context, e app.Activity) error {
 	return work.RecordActivity(ctx, work.AgentActivity{
-		GuildID: e.GuildID, ActorID: e.ActorID, AgentID: e.AgentID, Action: e.Action, AgentName: e.AgentName, Details: e.Details,
+		GuildID: e.GuildID, ActorID: e.ActorID, AgentID: e.AgentID, Entity: e.Entity, EntityID: e.EntityID,
+		Action: e.Action, AgentName: e.AgentName, Details: e.Details,
 	})
 }
 
@@ -264,16 +266,19 @@ func Routes(r route.Router) {
 		r.Get("/api/org", c.ShowOrg)
 		r.Get("/api/runs", c.ListRuns)
 	})
-	// Costs are the Board's to read, as Paperclip's: not open to Agents.
+	// Costs and Budgets are the Board's to read, as Paperclip's: not open
+	// to Agents.
 	r.Middleware(guilds.Auth, view).Group(func(r route.Router) {
 		r.Get("/api/costs/summary", c.CostSummary)
 		r.Get("/api/costs/by-agent", c.CostsByAgent)
 		r.Get("/api/costs/by-project", c.CostsByProject)
+		r.Get("/api/budgets/overview", c.BudgetOverview)
 	})
 	r.Middleware(guilds.AuthAgents, runInGuild, view).Group(func(r route.Router) {
 		r.Get("/api/runs/{id}", c.ShowRun)
 		r.Get("/api/runs/{id}/events", c.ListRunEvents)
 	})
+	r.Middleware(guilds.Auth, guilds.Can("manage_budgets")).Put("/api/budgets", c.SetBudget)
 	r.Middleware(guilds.Auth, runInGuild, guilds.Can("hire_agents")).Post("/api/runs/{id}/cancel", c.CancelRun)
 	r.Middleware(guilds.Auth, guilds.Can("hire_agents")).Post("/api/agents", c.HireAgent)
 	r.Middleware(guilds.AuthAgents, agentInGuild, view).Get("/api/agents/{id}", c.ShowAgent)

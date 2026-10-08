@@ -243,7 +243,7 @@ type and the payload's title.
   | `GET /api/issues/{issue}/documents/{key}/revisions` | `{"revisions": [Revision]}`, newest first |
   | `POST /api/issues/{issue}/documents/{key}/revisions/{revision}/restore` | `{"document": Issue document}`; 409 for the newest Revision |
   | `POST /api/issues/{issue}/pull-requests` | `{title?, body?}`; 201 `{"work_product": Work product}` for a new Pull request, 200 with the same one when the Issue already has it open; 422 with a readable message when it cannot be opened |
-  | `GET /api/activity` | `{"activity": [Activity event]}`, newest first; filters `entity` (`issue`, `goal`, `approval` or `agent`), `actor` (a Member id, or `agent:<id>`), `before` (an Activity event id, for the next page) and `limit` (default 50, 1 to 200); anything else in them is 422. A page is never short while older events the person may see are left |
+  | `GET /api/activity` | `{"activity": [Activity event]}`, newest first; filters `entity` (`issue`, `goal`, `approval`, `agent`, `budget` or `budget_incident`), `actor` (a Member id, or `agent:<id>`), `before` (an Activity event id, for the next page) and `limit` (default 50, 1 to 200); anything else in them is 422. A page is never short while older events the person may see are left |
   | `GET /api/issues/{issue}/activity` | `{"activity": [Activity event]}`, oldest first, as Paperclip's issue activity |
   | `POST /api/issues/{issue}/read`, `DELETE /api/issues/{issue}/read` | Sets or removes the asking Member's Read mark, with `view_resources` only |
   | `POST /api/issues/{issue}/inbox-archive`, `DELETE /api/issues/{issue}/inbox-archive` | Sets or removes the asking Member's Inbox archive, with `view_resources` only |
@@ -307,7 +307,9 @@ type and the payload's title.
   title, exists}`, the payload's title; one about an Agent has `entity:
   {type: "agent", id, title, exists}`, the Agent's name; one about a Budget
   or a Budget incident has `entity: {type: "budget" | "budget_incident",
-  id, title, exists: true}`, the Budget scope's name. Its `details` by
+  id, title, exists: true}`, the Budget scope's name, and one about a
+  Project's Budget is hidden, as an Issue's is, from whoever may not view
+  that Project. Its `details` by
   Action:
 
   | Action | `details` |

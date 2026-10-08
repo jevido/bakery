@@ -172,6 +172,9 @@ func (s *Service) terminate(ctx context.Context, a domain.Agent, actorID uint64)
 	if err := s.work.UnassignAgent(ctx, a.GuildID, a.ID, actorID); err != nil {
 		return domain.Agent{}, err
 	}
+	if err := s.budgets.DeleteBudgetsOf(ctx, domain.AgentScope, a.ID); err != nil {
+		return domain.Agent{}, err
+	}
 	s.record(ctx, domain.AgentTerminated{Agent: a, ActorID: actorID})
 	return a, nil
 }

@@ -92,7 +92,8 @@ func (s *Service) Activity(ctx context.Context, guildID uint64, q ActivityQuery,
 	}
 }
 
-// visibleActivity keeps the events the person may see, in their order.
+// visibleActivity keeps the events the person may see, in their order:
+// those about an Issue or a Budget in a Project they may not view go.
 func (s *Service) visibleActivity(ctx context.Context, es []domain.ActivityEvent, visible Visible) ([]domain.ActivityEvent, error) {
 	var issueIDs []uint64
 	for _, e := range es {
@@ -108,15 +109,17 @@ func (s *Service) visibleActivity(ctx context.Context, es []domain.ActivityEvent
 	for _, i := range is {
 		current[i.ID] = i.ProjectID
 	}
+	// An event about anything but an Issue is in a Project only when it
+	// says so: one about a Project's Budget.
 	projectOf := func(e domain.ActivityEvent) uint64 {
-		if p, ok := current[e.EntityID]; ok {
+		if p, ok := current[e.EntityID]; ok && e.EntityType == domain.IssueEntity {
 			return p
 		}
 		return e.ProjectID
 	}
 	var projectIDs []uint64
 	for _, e := range es {
-		if p := projectOf(e); e.EntityType == domain.IssueEntity && p != 0 && !slices.Contains(projectIDs, p) {
+		if p := projectOf(e); p != 0 && !slices.Contains(projectIDs, p) {
 			projectIDs = append(projectIDs, p)
 		}
 	}
@@ -128,7 +131,7 @@ func (s *Service) visibleActivity(ctx context.Context, es []domain.ActivityEvent
 	}
 	out := make([]domain.ActivityEvent, 0, len(es))
 	for _, e := range es {
-		if p := projectOf(e); e.EntityType != domain.IssueEntity || p == 0 || slices.Contains(seen, p) {
+		if p := projectOf(e); p == 0 || slices.Contains(seen, p) {
 			out = append(out, e)
 		}
 	}

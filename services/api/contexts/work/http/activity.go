@@ -318,6 +318,9 @@ func (c *Controller) activityJSON(ctx contractshttp.Context, es []domain.Activit
 			if title, ok := refs.approvals[e.EntityID]; ok {
 				a.Entity.Title, a.Entity.Exists = title, true
 			}
+		case domain.BudgetEntity, domain.IncidentEntity:
+			a.Entity.Title, _ = e.Details["name"].(string)
+			a.Entity.Exists = true
 		case domain.AgentEntity:
 			a.Entity.Title, _ = e.Details["name"].(string)
 			a.Entity.Exists = refs.agents == nil
@@ -392,13 +395,13 @@ func activityID(ctx contractshttp.Context, field string) (uint64, bool) {
 }
 
 // ListActivity answers a page of the Current guild's Activity, newest
-// first: entity (issue, goal, approval or agent), actor (a Member id, or
+// first: entity (issue, goal, approval, agent, budget or budget_incident), actor (a Member id, or
 // agent:<id> for an Agent), before (an Activity
 // event id, for the next page) and limit (1 to 200, 50 by default).
 func (c *Controller) ListActivity(ctx contractshttp.Context) contractshttp.Response {
 	q := app.ActivityQuery{EntityType: ctx.Request().Query("entity"), Limit: app.DefaultActivity}
-	if q.EntityType != "" && !slices.Contains([]string{domain.IssueEntity, domain.GoalEntity, domain.ApprovalEntity, domain.AgentEntity}, q.EntityType) {
-		return respond.Invalid(ctx, "entity", "entity must be issue, goal, approval or agent")
+	if q.EntityType != "" && !slices.Contains([]string{domain.IssueEntity, domain.GoalEntity, domain.ApprovalEntity, domain.AgentEntity, domain.BudgetEntity, domain.IncidentEntity}, q.EntityType) {
+		return respond.Invalid(ctx, "entity", "entity must be issue, goal, approval, agent, budget or budget_incident")
 	}
 	if a, ok := strings.CutPrefix(ctx.Request().Query("actor"), "agent:"); ok {
 		id, err := strconv.ParseUint(a, 10, 64)

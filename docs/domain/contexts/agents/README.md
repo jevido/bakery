@@ -315,8 +315,8 @@ records nothing more.
   | `GET /api/costs/summary?from=&to=` | `view_resources` | | `Costs + {from, to}` |
   | `GET /api/costs/by-agent?from=&to=` | `view_resources` | | `{"agents": [Costs + {agent: {id, name, icon, status}}]}` |
   | `GET /api/costs/by-project?from=&to=` | `view_resources` | | `{"projects": [Costs + {project: {id, name} \| null}]}` |
-  | `GET /api/budgets/overview` | `view_resources` | | `{"budgets": [Budget], "incidents": [Budget incident], "paused_agents": n, "stopped_projects": n}` |
-  | `PUT /api/budgets` | `manage_budgets` | `{scope_type, scope_id, metric, window, amount, warn_percent, hard_stop, notify}` | `{"budget": Budget}`; 422 for an unknown metric, window or scope type, or a scope outside the Guild |
+  | `GET /api/budgets/overview` | `view_resources` | | `{"budgets": [Budget], "incidents": [Budget incident], "paused_agents": n, "stopped_projects": n}`; guild first, then Agents and Projects by name, without the Budgets of Projects the person may not view |
+  | `PUT /api/budgets` | `manage_budgets` | `{scope_type, scope_id, metric, window, amount, warn_percent, hard_stop, notify}`; `scope_id` may be left out for `guild`, `window` defaults to `lifetime` for `project` and `calendar_month_utc` otherwise, `warn_percent` to 80, `hard_stop` and `notify` to true | `{"budget": Budget}`; 422 for an unknown metric, window or scope type, a missing `amount`, or a scope outside the Guild (a terminated Agent, or a Project the person may not view, counts as outside) |
   | `POST /api/budget-incidents/{id}/resolve` | `manage_budgets` | `{action: raise_budget_and_resume \| keep_paused, amount, decision_note}` | `{"incident": Budget incident}` |
 
   Costs are `{input_tokens, cached_input_tokens, output_tokens, tokens,

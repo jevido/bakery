@@ -112,5 +112,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000097CreateIssueWorkProductsTable{},
 		&migrations.M20260930000098AddWebhookRepositoryAPI{},
 		&migrations.M20260930000099AddRunProject{},
+		&migrations.M20260930000100CreateBudgetsTable{},
 	}
 }
