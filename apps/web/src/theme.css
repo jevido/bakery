@@ -169,6 +169,8 @@
   --profile-popover-label-line-height: 18px;
   --profile-popover-meta-line-height: 15px;
   --shadow-profile-popover: 0 18px 45px oklch(0 0 0 / 18%);
+  /* The rail's badge dot outline; matches the sidebar surface. */
+  --shadow-sidebar-icon-badge: 0 0 0 2px var(--muted);
   --organization-popover-width: 248px;
   --organization-popover-header-height: 48px;
   --organization-popover-company-row-height: 44px;

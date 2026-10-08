@@ -1,27 +1,34 @@
 <script lang="ts">
   // Paperclip's Sidebar in its streamlined mode (ui/src/components/Sidebar.tsx
   // and primary-sidebar-styles.ts; MIT, see NOTICE): the Guild menu in a 60px
-  // header, then The Bakery's nav. The Work section holds Projects,
+  // header, then The Bakery's nav. The first section holds Dashboard and
+  // the Inbox with its unread count; the Work section holds Projects,
   // Issues and Goals; the Guild section holds Activity, as Paperclip's
-  // Organization section does. Agents and Inbox get their places here as
-  // they arrive; the Guild's settings, Notifications, Keys & Tokens and
+  // Organization section does. Agents get their place here when they
+  // arrive; the Guild's settings, Notifications, Keys & Tokens and
   // Settings open under the settings sidebar instead.
-  import { CircleDot, FolderOpen, HardDrive, History, LayoutDashboard, Server, Target } from '@lucide/svelte'
+  import { CircleDot, FolderOpen, HardDrive, History, Inbox, LayoutDashboard, Server, Target } from '@lucide/svelte'
   import type { Component } from 'svelte'
   import GuildMenu from './GuildMenu.svelte'
+  import { badges, pollBadges, refreshBadges } from './inbox.svelte'
   import { href, router } from './router.svelte'
   import { session } from './session.svelte'
   import { sidebar } from './sidebar.svelte'
   import SidebarNavItem from './SidebarNavItem.svelte'
   import SidebarSection from './SidebarSection.svelte'
 
-  type Item = { label: string; path: string; icon: Component<{ class?: string }>; routes: string[] }
+  type Item = { label: string; path: string; icon: Component<{ class?: string }>; routes: string[]; badge?: number; badgeLabel?: string }
   type Section = { label?: string; items: Item[] }
 
   let sections = $derived.by((): Section[] => {
     const items = (...list: (Item | false)[]) => list.filter((i): i is Item => i !== false)
     return [
-      { items: [{ label: 'Dashboard', path: '/', icon: LayoutDashboard, routes: ['dashboard'] }] },
+      {
+        items: [
+          { label: 'Dashboard', path: '/', icon: LayoutDashboard, routes: ['dashboard'] },
+          { label: 'Inbox', path: '/inbox', icon: Inbox, routes: ['inbox'], badge: badges.inbox, badgeLabel: 'unread' },
+        ],
+      },
       {
         label: 'Work',
         items: [
@@ -45,6 +52,14 @@
       { label: 'Guild', items: [{ label: 'Activity', path: '/activity', icon: History, routes: ['activity'] }] },
     ]
   })
+
+  // The count is read again on every route change and Guild switch.
+  $effect(() => {
+    void router.route
+    void session.guild?.id
+    refreshBadges()
+  })
+  $effect(() => pollBadges())
 </script>
 
 <aside class="chrome primary-sidebar-surface flex h-full min-h-0 w-full flex-col">
@@ -60,7 +75,7 @@
       {#if section.items.length > 0}
         <SidebarSection label={section.label}>
           {#each section.items as item (item.path)}
-            <SidebarNavItem href={href(item.path)} label={item.label} icon={item.icon} active={item.routes.includes(router.route.name)} />
+            <SidebarNavItem href={href(item.path)} label={item.label} icon={item.icon} active={item.routes.includes(router.route.name)} badge={item.badge} badgeLabel={item.badgeLabel} />
           {/each}
         </SidebarSection>
       {/if}

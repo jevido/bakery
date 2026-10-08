@@ -65,7 +65,10 @@
 //           Recent shows it dimmed with Unarchive; Unread lists only a second
 //           scratch Issue the Member commented on, and "Mark all as read"
 //           empties it; on Recent, search by the second's identifier
-//           keeps only it; #/inbox after Recent opens Recent
+//           keeps only it; #/inbox after Recent opens Recent; after the
+//           Member comments on the second again the sidebar's Inbox shows 1,
+//           and on the rail a dot; opening that Issue clears both, and
+//           /api/sidebar-badges agrees
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -850,6 +853,31 @@ const sections: Record<string, () => Promise<void>> = {
     await page.goto(`${WEB}/#/inbox`)
     await row(first).waitFor()
     expect('#/inbox opens the last tab used', page.url().endsWith('#/inbox/recent'), page.url())
+
+    const inboxItem = page.getByRole('navigation', { name: 'Main' }).locator('a[href="#/inbox"]')
+    const badge = inboxItem.getByTestId('sidebar-nav-badge')
+    const dot = inboxItem.locator('[data-slot="sidebar-nav-badge-dot"]')
+    const again = await m.page.request.post(`${WEB}/api/issues/${second.id}/comments`, { data: { body: 'And again' } })
+    if (!again.ok()) throw new Error(`comment: ${again.status()}`)
+    await page.reload()
+    await badge.waitFor()
+    expect('the sidebar counts the unread Issue', (await badge.textContent())?.trim() === '1', await badge.textContent())
+    await page.evaluate(() => localStorage.setItem('sidebarCollapsed', 'true'))
+    await page.reload()
+    await dot.waitFor()
+    expect('the rail shows a dot and names the count', (await inboxItem.getAttribute('aria-label')) === 'Inbox, 1 unread', await inboxItem.getAttribute('aria-label'))
+    await page.goto(`${WEB}/#/issues/${second.identifier}`)
+    await page.getByText(title('second')).first().waitFor()
+    await dot.waitFor({ state: 'detached' })
+    await page.goBack()
+    await page.waitForURL(/#\/inbox\/recent$/)
+    expect('opening the Issue clears the rail dot', (await dot.count()) === 0)
+    await page.evaluate(() => localStorage.setItem('sidebarCollapsed', 'false'))
+    await page.reload()
+    await inboxItem.waitFor()
+    expect('and the badge', (await badge.count()) === 0)
+    const counted = ((await (await page.request.get(`${WEB}/api/sidebar-badges`)).json()) as { inbox: number }).inbox
+    expect('/api/sidebar-badges agrees', counted === 0, counted)
 
     await m.leave()
     for (const i of [first, second]) await page.request.delete(`${WEB}/api/issues/${i.id}`)

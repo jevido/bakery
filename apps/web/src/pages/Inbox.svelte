@@ -16,6 +16,7 @@
   import { Button as UiButton } from '$lib/components/ui/button'
   import * as Tabs from '$lib/components/ui/tabs'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
+  import { refreshBadges } from '../lib/inbox.svelte'
   import CollectionToolbar from '../lib/CollectionToolbar.svelte'
   import { ago } from '../lib/format'
   import PageSkeleton from '../lib/PageSkeleton.svelte'
@@ -109,6 +110,7 @@
     else patch(issue.id, { unread })
     try {
       await (unread ? markUnread(issue.id) : markRead(issue.id))
+      refreshBadges()
     } catch (e) {
       issues = before
       toast.error(unread ? 'Could not mark it unread' : 'Could not mark it read', (e as Error).message)
@@ -120,6 +122,7 @@
     issues = (issues ?? []).filter((i) => i.id !== issue.id)
     try {
       await archiveFromInbox(issue.id)
+      refreshBadges()
       toast.show(`Archived ${issue.identifier}`, '', { label: 'Undo', onclick: () => unarchive(issue) })
     } catch (e) {
       issues = before
@@ -138,6 +141,7 @@
     } else patch(issue.id, { archived: false })
     try {
       await unarchiveFromInbox(issue.id)
+      refreshBadges()
     } catch (e) {
       issues = before
       toast.error('Could not unarchive it', (e as Error).message)
@@ -152,6 +156,7 @@
     const failed = new Set(ids.filter((_, n) => results[n].status === 'rejected'))
     const done = new Set(ids.filter((id) => !failed.has(id)))
     issues = (issues ?? []).filter((i) => tab !== 'unread' || !done.has(i.id)).map((i) => (done.has(i.id) ? { ...i, unread: false } : i))
+    refreshBadges()
     if (failed.size) toast.error('Could not mark everything as read', `${failed.size} ${failed.size === 1 ? 'item' : 'items'} stayed unread.`)
     marking = false
   }

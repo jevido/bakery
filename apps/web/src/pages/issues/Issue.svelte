@@ -34,7 +34,8 @@
   import StatusIcon from '../../lib/StatusIcon.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import NotFound from '../NotFound.svelte'
-  import { deleteIssue, getIssue, listGoals, listIssues, updateIssue, type Goal, type Issue, type IssueDetail, type IssueInput } from '../../lib/work'
+  import { refreshBadges } from '../../lib/inbox.svelte'
+  import { deleteIssue, getIssue, listGoals, listIssues, markRead, updateIssue, type Goal, type Issue, type IssueDetail, type IssueInput } from '../../lib/work'
 
   /** The Issue's identifier (DEF-12) or id, as the address holds it. */
   let { key }: { key: string } = $props()
@@ -71,9 +72,17 @@
   /** Bumped after every change, so the Activity tab loads again. */
   let activityVersion = $state(0)
 
+  // Opening the Issue marks it read once per visit, as Paperclip's
+  // IssueDetail does; a failed Read mark is not worth a toast.
+  let marked = false
   function load() {
     getIssue(key)
-      .then((i) => (issue = i))
+      .then((i) => {
+        issue = i
+        if (marked) return
+        marked = true
+        markRead(i.id).then(refreshBadges, () => {})
+      })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 404) missing = true
         else loadError = e.message

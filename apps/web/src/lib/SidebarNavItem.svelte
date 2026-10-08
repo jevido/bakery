@@ -4,8 +4,11 @@
   // the label is clipped but stays the link's name, and a tooltip names it.
   // An `inline` item sits in a page's own nav: never a rail, and it leaves
   // the drawer alone. A `brandIcon` is a brand mark masked from
-  // /svgs/<name>.svg in place of a Lucide icon, as Coolify draws them.
+  // /svgs/<name>.svg in place of a Lucide icon, as Coolify draws them. A
+  // `badge` above 0 is a pill at the right; on the rail it is a dot on the
+  // icon, and the link's name carries the count ("Inbox, 3 unread").
   import type { Component } from 'svelte'
+  import { Badge } from '$lib/components/ui/badge'
   import * as Tooltip from '$lib/components/ui/tooltip'
   import { RAIL_HIDDEN_LABEL, sidebar } from './sidebar.svelte'
   import { cn } from './utils'
@@ -17,6 +20,8 @@
     brandIcon,
     active = false,
     inline = false,
+    badge,
+    badgeLabel,
     testid,
   }: {
     href: string
@@ -25,10 +30,15 @@
     brandIcon?: string
     active?: boolean
     inline?: boolean
+    badge?: number
+    /** The noun after the count on the rail, e.g. "unread". */
+    badgeLabel?: string
     testid?: string
   } = $props()
 
   const rail = $derived(!inline && sidebar.rail)
+  const hasBadge = $derived(badge != null && badge > 0)
+  const railLabel = $derived(hasBadge ? `${label}, ${badge}${badgeLabel ? ` ${badgeLabel}` : ''}` : label)
 </script>
 
 {#snippet link(props: Record<string, unknown> = {})}
@@ -38,6 +48,7 @@
     {href}
     data-testid={testid}
     aria-current={active ? 'page' : undefined}
+    aria-label={rail && hasBadge ? railLabel : undefined}
     onclick={() => !inline && sidebar.closeDrawer()}
     class={cn(
       'mx-2 flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-(length:--text-compact) font-medium transition-colors pointer-coarse:py-1',
@@ -55,8 +66,18 @@
       {:else if Icon}
         <Icon class="size-4" />
       {/if}
+      {#if rail && hasBadge}
+        <span
+          data-slot="sidebar-nav-badge-dot"
+          class="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-primary shadow-(--shadow-sidebar-icon-badge)"
+          aria-hidden="true"
+        ></span>
+      {/if}
     </span>
     <span class={rail ? RAIL_HIDDEN_LABEL : 'min-w-0 flex-1 truncate'}>{label}</span>
+    {#if !rail && hasBadge}
+      <Badge variant="ghost" data-testid="sidebar-nav-badge" class="ml-auto bg-primary px-1.5 leading-none text-primary-foreground">{badge}</Badge>
+    {/if}
   </a>
 {/snippet}
 
@@ -67,7 +88,7 @@
         {@render link(props)}
       {/snippet}
     </Tooltip.Trigger>
-    <Tooltip.Content side="right">{label}</Tooltip.Content>
+    <Tooltip.Content side="right">{railLabel}</Tooltip.Content>
   </Tooltip.Root>
 {:else}
   {@render link()}
