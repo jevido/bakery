@@ -19,27 +19,30 @@ const (
 	// IssueApplicationChangedAction is not Paperclip's: its Issues name
 	// no Application.
 	IssueApplicationChangedAction = "issue.application_changed"
-	CommentAddedAction            = "issue.comment_added"
-	CommentDeletedAction          = "issue.comment_deleted"
-	DocumentCreatedAction         = "issue.document_created"
-	DocumentUpdatedAction         = "issue.document_updated"
-	DocumentDeletedAction         = "issue.document_deleted"
-	ApprovalCreatedAction         = "approval.created"
-	ApprovalApprovedAction        = "approval.approved"
-	ApprovalRejectedAction        = "approval.rejected"
-	RevisionRequestedAction       = "approval.revision_requested"
-	ApprovalResubmittedAction     = "approval.resubmitted"
-	ApprovalCommentAddedAction    = "approval.comment_added"
-	ApprovalCancelledAction       = "approval.cancelled"
-	AgentHiredAction              = "agent.hired"
-	AgentUpdatedAction            = "agent.updated"
-	AgentPausedAction             = "agent.paused"
-	AgentResumedAction            = "agent.resumed"
-	AgentTerminatedAction         = "agent.terminated"
-	AgentRoleAddedAction          = "agent.role_added"
-	AgentRoleRemovedAction        = "agent.role_removed"
-	RunStartedAction              = "run.started"
-	RunFinishedAction             = "run.finished"
+	// The pull request and preview Actions are not Paperclip's: its Work
+	// products record no Activity.
+	PullRequestOpenedAction    = "issue.pull_request_opened"
+	CommentAddedAction         = "issue.comment_added"
+	CommentDeletedAction       = "issue.comment_deleted"
+	DocumentCreatedAction      = "issue.document_created"
+	DocumentUpdatedAction      = "issue.document_updated"
+	DocumentDeletedAction      = "issue.document_deleted"
+	ApprovalCreatedAction      = "approval.created"
+	ApprovalApprovedAction     = "approval.approved"
+	ApprovalRejectedAction     = "approval.rejected"
+	RevisionRequestedAction    = "approval.revision_requested"
+	ApprovalResubmittedAction  = "approval.resubmitted"
+	ApprovalCommentAddedAction = "approval.comment_added"
+	ApprovalCancelledAction    = "approval.cancelled"
+	AgentHiredAction           = "agent.hired"
+	AgentUpdatedAction         = "agent.updated"
+	AgentPausedAction          = "agent.paused"
+	AgentResumedAction         = "agent.resumed"
+	AgentTerminatedAction      = "agent.terminated"
+	AgentRoleAddedAction       = "agent.role_added"
+	AgentRoleRemovedAction     = "agent.role_removed"
+	RunStartedAction           = "run.started"
+	RunFinishedAction          = "run.finished"
 )
 
 // AgentActions lists the Actions the agents context records through work.
@@ -480,4 +483,17 @@ func (e AgentEvent) Activity() ActivityEvent {
 	}
 	details["name"] = e.AgentName
 	return ActivityEvent{GuildID: e.GuildID, Actor: e.Actor, Action: e.Action, EntityType: AgentEntity, EntityID: e.AgentID, Details: details, CreatedAt: e.At}
+}
+
+// PullRequestOpened is a Pull request recorded as one of an Issue's Work
+// products.
+type PullRequestOpened struct {
+	Happened
+	Issue       Issue
+	WorkProduct WorkProduct
+}
+
+func (e PullRequestOpened) Activity() ActivityEvent {
+	w := e.WorkProduct
+	return e.issue(e.Issue, PullRequestOpenedAction, map[string]any{"provider": w.Provider, "number": w.ExternalID, "url": w.URL})
 }

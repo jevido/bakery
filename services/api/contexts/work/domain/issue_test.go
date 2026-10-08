@@ -307,3 +307,11 @@ func TestIssueApplication(t *testing.T) {
 		t.Fatal("leaving every Project kept the Application")
 	}
 }
+
+func TestAgentBranch(t *testing.T) {
+	for in, want := range map[string]string{"DEF-12": "bakery/def-12", "bak-3": "bakery/bak-3"} {
+		if got := AgentBranch(in); got != want {
+			t.Errorf("AgentBranch(%q) = %q", in, got)
+		}
+	}
+}

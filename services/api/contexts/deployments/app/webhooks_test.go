@@ -24,6 +24,12 @@ func (m memWebhooks) Save(_ context.Context, w domain.Webhook) error {
 	m[w.ApplicationID] = w
 	return nil
 }
+func (m memWebhooks) RememberProvider(_ context.Context, id uint64, p domain.Provider) error {
+	w := m[id]
+	w.Provider = p
+	m[id] = w
+	return nil
+}
 func (m memWebhooks) DeleteForApplication(_ context.Context, id uint64) error {
 	delete(m, id)
 	return nil

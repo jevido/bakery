@@ -1,6 +1,6 @@
 // Package work is what the router and other contexts may use from the
-// work context: its routes (Goals, Issues, Comments, Issue documents, the
-// Activity, the Inbox and Approvals), and for the agents context
+// work context: its routes (Goals, Issues, Comments, Issue documents, Work
+// products, the Activity, the Inbox and Approvals), and for the agents context
 // RequestApproval, CancelApproval, OnApprovalDecided, RecordActivity,
 // OnAgentNames, OnAgentAssignees, UnassignAgent, IssueForRun,
 // OpenIssuesOfAgent, InboxOfAgent, CommentsForRun, OnIssueAssigned, OnIssueCommented and
@@ -10,14 +10,17 @@ package work
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/goravel/framework/contracts/route"
 
 	"github.com/jevido/bakery/services/api/app/facades"
+	"github.com/jevido/bakery/services/api/contexts/deployments"
 	"github.com/jevido/bakery/services/api/contexts/guilds"
 	"github.com/jevido/bakery/services/api/contexts/identity"
+	"github.com/jevido/bakery/services/api/contexts/notifications"
 	"github.com/jevido/bakery/services/api/contexts/projects"
 	"github.com/jevido/bakery/services/api/contexts/work/app"
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
@@ -39,6 +42,8 @@ func svc() *app.Service {
 		service.Assigned = issueAssigned
 		service.Commented = issueCommented
 		service.RunsLive = runsLive
+		service.WorkProducts = infra.WorkProducts{}
+		service.PullRequests = openPullRequest
 		guilds.OnGuildDeleting("goals", func(ctx context.Context, guildID uint64) (bool, error) {
 			gs, err := service.Goals(ctx, guildID)
 			return len(gs) > 0, err
@@ -188,6 +193,8 @@ type IssueBrief struct {
 	AgentAssigneeID uint64
 	// ApplicationID is the Issue's Application, 0 for none.
 	ApplicationID uint64
+	// AgentBranch is the Agent branch an Agent pushes for the Issue.
+	AgentBranch string
 }
 
 // IssueForRun tells the Guild's Issue; found is false when it is
@@ -200,6 +207,7 @@ func IssueForRun(ctx context.Context, guildID, issueID uint64) (IssueBrief, bool
 	return IssueBrief{
 		ID: i.ID, ProjectID: i.ProjectID, Identifier: domain.Identifier(prefix, i.Number), Title: i.Title,
 		Description: i.Description, Status: string(i.Status), AgentAssigneeID: i.AssigneeAgentID, ApplicationID: i.ApplicationID,
+		AgentBranch: domain.AgentBranch(domain.Identifier(prefix, i.Number)),
 	}, true, nil
 }
 
@@ -216,6 +224,7 @@ func OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]IssueBri
 		out[n] = IssueBrief{
 			ID: i.ID, ProjectID: i.ProjectID, Identifier: domain.Identifier(prefix, i.Number), Title: i.Title,
 			Description: i.Description, Status: string(i.Status), AgentAssigneeID: i.AssigneeAgentID, ApplicationID: i.ApplicationID,
+			AgentBranch: domain.AgentBranch(domain.Identifier(prefix, i.Number)),
 		}
 	}
 	return out, nil
@@ -486,6 +495,24 @@ func memberNames(ctx context.Context, ids []uint64) ([]workhttp.Member, error) {
 	return out, nil
 }
 
+// openPullRequest is deployments' OpenPullRequest in work's terms.
+func openPullRequest(ctx context.Context, applicationID uint64, head, title, body string) (app.OpenedPullRequest, error) {
+	pr, err := deployments.OpenPullRequest(ctx, applicationID, head, title, body)
+	switch {
+	case errors.Is(err, deployments.ErrNoGitHostToken):
+		return app.OpenedPullRequest{}, app.ErrPullRequestNoToken
+	case errors.Is(err, deployments.ErrUnknownGitHost):
+		return app.OpenedPullRequest{}, app.ErrPullRequestUnknownHost
+	case errors.Is(err, deployments.ErrBranchNotPushed):
+		return app.OpenedPullRequest{}, app.ErrPullRequestNotPushed
+	case errors.Is(err, deployments.ErrNoRepository):
+		return app.OpenedPullRequest{}, app.ErrPullRequestNoRepository
+	case err != nil:
+		return app.OpenedPullRequest{}, err
+	}
+	return app.OpenedPullRequest{Provider: pr.Provider, Number: pr.Number, URL: pr.URL, Title: pr.Title}, nil
+}
+
 // goalInGuild answers 404 for a route whose {id} Goal is another Guild's.
 var goalInGuild = guilds.Owns("goal", func(ctx context.Context, id, guildID uint64) (bool, error) {
 	return svc().GoalInGuild(ctx, id, guildID)
@@ -507,12 +534,13 @@ var approvalInGuild = guilds.Owns("approval", func(ctx context.Context, id, guil
 // Agents (guilds.AuthAgents) may read all of it but the Inbox, and create
 // and change Issues, write and change their own Comments, save Issue
 // documents, request Approvals and comment on them, and only they check
-// an Issue out and release it; deleting, Goal changes,
+// an Issue out, release it and open its Pull request; deleting, Goal changes,
 // Read marks, Inbox archives, Decisions and restoring Revisions stay a
 // person's.
 func Routes(r route.Router) {
 	c := workhttp.NewController(svc(), guilds.Current, memberNames)
 	c.Visible, c.Member, c.Agent, c.Run, c.AgentNames = guilds.VisibleProjects, guilds.MemberID, guilds.AgentID, guilds.RunID, agentNames
+	c.DashboardURL = notifications.DashboardURL
 	view, manage := guilds.Can("view_resources"), guilds.Can("manage_work")
 	r.Middleware(guilds.AuthAgents, view).Get("/api/goals", c.ListGoals)
 	r.Middleware(guilds.Auth, manage).Post("/api/goals", c.CreateGoal)
@@ -538,6 +566,7 @@ func Routes(r route.Router) {
 		r.Patch("/api/issues/{id}", c.UpdateIssue)
 		r.Post("/api/issues/{id}/checkout", c.CheckoutIssue)
 		r.Post("/api/issues/{id}/release", c.ReleaseIssue)
+		r.Post("/api/issues/{id}/pull-requests", c.OpenPullRequest)
 		r.Post("/api/issues/{id}/comments", c.WriteComment)
 		r.Patch("/api/issues/{id}/comments/{comment}", c.EditComment)
 		r.Delete("/api/issues/{id}/comments/{comment}", c.DeleteComment)

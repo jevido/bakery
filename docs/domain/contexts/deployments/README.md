@@ -137,7 +137,8 @@ Application is (projects) or for the Caddy configuration (routing).
   which finds the open Pull request from `head` into the Application's
   branch or opens one through the git host's REST API with the Webhook's
   Git host token, and answers its Provider, number and URL (errors: no
-  Git host token, an unknown git host, a branch not pushed);
+  Git host token, an unknown git host, a branch not pushed, an
+  Application not built from git);
   `OnPullRequest`, the Preview hooks and `PreviewURL(ctx, application,
   number)`.
 - **Consumes:** `projects.ApplicationsOnServer` and `servers.OnServerResources` (a Server's Resources list shows each Application with its latest own Deployment's state); `projects.ProjectOf("application")` (through `guilds.InProject`), so every route keyed by an Application or a Deployment answers 404 outside the Current guild or a Project the request may not view, and `deploy` and `manage_applications` count that Project's Permission overrides (the Webhook endpoint is found by its secret, in any Guild); `projects.ApplicationForDeploy` (the snapshot is taken once, at
@@ -158,7 +159,11 @@ Application is (projects) or for the Caddy configuration (routing).
   GitLab) to write the Preview comment, with the Git host token; the API
   base comes from the Pull request event. To open a Pull request, the API
   base comes from the Application's git URL and the Webhook's Provider
-  (an SSH URL maps to `https://<host>`).
+  (an SSH URL maps to `https://<host>`). It looks for an open one first,
+  then creates one, and asks whether the head branch exists only when
+  creating failed, to tell "not pushed" from other refusals: Forgejo and
+  Gitea list a branch a moment after its push landed, while creating
+  already works.
 
 ## Why it's shaped this way
 

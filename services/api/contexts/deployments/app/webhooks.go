@@ -19,12 +19,17 @@ type WebhookStore interface {
 	// Save creates or replaces the Application's Webhook.
 	Save(ctx context.Context, w domain.Webhook) error
 	DeleteForApplication(ctx context.Context, applicationID uint64) error
+	// RememberProvider stores the Provider of the Webhook's last verified
+	// call; Save leaves it as it is.
+	RememberProvider(ctx context.Context, applicationID uint64, p domain.Provider) error
 }
 
 // Webhooks are the use cases around an Application's Webhook.
 type Webhooks struct {
 	service *Service
 	store   WebhookStore
+	// Hosts opens Pull requests on git hosts.
+	Hosts PullRequestHosts
 }
 
 func NewWebhooks(service *Service, store WebhookStore) *Webhooks {
@@ -127,6 +132,12 @@ func (w *Webhooks) ReceivePush(ctx context.Context, applicationID uint64, header
 	provider, event := domain.DetectProvider(header)
 	if provider == "" || !hook.Verify(provider, header, body) {
 		return PushOutcome{}, ErrBadSignature
+	}
+	if hook.Provider != provider {
+		if err := w.store.RememberProvider(ctx, applicationID, provider); err != nil {
+			return PushOutcome{}, err
+		}
+		hook.Provider = provider
 	}
 	if domain.IsPullRequest(provider, event) {
 		return w.receivePullRequest(ctx, hook, app, provider, body)

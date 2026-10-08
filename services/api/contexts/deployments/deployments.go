@@ -1,6 +1,6 @@
 // Package deployments is what the router and the boot code may use from the
 // deployments context: its routes, the Worker and the DeploymentFinished
-// event. Nothing else in contexts/deployments is for outside use.
+// event, and for the work context OpenPullRequest. Nothing else in contexts/deployments is for outside use.
 package deployments
 
 import (
@@ -95,6 +95,7 @@ func svc() *app.Service {
 		deploymentshttp.LocalServer = localServer
 		service = app.NewService(infra.Store{}, infra.Logs{}, applications, infra.KnownHosts{}, infra.Previews{})
 		webhooks = app.NewWebhooks(service, infra.Webhooks{})
+		webhooks.Hosts = infra.GitHosts{}
 		service.DropPreviewRoute = routing.DropPreviewRoute
 		service.StopRoute = routing.StopRoute
 		service.Comments = app.NewCommenter(infra.Webhooks{}, infra.Previews{}, infra.GitHosts{})
@@ -340,6 +341,38 @@ func splitList(s string) []string {
 		}
 	}
 	return out
+}
+
+// The reasons OpenPullRequest cannot open a Pull request.
+var (
+	ErrNoGitHostToken  = app.ErrNoGitHostToken
+	ErrUnknownGitHost  = domain.ErrUnknownGitHost
+	ErrBranchNotPushed = app.ErrBranchNotPushed
+	ErrNoRepository    = app.ErrNoRepository
+)
+
+// OpenedPullRequest is a Pull request on the Application's git host:
+// its Provider ("github", "gitea", "forgejo" or "gitlab"), number (GitLab:
+// iid), web link and title. Created is false when it was already open.
+type OpenedPullRequest struct {
+	Provider string
+	Number   int
+	URL      string
+	Title    string
+	Created  bool
+}
+
+// OpenPullRequest opens a Pull request from the head branch into the
+// Application's branch, through its git host's REST API with the
+// Application's Git host token, or answers the one already open from that
+// branch. The caller has checked who may.
+func OpenPullRequest(ctx context.Context, applicationID uint64, head, title, body string) (OpenedPullRequest, error) {
+	svc()
+	pr, err := webhooks.OpenPullRequest(ctx, applicationID, head, title, body)
+	if err != nil {
+		return OpenedPullRequest{}, err
+	}
+	return OpenedPullRequest{Provider: string(pr.Provider), Number: pr.Number, URL: pr.URL, Title: pr.Title, Created: pr.Created}, nil
 }
 
 // DeploymentFinished is a Deployment that ended succeeded or failed; a

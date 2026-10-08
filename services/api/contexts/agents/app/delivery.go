@@ -87,7 +87,7 @@ func (s *Service) workspaceOf(ctx context.Context, guildID uint64, i IssueBrief)
 	}
 	return &Workspace{
 		ApplicationID: i.ApplicationID, ApplicationName: r.Name, Repository: r.URL,
-		BaseBranch: r.Branch, Branch: domain.AgentBranch(i.Identifier),
+		BaseBranch: r.Branch, Branch: i.AgentBranch,
 	}
 }
 

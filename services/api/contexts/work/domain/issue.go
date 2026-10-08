@@ -340,6 +340,14 @@ func Identifier(prefix string, number int) string {
 	return fmt.Sprintf("%s-%d", prefix, number)
 }
 
+// AgentBranch is the git branch an Agent pushes for the Issue with the
+// identifier, on every Run of it, and the head of its Pull request:
+// "bakery/" and the identifier in lower case, so "DEF-12" is
+// "bakery/def-12".
+func AgentBranch(identifier string) string {
+	return "bakery/" + strings.ToLower(identifier)
+}
+
 // ParseIdentifier splits an Issue identifier on its last "-" into its
 // Issue prefix, uppercased, and its number.
 func ParseIdentifier(s string) (prefix string, number int, ok bool) {

@@ -17,8 +17,12 @@ type Webhook struct {
 	AutoDeploy    bool
 	// Previews lets Pull request events start Previews.
 	Previews bool
-	// GitHostToken writes the Preview comment; empty is no comment.
+	// GitHostToken writes the Preview comment and opens Pull requests;
+	// empty is neither.
 	GitHostToken string
+	// Provider is the git host that last called with a verified call;
+	// empty until one did.
+	Provider Provider
 }
 
 // Provider is the git host that called a Webhook, recognised by its event

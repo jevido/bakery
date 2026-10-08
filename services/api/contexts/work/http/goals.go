@@ -41,6 +41,9 @@ type Controller struct {
 	// AgentNames names the Guild's Agents with these ids that still exist;
 	// nil (or a nil answer) counts every Agent as existing.
 	AgentNames func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)
+	// DashboardURL is where the dashboard is reached, for links to an
+	// Issue page.
+	DashboardURL func() string
 }
 
 func NewController(service *app.Service, guild func(ctx contractshttp.Context) uint64, members func(ctx context.Context, ids []uint64) ([]Member, error)) *Controller {
@@ -169,6 +172,7 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 	var stale *app.StaleRevisionError
 	var refused *domain.ApprovalRefusedError
 	var held *domain.HeldError
+	var prRefused *app.PullRequestRefusedError
 	var status *domain.StatusError
 	switch {
 	case errors.As(err, &held):
@@ -179,7 +183,7 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
 	case errors.Is(err, app.ErrAgentsOnly):
 		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
-	case errors.As(err, &refused):
+	case errors.As(err, &refused), errors.As(err, &prRefused):
 		return respond.Error(ctx, contractshttp.StatusUnprocessableEntity, err.Error())
 	case errors.As(err, &stale):
 		// The newest Revision goes along, so the dashboard can offer to

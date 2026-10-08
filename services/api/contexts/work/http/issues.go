@@ -426,12 +426,21 @@ func (c *Controller) oneIssue(ctx contractshttp.Context, status int, i domain.Is
 		}
 		return out
 	}
+	ws, err := c.service.IssueWorkProducts(ctx.Context(), i.ID)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	products, err := c.workProductsJSON(ctx, ws)
+	if err != nil {
+		return fail(ctx, err)
+	}
 	return ctx.Response().Json(status, contractshttp.Json{"issue": struct {
 		issueJSON
-		Children  []issueJSON   `json:"children"`
-		BlockedBy []blockerJSON `json:"blocked_by"`
-		Blocking  []blockerJSON `json:"blocking"`
-	}{out[0], children, refs(blockedBy[i.ID]), refs(blocking[i.ID])}})
+		Children     []issueJSON       `json:"children"`
+		BlockedBy    []blockerJSON     `json:"blocked_by"`
+		Blocking     []blockerJSON     `json:"blocking"`
+		WorkProducts []workProductJSON `json:"work_products"`
+	}{out[0], children, refs(blockedBy[i.ID]), refs(blocking[i.ID]), products}})
 }
 
 func (c *Controller) CreateIssue(ctx contractshttp.Context) contractshttp.Response {

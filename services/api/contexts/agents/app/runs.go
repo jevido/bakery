@@ -57,6 +57,8 @@ type IssueBrief struct {
 	AgentAssigneeID uint64
 	// ApplicationID is the Issue's Application, 0 for none.
 	ApplicationID uint64
+	// AgentBranch is the branch an Agent pushes for the Issue.
+	AgentBranch string
 }
 
 // RunComment is a comment on an Issue as a Run's prompt quotes it.

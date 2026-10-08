@@ -247,7 +247,7 @@ func TestClaimCarriesTheWorkspace(t *testing.T) {
 		s, _, _, w := newTest()
 		w.repos = repos
 		ada := hired(t, s, "Ada", 0)
-		w.issues = map[uint64]IssueBrief{30: {ID: 30, Identifier: "DEF-12", Title: "Fix it", AgentAssigneeID: ada.ID, ApplicationID: applicationID}}
+		w.issues = map[uint64]IssueBrief{30: {ID: 30, Identifier: "DEF-12", Title: "Fix it", AgentAssigneeID: ada.ID, ApplicationID: applicationID, AgentBranch: "bakery/def-12"}}
 		r, err := startRun(s, ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID, 30, nil)
 		if err != nil {
 			t.Fatal(err)

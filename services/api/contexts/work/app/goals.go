@@ -74,6 +74,10 @@ type Service struct {
 	// work.OnRunLive); nil counts none as running, so every Checkout is
 	// Stale.
 	RunsLive func(ctx context.Context, runIDs []uint64) (map[uint64]bool, error)
+	// WorkProducts keeps Work products; PullRequests opens Pull requests
+	// on git hosts. Both must be set to open one.
+	WorkProducts WorkProducts
+	PullRequests PullRequests
 }
 
 func NewService(goals Goals, issues Issues, comments Comments, docs Documents, guilds Guilds, projects Projects, activity Activity, inbox Inbox, approvals Approvals) *Service {

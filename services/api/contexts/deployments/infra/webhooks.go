@@ -17,6 +17,7 @@ type webhookRecord struct {
 	Previews        bool
 	// GitHostTokenEncrypted is empty when there is no Git host token.
 	GitHostTokenEncrypted string
+	Provider              *string
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
 }
@@ -44,7 +45,11 @@ func (Webhooks) ByApplication(ctx context.Context, applicationID uint64) (domain
 			return domain.Webhook{}, false, errors.New("cannot decrypt the git host token (was APP_KEY changed?)")
 		}
 	}
-	return domain.Webhook{ApplicationID: applicationID, Secret: secret, AutoDeploy: recs[0].AutoDeploy, Previews: recs[0].Previews, GitHostToken: token}, true, nil
+	hook := domain.Webhook{ApplicationID: applicationID, Secret: secret, AutoDeploy: recs[0].AutoDeploy, Previews: recs[0].Previews, GitHostToken: token}
+	if recs[0].Provider != nil {
+		hook.Provider = domain.Provider(*recs[0].Provider)
+	}
+	return hook, true, nil
 }
 
 func (Webhooks) Save(ctx context.Context, w domain.Webhook) error {
@@ -65,6 +70,11 @@ func (Webhooks) Save(ctx context.Context, w domain.Webhook) error {
 		SET secret_encrypted = EXCLUDED.secret_encrypted, auto_deploy = EXCLUDED.auto_deploy, previews = EXCLUDED.previews,
 		    git_host_token_encrypted = EXCLUDED.git_host_token_encrypted, updated_at = now()`,
 		w.ApplicationID, enc, w.AutoDeploy, w.Previews, token)
+	return err
+}
+
+func (Webhooks) RememberProvider(ctx context.Context, applicationID uint64, p domain.Provider) error {
+	_, err := facades.Orm().WithContext(ctx).Query().Exec(`UPDATE webhooks SET provider = ?, updated_at = now() WHERE application_id = ?`, string(p), applicationID)
 	return err
 }
 

@@ -108,5 +108,7 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000093AddAgentActors{},
 		&migrations.M20260930000094AddIssueCheckout{},
 		&migrations.M20260930000095AddIssueApplication{},
+		&migrations.M20260930000096AddWebhookProvider{},
+		&migrations.M20260930000097CreateIssueWorkProductsTable{},
 	}
 }
