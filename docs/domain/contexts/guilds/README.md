@@ -34,7 +34,7 @@ rows and stores the Guild's id on them.
 | Transfer offer | The Guild Master's offer of the Guild Master to one other Member; accepted, declined, withdrawn or expired after 7 days. |
 | Permission override | On one Project, per Role or per Member: allow, deny or inherit for `view_resources`, `see_secrets`, `deploy` or `manage_applications`. |
 | Instance admin | The Member Setup creates. Acts with every Permission in every Guild, just below its Guild Master, and sees every Guild, with or without a Membership. |
-| Current guild | The Guild a request acts in: the `bakery_guild` cookie for a Session, the Guild an API token was made in for a token. |
+| Current guild | The Guild a request acts in: the `bakery_guild` cookie for a Session, the Guild an API token was made in for a token, the Guild the `Bakery-Guild` header names for a Desktop key (403 `not a member of this guild` when the Member may not act there; their first Guild without the header). |
 | Invitation | An email and the Roles it brings, for one Guild, with a link that is good once and for 7 days. |
 | Guild switcher | Where a Member picks the Current guild among the Guilds they are in (all of them for the Instance admin). |
 
@@ -336,6 +336,9 @@ other changes with `write`, `administrator` only with `root`.
   existing `/api/...` path stays as it is. An API token is bound to the Guild
   it was made in, as Coolify binds its tokens to a team. Paperclip's
   per-company URL prefix can come with its look without changing the API.
+  A Desktop key names the Guild in the `Bakery-Guild` header instead: the
+  Desktop app shows all of its Member's Guilds at once and keeps no cookie
+  jar, and its own HTTP client can send headers.
 - **The Local server is shared by every Guild.** Databases and Services run
   only on The Bakery's own machine, so a Guild without it could run neither.
   Only the Instance admin edits it. Coolify gives its localhost to the root

@@ -91,3 +91,65 @@ func TestTokenPermissionOfAPermission(t *testing.T) {
 		}
 	}
 }
+
+func TestGuildAsked(t *testing.T) {
+	session := identity.Principal{MemberID: 1}
+	token := identity.TokenPrincipal(1, 2, identity.PermissionRead)
+	desktop := identity.Principal{MemberID: 1, DesktopID: 3}
+	cases := []struct {
+		name          string
+		principal     identity.Principal
+		header        string
+		cookie        uint64
+		named, wanted uint64
+		ok            bool
+	}{
+		{"a Session would like its cookie's Guild", session, "7", 5, 0, 5, true},
+		{"an API token names its own Guild", token, "7", 5, 2, 5, true},
+		{"a Desktop key names the header's Guild", desktop, "7", 5, 7, 0, true},
+		{"a Desktop key without the header takes the first", desktop, "", 5, 0, 0, true},
+		{"a Desktop key with a header that is no id", desktop, "abc", 0, 0, 0, false},
+		{"a Desktop key with Guild 0", desktop, "0", 0, 0, 0, false},
+	}
+	for _, c := range cases {
+		named, wanted, ok := guildAsked(c.principal, c.header, c.cookie)
+		if named != c.named || wanted != c.wanted || ok != c.ok {
+			t.Errorf("%s: %d %d %v, want %d %d %v", c.name, named, wanted, ok, c.named, c.wanted, c.ok)
+		}
+	}
+}
+
+func TestAuthRefuses(t *testing.T) {
+	session := identity.Principal{MemberID: 1}
+	token := identity.TokenPrincipal(1, 2, identity.PermissionRoot)
+	desktop := identity.Principal{MemberID: 1, DesktopID: 3}
+	cases := []struct {
+		name      string
+		auth      Auth
+		principal identity.Principal
+		refused   bool
+	}{
+		{"a Session on a SelfService route", Auth{SelfService: true}, session, false},
+		{"an API token on a SelfService route", Auth{SelfService: true}, token, true},
+		{"a Desktop key on a SelfService route", Auth{SelfService: true}, desktop, true},
+		{"a Desktop key where Desktop lets it", Auth{SelfService: true, Desktop: true}, desktop, false},
+		{"an API token where Desktop lets a Desktop key", Auth{SelfService: true, Desktop: true}, token, true},
+		{"a Desktop key on a Guild's route", Auth{}, desktop, false},
+		{"a Desktop key on GET /api/me", Auth{Guildless: true}, desktop, false},
+	}
+	for _, c := range cases {
+		if got := c.auth.refused(c.principal) != ""; got != c.refused {
+			t.Errorf("%s: refused %v, want %v", c.name, got, c.refused)
+		}
+	}
+}
+
+func TestDesktopKeyIsUncapped(t *testing.T) {
+	desktop := identity.Principal{MemberID: 1, DesktopID: 3}
+	if got := effective(desktop, admin); got != admin {
+		t.Errorf("a Desktop key keeps the Member's Permissions: %v", got.Keys())
+	}
+	if !desktop.Allows(identity.PermissionWrite) {
+		t.Error("a Desktop key is not limited by Token permissions")
+	}
+}

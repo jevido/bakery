@@ -50,8 +50,13 @@ type Principal struct {
 	// Token is true for a request made with an API token, false for a
 	// Session.
 	Token bool
-	// GuildID is the Guild the API token was made in; 0 for a Session.
-	GuildID     uint64
+	// GuildID is the Guild the API token was made in; 0 for a Session and
+	// a Desktop key.
+	GuildID uint64
+	// DesktopID is the Desktop whose Desktop key made the request, 0
+	// otherwise. A Desktop key acts as its Member in any of their Guilds,
+	// uncapped by Token permissions.
+	DesktopID   uint64
 	permissions []domain.Permission
 }
 
@@ -76,8 +81,8 @@ func TokenPrincipal(memberID, guildID uint64, permissions ...Permission) Princip
 	return p
 }
 
-// Authenticate finds the Principal of a request, by API token in the
-// Authorization header or the Session cookie, and answers 401 itself (and
+// Authenticate finds the Principal of a request, by Desktop key or API
+// token in the Authorization header or the Session cookie, and answers 401 itself (and
 // false) when there is none.
 func Authenticate(ctx contractshttp.Context) (Principal, bool) {
 	p, ok := identityhttp.Authenticate(service, ctx)
@@ -89,6 +94,9 @@ func Authenticate(ctx contractshttp.Context) (Principal, bool) {
 		out.Token = true
 		out.GuildID = p.Token.GuildID
 		out.permissions = p.Token.Permissions
+	}
+	if p.Desktop != nil {
+		out.DesktopID = p.Desktop.ID
 	}
 	return out, true
 }
@@ -203,8 +211,9 @@ func RevokeAPITokens(ctx context.Context, memberID, guildID uint64) error {
 	return service.RevokeAPITokensIn(ctx, memberID, guildID)
 }
 
-// Routes registers setup, login, logout, the Desktop sign-in (all open) and a Member's own
-// Profile and two-factor (a Session only).
+// Routes registers setup, login, logout, the Desktop sign-in (all open), a
+// Member's own Desktops (a Session or a Desktop key) and their Profile and
+// two-factor (a Session only).
 func Routes(r route.Router) {
 	c := controller
 	r.Get("/api/setup", c.SetupStatus)
@@ -218,6 +227,12 @@ func Routes(r route.Router) {
 	r.Get("/api/desktop-sign-ins/{id}", c.DescribeDesktopSignIn)
 	r.Post("/api/desktop-sign-ins/{id}/approve", c.ApproveDesktopSignIn)
 	r.Post("/api/desktop-sign-ins/{id}/cancel", c.CancelDesktopSignIn)
+	// A Member's own Desktops: with a Session or a Desktop key.
+	r.Middleware(identityhttp.DesktopAuth{Service: service}).Group(func(r route.Router) {
+		r.Get("/api/desktops", c.Desktops)
+		r.Post("/api/desktops/current/sign-out", c.SignOutCurrentDesktop)
+		r.Delete("/api/desktops/{id}", c.SignOutDesktop)
+	})
 	r.Middleware(identityhttp.Auth{Service: service}).Group(func(r route.Router) {
 		r.Patch("/api/me", c.ChangeName)
 		r.Post("/api/me/password", c.ChangePassword)

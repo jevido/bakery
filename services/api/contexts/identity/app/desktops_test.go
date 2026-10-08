@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jevido/bakery/services/api/app/secret"
 	"github.com/jevido/bakery/services/api/contexts/identity/domain"
 )
 
@@ -54,6 +55,46 @@ func (m *memDesktopSignIns) Change(_ context.Context, id uint64, change func(*do
 	}
 	m.signIns[id-1] = s
 	return s, nil
+}
+
+func (m *memDesktopSignIns) DesktopByKeyHash(_ context.Context, keyHash string) (domain.Desktop, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, d := range m.desktops {
+		if d.KeyHash == keyHash {
+			return d, true, nil
+		}
+	}
+	return domain.Desktop{}, false, nil
+}
+
+func (m *memDesktopSignIns) DesktopsOf(_ context.Context, memberID uint64) ([]domain.Desktop, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []domain.Desktop
+	for i := len(m.desktops) - 1; i >= 0; i-- {
+		if m.desktops[i].MemberID == memberID {
+			out = append(out, m.desktops[i])
+		}
+	}
+	return out, nil
+}
+
+func (m *memDesktopSignIns) TouchDesktop(_ context.Context, id uint64, at time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.desktops[id-1].LastSeenAt = &at
+	return nil
+}
+
+func (m *memDesktopSignIns) SignOutDesktop(_ context.Context, id, memberID uint64, at time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if id == 0 || id > uint64(len(m.desktops)) || m.desktops[id-1].MemberID != memberID {
+		return false, nil
+	}
+	m.desktops[id-1].SignOut(at)
+	return true, nil
 }
 
 var (
@@ -123,5 +164,79 @@ func TestApproveDesktopSignIn(t *testing.T) {
 	}
 	if len(signIns.desktops) != 1 {
 		t.Fatalf("expired sign-in made a desktop: %+v", signIns.desktops)
+	}
+}
+
+func TestAuthenticateDesktop(t *testing.T) {
+	ctx := context.Background()
+	s := newTestService()
+	signIns := s.desktopSignIns.(*memDesktopSignIns)
+	now := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	s.Now = func() time.Time { return now }
+	admin, err := s.SetUp(ctx, "Owner", "owner@example.com", "a long password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := domain.DesktopKeyPrefix + strings.Repeat("ab", 24)
+	approve := func() domain.Desktop {
+		t.Helper()
+		in, err := s.StartDesktopSignIn(ctx, "laptop", testSignInSecret, secret.Hash(key))
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err = s.ApproveDesktopSignIn(ctx, in.ID, testSignInSecret, admin.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return signIns.desktops[*in.DesktopID-1]
+	}
+	d := approve()
+
+	if _, _, err := s.AuthenticateDesktop(ctx, "bky_"+strings.Repeat("ab", 24)); !errors.Is(err, ErrInvalidDesktopKey) {
+		t.Fatalf("an API token's shape: %v", err)
+	}
+	if _, _, err := s.AuthenticateDesktop(ctx, domain.DesktopKeyPrefix+"unknown"); !errors.Is(err, ErrInvalidDesktopKey) {
+		t.Fatalf("unknown key: %v", err)
+	}
+	m, got, err := s.AuthenticateDesktop(ctx, key)
+	if err != nil || m.ID != admin.ID || got.ID != d.ID || got.LastSeenAt == nil || !got.LastSeenAt.Equal(now) {
+		t.Fatalf("authenticate: %+v %+v %v", m, got, err)
+	}
+	// Last seen is written at most once a minute.
+	seen := now
+	now = now.Add(30 * time.Second)
+	if _, _, err := s.AuthenticateDesktop(ctx, key); err != nil || !signIns.desktops[d.ID-1].LastSeenAt.Equal(seen) {
+		t.Fatalf("touched within a minute: %v %v", signIns.desktops[d.ID-1].LastSeenAt, err)
+	}
+
+	// Another Member cannot sign it out; its own Member can.
+	if err := s.SignOutDesktop(ctx, admin.ID+1, d.ID); !errors.Is(err, ErrDesktopNotFound) {
+		t.Fatalf("another's: %v", err)
+	}
+	if ds, err := s.Desktops(ctx, admin.ID); err != nil || len(ds) != 1 {
+		t.Fatalf("desktops: %+v %v", ds, err)
+	}
+	if err := s.SignOutDesktop(ctx, admin.ID, d.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AuthenticateDesktop(ctx, key); !errors.Is(err, ErrInvalidDesktopKey) {
+		t.Fatalf("signed out: %v", err)
+	}
+	if ds, err := s.Desktops(ctx, admin.ID); err != nil || len(ds) != 0 {
+		t.Fatalf("a signed-out Desktop is listed: %+v %v", ds, err)
+	}
+
+	// "Sign out everywhere else" ends a Desktop made before it.
+	key = domain.DesktopKeyPrefix + strings.Repeat("cd", 24)
+	approve()
+	if _, _, err := s.AuthenticateDesktop(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Hour)
+	if err := s.members.SetSessionsValidFrom(ctx, admin.ID, domain.SessionsValidFromNow(now)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AuthenticateDesktop(ctx, key); !errors.Is(err, ErrInvalidDesktopKey) {
+		t.Fatalf("after the Sessions ended: %v", err)
 	}
 }

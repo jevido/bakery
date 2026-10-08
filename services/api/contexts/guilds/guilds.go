@@ -145,9 +145,10 @@ func Routes(r route.Router) {
 	r.Middleware(guildshttp.Auth{Service: service, Guildless: true}).Get("/api/me", c.Me)
 	r.Middleware(guildshttp.Auth{Service: service, SelfService: true}).Group(identity.APITokenRoutes)
 	// Listing, creating and switching Guilds work in no Guild and for every
-	// Role, but only with a Session: an API token acts in one Guild.
+	// Role, but only with a Session: an API token acts in one Guild. A
+	// Desktop key may list them, to show them all.
+	r.Middleware(guildshttp.Auth{Service: service, Guildless: true, SelfService: true, Desktop: true}).Get("/api/guilds", c.Guilds)
 	r.Middleware(guildshttp.Auth{Service: service, Guildless: true, SelfService: true}).Group(func(r route.Router) {
-		r.Get("/api/guilds", c.Guilds)
 		r.Post("/api/guilds", c.CreateGuild)
 		r.Post("/api/guilds/{id}/switch", c.SwitchGuild)
 		// The offered Member answers a Transfer offer of any Guild they are

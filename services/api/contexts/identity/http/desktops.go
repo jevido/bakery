@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
@@ -170,4 +171,57 @@ func (c *Controller) CancelDesktopSignIn(ctx contractshttp.Context) contractshtt
 		return respond.ServerError(ctx, err)
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"status": c.service.DesktopSignInStatus(in)})
+}
+
+type desktopJSON struct {
+	ID         uint64     `json:"id"`
+	Name       string     `json:"name"`
+	CreatedAt  time.Time  `json:"created_at"`
+	LastSeenAt *time.Time `json:"last_seen_at"`
+	// Current is true for the Desktop making the request.
+	Current bool `json:"current"`
+}
+
+// Desktops lists the signed-in Member's Desktops that are signed in.
+func (c *Controller) Desktops(ctx contractshttp.Context) contractshttp.Response {
+	p := principalOf(ctx)
+	ds, err := c.service.Desktops(ctx.Context(), p.MemberID)
+	if err != nil {
+		return respond.ServerError(ctx, err)
+	}
+	out := make([]desktopJSON, len(ds))
+	for i, d := range ds {
+		out[i] = desktopJSON{ID: d.ID, Name: d.Name, CreatedAt: d.CreatedAt.UTC(), LastSeenAt: d.LastSeenAt, Current: p.Desktop != nil && p.Desktop.ID == d.ID}
+	}
+	return ctx.Response().Success().Json(out)
+}
+
+// SignOutDesktop signs out one of the Member's own Desktops; another's is
+// 404.
+func (c *Controller) SignOutDesktop(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return respond.Error(ctx, contractshttp.StatusNotFound, app.ErrDesktopNotFound.Error())
+	}
+	return c.signOutDesktop(ctx, id)
+}
+
+// SignOutCurrentDesktop is the Desktop app signing itself out.
+func (c *Controller) SignOutCurrentDesktop(ctx contractshttp.Context) contractshttp.Response {
+	p := principalOf(ctx)
+	if p.Desktop == nil {
+		return respond.Error(ctx, contractshttp.StatusForbidden, "this needs a desktop key")
+	}
+	return c.signOutDesktop(ctx, p.Desktop.ID)
+}
+
+func (c *Controller) signOutDesktop(ctx contractshttp.Context, id uint64) contractshttp.Response {
+	err := c.service.SignOutDesktop(ctx.Context(), principalOf(ctx).MemberID, id)
+	if errors.Is(err, app.ErrDesktopNotFound) {
+		return respond.Error(ctx, contractshttp.StatusNotFound, err.Error())
+	}
+	if err != nil {
+		return respond.ServerError(ctx, err)
+	}
+	return ctx.Response().NoContent()
 }

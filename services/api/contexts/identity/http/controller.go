@@ -30,6 +30,9 @@ type Principal struct {
 	// Token is the API token that authenticated the request, nil for a
 	// Session (which may do everything its Member's Permissions allow).
 	Token *domain.APIToken
+	// Desktop is the Desktop whose Desktop key authenticated the request,
+	// nil otherwise.
+	Desktop *domain.Desktop
 }
 
 // Allows reports whether the request's API token, if any, carries p.
@@ -167,8 +170,8 @@ func sessionCookie(value string, maxAge int) contractshttp.Cookie {
 	}
 }
 
-// Authenticate finds the Member a request comes from, by an API token in
-// the Authorization header or else the Session cookie, and puts the
+// Authenticate finds the Member a request comes from, by a Desktop key or
+// an API token in the Authorization header or else the Session cookie, and puts the
 // Principal on the context for MemberID. It answers 401 itself when there is
 // none. The Member is read on every request, so a removed Member counts at
 // once; an expired or unknown token is 401 alike.
@@ -191,7 +194,22 @@ func authenticate(service *app.Service, ctx contractshttp.Context) (Principal, b
 			_ = respond.Error(ctx, contractshttp.StatusUnauthorized, "invalid API token").Abort()
 			return Principal{}, false
 		}
-		m, t, err := service.Authenticate(ctx.Context(), strings.TrimSpace(value))
+		value = strings.TrimSpace(value)
+		// A Desktop key also starts with the API token prefix, so it is
+		// told apart first.
+		if strings.HasPrefix(value, domain.DesktopKeyPrefix) {
+			m, d, err := service.AuthenticateDesktop(ctx.Context(), value)
+			if errors.Is(err, app.ErrInvalidDesktopKey) {
+				_ = respond.Error(ctx, contractshttp.StatusUnauthorized, err.Error()).Abort()
+				return Principal{}, false
+			}
+			if err != nil {
+				_ = respond.ServerError(ctx, err).Abort()
+				return Principal{}, false
+			}
+			return Principal{MemberID: m.ID, InstanceAdmin: m.InstanceAdmin, Desktop: &d}, true
+		}
+		m, t, err := service.Authenticate(ctx.Context(), value)
 		if errors.Is(err, app.ErrInvalidAPIToken) {
 			_ = respond.Error(ctx, contractshttp.StatusUnauthorized, "invalid API token").Abort()
 			return Principal{}, false
@@ -242,8 +260,8 @@ func SessionMember(service *app.Service, ctx contractshttp.Context) (domain.Memb
 
 // Auth is for the routes where a Member manages their own Profile and
 // two-factor (and, behind guilds' middleware, API tokens): every Role may
-// change those, but only with a Session, so a leaked token can neither
-// mint more nor switch two-factor off.
+// change those, but only with a Session, so a leaked token or Desktop key
+// can neither mint more nor switch two-factor off.
 type Auth struct {
 	Service *app.Service
 }
@@ -259,7 +277,37 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 		_ = respond.Error(ctx, contractshttp.StatusForbidden, "this needs a signed-in session, not an API token").Abort()
 		return
 	}
+	if p.Desktop != nil {
+		_ = respond.Error(ctx, contractshttp.StatusForbidden, "this needs a signed-in session").Abort()
+		return
+	}
 	ctx.Request().Next()
+}
+
+// DesktopAuth is for the routes where a Member lists and signs out their
+// Desktops: with a Session or a Desktop key, never an API token.
+type DesktopAuth struct {
+	Service *app.Service
+}
+
+func (DesktopAuth) Signature() string { return "identity.desktop_auth" }
+
+func (a DesktopAuth) Handle(ctx contractshttp.Context) {
+	p, ok := Authenticate(a.Service, ctx)
+	if !ok {
+		return
+	}
+	if p.Token != nil {
+		_ = respond.Error(ctx, contractshttp.StatusForbidden, "this needs a signed-in session, not an API token").Abort()
+		return
+	}
+	ctx.Request().Next()
+}
+
+// principalOf is the Principal Authenticate let through.
+func principalOf(ctx contractshttp.Context) Principal {
+	p, _ := ctx.Value(principalKey{}).(Principal)
+	return p
 }
 
 // MemberID returns the id of the Member Authenticate let through.

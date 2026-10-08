@@ -22,6 +22,11 @@ import (
 // falls back to their first Guild when not.
 const GuildCookie = "bakery_guild"
 
+// GuildHeader names the Guild a Desktop key's request acts in by its id.
+// The Desktop app shows all of its Member's Guilds at once and has no
+// cookie jar, so it names the Guild on every request.
+const GuildHeader = "Bakery-Guild"
+
 type placeKey struct{}
 
 // place is who a request comes from, the Guild it acts in (zero when none)
@@ -41,7 +46,8 @@ type place struct {
 }
 
 // Auth lets a request through only from a Member (identity.Authenticate)
-// acting in a Guild: the API token's Guild, or for a Session the Guild in
+// acting in a Guild: the API token's Guild, for a Desktop key the Guild in
+// GuildHeader (else their first), or for a Session the Guild in
 // GuildCookie when the Member may act there, else their first. The
 // Permissions are their Membership's there, every one for the Instance
 // admin, read on every request so a changed Role counts at once, and capped
@@ -55,8 +61,12 @@ type Auth struct {
 	// rather than write.
 	Deploy bool
 	// SelfService is for a Member's own API tokens: every Role may manage
-	// them, but only with a Session, so a leaked token cannot mint more.
+	// them, but only with a Session, so a leaked token or Desktop key
+	// cannot mint more.
 	SelfService bool
+	// Desktop lets a Desktop key through a SelfService route, for the few
+	// the Desktop app needs (listing the Member's Guilds).
+	Desktop bool
 	// Guildless lets a Member who is in no Guild through, with no Current
 	// guild (`GET /api/me`).
 	Guildless bool
@@ -69,11 +79,16 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 	if !ok {
 		return
 	}
-	if a.SelfService && p.Token {
-		_ = respond.Error(ctx, contractshttp.StatusForbidden, "this needs a signed-in session, not an API token").Abort()
+	if msg := a.refused(p); msg != "" {
+		_ = respond.Error(ctx, contractshttp.StatusForbidden, msg).Abort()
 		return
 	}
-	pl, found, err := a.Service.Place(ctx.Context(), p.MemberID, p.InstanceAdmin, p.GuildID, cookieGuild(ctx))
+	named, wanted, ok := guildAsked(p, ctx.Request().Header(GuildHeader), cookieGuild(ctx))
+	if !ok {
+		_ = respond.Error(ctx, contractshttp.StatusForbidden, "not a member of this guild").Abort()
+		return
+	}
+	pl, found, err := a.Service.Place(ctx.Context(), p.MemberID, p.InstanceAdmin, named, wanted)
 	if err != nil {
 		_ = respond.ServerError(ctx, err).Abort()
 		return
@@ -81,6 +96,9 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 	switch {
 	case !found && p.Token:
 		_ = respond.Error(ctx, contractshttp.StatusForbidden, "you are not in this API token's guild").Abort()
+		return
+	case !found && named != 0:
+		_ = respond.Error(ctx, contractshttp.StatusForbidden, "not a member of this guild").Abort()
 		return
 	case !found && !a.Guildless:
 		_ = respond.Error(ctx, contractshttp.StatusForbidden, "you are in no guild").Abort()
@@ -103,6 +121,38 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 		identity.ActIn(ctx, pl.Guild.ID, pl.Permissions.Expand().Keys())
 	}
 	ctx.Request().Next()
+}
+
+// refused is why the route refuses the Principal outright, "" when it
+// does not: a SelfService route takes only a Session, and a Desktop key
+// where Desktop says so.
+func (a Auth) refused(p identity.Principal) string {
+	switch {
+	case a.SelfService && p.Token:
+		return "this needs a signed-in session, not an API token"
+	case a.SelfService && p.DesktopID != 0 && !a.Desktop:
+		return "this needs a signed-in session"
+	}
+	return ""
+}
+
+// guildAsked is the Guild the request names (Place's tokenGuild: it must
+// act there) and the one it would like (Place's wanted: else the first):
+// an API token names its own, a Desktop key the one in GuildHeader, a
+// Session would like the one in GuildCookie. False for a GuildHeader that
+// is no Guild id.
+func guildAsked(p identity.Principal, header string, cookie uint64) (named, wanted uint64, ok bool) {
+	if p.DesktopID == 0 {
+		return p.GuildID, cookie, true
+	}
+	if header == "" {
+		return 0, 0, true
+	}
+	id, err := strconv.ParseUint(header, 10, 64)
+	if err != nil || id == 0 {
+		return 0, 0, false
+	}
+	return id, 0, true
 }
 
 // SetCurrent makes the Guild the Current guild of the browser's Session from

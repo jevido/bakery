@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"strings"
+	"time"
 
 	"github.com/jevido/bakery/services/api/app/secret"
 	"github.com/jevido/bakery/services/api/contexts/identity/domain"
@@ -12,6 +14,13 @@ import (
 // ErrDesktopSignInNotFound answers an unknown id and a wrong secret alike,
 // so a sign-in cannot be found without its secret.
 var ErrDesktopSignInNotFound = errors.New("desktop sign-in not found")
+
+// ErrInvalidDesktopKey answers an unknown Desktop key and one that no
+// longer counts alike.
+var ErrInvalidDesktopKey = errors.New("invalid desktop key")
+
+// ErrDesktopNotFound answers an id that is not one of the Member's Desktops.
+var ErrDesktopNotFound = errors.New("desktop not found")
 
 // DesktopSignIns stores the Desktop sign-ins and the Desktops they make.
 type DesktopSignIns interface {
@@ -24,6 +33,16 @@ type DesktopSignIns interface {
 	// is stored when change fails. ErrDesktopSignInNotFound when there is
 	// no such sign-in.
 	Change(ctx context.Context, id uint64, change func(s *domain.DesktopSignIn, secretHash string) (*domain.Desktop, error)) (domain.DesktopSignIn, error)
+	// DesktopByKeyHash is the Desktop holding the key with this hash.
+	DesktopByKeyHash(ctx context.Context, keyHash string) (domain.Desktop, bool, error)
+	// DesktopsOf lists the Member's Desktops, newest first, signed out ones
+	// included.
+	DesktopsOf(ctx context.Context, memberID uint64) ([]domain.Desktop, error)
+	// TouchDesktop records that the Desktop was used at.
+	TouchDesktop(ctx context.Context, id uint64, at time.Time) error
+	// SignOutDesktop signs the Member's Desktop out at; false when the
+	// Member has no Desktop with this id.
+	SignOutDesktop(ctx context.Context, id, memberID uint64, at time.Time) (bool, error)
 }
 
 // DesktopSignInView is a sign-in as its secret's holder reads it.
@@ -108,4 +127,73 @@ func (s *Service) CancelDesktopSignIn(ctx context.Context, id uint64, secretValu
 // DesktopSignInStatus is the sign-in's status at the service's clock.
 func (s *Service) DesktopSignInStatus(in domain.DesktopSignIn) domain.DesktopSignInStatus {
 	return in.Status(s.now())
+}
+
+// AuthenticateDesktop finds the Member and Desktop a Desktop key belongs to.
+// The key stops counting when the Desktop is signed out or idle (Counts),
+// when its Member is gone, and when their Sessions valid from has moved
+// past the Desktop's creation. Last seen is written at most once a minute.
+func (s *Service) AuthenticateDesktop(ctx context.Context, key string) (domain.Member, domain.Desktop, error) {
+	if !strings.HasPrefix(key, domain.DesktopKeyPrefix) {
+		return domain.Member{}, domain.Desktop{}, ErrInvalidDesktopKey
+	}
+	d, found, err := s.desktopSignIns.DesktopByKeyHash(ctx, secret.Hash(key))
+	if err != nil {
+		return domain.Member{}, domain.Desktop{}, err
+	}
+	now := s.now()
+	if !found || !d.Counts(now) {
+		return domain.Member{}, domain.Desktop{}, ErrInvalidDesktopKey
+	}
+	m, err := s.CurrentMember(ctx, d.MemberID)
+	if errors.Is(err, ErrMemberNotFound) {
+		return domain.Member{}, domain.Desktop{}, ErrInvalidDesktopKey
+	}
+	if err != nil {
+		return domain.Member{}, domain.Desktop{}, err
+	}
+	if !m.SessionCounts(d.CreatedAt) {
+		return domain.Member{}, domain.Desktop{}, ErrInvalidDesktopKey
+	}
+	if d.LastSeenAt == nil || now.Sub(*d.LastSeenAt) >= touchEvery {
+		if err := s.desktopSignIns.TouchDesktop(ctx, d.ID, now); err != nil {
+			return domain.Member{}, domain.Desktop{}, err
+		}
+		d.LastSeenAt = &now
+	}
+	return m, d, nil
+}
+
+// Desktops lists the Member's Desktops that are still signed in, newest
+// first. One whose key no longer counts (idle, or ended with the Sessions)
+// is left out as signed out.
+func (s *Service) Desktops(ctx context.Context, memberID uint64) ([]domain.Desktop, error) {
+	m, err := s.CurrentMember(ctx, memberID)
+	if err != nil {
+		return nil, err
+	}
+	all, err := s.desktopSignIns.DesktopsOf(ctx, memberID)
+	if err != nil {
+		return nil, err
+	}
+	now := s.now()
+	out := []domain.Desktop{}
+	for _, d := range all {
+		if d.Counts(now) && m.SessionCounts(d.CreatedAt) {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+// SignOutDesktop signs out one of the Member's Desktops.
+func (s *Service) SignOutDesktop(ctx context.Context, memberID, id uint64) error {
+	found, err := s.desktopSignIns.SignOutDesktop(ctx, id, memberID, s.now())
+	if err != nil {
+		return err
+	}
+	if !found {
+		return ErrDesktopNotFound
+	}
+	return nil
 }

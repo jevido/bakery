@@ -113,3 +113,45 @@ func (DesktopSignIns) Change(ctx context.Context, id uint64, change func(s *doma
 	})
 	return out, err
 }
+
+func (r desktopRecord) toDomain() domain.Desktop {
+	return domain.Desktop{ID: r.ID, MemberID: r.MemberID, Name: r.Name, KeyHash: r.KeyHash, LastSeenAt: r.LastSeenAt, RevokedAt: r.RevokedAt, CreatedAt: r.CreatedAt}
+}
+
+func (DesktopSignIns) DesktopByKeyHash(ctx context.Context, keyHash string) (domain.Desktop, bool, error) {
+	var rec desktopRecord
+	if err := facades.Orm().WithContext(ctx).Query().Where("key_hash", keyHash).FirstOrFail(&rec); err != nil {
+		if errors.Is(err, frameworkerrors.OrmRecordNotFound) {
+			return domain.Desktop{}, false, nil
+		}
+		return domain.Desktop{}, false, err
+	}
+	return rec.toDomain(), true, nil
+}
+
+func (DesktopSignIns) DesktopsOf(ctx context.Context, memberID uint64) ([]domain.Desktop, error) {
+	var recs []desktopRecord
+	if err := facades.Orm().WithContext(ctx).Query().Where("member_id", memberID).OrderByDesc("created_at").OrderByDesc("id").Find(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]domain.Desktop, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+	}
+	return out, nil
+}
+
+func (DesktopSignIns) TouchDesktop(ctx context.Context, id uint64, at time.Time) error {
+	_, err := facades.Orm().WithContext(ctx).Query().Model(&desktopRecord{}).Where("id", id).Update(map[string]any{"last_seen_at": at, "updated_at": at})
+	return err
+}
+
+func (DesktopSignIns) SignOutDesktop(ctx context.Context, id, memberID uint64, at time.Time) (bool, error) {
+	exists, err := facades.Orm().WithContext(ctx).Query().Model(&desktopRecord{}).Where("id", id).Where("member_id", memberID).Exists()
+	if err != nil || !exists {
+		return false, err
+	}
+	// A signed-out Desktop keeps the time it was signed out.
+	_, err = facades.Orm().WithContext(ctx).Query().Model(&desktopRecord{}).Where("id", id).WhereNull("revoked_at").Update(map[string]any{"revoked_at": at, "updated_at": at})
+	return true, err
+}
