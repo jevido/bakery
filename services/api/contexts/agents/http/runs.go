@@ -10,8 +10,16 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 
 	"github.com/jevido/bakery/services/api/app/respond"
+	"github.com/jevido/bakery/services/api/app/sse"
 	"github.com/jevido/bakery/services/api/contexts/agents/app"
 	"github.com/jevido/bakery/services/api/contexts/agents/domain"
+)
+
+// How often RunStream looks for new Run events, and how many it sends
+// before checking the Run's status.
+const (
+	runStreamPollEvery = 500 * time.Millisecond
+	runStreamBatch     = 500
 )
 
 type runAgentJSON struct {
@@ -277,6 +285,80 @@ func runEventsJSON(es []domain.RunEvent) []runEventJSON {
 		out[i] = runEventJSON{Seq: e.Seq, Kind: string(e.Kind), Payload: payload, CreatedAt: e.CreatedAt}
 	}
 	return out
+}
+
+// RunStream sends the Run's stored events, then new ones as the Desktop
+// appends them, `status` with the Run's JSON when its status, usage or
+// error change, and `end` once it is final. A reconnect resumes after
+// Last-Event-ID.
+func (c *Controller) RunStream(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	reqCtx := ctx.Request().Origin().Context()
+	guild := c.Guild(ctx)
+	r, err := c.service.Run(reqCtx, guild, id)
+	if err != nil {
+		return runFail(ctx, err)
+	}
+	after, _ := strconv.ParseInt(ctx.Request().Header("Last-Event-ID"), 10, 64)
+	stream, ok := sse.Start(ctx)
+	if !ok {
+		return respond.Error(ctx, contractshttp.StatusInternalServerError, "streaming is not supported")
+	}
+
+	lastStatus := domain.RunStatus("")
+	lastUsage := domain.Usage{}
+	lastError := ""
+	lastPing := time.Now()
+	for {
+		es, err := c.service.RunEvents(reqCtx, guild, id, after, runStreamBatch)
+		if err != nil {
+			return nil
+		}
+		for _, e := range es {
+			after = e.Seq
+			payload := json.RawMessage(e.Payload)
+			if len(payload) == 0 {
+				payload = json.RawMessage("{}")
+			}
+			stream.Event("event", strconv.FormatInt(e.Seq, 10), runEventJSON{Seq: e.Seq, Kind: string(e.Kind), Payload: payload, CreatedAt: e.CreatedAt})
+		}
+		if len(es) == runStreamBatch {
+			continue // more waiting; send before checking the status
+		}
+		if r, err = c.service.Run(reqCtx, guild, id); err != nil {
+			return nil
+		}
+		if r.Status != lastStatus || r.Usage != lastUsage || r.Error != lastError {
+			lastStatus, lastUsage, lastError = r.Status, r.Usage, r.Error
+			out, err := c.runsJSON(ctx, guild, []domain.Run{r})
+			if err != nil {
+				return nil
+			}
+			stream.Event("status", "", contractshttp.Json{"run": out[0]})
+		}
+		if r.Status.Final() {
+			// Events written just before the final status was saved.
+			if more, err := c.service.RunEvents(reqCtx, guild, id, after, runStreamBatch); err == nil && len(more) > 0 {
+				continue
+			}
+			stream.Event("end", "", contractshttp.Json{"status": string(r.Status)})
+			return nil
+		}
+		if time.Since(lastPing) > sse.PingEvery {
+			stream.Raw(": ping\n\n")
+			lastPing = time.Now()
+		}
+		select {
+		case <-reqCtx.Done():
+			return nil
+		case <-c.Shutdown:
+			return nil
+		case <-time.After(runStreamPollEvery):
+		}
+	}
 }
 
 // currentRuns answers the running Run of each of the Agents that has one.

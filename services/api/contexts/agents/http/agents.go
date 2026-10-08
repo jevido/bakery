@@ -40,6 +40,8 @@ type Controller struct {
 	Visible func(ctx contractshttp.Context, ids []uint64) ([]uint64, error)
 	// Desktops names the Desktops among ids (identity.DesktopNames).
 	Desktops func(ctx context.Context, ids []uint64) (map[uint64]string, error)
+	// Shutdown closes when the API stops, ending open streams.
+	Shutdown <-chan struct{}
 }
 
 func (c *Controller) actor(ctx contractshttp.Context) app.Actor {

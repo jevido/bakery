@@ -173,10 +173,18 @@ var agentInGuild = guilds.Owns("agent", func(ctx context.Context, id, guildID ui
 // them. Registering them also subscribes
 // agents to work's hire_agent Decisions, Members leaving and Guild
 // deletions.
-func Routes(r route.Router) {
+// controller builds the Agents API controller, wired to guilds and
+// identity; Routes and StreamRoutes each need one.
+func controller() *agentshttp.Controller {
 	c := agentshttp.NewController(svc())
 	c.Guild, c.Member, c.Permissions, c.Members = guilds.Current, guilds.MemberID, guilds.Permissions, memberNames
 	c.InstanceAdmin, c.Visible, c.Desktops = guilds.InstanceAdmin, guilds.VisibleProjects, identity.DesktopNames
+	c.Shutdown = shutdown
+	return c
+}
+
+func Routes(r route.Router) {
+	c := controller()
 	view := guilds.Can("view_resources")
 	r.Middleware(guilds.Auth, view).Group(func(r route.Router) {
 		r.Get("/api/agents", c.ListAgents)
@@ -221,9 +229,11 @@ func desktopController() *agentshttp.DesktopController {
 }
 
 // StreamRoutes registers the Desktop's stream of its Member's Runs, with
-// a Desktop key, outside the request timeout.
+// a Desktop key, and a Run's live Transcript for the dashboard, both
+// outside the request timeout.
 func StreamRoutes(r route.Router) {
 	r.Middleware(identity.DesktopOnly).Get("/api/desktop/runs/stream", desktopController().StreamRuns)
+	r.Middleware(guilds.Auth, runInGuild, guilds.Can("view_resources")).Get("/api/runs/{id}/stream", controller().RunStream)
 }
 
 // sweepEvery is how often Runs whose Lease ran out are looked for.
