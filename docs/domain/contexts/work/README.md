@@ -8,19 +8,20 @@
 Holds the work a Guild's Board plans and tracks together: the Guild's Goals
 (a tree of outcomes it works toward), its Issues (the pieces of work, each
 with a status, a Priority and an Assignee, tied to a Project and a Goal),
-and the Comments people write on an Issue. Every Goal and Issue belongs to
-exactly one Guild, and an Issue in a Project follows that Project's
-Permission overrides.
+the Comments people write on an Issue, which Issues block which (Blockers),
+and the Issue documents (plans, specs, notes) kept on an Issue with their
+Revisions. Every Goal and Issue belongs to exactly one Guild, and an Issue
+in a Project follows that Project's Permission overrides.
 
-It is **not** responsible (yet) for agents, Runs, checkout, blockers, Issue
-documents and revisions, the Inbox, Activity or Approvals: later phases of
-the guilds goal add them. It does not own Members, Guilds or Projects
-either; it stores their ids and asks guilds and projects about them.
+It is **not** responsible (yet) for agents, Runs, checkout, document locks,
+the Inbox, Activity or Approvals: later phases of the guilds goal add them.
+It does not own Members, Guilds or Projects either; it stores their ids and asks guilds and projects about them.
 
 ## Language
 
 Shared terms (Board, Goal, Goal level, Goal status, Issue, Issue status,
-Priority, Assignee, Issue prefix, Issue identifier, Comment) are in
+Priority, Assignee, Issue prefix, Issue identifier, Comment, Blocker, Issue
+document, Document key, Revision, Base revision, Restore) are in
 [`glossary.md`](../../glossary.md).
 
 | Term | Meaning |
@@ -28,6 +29,9 @@ Priority, Assignee, Issue prefix, Issue identifier, Comment) are in
 | Sub-goal | A Goal whose parent is another Goal. |
 | Sub-issue | An Issue whose parent is another Issue. |
 | Owner (of a Goal) | The Member a Goal is in the hands of; optional. |
+| Blocked by | The Blockers of an Issue: the Issues it waits on. |
+| Blocking | The Issues that have this Issue as a Blocker. |
+| Resolved Blocker | A Blocker whose Issue status is `done`. An Issue with an unresolved Blocker is shown as waiting on it, whatever its own status. |
 | Status times | An Issue's started, completed and cancelled times, set and cleared by its Issue status changes as the glossary says. |
 
 ## Model
@@ -37,8 +41,9 @@ Priority, Assignee, Issue prefix, Issue identifier, Comment) are in
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Goal | Belongs to one Guild. Title 1–200 characters. Goal level and Goal status from their lists. Its parent Goal is in the same Guild and is never the Goal itself or one of its Sub-goals (no cycle). Its owner, if any, is a Member of the Guild. |
-| Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild, its Project is in the Guild and its Goal is in the Guild. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. |
+| Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild, its Project is in the Guild and its Goal is in the Guild. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. |
 | Comment | Belongs to one Issue and is written by one Member. Body 1–20000 characters. Only its author edits or deletes it. A deleted Comment keeps its place in the thread, its body gone, shown as "deleted". |
+| Issue document | Belongs to one Issue and its Guild. Its Document key is unique per Issue and never changes. Title at most 200 characters (may be empty), body at most 524288 characters, Markdown only. Its Revisions are numbered 1, 2, … without gaps; each save and each Restore adds exactly one Revision, and Revisions are never changed. A save needs the newest Revision as its Base revision (none for the first save), or it is refused. Restoring the newest Revision is refused, since it would change nothing. Deleting the Issue document removes its Revisions. |
 
 ### Commands
 
@@ -55,14 +60,28 @@ in that Project after its Permission overrides, and is otherwise hidden
   goal, parent)` [`manage_work`]: takes the Guild's next number.
 - `ChangeIssue(...)` [`manage_work`]: any field but its number; a status
   change moves the Status times.
+- `BlockWith(ids)` [`manage_work`], as part of `ChangeIssue`: replaces
+  the Issue's Blockers with the given Issues, keeping any Blocker the
+  person cannot see.
 - `DeleteIssue()` [`manage_work`]: its Sub-issues lose their parent; its
-  Comments go with it.
+  Comments, its Issue documents and its Blockers in both directions go
+  with it.
 - `WriteComment(body)` [`manage_work`]: moves the Issue's last update to
   now, so a discussed Issue sorts up in lists, as Paperclip's does. This
   touches only the Issue's timestamp, none of its rules, so it is stored
   with the Comment in one transaction. `EditComment(body)`,
   `DeleteComment()` [`manage_work`, and only the author; anyone else is
   refused (403), and a deleted Comment cannot be changed (409)].
+- `SaveDocument(key, title, body, change summary, base revision)`
+  [`manage_work`]: creates the Issue document on its first save, and adds
+  a Revision on every save; a stale Base revision is refused (409).
+- `RestoreRevision(revision)` [`manage_work`]: adds a new Revision with
+  that Revision's title and body.
+- `DeleteDocument()` [`manage_work`]: removes the Issue document and its
+  Revisions.
+
+Reading an Issue's Blockers, Issue documents and Revisions needs what
+reading the Issue needs.
 
 ### Domain events
 
@@ -89,6 +108,12 @@ None yet. Inbox and Activity, in a later phase, are where they start.
   | `POST /api/issues/{issue}/comments` | 201 `{"comment": Comment}` |
   | `PATCH /api/issues/{issue}/comments/{comment}` | `{"comment": Comment}` |
   | `DELETE /api/issues/{issue}/comments/{comment}` | 204; the Comment keeps its place in the list, `deleted` and without its body |
+  | `GET /api/issues/{issue}/documents` | `{"documents": [Issue document]}`, by Document key, without `body` |
+  | `GET /api/issues/{issue}/documents/{key}` | `{"document": Issue document}`; 404 for an unknown key |
+  | `PUT /api/issues/{issue}/documents/{key}` | 201 `{"document": Issue document}` on the first save, 200 after; 409 for a stale `base_revision` |
+  | `DELETE /api/issues/{issue}/documents/{key}` | 204 |
+  | `GET /api/issues/{issue}/documents/{key}/revisions` | `{"revisions": [Revision]}`, newest first |
+  | `POST /api/issues/{issue}/documents/{key}/revisions/{revision}/restore` | `{"document": Issue document}`; 409 for the newest Revision |
 
   A Goal is `{id, title, description, level, status, parent_id, owner:
   {id, name} | null, created_at, updated_at}`; it is written with `title`,
@@ -99,8 +124,16 @@ None yet. Inbox and Activity, in a later phase, are where they start.
   for a Goal, `{id, identifier, title}` for a parent) or null, and lists leave
   `description` out; it is written with `title`, `description`, `status`,
   `priority`, `assignee_id`, `project_id`, `goal_id` and `parent_id`, any of
-  them null to clear it. A Comment is `{id, body, deleted, author, created_at,
-  updated_at, edited}`.
+  them null to clear it. `PATCH` also takes `blocked_by_ids`, a list of
+  Issue ids (422 for the Issue itself, another Guild's Issue or a cycle),
+  and an Issue on its own answers with `blocked_by` and `blocking`, each a
+  list of `{id, identifier, title, status}` the person may see. A Comment is `{id, body, deleted, author, created_at,
+  updated_at, edited}`. An Issue document is `{id, key, title, body,
+  latest_revision, created_by, updated_by, created_at, updated_at}`, written
+  with `title`, `body`, `change_summary` and `base_revision` (null or left
+  out for the first save). A Revision is `{revision, title, body,
+  change_summary, author, created_at}`. (Tasks 02 and 03 of phase 33
+  settle the exact fields.)
 - **Consumes:**
   - from guilds: `guilds.Auth`, `guilds.Can(permission)`,
     `guilds.Current(ctx)` (the Guild every Goal and Issue is stored and
@@ -163,3 +196,21 @@ None yet. Inbox and Activity, in a later phase, are where they start.
   Issues and Comments; the dashboard hides New Issue, New Goal, the
   pickers, the comment box and Delete without `manage_work`, and the API
   refuses (403) what a hand-made request tries.
+- **Blockers do not move the Issue status.** Paperclip uses unresolved
+  Blockers to hold back agents' wake-ups, not to change an Issue's status.
+  The Bakery has no agents yet, so `blocked` stays a status a person sets,
+  and the Issue page shows unresolved Blockers beside it.
+- **Blockers someone cannot see stay in place.** A Blocker in a Project
+  hidden from a person is left out of the `blocked_by` and `blocking` they
+  read, and is kept when they set `blocked_by_ids`. Hiding never lets
+  someone remove what they cannot see.
+- **Issue documents are their own aggregate.** A long document saved many
+  times must not lock or rewrite its Issue, and Paperclip stores them apart
+  (`documents`, `issue_documents`, `document_revisions`). The Bakery folds
+  Paperclip's `documents` and `issue_documents` into one `issue_documents`
+  table, since an Issue document here belongs to exactly one Issue.
+- **No document locks, annotations, feedback votes or system documents.**
+  Paperclip uses them for its agents' Runs and review flows, which come
+  with agents.
+- **No atomic checkout yet.** Paperclip's checkout takes an agent and a Run
+  (`POST /issues/:id/checkout` with `agentId`), so it comes with agents.
