@@ -68,7 +68,10 @@
 //           keeps only it; #/inbox after Recent opens Recent; after the
 //           Member comments on the second again the sidebar's Inbox shows 1,
 //           and on the rail a dot; opening that Issue clears both, and
-//           /api/sidebar-badges agrees
+//           /api/sidebar-badges agrees; after the Member sets the archived
+//           first to In Review it is back on Mine; an Issue in a scratch
+//           Project whose Member Role is denied View resources, assigned to
+//           the Member, is on neither their Mine nor Recent
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -854,6 +857,17 @@ const sections: Record<string, () => Promise<void>> = {
     await row(first).waitFor()
     expect('#/inbox opens the last tab used', page.url().endsWith('#/inbox/recent'), page.url())
 
+    const review = await m.page.request.patch(`${WEB}/api/issues/${first.id}`, { data: { status: 'in_review' } })
+    if (!review.ok()) throw new Error(`status: ${review.status()}`)
+    await page.getByRole('tab', { name: 'Mine' }).click()
+    await page.waitForURL(/#\/inbox\/mine$/)
+    await row(first).and(page.locator(':not([data-archived])')).waitFor()
+    const mine = (await (await page.request.get(`${WEB}/api/issues?inbox=me`)).json()) as { issues: (Issue & { archived?: boolean })[] }
+    const back = mine.issues.find((i) => i.id === first.id)
+    expect('In Review brings the archived Issue back to Mine', !!back && !back.archived, back)
+    await page.getByRole('tab', { name: 'Recent' }).click()
+    await page.waitForURL(/#\/inbox\/recent$/)
+
     const inboxItem = page.getByRole('navigation', { name: 'Main' }).locator('a[href="#/inbox"]')
     const badge = inboxItem.getByTestId('sidebar-nav-badge')
     const dot = inboxItem.locator('[data-slot="sidebar-nav-badge-dot"]')
@@ -878,6 +892,26 @@ const sections: Record<string, () => Promise<void>> = {
     expect('and the badge', (await badge.count()) === 0)
     const counted = ((await (await page.request.get(`${WEB}/api/sidebar-badges`)).json()) as { inbox: number }).inbox
     expect('/api/sidebar-badges agrees', counted === 0, counted)
+
+    const hiddenName = 'Inbox e2e hidden'
+    const { projects } = (await (await page.request.get(`${WEB}/api/projects`)).json()) as { projects: { id: number; name: string }[] }
+    for (const p of projects.filter((p) => p.name === hiddenName)) await page.request.delete(`${WEB}/api/projects/${p.id}`)
+    const { project } = (await (await page.request.post(`${WEB}/api/projects`, { data: { name: hiddenName } })).json()) as { project: { id: number } }
+    const { issue: hidden } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title: title('hidden'), project_id: project.id } })).json()) as { issue: Issue }
+    const undeny = await denyView(page, project.id, 'Member')
+    const assigned = await page.request.patch(`${WEB}/api/issues/${hidden.id}`, { data: { assignee_id: m.id } })
+    if (!assigned.ok()) throw new Error(`assign: ${assigned.status()} ${await assigned.text()}`)
+    const theirs = m.page.locator(`[data-slot="task-row"][data-issue="${hidden.identifier}"]`)
+    for (const tab of ['mine', 'recent']) {
+      await m.page.goto(`${WEB}/#/inbox/${tab}`)
+      await m.page.locator(`[data-slot="task-row"][data-issue="${first.identifier}"]`).waitFor()
+      expect(`an assigned Issue in a Project the Member may not view is not on ${tab}`, (await theirs.count()) === 0)
+    }
+    const api = (await (await m.page.request.get(`${WEB}/api/issues?touched=me`)).json()) as { issues: Issue[] }
+    expect('nor in touched=me', !api.issues.some((i) => i.id === hidden.id))
+    await undeny()
+    await page.request.delete(`${WEB}/api/issues/${hidden.id}`)
+    await page.request.delete(`${WEB}/api/projects/${project.id}`)
 
     await m.leave()
     for (const i of [first, second]) await page.request.delete(`${WEB}/api/issues/${i.id}`)
