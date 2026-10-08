@@ -158,14 +158,24 @@ func notFound(ctx contractshttp.Context) contractshttp.Response {
 
 func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 	var fe *domain.FieldError
+	var stale *app.StaleRevisionError
 	switch {
+	case errors.As(err, &stale):
+		// The newest Revision goes along, so the dashboard can offer to
+		// reload instead of overwriting it.
+		return ctx.Response().Json(contractshttp.StatusConflict, contractshttp.Json{
+			"message":                 err.Error(),
+			"current_revision_id":     stale.Current.LatestRevisionID,
+			"current_revision_number": stale.Current.Latest,
+		})
 	case errors.As(err, &fe):
 		return respond.Invalid(ctx, fe.Field, fe.Message)
 	case errors.Is(err, app.ErrNotFound):
 		return notFound(ctx)
 	case errors.Is(err, domain.ErrNotAuthor):
 		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
-	case errors.Is(err, domain.ErrCommentDeleted):
+	case errors.Is(err, domain.ErrCommentDeleted), errors.Is(err, domain.ErrRestoreNewest),
+		errors.Is(err, app.ErrDocumentExists), errors.Is(err, app.ErrNoDocumentYet):
 		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
 	}
 	return respond.ServerError(ctx, err)

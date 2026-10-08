@@ -108,9 +108,9 @@ None yet. Inbox and Activity, in a later phase, are where they start.
   | `POST /api/issues/{issue}/comments` | 201 `{"comment": Comment}` |
   | `PATCH /api/issues/{issue}/comments/{comment}` | `{"comment": Comment}` |
   | `DELETE /api/issues/{issue}/comments/{comment}` | 204; the Comment keeps its place in the list, `deleted` and without its body |
-  | `GET /api/issues/{issue}/documents` | `{"documents": [Issue document]}`, by Document key, without `body` |
-  | `GET /api/issues/{issue}/documents/{key}` | `{"document": Issue document}`; 404 for an unknown key |
-  | `PUT /api/issues/{issue}/documents/{key}` | 201 `{"document": Issue document}` on the first save, 200 after; 409 for a stale `base_revision` |
+  | `GET /api/issues/{issue}/documents` | `{"documents": [Issue document]}`, by Document key |
+  | `GET /api/issues/{issue}/documents/{key}` | `{"document": Issue document}`; 404 for an unknown key, 422 for a malformed one |
+  | `PUT /api/issues/{issue}/documents/{key}` | 201 `{"document": Issue document}` on the first save, 200 after; 409 for a missing or stale `base_revision_id` (with `current_revision_id` and `current_revision_number`) or a `base_revision_id` on a new key |
   | `DELETE /api/issues/{issue}/documents/{key}` | 204 |
   | `GET /api/issues/{issue}/documents/{key}/revisions` | `{"revisions": [Revision]}`, newest first |
   | `POST /api/issues/{issue}/documents/{key}/revisions/{revision}/restore` | `{"document": Issue document}`; 409 for the newest Revision |
@@ -130,11 +130,13 @@ None yet. Inbox and Activity, in a later phase, are where they start.
   and an Issue on its own answers with `blocked_by` and `blocking`, each a
   list of `{id, identifier, title, status}` the person may see. A Comment is `{id, body, deleted, author, created_at,
   updated_at, edited}`. An Issue document is `{id, key, title, body,
-  latest_revision, created_by, updated_by, created_at, updated_at}`, written
-  with `title`, `body`, `change_summary` and `base_revision` (null or left
-  out for the first save). A Revision is `{revision, title, body,
-  change_summary, author, created_at}`. (Tasks 02 and 03 of phase 33
-  settle the exact fields.)
+  format: "markdown", latest_revision_id, latest_revision_number,
+  created_by, updated_by, created_at, updated_at}`, written with `title`,
+  `body`, `change_summary` and `base_revision_id`, the id of the Revision
+  the edit started from (left out for the first save), as Paperclip's
+  `baseRevisionId`. A Revision is `{id, number, title, body,
+  change_summary, created_by, created_at}`; a Restore's change summary is
+  "Restored from revision N".
 - **Consumes:**
   - from guilds: `guilds.Auth`, `guilds.Can(permission)`,
     `guilds.Current(ctx)` (the Guild every Goal and Issue is stored and

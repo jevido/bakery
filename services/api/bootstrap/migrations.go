@@ -91,5 +91,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000076CreateIssuesTables{},
 		&migrations.M20260930000077CreateIssueCommentsTable{},
 		&migrations.M20260930000078CreateIssueBlockersTable{},
+		&migrations.M20260930000079CreateIssueDocumentsTables{},
 	}
 }
