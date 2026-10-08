@@ -245,3 +245,81 @@ const activityVerbs: Record<string, string> = {
 }
 /** The verb of an Activity row: "commented on" for issue.comment_added. */
 export const activityVerb = (action: string) => activityVerbs[action] ?? action.replace(/[._]/g, ' ')
+
+/**
+ * A piece of an Issue-tab sentence: plain text, an Issue to link by its
+ * identifier, or muted text (a Comment's snippet).
+ */
+export type ActivityPart = string | { issue: string } | { muted: string }
+
+type Named = { id: number; name?: string | null; title?: string | null; identifier?: string | null } | null
+type Change<T> = { from: T; to: T }
+
+const named = (ref: Named, fallback: string) => ref?.name ?? ref?.title ?? fallback
+
+// One sentence per changed field of issue.updated, in the order the
+// properties panel shows them; a Blocker is a link while its identifier is
+// known (not when it is gone or in a Project the person may not view).
+function issueChanges(changes: Record<string, unknown>): ActivityPart[] {
+  const sentences: ActivityPart[][] = []
+  const c = changes as Partial<{
+    status: Change<string>
+    priority: Change<string>
+    assignee: Change<Named>
+    project: Change<Named>
+    goal: Change<Named>
+    parent: Change<Named>
+    title: Change<string>
+    description: boolean
+    blockers: { added: Named[]; removed: Named[] }
+  }>
+  if (c.status) sentences.push([`changed the status from ${workLabel(c.status.from)} to ${workLabel(c.status.to)}`])
+  if (c.priority) sentences.push([`changed the priority from ${workLabel(c.priority.from)} to ${workLabel(c.priority.to)}`])
+  if (c.assignee) sentences.push([c.assignee.to ? `assigned the issue to ${named(c.assignee.to, 'someone')}` : 'unassigned the issue'])
+  if (c.project) sentences.push([c.project.to ? `moved the issue to project ${named(c.project.to, 'a project')}` : 'removed the project'])
+  if (c.goal) sentences.push([c.goal.to ? `set the goal to ${named(c.goal.to, 'a goal')}` : 'removed the goal'])
+  if (c.parent) {
+    const p = c.parent.to
+    if (!p) sentences.push(['removed the parent'])
+    else sentences.push(p.identifier ? ['set the parent to ', { issue: p.identifier }] : ['set the parent to an issue'])
+  }
+  if (c.title) sentences.push([`renamed the issue to ${c.title.to}`])
+  if (c.description) sentences.push(['updated the description'])
+  for (const [verb, refs] of [['added', c.blockers?.added], ['removed', c.blockers?.removed]] as const) {
+    for (const b of refs ?? []) sentences.push(b?.identifier ? [`${verb} blocker `, { issue: b.identifier }] : [`${verb} a blocker`])
+  }
+  if (sentences.length === 0) return ['updated the issue']
+  return sentences.flatMap((s, n) => (n === 0 ? s : [', ', ...s]))
+}
+
+/**
+ * What an Activity event on the Issue page says after its Actor, ported from
+ * Paperclip's formatIssueActivityAction (ui/src/lib/activity-format.ts; MIT,
+ * see NOTICE): "changed the status from Todo to In Progress", "commented".
+ */
+export function issueActivitySentence(event: ActivityEvent): ActivityPart[] {
+  const d = event.details
+  const key = typeof d.key === 'string' ? d.key : 'document'
+  switch (event.action) {
+    case 'issue.created':
+      return ['created the issue']
+    case 'issue.updated':
+      return issueChanges((d.changes as Record<string, unknown>) ?? {})
+    case 'issue.comment_added':
+      return typeof d.snippet === 'string' && d.snippet ? ['commented ', { muted: d.snippet }] : ['commented']
+    case 'issue.comment_deleted':
+      return ['deleted a comment']
+    case 'issue.document_created':
+      return [`created document ${key}${typeof d.title === 'string' && d.title ? ` (${d.title})` : ''}`]
+    case 'issue.document_updated':
+      return [
+        typeof d.restored_from === 'number'
+          ? `restored document ${key} to rev ${d.restored_from} (rev ${d.revision_number})`
+          : `updated document ${key} (rev ${d.revision_number})`,
+      ]
+    case 'issue.document_deleted':
+      return [`deleted document ${key}`]
+    default:
+      return [event.action.replace(/[._]/g, ' ')]
+  }
+}

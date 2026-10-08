@@ -49,7 +49,10 @@
 //   activity  the sidebar shows Guild → Activity; after a scratch Issue is
 //           created and commented on, #/activity lists "<you> commented on
 //           <title> DEF-n" first; the Goals filter hides it and a reload
-//           keeps entity=goal; clicking the Issue's row opens the Issue
+//           keeps entity=goal; clicking the Issue's row opens the Issue;
+//           its Activity tab, after a status, priority and Blocker change,
+//           lists those and the comment in Paperclip's words, ?tab=activity
+//           opens on it after a reload, and the Comments tab still posts
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -653,7 +656,7 @@ const sections: Record<string, () => Promise<void>> = {
   activity: async () => {
     const page = await signedIn()
     const title = 'Activity e2e scratch'
-    for (const i of (await issues(page)).filter((i) => i.title === title)) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    for (const i of (await issues(page)).filter((i) => i.title.startsWith(title))) await page.request.delete(`${WEB}/api/issues/${i.id}`)
     const { member } = (await (await page.request.get(`${WEB}/api/me`)).json()) as { member: { name: string } }
     const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title } })).json()) as { issue: Issue }
     await page.request.post(`${WEB}/api/issues/${issue.id}/comments`, { data: { body: 'Seen in the feed' } })
@@ -683,6 +686,39 @@ const sections: Record<string, () => Promise<void>> = {
     await page.waitForFunction((id) => location.hash === `#/issues/${id}`, issue.identifier)
     expect('the row opens the Issue', true)
 
+    const { issue: blocker } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title: `${title} blocker` } })).json()) as { issue: Issue }
+    await page.request.patch(`${WEB}/api/issues/${issue.id}`, { data: { status: 'todo' } })
+    await page.request.patch(`${WEB}/api/issues/${issue.id}`, { data: { status: 'in_progress', priority: 'high' } })
+    await page.request.patch(`${WEB}/api/issues/${issue.id}`, { data: { blocked_by_ids: [blocker.id] } })
+    await page.reload()
+    await page.getByRole('tab', { name: 'Activity' }).click()
+    await page.waitForFunction(() => location.hash.endsWith('?tab=activity'))
+    const tab = page.getByRole('region', { name: 'Activity' })
+    await tab.locator('[data-activity="issue.updated"]').nth(2).waitFor()
+    const said = (await tab.innerText()).replace(/\s+/g, ' ')
+    for (const words of [
+      'created the issue',
+      'commented Seen in the feed',
+      'changed the status from Todo to In Progress',
+      'changed the priority from Medium to High',
+      `added blocker ${blocker.identifier}`,
+    ])
+      expect(`the Activity tab says "${words}"`, said.includes(words), said)
+    expect('the Blocker links to its Issue', await tab.getByRole('link', { name: blocker.identifier }).isVisible())
+    await page.reload()
+    await tab.locator('[data-activity="issue.created"]').waitFor()
+    expect('?tab=activity opens on Activity after a reload', (await page.getByRole('tab', { name: 'Activity' }).getAttribute('aria-selected')) === 'true')
+    await page.getByRole('tab', { name: 'Comments' }).click()
+    const thread = page.getByRole('region', { name: 'Comments' })
+    await thread.getByLabel('Comment', { exact: true }).fill('Posted from the tab')
+    await page.keyboard.press('Control+Enter')
+    await thread.locator('[data-comment]', { hasText: 'Posted from the tab' }).waitFor()
+    expect('the Comments tab still posts', !page.url().includes('tab='))
+    await page.getByRole('tab', { name: 'Activity' }).click()
+    await tab.locator('[data-activity="issue.comment_added"]', { hasText: 'Posted from the tab' }).waitFor()
+    expect('the Activity tab shows the new comment', true)
+
+    await page.request.delete(`${WEB}/api/issues/${blocker.id}`)
     await page.request.delete(`${WEB}/api/issues/${issue.id}`)
     await page.close()
   },

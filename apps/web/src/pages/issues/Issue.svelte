@@ -2,23 +2,26 @@
   // Paperclip's IssueDetail (ui/src/pages/IssueDetail.tsx; MIT, see NOTICE)
   // as its classic layout draws it, without the task chat: the parent chain,
   // the status, priority, identifier and Project over the title and the
-  // Markdown description, both edited in place, the Sub-issues, then the
-  // Comments; the properties panel on the right. Each change is one PATCH,
+  // Markdown description, both edited in place, the Sub-issues, then two
+  // tabs as Paperclip's Chat and Activity: Comments and Activity, the one
+  // open kept in the address (?tab=activity); the properties panel on the right. Each change is one PATCH,
   // and the panel says "Saving..." until it answered. Without manage_work
   // the page only reads. Delete sits in the More actions menu with Add
   // sub-issue, and is The Bakery's own: Paperclip hides an Issue instead.
   // While a Blocker is not done, IssueBlockedNotice sits above the
   // description; the Documents follow the description. Left out until the
-  // Issue has them: agents and runs, checkout, attachments, work products, approvals and the activity tab.
-  import { ChevronRight, Ellipsis, Plus, Trash2 } from '@lucide/svelte'
+  // Issue has them: agents and runs, checkout, attachments, work products and approvals.
+  import { Activity, ChevronRight, Ellipsis, MessageSquare, Plus, Trash2 } from '@lucide/svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Button, buttonVariants } from '$lib/components/ui/button'
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
+  import * as Tabs from '$lib/components/ui/tabs'
   import { api, ApiError } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import CommentThread from '../../lib/CommentThread.svelte'
   import { ago } from '../../lib/format'
   import Identity from '../../lib/Identity.svelte'
+  import IssueActivity from '../../lib/IssueActivity.svelte'
   import InlineEditor from '../../lib/InlineEditor.svelte'
   import IssueDocuments from '../../lib/IssueDocuments.svelte'
   import IssueBlockedNotice from '../../lib/IssueBlockedNotice.svelte'
@@ -48,6 +51,25 @@
   let deleting = $state(false)
 
   const editable = $derived(session.can('manage_work'))
+
+  // The open tab as the hash query holds it, read again when a link or Back
+  // changes the hash under the open page; Comments is the default.
+  const tabFromHash = () => (new URLSearchParams(location.hash.split('?')[1] ?? '').get('tab') === 'activity' ? 'activity' : 'comments')
+  let tab = $state(tabFromHash())
+  $effect(() => {
+    const follow = () => {
+      if (location.hash.startsWith('#/issues/')) tab = tabFromHash()
+    }
+    window.addEventListener('hashchange', follow)
+    return () => window.removeEventListener('hashchange', follow)
+  })
+  $effect(() => {
+    const path = location.hash.split('?')[0]
+    const next = tab === 'activity' ? `${path}?tab=activity` : path
+    if (location.hash !== next) history.replaceState(history.state, '', next)
+  })
+  /** Bumped after every change, so the Activity tab loads again. */
+  let activityVersion = $state(0)
 
   function load() {
     getIssue(key)
@@ -84,6 +106,7 @@
     saving++
     try {
       issue = await updateIssue(issue!.id, patch)
+      activityVersion++
       if (patch.parent_id !== undefined || patch.blocked_by_ids !== undefined) listIssues().then((is) => (issues = is)).catch(() => {})
     } catch (e) {
       toast.error(e instanceof ApiError ? (Object.values(e.errors)[0] ?? e.message) : String(e))
@@ -103,6 +126,7 @@
   }
 
   function refresh() {
+    activityVersion++
     getIssue(issue!.id)
       .then((i) => (issue = i))
       .catch(() => {})
@@ -210,7 +234,18 @@
         {/if}
       </section>
 
-      <CommentThread issue={i.id} {editable} onchange={refresh} />
+      <Tabs.Root bind:value={tab}>
+        <Tabs.List variant="line" class="w-full justify-start gap-1">
+          <Tabs.Trigger value="comments" class="flex-none gap-1.5"><MessageSquare class="size-3.5" />Comments</Tabs.Trigger>
+          <Tabs.Trigger value="activity" class="flex-none gap-1.5"><Activity class="size-3.5" />Activity</Tabs.Trigger>
+        </Tabs.List>
+        <Tabs.Content value="comments" class="pt-3">
+          <CommentThread issue={i.id} {editable} onchange={refresh} />
+        </Tabs.Content>
+        <Tabs.Content value="activity" class="pt-3">
+          {#if tab === 'activity'}<IssueActivity issue={i.id} version={activityVersion} />{/if}
+        </Tabs.Content>
+      </Tabs.Root>
     </div>
 
     <aside class="w-full shrink-0 border-t pt-4 lg:w-80 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6" aria-label="Properties">
