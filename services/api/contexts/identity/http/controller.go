@@ -304,6 +304,36 @@ func (a DesktopAuth) Handle(ctx contractshttp.Context) {
 	ctx.Request().Next()
 }
 
+// DesktopOnly is for the routes only the Desktop app's Runner uses: a
+// Desktop key, never a Session or an API token.
+type DesktopOnly struct {
+	Service *app.Service
+}
+
+func (DesktopOnly) Signature() string { return "identity.desktop_only" }
+
+func (a DesktopOnly) Handle(ctx contractshttp.Context) {
+	p, ok := Authenticate(a.Service, ctx)
+	if !ok {
+		return
+	}
+	if p.Desktop == nil {
+		_ = respond.Error(ctx, contractshttp.StatusForbidden, "this needs a desktop key").Abort()
+		return
+	}
+	ctx.Request().Next()
+}
+
+// DesktopOf is the Member and Desktop of the Desktop key Authenticate let
+// through; ok is false for any other request.
+func DesktopOf(ctx contractshttp.Context) (memberID, desktopID uint64, ok bool) {
+	p := principalOf(ctx)
+	if p.Desktop == nil {
+		return 0, 0, false
+	}
+	return p.MemberID, p.Desktop.ID, true
+}
+
 // principalOf is the Principal Authenticate let through.
 func principalOf(ctx contractshttp.Context) Principal {
 	p, _ := ctx.Value(principalKey{}).(Principal)

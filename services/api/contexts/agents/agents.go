@@ -1,6 +1,7 @@
 // Package agents is what the router may use from the agents context: its
 // routes (the Current guild's Agents, hiring and managing one, its Org
-// chart, their Runs). It hears work's Decisions on hire_agent Approvals and Members
+// chart, their Runs), the Desktop's routes for the Runs it runs, and the
+// sweep of lost Runs (Start). It hears work's Decisions on hire_agent Approvals and Members
 // leaving a Guild, names Agents as Issue Assignees for work, and keeps a Guild with Agents from being deleted. Nothing else in contexts/agents is for outside use.
 package agents
 
@@ -8,7 +9,9 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
+	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/route"
 
 	"github.com/jevido/bakery/services/api/app/facades"
@@ -102,6 +105,10 @@ func (guildsOfAgents) AgentRoles(ctx context.Context, guildID, agentID uint64) (
 	return out, nil
 }
 
+func (guildsOfAgents) GuildName(ctx context.Context, guildID uint64) (string, error) {
+	return guilds.GuildName(ctx, guildID)
+}
+
 func (guildsOfAgents) RoleNames(ctx context.Context, guildID uint64, ids []uint64) ([]string, error) {
 	return guilds.RoleNames(ctx, guildID, ids)
 }
@@ -192,4 +199,55 @@ func Routes(r route.Router) {
 		r.Delete("/api/agents/{id}/roles/{role_id}", c.RemoveAgentRole)
 		r.Post("/api/agents/{id}/runs", c.StartRun)
 	})
+	d := desktopController()
+	r.Middleware(identity.DesktopOnly).Group(func(r route.Router) {
+		r.Get("/api/desktop/runs", d.ListRuns)
+		r.Post("/api/runs/{id}/claim", d.ClaimRun)
+		r.Post("/api/runs/{id}/events", d.AppendRunEvents)
+		r.Post("/api/runs/{id}/lease", d.KeepRunLease)
+		r.Post("/api/runs/{id}/finish", d.FinishRun)
+	})
+}
+
+// shutdown closes when the context Start was given ends, so open Desktop
+// streams let the API stop.
+var shutdown = make(chan struct{})
+
+func desktopController() *agentshttp.DesktopController {
+	d := agentshttp.NewDesktopController(svc())
+	d.Desktop, d.Shutdown = identity.DesktopOf, shutdown
+	d.SeeDesktop = func(ctx contractshttp.Context, id uint64) error { return identity.SeeDesktop(ctx.Context(), id) }
+	return d
+}
+
+// StreamRoutes registers the Desktop's stream of its Member's Runs, with
+// a Desktop key, outside the request timeout.
+func StreamRoutes(r route.Router) {
+	r.Middleware(identity.DesktopOnly).Get("/api/desktop/runs/stream", desktopController().StreamRuns)
+}
+
+// sweepEvery is how often Runs whose Lease ran out are looked for.
+const sweepEvery = 30 * time.Second
+
+// Start ends, every 30 seconds until ctx ends, the running Runs whose
+// Desktop stopped reporting as lost, queueing each again.
+func Start(ctx context.Context) {
+	go func() {
+		<-ctx.Done()
+		close(shutdown)
+	}()
+	go func() {
+		t := time.NewTicker(sweepEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if err := svc().SweepLostRuns(ctx); err != nil {
+					facades.Log().Errorf("agents: sweeping lost runs: %v", err)
+				}
+			}
+		}
+	}()
 }

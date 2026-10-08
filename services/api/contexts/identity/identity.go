@@ -117,6 +117,22 @@ type Member struct {
 	InstanceAdmin bool
 }
 
+// DesktopOnly lets through only a request with a Desktop key, answering
+// 401 without one and 403 for a Session or an API token; DesktopOf reads it.
+var DesktopOnly contractshttp.Middleware = identityhttp.DesktopOnly{Service: service}
+
+// DesktopOf is the Member and the Desktop whose Desktop key made a request
+// DesktopOnly let through.
+func DesktopOf(ctx contractshttp.Context) (memberID, desktopID uint64, ok bool) {
+	return identityhttp.DesktopOf(ctx)
+}
+
+// SeeDesktop records that the Desktop is still connected, for a stream it
+// holds open past the one request that counted.
+func SeeDesktop(ctx context.Context, desktopID uint64) error {
+	return service.SeeDesktop(ctx, desktopID)
+}
+
 // DesktopNames names the Desktops among ids, signed out ones included, for
 // the Runs they ran.
 func DesktopNames(ctx context.Context, ids []uint64) (map[uint64]string, error) {

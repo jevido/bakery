@@ -12,8 +12,55 @@ import (
 )
 
 type fakeRuns struct {
-	rows map[uint64]domain.Run
-	next uint64
+	rows   map[uint64]domain.Run
+	next   uint64
+	events map[uint64][]domain.RunEvent
+	agents *fakeAgents
+}
+
+func (f *fakeRuns) DesktopRuns(_ context.Context, memberID, desktopID uint64) ([]domain.Run, error) {
+	var out []domain.Run
+	for id := uint64(1); id <= f.next; id++ {
+		r, ok := f.rows[id]
+		a := f.agents.rows[r.AgentID]
+		if !ok || a.HirerID != memberID {
+			continue
+		}
+		queued := r.Status == domain.RunQueued && a.Status != domain.Paused && a.Status != domain.Terminated
+		if queued || (r.Status == domain.RunRunning && r.DesktopID == desktopID) {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeRuns) AppendRunEvents(_ context.Context, r domain.Run, es []domain.RunEvent, from int64) (bool, error) {
+	if now := f.rows[r.ID]; now.Status != domain.RunRunning || now.NextSeq != from {
+		return false, nil
+	}
+	f.rows[r.ID] = r
+	f.events[r.ID] = append(f.events[r.ID], es...)
+	return true, nil
+}
+
+func (f *fakeRuns) KeepRunLease(_ context.Context, r domain.Run) (bool, error) {
+	now := f.rows[r.ID]
+	if now.Status != domain.RunRunning {
+		return false, nil
+	}
+	now.LeaseExpiresAt = r.LeaseExpiresAt
+	f.rows[r.ID] = now
+	return true, nil
+}
+
+func (f *fakeRuns) ExpiredRuns(_ context.Context, at time.Time) ([]domain.Run, error) {
+	var out []domain.Run
+	for id := uint64(1); id <= f.next; id++ {
+		if r, ok := f.rows[id]; ok && r.Status == domain.RunRunning && r.LeaseExpiresAt.Before(at) {
+			out = append(out, r)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeRuns) CreateRun(_ context.Context, r domain.Run) (domain.Run, error) {

@@ -185,3 +185,81 @@ func (s Runs) RunEvents(ctx context.Context, runID uint64, after int64, limit in
 	}
 	return out, nil
 }
+
+// DesktopRuns lists, oldest first, the queued Runs of the Agents the
+// Member hired that are not paused or terminated, in every Guild, and the
+// running Runs the Desktop holds.
+func (s Runs) DesktopRuns(ctx context.Context, memberID, desktopID uint64) ([]domain.Run, error) {
+	var recs []runRecord
+	err := s.query(ctx).Raw(`SELECT runs.* FROM runs JOIN agents ON agents.id = runs.agent_id
+		WHERE agents.hirer_member_id = ?
+		AND ((runs.status = ? AND agents.status NOT IN (?, ?)) OR (runs.status = ? AND runs.desktop_id = ?))
+		ORDER BY runs.created_at, runs.id`,
+		memberID, string(domain.RunQueued), string(domain.Paused), string(domain.Terminated),
+		string(domain.RunRunning), desktopID).Scan(&recs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Run, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+	}
+	return out, nil
+}
+
+// AppendRunEvents stores the events, skipping a seq already stored, and
+// the Run's NextSeq, Lease and session id in one transaction, only while
+// the Run is running with NextSeq still from.
+func (s Runs) AppendRunEvents(ctx context.Context, r domain.Run, events []domain.RunEvent, from int64) (bool, error) {
+	moved := false
+	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		res, err := tx.Exec(`UPDATE runs SET next_seq = ?, lease_expires_at = ?, session_id = ?, updated_at = ?
+			WHERE id = ? AND status = ? AND next_seq = ?`,
+			r.NextSeq, r.LeaseExpiresAt, r.SessionID, r.UpdatedAt, r.ID, string(domain.RunRunning), from)
+		if err != nil || res.RowsAffected != 1 {
+			return err
+		}
+		moved = true
+		for _, e := range events {
+			if _, err := tx.Exec(`INSERT INTO run_events (run_id, seq, kind, payload, created_at)
+				VALUES (?, ?, ?, ?::jsonb, ?) ON CONFLICT (run_id, seq) DO NOTHING`,
+				e.RunID, e.Seq, string(e.Kind), payloadOf(e.Payload), e.CreatedAt); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return moved && err == nil, err
+}
+
+// payloadOf is a Run event's payload as stored: {} for none.
+func payloadOf(p []byte) string {
+	if len(p) == 0 {
+		return "{}"
+	}
+	return string(p)
+}
+
+// KeepRunLease stores the Run's Lease only while it is running.
+func (s Runs) KeepRunLease(ctx context.Context, r domain.Run) (bool, error) {
+	res, err := s.query(ctx).Exec(`UPDATE runs SET lease_expires_at = ?, updated_at = ? WHERE id = ? AND status = ?`,
+		r.LeaseExpiresAt, r.UpdatedAt, r.ID, string(domain.RunRunning))
+	if err != nil {
+		return false, err
+	}
+	return res.RowsAffected == 1, nil
+}
+
+// ExpiredRuns lists the running Runs whose Lease ran out before at.
+func (s Runs) ExpiredRuns(ctx context.Context, at time.Time) ([]domain.Run, error) {
+	var recs []runRecord
+	if err := s.query(ctx).Where("status", string(domain.RunRunning)).Where("lease_expires_at < ?", at).
+		Order("id").Find(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]domain.Run, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+	}
+	return out, nil
+}

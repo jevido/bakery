@@ -166,6 +166,12 @@ func (s *Service) AuthenticateDesktop(ctx context.Context, key string) (domain.M
 	return m, d, nil
 }
 
+// SeeDesktop records that the Desktop is still there, for a stream it
+// keeps open longer than one request.
+func (s *Service) SeeDesktop(ctx context.Context, id uint64) error {
+	return s.desktopSignIns.TouchDesktop(ctx, id, s.now())
+}
+
 // DesktopNames names the Desktops among ids, signed out ones included.
 func (s *Service) DesktopNames(ctx context.Context, ids []uint64) (map[uint64]string, error) {
 	if len(ids) == 0 {

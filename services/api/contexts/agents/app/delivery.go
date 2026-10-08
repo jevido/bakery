@@ -1,0 +1,367 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/jevido/bakery/services/api/contexts/agents/domain"
+)
+
+// Desktop is the Desktop app asking with its Desktop key: it acts for its
+// Member, the Hirer of the Agents whose Runs it takes, in every Guild.
+type Desktop struct {
+	ID       uint64
+	MemberID uint64
+}
+
+// ErrOtherDesktop refuses a report on a Run another Desktop of the same
+// Member claimed.
+var ErrOtherDesktop = errors.New("another desktop claimed this run")
+
+// ErrAgentBusy refuses a claim on a Run whose Agent already has a running
+// Run.
+var ErrAgentBusy = errors.New("the agent already has a running run")
+
+// DeskRuns is what Runs keeps for the Desktops taking them.
+type DeskRuns interface {
+	// DesktopRuns lists, oldest first, the queued Runs of the Agents the
+	// Member hired that are not paused or terminated, in every Guild, and
+	// the running Runs the Desktop holds.
+	DesktopRuns(ctx context.Context, memberID, desktopID uint64) ([]domain.Run, error)
+	// AppendRunEvents stores the events and the Run's NextSeq, Lease and
+	// session id in one transaction, only while the Run is running with
+	// NextSeq still from; moved is false otherwise.
+	AppendRunEvents(ctx context.Context, r domain.Run, events []domain.RunEvent, from int64) (moved bool, err error)
+	// KeepRunLease stores the Run's Lease only while it is running.
+	KeepRunLease(ctx context.Context, r domain.Run) (moved bool, err error)
+	// ExpiredRuns lists the running Runs whose Lease ran out before at.
+	ExpiredRuns(ctx context.Context, at time.Time) ([]domain.Run, error)
+}
+
+// QueuedRun is a Run as the Desktop gets it: with its Guild's name, its
+// Agent and its Issue (HasIssue is false for none or a deleted one).
+type QueuedRun struct {
+	Run       domain.Run
+	GuildName string
+	Agent     domain.Agent
+	Issue     IssueBrief
+	HasIssue  bool
+}
+
+// DesktopRuns lists the Runs waiting for the Desktop's Member, oldest
+// first, and the running ones this Desktop holds, so a Runner that
+// restarted sees what it lost.
+func (s *Service) DesktopRuns(ctx context.Context, d Desktop) ([]QueuedRun, error) {
+	rs, err := s.runs.DesktopRuns(ctx, d.MemberID, d.ID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]QueuedRun, 0, len(rs))
+	names := map[uint64]string{}
+	agents := map[uint64]domain.Agent{}
+	for _, r := range rs {
+		q, err := s.queued(ctx, r, names, agents)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, q)
+	}
+	return out, nil
+}
+
+// queued fills in the Run's Guild name, Agent and Issue, reading each
+// Guild and Agent once.
+func (s *Service) queued(ctx context.Context, r domain.Run, names map[uint64]string, agents map[uint64]domain.Agent) (QueuedRun, error) {
+	q := QueuedRun{Run: r}
+	name, ok := names[r.GuildID]
+	if !ok {
+		var err error
+		if name, err = s.guilds.GuildName(ctx, r.GuildID); err != nil {
+			return q, err
+		}
+		names[r.GuildID] = name
+	}
+	q.GuildName = name
+	a, ok := agents[r.AgentID]
+	if !ok {
+		var err error
+		if a, ok, err = s.agents.Agent(ctx, r.AgentID); err != nil {
+			return q, err
+		}
+		agents[r.AgentID] = a
+	}
+	q.Agent = a
+	if r.IssueID != 0 {
+		i, ok, err := s.work.IssueForRun(ctx, r.GuildID, r.IssueID)
+		if err != nil {
+			return q, err
+		}
+		q.Issue, q.HasIssue = i, ok
+	}
+	return q, nil
+}
+
+// desktopRun is the Run when its Agent's Hirer is the Desktop's Member;
+// ErrRunNotFound otherwise, so another person's Runs stay out of sight.
+func (s *Service) desktopRun(ctx context.Context, d Desktop, runID uint64) (domain.Run, domain.Agent, error) {
+	r, ok, err := s.runs.Run(ctx, runID)
+	if err != nil {
+		return domain.Run{}, domain.Agent{}, err
+	}
+	if !ok {
+		return domain.Run{}, domain.Agent{}, ErrRunNotFound
+	}
+	a, ok, err := s.agents.Agent(ctx, r.AgentID)
+	if err != nil {
+		return domain.Run{}, domain.Agent{}, err
+	}
+	if !ok || a.HirerID != d.MemberID {
+		return domain.Run{}, domain.Agent{}, ErrRunNotFound
+	}
+	return r, a, nil
+}
+
+// claimed is the Run this Desktop claimed; ErrOtherDesktop for one another
+// Desktop holds or nobody claimed yet.
+func (s *Service) claimed(ctx context.Context, d Desktop, runID uint64) (domain.Run, domain.Agent, error) {
+	r, a, err := s.desktopRun(ctx, d, runID)
+	if err != nil {
+		return r, a, err
+	}
+	if r.DesktopID != d.ID {
+		return domain.Run{}, domain.Agent{}, ErrOtherDesktop
+	}
+	return r, a, nil
+}
+
+// ClaimRun makes a queued Run running on the Desktop, its Agent running.
+// One claimed already or final is a *domain.RunStatusError, one whose
+// Agent runs another Run ErrAgentBusy, one whose Agent was paused or
+// terminated a *domain.StatusError.
+func (s *Service) ClaimRun(ctx context.Context, d Desktop, runID uint64) (QueuedRun, error) {
+	r, a, err := s.desktopRun(ctx, d, runID)
+	if err != nil {
+		return QueuedRun{}, err
+	}
+	if err := r.Claim(d.ID, s.now()); err != nil {
+		return QueuedRun{}, err
+	}
+	if a.Status != domain.Idle && a.Status != domain.Error {
+		if a.Status == domain.Running {
+			return QueuedRun{}, ErrAgentBusy
+		}
+		return QueuedRun{}, &domain.StatusError{Status: a.Status, Action: "run"}
+	}
+	moved, err := s.runs.SaveRun(ctx, r, domain.RunQueued)
+	if err != nil {
+		if s.busy(ctx, a.ID, r.ID) {
+			return QueuedRun{}, ErrAgentBusy
+		}
+		return QueuedRun{}, err
+	}
+	if !moved {
+		now, _, err := s.runs.Run(ctx, r.ID)
+		if err != nil {
+			return QueuedRun{}, err
+		}
+		return QueuedRun{}, &domain.RunStatusError{Status: now.Status, Action: "claimed"}
+	}
+	if a, err = s.agentRunning(ctx, a.ID); err != nil {
+		return QueuedRun{}, err
+	}
+	return s.queued(ctx, r, map[uint64]string{}, map[uint64]domain.Agent{a.ID: a})
+}
+
+// busy reports whether another Run of the Agent is running, which is what
+// a failed claim ran into when the database's one-running rule refused it.
+func (s *Service) busy(ctx context.Context, agentID, runID uint64) bool {
+	running, err := s.runs.RunningRuns(ctx, []uint64{agentID})
+	return err == nil && running[agentID] != 0 && running[agentID] != runID
+}
+
+// AppendRunEvents keeps the Run events the claiming Desktop reports, the
+// ones it has already ignored, and renews the Lease. A gap is a
+// *domain.SeqError, a final Run a *domain.RunStatusError.
+func (s *Service) AppendRunEvents(ctx context.Context, d Desktop, runID uint64, events []domain.RunEvent) (domain.Run, error) {
+	r, _, err := s.claimed(ctx, d, runID)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	from := r.NextSeq
+	now := s.now()
+	keep, err := r.Append(events, now)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	for _, e := range keep {
+		if id := domain.SessionOf(e); id != "" {
+			r.SessionID = id
+		}
+	}
+	_ = r.KeepLease(now)
+	moved, err := s.runs.AppendRunEvents(ctx, r, keep, from)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	if !moved {
+		return domain.Run{}, s.movedMeanwhile(ctx, r.ID, "reported on")
+	}
+	return r, nil
+}
+
+// movedMeanwhile tells why a conditional write found the Run changed: a
+// *domain.RunStatusError when it is final, else a *domain.SeqError from
+// where it stands now.
+func (s *Service) movedMeanwhile(ctx context.Context, runID uint64, action string) error {
+	now, _, err := s.runs.Run(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if now.Status != domain.RunRunning {
+		return &domain.RunStatusError{Status: now.Status, Action: action}
+	}
+	return &domain.SeqError{Expected: now.NextSeq}
+}
+
+// KeepRunLease renews the Lease of the Run the Desktop claimed, while
+// claude is quiet.
+func (s *Service) KeepRunLease(ctx context.Context, d Desktop, runID uint64) (domain.Run, error) {
+	r, _, err := s.claimed(ctx, d, runID)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	if err := r.KeepLease(s.now()); err != nil {
+		return domain.Run{}, err
+	}
+	moved, err := s.runs.KeepRunLease(ctx, r)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	if !moved {
+		return domain.Run{}, s.movedMeanwhile(ctx, r.ID, "kept")
+	}
+	return r, nil
+}
+
+// Finish is how a Run ended on the Desktop.
+type Finish struct {
+	Status   string
+	ExitCode *int
+	Error    string
+	Usage    domain.Usage
+}
+
+// FinishRun ends the Run the Desktop claimed, with its Run usage, and
+// moves its Agent to idle or error. A Run cancelled meanwhile is answered
+// as it is: the Runner may race a cancel.
+func (s *Service) FinishRun(ctx context.Context, d Desktop, runID uint64, f Finish) (domain.Run, error) {
+	r, _, err := s.claimed(ctx, d, runID)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	if r.Status == domain.RunCancelled {
+		return r, nil
+	}
+	st, err := domain.ParseRunStatus(f.Status)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	if err := r.Finish(st, f.Usage, f.ExitCode, f.Error, s.now()); err != nil {
+		return domain.Run{}, err
+	}
+	moved, err := s.runs.SaveRun(ctx, r, domain.RunRunning)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	if !moved {
+		now, _, err := s.runs.Run(ctx, r.ID)
+		if err != nil {
+			return domain.Run{}, err
+		}
+		if now.Status == domain.RunCancelled {
+			return now, nil
+		}
+		return domain.Run{}, &domain.RunStatusError{Status: now.Status, Action: "finished"}
+	}
+	a, err := s.runEnded(ctx, r.AgentID, r.Status)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	s.recordRun(ctx, domain.RunFinished{Run: r, Agent: a, ActorID: d.MemberID})
+	return r, nil
+}
+
+// SweepLostRuns ends each running Run whose Lease ran out as lost, and
+// queues it again for when its Desktop is back, up to
+// domain.MaxChainRetries times along a chain. Its Agent shows error until
+// a Run of it is claimed again. The conditional write
+// makes sure two API processes never both queue one again.
+func (s *Service) SweepLostRuns(ctx context.Context) error {
+	now := s.now()
+	rs, err := s.runs.ExpiredRuns(ctx, now)
+	if err != nil {
+		return err
+	}
+	for _, r := range rs {
+		if err := s.lose(ctx, r, now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) lose(ctx context.Context, r domain.Run, now time.Time) error {
+	next, err := r.Lose(now)
+	if err != nil {
+		return nil // moved on since it was read
+	}
+	moved, err := s.runs.SaveRun(ctx, r, domain.RunRunning)
+	if err != nil || !moved {
+		return err
+	}
+	retries, err := s.retries(ctx, r)
+	if err != nil {
+		return err
+	}
+	requeued := retries < domain.MaxChainRetries
+	if requeued {
+		if _, err := s.runs.CreateRun(ctx, next); err != nil {
+			return err
+		}
+	}
+	a, ok, err := s.agents.Agent(ctx, r.AgentID)
+	if err != nil || !ok {
+		return err
+	}
+	if a.RunEnded(domain.RunLost, now) {
+		if err := s.agents.SaveAgent(ctx, a); err != nil {
+			return err
+		}
+	}
+	s.recordRun(ctx, domain.RunFinished{Run: r, Agent: a})
+	return nil
+}
+
+// retries counts the Runs before r along its retry_of_run_id chain.
+func (s *Service) retries(ctx context.Context, r domain.Run) (int, error) {
+	n := 0
+	for id := r.RetryOfRunID; id != 0 && n < domain.MaxChainRetries; n++ {
+		prev, ok, err := s.runs.Run(ctx, id)
+		if err != nil {
+			return 0, err
+		}
+		if !ok {
+			return n + 1, nil
+		}
+		id = prev.RetryOfRunID
+	}
+	return n, nil
+}
+
+// DesktopRun is the Run of an Agent the Desktop's Member hired;
+// ErrRunNotFound for anyone else's.
+func (s *Service) DesktopRun(ctx context.Context, d Desktop, runID uint64) (domain.Run, error) {
+	r, _, err := s.desktopRun(ctx, d, runID)
+	return r, err
+}

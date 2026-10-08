@@ -2,7 +2,7 @@
 // from the guilds context: the Auth, Deploy, Can, Owns and InProject
 // middlewares, Current, Allows, Permissions and VisibleProjects, a
 // Project's Permission override routes and ForgetProject, IsGuildMaster,
-// IssuePrefix and IsMember, Agent memberships (JoinAgent, AssignAgentRole,
+// IssuePrefix, GuildName and IsMember, Agent memberships (JoinAgent, AssignAgentRole,
 // RemoveAgentRole, LeaveAgent, AgentRoles, AgentPermissions, AgentCanIn,
 // RoleNames, RankAbove, OnMemberLeaving), the routes, the InvitationCreated
 // event, the OnGuildDeleting check, and Boot. Nothing else in
@@ -207,6 +207,13 @@ func IsGuildMaster(ctx context.Context, memberID uint64) (bool, error) {
 // (DEF-12). work renders Issue identifiers from it when it reads them.
 func IssuePrefix(ctx context.Context, guildID uint64) (string, error) {
 	return service.IssuePrefix(ctx, guildID)
+}
+
+// GuildName is the Guild's name, for the Desktop that runs Agents across
+// a person's Guilds.
+func GuildName(ctx context.Context, guildID uint64) (string, error) {
+	g, err := service.Guild(ctx, guildID)
+	return g.Name, err
 }
 
 // IsMember reports whether the Member holds a Membership in the Guild, as

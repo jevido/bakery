@@ -40,10 +40,17 @@ func TestRunMoves(t *testing.T) {
 	if err != nil || len(keep) != 1 || keep[0].Seq != 3 || r.NextSeq != 4 {
 		t.Fatalf("append again: %v %v", keep, err)
 	}
-	if _, err := r.Append([]RunEvent{{Seq: 5, Kind: "result"}, {Seq: 5, Kind: "result"}}, at); err == nil {
+	if _, err := r.Append([]RunEvent{{Seq: 4, Kind: "result"}, {Seq: 4, Kind: "result"}}, at); err == nil {
 		t.Error("a repeated seq in one report accepted")
 	}
-	if _, err := r.Append([]RunEvent{{Seq: 9, Kind: "nonsense"}}, at); err == nil {
+	var se *SeqError
+	if _, err := r.Append([]RunEvent{{Seq: 5, Kind: "result"}}, at); !errors.As(err, &se) || se.Expected != 4 {
+		t.Errorf("a gap accepted: %v", err)
+	}
+	if r.NextSeq != 4 {
+		t.Errorf("a refused report moved NextSeq to %d", r.NextSeq)
+	}
+	if _, err := r.Append([]RunEvent{{Seq: 4, Kind: "nonsense"}}, at); err == nil {
 		t.Error("an unknown kind accepted")
 	}
 	if err := r.Finish(RunQueued, Usage{}, nil, "", at); err == nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/jevido/bakery/services/api/contexts/agents/domain"
@@ -79,6 +80,10 @@ func (f *fakeGuilds) RemoveAgentRole(_ context.Context, _ uint64, _ Actor, agent
 func (f *fakeGuilds) RankAbove(_ context.Context, _, actorID, memberID uint64) (bool, error) {
 	return f.rank[actorID] > f.rank[memberID], nil
 }
+func (f *fakeGuilds) GuildName(_ context.Context, guildID uint64) (string, error) {
+	return "Guild " + strconv.FormatUint(guildID, 10), nil
+}
+
 func (f *fakeGuilds) RoleNames(_ context.Context, _ uint64, ids []uint64) ([]string, error) {
 	out := make([]string, len(ids))
 	for i := range ids {
@@ -128,7 +133,7 @@ func (f *fakeWork) RecordActivity(_ context.Context, e Activity) error {
 
 func newTest() (*Service, *fakeAgents, *fakeGuilds, *fakeWork) {
 	a, g, w := &fakeAgents{rows: map[uint64]domain.Agent{}}, &fakeGuilds{joined: map[uint64][]uint64{}, rank: map[uint64]int{}}, &fakeWork{}
-	return NewService(a, &fakeRuns{rows: map[uint64]domain.Run{}}, g, w), a, g, w
+	return NewService(a, &fakeRuns{rows: map[uint64]domain.Run{}, events: map[uint64][]domain.RunEvent{}, agents: a}, g, w), a, g, w
 }
 
 func TestHireAndDecide(t *testing.T) {

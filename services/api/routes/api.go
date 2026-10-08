@@ -43,6 +43,7 @@ func Api() {
 	deployments.StreamRoutes(facades.Route())
 	databases.StreamRoutes(facades.Route())
 	services.StreamRoutes(facades.Route())
+	agents.StreamRoutes(facades.Route())
 	servers.LongRoutes(facades.Route())
 }
 

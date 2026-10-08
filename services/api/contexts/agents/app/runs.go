@@ -21,6 +21,7 @@ type Runs interface {
 	// RunningRuns answers the running Run of each Agent that has one.
 	RunningRuns(ctx context.Context, agentIDs []uint64) (map[uint64]uint64, error)
 	RunEvents(ctx context.Context, runID uint64, after int64, limit int) ([]domain.RunEvent, error)
+	DeskRuns
 }
 
 // RunQuery picks a Guild's Runs; 0 and an empty list match any.

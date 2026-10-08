@@ -42,7 +42,7 @@ Lease) are in
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Agent | Belongs to one Guild, and has one Hirer, a person with a Membership in that Guild when it is hired. Name 1–100 characters after trimming, unique (case-insensitive) among the Guild's Agents that are not terminated, as Paperclip's shortname uniqueness. Job from the glossary's list (`general` when none is given). Title at most 200 characters, Capabilities at most 20000, both optional. Agent icon from the glossary's list, or none. The Manager is an Agent of the same Guild that is not terminated, never the Agent itself and never one of its reports: setting it walks the new Manager's Chain of command up at most 50 levels, as Paperclip's `getChainOfCommand`, and refuses a cycle (422). Agent status moves only `pending_approval → idle` (its Approval approved), `pending_approval → terminated` (rejected, or terminated by a person), `idle`, `running` or `error` → `paused`, `paused → idle`, `idle` or `error` → `running` (a Run of it is claimed), `running → idle` (its Run `succeeded` or was `cancelled`), `running → error` (its Run `failed` or was `lost`), and any of `idle`, `running`, `error` or `paused` → `terminated`; nothing leaves `terminated`. A `pending_approval` Agent cannot be edited, paused or given Roles, so its Approval's payload is what the Board sees; it can only be terminated, which cancels its Approval. A terminated Agent cannot be edited. Only the Run moves set `running` and `error`; a person never does. When an Agent is terminated, its direct reports report to its Manager, or become roots when it had none. |
-| Run | Belongs to one Guild and one Agent of it, and optionally one Issue of that Guild. Starts `queued`. Run status moves only `queued → running` (claimed by a Desktop of the Agent's Hirer), `queued → cancelled`, and `running → succeeded`, `failed`, `cancelled` or `lost`; a final status never changes. At most one `running` Run per Agent; further ones wait `queued` and are claimed in order of creation. Its Run events have strictly increasing `seq` per Run, and appending a `seq` it already has is a no-op. Run events are appended only while it is `running`. A `running` Run whose Lease runs out becomes `lost`, and a new `queued` Run with the same Agent, Issue and Invocation source takes its place, its `retry_of_run_id` pointing at the lost one (Paperclip's `retryOfRunId`). Run usage is set once, when it finishes. |
+| Run | Belongs to one Guild and one Agent of it, and optionally one Issue of that Guild. Starts `queued`. Run status moves only `queued → running` (claimed by a Desktop of the Agent's Hirer), `queued → cancelled`, and `running → succeeded`, `failed`, `cancelled` or `lost`; a final status never changes. At most one `running` Run per Agent; further ones wait `queued` and are claimed in order of creation. Its Run events have `seq` 1, 2, 3… per Run without a gap, and appending a `seq` it already has is a no-op. Run events are appended only while it is `running`. A `running` Run whose Lease runs out becomes `lost`, and a new `queued` Run with the same Agent, Issue and Invocation source takes its place, its `retry_of_run_id` pointing at the lost one (Paperclip's `retryOfRunId`), at most 3 times along one chain; after that the last one stays `lost`. Run usage is set once, when it finishes. |
 
 The Agent's Roles are not part of the Agent aggregate: they are its Agent
 membership's in guilds, which keeps the rule that each is below the
@@ -108,8 +108,11 @@ admin always may (with `hire_agents`, which they always hold).
 - `FinishRun(run, status, usage, error)` [the claiming Desktop's person]:
   `succeeded`, `failed` or `cancelled`, with its Run usage and an error
   message when it failed.
-- `LoseRun` (no Permission; the server's own sweep): a `running` Run whose
-  Lease ran out becomes `lost` and is requeued as above.
+- `LoseRun` (no Permission; the server's own sweep, every 30 seconds): a
+  `running` Run whose Lease ran out becomes `lost` and is requeued as
+  above, recorded as `run.finished` with no actor. The write is
+  conditional on the Run still being `running`, so two API processes never
+  both requeue it.
 - Read Runs (filter by Agent, Issue, Run status), one Run, its Run events
   after a `seq`, and its Transcript live [`view_resources`].
 - When the Hirer leaves the Guild or is removed from it, guilds tells
@@ -187,11 +190,18 @@ records nothing more.
 
   | Route | Body | Answers |
   | ----- | ---- | ------- |
-  | `GET /api/desktop/runs/stream` | | server-sent events: each `queued` Run of the person's Agents, now and as they come, and each cancel of a Run the Desktop holds |
-  | `POST /api/runs/{id}/claim` | | `{"run": Run, "prompt": text}`; 409 when already claimed or no longer `queued` |
-  | `POST /api/runs/{id}/events` | `{"events": [{seq, kind, payload}]}` | `{"run": Run}`; 409 when not `running` |
-  | `POST /api/runs/{id}/lease` | | `{"run": Run}`; 409 when not `running` |
-  | `POST /api/runs/{id}/finish` | `{status, usage, error}` | `{"run": Run}`; 409 when not `running` |
+  | `GET /api/desktop/runs` | | `{"runs": [Desktop run]}`: the `queued` Runs of the person's Agents that are not paused or terminated, oldest first, and the `running` Runs this Desktop holds |
+  | `GET /api/desktop/runs/stream` | | server-sent events: `runs` with that same list whenever it changes, and `cancel` `{run_id}` when a Run the Desktop holds is cancelled |
+  | `POST /api/runs/{id}/claim` | | `{"run": Desktop run}`, now `running`; 409 when already claimed, final, or its Agent has a running Run or is paused |
+  | `POST /api/runs/{id}/events` | `{"events": [{seq, kind, payload}]}` | `{"run": {id, status, next_seq, session_id, lease_expires_at}}`; a `seq` already kept is ignored, a gap is 422 with `expected_seq`; 403 for another Desktop of the same person; 409 when not `running`; 413 over 500 events or a payload over 256 KiB |
+  | `POST /api/runs/{id}/lease` | | as `events`; 409 when not `running` |
+  | `POST /api/runs/{id}/finish` | `{status, exit_code, error, usage}` | as `events`; a Run cancelled meanwhile answers 200 as it is; 409 when otherwise not `running` |
+
+  Every other request (a Session, an API token) is 403. A Desktop run is
+  `{id, status, guild: {id, name}, agent: {id, name, icon}, issue: {id,
+  identifier, title} | null, prompt, retry_of_run_id, session_id,
+  next_seq, created_at, started_at, lease_expires_at}`. The stream also
+  counts as the Desktop being seen, once a minute.
 
   A Run is `{id, agent: {id, name, icon}, issue: {id, identifier, title}
   | null, invocation_source, status, requested_by: {id, name} | null,

@@ -54,6 +54,8 @@ type Guilds interface {
 	LeaveAgent(ctx context.Context, guildID, agentID uint64) error
 	AgentRoles(ctx context.Context, guildID, agentID uint64) ([]Role, error)
 	RoleNames(ctx context.Context, guildID uint64, ids []uint64) ([]string, error)
+	// GuildName names the Guild, for the Desktop that runs its Agents.
+	GuildName(ctx context.Context, guildID uint64) (string, error)
 	// AssignAgentRole and RemoveAgentRole change the Agent's Roles by the
 	// actor, below their highest Role and the Hirer's.
 	AssignAgentRole(ctx context.Context, guildID uint64, actor Actor, agentID, roleID uint64) error

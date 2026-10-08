@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -191,8 +192,9 @@ type RunEvent struct {
 }
 
 // Append keeps the Run events of a running Run that it does not have yet:
-// one with a seq below NextSeq is one it has (a no-op), the rest must have
-// strictly increasing seqs and a known kind. It answers those to store.
+// one with a seq below NextSeq is one it has (a no-op), the rest must
+// follow on without a gap, from NextSeq, and have a known kind. It answers
+// those to store.
 func (r *Run) Append(events []RunEvent, at time.Time) ([]RunEvent, error) {
 	if r.Status != RunRunning {
 		return nil, &RunStatusError{Status: r.Status, Action: "reported on"}
@@ -203,8 +205,8 @@ func (r *Run) Append(events []RunEvent, at time.Time) ([]RunEvent, error) {
 		if e.Seq < r.NextSeq {
 			continue
 		}
-		if e.Seq < next {
-			return nil, invalid("events", "seq %d is not after %d", e.Seq, next-1)
+		if e.Seq != next {
+			return nil, &SeqError{Expected: next, Got: e.Seq}
 		}
 		if !slices.Contains(EventKinds, e.Kind) {
 			return nil, invalid("events", "kind must be one of %s", joined(EventKinds))
@@ -216,6 +218,35 @@ func (r *Run) Append(events []RunEvent, at time.Time) ([]RunEvent, error) {
 	r.NextSeq, r.UpdatedAt = next, at
 	return out, nil
 }
+
+// SeqError refuses Run events that do not follow on from the ones a Run
+// has: the Desktop sends again from Expected.
+type SeqError struct {
+	Expected, Got int64
+}
+
+func (e *SeqError) Error() string {
+	return fmt.Sprintf("events: expected seq %d, got %d", e.Expected, e.Got)
+}
+
+// SessionOf is the claude session id an init Run event's payload names,
+// "" when it names none.
+func SessionOf(e RunEvent) string {
+	if e.Kind != "init" {
+		return ""
+	}
+	var p struct {
+		SessionID string `json:"session_id"`
+	}
+	if json.Unmarshal(e.Payload, &p) != nil {
+		return ""
+	}
+	return strings.TrimSpace(p.SessionID)
+}
+
+// MaxChainRetries is how many times a lost Run is queued again, counting
+// along its retry_of_run_id chain, before the last one stays lost.
+const MaxChainRetries = 3
 
 // RunStarted is published when a Member has started a Run.
 type RunStarted struct {
