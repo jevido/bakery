@@ -11,7 +11,10 @@ func TestParseApprovalType(t *testing.T) {
 	if _, err := ParseApprovalType("request_board_approval"); err != nil {
 		t.Errorf("ParseApprovalType = %v", err)
 	}
-	for _, s := range []string{"", "hire_agent", "Request_Board_Approval"} {
+	if _, err := ParseApprovalType("hire_agent"); err != nil {
+		t.Errorf("ParseApprovalType(hire_agent) = %v", err)
+	}
+	for _, s := range []string{"", "Hire_Agent", "Request_Board_Approval"} {
 		if _, err := ParseApprovalType(s); err == nil {
 			t.Errorf("ParseApprovalType(%q) accepted", s)
 		}
@@ -19,13 +22,13 @@ func TestParseApprovalType(t *testing.T) {
 }
 
 func TestApprovalStatusActionable(t *testing.T) {
-	for st, want := range map[ApprovalStatus]bool{StatusPending: true, StatusRevisionRequested: true, StatusApproved: false, StatusRejected: false} {
+	for st, want := range map[ApprovalStatus]bool{StatusPending: true, StatusRevisionRequested: true, StatusApproved: false, StatusRejected: false, StatusCancelled: false} {
 		if got := st.Actionable(); got != want {
 			t.Errorf("%s.Actionable() = %v", st, got)
 		}
 	}
-	if _, err := ParseApprovalStatus("cancelled"); err == nil {
-		t.Error("ParseApprovalStatus(cancelled) accepted")
+	if _, err := ParseApprovalStatus("cancelled"); err != nil {
+		t.Errorf("ParseApprovalStatus(cancelled) = %v", err)
 	}
 }
 
@@ -39,7 +42,7 @@ func TestRequestApproval(t *testing.T) {
 	if a.Status != StatusPending || !a.Actionable() || a.RequesterID != 7 || a.DeciderID != 0 || a.DecidedAt != nil {
 		t.Errorf("starting state %+v", a)
 	}
-	if a.Payload.Title != "Approve hosting" || a.Payload.Summary != "Costs **42**" || len(a.Payload.Risks) != 2 {
+	if p := a.Payload.(BoardApprovalPayload); p.Title != "Approve hosting" || p.Summary != "Costs **42**" || len(p.Risks) != 2 {
 		t.Errorf("payload %+v", a.Payload)
 	}
 	if len(a.IssueIDs) != 2 || a.IssueIDs[0] != 3 || a.IssueIDs[1] != 4 {
@@ -153,7 +156,7 @@ func TestResubmit(t *testing.T) {
 	if err := a.Resubmit(7, &BoardApprovalPayload{Title: " Ship it now ", Risks: []string{"", "late"}}, at); err != nil {
 		t.Fatal(err)
 	}
-	if a.Status != StatusPending || a.DeciderID != 0 || a.DecisionNote != "" || a.DecidedAt != nil || a.Payload.Title != "Ship it now" || len(a.Payload.Risks) != 1 {
+	if a.Status != StatusPending || a.DeciderID != 0 || a.DecisionNote != "" || a.DecidedAt != nil || a.Payload.Label() != "Ship it now" || len(a.Payload.(BoardApprovalPayload).Risks) != 1 {
 		t.Errorf("after Resubmit: %+v", a)
 	}
 	for _, from := range []ApprovalStatus{StatusPending, StatusApproved, StatusRejected} {
@@ -162,7 +165,7 @@ func TestResubmit(t *testing.T) {
 	}
 	// Without a new payload the old one stays.
 	a = approvalIn(StatusRevisionRequested)
-	if err := a.Resubmit(7, nil, at); err != nil || a.Payload.Title != "Ship it" {
+	if err := a.Resubmit(7, nil, at); err != nil || a.Payload.Label() != "Ship it" {
 		t.Errorf("Resubmit without payload = %v, %+v", err, a.Payload)
 	}
 }
@@ -204,5 +207,126 @@ func TestApprovalDecisionEvents(t *testing.T) {
 	e := ApprovalCommentWritten{h, a, ApprovalComment{ID: 3, Body: strings.Repeat("é", 200)}}.Activity()
 	if e.Action != "approval.comment_added" || e.Details["comment_id"] != uint64(3) || len([]rune(e.Details["snippet"].(string))) != SnippetLength {
 		t.Errorf("comment event: %+v", e)
+	}
+}
+
+func hireIn(st ApprovalStatus) Approval {
+	return Approval{ID: 6, GuildID: 1, Type: HireAgent, Status: st, RequesterID: 7, Payload: HireAgentPayload{AgentID: 3, Name: "Ada", Roles: []string{}}}
+}
+
+func TestHireAgentPayload(t *testing.T) {
+	a, err := RequestApproval(1, 7, HireAgent, HireAgentPayload{
+		AgentID: 3, Name: "  Ada ", Job: "engineer", Title: " Backend ", ManagerID: 0, ManagerName: "stale", Roles: []string{" Deployer "},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := a.Payload.(HireAgentPayload)
+	if p.Name != "Ada" || p.Title != "Backend" || p.ManagerName != "" || len(p.Roles) != 1 || p.Roles[0] != "Deployer" {
+		t.Errorf("payload %+v", p)
+	}
+	if a.Payload.Label() != "Hire Agent: Ada" {
+		t.Errorf("Label = %q", a.Payload.Label())
+	}
+	many := make([]string, MaxHireRoles+1)
+	for i := range many {
+		many[i] = "r"
+	}
+	for name, p := range map[string]HireAgentPayload{
+		"no agent":        {Name: "Ada"},
+		"empty name":      {AgentID: 3, Name: " "},
+		"long name":       {AgentID: 3, Name: strings.Repeat("n", MaxAgentName+1)},
+		"long title":      {AgentID: 3, Name: "Ada", Title: strings.Repeat("t", MaxAgentTitle+1)},
+		"long abilities":  {AgentID: 3, Name: "Ada", Capabilities: strings.Repeat("c", MaxAgentCapabilities+1)},
+		"too many roles":  {AgentID: 3, Name: "Ada", Roles: many},
+		"empty role name": {AgentID: 3, Name: "Ada", Roles: []string{" "}},
+	} {
+		if _, err := RequestApproval(1, 7, HireAgent, p, nil); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+}
+
+func TestPayloadMustFitType(t *testing.T) {
+	if _, err := RequestApproval(1, 7, HireAgent, BoardApprovalPayload{Title: "t"}, nil); err == nil {
+		t.Error("hire_agent with a board payload accepted")
+	}
+	if _, err := RequestApproval(1, 7, RequestBoardApproval, HireAgentPayload{AgentID: 3, Name: "Ada"}, nil); err == nil {
+		t.Error("request_board_approval with a hire payload accepted")
+	}
+	if _, err := RequestApproval(1, 7, RequestBoardApproval, nil, nil); err == nil {
+		t.Error("no payload accepted")
+	}
+}
+
+func TestCancel(t *testing.T) {
+	at := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	for _, from := range []ApprovalStatus{StatusPending, StatusRevisionRequested} {
+		a := hireIn(from)
+		if changed, err := a.Cancel(at); err != nil || !changed || a.Status != StatusCancelled || a.Actionable() || !a.UpdatedAt.Equal(at) {
+			t.Errorf("Cancel from %s = %v %v, %+v", from, changed, err, a)
+		}
+	}
+	a := hireIn(StatusCancelled)
+	if changed, err := a.Cancel(at); err != nil || changed {
+		t.Errorf("Cancel on cancelled = %v %v", changed, err)
+	}
+	for _, from := range []ApprovalStatus{StatusApproved, StatusRejected} {
+		a := hireIn(from)
+		_, err := a.Cancel(at)
+		refused(t, err, "Only pending or revision requested approvals can be cancelled")
+	}
+	b := approvalIn(StatusPending)
+	_, err := b.Cancel(at)
+	refused(t, err, "Only hire agent approvals can be cancelled")
+	// Nothing leaves cancelled.
+	a = hireIn(StatusCancelled)
+	_, err = a.Approve(9, "", at)
+	refused(t, err, "Only pending or revision requested approvals can be approved")
+	_, err = a.Reject(9, "", at)
+	refused(t, err, "Only pending or revision requested approvals can be rejected")
+}
+
+func TestHireNeverRevised(t *testing.T) {
+	at := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	a := hireIn(StatusPending)
+	refused(t, a.RequestRevision(9, "", at), "Hire agent approvals cannot be sent back for revision")
+	a = hireIn(StatusRevisionRequested)
+	refused(t, a.Resubmit(7, HireAgentPayload{AgentID: 3, Name: "Bob"}, at), "A hire agent approval's payload cannot change")
+	if err := a.Resubmit(7, nil, at); err != nil || a.Status != StatusPending {
+		t.Errorf("plain Resubmit of a hire = %v, %s", err, a.Status)
+	}
+}
+
+func TestHireActivity(t *testing.T) {
+	h := Happened{ActorID: 9}
+	e := ApprovalRequested{Happened: h, Approval: hireIn(StatusPending)}.Activity()
+	if e.Details["title"] != "Hire Agent: Ada" || e.Details["type"] != HireAgent {
+		t.Errorf("created details %v", e.Details)
+	}
+	e = ApprovalCancelled{Happened: h, Approval: hireIn(StatusCancelled)}.Activity()
+	if e.Action != "approval.cancelled" || e.EntityType != ApprovalEntity || e.Details["title"] != "Hire Agent: Ada" {
+		t.Errorf("cancelled event %+v", e)
+	}
+}
+
+func TestAgentEvent(t *testing.T) {
+	ev := AgentEvent{Happened: Happened{ActorID: 9}, GuildID: 1, AgentID: 3, AgentName: "Ada", Action: AgentPausedAction, Details: map[string]any{"x": 1}}
+	v, err := ev.Validated()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := v.Activity()
+	if e.EntityType != AgentEntity || e.EntityID != 3 || e.ProjectID != 0 || e.Details["name"] != "Ada" || e.Details["x"] != 1 {
+		t.Errorf("agent event %+v", e)
+	}
+	for name, bad := range map[string]AgentEvent{
+		"not an agent action": {GuildID: 1, AgentID: 3, AgentName: "Ada", Action: "issue.created"},
+		"no agent":            {GuildID: 1, AgentName: "Ada", Action: AgentPausedAction},
+		"no name":             {GuildID: 1, AgentID: 3, Action: AgentPausedAction},
+	} {
+		if _, err := bad.Validated(); err == nil {
+			t.Errorf("%s accepted", name)
+		}
 	}
 }

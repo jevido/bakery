@@ -30,6 +30,20 @@ func (s *Service) publish(ctx context.Context, e domain.Event) {
 	}
 }
 
+// RecordAgentActivity stores an event the agents context made about one
+// of its Agents. Unlike work's own events, a failure is the caller's to
+// handle.
+func (s *Service) RecordAgentActivity(ctx context.Context, e domain.AgentEvent) error {
+	e, err := e.Validated()
+	if err != nil {
+		return err
+	}
+	if e.At.IsZero() {
+		e.At = s.now()
+	}
+	return s.activity.Record(ctx, e.Activity())
+}
+
 // The most Activity events one page answers, and how many without a limit.
 const (
 	MaxActivity     = 200

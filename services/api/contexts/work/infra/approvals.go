@@ -3,6 +3,7 @@ package infra
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	contractsorm "github.com/goravel/framework/contracts/database/orm"
@@ -35,23 +36,65 @@ type boardApprovalPayload struct {
 	Risks                []string `json:"risks"`
 }
 
-func (r approvalRecord) toDomain(issueIDs []uint64) (domain.Approval, error) {
+// agentRef is an Agent as a hire_agent payload names it.
+type agentRef struct {
+	ID   uint64 `json:"id"`
+	Name string `json:"name"`
+}
+
+// hireAgentPayload is a hire_agent payload as stored, in the snake_case it
+// has on the wire.
+type hireAgentPayload struct {
+	AgentID      uint64    `json:"agent_id"`
+	Name         string    `json:"name"`
+	Job          string    `json:"job"`
+	Title        string    `json:"title"`
+	Icon         string    `json:"icon"`
+	Capabilities string    `json:"capabilities"`
+	ReportsTo    *agentRef `json:"reports_to"`
+	Roles        []string  `json:"roles"`
+}
+
+// payloadOf reads a stored payload by the Approval's type.
+func payloadOf(typ domain.ApprovalType, raw string) (domain.ApprovalPayload, error) {
+	if typ == domain.HireAgent {
+		var p hireAgentPayload
+		if err := json.Unmarshal([]byte(raw), &p); err != nil {
+			return nil, err
+		}
+		out := domain.HireAgentPayload{AgentID: p.AgentID, Name: p.Name, Job: p.Job, Title: p.Title, Icon: p.Icon, Capabilities: p.Capabilities, Roles: p.Roles}
+		if p.ReportsTo != nil {
+			out.ManagerID, out.ManagerName = p.ReportsTo.ID, p.ReportsTo.Name
+		}
+		if out.Roles == nil {
+			out.Roles = []string{}
+		}
+		return out, nil
+	}
 	var p boardApprovalPayload
-	if err := json.Unmarshal([]byte(r.Payload), &p); err != nil {
-		return domain.Approval{}, err
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		return nil, err
 	}
 	if p.Risks == nil {
 		p.Risks = []string{}
+	}
+	return domain.BoardApprovalPayload{
+		Title: p.Title, Summary: p.Summary, RecommendedAction: p.RecommendedAction,
+		NextActionOnApproval: p.NextActionOnApproval, Risks: p.Risks,
+	}, nil
+}
+
+func (r approvalRecord) toDomain(issueIDs []uint64) (domain.Approval, error) {
+	p, err := payloadOf(domain.ApprovalType(r.Type), r.Payload)
+	if err != nil {
+		return domain.Approval{}, err
 	}
 	if issueIDs == nil {
 		issueIDs = []uint64{}
 	}
 	a := domain.Approval{
 		ID: r.ID, GuildID: r.GuildID, Type: domain.ApprovalType(r.Type), Status: domain.ApprovalStatus(r.Status),
-		Payload: domain.BoardApprovalPayload{
-			Title: p.Title, Summary: p.Summary, RecommendedAction: p.RecommendedAction,
-			NextActionOnApproval: p.NextActionOnApproval, Risks: p.Risks,
-		},
+		Payload:     p,
 		RequesterID: deref(r.RequestedByMemberID), DeciderID: deref(r.DecidedByMemberID),
 		DecidedAt: utc(r.DecidedAt), IssueIDs: issueIDs,
 		CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(),
@@ -62,11 +105,24 @@ func (r approvalRecord) toDomain(issueIDs []uint64) (domain.Approval, error) {
 	return a, nil
 }
 
-func payloadJSON(p domain.BoardApprovalPayload) (string, error) {
-	b, err := json.Marshal(boardApprovalPayload{
-		Title: p.Title, Summary: p.Summary, RecommendedAction: p.RecommendedAction,
-		NextActionOnApproval: p.NextActionOnApproval, Risks: p.Risks,
-	})
+func payloadJSON(p domain.ApprovalPayload) (string, error) {
+	var v any
+	switch p := p.(type) {
+	case domain.HireAgentPayload:
+		h := hireAgentPayload{AgentID: p.AgentID, Name: p.Name, Job: p.Job, Title: p.Title, Icon: p.Icon, Capabilities: p.Capabilities, Roles: p.Roles}
+		if p.ManagerID != 0 {
+			h.ReportsTo = &agentRef{ID: p.ManagerID, Name: p.ManagerName}
+		}
+		v = h
+	case domain.BoardApprovalPayload:
+		v = boardApprovalPayload{
+			Title: p.Title, Summary: p.Summary, RecommendedAction: p.RecommendedAction,
+			NextActionOnApproval: p.NextActionOnApproval, Risks: p.Risks,
+		}
+	default:
+		return "", fmt.Errorf("approval payload %T cannot be stored", p)
+	}
+	b, err := json.Marshal(v)
 	return string(b), err
 }
 

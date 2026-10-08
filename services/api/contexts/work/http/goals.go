@@ -33,6 +33,9 @@ type Controller struct {
 	// (guilds.MemberID). Both must be set before Issues are served.
 	Visible func(ctx contractshttp.Context, ids []uint64) ([]uint64, error)
 	Member  func(ctx contractshttp.Context) uint64
+	// AgentNames names the Guild's Agents with these ids that still exist;
+	// nil (or a nil answer) counts every Agent as existing.
+	AgentNames func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)
 }
 
 func NewController(service *app.Service, guild func(ctx contractshttp.Context) uint64, members func(ctx context.Context, ids []uint64) ([]Member, error)) *Controller {

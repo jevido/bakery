@@ -48,6 +48,9 @@ type Service struct {
 	// Logf logs what a request cannot report, such as an Activity event
 	// that was not recorded.
 	Logf func(format string, args ...any)
+	// Decided hears every approve or reject of an Approval once it is
+	// stored, the same Decision made again included; nil hears nothing.
+	Decided func(ctx context.Context, a domain.Approval) error
 }
 
 func NewService(goals Goals, issues Issues, comments Comments, docs Documents, guilds Guilds, projects Projects, activity Activity, inbox Inbox, approvals Approvals) *Service {

@@ -240,7 +240,9 @@ type and the payload's title.
   Issue is deleted. An Approval is `{id, type, status, payload, requester:
   {id, name} | null, decided_by: {id, name} | null, decision_note,
   decided_at, created_at, updated_at}`, the payload in snake_case (`title`,
-  `summary`, `recommended_action`, `next_action_on_approval`, `risks`). An
+  `summary`, `recommended_action`, `next_action_on_approval`, `risks`; for
+  a `hire_agent`: `agent_id`, `name`, `job`, `title`, `icon`,
+  `capabilities`, `reports_to` (`{id, name}` or null) and `roles`). An
   Approval comment is `{id, body, author: {id, name} | null, created_at}`.
   An Activity event about an Approval has `entity: {type: "approval", id,
   title, exists}`, the payload's title; one about an Agent has `entity:
@@ -291,12 +293,19 @@ type and the payload's title.
     their Project. `issues.project_id` has no foreign key, since the
     Project is projects' row.
 - **Publishes to other contexts** (Go functions, no routes):
-  `work.RequestApproval(ctx, guild, requester, type, payload)` (only
-  `hire_agent`), `work.CancelApproval(ctx, id)`, `work.OnApprovalDecided(type,
-  f)` (called after an approve or reject of that type is stored, with the
-  Approval's id, payload and the Decision; the agents context registers for
-  `hire_agent`) and `work.RecordActivity(ctx, event)` (one Activity event
-  about an Agent). Work never imports the contexts that call them.
+  `work.RequestApproval(ctx, guild, hirer, HireAgentRequest)` (a
+  `hire_agent` Approval; answers its id), `work.CancelApproval(ctx, guild,
+  actor, id)`, `work.OnApprovalDecided(type, f)` (called after an approve or
+  reject of that type is stored, with the guild, the Approval's id and type,
+  whether it was approved, the decider and the hire's Agent; the same
+  Decision made again calls it again, so a failed `f` is healed by deciding
+  again, and its error answers the Decision 500; the agents context
+  registers for `hire_agent`), `work.RecordActivity(ctx, AgentActivity)`
+  (one Activity event about an Agent, with its name kept in the details;
+  only the `agent.*` Actions) and `work.OnAgentNames(f)` (the agents
+  context names the Guild's Agents that still exist, so the Activity can
+  tell `exists`; until it registers, every Agent counts as existing). Work
+  never imports the contexts that call them.
 
 ## Why it's shaped this way
 

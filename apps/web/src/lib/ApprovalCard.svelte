@@ -1,8 +1,11 @@
 <script lang="ts" module>
   import type { ApprovalStatus } from './approvals'
 
-  /** Paperclip's status icon tones, the same on the card and the Approval page. */
-  export const approvalStatusTone: Record<ApprovalStatus, string> = {
+  /**
+   * Paperclip's status icon tones, the same on the card and the Approval
+   * page; cancelled has no icon there, so it has no tone.
+   */
+  export const approvalStatusTone: Record<Exclude<ApprovalStatus, 'cancelled'>, string> = {
     approved: 'text-green-600 dark:text-green-400',
     rejected: 'text-red-600 dark:text-red-400',
     revision_requested: 'text-amber-600 dark:text-amber-400',
@@ -45,7 +48,7 @@
 
   const Icon = $derived(approvalTypeIcon(approval.type))
   const kind = $derived(approvalTypeLabel(approval.type))
-  const subject = $derived(approvalSubject(approval.payload))
+  const subject = $derived(approvalSubject(approval.type, approval.payload))
   const decidable = $derived(canDecide && !!onapprove && !!onreject && isActionable(approval))
 </script>
 
@@ -77,14 +80,14 @@
       <span class="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/80 px-2.5 py-1 text-xs text-muted-foreground" data-slot="approval-status">
         {#if approval.status === 'approved'}<CircleCheck class="size-3.5 {approvalStatusTone.approved}" />
         {:else if approval.status === 'rejected'}<CircleX class="size-3.5 {approvalStatusTone.rejected}" />
-        {:else}<Clock class="size-3.5 {approvalStatusTone[approval.status]}" />{/if}
+        {:else if approval.status !== 'cancelled'}<Clock class="size-3.5 {approvalStatusTone[approval.status]}" />{/if}
         <span class="capitalize">{approval.status.replace(/_/g, ' ')}</span>
       </span>
     </div>
   </div>
 
   <div class="mt-4 border-t border-border/60 pt-4">
-    <ApprovalPayload payload={approval.payload} hideTitle={!!subject} />
+    <ApprovalPayload type={approval.type} payload={approval.payload} hideTitle={!!subject} />
   </div>
 
   {#if approval.decision_note}

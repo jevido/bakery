@@ -14,8 +14,9 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
 )
 
-// entityJSON is the Goal, Issue or Approval an Activity event is about: its current
-// title while it exists, else the title the event kept.
+// entityJSON is the Goal, Issue, Approval or Agent an Activity event is
+// about: its current title (an Agent's name) while it exists, else the one
+// the event kept.
 type entityJSON struct {
 	Type       string `json:"type"`
 	ID         uint64 `json:"id"`
@@ -62,6 +63,9 @@ type activityRefs struct {
 	goals     map[uint64]string
 	issues    map[uint64]domain.Issue
 	approvals map[uint64]string
+	// agents is nil when no one answers for Agents: every one counts as
+	// existing under the name its event kept.
+	agents map[uint64]string
 }
 
 func (r activityRefs) member(id uint64) map[string]any {
@@ -148,7 +152,7 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 	if refs.prefix, err = c.service.IssuePrefix(cx, guildID); err != nil {
 		return refs, err
 	}
-	var memberIDs, projectIDs, issueIDs []uint64
+	var memberIDs, projectIDs, issueIDs, agentIDs []uint64
 	withApprovals := false
 	add := func(list *[]uint64) func(uint64) {
 		return func(id uint64) {
@@ -163,6 +167,9 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 			add(&issueIDs)(e.EntityID)
 		}
 		withApprovals = withApprovals || e.EntityType == domain.ApprovalEntity
+		if e.EntityType == domain.AgentEntity {
+			add(&agentIDs)(e.EntityID)
+		}
 		for field, v := range changes(e) {
 			switch refKind(e.EntityType, field) {
 			case "member":
@@ -208,7 +215,12 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 			return refs, err
 		}
 		for _, a := range as {
-			refs.approvals[a.ID] = a.Payload.Title
+			refs.approvals[a.ID] = a.Payload.Label()
+		}
+	}
+	if len(agentIDs) > 0 && c.AgentNames != nil {
+		if refs.agents, err = c.AgentNames(cx, guildID, agentIDs); err != nil {
+			return refs, err
 		}
 	}
 	is, err := c.service.VisibleIssues(cx, issueIDs, c.visible(ctx))
@@ -256,6 +268,12 @@ func (c *Controller) activityJSON(ctx contractshttp.Context, es []domain.Activit
 			a.Entity.Title, _ = e.Details["title"].(string)
 			if title, ok := refs.approvals[e.EntityID]; ok {
 				a.Entity.Title, a.Entity.Exists = title, true
+			}
+		case domain.AgentEntity:
+			a.Entity.Title, _ = e.Details["name"].(string)
+			a.Entity.Exists = refs.agents == nil
+			if name, ok := refs.agents[e.EntityID]; ok {
+				a.Entity.Title, a.Entity.Exists = name, true
 			}
 		}
 		if ch := changes(e); ch != nil {
@@ -322,12 +340,12 @@ func activityID(ctx contractshttp.Context, field string) (uint64, bool) {
 }
 
 // ListActivity answers a page of the Current guild's Activity, newest
-// first: entity (issue, goal or approval), actor (a Member id), before (an Activity
+// first: entity (issue, goal, approval or agent), actor (a Member id), before (an Activity
 // event id, for the next page) and limit (1 to 200, 50 by default).
 func (c *Controller) ListActivity(ctx contractshttp.Context) contractshttp.Response {
 	q := app.ActivityQuery{EntityType: ctx.Request().Query("entity"), Limit: app.DefaultActivity}
-	if q.EntityType != "" && !slices.Contains([]string{domain.IssueEntity, domain.GoalEntity, domain.ApprovalEntity}, q.EntityType) {
-		return respond.Invalid(ctx, "entity", "entity must be issue, goal or approval")
+	if q.EntityType != "" && !slices.Contains([]string{domain.IssueEntity, domain.GoalEntity, domain.ApprovalEntity, domain.AgentEntity}, q.EntityType) {
+		return respond.Invalid(ctx, "entity", "entity must be issue, goal, approval or agent")
 	}
 	for _, f := range []struct {
 		field string

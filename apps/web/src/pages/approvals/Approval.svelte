@@ -8,8 +8,10 @@
   // under the Linked issues is left out; a "Decision note" field sits above
   // Approve, Reject and Request revision, since Paperclip's board cannot
   // write one from its page; Resubmit is the Requester's alone and opens the
-  // request dialog prefilled, so the request can change with it. Deciding
-  // needs approve, commenting manage_work.
+  // request dialog prefilled, so the request can change with it. A hire
+  // offers "Open hired agent" after Approve and never Request revision; its
+  // rejected Agent is terminated, so there is no "Delete disapproved agent".
+  // Deciding needs approve, commenting manage_work.
   import { ChevronRight, CircleCheck, Sparkles } from '@lucide/svelte'
   import { refreshBadges } from '../../lib/inbox.svelte'
   import { Button } from '$lib/components/ui/button'
@@ -21,6 +23,7 @@
     approvalTypeIcon,
     decide,
     getApproval,
+    hirePayload,
     isActionable,
     listApprovalComments,
     listApprovalIssues,
@@ -80,10 +83,13 @@
   const canComment = $derived(session.can('manage_work'))
   const isRequester = $derived(!!approval?.requester && approval.requester.id === session.member?.id)
   const TypeIcon = $derived(approvalTypeIcon(approval?.type ?? ''))
+  const hire = $derived(approval ? hirePayload(approval) : null)
   const cta = $derived(
     issues.length > 0
       ? { label: issues.length > 1 ? 'Review linked issues' : 'Review linked issue', to: `/issues/${issues[0].identifier}` }
-      : { label: 'Back to approvals', to: '/approvals' },
+      : hire
+        ? { label: 'Open hired agent', to: `/agents/${hire.agent_id}` }
+        : { label: 'Back to approvals', to: '/approvals' },
   )
 
   async function run(decision: Decision) {
@@ -166,7 +172,7 @@
             <Identity name={approval.requester.name} size="sm" />
           </div>
         {/if}
-        <ApprovalPayload payload={approval.payload} />
+        <ApprovalPayload type={approval.type} payload={approval.payload} />
         <button
           type="button"
           class="mt-2 flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
@@ -205,10 +211,10 @@
           <Button size="sm" class="bg-green-700 text-white hover:bg-green-600" disabled={!!busy} onclick={() => run('approve')}>Approve</Button>
           <Button variant="destructive" size="sm" disabled={!!busy} onclick={() => run('reject')}>Reject</Button>
         {/if}
-        {#if canDecide && approval.status === 'pending'}
+        {#if canDecide && approval.status === 'pending' && !hire}
           <Button size="sm" variant="outline" disabled={!!busy} onclick={() => run('request-revision')}>Request revision</Button>
         {/if}
-        {#if isRequester && approval.status === 'revision_requested'}
+        {#if isRequester && approval.status === 'revision_requested' && !hire}
           <Button size="sm" variant="outline" disabled={!!busy} onclick={() => (resubmitting = true)}>Resubmit</Button>
         {/if}
       </div>

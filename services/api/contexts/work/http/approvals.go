@@ -9,6 +9,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 
 	"github.com/jevido/bakery/services/api/app/respond"
+	"github.com/jevido/bakery/services/api/contexts/work/app"
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
 )
 
@@ -22,17 +23,53 @@ type payloadJSON struct {
 	Risks                []string `json:"risks"`
 }
 
+// agentRefJSON is an Agent as a hire_agent payload names it.
+type agentRefJSON struct {
+	ID   uint64 `json:"id"`
+	Name string `json:"name"`
+}
+
+// hirePayloadJSON is a hire_agent payload on the wire, in snake_case.
+type hirePayloadJSON struct {
+	AgentID      uint64        `json:"agent_id"`
+	Name         string        `json:"name"`
+	Job          string        `json:"job"`
+	Title        string        `json:"title"`
+	Icon         string        `json:"icon"`
+	Capabilities string        `json:"capabilities"`
+	ReportsTo    *agentRefJSON `json:"reports_to"`
+	Roles        []string      `json:"roles"`
+}
+
+// payloadOut is the payload as its type has it on the wire.
+func payloadOut(p domain.ApprovalPayload) any {
+	switch p := p.(type) {
+	case domain.HireAgentPayload:
+		out := hirePayloadJSON{AgentID: p.AgentID, Name: p.Name, Job: p.Job, Title: p.Title, Icon: p.Icon, Capabilities: p.Capabilities, Roles: p.Roles}
+		if p.ManagerID != 0 {
+			out.ReportsTo = &agentRefJSON{ID: p.ManagerID, Name: p.ManagerName}
+		}
+		return out
+	case domain.BoardApprovalPayload:
+		return payloadJSON{
+			Title: p.Title, Summary: p.Summary, RecommendedAction: p.RecommendedAction,
+			NextActionOnApproval: p.NextActionOnApproval, Risks: p.Risks,
+		}
+	}
+	return nil
+}
+
 type approvalJSON struct {
-	ID           uint64      `json:"id"`
-	Type         string      `json:"type"`
-	Status       string      `json:"status"`
-	Payload      payloadJSON `json:"payload"`
-	Requester    *Member     `json:"requester"`
-	DecidedBy    *Member     `json:"decided_by"`
-	DecisionNote *string     `json:"decision_note"`
-	DecidedAt    *time.Time  `json:"decided_at"`
-	CreatedAt    time.Time   `json:"created_at"`
-	UpdatedAt    time.Time   `json:"updated_at"`
+	ID           uint64     `json:"id"`
+	Type         string     `json:"type"`
+	Status       string     `json:"status"`
+	Payload      any        `json:"payload"`
+	Requester    *Member    `json:"requester"`
+	DecidedBy    *Member    `json:"decided_by"`
+	DecisionNote *string    `json:"decision_note"`
+	DecidedAt    *time.Time `json:"decided_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 // approvalsJSON shows Approvals with their Requesters' and deciders'
@@ -64,13 +101,8 @@ func (c *Controller) approvalsJSON(ctx context.Context, as []domain.Approval) ([
 	}
 	out := make([]approvalJSON, len(as))
 	for i, a := range as {
-		p := a.Payload
 		out[i] = approvalJSON{
-			ID: a.ID, Type: string(a.Type), Status: string(a.Status),
-			Payload: payloadJSON{
-				Title: p.Title, Summary: p.Summary, RecommendedAction: p.RecommendedAction,
-				NextActionOnApproval: p.NextActionOnApproval, Risks: p.Risks,
-			},
+			ID: a.ID, Type: string(a.Type), Status: string(a.Status), Payload: payloadOut(a.Payload),
 			Requester: member(a.RequesterID), DecidedBy: member(a.DeciderID),
 			DecidedAt: a.DecidedAt, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
 		}
@@ -135,6 +167,11 @@ func (c *Controller) RequestApproval(ctx contractshttp.Context) contractshttp.Re
 	}
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
+	}
+	// The type goes first, so a hire_agent is refused for what it is,
+	// not for its payload.
+	if _, err := app.RequestableType(req.Type); err != nil {
+		return fail(ctx, err)
 	}
 	p, err := boardPayload(req.Payload)
 	if err != nil {
@@ -222,13 +259,13 @@ func (c *Controller) ResubmitApproval(ctx contractshttp.Context) contractshttp.R
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	var p *domain.BoardApprovalPayload
+	var p domain.ApprovalPayload
 	if len(req.Payload) > 0 && string(req.Payload) != "null" {
 		bp, err := boardPayload(req.Payload)
 		if err != nil {
 			return fail(ctx, err)
 		}
-		p = &bp
+		p = bp
 	}
 	a, err := c.service.ResubmitApproval(ctx.Context(), c.guild(ctx), c.Member(ctx), id, p)
 	return c.oneApproval(ctx, contractshttp.StatusOK, a, err)

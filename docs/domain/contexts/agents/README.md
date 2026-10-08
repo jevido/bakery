@@ -127,7 +127,9 @@ records nothing more.
     Guild with Agents that are not terminated is not deleted.
   - from work: `work.RequestApproval` and `work.CancelApproval` for the
     `hire_agent` Approval, `work.OnApprovalDecided` (registered for
-    `hire_agent`), and `work.RecordActivity` for every event above.
+    `hire_agent`), `work.RecordActivity` for every event above, and
+    `work.OnAgentNames` (registered, so the Activity knows which Agents
+    still exist).
   - from identity: `identity.Members(ctx, ids)` for Hirers' names.
 
 ## Why it's shaped this way

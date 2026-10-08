@@ -50,18 +50,31 @@ func ApprovalStatuses(filter string) ([]domain.ApprovalStatus, error) {
 		}
 		st, err := domain.ParseApprovalStatus(s)
 		if err != nil {
-			return nil, &domain.FieldError{Field: "status", Message: "status must be pending, revision_requested, approved, rejected or actionable"}
+			return nil, &domain.FieldError{Field: "status", Message: "status must be pending, revision_requested, approved, rejected, cancelled or actionable"}
 		}
 		out = append(out, st)
 	}
 	return out, nil
 }
 
+// RequestableType reads the type of an Approval a Member asks for in
+// words: hire_agent Approvals come only from hiring an Agent.
+func RequestableType(typ string) (domain.ApprovalType, error) {
+	t, err := domain.ParseApprovalType(typ)
+	if err != nil {
+		return "", err
+	}
+	if t == domain.HireAgent {
+		return "", &domain.FieldError{Field: "type", Message: "hire_agent approvals are made by hiring an agent"}
+	}
+	return t, nil
+}
+
 // RequestApproval asks the Board of the Guild, as the Member, to decide on
 // the payload, about the Issues; each must be one of the Guild's that the
 // Member may view.
-func (s *Service) RequestApproval(ctx context.Context, guildID, memberID uint64, typ string, p domain.BoardApprovalPayload, issueIDs []uint64, visible Visible) (domain.Approval, error) {
-	t, err := domain.ParseApprovalType(typ)
+func (s *Service) RequestApproval(ctx context.Context, guildID, memberID uint64, typ string, p domain.ApprovalPayload, issueIDs []uint64, visible Visible) (domain.Approval, error) {
+	t, err := RequestableType(typ)
 	if err != nil {
 		return domain.Approval{}, err
 	}
@@ -82,14 +95,41 @@ func (s *Service) RequestApproval(ctx context.Context, guildID, memberID uint64,
 			return domain.Approval{}, &domain.FieldError{Field: "issue_ids", Message: "issue " + strconv.FormatUint(id, 10) + " not found"}
 		}
 	}
+	return s.createApproval(ctx, memberID, a)
+}
+
+func (s *Service) createApproval(ctx context.Context, memberID uint64, a domain.Approval) (domain.Approval, error) {
 	a.CreatedAt = s.now()
 	a.UpdatedAt = a.CreatedAt
-	a, err = s.approvals.CreateApproval(ctx, a)
+	a, err := s.approvals.CreateApproval(ctx, a)
 	if err != nil {
 		return domain.Approval{}, err
 	}
 	s.publish(ctx, domain.ApprovalRequested{Happened: s.happened(memberID), Approval: a})
 	return a, nil
+}
+
+// RequestHireApproval asks the Board of the Guild whether to Hire the
+// Agent, as its Hirer; the agents context has already checked that the
+// Hirer may.
+func (s *Service) RequestHireApproval(ctx context.Context, guildID, hirerID uint64, p domain.HireAgentPayload) (domain.Approval, error) {
+	a, err := domain.RequestApproval(guildID, hirerID, domain.HireAgent, p, nil)
+	if err != nil {
+		return domain.Approval{}, err
+	}
+	return s.createApproval(ctx, hirerID, a)
+}
+
+// CancelApproval cancels one of the Guild's hire_agent Approvals still
+// waiting for a Decision, because the Member terminated its Agent.
+func (s *Service) CancelApproval(ctx context.Context, guildID, memberID, id uint64) (domain.Approval, error) {
+	return s.moveApproval(ctx, guildID, memberID, id, move{
+		from:  actionable,
+		apply: func(a *domain.Approval, at time.Time) (bool, error) { return a.Cancel(at) },
+		event: func(h domain.Happened, a domain.Approval) domain.Event {
+			return domain.ApprovalCancelled{Happened: h, Approval: a}
+		},
+	})
 }
 
 // Approvals lists the Guild's Approvals in a status filter (see
@@ -202,26 +242,42 @@ func (s *Service) moveApproval(ctx context.Context, guildID, memberID, id uint64
 
 var actionable = []domain.ApprovalStatus{domain.StatusPending, domain.StatusRevisionRequested}
 
+// decided tells Decided about a Decision that is stored, even one made
+// again, so a Decided that failed is healed by deciding again. Its error
+// is logged and answered.
+func (s *Service) decided(ctx context.Context, a domain.Approval, err error) (domain.Approval, error) {
+	if err != nil || s.Decided == nil {
+		return a, err
+	}
+	if err := s.Decided(ctx, a); err != nil {
+		s.Logf("work: after the decision on approval %d: %v", a.ID, err)
+		return domain.Approval{}, err
+	}
+	return a, nil
+}
+
 // ApproveApproval is the Member's yes on one of the Guild's Approvals.
 func (s *Service) ApproveApproval(ctx context.Context, guildID, memberID, id uint64, note string) (domain.Approval, error) {
-	return s.moveApproval(ctx, guildID, memberID, id, move{
+	a, err := s.moveApproval(ctx, guildID, memberID, id, move{
 		from:  actionable,
 		apply: func(a *domain.Approval, at time.Time) (bool, error) { return a.Approve(memberID, note, at) },
 		event: func(h domain.Happened, a domain.Approval) domain.Event {
 			return domain.ApprovalApproved{Happened: h, Approval: a}
 		},
 	})
+	return s.decided(ctx, a, err)
 }
 
 // RejectApproval is the Member's no on one of the Guild's Approvals.
 func (s *Service) RejectApproval(ctx context.Context, guildID, memberID, id uint64, note string) (domain.Approval, error) {
-	return s.moveApproval(ctx, guildID, memberID, id, move{
+	a, err := s.moveApproval(ctx, guildID, memberID, id, move{
 		from:  actionable,
 		apply: func(a *domain.Approval, at time.Time) (bool, error) { return a.Reject(memberID, note, at) },
 		event: func(h domain.Happened, a domain.Approval) domain.Event {
 			return domain.ApprovalRejected{Happened: h, Approval: a}
 		},
 	})
+	return s.decided(ctx, a, err)
 }
 
 // RequestApprovalRevision sends a pending Approval back to its Requester.
@@ -239,7 +295,7 @@ func (s *Service) RequestApprovalRevision(ctx context.Context, guildID, memberID
 
 // ResubmitApproval makes the Member's own revision_requested Approval
 // pending again, with a new payload when p is not nil.
-func (s *Service) ResubmitApproval(ctx context.Context, guildID, memberID, id uint64, p *domain.BoardApprovalPayload) (domain.Approval, error) {
+func (s *Service) ResubmitApproval(ctx context.Context, guildID, memberID, id uint64, p domain.ApprovalPayload) (domain.Approval, error) {
 	return s.moveApproval(ctx, guildID, memberID, id, move{
 		from: []domain.ApprovalStatus{domain.StatusRevisionRequested},
 		apply: func(a *domain.Approval, at time.Time) (bool, error) {

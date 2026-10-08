@@ -1,6 +1,8 @@
-// Package work is what the router may use from the work context: its
-// routes (Goals, Issues, Comments, Issue documents, the Activity, the
-// Inbox and Approvals). Nothing else in contexts/work is for outside use.
+// Package work is what the router and other contexts may use from the
+// work context: its routes (Goals, Issues, Comments, Issue documents, the
+// Activity, the Inbox and Approvals), and for the agents context
+// RequestApproval, CancelApproval, OnApprovalDecided, RecordActivity and
+// OnAgentNames. Nothing else in contexts/work is for outside use.
 package work
 
 import (
@@ -14,6 +16,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/identity"
 	"github.com/jevido/bakery/services/api/contexts/projects"
 	"github.com/jevido/bakery/services/api/contexts/work/app"
+	"github.com/jevido/bakery/services/api/contexts/work/domain"
 	workhttp "github.com/jevido/bakery/services/api/contexts/work/http"
 	"github.com/jevido/bakery/services/api/contexts/work/infra"
 )
@@ -27,6 +30,7 @@ func svc() *app.Service {
 	once.Do(func() {
 		service = app.NewService(infra.Goals{}, infra.Issues{}, infra.Comments{}, infra.Documents{}, guildsOfWork{}, projectsOfWork{}, infra.Activity{}, infra.Inbox{}, infra.Approvals{})
 		service.Logf = facades.Log().Errorf
+		service.Decided = approvalDecided
 		guilds.OnGuildDeleting("goals", func(ctx context.Context, guildID uint64) (bool, error) {
 			gs, err := service.Goals(ctx, guildID)
 			return len(gs) > 0, err
@@ -35,6 +39,123 @@ func svc() *app.Service {
 		projects.OnProjectDeleted(service.ForgetProject)
 	})
 	return service
+}
+
+// HireAgentRequest is the Agent a hire_agent Approval asks the Board to
+// Hire, as the agents context describes it. ManagerID is 0 when it reports
+// to no one; Roles are the names of the Roles it would get.
+type HireAgentRequest struct {
+	AgentID      uint64
+	Name         string
+	Job          string
+	Title        string
+	Icon         string
+	Capabilities string
+	ManagerID    uint64
+	ManagerName  string
+	Roles        []string
+}
+
+// RequestApproval asks the Guild's Board for a hire_agent Approval with the
+// Hirer as its Requester, and answers its id. The caller has checked that
+// the Hirer may hire.
+func RequestApproval(ctx context.Context, guildID, hirerID uint64, r HireAgentRequest) (uint64, error) {
+	a, err := svc().RequestHireApproval(ctx, guildID, hirerID, domain.HireAgentPayload{
+		AgentID: r.AgentID, Name: r.Name, Job: r.Job, Title: r.Title, Icon: r.Icon,
+		Capabilities: r.Capabilities, ManagerID: r.ManagerID, ManagerName: r.ManagerName, Roles: r.Roles,
+	})
+	return a.ID, err
+}
+
+// CancelApproval cancels the Guild's hire_agent Approval while it waits for
+// a Decision, because the Member terminated its Agent; the Activity names
+// them as its Actor. A cancelled one stays as it is.
+func CancelApproval(ctx context.Context, guildID, actorID, approvalID uint64) error {
+	_, err := svc().CancelApproval(ctx, guildID, actorID, approvalID)
+	return err
+}
+
+// ApprovalDecided is a Decision on an Approval, once it is stored: its
+// type, whether it was approved (else rejected), who decided, and for a
+// hire_agent the Agent it is about.
+type ApprovalDecided struct {
+	GuildID    uint64
+	ApprovalID uint64
+	Type       string
+	Approved   bool
+	AgentID    uint64
+	DeciderID  uint64
+}
+
+var (
+	decidedMu sync.RWMutex
+	onDecided = map[string]func(ctx context.Context, d ApprovalDecided) error{}
+	agentsMu  sync.RWMutex
+	onNames   func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)
+)
+
+// OnApprovalDecided registers f to hear every approve or reject of an
+// Approval of the type. Making the same Decision again calls f again, so
+// a failed f is healed by deciding again; its error answers the Decision
+// 500, after the Decision is stored.
+func OnApprovalDecided(typ string, f func(ctx context.Context, d ApprovalDecided) error) {
+	decidedMu.Lock()
+	defer decidedMu.Unlock()
+	onDecided[typ] = f
+}
+
+func approvalDecided(ctx context.Context, a domain.Approval) error {
+	decidedMu.RLock()
+	f := onDecided[string(a.Type)]
+	decidedMu.RUnlock()
+	if f == nil {
+		return nil
+	}
+	d := ApprovalDecided{GuildID: a.GuildID, ApprovalID: a.ID, Type: string(a.Type), Approved: a.Status == domain.StatusApproved, DeciderID: a.DeciderID}
+	if h, ok := a.Payload.(domain.HireAgentPayload); ok {
+		d.AgentID = h.AgentID
+	}
+	return f(ctx, d)
+}
+
+// AgentActivity is an Activity event about an Agent: its Actor, one of
+// the glossary's agent.* Actions, the Agent's name (kept, so the event
+// still reads after a rename) and the details its Action carries.
+type AgentActivity struct {
+	GuildID   uint64
+	ActorID   uint64
+	AgentID   uint64
+	Action    string
+	AgentName string
+	Details   map[string]any
+}
+
+// RecordActivity adds the event to the Guild's Activity. Anything but an
+// agent.* Action is refused.
+func RecordActivity(ctx context.Context, e AgentActivity) error {
+	return svc().RecordAgentActivity(ctx, domain.AgentEvent{
+		Happened: domain.Happened{ActorID: e.ActorID}, GuildID: e.GuildID, AgentID: e.AgentID,
+		AgentName: e.AgentName, Action: e.Action, Details: e.Details,
+	})
+}
+
+// OnAgentNames registers f to name the Guild's Agents among ids that still
+// exist, so the Activity can tell a terminated or deleted one. Until it is
+// registered, every Agent counts as existing.
+func OnAgentNames(f func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)) {
+	agentsMu.Lock()
+	defer agentsMu.Unlock()
+	onNames = f
+}
+
+func agentNames(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error) {
+	agentsMu.RLock()
+	f := onNames
+	agentsMu.RUnlock()
+	if f == nil {
+		return nil, nil
+	}
+	return f(ctx, guildID, ids)
 }
 
 // guildsOfWork is guilds' answer about Members and Issue prefixes, in
@@ -88,7 +209,7 @@ var approvalInGuild = guilds.Owns("approval", func(ctx context.Context, id, guil
 // outside the Current guild or in a Project the request may not view.
 func Routes(r route.Router) {
 	c := workhttp.NewController(svc(), guilds.Current, memberNames)
-	c.Visible, c.Member = guilds.VisibleProjects, guilds.MemberID
+	c.Visible, c.Member, c.AgentNames = guilds.VisibleProjects, guilds.MemberID, agentNames
 	view, manage := guilds.Can("view_resources"), guilds.Can("manage_work")
 	r.Middleware(guilds.Auth, view).Get("/api/goals", c.ListGoals)
 	r.Middleware(guilds.Auth, manage).Post("/api/goals", c.CreateGoal)

@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// Actions: the dotted names of what happened to a Goal, an Issue or an
-// Approval, as Paperclip names them.
+// Actions: the dotted names of what happened to a Goal, an Issue, an
+// Approval or an Agent, as Paperclip names them.
 const (
 	GoalCreatedAction          = "goal.created"
 	GoalUpdatedAction          = "goal.updated"
@@ -25,13 +25,25 @@ const (
 	RevisionRequestedAction    = "approval.revision_requested"
 	ApprovalResubmittedAction  = "approval.resubmitted"
 	ApprovalCommentAddedAction = "approval.comment_added"
+	ApprovalCancelledAction    = "approval.cancelled"
+	AgentHiredAction           = "agent.hired"
+	AgentUpdatedAction         = "agent.updated"
+	AgentPausedAction          = "agent.paused"
+	AgentResumedAction         = "agent.resumed"
+	AgentTerminatedAction      = "agent.terminated"
+	AgentRoleAddedAction       = "agent.role_added"
+	AgentRoleRemovedAction     = "agent.role_removed"
 )
+
+// AgentActions lists the Actions the agents context records through work.
+var AgentActions = []string{AgentHiredAction, AgentUpdatedAction, AgentPausedAction, AgentResumedAction, AgentTerminatedAction, AgentRoleAddedAction, AgentRoleRemovedAction}
 
 // The kinds of thing an Activity event is about.
 const (
 	IssueEntity    = "issue"
 	GoalEntity     = "goal"
 	ApprovalEntity = "approval"
+	AgentEntity    = "agent"
 )
 
 // SnippetLength is how many characters of a Comment its Activity event
@@ -39,7 +51,7 @@ const (
 const SnippetLength = 140
 
 // ActivityEvent is one entry in the Guild's Activity: an Actor did an
-// Action to one Goal or Issue at a time, with what changed. ID is 0 until
+// Action to one Goal, Issue, Approval or Agent at a time, with what changed. ID is 0 until
 // it is recorded; ActorID and ProjectID are 0 for none.
 type ActivityEvent struct {
 	ID         uint64
@@ -81,7 +93,7 @@ func (h Happened) issue(i Issue, action string, details map[string]any) Activity
 // about it, so one still reads after the title changes. An Approval has no
 // Project.
 func (h Happened) approval(a Approval, action string, details map[string]any) ActivityEvent {
-	details["type"], details["title"] = a.Type, a.Payload.Title
+	details["type"], details["title"] = a.Type, a.Payload.Label()
 	return ActivityEvent{GuildID: a.GuildID, ActorID: h.ActorID, Action: action, EntityType: ApprovalEntity, EntityID: a.ID, Details: details, CreatedAt: h.At}
 }
 
@@ -352,4 +364,49 @@ type ApprovalCommentWritten struct {
 
 func (e ApprovalCommentWritten) Activity() ActivityEvent {
 	return e.approval(e.Approval, ApprovalCommentAddedAction, map[string]any{"comment_id": e.Comment.ID, "snippet": snippet(e.Comment.Body)})
+}
+
+type ApprovalCancelled struct {
+	Happened
+	Approval Approval
+}
+
+func (e ApprovalCancelled) Activity() ActivityEvent {
+	return e.approval(e.Approval, ApprovalCancelledAction, map[string]any{})
+}
+
+// AgentEvent is something the agents context did to an Agent, recorded
+// as an Activity event about it: the Agent's name is kept in its details
+// so the event still reads once the Agent is renamed.
+type AgentEvent struct {
+	Happened
+	GuildID   uint64
+	AgentID   uint64
+	AgentName string
+	Action    string
+	Details   map[string]any
+}
+
+// Validated checks that the event is about an Agent, with a name and an
+// Action the agents context records.
+func (e AgentEvent) Validated() (AgentEvent, error) {
+	if e.GuildID == 0 || e.AgentID == 0 {
+		return AgentEvent{}, invalid("agent_id", "an agent event needs its guild and agent")
+	}
+	if !slices.Contains(AgentActions, e.Action) {
+		return AgentEvent{}, invalid("action", "%q is not an agent action", e.Action)
+	}
+	if e.AgentName == "" {
+		return AgentEvent{}, invalid("name", "an agent event needs the agent's name")
+	}
+	return e, nil
+}
+
+func (e AgentEvent) Activity() ActivityEvent {
+	details := make(map[string]any, len(e.Details)+1)
+	for k, v := range e.Details {
+		details[k] = v
+	}
+	details["name"] = e.AgentName
+	return ActivityEvent{GuildID: e.GuildID, ActorID: e.ActorID, Action: e.Action, EntityType: AgentEntity, EntityID: e.AgentID, Details: details, CreatedAt: e.At}
 }
