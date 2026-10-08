@@ -133,13 +133,24 @@
 //           title, git host and link opening in a new tab, the Preview's
 //           link and its Preview deployments link; merged and ready, a
 //           reload shows Merged and Ready
+//   pull-request  the whole path against the Forgejo stand-in, started for
+//           the run and removed again: an Application on a public Forgejo
+//           repository deploys with Previews on; a scratch Agent's Issue
+//           names it and asks the claude stand-in to check out, commit
+//           index.html, push and open the Pull request through the MCP
+//           server; with Forgejo credentials only in the Runner's
+//           environment, the assignment's Run succeeds, Forgejo has the
+//           Pull request from bakery/<identifier>, the Issue page's
+//           Pull request card says Open and the Preview card Deploying,
+//           then Ready, its address serving the Agent's change; closing
+//           the Pull request on Forgejo turns them Closed and Removed
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
 // The same environment as e2e/walk.ts overrides what it uses.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium, type Page } from 'playwright-core'
@@ -211,10 +222,11 @@ const DESKTOP_DIR = new URL('../../desktop/', import.meta.url).pathname
 /**
  * A headless Desktop runner for the owner: `login` connected to the dev
  * Bakery (its approve link approved through the API), then `runner` with the
- * claude stand-in, each in its own process group. stop() ends it and signs
+ * claude stand-in (extra adds to or overrides its environment), each in its
+ * own process group. stop() ends it and signs
  * its Desktop out again.
  */
-async function desktopRunner(page: Page): Promise<{ stop: () => Promise<void> }> {
+async function desktopRunner(page: Page, extra: Record<string, string> = {}): Promise<{ stop: () => Promise<void> }> {
   const home = mkdtempSync(join(tmpdir(), 'bakery-work-e2e-'))
   const env = {
     ...process.env,
@@ -222,6 +234,7 @@ async function desktopRunner(page: Page): Promise<{ stop: () => Promise<void> }>
     BAKERY_CLAUDE: process.env.BAKERY_CLAUDE ?? join(DESKTOP_DIR, 'bin/claude-standin'),
     // Slow enough that the Transcript is seen growing.
     BAKERY_STANDIN_DELAY: process.env.BAKERY_STANDIN_DELAY ?? '1s',
+    ...extra,
   }
   const login = spawn('go', ['run', '.', 'login', '--server', WEB, '--no-browser'], { cwd: DESKTOP_DIR, env, stdio: ['ignore', 'pipe', 'inherit'] })
   let out = ''
@@ -319,6 +332,62 @@ function sql(query: string): string {
   const r = spawnSync('podman', ['exec', '-i', container, 'psql', '-U', 'bakery', '-d', 'bakery', '-tAq', '-v', 'ON_ERROR_STOP=1', '-c', query])
   if (r.status !== 0) throw new Error(`psql: ${r.stderr.toString()}`)
   return r.stdout.toString().trim()
+}
+
+const ROOT = new URL('../../../', import.meta.url).pathname
+const FORGEJO = 'http://127.0.0.1:4950'
+const FORGEJO_COMPOSE = ['compose', '-f', join(ROOT, 'infra/dev/compose.yml'), '--profile', 'git']
+
+/** Runs a command, throwing with its stderr when it fails. */
+function run(cmd: string, args: string[], cwd?: string): string {
+  const r = spawnSync(cmd, args, { cwd })
+  if (r.status !== 0) throw new Error(`${cmd} ${args.slice(0, 3).join(' ')}: ${r.stderr.toString()}`)
+  return r.stdout.toString().trim()
+}
+
+/** Polls check every 2 s until it answers true or seconds pass. */
+async function waitFor(seconds: number, what: string, check: () => Promise<boolean> | boolean) {
+  const until = Date.now() + seconds * 1000
+  while (!(await check())) {
+    if (Date.now() > until) throw new Error(`timed out waiting for ${what}`)
+    await new Promise((r) => setTimeout(r, 2000))
+  }
+}
+
+/**
+ * The Forgejo stand-in (compose profile git) with an admin and an access
+ * token, as infra/dev/lib/e2e.sh's start_forgejo makes them. down() removes
+ * the container and its volumes again.
+ */
+async function forgejoUp(name: string) {
+  const user = 'bakery'
+  run('podman', [...FORGEJO_COMPOSE, 'up', '-d', 'forgejo'])
+  await waitFor(120, 'Forgejo', () => fetch(`${FORGEJO}/api/healthz`).then((r) => r.ok, () => false))
+  const password = randomBytes(18).toString('hex')
+  const exec = ['podman', ...FORGEJO_COMPOSE, 'exec', '-T', 'forgejo', 'forgejo', 'admin', 'user']
+  const made = spawnSync(exec[0], [...exec.slice(1), 'create', '--admin', '--username', user, '--password', password, '--email', 'bakery@example.test', '--must-change-password=false'])
+  if (made.status !== 0) run(exec[0], [...exec.slice(1), 'change-password', '--username', user, '--password', password, '--must-change-password=false'])
+  const token = run(exec[0], [...exec.slice(1), 'generate-access-token', '--username', user, '--token-name', name, '--scopes', 'all', '--raw'])
+  const api = async (method: string, path: string, body?: object) => {
+    const r = await fetch(`${FORGEJO}/api/v1${path}`, {
+      method,
+      headers: { Authorization: `token ${token}`, 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    if (!r.ok) throw new Error(`Forgejo ${method} ${path}: ${r.status} ${await r.text()}`)
+    return r.status === 204 ? {} : r.json()
+  }
+  return {
+    user,
+    token,
+    api,
+    /** git pushes over HTTP as the admin. */
+    remote: (repo: string) => `http://${user}:${password}@127.0.0.1:4950/${user}/${repo}.git`,
+    down: () => {
+      spawnSync('podman', [...FORGEJO_COMPOSE, 'rm', '-sf', 'forgejo'])
+      spawnSync('podman', ['volume', 'rm', '-f', 'bakery-dev_bakery-forgejo-data', 'bakery-dev_bakery-forgejo-config'])
+    },
+  }
 }
 
 const sections: Record<string, () => Promise<void>> = {
@@ -1513,6 +1582,150 @@ const sections: Record<string, () => Promise<void>> = {
       expect('and the Preview Ready', (await previewCard.locator('[data-pill]').innerText()).trim() === 'Ready', await previewCard.innerText())
     } finally {
       await page.request.delete(`${WEB}/api/issues/${issue.id}`)
+      await page.close()
+    }
+  },
+
+  'pull-request': async () => {
+    const page = await signedIn()
+    const name = 'Pull request e2e agent'
+    const title = 'Pull request e2e: change the page'
+    const repo = `pr-e2e-${Date.now()}`
+    for (const i of (await issues(page)).filter((i) => i.title === title)) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    const { agents } = (await (await page.request.get(`${WEB}/api/agents`)).json()) as { agents: { id: number; name: string }[] }
+    for (const a of agents.filter((a) => a.name === name)) await page.request.post(`${WEB}/api/agents/${a.id}/terminate`)
+
+    const forgejo = await forgejoUp(repo)
+    const work = mkdtempSync(join(tmpdir(), 'bakery-pr-e2e-'))
+    const cleanups: (() => Promise<unknown> | unknown)[] = [() => forgejo.down(), () => rmSync(work, { recursive: true, force: true })]
+    try {
+      // A public repository (the Application clones it over HTTP without a
+      // Deploy key) serving one page from busybox, as previews/test.sh's.
+      await forgejo.api('POST', '/user/repos', { name: repo, private: false, default_branch: 'main' })
+      const clone = join(work, 'repo')
+      run('git', ['init', '-q', '-b', 'main', clone])
+      writeFileSync(join(clone, 'Dockerfile'), 'FROM docker.io/library/busybox:stable\nCOPY index.html /www/index.html\nEXPOSE 8080\nCMD ["httpd", "-f", "-p", "8080", "-h", "/www"]\n')
+      const commit = (text: string) => {
+        writeFileSync(join(clone, 'index.html'), `${text}\n`)
+        run('git', ['add', '-A'], clone)
+        run('git', ['-c', 'user.name=E2E Tester', '-c', 'user.email=e2e@example.test', 'commit', '-qm', text], clone)
+        run('git', ['push', '-q', forgejo.remote(repo), 'main'], clone)
+      }
+      commit('version main')
+
+      const { project } = (await (await page.request.post(`${WEB}/api/projects`, { data: { name: repo } })).json()) as { project: { id: number } }
+      cleanups.unshift(() => page.request.delete(`${WEB}/api/projects/${project.id}`))
+      const env = ((await (await page.request.get(`${WEB}/api/projects/${project.id}`)).json()) as { project: { environments: { id: number }[] } }).project.environments[0]
+      const made = await page.request.post(`${WEB}/api/environments/${env.id}/applications`, {
+        data: { name: repo, git_url: `${FORGEJO}/${forgejo.user}/${repo}.git`, git_branch: 'main', port: 8080 },
+      })
+      if (!made.ok()) throw new Error(`the Application: ${made.status()} ${await made.text()}`)
+      const { application: app } = (await made.json()) as { application: { id: number; slug: string } }
+      cleanups.unshift(async () => {
+        await page.request.delete(`${WEB}/api/applications/${app.id}`)
+        const images = run('podman', ['images', '--format', '{{.Repository}}:{{.Tag}}']).split('\n').filter((i) => i.startsWith(`localhost/bakery/${app.slug}:`))
+        if (images.length) spawnSync('podman', ['rmi', '-f', ...images])
+      })
+
+      // Previews on with the Git host token, Auto-deploy off so only the
+      // Deploy below builds main; the hook sends push and pull request events.
+      const hooked = await page.request.patch(`${WEB}/api/applications/${app.id}/webhook`, { data: { auto_deploy: false, previews: true, git_host_token: forgejo.token } })
+      if (!hooked.ok()) throw new Error(`the webhook: ${hooked.status()} ${await hooked.text()}`)
+      const { webhook } = (await hooked.json()) as { webhook: { path: string; secret: string } }
+      await forgejo.api('POST', `/repos/${forgejo.user}/${repo}/hooks`, {
+        type: 'forgejo',
+        active: true,
+        events: ['push', 'pull_request', 'pull_request_sync'],
+        config: { url: `http://127.0.0.1:4910${webhook.path}`, content_type: 'json', secret: webhook.secret },
+      })
+      // One verified call, so The Bakery knows the git host is Forgejo.
+      commit('version main 2')
+      const deployed = async () => {
+        const { deployments } = (await (await page.request.get(`${WEB}/api/applications/${app.id}/deployments`)).json()) as { deployments: { status: string; error?: string }[] }
+        if (deployments[0]?.status === 'failed') throw new Error(`the deployment failed: ${deployments[0].error}`)
+        return deployments[0]?.status === 'finished'
+      }
+      await page.request.post(`${WEB}/api/applications/${app.id}/deploy`, { data: {} })
+      await waitFor(300, 'the first deployment', deployed)
+      expect('the Application on the Forgejo stand-in deploys', true)
+
+      // A scratch Agent with the Member Role (manage_work), its Issue naming
+      // the Application; the description is set once the Issue's id is known.
+      const { roles } = (await (await page.request.get(`${WEB}/api/roles`)).json()) as { roles: { id: number; name: string }[] }
+      const member = roles.find((r) => r.name === 'Member')!
+      const hire = (await (await page.request.post(`${WEB}/api/agents`, { data: { name, job: 'engineer', icon: 'bot', role_ids: [member.id] } })).json()) as { agent: { id: number; approval_id: number } }
+      cleanups.unshift(() => page.request.post(`${WEB}/api/agents/${hire.agent.id}/terminate`))
+      await page.request.post(`${WEB}/api/approvals/${hire.agent.approval_id}/approve`, { data: {} })
+      const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title, status: 'todo', project_id: project.id } })).json()) as { issue: Issue }
+      cleanups.unshift(() => page.request.delete(`${WEB}/api/issues/${issue.id}`))
+      const id = JSON.stringify({ issueId: String(issue.id) })
+      const named = await page.request.patch(`${WEB}/api/issues/${issue.id}`, {
+        data: {
+          application_id: app.id,
+          description: `[mcp bakeryCheckoutIssue ${id}] [git commit index.html version-agent] [git push] [mcp bakeryOpenPullRequest ${id}] [mcp bakeryReleaseIssue ${id}]`,
+        },
+      })
+      expect('the Issue names the Application', named.ok() && ((await named.json()) as { issue: Issue }).issue.application?.id === app.id, named.status())
+
+      // The Runner pushes with Forgejo credentials from its environment
+      // only, as a person's git credential setup would give them.
+      const desktop = await desktopRunner(page, {
+        BAKERY_STANDIN_DELAY: '200ms',
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: `url.${forgejo.remote(repo).replace(`${repo}.git`, '')}.insteadOf`,
+        GIT_CONFIG_VALUE_0: `${FORGEJO}/${forgejo.user}/`,
+      })
+      cleanups.unshift(() => desktop.stop())
+      const assigned = await page.request.patch(`${WEB}/api/issues/${issue.id}`, { data: { assignee_agent_id: hire.agent.id } })
+      expect('assigning the Issue to the Agent answers 200', assigned.ok(), assigned.status())
+
+      await page.goto(`${WEB}/#/issues/${issue.identifier}`)
+      const ledger = page.getByTestId('run-ledger')
+      await ledger.locator('[data-run]').first().locator('[data-run-status="succeeded"], [data-run-status="failed"]').waitFor({ timeout: 180_000 })
+      const ended = await ledger.locator('[data-run]').first().locator('[data-run-status]').getAttribute('data-run-status')
+      expect('the Run succeeds', ended === 'succeeded', ended)
+
+      const branch = `bakery/${issue.identifier.toLowerCase()}`
+      const pulls = (await forgejo.api('GET', `/repos/${forgejo.user}/${repo}/pulls?state=open`)) as { number: number; head: { ref: string } }[]
+      const pull = pulls.find((p) => p.head.ref === branch)
+      expect(`Forgejo has the Pull request from ${branch}`, !!pull, pulls)
+      const region = page.getByRole('region', { name: 'Work products' })
+      const card = region.locator('[data-work-product="pull_request"]')
+      const previewCard = region.locator('[data-work-product="preview_url"]')
+      const pill = (c: typeof card) => c.locator('[data-pill]').innerText().then((t) => t.trim(), () => '')
+      await page.reload()
+      await card.waitFor({ timeout: 20_000 })
+      expect('the Pull request card says Open with its number', (await pill(card)) === 'Open' && (await card.innerText()).includes(`#${pull?.number}`), await card.innerText())
+
+      // The Preview, seen on the page as it goes Deploying, then Ready.
+      const seen = new Set<string>()
+      await waitFor(300, 'the Preview card to say Ready', async () => {
+        await page.reload()
+        await page.getByTestId('issue-detail-header').waitFor()
+        if ((await previewCard.count()) === 0) return false
+        const p = await pill(previewCard)
+        seen.add(p)
+        if (p === 'Failed') throw new Error('the Preview failed')
+        return p === 'Ready'
+      })
+      expect('the Preview card went Deploying, then Ready', seen.has('Deploying') && seen.has('Ready'), [...seen])
+      const address = (await previewCard.locator('[data-preview-link]').getAttribute('href')) ?? ''
+      const host = new URL(address).hostname
+      const served = () => spawnSync('curl', ['-sf', '-k', '--resolve', `${host}:4943:127.0.0.1`, address]).stdout.toString().trim()
+      await waitFor(30, `version-agent on ${address}`, () => served() === 'version-agent')
+      expect("the Preview's address serves the Agent's change", true)
+
+      // Closed on Forgejo: the cards turn Closed and Removed.
+      await forgejo.api('PATCH', `/repos/${forgejo.user}/${repo}/pulls/${pull!.number}`, { state: 'closed' })
+      await waitFor(90, 'the cards to say Closed and Removed', async () => {
+        await page.reload()
+        await page.getByTestId('issue-detail-header').waitFor()
+        await card.waitFor()
+        return (await pill(card)) === 'Closed' && (await pill(previewCard)) === 'Removed'
+      })
+      expect('closing the Pull request turns the cards Closed and Removed', true)
+    } finally {
+      for (const undo of cleanups) await undo()
       await page.close()
     }
   },

@@ -93,8 +93,12 @@ one section per flow (`bun e2e/work.ts issue` runs one): `goals` (the tree,
 New Goal, a Sub-goal, in-place editing, Markdown), `issues` (New Issue, search,
 filters and grouping), `issue` (the Issue page: properties, sub-issues and
 the comment thread), `viewer` (a Viewer, invited for the run, reads and
-changes nothing) and `hidden` (an Issue in a Project denied to the Member
-Role is gone for a Member), each once in the dark theme at 1440×900.
+changes nothing), `hidden` (an Issue in a Project denied to the Member
+Role is gone for a Member), and more for Blockers, documents, Activity,
+the Inbox, Approvals, Runs and Agents (the file's header lists them all);
+`pull-request` starts the Forgejo stand-in and follows an Agent's Run from
+the Issue's Application to its Pull request and Preview on the Issue page.
+Each runs once in the dark theme at 1440×900.
 
 `e2e/servers.ts` (`task web:servers`, needs `task dev`) checks the Servers
 pages and S3 Storage, one section per flow (`bun e2e/servers.ts remote`

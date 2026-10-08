@@ -72,6 +72,15 @@ account:test` checks them end to end.
 Previews of pull requests are under `/api/applications/{id}/previews`
 and switched on with `PATCH /api/applications/{id}/webhook`; `task
 previews:test` checks their life cycle end to end against Forgejo.
+An Issue can name one Application of its Project (`application_id` on
+`PATCH /api/issues/{id}`); a Run on such an Issue gets a Workspace in its
+claim's answer (repository, base branch, Agent branch `bakery/<identifier>`),
+which the Desktop app turns into a git Worktree on the person's laptop.
+`POST /api/issues/{id}/pull-requests` (people, and Agents holding the
+Checkout) opens the Agent branch's Pull request with the Webhook's Git host
+token; the Pull request and its Preview are the Issue's Work products in
+`GET /api/issues/{id}`. `bun e2e/work.ts pull-request` in `apps/web` checks
+the whole path against Forgejo.
 
 ## Layout
 
