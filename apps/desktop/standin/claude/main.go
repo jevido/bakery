@@ -19,6 +19,14 @@
 //	         called in order), then a short successful Run, or [slow]'s
 //	         steps first when the prompt also says [slow] (so a check sees
 //	         what the tools changed while the Run is still live)
+//	[git commit <file> <text>]
+//	         writes text to file in its working directory, then git add and
+//	         git commit -m "stand-in: <file>", as one Bash tool call
+//	[git push]
+//	         git push -u origin HEAD, as one Bash tool call
+//
+// [mcp …] and [git …] run in prompt order; a git command that fails ends
+// the Run as [fail] does.
 //
 // Anything else prints a short successful Run. BAKERY_STANDIN_DELAY sets the
 // pause between lines (milliseconds or a Go duration, default 300 ms).
@@ -101,7 +109,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if s.model == "" {
 		s.model = "claude-standin"
 	}
-	if calls, err := mcpCalls(opts.prompt); err != nil || len(calls) > 0 {
+	if calls, err := steps(opts.prompt); err != nil || len(calls) > 0 {
 		if err != nil {
 			s.init()
 			s.result("error_during_execution", true, err.Error())

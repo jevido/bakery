@@ -699,6 +699,31 @@ func TestRunnerStartsClaudeInTheIssuesWorktree(t *testing.T) {
 	}
 }
 
+func TestRunnerPushesTheAgentBranchAndOpensThePullRequest(t *testing.T) {
+	origin, url := originRepo(t)
+	f := newFakeBakery(t, `Fix it [git commit index.html hello] [git push] [mcp bakeryOpenPullRequest {"issueId":"DEF-12"}]`)
+	f.run.Workspace = &bakery.RunWorkspace{Application: bakery.Named{ID: 5, Name: "web"}, Repository: url, BaseBranch: "main", Branch: "bakery/def-12"}
+	updates := startRunner(t, f)
+	u := until(t, updates, "succeeded", "failed", "stopped")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if u.Status != "succeeded" {
+		t.Fatalf("update %+v; finish %+v", u, f.finished)
+	}
+	if got := gitIn(t, origin, "show", "bakery/def-12:index.html"); got != "hello" {
+		t.Fatalf("pushed index.html %q", got)
+	}
+	if got := gitIn(t, origin, "log", "-1", "--format=%an", "bakery/def-12"); got != "Ada" {
+		t.Fatalf("the commit's author is %q, not the Agent", got)
+	}
+	if got := gitIn(t, origin, "rev-parse", "main"); got != gitIn(t, origin, "rev-parse", "bakery/def-12~1") {
+		t.Fatal("main moved, or the Agent branch is not one commit on it")
+	}
+	if want := `POST /api/issues/DEF-12/pull-requests {"body":"","title":""}`; strings.Join(f.calls, "\n") != want {
+		t.Fatalf("calls %q, want %q", f.calls, want)
+	}
+}
+
 func TestRunnerFailsARunWhoseRepositoryIsUnreachable(t *testing.T) {
 	isolateGit(t)
 	f := newFakeBakery(t, "Fix it")

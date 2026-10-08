@@ -81,7 +81,7 @@ func TestListsEveryTool(t *testing.T) {
 		"bakeryListComments", "bakeryListDocuments", "bakeryGetDocument", "bakeryListDocumentRevisions",
 		"bakeryListProjects", "bakeryGetProject", "bakeryListGoals", "bakeryGetGoal", "bakeryListApprovals",
 		"bakeryGetApproval", "bakeryCreateIssue", "bakeryUpdateIssue", "bakeryCheckoutIssue", "bakeryReleaseIssue",
-		"bakeryAddComment", "bakeryUpsertIssueDocument", "bakeryCreateApproval", "bakeryAddApprovalComment",
+		"bakeryOpenPullRequest", "bakeryAddComment", "bakeryUpsertIssueDocument", "bakeryCreateApproval", "bakeryAddApprovalComment",
 		"bakeryApiRequest",
 	}
 	slices.Sort(names)
@@ -137,6 +137,22 @@ func TestCheckoutExpectsOpenStatusesByDefault(t *testing.T) {
 	r := (*got)[0]
 	if err := json.Unmarshal([]byte(r.Body), &body); err != nil || r.Path != "/api/issues/DEF-1/checkout" ||
 		!slices.Equal(body.ExpectedStatuses, []string{"todo", "backlog", "blocked"}) {
+		t.Errorf("request = %+v", r)
+	}
+}
+
+func TestOpenPullRequestPostsToTheIssue(t *testing.T) {
+	cs, got := connect(t, ok(`{"work_product":{"type":"pull_request"}}`))
+	if _, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "bakeryOpenPullRequest", Arguments: map[string]any{"issueId": "DEF-1", "title": "Say hello"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Title string `json:"title"`
+	}
+	r := (*got)[0]
+	if err := json.Unmarshal([]byte(r.Body), &body); err != nil || r.Method != "POST" || r.Path != "/api/issues/DEF-1/pull-requests" || body.Title != "Say hello" {
 		t.Errorf("request = %+v", r)
 	}
 }

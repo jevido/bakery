@@ -48,8 +48,9 @@ on `PATH` and Wails' Linux libraries (`wails3 doctor`).
   as `Bakery-Guild`: who am I (`bakeryMe`), the Inbox, Agents, Issues with
   their Comments and Issue documents and revisions, Projects, Goals and
   Approvals to read; create and change an Issue (a sub-issue with
-  `parent_id`), Checkout and Release, write a Comment, save an Issue
-  document, ask for an Approval and comment on one; and `bakeryApiRequest`
+  `parent_id`), Checkout and Release, open the Issue's Pull request for
+  its pushed Agent branch (`bakeryOpenPullRequest`), write a Comment, save
+  an Issue document, ask for an Approval and comment on one; and `bakeryApiRequest`
   for any other route under `/api/`. A refusal is a tool error carrying the
   status and message. Paperclip's `@paperclipai/mcp-server` tool surface in
   The Bakery's words.
@@ -131,8 +132,11 @@ line), `[limit]` (the CLI's usage-limit message) and `[mcp <tool> <json>]`
 (calls that tool of the MCP server it was given and prints the call and
 its result as `tool_use`/`tool_result`; with `[slow]` too, the slow lines
 follow the calls, so a check sees what the tools changed while the Run is
-still live), and `[env]` (says its working directory and its git and
-Worktree variables).
+still live), `[git commit <file> <text>]` (writes the file in its working
+directory and commits it) and `[git push]` (`git push -u origin HEAD`),
+each shown as a `Bash` tool call and run in prompt order with the
+`[mcp …]` calls (a failing one fails the Run), and `[env]` (says its
+working directory and its git and Worktree variables).
 `BAKERY_STANDIN_DELAY` sets its pause between lines (300 ms by default).
 
 When the claim's answer carries a Workspace (the Run's Issue names an

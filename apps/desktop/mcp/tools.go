@@ -14,7 +14,7 @@ import (
 // The tools are Paperclip's MCP surface in The Bakery's words, limited to
 // the routes open to Agents: who the Agent is, its Inbox, Agents,
 // Issues with their Comments and documents, Projects, Goals and Approvals,
-// Checkout and Release, and bakeryApiRequest for any other /api route.
+// Checkout and Release, opening the Issue's Pull request, and bakeryApiRequest for any other /api route.
 
 type none struct{}
 
@@ -86,6 +86,12 @@ type updateIssue struct {
 type checkoutIssue struct {
 	IssueID          string   `json:"issueId" jsonschema:"the Issue's id or its Issue identifier, such as DEF-12"`
 	ExpectedStatuses []string `json:"expectedStatuses,omitempty" jsonschema:"the statuses the Issue may be in to be checked out; todo, backlog and blocked when left out"`
+}
+
+type openPullRequest struct {
+	IssueID string `json:"issueId" jsonschema:"the Issue's id or its Issue identifier, such as DEF-12"`
+	Title   string `json:"title,omitempty" jsonschema:"the Pull request's title; the Issue's identifier and title when left out"`
+	Body    string `json:"body,omitempty" jsonschema:"the Pull request's description, in Markdown; a link to the Issue is added"`
 }
 
 type addComment struct {
@@ -192,6 +198,9 @@ func addTools(s *mcp.Server, a *api) {
 	})
 	tool(s, a, "bakeryReleaseIssue", "Release this Run's Checkout of an Issue", func(in issueRef) (string, string, any, error) {
 		return "POST", issuePath(in.IssueID) + "/release", struct{}{}, nil
+	})
+	tool(s, a, "bakeryOpenPullRequest", "Open the Pull request for the Issue's Agent branch on its Application's repository, after pushing the branch; an open one is answered as it is", func(in openPullRequest) (string, string, any, error) {
+		return "POST", issuePath(in.IssueID) + "/pull-requests", map[string]string{"title": in.Title, "body": in.Body}, nil
 	})
 	tool(s, a, "bakeryAddComment", "Add a Comment to an Issue", func(in addComment) (string, string, any, error) {
 		return "POST", issuePath(in.IssueID) + "/comments", map[string]string{"body": in.Body}, nil

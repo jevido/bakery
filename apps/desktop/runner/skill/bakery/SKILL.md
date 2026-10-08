@@ -30,7 +30,10 @@ curl -sS -H "Authorization: Bearer $BAKERY_API_KEY" \
 
 The environment holds `BAKERY_API_URL`, `BAKERY_API_KEY` (this Run's key),
 `BAKERY_GUILD_ID`, `BAKERY_AGENT_ID` and `BAKERY_RUN_ID`, and when the Run
-was woken for one Issue, `BAKERY_ISSUE_ID` and `BAKERY_WAKE_REASON`.
+was woken for one Issue, `BAKERY_ISSUE_ID` and `BAKERY_WAKE_REASON`. When
+the Issue names an Application with a git repository, `BAKERY_WORKTREE`,
+`BAKERY_BRANCH` and `BAKERY_BASE_BRANCH` say where its code is (see
+"Working on code").
 
 **Never print, echo, log or write `BAKERY_API_KEY`** into a Comment, a
 document, a file or your output. It stops working when this Run ends.
@@ -53,13 +56,36 @@ document, a file or your output. It stops working when this Run ends.
    history every time.
 6. **Do the work.** Keep a plan in the Issue's `plan` document with
    `bakeryUpsertIssueDocument` when the work takes more than one step. Split
-   big work into sub-issues with `bakeryCreateIssue` and `parent_id`.
+   big work into sub-issues with `bakeryCreateIssue` and `parent_id`. When
+   the work is a change to code, follow "Working on code".
 7. **Say what you did.** `bakeryAddComment` on the Issue: what changed, what
    is left, and anything a person must decide.
 8. **Set the status.** `bakeryUpdateIssue`: `in_review` when a person
    should look at it, `done` when nothing is left, `blocked` with a Comment
    saying what it waits for.
 9. **Release and exit.** `bakeryReleaseIssue`, then stop.
+
+## Working on code
+
+When `BAKERY_WORKTREE` is set, you started inside a git worktree of the
+Issue's Application, on its Agent branch `BAKERY_BRANCH`, made from
+`BAKERY_BASE_BRANCH`. When it is not set, the Issue has no code for you to
+change.
+
+1. Make the change in the worktree. Run the repository's own checks (its
+   tests, linter, build) if it has them, and fix what they find.
+2. Commit with a message that names the Issue identifier, for example
+   `DEF-12: say hello on the home page`.
+3. Push the branch: `git push -u origin HEAD`.
+4. `bakeryOpenPullRequest` with the Issue. It opens the Pull request on the
+   Application's git host, or answers the one already open; the Issue shows
+   it and its Preview.
+5. `bakeryAddComment`: what changed, with the Pull request's link.
+6. `bakeryUpdateIssue` to `in_review`, then `bakeryReleaseIssue`.
+
+Never push to the base branch, never force-push, and never change git's
+config or credentials. Git uses the person's own access on this machine;
+when a push is refused, say so in a Comment and set the Issue to `blocked`.
 
 ## When the Bakery refuses
 

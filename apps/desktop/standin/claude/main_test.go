@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -144,16 +146,101 @@ func TestRefusesWithoutStreamJSONFlags(t *testing.T) {
 	}
 }
 
-func TestMCPCallsAreReadInOrder(t *testing.T) {
-	calls, err := mcpCalls(`Do it [mcp bakeryCheckoutIssue {"issueId":"DEF-1"}] then [mcp bakeryAddComment {"issueId":"DEF-1","body":"a ] in it"}]`)
+func TestStepsAreReadInOrder(t *testing.T) {
+	calls, err := steps(`Do it [mcp bakeryCheckoutIssue {"issueId":"DEF-1"}] [git commit web/index.html hello there] [git push] then [mcp bakeryAddComment {"issueId":"DEF-1","body":"a ] in it"}]`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 2 || calls[0].tool != "bakeryCheckoutIssue" || calls[1].tool != "bakeryAddComment" || calls[1].args["body"] != "a ] in it" {
+	if len(calls) != 4 || calls[0].tool != "bakeryCheckoutIssue" ||
+		calls[1].git == nil || calls[1].git.file != "web/index.html" || calls[1].git.text != "hello there" ||
+		calls[2].git == nil || calls[2].git.file != "" ||
+		calls[3].tool != "bakeryAddComment" || calls[3].args["body"] != "a ] in it" {
 		t.Fatalf("calls %+v", calls)
 	}
-	if _, err := mcpCalls(`[mcp bakeryMe {"x":1}`); err == nil {
-		t.Fatal("no error for a missing ]")
+	for _, bad := range []string{`[mcp bakeryMe {"x":1}`, `[git push`, `[git rebase main]`, `[git commit ]`} {
+		if _, err := steps(bad); err == nil {
+			t.Fatalf("no error for %q", bad)
+		}
+	}
+}
+
+// git runs git in dir and fails the test when it fails.
+func git(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// worktree makes a bare repository with one commit on main and a clone of
+// it on branch bakery/def-1, and runs the test inside the clone.
+func worktree(t *testing.T) (bare string) {
+	t.Helper()
+	for k, v := range map[string]string{
+		"GIT_AUTHOR_NAME": "Coder", "GIT_AUTHOR_EMAIL": "agent-3@bakery.test",
+		"GIT_COMMITTER_NAME": "Person", "GIT_COMMITTER_EMAIL": "person@example.test",
+		"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1",
+	} {
+		t.Setenv(k, v)
+	}
+	root := t.TempDir()
+	bare = filepath.Join(root, "app.git")
+	git(t, root, "init", "--bare", "-b", "main", bare)
+	clone := filepath.Join(root, "clone")
+	git(t, root, "clone", bare, clone)
+	os.WriteFile(filepath.Join(clone, "README.md"), []byte("app\n"), 0o644)
+	git(t, clone, "add", "README.md")
+	git(t, clone, "commit", "-m", "first")
+	git(t, clone, "push", "origin", "HEAD:main")
+	git(t, clone, "checkout", "-b", "bakery/def-1")
+	t.Chdir(clone)
+	return bare
+}
+
+func TestGitCommitAndPush(t *testing.T) {
+	withoutAPIKey(t)
+	bare := worktree(t)
+	var out, errOut bytes.Buffer
+	code := run(append(baseArgs, "DEF-1: say hello [git commit web/index.html hello] [git push]"), nil, &out, &errOut)
+	ls := lines(t, out.String())
+	if last := ls[len(ls)-1]; code != 0 || last["subtype"] != "success" {
+		t.Fatalf("exit %d, last %v, stderr %q", code, last, errOut.String())
+	}
+	if got := git(t, bare, "show", "bakery/def-1:web/index.html"); got != "hello" {
+		t.Fatalf("pushed file %q", got)
+	}
+	if got := git(t, bare, "log", "-1", "--format=%an <%ae> %s", "bakery/def-1"); got != "Coder <agent-3@bakery.test> stand-in: web/index.html" {
+		t.Fatalf("pushed commit %q", got)
+	}
+	var bash int
+	for _, l := range ls {
+		msg, _ := l["message"].(map[string]any)
+		content, _ := msg["content"].([]any)
+		for _, c := range content {
+			if c := c.(map[string]any); c["type"] == "tool_use" && c["name"] == "Bash" {
+				bash++
+			}
+		}
+	}
+	if bash != 2 {
+		t.Fatalf("%d Bash tool calls, want 2", bash)
+	}
+}
+
+func TestFailingGitFailsTheRun(t *testing.T) {
+	withoutAPIKey(t)
+	bare := worktree(t)
+	os.RemoveAll(bare)
+	var out, errOut bytes.Buffer
+	code := run(append(baseArgs, "DEF-1 [git commit a.txt x] [git push]"), nil, &out, &errOut)
+	ls := lines(t, out.String())
+	last := ls[len(ls)-1]
+	if code != 1 || last["subtype"] != "error_during_execution" || !strings.Contains(last["result"].(string), "git push") {
+		t.Fatalf("exit %d, last %v", code, last)
 	}
 }
 
