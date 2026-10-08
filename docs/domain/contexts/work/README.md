@@ -179,7 +179,7 @@ type and the payload's title.
   | `GET /api/issues/{issue}/activity` | `{"activity": [Activity event]}`, oldest first, as Paperclip's issue activity |
   | `POST /api/issues/{issue}/read`, `DELETE /api/issues/{issue}/read` | Sets or removes the asking Member's Read mark, with `view_resources` only |
   | `POST /api/issues/{issue}/inbox-archive`, `DELETE /api/issues/{issue}/inbox-archive` | Sets or removes the asking Member's Inbox archive, with `view_resources` only |
-  | `GET /api/sidebar-badges` | `{"inbox": n, "approvals": n}`: how many Issues in the asking Member's Mine tab are Unread, and how many of the Guild's Approvals are Actionable (counted in `inbox` too for someone with `approve`) |
+  | `GET /api/sidebar-badges` | `{"inbox": n, "approvals": n}`: `approvals` is how many of the Guild's Approvals are Actionable, and `inbox` adds them to how many Issues in the asking Member's Mine tab are Unread, for every Member as in Paperclip, since the Unread tab shows those Approvals to everyone |
   | `GET /api/approvals` | `{"approvals": [Approval]}`, newest first and unpaged, as Paperclip's; filter `status`, a comma list of Approval statuses and `actionable` (both `pending` and `revision_requested`); anything else is 422 |
   | `POST /api/approvals` | 201 `{"approval": Approval}`; body `{type, payload, issue_ids}`; 422 for an unknown type, a payload that breaks the rules or an Issue id that is not the Guild's |
   | `GET /api/approvals/{id}` | `{"approval": Approval}` |
@@ -394,6 +394,11 @@ type and the payload's title.
 - **The Requester may decide their own Approval** if they hold `approve`,
   as in Paperclip. A Guild that wants four eyes gives its Requesters no
   `approve`.
+- **Approvals in the Inbox have no read dot and no Archive.** Paperclip
+  keeps an Approval's read and dismissed state in the browser's storage,
+  so it is lost on another device. Here the Inbox shows Approvals by their
+  status alone (Actionable ones in Mine and Unread), and a Decision is what
+  takes one out of Unread.
 - **Resubmit is the Requester's alone.** Paperclip lets any board user mark
   an Approval resubmitted, because there the Requester is an agent that
   cannot press the button. Here the Requester is a Member who can.

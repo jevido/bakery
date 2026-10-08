@@ -7,6 +7,7 @@
   // Approval linked to it; given an Approval (Resubmit on its page) it opens
   // prefilled and resubmits the edited request. Ctrl/⌘+Enter sends it.
   import { Input } from '$lib/components/ui/input'
+  import { refreshBadges } from './inbox.svelte'
   import { Textarea } from '$lib/components/ui/textarea'
   import { ApiError } from './api'
   import { requestApproval, resubmitApproval, type Approval, type ApprovalPayload } from './approvals'
@@ -64,6 +65,7 @@
     }
     try {
       const saved = approval ? await resubmitApproval(approval.id, payload) : await requestApproval(payload, issueId ? [issueId] : [])
+      refreshBadges()
       open = false
       onsaved?.(saved)
     } catch (e) {

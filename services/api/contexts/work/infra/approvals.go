@@ -129,6 +129,20 @@ func (s Approvals) Approvals(ctx context.Context, guildID uint64, statuses []dom
 	return s.find(ctx, `WHERE guild_id = ? AND status IN ? ORDER BY id DESC`, guildID, keys)
 }
 
+// CountApprovals counts the Guild's Approvals in these statuses (any for
+// none).
+func (s Approvals) CountApprovals(ctx context.Context, guildID uint64, statuses []domain.ApprovalStatus) (int64, error) {
+	q := s.query(ctx).Table("approvals").Where("guild_id = ?", guildID)
+	if len(statuses) > 0 {
+		keys := make([]string, len(statuses))
+		for i, st := range statuses {
+			keys[i] = string(st)
+		}
+		q = q.Where("status IN ?", keys)
+	}
+	return q.Count()
+}
+
 // IssueApprovals lists the Approvals linked to the Issue, newest first.
 func (s Approvals) IssueApprovals(ctx context.Context, issueID uint64) ([]domain.Approval, error) {
 	return s.find(ctx, `WHERE id IN (SELECT approval_id FROM approval_issues WHERE issue_id = ?) ORDER BY id DESC`, issueID)

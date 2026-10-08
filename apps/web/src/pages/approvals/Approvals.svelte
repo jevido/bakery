@@ -5,6 +5,7 @@
   // Approval's page with its "Approval confirmed" banner, as Paperclip does;
   // Reject stays on the list. Only a Member with approve gets the buttons.
   import { ShieldCheck } from '@lucide/svelte'
+  import { refreshBadges } from '../../lib/inbox.svelte'
   import * as Tabs from '$lib/components/ui/tabs'
   import ApprovalCard from '../../lib/ApprovalCard.svelte'
   import { decide, isActionable, listApprovals, type Approval } from '../../lib/approvals'
@@ -41,6 +42,7 @@
     pending = { id: a.id, decision }
     try {
       await decide(a.id, decision)
+      refreshBadges()
       actionError = ''
       if (decision === 'approve') go(`/approvals/${a.id}?resolved=approved`)
       else await load()

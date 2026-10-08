@@ -11,6 +11,7 @@
   // request dialog prefilled, so the request can change with it. Deciding
   // needs approve, commenting manage_work.
   import { ChevronRight, CircleCheck, Sparkles } from '@lucide/svelte'
+  import { refreshBadges } from '../../lib/inbox.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Textarea } from '$lib/components/ui/textarea'
   import { ApiError } from '../../lib/api'
@@ -89,6 +90,7 @@
     busy = decision
     try {
       approval = await decide(id, decision, note.trim())
+      refreshBadges()
       note = ''
       error = ''
       if (decision === 'approve') {

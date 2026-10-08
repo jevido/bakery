@@ -18,6 +18,9 @@ type Approvals interface {
 	// Approvals lists the Guild's Approvals in these statuses (any for
 	// none), newest first.
 	Approvals(ctx context.Context, guildID uint64, statuses []domain.ApprovalStatus) ([]domain.Approval, error)
+	// CountApprovals counts the Guild's Approvals in these statuses (any
+	// for none).
+	CountApprovals(ctx context.Context, guildID uint64, statuses []domain.ApprovalStatus) (int64, error)
 	// IssueApprovals lists the Approvals linked to the Issue, newest first.
 	IssueApprovals(ctx context.Context, issueID uint64) ([]domain.Approval, error)
 	// SaveApproval writes the Approval only while its stored status is one
@@ -97,6 +100,14 @@ func (s *Service) Approvals(ctx context.Context, guildID uint64, status string) 
 		return nil, err
 	}
 	return s.approvals.Approvals(ctx, guildID, sts)
+}
+
+// ActionableApprovalCount counts the Guild's Approvals still waiting for a
+// Decision: the Approvals badge, and part of the Inbox badge. Approvals
+// have no Project, so every Member of the Guild counts them all.
+func (s *Service) ActionableApprovalCount(ctx context.Context, guildID uint64) (int64, error) {
+	sts, _ := ApprovalStatuses(Actionable)
+	return s.approvals.CountApprovals(ctx, guildID, sts)
 }
 
 // ApprovalInGuild reports whether the Approval exists and belongs to the

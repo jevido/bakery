@@ -153,6 +153,7 @@
     deciding = { id, action }
     try {
       await decide(id, action)
+      refreshBadges()
       activityVersion++
       await loadApprovals()
     } catch (e) {

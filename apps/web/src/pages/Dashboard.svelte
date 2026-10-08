@@ -2,7 +2,7 @@
   // Coolify's Dashboard content (resources/views/livewire/dashboard.blade.php
   // and app/Livewire/Dashboard.php, Apache-2.0, see NOTICE) in Paperclip's
   // Dashboard layout (ui/src/pages/Dashboard.tsx, MIT): a row of metric cards,
-  // then the first eight Projects and Servers by name as two list cards, each
+  // Paperclip's "Pending Approvals" among them, then the first eight Projects and Servers by name as two list cards, each
   // under a section heading with "View all".
   //
   // Left out for now: the active-deployments strip (dashboard.active-deployments)
@@ -14,6 +14,7 @@
   import { Card } from '$lib/components/ui/card'
   import { api } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
+  import { badges } from '../lib/inbox.svelte'
   import Icon from '../lib/Icon.svelte'
   import MetricCard from '../lib/MetricCard.svelte'
   import PageSkeleton from '../lib/PageSkeleton.svelte'
@@ -85,7 +86,7 @@
   {#if projects === null && servers === null && !projectsError && !serversError}
     <PageSkeleton variant="dashboard" />
   {:else}
-    <div class="grid grid-cols-2 gap-1 sm:gap-2 xl:grid-cols-4">
+    <div class="grid grid-cols-2 gap-1 sm:gap-2 xl:grid-cols-5">
       <MetricCard icon="projects" value={projects?.length ?? '–'} label="Projects" href={href('/projects')}>
         {#snippet description()}Deployment workspaces{/snippet}
       </MetricCard>
@@ -97,6 +98,9 @@
       </MetricCard>
       <MetricCard icon="alert-triangle" value={servers ? notReady + unreachable : '–'} label="Servers needing attention" href={href('/servers')}>
         {#snippet description()}{notReady} not ready, {unreachable} unreachable{/snippet}
+      </MetricCard>
+      <MetricCard icon="shield-check" value={badges.approvals} label="Pending Approvals" href={href('/approvals')}>
+        {#snippet description()}Awaiting board review{/snippet}
       </MetricCard>
     </div>
 

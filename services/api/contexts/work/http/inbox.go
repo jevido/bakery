@@ -38,12 +38,18 @@ func (c *Controller) UnarchiveFromInbox(ctx contractshttp.Context) contractshttp
 	return ctx.Response().NoContent()
 }
 
-// SidebarBadges counts what the sidebar marks: the Unread Issues in the
-// asking Member's Mine tab.
+// SidebarBadges counts what the sidebar marks, as Paperclip's
+// sidebar-badges service: `approvals` is the Guild's Actionable Approvals,
+// and `inbox` adds them to the Unread Issues in the asking Member's Mine
+// tab.
 func (c *Controller) SidebarBadges(ctx contractshttp.Context) contractshttp.Response {
 	n, err := c.service.InboxCount(ctx.Context(), c.guild(ctx), c.Member(ctx), c.visible(ctx))
 	if err != nil {
 		return fail(ctx, err)
 	}
-	return ctx.Response().Success().Json(contractshttp.Json{"inbox": n})
+	a, err := c.service.ActionableApprovalCount(ctx.Context(), c.guild(ctx))
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"inbox": n + a, "approvals": a})
 }

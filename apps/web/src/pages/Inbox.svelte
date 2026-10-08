@@ -7,14 +7,23 @@
   // unreadTouchedIssues). The blue dot marks an unread Issue; clicking it, or
   // the empty slot on a read one, toggles the Member's Read mark. Archive
   // takes a row out of Mine with a toast to undo it. #/inbox opens the last
-  // tab used. Left out: the Blocked and All tabs, Approvals, failed runs and
-  // join requests (they wait for agents and Approvals), grouping, columns,
-  // nesting, keyboard navigation and swipe to archive.
+  // tab used. Approvals join the Issues as Paperclip's getApprovalsForTab and
+  // getInboxWorkItems (ui/src/lib/inbox.ts) have them: Mine shows the
+  // Actionable ones and those the Member requested or decided, Recent every
+  // one, Unread the Actionable ones, merged with the Issues by when they last
+  // changed. An Approval row is Paperclip's ApprovalInboxRow, with Approve and
+  // Reject for someone with the approve Permission while it is Actionable.
+  // Archive and the read dot are for Issues only: Paperclip keeps Approval
+  // dismissals in the browser, which is left out. Also left out: the Blocked
+  // and All tabs, failed runs and join requests (they wait for agents),
+  // grouping, columns, nesting, keyboard navigation and swipe to archive.
   import { Archive, ArchiveRestore } from '@lucide/svelte'
   import { untrack } from 'svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Button as UiButton } from '$lib/components/ui/button'
   import * as Tabs from '$lib/components/ui/tabs'
+  import { ApiError } from '../lib/api'
+  import { approvalLabel, approvalTypeIcon, decide, isActionable, listApprovals, type Approval } from '../lib/approvals'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { refreshBadges } from '../lib/inbox.svelte'
   import CollectionToolbar from '../lib/CollectionToolbar.svelte'
@@ -22,6 +31,7 @@
   import PageSkeleton from '../lib/PageSkeleton.svelte'
   import { go, href, inboxLastTabKey, inboxPath, inboxTabs, type InboxTab } from '../lib/router.svelte'
   import SearchField from '../lib/SearchField.svelte'
+  import { session } from '../lib/session.svelte'
   import StatusIcon from '../lib/StatusIcon.svelte'
   import Empty from '../lib/ui/Empty.svelte'
   import { toast } from '../lib/ui/toast.svelte'
@@ -56,6 +66,10 @@
   })
 
   let issues = $state.raw<Issue[] | null>(null)
+  // Every Approval in the Guild; the tab and the search pick from them here.
+  let approvals = $state.raw<Approval[] | null>(null)
+  let deciding = $state<{ id: number; action: 'approve' | 'reject' } | null>(null)
+  const canDecide = $derived(session.can('approve'))
   let more = $state(false)
   let loadingMore = $state(false)
   let loadError = $state('')
@@ -79,16 +93,63 @@
         if (ask === asked) loadError = e.message
       })
   }
-  // A new tab shows the skeleton; a new search keeps the old rows until it answers.
+  function loadApprovals() {
+    return listApprovals()
+      .then((as) => (approvals = as))
+      .catch((e) => (loadError = e.message))
+  }
+  // A new tab shows the skeleton and reads the Approvals again; a new search
+  // keeps the old rows until it answers.
   let shownTab: InboxTab | null = null
   $effect(() => {
     void [tab, search]
     untrack(() => {
-      if (shownTab !== tab) issues = null
+      if (shownTab !== tab) {
+        issues = null
+        loadApprovals()
+      }
       shownTab = tab
       load()
     })
   })
+
+  const mine = (a: Approval) =>
+    isActionable(a) || (session.member != null && (a.requester?.id === session.member.id || a.decided_by?.id === session.member.id))
+  const approvalsShown = $derived.by(() => {
+    const q = search.toLowerCase()
+    return (approvals ?? []).filter(
+      (a) =>
+        (tab === 'recent' || (tab === 'unread' ? isActionable(a) : mine(a))) &&
+        (!q || approvalLabel(a.type, a.payload).toLowerCase().includes(q)),
+    )
+  })
+
+  type Row = { kind: 'issue'; at: string; issue: Issue } | { kind: 'approval'; at: string; approval: Approval }
+  // Issues come newest change first, a page at a time; an Approval older than
+  // the last Issue loaded waits for the page that reaches it. On a tie the
+  // Approval goes first, as Paperclip's.
+  const rows = $derived.by((): Row[] | null => {
+    if (issues === null || approvals === null) return null
+    const last = more ? issues.at(-1)?.updated_at : undefined
+    const as = approvalsShown.filter((a) => !last || a.updated_at >= last)
+    return [
+      ...issues.map((issue): Row => ({ kind: 'issue', at: issue.updated_at, issue })),
+      ...as.map((approval): Row => ({ kind: 'approval', at: approval.updated_at, approval })),
+    ].sort((a, b) => (a.at === b.at ? (a.kind === 'approval' ? -1 : b.kind === 'approval' ? 1 : 0) : Date.parse(b.at) - Date.parse(a.at)))
+  })
+
+  async function decideApproval(a: Approval, action: 'approve' | 'reject') {
+    deciding = { id: a.id, action }
+    try {
+      const after = await decide(a.id, action)
+      approvals = (approvals ?? []).map((x) => (x.id === a.id ? after : x))
+      refreshBadges()
+    } catch (e) {
+      toast.error(action === 'approve' ? 'Could not approve it' : 'Could not reject it', e instanceof ApiError ? (Object.values(e.errors)[0] ?? e.message) : String(e))
+    } finally {
+      deciding = null
+    }
+  }
 
   function loadMore() {
     loadingMore = true
@@ -190,67 +251,107 @@
   </CollectionToolbar>
 
   {#if loadError}<p class="text-sm text-destructive">{loadError}</p>{/if}
-  {#if issues === null && !loadError}
+  {#if rows === null && !loadError}
     <PageSkeleton />
-  {:else if issues && issues.length === 0}
+  {:else if rows && rows.length === 0}
     <Empty title={search ? 'No inbox items match your search.' : empty[tab]} icon={search ? 'search' : 'inbox'} />
-  {:else if issues}
+  {:else if rows}
     <div class="-mx-2 sm:mx-0" aria-label="Inbox" role="list">
-      {#each issues as issue (issue.id)}
-        <div
-          role="listitem"
-          data-slot="task-row"
-          data-issue={issue.identifier}
-          data-unread={issue.unread ? 'true' : undefined}
-          data-archived={issue.archived ? 'true' : undefined}
-          class={[
-            'group relative flex min-w-0 items-center gap-2 rounded-lg border-b border-border py-2 pr-3 pl-1 text-sm last:border-b-0 hover:bg-accent/50 [&_button]:relative [&_button]:z-10',
-            issue.archived && 'opacity-50',
-          ]}
-        >
-          <a
-            href={href(`/issues/${issue.identifier}`)}
-            class="absolute inset-0 rounded-lg text-inherit no-underline focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      {#each rows as row (row.kind === 'issue' ? `issue:${row.issue.id}` : `approval:${row.approval.id}`)}
+        {#if row.kind === 'approval'}
+          {@const a = row.approval}
+          {@const Icon = approvalTypeIcon(a.type)}
+          <div
+            role="listitem"
+            data-slot="approval-row"
+            data-approval={a.id}
+            data-status={a.status}
+            class="group relative flex min-w-0 items-center gap-2 rounded-lg border-b border-border py-2 pr-3 pl-1 text-sm last:border-b-0 hover:bg-accent/50 [&_button]:relative [&_button]:z-10"
           >
-            <span class="sr-only">Open {issue.identifier}: {issue.title}</span>
-          </a>
-          <span class="inline-flex size-4 shrink-0 items-center justify-center" data-testid="issue-row-unread-slot">
-            <button
-              type="button"
-              class={['inline-flex size-4 items-center justify-center rounded-full transition-colors hover:bg-blue-500/20', !issue.unread && 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100']}
-              aria-label={issue.unread ? 'Mark as read' : 'Mark as unread'}
-              title={issue.unread ? 'Mark as read' : 'Mark as unread'}
-              onclick={() => toggleRead(issue)}
+            <a
+              href={href(`/approvals/${a.id}`)}
+              class="absolute inset-0 rounded-lg text-inherit no-underline focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
-              <span class={['block size-2 rounded-full', issue.unread ? 'bg-blue-600 dark:bg-blue-400' : 'border border-muted-foreground/60']}></span>
-            </button>
-          </span>
-          <StatusIcon status={issue.status} />
-          <span class="shrink-0 font-mono text-xs text-muted-foreground">{issue.identifier}</span>
-          <span class={['min-w-0 flex-1 truncate', issue.unread && 'font-semibold']}>{issue.title}</span>
-          <span class="ml-auto flex shrink-0 items-center gap-3">
-            {#if tab === 'mine'}
-              <button
-                type="button"
-                class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100"
-                aria-label="Archive"
-                onclick={() => archive(issue)}
-              >
-                <Archive class="size-3.5" />Archive
-              </button>
-            {:else if issue.archived}
-              <button
-                type="button"
-                class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
-                aria-label="Unarchive"
-                onclick={() => unarchive(issue)}
-              >
-                <ArchiveRestore class="size-3.5" />Unarchive
-              </button>
+              <span class="sr-only">Open {approvalLabel(a.type, a.payload)}</span>
+            </a>
+            <span class="inline-flex size-4 shrink-0" aria-hidden="true"></span>
+            <span class="shrink-0 rounded-md bg-muted p-1"><Icon class="size-3.5 text-muted-foreground" /></span>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate font-medium">{approvalLabel(a.type, a.payload)}</span>
+              <span class="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                <span class="capitalize">{a.status.replaceAll('_', ' ')}</span>
+                {#if a.requester}<span>requested by {a.requester.name}</span>{/if}
+                <span>updated {ago(a.updated_at)}</span>
+              </span>
+            </span>
+            {#if canDecide && isActionable(a)}
+              <span class="ml-auto flex shrink-0 items-center gap-2">
+                <UiButton size="sm" class="h-8 min-w-16 bg-green-700 px-3 text-white hover:bg-green-600" disabled={!!deciding} onclick={() => decideApproval(a, 'approve')}>
+                  {deciding?.id === a.id && deciding.action === 'approve' ? 'Approving…' : 'Approve'}
+                </UiButton>
+                <UiButton variant="destructive" size="sm" class="h-8 min-w-16 px-3" disabled={!!deciding} onclick={() => decideApproval(a, 'reject')}>
+                  {deciding?.id === a.id && deciding.action === 'reject' ? 'Rejecting…' : 'Reject'}
+                </UiButton>
+              </span>
             {/if}
-            <span class="w-24 shrink-0 truncate text-right text-xs text-muted-foreground">{ago(issue.updated_at)}</span>
-          </span>
-        </div>
+          </div>
+        {:else}
+          {@const issue = row.issue}
+          <div
+            role="listitem"
+            data-slot="task-row"
+            data-issue={issue.identifier}
+            data-unread={issue.unread ? 'true' : undefined}
+            data-archived={issue.archived ? 'true' : undefined}
+            class={[
+              'group relative flex min-w-0 items-center gap-2 rounded-lg border-b border-border py-2 pr-3 pl-1 text-sm last:border-b-0 hover:bg-accent/50 [&_button]:relative [&_button]:z-10',
+              issue.archived && 'opacity-50',
+            ]}
+          >
+            <a
+              href={href(`/issues/${issue.identifier}`)}
+              class="absolute inset-0 rounded-lg text-inherit no-underline focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              <span class="sr-only">Open {issue.identifier}: {issue.title}</span>
+            </a>
+            <span class="inline-flex size-4 shrink-0 items-center justify-center" data-testid="issue-row-unread-slot">
+              <button
+                type="button"
+                class={['inline-flex size-4 items-center justify-center rounded-full transition-colors hover:bg-blue-500/20', !issue.unread && 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100']}
+                aria-label={issue.unread ? 'Mark as read' : 'Mark as unread'}
+                title={issue.unread ? 'Mark as read' : 'Mark as unread'}
+                onclick={() => toggleRead(issue)}
+              >
+                <span class={['block size-2 rounded-full', issue.unread ? 'bg-blue-600 dark:bg-blue-400' : 'border border-muted-foreground/60']}></span>
+              </button>
+            </span>
+            <StatusIcon status={issue.status} />
+            <span class="shrink-0 font-mono text-xs text-muted-foreground">{issue.identifier}</span>
+            <span class={['min-w-0 flex-1 truncate', issue.unread && 'font-semibold']}>{issue.title}</span>
+            <span class="ml-auto flex shrink-0 items-center gap-3">
+              {#if tab === 'mine'}
+                <button
+                  type="button"
+                  class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100"
+                  aria-label="Archive"
+                  onclick={() => archive(issue)}
+                >
+                  <Archive class="size-3.5" />Archive
+                </button>
+              {:else if issue.archived}
+                <button
+                  type="button"
+                  class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                  aria-label="Unarchive"
+                  onclick={() => unarchive(issue)}
+                >
+                  <ArchiveRestore class="size-3.5" />Unarchive
+                </button>
+              {/if}
+              <span class="w-24 shrink-0 truncate text-right text-xs text-muted-foreground">{ago(issue.updated_at)}</span>
+            </span>
+          </div>
+        {/if}
       {/each}
     </div>
     {#if more}

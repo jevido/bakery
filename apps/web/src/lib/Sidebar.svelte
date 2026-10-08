@@ -2,7 +2,8 @@
   // Paperclip's Sidebar in its streamlined mode (ui/src/components/Sidebar.tsx
   // and primary-sidebar-styles.ts; MIT, see NOTICE): the Guild menu in a 60px
   // header, then The Bakery's nav. The first section holds Dashboard and
-  // the Inbox with its unread count; the Work section holds Projects,
+  // the Inbox with its count of Unread Issues and Actionable
+  // Approvals ("unread", as Paperclip labels it); the Work section holds Projects,
   // Issues and Goals; the Guild section holds Activity, as Paperclip's
   // Organization section does. Agents get their place here when they
   // arrive; the Guild's settings, Notifications, Keys & Tokens and

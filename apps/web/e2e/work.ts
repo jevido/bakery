@@ -83,7 +83,12 @@
 //           More actions menu asks for a third through the dialog, whose
 //           card appears above the tabs and is approved there; and
 //           #/activity?entity=approval lists approval.created and
-//           approval.approved, linking to the Approval page
+//           approval.approved, linking to the Approval page; a fourth,
+//           pending, is counted by /api/sidebar-badges and the sidebar's
+//           Inbox badge and has its row on Mine and Unread; Approve on that
+//           row takes it off Unread and the badge drops; the Dashboard's
+//           "Pending Approvals" card shows the count and opens
+//           #/approvals/pending
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -800,6 +805,10 @@ const sections: Record<string, () => Promise<void>> = {
     const page = await signedIn()
     const title = (n: string) => `Inbox e2e ${n}`
     for (const i of (await issues(page)).filter((i) => i.title.startsWith('Inbox e2e '))) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    // Waiting Approvals count in the Inbox badge too; the counts below are
+    // for Issues alone, so none may be left waiting.
+    const waiting = (await (await page.request.get(`${WEB}/api/approvals?status=actionable`)).json()) as { approvals: { id: number }[] }
+    for (const a of waiting.approvals) await page.request.post(`${WEB}/api/approvals/${a.id}/reject`, { data: {} })
     const made = async (n: string) =>
       ((await (await page.request.post(`${WEB}/api/issues`, { data: { title: title(n) } })).json()) as { issue: Issue }).issue
     const first = await made('first')
@@ -1028,6 +1037,37 @@ const sections: Record<string, () => Promise<void>> = {
     await created.getByRole('link').click()
     await page.waitForURL(new RegExp(`#/approvals/${third.id}$`))
     expect('an approval event links to the Approval page', true)
+
+    type Badges = { inbox: number; approvals: number }
+    const counts = async () => (await (await page.request.get(`${WEB}/api/sidebar-badges`)).json()) as Badges
+    const fourth = await ask(`${prefix} inbox`)
+    const before = await counts()
+    expect('/api/sidebar-badges counts the waiting Approval', before.approvals >= 1 && before.inbox >= before.approvals, before)
+    const inboxRow = page.locator(`[data-slot="approval-row"][data-approval="${fourth.id}"]`)
+    const badge = page.getByRole('navigation', { name: 'Main' }).locator('a[href="#/inbox"]').getByTestId('sidebar-nav-badge')
+    await page.goto(`${WEB}/#/inbox/mine`)
+    await inboxRow.waitFor()
+    expect('Mine shows the waiting Approval', await inboxRow.getByText(`Board Approval: ${prefix} inbox`, { exact: true }).isVisible())
+    expect('the Inbox badge counts it', (await badge.textContent())?.trim() === String(before.inbox), await badge.textContent())
+    await page.goto(`${WEB}/#/inbox/unread`)
+    await inboxRow.waitFor()
+    await inboxRow.getByRole('button', { name: 'Approve' }).click()
+    await inboxRow.waitFor({ state: 'detached' })
+    expect('approving it takes it off Unread', true)
+    const left = before.inbox - 1
+    if (left > 0) await page.waitForFunction(([n]) => document.querySelector('a[href="#/inbox"] [data-testid="sidebar-nav-badge"]')?.textContent?.trim() === n, [String(left)])
+    else await badge.waitFor({ state: 'detached' })
+    expect('and the badge drops', true)
+    const after = await counts()
+    expect('/api/sidebar-badges drops too', after.approvals === before.approvals - 1 && after.inbox === left, after)
+    expect('the Approval is approved', (await all()).find((a) => a.id === fourth.id)?.status === 'approved')
+    await page.goto(`${WEB}/`)
+    const pendingCard = page.getByRole('link', { name: /Pending Approvals/ })
+    await pendingCard.waitFor()
+    expect('the Dashboard counts Pending Approvals', !!(await pendingCard.textContent())?.includes(String(after.approvals)), await pendingCard.textContent())
+    await pendingCard.click()
+    await page.waitForURL(/#\/approvals\/pending$/)
+    expect('the card opens #/approvals/pending', true)
 
     await page.request.delete(`${WEB}/api/issues/${issue.id}`)
     await page.close()
