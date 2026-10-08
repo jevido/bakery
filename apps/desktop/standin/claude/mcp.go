@@ -56,7 +56,7 @@ type mcpServer struct {
 // (its own environment plus the server's env), and calls every tool in
 // order, printing each tool_use and tool_result. A Run asked to call tools
 // without a config fails, as the CLI's would for a tool it does not have.
-func (s *session) callTools(configFile string, calls []mcpCall) int {
+func (s *session) callTools(configFile string, calls []mcpCall, slow bool) int {
 	fail := func(msg string) int {
 		s.result("error_during_execution", true, msg)
 		return 1
@@ -88,7 +88,6 @@ func (s *session) callTools(configFile string, calls []mcpCall) int {
 		s.init(map[string]any{"name": "bakery", "status": "failed"})
 		return fail("The bakery MCP server did not start: " + err.Error())
 	}
-	defer session.Close()
 	s.init(map[string]any{"name": "bakery", "status": "connected"})
 
 	for i, call := range calls {
@@ -115,7 +114,16 @@ func (s *session) callTools(configFile string, calls []mcpCall) int {
 			},
 		}, s.delay)
 	}
+	session.Close()
 	final := fmt.Sprintf("Called %d of The Bakery's tools.", len(calls))
+	if slow {
+		for i := 1; i <= 18; i++ {
+			s.emitSlow(i)
+		}
+		s.delay = time.Second
+		s.result("success", false, final)
+		return 0
+	}
 	s.assistant(text(final))
 	s.result("success", false, final)
 	return 0

@@ -12,7 +12,9 @@
 //	[mcp <tool> <json arguments>]
 //	         calls tool on the bakery MCP server --mcp-config names, printing
 //	         the tool_use and tool_result lines the CLI would (several are
-//	         called in order), then a short successful Run
+//	         called in order), then a short successful Run, or [slow]'s
+//	         steps first when the prompt also says [slow] (so a check sees
+//	         what the tools changed while the Run is still live)
 //
 // Anything else prints a short successful Run. BAKERY_STANDIN_DELAY sets the
 // pause between lines (milliseconds or a Go duration, default 300 ms).
@@ -101,7 +103,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			s.result("error_during_execution", true, err.Error())
 			return 1
 		}
-		return s.callTools(opts.mcpConfig, calls)
+		return s.callTools(opts.mcpConfig, calls, strings.Contains(opts.prompt, "[slow]"))
 	}
 	return s.answer(opts.prompt, stderr)
 }

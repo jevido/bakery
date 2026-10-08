@@ -129,7 +129,9 @@ check also proves the Runner removed it, and words in the prompt pick what it
 does: `[slow]` (20 lines a second apart), `[fail]`, `[crash]` (no result
 line), `[limit]` (the CLI's usage-limit message) and `[mcp <tool> <json>]`
 (calls that tool of the MCP server it was given and prints the call and
-its result as `tool_use`/`tool_result`).
+its result as `tool_use`/`tool_result`; with `[slow]` too, the slow lines
+follow the calls, so a check sees what the tools changed while the Run is
+still live).
 `BAKERY_STANDIN_DELAY` sets its pause between lines (300 ms by default).
 
 `runner/transcript.go` turns each line `claude` prints into Run events:

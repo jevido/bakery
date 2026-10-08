@@ -156,6 +156,8 @@ Comment publishes nothing (Paperclip records none).
 | `IssueDeleted` | `DeleteIssue` | `issue.deleted` | number, title |
 | `CommentWritten` | `WriteComment` | `issue.comment_added` | the Comment and its first 140 characters |
 | `CommentDeleted` | `DeleteComment` | `issue.comment_deleted` | the Comment |
+| `IssueCheckedOut` | `Checkout` | `issue.checked_out` | the Run |
+| `IssueReleased` | `Release` | `issue.released` | the Run |
 | `DocumentSaved` | `SaveDocument`, `RestoreRevision` | `issue.document_created` on the first save, else `issue.document_updated` | Document key, title, Revision number, and the restored Revision's number for a Restore |
 | `DocumentDeleted` | `DeleteDocument` | `issue.document_deleted` | Document key, title |
 | `ApprovalRequested` | `RequestApproval` | `approval.created` | Approval type, the payload's title, the Linked issues |
@@ -205,7 +207,7 @@ type and the payload's title.
   | `DELETE /api/issues/{issue}/documents/{key}` | 204 |
   | `GET /api/issues/{issue}/documents/{key}/revisions` | `{"revisions": [Revision]}`, newest first |
   | `POST /api/issues/{issue}/documents/{key}/revisions/{revision}/restore` | `{"document": Issue document}`; 409 for the newest Revision |
-  | `GET /api/activity` | `{"activity": [Activity event]}`, newest first; filters `entity` (`issue`, `goal`, `approval` or `agent`), `actor` (a Member id), `before` (an Activity event id, for the next page) and `limit` (default 50, 1 to 200); anything else in them is 422. A page is never short while older events the person may see are left |
+  | `GET /api/activity` | `{"activity": [Activity event]}`, newest first; filters `entity` (`issue`, `goal`, `approval` or `agent`), `actor` (a Member id, or `agent:<id>`), `before` (an Activity event id, for the next page) and `limit` (default 50, 1 to 200); anything else in them is 422. A page is never short while older events the person may see are left |
   | `GET /api/issues/{issue}/activity` | `{"activity": [Activity event]}`, oldest first, as Paperclip's issue activity |
   | `POST /api/issues/{issue}/read`, `DELETE /api/issues/{issue}/read` | Sets or removes the asking Member's Read mark, with `view_resources` only |
   | `POST /api/issues/{issue}/inbox-archive`, `DELETE /api/issues/{issue}/inbox-archive` | Sets or removes the asking Member's Inbox archive, with `view_resources` only |
@@ -280,6 +282,7 @@ type and the payload's title.
   | `issue.deleted` | `issue_number`, `issue_title` |
   | `issue.comment_added` | `issue_number`, `issue_title`, `comment_id`, `snippet` |
   | `issue.comment_deleted` | `issue_number`, `issue_title`, `comment_id` |
+  | `issue.checked_out`, `issue.released` | `issue_number`, `issue_title`, `run_id` |
   | `issue.document_created`, `issue.document_updated` | `issue_number`, `issue_title`, `key`, `title`, `revision_number`, and `restored_from` for a Restore |
   | `issue.document_deleted` | `issue_number`, `issue_title`, `key`, `title` |
   | `approval.created` | `type`, `title`, `issue_ids` |

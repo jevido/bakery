@@ -115,6 +115,15 @@
 //           and the Activity tab and the Guild's Activity (filtered to
 //           agent:<id>) name it; after the Run finishes, the Checkout row
 //           is gone
+//   agent-api  the whole path through the MCP server: a scratch Agent with
+//           the Member Role is assigned an Issue whose description asks the
+//           claude stand-in for [mcp bakeryCheckoutIssue] and
+//           [mcp bakeryAddComment] with a [slow] tail; Run and the headless
+//           Desktop runner start it with The Bakery's MCP server; while it
+//           runs the Issue is In progress and "Checked out by" the Agent, the
+//           Comment is in the thread under the Agent's name and the Activity
+//           names it; the Transcript shows both tool calls; once the Run is
+//           final the Checkout row is gone
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -1356,6 +1365,66 @@ const sections: Record<string, () => Promise<void>> = {
       expect('the Checkout row is gone once the Run is final', (await page.locator('[data-property-row="Checkout"]').count()) === 0)
     } finally {
       await page.request.delete(`${WEB}/api/desktops/${approved.desktop_id}`)
+      await page.request.delete(`${WEB}/api/issues/${issue.id}`)
+      await page.request.post(`${WEB}/api/agents/${hire.agent.id}/terminate`)
+      await page.close()
+    }
+  },
+
+  'agent-api': async () => {
+    const page = await signedIn()
+    const name = 'Agent API e2e agent'
+    const title = 'Agent API e2e: check out and comment'
+    const said = 'Checked this out through the MCP server.'
+    for (const i of (await issues(page)).filter((i) => i.title === title)) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    const { agents } = (await (await page.request.get(`${WEB}/api/agents`)).json()) as { agents: { id: number; name: string }[] }
+    for (const a of agents.filter((a) => a.name === name)) await page.request.post(`${WEB}/api/agents/${a.id}/terminate`)
+    // The seeded Member Role holds manage_work, so the Agent may write.
+    const { roles } = (await (await page.request.get(`${WEB}/api/roles`)).json()) as { roles: { id: number; name: string }[] }
+    const member = roles.find((r) => r.name === 'Member')!
+    const hire = (await (await page.request.post(`${WEB}/api/agents`, { data: { name, job: 'engineer', icon: 'bot', role_ids: [member.id] } })).json()) as { agent: { id: number; approval_id: number } }
+    await page.request.post(`${WEB}/api/approvals/${hire.agent.approval_id}/approve`, { data: {} })
+    // In backlog, so the assignment wakes nobody and only the pressed Run exists;
+    // the description names the Issue by its id, known only once it exists.
+    const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title, status: 'backlog', assignee_agent_id: hire.agent.id } })).json()) as { issue: Issue }
+    const args = (extra: object) => JSON.stringify({ issueId: String(issue.id), ...extra })
+    await page.request.patch(`${WEB}/api/issues/${issue.id}`, {
+      data: { description: `[mcp bakeryCheckoutIssue ${args({})}] [mcp bakeryAddComment ${args({ body: said })}] [slow]` },
+    })
+
+    const desktop = await desktopRunner(page)
+    try {
+      await page.goto(`${WEB}/#/issues/${issue.identifier}`)
+      await page.getByTestId('issue-detail-header').getByRole('button', { name: 'Run', exact: true }).click()
+      const live = page.getByTestId('live-run')
+      await live.locator('[data-run-status="running"]').waitFor({ timeout: 120_000 })
+
+      // The page re-reads the Issue while the Run is live.
+      const row = page.locator('[data-property-row="Checkout"]')
+      await row.waitFor({ timeout: 60_000 })
+      const rowText = await row.innerText()
+      expect('while it runs the Issue is "Checked out by" the Agent', rowText.includes('Checked out by') && rowText.includes(name), rowText)
+      const status = (await (await page.request.get(`${WEB}/api/issues/${issue.id}`)).json()) as { issue: Issue }
+      expect('and In progress', status.issue.status === 'in_progress', status.issue.status)
+      const card = page.getByRole('region', { name: 'Comments' }).locator('[data-comment]', { hasText: said })
+      await card.waitFor({ timeout: 30_000 })
+      expect("the Comment is in the thread under the Agent's name", (await card.locator(`a[data-actor-agent="${hire.agent.id}"]`).innerText()).includes(name), await card.innerText())
+      const tools = live.locator('[data-block="tool"]')
+      await tools.nth(1).waitFor({ timeout: 30_000 })
+      const toolText = (await tools.allTextContents()).join('\n')
+      expect('the Transcript shows both tool calls', toolText.includes('bakeryCheckoutIssue') && toolText.includes('bakeryAddComment'), toolText)
+      expect('the Run is still live', await live.locator('[data-run-status="running"]').isVisible())
+
+      await live.waitFor({ state: 'detached', timeout: 90_000 })
+      await page.getByTestId('run-ledger').locator('[data-run]').first().locator('[data-run-status="succeeded"]').waitFor({ timeout: 15_000 })
+      expect('the Run ends Succeeded', true)
+      await page.goto(`${WEB}/#/issues/${issue.identifier}?tab=activity`)
+      const commented = page.locator('[data-activity="issue.comment_added"]').first()
+      await commented.waitFor()
+      expect("the Issue's Activity names the Agent", (await commented.locator(`[data-actor-agent="${hire.agent.id}"]`).count()) === 1, await commented.innerText())
+      expect('the Checkout row is gone once the Run is final', (await page.locator('[data-property-row="Checkout"]').count()) === 0)
+    } finally {
+      await desktop.stop()
       await page.request.delete(`${WEB}/api/issues/${issue.id}`)
       await page.request.post(`${WEB}/api/agents/${hire.agent.id}/terminate`)
       await page.close()

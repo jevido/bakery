@@ -273,13 +273,11 @@ records nothing more.
   | ----- | ---------- | ------- |
   | `GET /api/agents/me` | none | `{"agent": Agent, "guild": {id, name, issue_prefix}, "run": {id, issue: {id, identifier, title} \| null, invocation_source, wake_reason}, "chain_of_command": [{id, name, job, title}], "permissions": [key]}` |
   | `GET /api/agents/me/inbox` | none | `{"issues": [{id, identifier, title, status, priority, project: {id, name} \| null, goal_id, parent_id, updated_at, checkout_run_id}]}` in `MyInbox`'s order |
-
-  Both are 403 `only an agent's run key may use this` for a person, as
-  Paperclip's are agent-only.
   | `GET /api/agents`, `GET /api/agents/{id}`, `GET /api/org` | `view_resources` | as for a person |
   | `GET /api/runs`, `GET /api/runs/{id}`, `GET /api/runs/{id}/events` | `view_resources` | its own Runs only: the list as if `?agent=` named it, another Agent's Run is 404 |
 
-  Every other agents route is 403 `agents cannot use this route` for it.
+  The two `me` routes are 403 `only an agent's run key may use this` for a
+  person, as Paperclip's are agent-only. Every other agents route is 403 `agents cannot use this route` for it.
   agents registers the hook identity calls to resolve a Run key: the
   SHA-256 of the key against the Runs that are `running`, answering the
   Run, its Agent and its Guild, or nothing (401).
