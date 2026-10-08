@@ -330,10 +330,10 @@ type and the payload's title.
 
 - **Consumes:**
   - from agents: the hook it registers (`work.OnRunLive`) to tell which
-    Runs are live (`running`), for Checkout and Stale checkouts, and the
-    Agent principal's Agent and Run (`guilds.AgentID(ctx)`, the Run from
-    identity's Principal).
+    Runs are live (`running`), for Checkout and Stale checkouts.
   - from guilds: `guilds.Auth`, `guilds.AuthAgents`, `guilds.Can(permission)`,
+    `guilds.AgentID(ctx)` and `guilds.RunID(ctx)` (the Agent principal's
+    Agent and Run),
     `guilds.Current(ctx)` (the Guild every Goal and Issue is stored and
     filtered by), `guilds.MemberID(ctx)` (who creates an Issue, and whom
     `assignee=me` means), `guilds.VisibleProjects(ctx, ids)` (which Projects the

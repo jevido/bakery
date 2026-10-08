@@ -314,7 +314,9 @@ records nothing more.
   whose Roles guilds refuses is 422 on `role_ids`; a name taken is 422 on
   `name`.
 - **Consumes:**
-  - from guilds: `guilds.Auth`, `guilds.Can(permission)`,
+  - from guilds: `guilds.Auth`, `guilds.AuthAgents` (the routes open to
+    Agents), `guilds.AgentID(ctx)` and `guilds.RunID(ctx)` (an Agent
+    principal's Agent and Run), `guilds.Can(permission)`,
     `guilds.Owns` (an `{id}` outside the Current guild is 404),
     `guilds.Current(ctx)`, `guilds.MemberID(ctx)` (the Hirer),
     `guilds.Permissions(ctx)` and `guilds.InstanceAdmin(ctx)` (who is
@@ -334,8 +336,8 @@ records nothing more.
     the call that clears a terminated Agent as Assignee, `work.OnIssueAssigned`
     and `work.OnIssueCommented` (registered, to wake the Agent assignee),
     `work.OpenIssuesOfAgent` for the timer's check and the Heartbeat
-    prompts, and `work.CommentsForRun` for the comments a Run's prompt
-    quotes. It registers the
+    prompts, `work.InboxOfAgent` for `MyInbox`, and `work.CommentsForRun`
+    for the comments a Run's prompt quotes. It registers the
     hook by which work asks whether an Agent may be an Assignee (in the
     Guild, not terminated).
   - from identity: the Desktop key principal (its person, across Guilds)
