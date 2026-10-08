@@ -72,6 +72,8 @@ export interface Run {
     "agent": RunAgent;
     "issue": RunIssue | null;
     "invocation_source": string;
+    "wake_reason": string;
+    "wake_count": number;
     "status": string;
     "requested_by": Named | null;
     "desktop": Named | null;

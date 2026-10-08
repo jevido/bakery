@@ -29,6 +29,9 @@ export interface LocalRun {
     "agent": bakery$0.RunAgent;
     "run_id": number;
     "issue": bakery$0.RunIssue | null;
+    "invocation_source": string;
+    "wake_reason": string;
+    "wake_count": number;
     "status": string;
     "started_at": string;
     "events": LocalEvent[] | null;

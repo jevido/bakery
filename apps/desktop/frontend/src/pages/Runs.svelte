@@ -4,6 +4,7 @@
   // straight from the Runner (localRuns): no round trip to a Bakery.
   import { ListChecks } from '@lucide/svelte'
   import AgentIcon from '@bakery/ui/AgentIcon.svelte'
+  import RunSource from '@bakery/ui/RunSource.svelte'
   import RunStatus from '@bakery/ui/RunStatus.svelte'
   import RunTranscript from '@bakery/ui/RunTranscript.svelte'
   import { localRuns, onEvent, type LocalRun, type RunsEvent } from '../lib/desktop'
@@ -39,6 +40,7 @@
             <span class="flex size-7 items-center justify-center rounded-full bg-accent"><AgentIcon icon={r.agent.icon} class="size-3.5" /></span>
             <span class="font-medium">{r.agent.name}</span>
             <RunStatus status={r.status} />
+            <RunSource source={r.invocation_source} reason={r.wake_reason} count={r.wake_count} />
             <span class="text-xs text-muted-foreground">{r.guild.name}</span>
             {#if r.issue}
               <span class="min-w-0 truncate text-xs text-muted-foreground"><span class="font-mono">{r.issue.identifier}</span> {r.issue.title}</span>

@@ -344,18 +344,21 @@ type RunIssue struct {
 // DesktopRun is a Run as the Bakery hands it to a Desktop
 // (services/api contexts/agents/http/desktop.go).
 type DesktopRun struct {
-	ID             uint64     `json:"id"`
-	Status         string     `json:"status"`
-	Guild          Named      `json:"guild"`
-	Agent          RunAgent   `json:"agent"`
-	Issue          *RunIssue  `json:"issue"`
-	Prompt         string     `json:"prompt"`
-	RetryOfRunID   *uint64    `json:"retry_of_run_id"`
-	SessionID      string     `json:"session_id"`
-	NextSeq        int64      `json:"next_seq"`
-	CreatedAt      time.Time  `json:"created_at"`
-	StartedAt      *time.Time `json:"started_at"`
-	LeaseExpiresAt *time.Time `json:"lease_expires_at"`
+	ID               uint64     `json:"id"`
+	Status           string     `json:"status"`
+	Guild            Named      `json:"guild"`
+	Agent            RunAgent   `json:"agent"`
+	Issue            *RunIssue  `json:"issue"`
+	InvocationSource string     `json:"invocation_source"`
+	WakeReason       string     `json:"wake_reason"`
+	WakeCount        int        `json:"wake_count"`
+	Prompt           string     `json:"prompt"`
+	RetryOfRunID     *uint64    `json:"retry_of_run_id"`
+	SessionID        string     `json:"session_id"`
+	NextSeq          int64      `json:"next_seq"`
+	CreatedAt        time.Time  `json:"created_at"`
+	StartedAt        *time.Time `json:"started_at"`
+	LeaseExpiresAt   *time.Time `json:"lease_expires_at"`
 }
 
 // RunEvent is one thing a Run's claude printed, numbered by Seq from 1.
@@ -373,6 +376,8 @@ type Run struct {
 	Agent            RunAgent   `json:"agent"`
 	Issue            *RunIssue  `json:"issue"`
 	InvocationSource string     `json:"invocation_source"`
+	WakeReason       string     `json:"wake_reason"`
+	WakeCount        int        `json:"wake_count"`
 	Status           string     `json:"status"`
 	RequestedBy      *Named     `json:"requested_by"`
 	Desktop          *Named     `json:"desktop"`

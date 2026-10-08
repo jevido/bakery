@@ -4,6 +4,7 @@
   // newest first, each unfolding to its Transcript.
   import { ChevronDown, ChevronRight } from '@lucide/svelte'
   import { SvelteSet } from 'svelte/reactivity'
+  import RunSource from '@bakery/ui/RunSource.svelte'
   import RunStatus from '@bakery/ui/RunStatus.svelte'
   import { compactCount, runDuration } from '@bakery/ui/runTranscript'
   import RunView from './RunView.svelte'
@@ -55,6 +56,7 @@
             <span class="font-medium text-foreground">Run #{r.id}</span>
           </button>
           <RunStatus status={r.status} />
+          <RunSource source={r.invocation_source} reason={r.wake_reason} count={r.wake_count} />
           {#if r.issue}<span class="truncate text-foreground">{r.issue.identifier} {r.issue.title}</span>{/if}
           <span>{r.started_at ? `started ${ago(r.started_at)}` : `queued ${ago(r.created_at)}`}</span>
           <span class="ml-auto flex shrink-0 items-center gap-3 tabular-nums">

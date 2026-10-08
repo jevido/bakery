@@ -87,10 +87,10 @@ export type GuildsEvent = { address: string; guilds: Guild[] | null }
 export type AgentsEvent = { address: string; guild_id: number; status: AgentsTab; agents: Agent[] | null }
 
 import type { RunEvent } from '@bakery/ui/runTranscript'
-import type { RunStatus } from '@bakery/ui/runStatus'
+import type { InvocationSource, RunStatus, WakeReason } from '@bakery/ui/runStatus'
 
 export type { RunEvent } from '@bakery/ui/runTranscript'
-export type { RunStatus } from '@bakery/ui/runStatus'
+export type { InvocationSource, RunStatus, WakeReason } from '@bakery/ui/runStatus'
 
 /** A Run's usage as the claude CLI reported it; the cost is an equivalent only. */
 export type RunUsage = {
@@ -107,7 +107,9 @@ export type Run = {
   id: number
   agent: { id: number; name: string; icon: string }
   issue: { id: number; identifier: string; title: string } | null
-  invocation_source: string
+  invocation_source: InvocationSource
+  wake_reason: WakeReason
+  wake_count: number
   status: RunStatus
   requested_by: { id: number; name: string } | null
   desktop: { id: number; name: string } | null
@@ -128,6 +130,9 @@ export type LocalRun = {
   agent: { id: number; name: string; icon: string }
   run_id: number
   issue: { id: number; identifier: string; title: string } | null
+  invocation_source: InvocationSource
+  wake_reason: WakeReason
+  wake_count: number
   status: RunStatus
   started_at: string
   events: RunEvent[] | null

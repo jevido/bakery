@@ -78,14 +78,17 @@ type LocalEvent struct {
 // LocalRun is a Run this desktop executes right now: LocalRuns reports it so
 // the frontend draws its Transcript without a round trip to the Bakery.
 type LocalRun struct {
-	Address   string           `json:"address"`
-	Guild     bakery.Named     `json:"guild"`
-	Agent     bakery.RunAgent  `json:"agent"`
-	RunID     uint64           `json:"run_id"`
-	Issue     *bakery.RunIssue `json:"issue"`
-	Status    string           `json:"status"`
-	StartedAt time.Time        `json:"started_at"`
-	Events    []LocalEvent     `json:"events"`
+	Address          string           `json:"address"`
+	Guild            bakery.Named     `json:"guild"`
+	Agent            bakery.RunAgent  `json:"agent"`
+	RunID            uint64           `json:"run_id"`
+	Issue            *bakery.RunIssue `json:"issue"`
+	InvocationSource string           `json:"invocation_source"`
+	WakeReason       string           `json:"wake_reason"`
+	WakeCount        int              `json:"wake_count"`
+	Status           string           `json:"status"`
+	StartedAt        time.Time        `json:"started_at"`
+	Events           []LocalEvent     `json:"events"`
 }
 
 type runKey struct {
@@ -110,7 +113,11 @@ func (e *execution) cancel() { e.once.Do(func() { close(e.cancelled) }) }
 func (e *execution) start(address string, run bakery.DesktopRun) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.local = LocalRun{Address: address, Guild: run.Guild, Agent: run.Agent, RunID: run.ID, Issue: run.Issue, Status: "running", StartedAt: time.Now()}
+	e.local = LocalRun{
+		Address: address, Guild: run.Guild, Agent: run.Agent, RunID: run.ID, Issue: run.Issue,
+		InvocationSource: run.InvocationSource, WakeReason: run.WakeReason, WakeCount: run.WakeCount,
+		Status: "running", StartedAt: time.Now(),
+	}
 }
 
 // record appends events this execution's claude printed, in seq order.
