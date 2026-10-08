@@ -57,6 +57,11 @@ pushover.svg, copied unchanged from Coolify v4.3.23's public/svgs/ under the
 same license (in apps/web/public/svgs/). Discord, Telegram, Slack and
 Pushover are trademarks of their owners.
 
-The dashboard uses the Inter font, Copyright 2016 The Inter Project Authors
+The dashboard and the Desktop app use the Inter font, Copyright 2016 The Inter Project Authors
 (https://github.com/rsms/inter), licensed under the SIL Open Font License,
 Version 1.1.
+
+The Desktop app's build files (apps/desktop/build) and project layout come
+from the Svelte template of Wails v3.0.0-beta.18
+(https://github.com/wailsapp/wails), Copyright (c) 2018-Present Lea Anthony,
+licensed under the MIT License, trimmed and changed for Bun and The Bakery.

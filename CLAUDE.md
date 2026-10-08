@@ -95,8 +95,10 @@ Range **49xx**.
 | 4980 | Mailpit SMTP (SMTP stand-in, compose profile `mail`) |
 | 4985 | Mailpit web UI and API |
 | 4988 | `task notifications:test` receiver (Discord, Slack, Telegram, ntfy, webhook stand-in; only while it runs) |
+| 4990 | `apps/desktop` (`wails3 dev`'s Vite dev server) |
+| 4991 | `apps/desktop` `serve` mode (its frontend and Go methods, for the headless checks) |
 
-`DEV_PORTS` lists only 4910 and 4930. Postgres, the proxy, Forgejo, Garage, Mailpit and the Remote server stand-in are containers;
+`DEV_PORTS` lists only 4910, 4930, 4990 and 4991. Postgres, the proxy, Forgejo, Garage, Mailpit and the Remote server stand-in are containers;
 killing their port kills Podman's rootless port forwarder and leaves the
 container up but unreachable.
 

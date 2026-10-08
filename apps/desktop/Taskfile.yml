@@ -1,0 +1,58 @@
+# The Desktop app's tasks. `build`, `dev`, `package` and `run` are Wails 3's
+# (wails3 build and wails3 dev call them by these names); `serve` and `check`
+# are The Bakery's. Ports follow CLAUDE.md: 4990 for wails3 dev's Vite, 4991
+# for `serve`.
+version: '3'
+
+vars:
+  APP_NAME: "bakery-desktop"
+  BIN_DIR: "bin"
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 4990}}'
+  SERVE_ADDR: '{{.SERVE_ADDR | default "127.0.0.1:4991"}}'
+  GOOS: '{{.GOOS | default OS}}'
+
+includes:
+  common: ./build/Taskfile.yml
+  linux: ./build/linux/Taskfile.yml
+
+tasks:
+  build:
+    desc: Build the Desktop app's binary into apps/desktop/bin (wails3 build)
+    cmds:
+      - task: "{{.GOOS}}:build"
+
+  package:
+    desc: Package a production build (AppImage, deb, rpm, Arch)
+    cmds:
+      - task: "{{.GOOS}}:package"
+
+  run:
+    summary: Runs the built application
+    cmds:
+      - task: "{{.GOOS}}:run"
+
+  dev:
+    desc: Run the Desktop app's window with live reload (needs a display; Vite on 127.0.0.1:4990)
+    cmds:
+      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  serve:
+    desc: Build the frontend and serve it with the Go methods on http://127.0.0.1:4991, without a window
+    deps: [common:build:frontend]
+    cmds:
+      - go run . serve --addr {{.SERVE_ADDR}}
+
+  check:
+    desc: gofmt, go vet, go test, svelte-check and tsc
+    deps: [common:build:frontend]
+    cmds:
+      - gofmt -l . | (! grep .)
+      - go vet ./...
+      - go test ./...
+      - bun run check
+
+  e2e:
+    desc: Drive the Desktop app's frontend in headless Chromium (needs task desktop:serve)
+    deps: [common:install:frontend:deps]
+    cmds:
+      - bun e2e/desktop.ts {{.CLI_ARGS}}

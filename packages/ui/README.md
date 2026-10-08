@@ -10,6 +10,8 @@ compile the `.svelte` and `.ts` files with their own Vite.
   classes (it does not scan `node_modules`).
 - `@bakery/ui/components/ui/<name>`: the shadcn-svelte components on bits-ui.
 - `@bakery/ui/utils`: `cn` and shadcn-svelte's helper types.
+- `@bakery/ui/theme`: the dark/light/system theme state (`theme.set`), and
+  `@bakery/ui/ThemeToggle.svelte`, its icon toggle.
 - `@bakery/ui/BakeryLockup.svelte`, `GuildIcon.svelte`, `AgentIcon.svelte`
   and `@bakery/ui/agentIcons` (the Agent icon names).
 
@@ -22,4 +24,4 @@ New shadcn-svelte components are added from `apps/web`, whose
 Rewrite the `@bakery/ui/utils.js` imports it writes to relative ones.
 
 Installed with the root Bun workspace: `bun install` (or `task install`) at the
-repository root. Type-checked through `task web:check`.
+repository root. Type-checked through `task web:check` and `task desktop:check`.

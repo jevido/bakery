@@ -1,5 +1,5 @@
 /**
- * The dashboard's colour theme, as Coolify keeps it: `localStorage.theme` is
+ * The colour theme of the dashboard and the Desktop app, as Coolify keeps it: `localStorage.theme` is
  * `dark`, `light` or `system`, dark by default, and the `dark` class on <html>
  * switches the Tailwind `dark:` variant. index.html applies the same rule
  * before first paint; this module keeps it in step afterwards.

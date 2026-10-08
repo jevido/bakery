@@ -6,7 +6,7 @@
   import type { Snippet } from 'svelte'
   import AsciiArtAnimation from '../AsciiArtAnimation.svelte'
   import BakeryLockup from '@bakery/ui/BakeryLockup.svelte'
-  import ThemeToggle from '../ThemeToggle.svelte'
+  import ThemeToggle from '@bakery/ui/ThemeToggle.svelte'
 
   let {
     title = 'The Bakery',

@@ -12,7 +12,7 @@
   import { guildPath, href } from './router.svelte'
   import { session } from './session.svelte'
   import { RAIL_HIDDEN_LABEL, sidebar } from './sidebar.svelte'
-  import { theme, type Theme } from './theme.svelte'
+  import { theme, type Theme } from '@bakery/ui/theme'
   import { cn } from '@bakery/ui/utils'
 
   let open = $state(false)

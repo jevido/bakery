@@ -32,7 +32,7 @@
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
-  import { theme, type Theme } from '../../lib/theme.svelte'
+  import { theme, type Theme } from '@bakery/ui/theme'
   import * as AlertDialog from '@bakery/ui/components/ui/alert-dialog'
   import * as Avatar from '@bakery/ui/components/ui/avatar'
   import { Badge } from '@bakery/ui/components/ui/badge'

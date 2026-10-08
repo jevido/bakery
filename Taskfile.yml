@@ -10,6 +10,9 @@ includes:
   web:
     taskfile: ./apps/web/Taskfile.yml
     dir: ./apps/web
+  desktop:
+    taskfile: ./apps/desktop/Taskfile.yml
+    dir: ./apps/desktop
   server:
     taskfile: ./infra/dev/server/Taskfile.yml
     dir: .
@@ -17,7 +20,7 @@ includes:
 vars:
   # Every port a dev task listens on. Keep in sync with the table in CLAUDE.md.
   # Container ports (Postgres, proxy) stay out: see CLAUDE.md.
-  DEV_PORTS: "4910 4930"
+  DEV_PORTS: "4910 4930 4990 4991"
 
 tasks:
   default:
@@ -217,4 +220,5 @@ tasks:
     cmds:
       - task: api:check
       - task: web:check
+      - task: desktop:check
       - task: install:check

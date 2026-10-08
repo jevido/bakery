@@ -1,0 +1,5 @@
+/bin/
+/.task/
+/frontend/dist/
+/build/linux/appimage/build/
+/build/linux/*.desktop

@@ -1,6 +1,5 @@
 import { mount } from 'svelte'
 import '@fontsource-variable/inter'
-import './theme.css'
 import './app.css'
 import '@bakery/ui/theme'
 import App from './App.svelte'
