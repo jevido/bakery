@@ -3,10 +3,11 @@
   import { breadcrumb } from './lib/breadcrumb.svelte'
   import Layout from './lib/Layout.svelte'
   import { projectAccess, projectOf } from './lib/projectAccess.svelte'
-  import { router } from './lib/router.svelte'
+  import { returnAfterLogin, router } from './lib/router.svelte'
   import { session } from './lib/session.svelte'
   import Login from './pages/Login.svelte'
   import Invite from './pages/Invite.svelte'
+  import DesktopSignIn from './pages/DesktopSignIn.svelte'
   import Dashboard from './pages/Dashboard.svelte'
   import Guild from './pages/guild/Guild.svelte'
   import NewGuild from './pages/guild/New.svelte'
@@ -60,6 +61,14 @@
     breadcrumb.clear()
   })
 
+  // A Desktop sign-in opened signed out shows the login page, which comes
+  // back to it after.
+  $effect.pre(() => {
+    const route = router.route
+    if (route.name === 'desktop-sign-in' && session.state === 'signed-out')
+      returnAfterLogin(`/desktop-sign-in/${route.id}?token=${encodeURIComponent(route.token)}`)
+  })
+
   // Pages under a Project ask its Permissions, overrides applied.
   $effect.pre(() => {
     const signedIn = session.state === 'signed-in'
@@ -82,6 +91,8 @@
   <Setup />
 {:else if session.state === 'signed-out' || router.route.name === 'login'}
   <Login />
+{:else if router.route.name === 'desktop-sign-in'}
+  <DesktopSignIn id={router.route.id} token={router.route.token} />
 {:else}
   <Layout>
     <!-- Every page loads again in another Guild: what it shows is that Guild's. -->

@@ -1,7 +1,7 @@
 import { api } from './api'
 import type { Application, Database, Project, Service } from './types'
 
-// Hash router, with Coolify's paths for Projects, Environments, Resources and Servers: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/permissions, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/guild[/{page}] (its pages are guildPages; #/guild/roles/{id} opens one Role; #/members opens Members in place), #/guild/new, #/notifications/{kind} (its pages are notificationPages; #/notifications opens Email in place), #/security/{page} (its pages are securityPages; #/security and #/api-tokens open API Tokens in place), #/issues[?status=…&priority=…&assignee=…&project=…&q=…&group=…] (the filters live in the query, so a reload keeps them), #/issues/{identifier} (or an Issue's id), #/goals, #/goals/{id}, #/agents/{all|active|paused|terminated}[?view=org] (#/agents opens All in place; the query keeps the Org chart view), #/agents/{id}, #/activity[?entity=…&actor=…] (the Guild's Activity, its filters in the query), #/inbox/{tab} (its tabs are inboxTabs; #/inbox opens the last tab used in place, else Mine), #/approvals/{pending|all} (#/approvals opens Pending in place), #/approvals/{id}[?resolved=approved] (one Approval; the query shows its "Approval confirmed" banner), #/profile (#/account opens it too), #/invite/{token}, #/login, and #/dev/components in dev builds.
+// Hash router, with Coolify's paths for Projects, Environments, Resources and Servers: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/permissions, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/guild[/{page}] (its pages are guildPages; #/guild/roles/{id} opens one Role; #/members opens Members in place), #/guild/new, #/notifications/{kind} (its pages are notificationPages; #/notifications opens Email in place), #/security/{page} (its pages are securityPages, API Tokens and Desktops; #/security and #/api-tokens open API Tokens in place), #/issues[?status=…&priority=…&assignee=…&project=…&q=…&group=…] (the filters live in the query, so a reload keeps them), #/issues/{identifier} (or an Issue's id), #/goals, #/goals/{id}, #/agents/{all|active|paused|terminated}[?view=org] (#/agents opens All in place; the query keeps the Org chart view), #/agents/{id}, #/activity[?entity=…&actor=…] (the Guild's Activity, its filters in the query), #/inbox/{tab} (its tabs are inboxTabs; #/inbox opens the last tab used in place, else Mine), #/approvals/{pending|all} (#/approvals opens Pending in place), #/approvals/{id}[?resolved=approved] (one Approval; the query shows its "Approval confirmed" banner), #/profile (#/account opens it too), #/invite/{token}, #/desktop-sign-in/{id}?token=… (the Desktop app's sign-in, approved outside the guild shell), #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
@@ -53,6 +53,7 @@ export type Route =
   | { name: 'approval'; id: number }
   | { name: 'profile' }
   | { name: 'invite'; token: string }
+  | { name: 'desktop-sign-in'; id: number; token: string }
   | { name: 'login' }
   | { name: 'dev-components' }
   | { name: 'notfound' }
@@ -168,7 +169,7 @@ export function rolePath(id: number): string {
 }
 
 /** The Keys & Tokens pages, by their slug in Coolify's URLs; The Bakery has only API Tokens. */
-export const securityPages = ['api-tokens'] as const
+export const securityPages = ['api-tokens', 'desktops'] as const
 export type SecurityPage = (typeof securityPages)[number]
 
 function isSecurityPage(s: string): s is SecurityPage {
@@ -261,6 +262,8 @@ function parse(hash: string): Route {
     if (parts.length === 2 && /^\d+$/.test(parts[1])) return { name: 'approval', id: Number(parts[1]) }
   }
   if (parts[0] === 'invite' && parts.length === 2) return { name: 'invite', token: parts[1] }
+  if (parts[0] === 'desktop-sign-in' && parts.length === 2 && /^\d+$/.test(parts[1]))
+    return { name: 'desktop-sign-in', id: Number(parts[1]), token: flags.get('token') ?? '' }
   if (parts[0] === 'servers') {
     if (parts.length === 1) return { name: 'servers' }
     if (parts.length === 2 && parts[1] === 'new') return { name: 'server-new' }
@@ -407,7 +410,7 @@ export function go(path: string) {
 }
 
 // Where Login goes after a successful sign-in, for a page that sent someone
-// there to come back (an Invitation for an existing Member).
+// there to come back (an Invitation for an existing Member, a Desktop sign-in).
 const returnKey = 'bakery.return-after-login'
 
 export function returnAfterLogin(path: string) {

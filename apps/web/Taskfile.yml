@@ -49,6 +49,12 @@ tasks:
     cmds:
       - bun e2e/agents.ts
 
+  desktop:
+    desc: Check the Desktop app's sign-in (approve, cancel, expired) and the Desktops page in headless Chromium (needs task dev)
+    deps: [install]
+    cmds:
+      - bun e2e/desktop.ts
+
   check:
     desc: svelte-check, tsc, the unit tests and a production build
     deps: [install]
