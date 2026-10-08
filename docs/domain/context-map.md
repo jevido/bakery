@@ -17,13 +17,16 @@ depend on each other.
 | identity | generic | `services/api` (`contexts/identity`) | Members, the Instance admin, Setup, Sessions, API tokens, Desktop sign-ins, Desktops and their Desktop keys, Profiles and Two-factor authentication |
 | notifications | generic | `services/api` (`contexts/notifications`) | Notification channels and their Deliveries |
 | work | supporting | `services/api` (`contexts/work`) | Goals, Issues, Comments, Blockers and Issue documents a Guild's Board plans and tracks work with, the Activity recording who changed them, and each Member's Inbox (Read marks and Inbox archives), and the Approvals the Board decides, with their Linked issues and Approval comments |
-| agents | supporting | `services/api` (`contexts/agents`) | Agents, their Hirers, Jobs, Managers and Agent statuses, and the Org chart |
+| agents | supporting | `services/api` (`contexts/agents`) | Agents, their Hirers, Jobs, Managers and Agent statuses, the Org chart, and their Runs with their Run events |
 
 Two units are clients of `services/api` and host no context: `apps/web`,
 the dashboard, signed in with a Session, and `apps/desktop`, the Desktop app,
 signed in with a Desktop key. Both talk only to the published HTTP API and
 hold no domain data of their own beyond a cache (and, for the Desktop app,
-the local checkouts).
+the local checkouts). The Desktop app's Runner consumes the agents Run
+routes for Desktop keys: it receives its person's queued Runs over
+server-sent events, claims them, appends their Run events, keeps their
+Lease and finishes them.
 
 - **Core:** where the project competes. Gets the most care and the richest model.
 - **Supporting:** needed and specific to this project, but not the differentiator.
@@ -59,7 +62,7 @@ adapt to.
 | identity | work | customer/supplier | `identity.Members(ctx, ids)` for the names of Goal owners, Assignees, Issue creators and Comment authors |
 | guilds | notifications | customer/supplier | `guilds.OnInvitationCreated { guild, email, role, invited by, link, expires }`, called synchronously; notifications answers whether it emailed the link |
 | guilds | agents | customer/supplier | `guilds.Auth`, `guilds.Can(permission)` (reading needs `view_resources`, the rest `hire_agents`), `guilds.Current(ctx)`, `guilds.MemberID(ctx)` (the Hirer), `guilds.Owns`, `guilds.Permissions(ctx)` and `guilds.InstanceAdmin(ctx)` (who is asking), the Agent membership calls (create one with its Roles and Hirer, add or remove a Role, end it, read its Roles; `guilds.AgentRoleRefused` tells a refused Role, a 422, from a failure), `guilds.RoleNames` for the hire's payload and `guilds.RankAbove` (who ranks above a Hirer); agents registers `guilds.OnGuildDeleting` (a Guild with Agents that are not terminated is not deleted) and the hook for a Member leaving or being removed (their Agents are terminated), and guilds calls agents back nothing else. When a Hirer's highest Role drops, guilds removes the Agent's Roles at or above it in the same change |
-| work | agents | customer/supplier | `work.RequestApproval` (the `hire_agent` Approval, with the Hirer as Requester), `work.CancelApproval` (its Agent was terminated before a Decision), `work.OnApprovalDecided` (agents registers for `hire_agent` and moves the Agent to `idle` or `terminated`) `work.RecordActivity` (every Agent event in the Guild's Activity) and `work.OnAgentNames` (agents registers it, so the Activity knows which Agents still exist). Work never imports agents |
+| work | agents | customer/supplier | `work.RequestApproval` (the `hire_agent` Approval, with the Hirer as Requester), `work.CancelApproval` (its Agent was terminated before a Decision), `work.OnApprovalDecided` (agents registers for `hire_agent` and moves the Agent to `idle` or `terminated`) `work.RecordActivity` (every Agent event in the Guild's Activity) `work.OnAgentNames` (agents registers it, so the Activity knows which Agents still exist), `work.OnAgentAssignable` (agents registers it, so an Issue's Agent assignee is an Agent of the Guild that is not terminated), `work.IssueForRun` (an Issue's Agent assignee and text, for a Run's check and its prompt) and `work.ClearAgentAssignee` (a terminated Agent stops being an Assignee). Work never imports agents |
 | identity | agents | customer/supplier | `identity.Members(ctx, ids)` for Hirers' names |
 
 ## External systems

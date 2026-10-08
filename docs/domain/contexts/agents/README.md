@@ -7,21 +7,27 @@
 
 Holds a Guild's Agents: the AI workers its people hire, who hired each one
 (its Hirer), what it does (its Job and Title), whom it reports to (its
-Manager, and so the Guild's Org chart) and its Agent status. An Agent holds
+Manager, and so the Guild's Org chart), its Agent status and its Runs: each
+execution of the Agent by `claude` on its Hirer's Desktop app, with the
+Transcript the Desktop reports. An Agent holds
 Roles through its Agent membership in guilds, so it can only do what those
 Roles allow, and it is never placed above its Hirer. Hiring always goes
 through a `hire_agent` Approval the Board decides in work.
 
-It is **not** responsible (yet) for Runs, Heartbeats, the desktop app that
-runs an Agent, assigning Issues to Agents, budgets, instructions, skills or
-keys: later phases of the guilds goal add them. It does not own Members,
+It is **not** responsible (yet) for Heartbeats, git, budgets, instructions,
+skills or keys: later phases of the guilds goal add them. It never executes
+anything: the Runner in the Desktop app does, and reports back. Who an Issue
+is assigned to belongs to work; agents only answers whether an Agent may be
+one. It does not own Members,
 Roles, Approvals or the Activity; it stores ids and asks guilds, work and
 identity about them.
 
 ## Language
 
 The terms (Agent, Hirer, Job, Title, Agent icon, Capabilities, Agent status,
-Manager, Org chart, Hire, Pause, Resume, Terminate, Agent membership) are in
+Manager, Org chart, Hire, Pause, Resume, Terminate, Agent membership, Run,
+Run status, Run event, Transcript, Invocation source, Run usage, Runner,
+Lease) are in
 [`glossary.md`](../../glossary.md).
 
 | Term | Meaning |
@@ -35,7 +41,8 @@ Manager, Org chart, Hire, Pause, Resume, Terminate, Agent membership) are in
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Agent | Belongs to one Guild, and has one Hirer, a person with a Membership in that Guild when it is hired. Name 1–100 characters after trimming, unique (case-insensitive) among the Guild's Agents that are not terminated, as Paperclip's shortname uniqueness. Job from the glossary's list (`general` when none is given). Title at most 200 characters, Capabilities at most 20000, both optional. Agent icon from the glossary's list, or none. The Manager is an Agent of the same Guild that is not terminated, never the Agent itself and never one of its reports: setting it walks the new Manager's Chain of command up at most 50 levels, as Paperclip's `getChainOfCommand`, and refuses a cycle (422). Agent status moves only `pending_approval → idle` (its Approval approved), `pending_approval → terminated` (rejected, or terminated by a person), `idle → paused`, `paused → idle` and `idle` or `paused` → `terminated`; nothing leaves `terminated`. A `pending_approval` Agent cannot be edited, paused or given Roles, so its Approval's payload is what the Board sees; it can only be terminated, which cancels its Approval. A terminated Agent cannot be edited. When an Agent is terminated, its direct reports report to its Manager, or become roots when it had none. |
+| Agent | Belongs to one Guild, and has one Hirer, a person with a Membership in that Guild when it is hired. Name 1–100 characters after trimming, unique (case-insensitive) among the Guild's Agents that are not terminated, as Paperclip's shortname uniqueness. Job from the glossary's list (`general` when none is given). Title at most 200 characters, Capabilities at most 20000, both optional. Agent icon from the glossary's list, or none. The Manager is an Agent of the same Guild that is not terminated, never the Agent itself and never one of its reports: setting it walks the new Manager's Chain of command up at most 50 levels, as Paperclip's `getChainOfCommand`, and refuses a cycle (422). Agent status moves only `pending_approval → idle` (its Approval approved), `pending_approval → terminated` (rejected, or terminated by a person), `idle`, `running` or `error` → `paused`, `paused → idle`, `idle` or `error` → `running` (a Run of it is claimed), `running → idle` (its Run `succeeded` or was `cancelled`), `running → error` (its Run `failed` or was `lost`), and any of `idle`, `running`, `error` or `paused` → `terminated`; nothing leaves `terminated`. A `pending_approval` Agent cannot be edited, paused or given Roles, so its Approval's payload is what the Board sees; it can only be terminated, which cancels its Approval. A terminated Agent cannot be edited. Only the Run moves set `running` and `error`; a person never does. When an Agent is terminated, its direct reports report to its Manager, or become roots when it had none. |
+| Run | Belongs to one Guild and one Agent of it, and optionally one Issue of that Guild. Starts `queued`. Run status moves only `queued → running` (claimed by a Desktop of the Agent's Hirer), `queued → cancelled`, and `running → succeeded`, `failed`, `cancelled` or `lost`; a final status never changes. At most one `running` Run per Agent; further ones wait `queued` and are claimed in order of creation. Its Run events have strictly increasing `seq` per Run, and appending a `seq` it already has is a no-op. Run events are appended only while it is `running`. A `running` Run whose Lease runs out becomes `lost`, and a new `queued` Run with the same Agent, Issue and Invocation source takes its place, its `retry_of_run_id` pointing at the lost one (Paperclip's `retryOfRunId`). Run usage is set once, when it finishes. |
 
 The Agent's Roles are not part of the Agent aggregate: they are its Agent
 membership's in guilds, which keeps the rule that each is below the
@@ -63,16 +70,44 @@ admin always may (with `hire_agents`, which they always hold).
   the Agent becomes `idle` or `terminated`.
 - `Edit(name, job, title, icon, manager, capabilities)` [manage]: only an
   `idle` or `paused` Agent.
-- `Pause` [manage]: only an `idle` Agent. `Resume` [manage]: only a
-  `paused` Agent (resuming a terminated one is 422).
+- `Pause` [manage]: only an `idle`, `running` or `error` Agent; cancels
+  its `queued` and `running` Runs. `Resume` [manage]: only a `paused` Agent
+  (resuming a terminated one is 422).
 - `Terminate` [manage]: from any status but `terminated`; ends its Agent
-  membership, moves its direct reports up to its Manager, and cancels its
-  Approval when it was `pending_approval`.
+  membership, moves its direct reports up to its Manager, cancels its
+  Approval when it was `pending_approval` and its `queued` and `running`
+  Runs, and asks work to clear it as the Agent assignee of its open
+  Issues.
 - `AddRole(role)`, `RemoveRole(role)` [manage]: only an `idle` or `paused`
   Agent; a Role added must be below the Hirer's highest Role and the
   asking person's, and grant only Permissions the asking person holds, as
   at the hire, since managing an Agent does not need `manage_roles`; a
   Role removed must be below the asking person's highest (422 otherwise).
+- `StartRun(agent, issue)` [manage]: only an `idle`, `running` or
+  `error` Agent (a `paused`, `pending_approval` or `terminated` one is
+  422), only on an Issue of its Guild whose Agent assignee is that Agent
+  (422 otherwise; work answers it through a published call). Creates a
+  `queued` Run with Invocation source `on_demand`; it waits behind the
+  Agent's running Run, if any.
+- `CancelRun(run)` [manage the Run's Agent]: only a `queued` or `running`
+  Run; it becomes `cancelled`. The Desktop running it sees that on its next
+  report (409 there) and on its Run stream, and stops `claude`.
+- `ClaimRun(run)` [a Desktop key of the Agent's Hirer only]: the oldest
+  `queued` Run of an Agent that has no `running` Run becomes `running`,
+  atomically, with its Lease starting; a second claim is 409, a Desktop of
+  another person 404 (it must not learn the Run exists).
+- `AppendRunEvents(run, events)` [the claiming Desktop's person]: appends
+  Run events by `seq`, renews the Lease; on a Run that is no longer
+  `running`, 409 with its status.
+- `KeepLease(run)` [the claiming Desktop's person]: renews the Lease when
+  `claude` is quiet.
+- `FinishRun(run, status, usage, error)` [the claiming Desktop's person]:
+  `succeeded`, `failed` or `cancelled`, with its Run usage and an error
+  message when it failed.
+- `LoseRun` (no Permission; the server's own sweep): a `running` Run whose
+  Lease ran out becomes `lost` and is requeued as above.
+- Read Runs (filter by Agent, Issue, Run status), one Run, its Run events
+  after a `seq`, and its Transcript live [`view_resources`].
 - When the Hirer leaves the Guild or is removed from it, guilds tells
   agents and every Agent they hired there is terminated, with whoever
   removed them as the Actor (removal is the only way to leave today).
@@ -106,6 +141,15 @@ did it as Actor.
 | `AgentTerminated` | `Terminate`, `Rejected`, the Hirer leaving | `agent.terminated` |
 | `AgentRoleAdded` | `AddRole` | `agent.role_added` |
 | `AgentRoleRemoved` | `RemoveRole` | `agent.role_removed` |
+| `RunStarted` | `StartRun` | `run.started` |
+| `RunClaimed` | `ClaimRun` | none |
+| `RunFinished` (with its Run status) | `FinishRun`, `CancelRun`, `LoseRun`, Pause, Terminate | `run.finished` |
+
+The Run events themselves are never Activity: one Run writes hundreds of
+them, and the Activity would drown. `RunClaimed` only moves the Agent to
+`running`. `run.finished` has as Actor the person who cancelled, paused or
+terminated, or else the Agent's Hirer (whose Desktop reported it, or whose
+Desktop went quiet), since the Activity has no system Actor yet.
 
 The `details` of each Action are in the work document. Approving the hire
 is recorded by work as `approval.approved`; the Agent becoming `idle`
@@ -127,6 +171,30 @@ records nothing more.
   | `PUT /api/agents/{id}/roles/{role_id}` | manage | | `{"agent": Agent}` |
   | `DELETE /api/agents/{id}/roles/{role_id}` | manage | | `{"agent": Agent}` |
   | `GET /api/org` | `view_resources` | | `{"org": [Org node]}`, the roots of the Org chart |
+  | `POST /api/agents/{id}/runs` | manage | `{issue_id}` | 201 `{"run": Run}` |
+  | `GET /api/runs` | `view_resources` | | `{"runs": [Run]}`, newest first; filters `agent`, `issue`, `status` |
+  | `GET /api/runs/{id}` | `view_resources` | | `{"run": Run}` |
+  | `POST /api/runs/{id}/cancel` | manage | | `{"run": Run}` |
+  | `GET /api/runs/{id}/events?after=` | `view_resources` | | `{"events": [Run event]}`, by `seq`, after the given one |
+  | `GET /api/runs/{id}/stream` | `view_resources` | | server-sent events: the Run events after `Last-Event-ID` (or `after`), then each new one and each Run status change, until the Run is final |
+
+  For a Desktop key, across every Guild of its person (no Current guild
+  needed; a Run of someone else's Agent is 404):
+
+  | Route | Body | Answers |
+  | ----- | ---- | ------- |
+  | `GET /api/desktop/runs/stream` | | server-sent events: each `queued` Run of the person's Agents, now and as they come, and each cancel of a Run the Desktop holds |
+  | `POST /api/runs/{id}/claim` | | `{"run": Run, "prompt": text}`; 409 when already claimed or no longer `queued` |
+  | `POST /api/runs/{id}/events` | `{"events": [{seq, type, stream, message, payload}]}` | `{"run": Run}`; 409 when not `running` |
+  | `POST /api/runs/{id}/lease` | | `{"run": Run}`; 409 when not `running` |
+  | `POST /api/runs/{id}/finish` | `{status, usage, error}` | `{"run": Run}`; 409 when not `running` |
+
+  A Run is `{id, agent: {id, name}, issue: {id, number, title} | null,
+  status, invocation_source, retry_of_run_id, error, usage: {input_tokens,
+  output_tokens, cached_input_tokens, turns, duration_ms, cost_usd} | null,
+  hirer: {id, name}, created_at, started_at, finished_at}`. A Run event is
+  `{seq, type, stream, message, payload, created_at}`. Tasks that build
+  these routes keep this table in step with what they ship.
 
   An Agent is `{id, name, job, job_label, title, icon, capabilities, status,
   reports_to: {id, name} | null, hirer: {id, name} | null, roles: [{id,
@@ -152,7 +220,13 @@ records nothing more.
     `hire_agent` Approval, `work.OnApprovalDecided` (registered for
     `hire_agent`), `work.RecordActivity` for every event above, and
     `work.OnAgentNames` (registered, so the Activity knows which Agents
-    still exist).
+    still exist), the Issue call that answers an Issue's Agent assignee,
+    number, title and description (for a Run's check and its prompt), and
+    the call that clears a terminated Agent as Assignee. It registers the
+    hook by which work asks whether an Agent may be an Assignee (in the
+    Guild, not terminated).
+  - from identity: the Desktop key principal (its person, across Guilds)
+    for the Desktop routes.
   - from identity: `identity.Members(ctx, ids)` for Hirers' names.
 
 ## Why it's shaped this way
@@ -178,7 +252,7 @@ records nothing more.
 - **Never above the Hirer, kept in two places.** A Role at or above the
   Hirer's highest Role is refused, and when the Hirer drops, guilds removes
   the Agent's Roles at or above the Hirer's new highest in the same change.
-- **The Hirer owns the Agent, not the Board.** The Agent will run on the
+- **The Hirer owns the Agent, not the Board.** The Agent runs on the
   Hirer's desktop with the Hirer's subscription, so the Hirer (and whoever
   ranks above them) manages it. When the Hirer leaves the Guild, their
   Agents are terminated: nobody else's desktop could run them.
@@ -193,6 +267,31 @@ records nothing more.
 - **No hard delete.** Paperclip's `DELETE /agents/:id` is left out: a
   terminated Agent stays as a record, so the Activity and later Runs keep
   naming it.
+- **Runs live in agents.** A Run is an Agent's execution, as Paperclip keeps
+  heartbeat runs with the agent's heartbeat service. A context of its own
+  would share every invariant (the Agent's status, its Hirer, Pause and
+  Terminate) through calls back into agents.
+- **The server never executes anything**, so Paperclip's adapters,
+  process ids, log stores, watchdogs, runtime modes, session resumes and
+  liveness classifier are left out. The Desktop reports every Run event,
+  the usage and the outcome; the server stores and relays them. A Run
+  event is a trimmed `heartbeat_run_events` row: `seq`, `type`, `stream`,
+  `message` and `payload`, with no source instance, color or level.
+- **Only the Hirer's Desktops may claim a Run**, because the Run spends the
+  Hirer's Claude subscription. Another person's Desktop gets 404 so it
+  learns nothing about Agents it cannot run.
+- **A lost Run is requeued, not failed.** The goal says work waits while a
+  desktop is offline. The lost Run stays as a record of what happened and
+  the new one points back at it, as Paperclip's `retryOfRunId`; the Agent
+  shows `error` until the new Run is claimed.
+- **Only `claude`.** Paperclip's Codex, Gemini, OpenCode, Cursor, HTTP and
+  process adapters are left out, as the goal fixes.
+- **Assigning an Issue to an Agent does not start a Run yet.** Paperclip
+  wakes the assignee with a Heartbeat; Heartbeats are Order step 6. Until
+  then a person presses Run, the `on_demand` Invocation source.
+- **One running Run per Agent.** Paperclip allows a configurable
+  concurrency; one keeps the Agent status meaningful and a laptop's
+  subscription from being spent twice at once.
 - **No built-in agents.** A Guild starts with none; people hire them.
 - **The Org chart is a view on the Agents page**, as in Paperclip's
   streamlined UI, whose `/org` route redirects there. Its SVG and PNG

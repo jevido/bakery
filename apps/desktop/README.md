@@ -3,8 +3,8 @@
 The Bakery's Desktop app: Wails 3 (Go) with a Svelte 5 runes + TypeScript +
 Vite + Tailwind CSS v4 frontend on `@bakery/ui`, built with Bun. It runs on a
 person's own machine, connects to one or more Bakeries through their API
-(outbound HTTPS and SSE only) and will run that person's Agents with the local
-`claude` CLI.
+(outbound HTTPS and SSE only) and runs that person's Agents with the local
+`claude` CLI: its Runner.
 
 It hosts no bounded context of its own: it is a client of `services/api`, like
 `apps/web`, and keeps only a cache and, later, the Agents' local checkouts.
@@ -36,6 +36,9 @@ on `PATH` and Wails' Linux libraries (`wails3 doctor`).
   window, as Paperclip's `auth login` does: prints the approve link (and opens
   it unless `--no-browser`), waits until it is approved, expired or
   cancelled, stores the Bakery and exits 0, or 1 with the reason.
+- **`runner`**: no window and no frontend: only the Runner, for every
+  connected Bakery, until interrupted. This is how a laptop runs Agents
+  without the window open, and how the checks drive it.
 - **`version`**: prints the version.
 
 ## Connected Bakeries
@@ -70,3 +73,28 @@ root Bun workspace, so `frontend/` and `e2e/` resolve the same dependencies;
 Taskfiles and Linux packaging (AppImage, deb, rpm, Arch), trimmed to Bun and
 Linux; `wails3 update build-assets` brings back macOS and Windows when they
 are packaged.
+
+## Runs
+
+The Runner executes the person's Runs, in the window, `serve` and `runner`
+alike. For each connected Bakery it listens on `GET /api/desktop/runs/stream`
+with the Desktop key; for each `queued` Run of an Agent it may run it claims
+the Run (another Desktop of the same person may win, which is a 409 and
+fine), and starts
+
+```sh
+claude --print --output-format stream-json --verbose
+```
+
+with the Issue as its prompt, in the scratch directory
+`$BAKERY_DESKTOP_HOME/runs/<run id>`, and with `ANTHROPIC_API_KEY` removed
+from its environment so `claude` uses the person's own login and never an
+API key. `BAKERY_CLAUDE` names another binary (the checks use a stand-in
+that prints the same `stream-json`). Every line `claude` prints becomes a
+Run event, sent in order by `seq`; when `claude` is quiet the Runner keeps
+the Run's Lease. When it exits, the Runner finishes the Run with the usage
+from the final `result` line: `succeeded`, or `failed` with the reason.
+"Cancel" on the dashboard reaches the Runner over the same stream (or as a
+409 to its next report), and it stops `claude`. If the laptop goes away,
+the Lease runs out and the Bakery queues the Run again for when it is back.
+Nothing is pushed or committed yet: git comes with Heartbeats.

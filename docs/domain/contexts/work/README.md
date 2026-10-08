@@ -18,7 +18,7 @@ Goal, Issue and Approval belongs to exactly one Guild, and an Issue in a
 Project follows that Project's Permission overrides.
 
 It is **not** responsible (yet) for checkout or document locks: later phases of the guilds goal add them. Agents and their Runs
-are not work's at all; they get a context of their own.
+are the agents context's; work holds only an Issue's Agent assignee.
 It does not own Members, Guilds or Projects either; it stores their ids and asks guilds and projects about them.
 
 ## Language
@@ -49,7 +49,7 @@ Approval comment, Linked issue) are in
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Goal | Belongs to one Guild. Title 1–200 characters. Goal level and Goal status from their lists. Its parent Goal is in the same Guild and is never the Goal itself or one of its Sub-goals (no cycle). Its owner, if any, is a Member of the Guild. |
-| Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild, its Project is in the Guild and its Goal is in the Guild. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. |
+| Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild or an Agent of the Guild that is not terminated (its Agent assignee), never both; terminating the Agent clears it as Assignee of its open Issues. Its Project is in the Guild and its Goal is in the Guild. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. |
 | Comment | Belongs to one Issue and is written by one Member. Body 1–20000 characters. Only its author edits or deletes it. A deleted Comment keeps its place in the thread, its body gone, shown as "deleted". |
 | Issue document | Belongs to one Issue and its Guild. Its Document key is unique per Issue and never changes. Title at most 200 characters (may be empty), body at most 524288 characters, Markdown only. Its Revisions are numbered 1, 2, … without gaps; each save and each Restore adds exactly one Revision, and Revisions are never changed. A save needs the newest Revision as its Base revision (none for the first save), or it is refused. Restoring the newest Revision is refused, since it would change nothing. Deleting the Issue document removes its Revisions. |
 | Activity event | Append-only. Belongs to one Guild and has one Actor (or none once that Member's account is gone) and one Action from the glossary's list, about exactly one Goal, Issue, Approval or Agent. It keeps the Issue's number and title, the Goal's title, the Approval's type and payload title, or the Agent's name, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
@@ -174,7 +174,7 @@ type and the payload's title.
   | `POST /api/goals` | 201 `{"goal": Goal}` |
   | `GET /api/goals/{id}` | `{"goal": Goal + "issues": [Issue], "issue_counts": {status: n}}` |
   | `PATCH /api/goals/{id}`, `DELETE /api/goals/{id}` | `{"goal": Goal}`, 204 |
-  | `GET /api/issues` | `{"issues": [Issue]}`, most recently updated first; filters `status` and `priority` (comma lists), `assignee` (an id, `me` or `none`), `project`, `goal`, `parent` (an id or `none`), `q` (title, description, identifier), `limit` (≤ 200) and `offset` |
+  | `GET /api/issues` | `{"issues": [Issue]}`, most recently updated first; filters `status` and `priority` (comma lists), `assignee` (a Member's id, `agent:<id>` for an Agent assignee, `me` or `none`), `project`, `goal`, `parent` (an id or `none`), `q` (title, description, identifier), `limit` (≤ 200) and `offset` |
   | `POST /api/issues` | 201 `{"issue": Issue + "children": [Issue]}` |
   | `GET /api/issues/{issue}`, `PATCH /api/issues/{issue}` | `{"issue": Issue + "children": [Issue]}` |
   | `DELETE /api/issues/{issue}` | 204 |
@@ -220,9 +220,12 @@ type and the payload's title.
   project, goal, parent, created_by, started_at, completed_at, cancelled_at,
   created_at, updated_at}`, the references as `{id, name}` (`{id, title}`
   for a Goal, `{id, identifier, title}` for a parent) or null, and lists leave
-  `description` out and add `unresolved_blockers`, how many of its
+  `description` out and add `unresolved_blockers`, an `assignee` is `{id,
+  name, kind}` with `kind` `member` or `agent`, how many of its
   Blockers the person may see are not `done`; it is written with `title`, `description`, `status`,
-  `priority`, `assignee_id`, `project_id`, `goal_id` and `parent_id`, any of
+  `priority`, `assignee_id` (a Member) or `assignee_agent_id` (an Agent,
+  422 for one that is terminated or of another Guild; setting one clears
+  the other), `project_id`, `goal_id` and `parent_id`, any of
   them null to clear it. `PATCH` also takes `blocked_by_ids`, a list of
   Issue ids (422 for the Issue itself, another Guild's Issue or a cycle),
   and an Issue on its own answers with `blocked_by` and `blocking`, each a
@@ -255,7 +258,7 @@ type and the payload's title.
   | `goal.updated` | `title`, `changes`: field → `{from, to}` for `title`, `level`, `status`, `parent` (`{id, title}`) and `owner` (`{id, name}`), and `description: true` when the description changed |
   | `goal.deleted` | `title` |
   | `issue.created` | `issue_number`, `issue_title`, `status`, `priority` |
-  | `issue.updated` | `issue_number`, `issue_title`, `changes`: field → `{from, to}` for `title`, `status`, `priority`, `assignee` (`{id, name}`), `project` (`{id, name}`), `goal` (`{id, title}`) and `parent` (`{id, identifier, title}`), `description: true` when the description changed, and `blockers: {added, removed}`, lists of `{id, identifier, title}` |
+  | `issue.updated` | `issue_number`, `issue_title`, `changes`: field → `{from, to}` for `title`, `status`, `priority`, `assignee` (`{id, name, kind}`), `project` (`{id, name}`), `goal` (`{id, title}`) and `parent` (`{id, identifier, title}`), `description: true` when the description changed, and `blockers: {added, removed}`, lists of `{id, identifier, title}` |
   | `issue.deleted` | `issue_number`, `issue_title` |
   | `issue.comment_added` | `issue_number`, `issue_title`, `comment_id`, `snippet` |
   | `issue.comment_deleted` | `issue_number`, `issue_title`, `comment_id` |
@@ -304,8 +307,15 @@ type and the payload's title.
   (one Activity event about an Agent, with its name kept in the details;
   only the `agent.*` Actions) and `work.OnAgentNames(f)` (the agents
   context names the Guild's Agents that still exist, so the Activity can
-  tell `exists`; until it registers, every Agent counts as existing). Work
-  never imports the contexts that call them.
+  tell `exists`; until it registers, every Agent counts as existing),
+  `work.OnAgentAssignable(f)` (the agents context answers whether an Agent
+  of the Guild may be an Assignee: it exists and is not terminated; until
+  it registers, no Agent may), `work.IssueForRun(ctx, guild, issue)` (an
+  Issue's number, identifier, title, description and Agent assignee, for
+  a Run's check and its prompt) and `work.ClearAgentAssignee(ctx, guild,
+  actor, agent)` (a terminated Agent stops being the Assignee of the open
+  Issues, each recorded as `issue.updated` with the terminating person as
+  Actor). Work never imports the contexts that call them.
 
 ## Why it's shaped this way
 
@@ -322,6 +332,11 @@ type and the payload's title.
   (`tasks:assign` and its family) for its agents. The Board needs one switch
   for "may change work", seeded into the Member Role so a Member can plan
   work from the start; agents get their own Permissions in a later phase.
+- **Two assignee columns, never both set.** As Paperclip's
+  `assigneeUserId` and `assigneeAgentId`, an Issue keeps a Member and an
+  Agent assignee apart, so each has its own foreign key and `assignee=me`
+  never matches an Agent. Work asks agents (through a hook it registers)
+  whether an Agent may be assigned, so work never reads agents' tables.
 - **Issues hidden by the Project's `view_resources` override.** An Issue has
   no overrides of its own. Whoever may not view a Project may not see the
   work in it either, so the existing Permission overrides already say who
