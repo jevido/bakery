@@ -8,6 +8,7 @@ import (
 	goravelgin "github.com/goravel/gin"
 
 	"github.com/jevido/bakery/services/api/app/facades"
+	"github.com/jevido/bakery/services/api/contexts/agents"
 	"github.com/jevido/bakery/services/api/contexts/databases"
 	"github.com/jevido/bakery/services/api/contexts/deployments"
 	"github.com/jevido/bakery/services/api/contexts/guilds"
@@ -37,6 +38,7 @@ func Api() {
 		servers.Routes(r)
 		notifications.Routes(r)
 		work.Routes(r)
+		agents.Routes(r)
 	})
 	deployments.StreamRoutes(facades.Route())
 	databases.StreamRoutes(facades.Route())

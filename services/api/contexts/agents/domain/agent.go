@@ -1,0 +1,308 @@
+// Package domain is the agents context's model: a Guild's Agents, their
+// Jobs, Managers and Agent status. It depends on nothing outside the
+// standard library.
+package domain
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+	"unicode/utf8"
+)
+
+// FieldError is a broken rule on one input field.
+type FieldError struct {
+	Field   string
+	Message string
+}
+
+func (e *FieldError) Error() string { return e.Field + ": " + e.Message }
+
+func invalid(field, format string, args ...any) error {
+	return &FieldError{Field: field, Message: fmt.Sprintf(format, args...)}
+}
+
+// StatusError refuses a change the Agent's status does not allow.
+type StatusError struct {
+	Status Status
+	Action string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("a %s agent cannot be %s", strings.ReplaceAll(string(e.Status), "_", " "), e.Action)
+}
+
+const (
+	MaxName         = 100
+	MaxTitle        = 200
+	MaxCapabilities = 20000
+	// MaxChain is how far up a Manager's Chain of command is walked when
+	// looking for a cycle, as Paperclip's getChainOfCommand.
+	MaxChain = 50
+)
+
+// Job is what an Agent does in the Org chart (Paperclip's agent role).
+type Job string
+
+// Jobs are the glossary's Jobs in Paperclip's order, with their labels.
+var Jobs = []Job{"ceo", "cto", "cmo", "cfo", "security", "engineer", "designer", "pm", "qa", "devops", "researcher", "general"}
+
+var jobLabels = map[Job]string{
+	"ceo": "CEO", "cto": "CTO", "cmo": "CMO", "cfo": "CFO", "security": "Security", "engineer": "Engineer",
+	"designer": "Designer", "pm": "PM", "qa": "QA", "devops": "DevOps", "researcher": "Researcher", "general": "General",
+}
+
+// DefaultJob is the Job of an Agent hired without one.
+const DefaultJob Job = "general"
+
+// JobLabel is how the Job reads, e.g. "DevOps".
+func JobLabel(j Job) string { return jobLabels[j] }
+
+// ParseJob reads a Job; empty is DefaultJob.
+func ParseJob(s string) (Job, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return DefaultJob, nil
+	}
+	if slices.Contains(Jobs, Job(s)) {
+		return Job(s), nil
+	}
+	return "", invalid("job", "must be one of %s", joined(Jobs))
+}
+
+// Icon is an Agent icon, drawn with the Lucide icon of its name.
+type Icon string
+
+// Icons are Paperclip's AGENT_ICON_NAMES.
+var Icons = []Icon{
+	"bot", "cpu", "brain", "zap", "rocket", "code", "terminal", "shield", "eye", "search", "wrench", "hammer",
+	"lightbulb", "sparkles", "star", "heart", "flame", "bug", "cog", "database", "globe", "lock", "mail",
+	"message-square", "file-code", "git-branch", "package", "puzzle", "target", "wand", "atom", "circuit-board",
+	"radar", "swords", "telescope", "microscope", "crown", "gem", "hexagon", "pentagon", "fingerprint",
+}
+
+// ParseIcon reads an Agent icon; empty is none.
+func ParseIcon(s string) (Icon, error) {
+	s = strings.TrimSpace(s)
+	if s == "" || slices.Contains(Icons, Icon(s)) {
+		return Icon(s), nil
+	}
+	return "", invalid("icon", "is not an agent icon")
+}
+
+func joined[T ~string](vs []T) string {
+	out := make([]string, len(vs))
+	for i, v := range vs {
+		out[i] = string(v)
+	}
+	return strings.Join(out, ", ")
+}
+
+// Status is an Agent status.
+type Status string
+
+const (
+	PendingApproval Status = "pending_approval"
+	Idle            Status = "idle"
+	Paused          Status = "paused"
+	Terminated      Status = "terminated"
+)
+
+// Agent is an AI worker hired into one Guild by its Hirer. ManagerID is 0
+// for the top of the Org chart; HireApprovalID is its hire_agent Approval.
+type Agent struct {
+	ID             uint64
+	GuildID        uint64
+	HirerID        uint64
+	Name           string
+	Job            Job
+	Title          string
+	Icon           Icon
+	Capabilities   string
+	ManagerID      uint64
+	Status         Status
+	HireApprovalID uint64
+	PausedAt       *time.Time
+	TerminatedAt   *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+// Profile is what a person types about an Agent.
+type Profile struct {
+	Name         string
+	Job          string
+	Title        string
+	Icon         string
+	Capabilities string
+}
+
+func (p Profile) validated() (name string, job Job, title string, icon Icon, caps string, err error) {
+	name = strings.TrimSpace(p.Name)
+	if n := utf8.RuneCountInString(name); n == 0 || n > MaxName {
+		return "", "", "", "", "", invalid("name", "must be 1 to %d characters", MaxName)
+	}
+	if job, err = ParseJob(p.Job); err != nil {
+		return "", "", "", "", "", err
+	}
+	title = strings.TrimSpace(p.Title)
+	if utf8.RuneCountInString(title) > MaxTitle {
+		return "", "", "", "", "", invalid("title", "must be at most %d characters", MaxTitle)
+	}
+	if icon, err = ParseIcon(p.Icon); err != nil {
+		return "", "", "", "", "", err
+	}
+	caps = strings.TrimSpace(p.Capabilities)
+	if utf8.RuneCountInString(caps) > MaxCapabilities {
+		return "", "", "", "", "", invalid("capabilities", "must be at most %d characters", MaxCapabilities)
+	}
+	return name, job, title, icon, caps, nil
+}
+
+// Hire makes a new Agent of the Guild, pending its hire_agent Approval.
+// The Manager is checked against the Guild's Agents with CheckManager.
+func Hire(guildID, hirerID uint64, p Profile, managerID uint64, at time.Time) (Agent, error) {
+	name, job, title, icon, caps, err := p.validated()
+	if err != nil {
+		return Agent{}, err
+	}
+	return Agent{
+		GuildID: guildID, HirerID: hirerID, Name: name, Job: job, Title: title, Icon: icon, Capabilities: caps,
+		ManagerID: managerID, Status: PendingApproval, CreatedAt: at, UpdatedAt: at,
+	}, nil
+}
+
+// ErrNameTaken is a name another Agent of the Guild that is not terminated
+// already has, in any case.
+var ErrNameTaken error = &FieldError{Field: "name", Message: "another agent of this guild has this name"}
+
+// ErrManagerCycle is a Manager that is the Agent itself or one of its
+// reports.
+var ErrManagerCycle error = &FieldError{Field: "reports_to", Message: "an agent cannot report to itself or to one of its reports"}
+
+// CheckManager checks managerID as the Manager of the Agent id (0 for one
+// not hired yet) among the Guild's Agents: one of them, not terminated,
+// not the Agent and not in its reports, found by walking the Manager's
+// Chain of command up at most MaxChain levels.
+func CheckManager(agents []Agent, id, managerID uint64) error {
+	if managerID == 0 {
+		return nil
+	}
+	byID := make(map[uint64]Agent, len(agents))
+	for _, a := range agents {
+		byID[a.ID] = a
+	}
+	m, ok := byID[managerID]
+	if !ok {
+		return invalid("reports_to", "is not an agent of this guild")
+	}
+	if m.Status == Terminated {
+		return invalid("reports_to", "is terminated")
+	}
+	if id == 0 {
+		return nil
+	}
+	for at, i := m, 0; i < MaxChain; i++ {
+		if at.ID == id {
+			return ErrManagerCycle
+		}
+		next, ok := byID[at.ManagerID]
+		if at.ManagerID == 0 || !ok {
+			return nil
+		}
+		at = next
+	}
+	return nil
+}
+
+// Approve follows an approved hire_agent Approval: pending_approval
+// becomes idle. An Agent already past it stays as it is (a Decision made
+// again); a terminated one cannot be approved.
+func (a *Agent) Approve(at time.Time) (changed bool, err error) {
+	switch a.Status {
+	case PendingApproval:
+		a.Status, a.UpdatedAt = Idle, at
+		return true, nil
+	case Idle, Paused:
+		return false, nil
+	}
+	return false, &StatusError{Status: a.Status, Action: "approved"}
+}
+
+// Reject follows a rejected hire_agent Approval: pending_approval becomes
+// terminated. A terminated Agent stays as it is; a hired one cannot be
+// rejected.
+func (a *Agent) Reject(at time.Time) (changed bool, err error) {
+	switch a.Status {
+	case PendingApproval:
+		a.Status, a.TerminatedAt, a.UpdatedAt = Terminated, &at, at
+		return true, nil
+	case Terminated:
+		return false, nil
+	}
+	return false, &StatusError{Status: a.Status, Action: "rejected"}
+}
+
+// Node is an Agent in the Org chart with its direct reports.
+type Node struct {
+	Agent   Agent
+	Reports []Node
+}
+
+// Org builds the Org chart of the Guild's Agents that are not terminated:
+// roots are those without a Manager or whose Manager is gone, each level
+// ordered by name.
+func Org(agents []Agent) []Node {
+	live := map[uint64]bool{}
+	for _, a := range agents {
+		if a.Status != Terminated {
+			live[a.ID] = true
+		}
+	}
+	children := map[uint64][]Agent{}
+	for _, a := range agents {
+		if a.Status == Terminated {
+			continue
+		}
+		parent := a.ManagerID
+		if !live[parent] {
+			parent = 0
+		}
+		children[parent] = append(children[parent], a)
+	}
+	seen := map[uint64]bool{}
+	var build func(parent uint64) []Node
+	build = func(parent uint64) []Node {
+		kids := children[parent]
+		slices.SortFunc(kids, func(x, y Agent) int {
+			if c := strings.Compare(strings.ToLower(x.Name), strings.ToLower(y.Name)); c != 0 {
+				return c
+			}
+			return int(x.ID) - int(y.ID)
+		})
+		out := make([]Node, 0, len(kids))
+		for _, k := range kids {
+			if seen[k.ID] {
+				continue
+			}
+			seen[k.ID] = true
+			out = append(out, Node{Agent: k, Reports: build(k.ID)})
+		}
+		return out
+	}
+	return build(0)
+}
+
+// AgentHired is published when a Member has hired an Agent.
+type AgentHired struct {
+	Agent   Agent
+	ActorID uint64
+}
+
+// AgentTerminated is published when an Agent became terminated: by a
+// person, or by its rejected hire_agent Approval.
+type AgentTerminated struct {
+	Agent   Agent
+	ActorID uint64
+}

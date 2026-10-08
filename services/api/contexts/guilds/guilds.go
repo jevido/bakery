@@ -217,6 +217,16 @@ func IsMember(ctx context.Context, guildID, memberID uint64) (bool, error) {
 // (422).
 var ErrAboveHirer = domain.ErrAboveHirer
 
+// AgentRoleRefused reports whether err is guilds refusing an Agent a
+// Role (a 422 for whoever asked), not a failure: a Role at or above the
+// Hirer's or the actor's highest, the Base role, a Permission the actor
+// does not hold, or a Role the Guild does not have.
+func AgentRoleRefused(err error) bool {
+	return errors.Is(err, domain.ErrAboveHirer) || errors.Is(err, domain.ErrRoleNotBelow) ||
+		errors.Is(err, domain.ErrBaseRoleFixed) || errors.Is(err, domain.ErrNotHeld) ||
+		errors.Is(err, app.ErrRoleNotFound) || errors.As(err, new(domain.ErrMissing))
+}
+
 // ErrAgentNotFound is the answer for an Agent without an Agent membership
 // in the Guild.
 var ErrAgentNotFound = app.ErrAgentNotFound

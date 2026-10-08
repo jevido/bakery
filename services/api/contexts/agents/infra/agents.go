@@ -1,0 +1,144 @@
+// Package infra is the agents context's persistence.
+package infra
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"time"
+
+	contractsorm "github.com/goravel/framework/contracts/database/orm"
+	"github.com/goravel/framework/database/orm"
+	frameworkerrors "github.com/goravel/framework/errors"
+
+	"github.com/jevido/bakery/services/api/app/facades"
+	"github.com/jevido/bakery/services/api/contexts/agents/domain"
+)
+
+type agentRecord struct {
+	ID             uint64 `gorm:"primaryKey"`
+	GuildID        uint64
+	HirerMemberID  uint64
+	Name           string
+	Job            string
+	Title          string
+	Icon           string
+	Capabilities   string
+	ManagerAgentID *uint64
+	Status         string
+	HireApprovalID *uint64
+	PausedAt       *time.Time
+	TerminatedAt   *time.Time
+	orm.Timestamps
+}
+
+func (agentRecord) TableName() string { return "agents" }
+
+// nullable stores 0 as NULL.
+func nullable(id uint64) *uint64 {
+	if id == 0 {
+		return nil
+	}
+	return &id
+}
+
+func deref(id *uint64) uint64 {
+	if id == nil {
+		return 0
+	}
+	return *id
+}
+
+func utc(t *time.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	u := t.UTC()
+	return &u
+}
+
+func (r agentRecord) toDomain() domain.Agent {
+	a := domain.Agent{
+		ID: r.ID, GuildID: r.GuildID, HirerID: r.HirerMemberID, Name: r.Name, Job: domain.Job(r.Job), Title: r.Title,
+		Icon: domain.Icon(r.Icon), Capabilities: r.Capabilities, ManagerID: deref(r.ManagerAgentID), Status: domain.Status(r.Status),
+		HireApprovalID: deref(r.HireApprovalID), PausedAt: utc(r.PausedAt), TerminatedAt: utc(r.TerminatedAt),
+	}
+	if r.CreatedAt != nil {
+		a.CreatedAt = r.CreatedAt.StdTime().UTC()
+	}
+	if r.UpdatedAt != nil {
+		a.UpdatedAt = r.UpdatedAt.StdTime().UTC()
+	}
+	return a
+}
+
+// Agents keeps Agents.
+type Agents struct{}
+
+func (Agents) query(ctx context.Context) contractsorm.Query {
+	return facades.Orm().WithContext(ctx).Query()
+}
+
+func (s Agents) Agents(ctx context.Context, guildID uint64) ([]domain.Agent, error) {
+	var recs []agentRecord
+	if err := s.query(ctx).Where("guild_id", guildID).Order("id").Find(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]domain.Agent, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+	}
+	return out, nil
+}
+
+// Agent returns the Agent; found is false when there is none.
+func (s Agents) Agent(ctx context.Context, id uint64) (domain.Agent, bool, error) {
+	var rec agentRecord
+	if err := s.query(ctx).Where("id", id).FirstOrFail(&rec); err != nil {
+		if errors.Is(err, frameworkerrors.OrmRecordNotFound) {
+			return domain.Agent{}, false, nil
+		}
+		return domain.Agent{}, false, err
+	}
+	return rec.toDomain(), true, nil
+}
+
+func (s Agents) CreateAgent(ctx context.Context, a domain.Agent) (domain.Agent, error) {
+	rec := agentRecord{
+		GuildID: a.GuildID, HirerMemberID: a.HirerID, Name: a.Name, Job: string(a.Job), Title: a.Title, Icon: string(a.Icon),
+		Capabilities: a.Capabilities, ManagerAgentID: nullable(a.ManagerID), Status: string(a.Status),
+		HireApprovalID: nullable(a.HireApprovalID), PausedAt: a.PausedAt, TerminatedAt: a.TerminatedAt,
+	}
+	if err := s.query(ctx).Create(&rec); err != nil {
+		if taken(err) {
+			return domain.Agent{}, domain.ErrNameTaken
+		}
+		return domain.Agent{}, err
+	}
+	return rec.toDomain(), nil
+}
+
+func (s Agents) SaveAgent(ctx context.Context, a domain.Agent) error {
+	_, err := s.query(ctx).Exec(`UPDATE agents SET name = ?, job = ?, title = ?, icon = ?, capabilities = ?, manager_agent_id = ?,
+		status = ?, hire_approval_id = ?, paused_at = ?, terminated_at = ?, updated_at = now() WHERE id = ?`,
+		a.Name, string(a.Job), a.Title, string(a.Icon), a.Capabilities, nullable(a.ManagerID),
+		string(a.Status), nullable(a.HireApprovalID), a.PausedAt, a.TerminatedAt, a.ID)
+	if taken(err) {
+		return domain.ErrNameTaken
+	}
+	return err
+}
+
+func (s Agents) DeleteAgent(ctx context.Context, id uint64) error {
+	_, err := s.query(ctx).Exec(`DELETE FROM agents WHERE id = ?`, id)
+	return err
+}
+
+// taken reports the unique name index refusing a row.
+func taken(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "23505") || strings.Contains(msg, "duplicate key")
+}

@@ -103,7 +103,7 @@ records nothing more.
 
   | Route | Permission | Body | Answers |
   | ----- | ---------- | ---- | ------- |
-  | `GET /api/agents` | `view_resources` | | `{"agents": [Agent]}`, by name; filter `status` (an Agent status) |
+  | `GET /api/agents` | `view_resources` | | `{"agents": [Agent]}`, by name; filter `status`: `all` (every Agent but the terminated ones, the default, as Paperclip's All tab), `active` (idle), `paused`, `pending` (pending approval) or `terminated` |
   | `POST /api/agents` | `hire_agents` | `{name, job, title, icon, reports_to, capabilities, role_ids}` | 201 `{"agent": Agent, "approval_id": id}` |
   | `GET /api/agents/{id}` | `view_resources` | | `{"agent": Agent}` |
   | `PATCH /api/agents/{id}` | manage | any of `{name, job, title, icon, reports_to, capabilities}` | `{"agent": Agent}` |
@@ -112,11 +112,14 @@ records nothing more.
   | `DELETE /api/agents/{id}/roles/{role_id}` | manage | | `{"agent": Agent}` |
   | `GET /api/org` | `view_resources` | | `{"org": [Org node]}`, the roots of the Org chart |
 
-  An Agent is `{id, name, job, title, icon, capabilities, status,
+  An Agent is `{id, name, job, job_label, title, icon, capabilities, status,
   reports_to: {id, name} | null, hirer: {id, name} | null, roles: [{id,
   name, color, position}], approval_id, can_manage, created_at,
   updated_at, paused_at, terminated_at}`. An Org node is `{id, name, job,
-  title, icon, status, reports: [Org node]}`.
+  job_label, title, icon, status, reports: [Org node]}`; an Agent whose
+  Manager is terminated is a root, each level ordered by name. A hire
+  whose Roles guilds refuses is 422 on `role_ids`; a name taken is 422 on
+  `name`.
 - **Consumes:**
   - from guilds: `guilds.Auth`, `guilds.Can(permission)`,
     `guilds.Current(ctx)`, `guilds.MemberID(ctx)` (the Hirer), the Agent
