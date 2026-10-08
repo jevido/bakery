@@ -85,6 +85,12 @@ export type Issue = {
   updated_at: string
   /** On list rows: how many of its Blockers are not done yet. */
   unresolved_blockers?: number
+  /** With an Inbox filter (inbox, touched or unread): whether the asking Member has not read its latest change. */
+  unread?: boolean
+  /** With an Inbox filter: whether the asking Member archived it from their Inbox. */
+  archived?: boolean
+  /** With an Inbox filter: the asking Member's Last touch. */
+  last_touched_at?: string | null
 }
 
 /** One Issue as its page shows it: with its Sub-issues and Blockers both ways. */
@@ -107,7 +113,9 @@ export type IssueInput = Partial<{
 /**
  * What GET /api/issues keeps: comma lists of statuses and priorities, an
  * assignee, project, goal or parent as an id, "none" (or "me" for the
- * assignee), q to search, and a page by limit and offset.
+ * assignee), q to search, and a page by limit and offset. inbox, touched and
+ * unread take only "me": the asking Member's Inbox (Touched, not archived),
+ * Touched, and Unread.
  */
 export type IssueFilter = Partial<{
   status: string[]
@@ -117,6 +125,9 @@ export type IssueFilter = Partial<{
   goal: string
   parent: string
   q: string
+  inbox: 'me'
+  touched: 'me'
+  unread: 'me'
   limit: number
   offset: number
 }>
@@ -136,6 +147,12 @@ export const createIssue = (input: IssueInput) => api<{ issue: IssueDetail }>('P
 export const updateIssue = (key: number | string, patch: IssueInput) =>
   api<{ issue: IssueDetail }>('PATCH', `/issues/${key}`, patch).then((r) => r.issue)
 export const deleteIssue = (key: number | string) => api<void>('DELETE', `/issues/${key}`)
+
+/** The asking Member's Read mark and Inbox archive of an Issue; nobody else's changes. */
+export const markRead = (key: number | string) => api<void>('POST', `/issues/${key}/read`)
+export const markUnread = (key: number | string) => api<void>('DELETE', `/issues/${key}/read`)
+export const archiveFromInbox = (key: number | string) => api<void>('POST', `/issues/${key}/inbox-archive`)
+export const unarchiveFromInbox = (key: number | string) => api<void>('DELETE', `/issues/${key}/inbox-archive`)
 
 /** One Comment in an Issue's thread; a deleted one keeps its place with no body. */
 export type Comment = {

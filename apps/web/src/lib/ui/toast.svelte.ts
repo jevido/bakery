@@ -9,11 +9,11 @@ export type Toast = {
   title: string
   text: string
   persistent: boolean
-  /** A link under the text, as Paperclip's toast action ("Open DEF-4"). */
+  /** A link or a button under the text, as Paperclip's toast action ("Open DEF-4", "Undo"). */
   action?: ToastAction
 }
 
-export type ToastAction = { label: string; href: string }
+export type ToastAction = { label: string } & ({ href: string; onclick?: never } | { onclick: () => void; href?: never })
 
 const limit = 4
 let next = 1
@@ -53,7 +53,7 @@ export function dismiss(id: number) {
 }
 
 export const toast = {
-  show: (title: string, text?: string) => show('default', title, text),
+  show: (title: string, text?: string, action?: ToastAction) => show('default', title, text, false, action),
   success: (title: string, text?: string, action?: ToastAction) => show('success', title, text, false, action),
   info: (title: string, text?: string) => show('info', title, text),
   warning: (title: string, text?: string) => show('warning', title, text),

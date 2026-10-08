@@ -51,9 +51,19 @@
           {#if item.text}
             <p class="mt-1 text-xs leading-4 break-words whitespace-pre-wrap opacity-70">{item.text}</p>
           {/if}
-          {#if item.action}
+          {#if item.action?.href}
             <a href={item.action.href} class="mt-1 inline-block text-xs font-medium underline underline-offset-2" onclick={() => dismiss(item.id)}
               >{item.action.label}</a
+            >
+          {:else if item.action}
+            {@const run = item.action.onclick}
+            <button
+              type="button"
+              class="mt-1 inline-block text-xs font-medium underline underline-offset-2"
+              onclick={() => {
+                dismiss(item.id)
+                run?.()
+              }}>{item.action.label}</button
             >
           {/if}
         </div>

@@ -57,6 +57,15 @@
 //           the Actor filter set to you keeps the Issue; a Viewer, invited
 //           for the run, sees the feed but not an Issue in a scratch Project
 //           whose Viewer Role is denied View resources there
+//   inbox   with no last tab kept, #/inbox opens Mine, listing a scratch
+//           Issue the owner created; after a Member, invited for the run,
+//           comments on it the row shows the unread dot; clicking it clears
+//           the dot and a reload keeps it cleared; Archive takes the row out
+//           of Mine and the toast's Undo brings it back; archived again,
+//           Recent shows it dimmed with Unarchive; Unread lists only a second
+//           scratch Issue the Member commented on, and "Mark all as read"
+//           empties it; on Recent, search by the second's identifier
+//           keeps only it; #/inbox after Recent opens Recent
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -767,6 +776,83 @@ const sections: Record<string, () => Promise<void>> = {
     await page.request.delete(`${WEB}/api/projects/${project.id}`)
     await page.request.delete(`${WEB}/api/issues/${blocker.id}`)
     await page.request.delete(`${WEB}/api/issues/${issue.id}`)
+    await page.close()
+  },
+  inbox: async () => {
+    const page = await signedIn()
+    const title = (n: string) => `Inbox e2e ${n}`
+    for (const i of (await issues(page)).filter((i) => i.title.startsWith('Inbox e2e '))) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    const made = async (n: string) =>
+      ((await (await page.request.post(`${WEB}/api/issues`, { data: { title: title(n) } })).json()) as { issue: Issue }).issue
+    const first = await made('first')
+    const second = await made('second')
+    const row = (i: Issue) => page.locator(`[data-slot="task-row"][data-issue="${i.identifier}"]`)
+
+    await page.goto(`${WEB}/`)
+    await page.evaluate(() => localStorage.removeItem('bakery:inbox:last-tab'))
+    await page.goto(`${WEB}/#/inbox`)
+    await row(first).waitFor()
+    expect('#/inbox opens Mine', page.url().endsWith('#/inbox/mine'), page.url())
+    expect('Mine lists an Issue the owner created, read', (await row(first).getAttribute('data-unread')) === null)
+
+    const m = await invited(page, 'member')
+    for (const i of [first, second]) {
+      const c = await m.page.request.post(`${WEB}/api/issues/${i.id}/comments`, { data: { body: 'Over to you' } })
+      if (!c.ok()) throw new Error(`comment: ${c.status()}`)
+    }
+    await page.reload()
+    await row(first).and(page.locator('[data-unread="true"]')).waitFor()
+    expect('a Comment from someone else shows the unread dot', true)
+    await row(first).getByRole('button', { name: 'Mark as read' }).click()
+    await row(first).and(page.locator(':not([data-unread])')).waitFor()
+    await page.reload()
+    await row(first).waitFor()
+    expect('the dot stays cleared after a reload', (await row(first).getAttribute('data-unread')) === null)
+
+    await row(first).hover()
+    await row(first).getByRole('button', { name: 'Archive' }).click()
+    await row(first).waitFor({ state: 'detached' })
+    expect('Archive takes the row out of Mine', true)
+    await page.getByRole('button', { name: 'Undo' }).click()
+    await row(first).waitFor()
+    await page.reload()
+    await row(first).waitFor()
+    expect('Undo brings it back to Mine', true)
+    await row(first).hover()
+    await row(first).getByRole('button', { name: 'Archive' }).click()
+    await row(first).waitFor({ state: 'detached' })
+
+    await page.getByRole('tab', { name: 'Recent' }).click()
+    await page.waitForURL(/#\/inbox\/recent$/)
+    await row(first).and(page.locator('[data-archived="true"]')).waitFor()
+    expect('Recent shows the archived row with Unarchive', await row(first).getByRole('button', { name: 'Unarchive' }).isVisible())
+
+    await page.getByRole('tab', { name: 'Unread' }).click()
+    await page.waitForURL(/#\/inbox\/unread$/)
+    await row(first).waitFor({ state: 'detached' })
+    await row(second).waitFor()
+    const listed = await page.locator('[data-slot="task-row"]').evaluateAll((rows) => rows.map((r) => r.getAttribute('data-issue')))
+    expect('Unread lists only the unread one', !listed.includes(first.identifier) && listed.includes(second.identifier), listed)
+    await page.getByRole('button', { name: 'Mark all as read' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Mark all as read' }).click()
+    await row(second).waitFor({ state: 'detached' })
+    await page.reload()
+    await page.getByText('No new inbox items.').waitFor()
+    expect('Mark all as read empties Unread', true)
+
+    await page.getByRole('tab', { name: 'Recent' }).click()
+    await row(first).waitFor()
+    await page.getByRole('searchbox', { name: 'Search inbox…' }).fill(second.identifier)
+    await row(first).waitFor({ state: 'detached' })
+    expect('search by identifier keeps only that Issue', await row(second).isVisible())
+
+    await page.goto(`${WEB}/#/issues`)
+    await page.goto(`${WEB}/#/inbox`)
+    await row(first).waitFor()
+    expect('#/inbox opens the last tab used', page.url().endsWith('#/inbox/recent'), page.url())
+
+    await m.leave()
+    for (const i of [first, second]) await page.request.delete(`${WEB}/api/issues/${i.id}`)
     await page.close()
   },
 }

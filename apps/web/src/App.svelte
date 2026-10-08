@@ -12,6 +12,7 @@
   import NewGuild from './pages/guild/New.svelte'
   import Profile from './pages/Profile.svelte'
   import Activity from './pages/Activity.svelte'
+  import Inbox from './pages/Inbox.svelte'
   import Goal from './pages/goals/Goal.svelte'
   import Goals from './pages/goals/Goals.svelte'
   import Issue from './pages/issues/Issue.svelte'
@@ -161,6 +162,8 @@
       {/key}
     {:else if router.route.name === 'activity'}
       <Activity />
+    {:else if router.route.name === 'inbox'}
+      <Inbox tab={router.route.tab} />
     {:else if router.route.name === 'profile'}
       <Profile />
     {:else if router.route.name === 'dev-components' && devComponents}
