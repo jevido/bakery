@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/jevido/bakery/apps/desktop/mcp"
 	"github.com/jevido/bakery/apps/desktop/runner"
 	"github.com/jevido/bakery/apps/desktop/store"
 
@@ -40,10 +41,12 @@ func main() {
 		err = runLogin(args[1:])
 	case args[0] == "runner":
 		err = runRunner()
+	case args[0] == "mcp":
+		err = runMCP()
 	case args[0] == "version":
 		fmt.Println(version)
 	default:
-		err = fmt.Errorf("unknown command %q; commands: serve [--addr 127.0.0.1:4991] [--no-runner], runner, login --server <address> [--no-browser], version", args[0])
+		err = fmt.Errorf("unknown command %q; commands: serve [--addr 127.0.0.1:4991] [--no-runner], runner, mcp, login --server <address> [--no-browser], version", args[0])
 	}
 	if err != nil {
 		log.Fatal(err)
@@ -164,4 +167,16 @@ func runRunner() error {
 	r.Wait()
 	log.Print("runner stopped")
 	return nil
+}
+
+// runMCP serves The Bakery's MCP server on stdio for the `claude` of one
+// Run, configured from the environment the Runner gives it.
+func runMCP() error {
+	cfg, err := mcp.ConfigFromEnv(os.Getenv)
+	if err != nil {
+		return err
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return mcp.Run(ctx, cfg, version)
 }

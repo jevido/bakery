@@ -88,17 +88,56 @@ func New(address, key string) *Client {
 // do sends body as JSON (when not nil) and decodes the answer into out
 // (when not nil). guildID 0 sends no Bakery-Guild.
 func (c *Client) do(ctx context.Context, method, path string, guildID uint64, body, out any) error {
+	status, data, err := c.send(ctx, method, path, guildID, body)
+	if err != nil {
+		return err
+	}
+	switch {
+	case status == http.StatusUnauthorized && c.Key != "":
+		return ErrSignedOut
+	case status == http.StatusNotFound:
+		return ErrNotFound
+	case status >= 300:
+		return refusal(status, data)
+	}
+	if out == nil || len(data) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(data, out); err != nil {
+		return fmt.Errorf("the Bakery's answer to %s %s: %w", method, path, err)
+	}
+	return nil
+}
+
+// Call sends body as JSON (when not nil) and returns the answer as it
+// came, for a caller that passes it on (The Bakery's MCP server). Every
+// refusal, a 401 and a 404 included, is an *Error with its status and
+// message. guildID 0 sends no Bakery-Guild.
+func (c *Client) Call(ctx context.Context, method, path string, guildID uint64, body any) (json.RawMessage, error) {
+	status, data, err := c.send(ctx, method, path, guildID, body)
+	if err != nil {
+		return nil, err
+	}
+	if status >= 300 {
+		return nil, refusal(status, data)
+	}
+	return data, nil
+}
+
+// send is one request: body as JSON when not nil, the Key as Bearer and
+// guildID (when not 0) as Bakery-Guild; it answers the status and body.
+func (c *Client) send(ctx context.Context, method, path string, guildID uint64, body any) (int, []byte, error) {
 	var reader io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			return err
+			return 0, nil, err
 		}
 		reader = bytes.NewReader(b)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.Address+path, reader)
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
@@ -112,36 +151,28 @@ func (c *Client) do(ctx context.Context, method, path string, guildID uint64, bo
 	}
 	res, err := c.HTTP.Do(req)
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
 	defer res.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
-	switch {
-	case res.StatusCode == http.StatusUnauthorized && c.Key != "":
-		return ErrSignedOut
-	case res.StatusCode == http.StatusNotFound:
-		return ErrNotFound
-	case res.StatusCode >= 300:
-		var e struct {
-			Message string `json:"message"`
-			Error   string `json:"error"`
-		}
-		_ = json.Unmarshal(data, &e)
-		if e.Message == "" {
-			e.Message = e.Error
-		}
-		return &Error{Status: res.StatusCode, Message: e.Message}
+	return res.StatusCode, data, nil
+}
+
+// refusal is the *Error for a refused answer, with the message the
+// Bakery gave (its message or error field).
+func refusal(status int, data []byte) *Error {
+	var e struct {
+		Message string `json:"message"`
+		Error   string `json:"error"`
 	}
-	if out == nil || len(data) == 0 {
-		return nil
+	_ = json.Unmarshal(data, &e)
+	if e.Message == "" {
+		e.Message = e.Error
 	}
-	if err := json.Unmarshal(data, out); err != nil {
-		return fmt.Errorf("the Bakery's answer to %s %s: %w", method, path, err)
-	}
-	return nil
+	return &Error{Status: status, Message: e.Message}
 }
 
 // SignIn is a Desktop sign-in this app started: its secret and the Desktop

@@ -39,14 +39,20 @@ on `PATH` and Wails' Linux libraries (`wails3 doctor`).
 - **`runner`**: no window and no frontend: only the Runner, for every
   connected Bakery, until interrupted. This is how a laptop runs Agents
   without the window open, and how the checks drive it.
-- **`mcp`**: The Bakery's MCP server, over stdio (the official MCP Go SDK).
-  The Runner starts one per `claude` through `--mcp-config`; it reads
-  `BAKERY_API_URL` and `BAKERY_API_KEY` (the Run key) from its environment
-  and turns each tool call into a call to that Bakery's API: who am I, my
-  Inbox, list and read Issues with their Comments and Issue documents,
-  Checkout and Release, write a Comment, change an Issue's status, create
-  a sub-issue, save an Issue document, read Goals and Approvals.
-  Paperclip's `@paperclipai/mcp-server` tool surface in The Bakery's words.
+- **`mcp`**: The Bakery's MCP server (`mcp/`), named `bakery`, over stdio
+  (the official MCP Go SDK). The Runner starts one per `claude` through
+  `--mcp-config`; it reads `BAKERY_API_URL`, `BAKERY_API_KEY` (the Run key),
+  `BAKERY_GUILD_ID`, `BAKERY_AGENT_ID` and `BAKERY_RUN_ID` from its
+  environment (it exits naming any that is missing) and turns each tool call
+  into a call to that Bakery's API with the Run key as Bearer and the Guild
+  as `Bakery-Guild`: who am I (`bakeryMe`), the Inbox, Agents, Issues with
+  their Comments and Issue documents and revisions, Projects, Goals and
+  Approvals to read; create and change an Issue (a sub-issue with
+  `parent_id`), Checkout and Release, write a Comment, save an Issue
+  document, ask for an Approval and comment on one; and `bakeryApiRequest`
+  for any other route under `/api/`. A refusal is a tool error carrying the
+  status and message. Paperclip's `@paperclipai/mcp-server` tool surface in
+  The Bakery's words.
 - **`version`**: prints the version.
 
 ## Connected Bakeries
