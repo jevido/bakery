@@ -26,6 +26,10 @@ type Service struct {
 	StopRoute func(ctx context.Context, applicationID uint64) error
 	// DropPreviewRoute is routing's; nil leaves Preview routes alone.
 	DropPreviewRoute func(ctx context.Context, applicationID uint64, preview int) error
+	// PreviewDeploying and PreviewRemoved, when set, hear of a Preview
+	// Deployment queued and of a closed Preview's removal.
+	PreviewDeploying func(ctx context.Context, applicationID uint64, number int)
+	PreviewRemoved   func(ctx context.Context, applicationID uint64, number int)
 	// Comments writes Preview comments; nil writes none.
 	Comments *Commenter
 	// Log reports what removing a Preview could not do.
@@ -203,7 +207,11 @@ func (s *Service) DeployPreview(ctx context.Context, applicationID uint64, numbe
 	if p.State != domain.PreviewOpen {
 		return domain.Deployment{}, domain.ErrPreviewClosed
 	}
-	return s.queue(ctx, domain.NewPreviewDeployment(applicationID, number, trigger))
+	d, err := s.queue(ctx, domain.NewPreviewDeployment(applicationID, number, trigger))
+	if err == nil && s.PreviewDeploying != nil {
+		s.PreviewDeploying(ctx, applicationID, number)
+	}
+	return d, err
 }
 
 // Rollback queues a Deployment that starts the given Deployment's Image

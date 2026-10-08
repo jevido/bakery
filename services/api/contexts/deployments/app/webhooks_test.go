@@ -125,6 +125,10 @@ func TestReceivePullRequest(t *testing.T) {
 	s := newSetup(t, fakeCloner{})
 	hooks := NewWebhooks(s.service, memWebhooks{})
 	hook, _ := hooks.Webhook(ctx, 1)
+	var told []string
+	hooks.PullRequestChanged = func(_ context.Context, a Application, p domain.Provider, pr domain.PullRequest) {
+		told = append(told, fmt.Sprintf("%d %s #%d %s", a.ID, p, pr.Number, pr.Action))
+	}
 	call := func(action string, number int, head, base string, headRepo int) PushOutcome {
 		t.Helper()
 		h, body := forgejoPullRequest(hook.Secret, action, number, head, base, headRepo)
@@ -138,6 +142,10 @@ func TestReceivePullRequest(t *testing.T) {
 	if out := call("opened", 7, "feature", "main", 5); out.Ignored != "previews are off" {
 		t.Fatalf("previews off: %+v", out)
 	}
+	// Told before the Previews filters, so work follows it all the same.
+	if len(told) != 1 || told[0] != "1 forgejo #7 opened" {
+		t.Fatalf("told %v", told)
+	}
 	on, token := true, "tok"
 	if hook, _ = hooks.SetPreviews(ctx, 1, &on, &token); !hook.Previews || hook.GitHostToken != "tok" || !hook.AutoDeploy {
 		t.Fatalf("set previews: %+v", hook)
@@ -150,6 +158,9 @@ func TestReceivePullRequest(t *testing.T) {
 	}
 	if out := call("edited", 7, "feature", "main", 5); !strings.Contains(out.Ignored, "nothing to do") {
 		t.Fatalf("edited: %+v", out)
+	}
+	if len(told) != 3 {
+		t.Fatalf("an edit is not told: %v", told)
 	}
 
 	out := call("opened", 7, "feature", "main", 5)

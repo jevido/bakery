@@ -72,6 +72,18 @@ func (s WorkProducts) WorkProduct(ctx context.Context, issueID uint64, typ domai
 	return recs[0].toDomain(), true, nil
 }
 
+func (s WorkProducts) ApplicationWorkProducts(ctx context.Context, applicationID uint64, typ domain.WorkProductType, externalID string) ([]domain.WorkProduct, error) {
+	var recs []workProductRecord
+	if err := s.query(ctx).Where("application_id", applicationID).Where("type", string(typ)).Where("external_id", externalID).Order("id").Find(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]domain.WorkProduct, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+	}
+	return out, nil
+}
+
 // SaveWorkProduct stores a new Work product, or a known one's title, link
 // and status. A new one whose Issue, type and external id another save
 // already stored keeps that one, which is answered.

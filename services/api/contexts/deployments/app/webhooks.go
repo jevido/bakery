@@ -30,6 +30,9 @@ type Webhooks struct {
 	store   WebhookStore
 	// Hosts opens Pull requests on git hosts.
 	Hosts PullRequestHosts
+	// PullRequestChanged, when set, hears of every verified Pull request
+	// event with an Action, whatever the Previews switch and base branch.
+	PullRequestChanged func(ctx context.Context, a Application, provider domain.Provider, pr domain.PullRequest)
 }
 
 func NewWebhooks(service *Service, store WebhookStore) *Webhooks {
@@ -174,6 +177,9 @@ func (w *Webhooks) receivePullRequest(ctx context.Context, hook domain.Webhook, 
 	pr, err := domain.ParsePullRequest(provider, body)
 	if err != nil {
 		return PushOutcome{Ignored: "not a pull request"}, nil
+	}
+	if pr.Action != "" && w.PullRequestChanged != nil {
+		w.PullRequestChanged(ctx, app, provider, pr)
 	}
 	switch {
 	case !hook.Previews:

@@ -14,6 +14,9 @@ type WorkProducts interface {
 	// WorkProducts lists the Issue's Work products, newest first.
 	WorkProducts(ctx context.Context, issueID uint64) ([]domain.WorkProduct, error)
 	WorkProduct(ctx context.Context, issueID uint64, typ domain.WorkProductType, externalID string) (domain.WorkProduct, bool, error)
+	// ApplicationWorkProducts lists the Work products of the type and
+	// external id that came from the Application, of every Issue.
+	ApplicationWorkProducts(ctx context.Context, applicationID uint64, typ domain.WorkProductType, externalID string) ([]domain.WorkProduct, error)
 	// SaveWorkProduct stores a new one, or a known one's title, link and
 	// status, and answers it as stored.
 	SaveWorkProduct(ctx context.Context, w domain.WorkProduct) (domain.WorkProduct, error)

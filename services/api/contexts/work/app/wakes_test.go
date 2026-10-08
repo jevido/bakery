@@ -33,6 +33,15 @@ func (m *memIssues) Issue(_ context.Context, id uint64) (domain.Issue, bool, err
 	return i, ok, nil
 }
 
+func (m *memIssues) IssueByNumber(_ context.Context, guildID uint64, number int) (domain.Issue, bool, error) {
+	for _, i := range m.byID {
+		if i.GuildID == guildID && i.Number == number {
+			return i, true, nil
+		}
+	}
+	return domain.Issue{}, false, nil
+}
+
 func (m *memIssues) SaveIssue(_ context.Context, i domain.Issue) error {
 	m.byID[i.ID] = i
 	return nil

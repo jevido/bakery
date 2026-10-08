@@ -119,8 +119,8 @@ Application is (projects) or for the Caddy configuration (routing).
   failed. Not for a cancelled Deployment, nor for one failed because a
   restart interrupted it. Registered with `OnDeploymentFinished(f)`; each
   subscriber runs in its own goroutine so it cannot hold up the Worker.
-- `PullRequestEvent { guild, application, number, action, merged, branch,
-  url, title }`: a verified Webhook call told of a Pull request being
+- `PullRequestEvent { guild, application, provider, number, action, merged,
+  branch, url, title }`: a verified Webhook call told of a Pull request being
   opened, pushed to, reopened or closed (merged or not), whatever the
   Previews switch and the base branch. Registered with `OnPullRequest(f)`,
   published before the Previews filters, each subscriber in its own

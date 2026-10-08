@@ -50,6 +50,7 @@ func svc() *app.Service {
 		})
 		guilds.OnGuildDeleting("issues", service.HasIssues)
 		projects.OnProjectDeleted(service.ForgetProject)
+		followPullRequests()
 		projects.OnApplicationDeleted(func(ctx context.Context, e projects.ApplicationDeleted) {
 			if err := service.ForgetApplication(ctx, e.ApplicationID); err != nil {
 				service.Logf("work: forgetting deleted application %d: %v", e.ApplicationID, err)
@@ -597,4 +598,46 @@ func Routes(r route.Router) {
 		r.Post("/api/approvals/{id}/request-revision", c.RequestApprovalRevision)
 	})
 	r.Middleware(guilds.Auth, approvalInGuild, manage).Post("/api/approvals/{id}/resubmit", c.ResubmitApproval)
+}
+
+// followPullRequests keeps the Work products of Issues in step with what
+// deployments tells of their Pull requests and Previews.
+func followPullRequests() {
+	deployments.OnPullRequest(func(ctx context.Context, e deployments.PullRequestEvent) {
+		err := service.FollowPullRequest(ctx, app.PullRequestEvent{
+			GuildID: e.GuildID, ApplicationID: e.ApplicationID, Provider: e.Provider, Number: e.Number,
+			Action: e.Action, Merged: e.Merged, Branch: e.Branch, URL: e.URL, Title: e.Title,
+		})
+		if err != nil {
+			service.Logf("work: following pull request #%d of application %d: %v", e.Number, e.ApplicationID, err)
+		}
+	})
+	preview := func(ctx context.Context, e app.PreviewEvent) {
+		if e.Status != domain.PreviewRemoved {
+			url, _, err := deployments.PreviewURL(ctx, e.ApplicationID, e.Number)
+			if err != nil {
+				service.Logf("work: the preview link of #%d of application %d: %v", e.Number, e.ApplicationID, err)
+			}
+			e.URL = url
+		}
+		if err := service.FollowPreview(ctx, e); err != nil {
+			service.Logf("work: following the preview of #%d of application %d: %v", e.Number, e.ApplicationID, err)
+		}
+	}
+	deployments.OnPreviewDeploying(func(ctx context.Context, e deployments.PreviewEvent) {
+		preview(ctx, app.PreviewEvent{ApplicationID: e.ApplicationID, Number: e.Number, Status: domain.PreviewDeploying})
+	})
+	deployments.OnDeploymentFinished(func(ctx context.Context, e deployments.DeploymentFinished) {
+		if e.Preview == 0 || e.GuildID == 0 {
+			return
+		}
+		status := domain.PreviewReady
+		if !e.Succeeded {
+			status = domain.PreviewFailed
+		}
+		preview(ctx, app.PreviewEvent{GuildID: e.GuildID, ApplicationID: e.ApplicationID, Number: e.Preview, Status: status})
+	})
+	deployments.OnPreviewRemoved(func(ctx context.Context, e deployments.PreviewEvent) {
+		preview(ctx, app.PreviewEvent{ApplicationID: e.ApplicationID, Number: e.Number, Status: domain.PreviewRemoved})
+	})
 }

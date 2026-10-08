@@ -22,6 +22,10 @@ const (
 	// The pull request and preview Actions are not Paperclip's: its Work
 	// products record no Activity.
 	PullRequestOpenedAction    = "issue.pull_request_opened"
+	PullRequestMergedAction    = "issue.pull_request_merged"
+	PullRequestClosedAction    = "issue.pull_request_closed"
+	PreviewReadyAction         = "issue.preview_ready"
+	PreviewFailedAction        = "issue.preview_failed"
 	CommentAddedAction         = "issue.comment_added"
 	CommentDeletedAction       = "issue.comment_deleted"
 	DocumentCreatedAction      = "issue.document_created"
@@ -496,4 +500,32 @@ type PullRequestOpened struct {
 func (e PullRequestOpened) Activity() ActivityEvent {
 	w := e.WorkProduct
 	return e.issue(e.Issue, PullRequestOpenedAction, map[string]any{"provider": w.Provider, "number": w.ExternalID, "url": w.URL})
+}
+
+// WorkProductMoved is an Issue's Work product moved by what happened on
+// the git host or to its Preview: a Pull request merged or closed, a
+// Preview ready or failed. Other moves record no Activity.
+type WorkProductMoved struct {
+	Happened
+	Issue       Issue
+	WorkProduct WorkProduct
+}
+
+// Recorded is false for a move that records no Activity.
+func (e WorkProductMoved) Recorded() bool { return e.action() != "" }
+
+func (e WorkProductMoved) action() string {
+	return map[WorkProductStatus]string{
+		PullRequestMerged: PullRequestMergedAction, PullRequestClosed: PullRequestClosedAction,
+		PreviewReady: PreviewReadyAction, PreviewFailed: PreviewFailedAction,
+	}[e.WorkProduct.Status]
+}
+
+func (e WorkProductMoved) Activity() ActivityEvent {
+	w := e.WorkProduct
+	details := map[string]any{"number": w.ExternalID, "url": w.URL}
+	if w.Type == PullRequestProduct {
+		details["provider"] = w.Provider
+	}
+	return e.issue(e.Issue, e.action(), details)
 }

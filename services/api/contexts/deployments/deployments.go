@@ -1,6 +1,8 @@
 // Package deployments is what the router and the boot code may use from the
 // deployments context: its routes, the Worker and the DeploymentFinished
-// event, and for the work context OpenPullRequest. Nothing else in contexts/deployments is for outside use.
+// event, and for the work context OpenPullRequest, the Pull request and
+// Preview hooks and PreviewURL. Nothing else in contexts/deployments is for
+// outside use.
 package deployments
 
 import (
@@ -96,6 +98,13 @@ func svc() *app.Service {
 		service = app.NewService(infra.Store{}, infra.Logs{}, applications, infra.KnownHosts{}, infra.Previews{})
 		webhooks = app.NewWebhooks(service, infra.Webhooks{})
 		webhooks.Hosts = infra.GitHosts{}
+		webhooks.PullRequestChanged = publishPullRequest
+		service.PreviewDeploying = func(_ context.Context, applicationID uint64, number int) {
+			publish("Preview deploying", &onPreviewDeploying, PreviewEvent{ApplicationID: applicationID, Number: number})
+		}
+		service.PreviewRemoved = func(_ context.Context, applicationID uint64, number int) {
+			publish("Preview removed", &onPreviewRemoved, PreviewEvent{ApplicationID: applicationID, Number: number})
+		}
 		service.DropPreviewRoute = routing.DropPreviewRoute
 		service.StopRoute = routing.StopRoute
 		service.Comments = app.NewCommenter(infra.Webhooks{}, infra.Previews{}, infra.GitHosts{})
@@ -400,17 +409,44 @@ type DeploymentFinished struct {
 }
 
 var (
-	finishedMu sync.Mutex
-	onFinished []func(ctx context.Context, e DeploymentFinished)
+	hooksMu            sync.Mutex
+	onFinished         []func(ctx context.Context, e DeploymentFinished)
+	onPullRequest      []func(ctx context.Context, e PullRequestEvent)
+	onPreviewDeploying []func(ctx context.Context, e PreviewEvent)
+	onPreviewRemoved   []func(ctx context.Context, e PreviewEvent)
 )
 
 // OnDeploymentFinished registers f to hear of every DeploymentFinished. It
 // runs in its own goroutine, so it can neither hold up nor break the
 // Worker.
 func OnDeploymentFinished(f func(ctx context.Context, e DeploymentFinished)) {
-	finishedMu.Lock()
-	defer finishedMu.Unlock()
-	onFinished = append(onFinished, f)
+	register(&onFinished, f)
+}
+
+func register[E any](list *[]func(ctx context.Context, e E), f func(ctx context.Context, e E)) {
+	hooksMu.Lock()
+	defer hooksMu.Unlock()
+	*list = append(*list, f)
+}
+
+// publish runs every subscriber of the list in its own goroutine, so none
+// can hold up or break what announced e.
+func publish[E any](name string, list *[]func(ctx context.Context, e E), e E) {
+	hooksMu.Lock()
+	subscribers := slices.Clone(*list)
+	hooksMu.Unlock()
+	for _, f := range subscribers {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					facades.Log().Errorf("deployments: a %s subscriber panicked: %v", name, r)
+				}
+			}()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			f(ctx, e)
+		}()
+	}
 }
 
 func publishFinished(_ context.Context, d domain.Deployment, a app.Application) {
@@ -423,19 +459,79 @@ func publishFinished(_ context.Context, d domain.Deployment, a app.Application) 
 	if d.FinishedAt != nil {
 		e.FinishedAt = *d.FinishedAt
 	}
-	finishedMu.Lock()
-	subscribers := slices.Clone(onFinished)
-	finishedMu.Unlock()
-	for _, f := range subscribers {
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					facades.Log().Errorf("deployments: a DeploymentFinished subscriber panicked: %v", r)
-				}
-			}()
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			f(ctx, e)
-		}()
+	publish("DeploymentFinished", &onFinished, e)
+}
+
+// PullRequestEvent is a Pull request of an Application's repository opened
+// (or reopened), pushed to or closed, as a verified Webhook call told it,
+// whatever the Previews switch and the base branch.
+type PullRequestEvent struct {
+	GuildID       uint64
+	ApplicationID uint64
+	// Provider is the git host's wire key, e.g. "forgejo".
+	Provider string
+	// Number is the Pull request's number (GitLab: its iid).
+	Number int
+	// Action is "opened", "pushed" or "closed".
+	Action string
+	// Merged is true for one closed by merging it.
+	Merged bool
+	// Branch is its head branch.
+	Branch string
+	URL    string
+	Title  string
+}
+
+// OnPullRequest registers f to hear of every PullRequestEvent, in its own
+// goroutine.
+func OnPullRequest(f func(ctx context.Context, e PullRequestEvent)) {
+	register(&onPullRequest, f)
+}
+
+func publishPullRequest(_ context.Context, a app.Application, p domain.Provider, pr domain.PullRequest) {
+	publish("PullRequestEvent", &onPullRequest, PullRequestEvent{
+		GuildID: a.GuildID, ApplicationID: a.ID, Provider: string(p), Number: pr.Number, Action: string(pr.Action),
+		Merged: pr.Merged, Branch: pr.Branch, URL: pr.URL, Title: pr.Title,
+	})
+}
+
+// PreviewEvent is something that happened to the Preview of an
+// Application's Pull request number.
+type PreviewEvent struct {
+	ApplicationID uint64
+	Number        int
+}
+
+// OnPreviewDeploying registers f to hear of every Preview Deployment
+// queued; DeploymentFinished, with its Preview number, tells how it ended.
+// f runs in its own goroutine.
+func OnPreviewDeploying(f func(ctx context.Context, e PreviewEvent)) {
+	register(&onPreviewDeploying, f)
+}
+
+// OnPreviewRemoved registers f to hear of every closed Preview whose
+// Containers and route were removed, in its own goroutine.
+func OnPreviewRemoved(f func(ctx context.Context, e PreviewEvent)) {
+	register(&onPreviewRemoved, f)
+}
+
+// PreviewURL is where the Application's Preview number is served, as the
+// Previews page shows it; found is false for an unknown Preview or an
+// Application without a Domain.
+func PreviewURL(ctx context.Context, applicationID uint64, number int) (url string, found bool, err error) {
+	views, err := svc().Previews(ctx, applicationID)
+	if err != nil {
+		return "", false, err
 	}
+	for _, p := range views {
+		if p.Number != number || p.Domain == "" {
+			continue
+		}
+		var server uint64
+		if p.Latest != nil {
+			server = p.Latest.ServerID
+		}
+		return publicURL(p.Domain, server), true, nil
+	}
+	return "", false, nil
 }

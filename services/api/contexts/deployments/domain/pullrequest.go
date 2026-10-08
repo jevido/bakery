@@ -31,6 +31,8 @@ type PullRequest struct {
 	Base   string
 	Title  string
 	URL    string
+	// Merged is true for a Pull request closed by merging it.
+	Merged bool
 	// SameRepo is false for a Pull request from a fork.
 	SameRepo bool
 	// API is the Provider's REST base for the repository, where the
@@ -84,6 +86,7 @@ func parseGitHub(body []byte) (PullRequest, error) {
 		PullRequest *struct {
 			HTMLURL string    `json:"html_url"`
 			Title   string    `json:"title"`
+			Merged  bool      `json:"merged"`
 			Head    branchRef `json:"head"`
 			Base    branchRef `json:"base"`
 		} `json:"pull_request"`
@@ -101,7 +104,7 @@ func parseGitHub(body []byte) (PullRequest, error) {
 	pr := e.PullRequest
 	return PullRequest{
 		Number: e.Number, Action: map[string]PullRequestAction{"opened": PullRequestOpened, "reopened": PullRequestOpened, "synchronize": PullRequestPushed, "closed": PullRequestClosed}[e.Action],
-		Branch: pr.Head.Ref, Base: pr.Base.Ref, Title: pr.Title, URL: pr.HTMLURL,
+		Branch: pr.Head.Ref, Base: pr.Base.Ref, Title: pr.Title, URL: pr.HTMLURL, Merged: pr.Merged,
 		SameRepo: pr.Head.repoName() != "" && pr.Head.repoName() == e.Repository.FullName,
 		API:      strings.TrimSuffix(e.Repository.URL, "/"),
 	}, nil
@@ -114,6 +117,7 @@ func parseGitea(body []byte) (PullRequest, error) {
 		PullRequest *struct {
 			HTMLURL string    `json:"html_url"`
 			Title   string    `json:"title"`
+			Merged  bool      `json:"merged"`
 			Head    branchRef `json:"head"`
 			Base    branchRef `json:"base"`
 		} `json:"pull_request"`
@@ -144,7 +148,7 @@ func parseGitea(body []byte) (PullRequest, error) {
 	}
 	return PullRequest{
 		Number: e.Number, Action: map[string]PullRequestAction{"opened": PullRequestOpened, "reopened": PullRequestOpened, "synchronized": PullRequestPushed, "closed": PullRequestClosed}[e.Action],
-		Branch: pr.Head.Ref, Base: pr.Base.Ref, Title: pr.Title, URL: pr.HTMLURL,
+		Branch: pr.Head.Ref, Base: pr.Base.Ref, Title: pr.Title, URL: pr.HTMLURL, Merged: pr.Merged,
 		SameRepo: headRepo != 0 && headRepo == baseRepo, API: api,
 	}, nil
 }
@@ -192,7 +196,7 @@ func parseGitLab(body []byte) (PullRequest, error) {
 		api = u.Scheme + "://" + u.Host + "/api/v4/projects/" + strconv.FormatInt(e.Project.ID, 10)
 	}
 	return PullRequest{
-		Number: a.IID, Action: action, Branch: a.SourceBranch, Base: a.TargetBranch, Title: a.Title, URL: a.URL,
+		Number: a.IID, Action: action, Merged: a.Action == "merge", Branch: a.SourceBranch, Base: a.TargetBranch, Title: a.Title, URL: a.URL,
 		SameRepo: a.SourceProjectID != 0 && a.SourceProjectID == a.TargetProjectID, API: api,
 	}, nil
 }

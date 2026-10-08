@@ -30,6 +30,16 @@ func (m *memWorkProducts) WorkProduct(_ context.Context, issueID uint64, typ dom
 	return domain.WorkProduct{}, false, nil
 }
 
+func (m *memWorkProducts) ApplicationWorkProducts(_ context.Context, applicationID uint64, typ domain.WorkProductType, ext string) ([]domain.WorkProduct, error) {
+	var out []domain.WorkProduct
+	for _, w := range m.all {
+		if w.ApplicationID == applicationID && w.Type == typ && w.ExternalID == ext {
+			out = append(out, w)
+		}
+	}
+	return out, nil
+}
+
 func (m *memWorkProducts) SaveWorkProduct(_ context.Context, w domain.WorkProduct) (domain.WorkProduct, error) {
 	if w.ID == 0 {
 		w.ID = uint64(len(m.all) + 1)

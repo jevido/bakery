@@ -290,6 +290,11 @@ const activityVerbs: Record<string, string> = {
   'issue.checked_out': 'checked out',
   'issue.released': 'released',
   'issue.application_changed': 'changed the application of',
+  'issue.pull_request_opened': 'opened a pull request for',
+  'issue.pull_request_merged': 'merged the pull request of',
+  'issue.pull_request_closed': 'closed the pull request of',
+  'issue.preview_ready': 'deployed the preview of',
+  'issue.preview_failed': 'failed the preview of',
   'issue.comment_added': 'commented on',
   'issue.comment_deleted': 'deleted a comment on',
   'issue.document_created': 'created document for',
@@ -373,6 +378,16 @@ export function issueActivitySentence(event: ActivityEvent): ActivityPart[] {
       const to = d.to as Named
       return [to ? `set the application to ${named(to, 'an application')}` : 'removed the application']
     }
+    case 'issue.pull_request_opened':
+      return [`opened pull request #${d.number}`]
+    case 'issue.pull_request_merged':
+      return [`merged pull request #${d.number}`]
+    case 'issue.pull_request_closed':
+      return [`closed pull request #${d.number}`]
+    case 'issue.preview_ready':
+      return [`deployed the preview of pull request #${d.number}`]
+    case 'issue.preview_failed':
+      return [`failed to deploy the preview of pull request #${d.number}`]
     case 'issue.comment_added':
       return typeof d.snippet === 'string' && d.snippet ? ['commented ', { muted: d.snippet }] : ['commented']
     case 'issue.comment_deleted':

@@ -62,6 +62,15 @@ func NewPullRequest(i Issue, applicationID uint64, provider string, number int, 
 	}
 }
 
+// NewPreviewURL is the Preview of the Issue's Pull request pr, with its
+// link (empty while The Bakery does not know it yet).
+func NewPreviewURL(pr WorkProduct, url string, status WorkProductStatus) WorkProduct {
+	return WorkProduct{
+		GuildID: pr.GuildID, IssueID: pr.IssueID, ApplicationID: pr.ApplicationID, Type: PreviewURLProduct,
+		Provider: pr.Provider, ExternalID: pr.ExternalID, Title: "Preview of #" + pr.ExternalID, URL: url, Status: status,
+	}
+}
+
 // Move changes the status, as the type allows: a Pull request goes from
 // open to merged or closed and from closed back to open, and a merged one
 // never changes again; a Preview's link may take any state after

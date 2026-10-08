@@ -187,6 +187,9 @@ func TestClosePreviewRemovesWhatItRan(t *testing.T) {
 		dropped = append(dropped, n)
 		return nil
 	}
+	var told []string
+	s.service.PreviewDeploying = func(_ context.Context, a uint64, n int) { told = append(told, fmt.Sprintf("deploying %d #%d", a, n)) }
+	s.service.PreviewRemoved = func(_ context.Context, a uint64, n int) { told = append(told, fmt.Sprintf("removed %d #%d", a, n)) }
 	s.previews.Save(ctx, domain.Preview{ApplicationID: 1, Number: 7, Branch: "f", State: domain.PreviewOpen})
 	s.service.Deploy(ctx, 1)
 	s.worker.RunOnce(ctx)
@@ -205,6 +208,9 @@ func TestClosePreviewRemovesWhatItRan(t *testing.T) {
 	}
 	if len(dropped) != 1 || dropped[0] != 7 {
 		t.Fatalf("dropped routes %v", dropped)
+	}
+	if strings.Join(told, ", ") != "deploying 1 #7, deploying 1 #7, removed 1 #7" {
+		t.Fatalf("told %v", told)
 	}
 	if s.runtime.running["bakery-app-1-pr7-2"] || !s.runtime.running["bakery-app-1-1"] {
 		t.Fatalf("containers %v", s.runtime.running)

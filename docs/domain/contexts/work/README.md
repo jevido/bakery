@@ -183,10 +183,7 @@ Comment publishes nothing (Paperclip records none).
 | `DocumentDeleted` | `DeleteDocument` | `issue.document_deleted` | Document key, title |
 | `IssueApplicationChanged` | `SetApplication`, when it changed | `issue.application_changed` | the Application's id and name, from → to |
 | `PullRequestOpened` | `OpenPullRequest`, when it recorded a new one; `FollowPullRequest` for one opened by hand | `issue.pull_request_opened` | Provider, number, URL |
-| `PullRequestMerged` | `FollowPullRequest` | `issue.pull_request_merged` | Provider, number, URL |
-| `PullRequestClosed` | `FollowPullRequest` | `issue.pull_request_closed` | Provider, number, URL |
-| `PreviewReady` | `FollowPreview` | `issue.preview_ready` | number, the Preview's link |
-| `PreviewFailed` | `FollowPreview` | `issue.preview_failed` | number |
+| `WorkProductMoved` | `FollowPullRequest`, `FollowPreview`; Actor nobody (The Bakery itself) | `issue.pull_request_merged`, `issue.pull_request_closed`, `issue.preview_ready`, `issue.preview_failed` (other moves record none) | number, URL; a Pull request's Provider |
 | `ApprovalRequested` | `RequestApproval` | `approval.created` | Approval type, the payload's title, the Linked issues |
 | `ApprovalApproved` | `Approve`, when it changed something | `approval.approved` | Approval type, the payload's title, Decision note |
 | `ApprovalRejected` | `Reject`, when it changed something | `approval.rejected` | Approval type, the payload's title, Decision note |

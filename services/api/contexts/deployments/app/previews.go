@@ -88,6 +88,9 @@ func (s *Service) ClosePreview(ctx context.Context, applicationID uint64, number
 
 // removePreview removes what a closed Preview ran.
 func (s *Service) removePreview(ctx context.Context, applicationID uint64, number int, ds []domain.Deployment) {
+	if s.PreviewRemoved != nil {
+		defer s.PreviewRemoved(ctx, applicationID, number)
+	}
 	if s.DropPreviewRoute != nil {
 		if err := s.DropPreviewRoute(ctx, applicationID, number); err != nil {
 			s.Log("deployments: dropping the route of preview #%d of application %d: %v", number, applicationID, err)
