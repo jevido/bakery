@@ -34,7 +34,7 @@ document, Document key, Revision, Base revision, Restore, Activity, Activity eve
 Action, Actor, Inbox, Inbox tab, Touched, Last touch, Unread, Read mark,
 Inbox archive, Resurface, Approval, Approval type, Approval status,
 Actionable, Requester, Decision, Decision note, Request revision, Resubmit,
-Approval comment, Linked issue) are in
+Approval comment, Linked issue, Issue's Application, Work product) are in
 [`glossary.md`](../../glossary.md).
 
 | Term | Meaning |
@@ -54,11 +54,12 @@ Approval comment, Linked issue) are in
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Goal | Belongs to one Guild. Title 1–200 characters. Goal level and Goal status from their lists. Its parent Goal is in the same Guild and is never the Goal itself or one of its Sub-goals (no cycle). Its owner, if any, is a Member of the Guild. |
-| Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild or an Agent of the Guild that is not terminated (its Agent assignee), never both; terminating the Agent clears it as Assignee of its open Issues. Its Project is in the Guild and its Goal is in the Guild. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. Its Checkout (`checkout_run_id`, `checked_out_at`) names at most one Run, a Run of its Agent assignee; Checkout moves it from one of the expected statuses (`todo`, `backlog`, `blocked` by default, as Paperclip's MCP server's), or from `in_progress` when it is already the Agent's, to `in_progress`; an Issue assigned to anyone else cannot be checked out, and an Issue without Assignee takes the checking-out Agent as its Agent assignee. While that Run is `running`, an Agent's change to the Issue from any other Run is 409; once it is not, the Checkout is a Stale checkout, which the same Agent's next Run takes over. A new Assignee, set by anyone, clears the Checkout. Release clears it, moves `in_progress` back to `todo` and, on an open Issue, clears the Agent assignee. It is created by a Member or an Agent actor. |
+| Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild or an Agent of the Guild that is not terminated (its Agent assignee), never both; terminating the Agent clears it as Assignee of its open Issues. Its Project is in the Guild and its Goal is in the Guild. Its Issue's Application, if any, is an Application of its Project: an Issue without a Project has none, and moving the Issue to another Project (or out of one) clears it. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. Its Checkout (`checkout_run_id`, `checked_out_at`) names at most one Run, a Run of its Agent assignee; Checkout moves it from one of the expected statuses (`todo`, `backlog`, `blocked` by default, as Paperclip's MCP server's), or from `in_progress` when it is already the Agent's, to `in_progress`; an Issue assigned to anyone else cannot be checked out, and an Issue without Assignee takes the checking-out Agent as its Agent assignee. While that Run is `running`, an Agent's change to the Issue from any other Run is 409; once it is not, the Checkout is a Stale checkout, which the same Agent's next Run takes over. A new Assignee, set by anyone, clears the Checkout. Release clears it, moves `in_progress` back to `todo` and, on an open Issue, clears the Agent assignee. It is created by a Member or an Agent actor. |
 | Comment | Belongs to one Issue and is written by one Member or one Agent actor (`author_agent`). Body 1–20000 characters. Only its author edits or deletes it. A deleted Comment keeps its place in the thread, its body gone, shown as "deleted". |
 | Issue document | Belongs to one Issue and its Guild. Its Document key is unique per Issue and never changes. Title at most 200 characters (may be empty), body at most 524288 characters, Markdown only. Its Revisions are numbered 1, 2, … without gaps; each save and each Restore adds exactly one Revision, and Revisions are never changed. A save needs the newest Revision as its Base revision (none for the first save), or it is refused. Restoring the newest Revision is refused, since it would change nothing. A Revision's author is a Member or an Agent actor. Deleting the Issue document removes its Revisions. |
-| Activity event | Append-only. Belongs to one Guild and has one Actor, a Member or an Agent actor (none once that Member's account is gone) and one Action from the glossary's list, about exactly one Goal, Issue, Approval or Agent. It keeps the Issue's number and title, the Goal's title, the Approval's type and payload title, or the Agent's name, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
+| Activity event | Append-only. Belongs to one Guild and has one Actor, a Member or an Agent actor (none once that Member's account is gone, and none for what The Bakery recorded on its own: a Pull request or Preview changing on the git host) and one Action from the glossary's list, about exactly one Goal, Issue, Approval or Agent. It keeps the Issue's number and title, the Goal's title, the Approval's type and payload title, or the Agent's name, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
 | Approval | Belongs to one Guild. Approval type and Approval status from their lists; it starts `pending`. A `request_board_approval` payload has a `title` of 1–200 characters and optional `summary`, `recommended_action` and `next_action_on_approval` (each at most 20000 characters) and `risks` (at most 20 strings of at most 500 characters), and nothing else. A `hire_agent` payload is `agent_id`, `name`, `job`, `title`, `icon`, `reports_to` (`{id, name}` or null), `capabilities` and `roles` (Role names), as the agents context sends it; its title is "Hire Agent: <name>". A `hire_agent` Approval is created only through `work.RequestApproval`, never gets Request revision (its Agent cannot change while it waits, so there is nothing to revise), and becomes `cancelled` when its Agent is terminated before a Decision; `cancelled` is not Actionable and never changes again. Approve and reject only from `pending` or `revision_requested` (Actionable); Request revision only from `pending`; Resubmit only from `revision_requested`, which clears the decider, the decision time and the Decision note. A Decision records its decider, time and optional Decision note (at most 20000 characters). Making the same Decision again on an Approval that already has it answers the Approval unchanged and records nothing, as Paperclip's `applied: false`; any other move from a status that does not allow it is refused (422). Its Linked issues are Issues of the same Guild, set when it is requested. Its Approval comments each have one author and a body of 1–20000 characters, and are never edited or deleted. The Approval, its links and its Approval comments go with their Guild; a Linked issue's link goes with the Issue. |
+| Work product | Belongs to one Issue and its Guild, and goes with the Issue. Its type is `pull_request` or `preview_url`, and it names the Issue's Application it came from and the Pull request's number (`external_id`); at most one of each type per Issue and number. A `pull_request` has a Provider, a URL, a title and status `open`, `merged` or `closed`: `open` → `merged` or `closed`, `closed` → `open` when reopened, and `merged` never changes again. A `preview_url` has state `deploying`, `ready` (with the Preview's link), `failed` or `removed`: any state may follow `deploying`, `ready` or `failed`, and `removed` comes back to `deploying` only with a new Preview Deployment. It records who made it: the Run and its Agent, or the Member, or nobody when The Bakery recorded a Pull request someone opened by hand. |
 | Read mark and Inbox archive | Per Member per Issue, at most one of each. Belongs to an Issue and its Guild, and goes with the Issue and with the Member's Membership. Only that Member sets or removes it. Neither is part of the Issue aggregate: they change nothing about the Issue, belong to one person, and many people write them at once, so each is its own small record keyed by (Issue, Member). |
 
 ### Commands
@@ -101,6 +102,26 @@ in that Project after its Permission overrides, and is otherwise hidden
 - `Release()` [the Run holding the Checkout only; 409 for any other]: gives
   the Issue back, as the Issue's invariants say. Recorded as
   `issue.released`.
+- `SetApplication(application)` [`manage_work`], as part of
+  `CreateIssue` and `ChangeIssue` (`application_id`, null clears): 422
+  `the application is not in the issue's project` for an Application of
+  another Project, or for an Issue without a Project. Recorded as
+  `issue.application_changed`.
+- `OpenPullRequest(title, body)` [`manage_work` on the Issue's Project;
+  for a Run key, only the Run holding the Checkout, 409 otherwise]: asks
+  deployments to open (or find) the Pull request from the Issue's Agent
+  branch into its Application's branch, and records it as a
+  `pull_request` Work product. Title defaults to `<Issue identifier>
+  <Issue title>`, body to a line linking the Issue page. 422 without an
+  Issue's Application, a Git host token, a known Provider, or a pushed
+  Agent branch. An open Pull request it already recorded is answered
+  unchanged.
+- `FollowPullRequest(event)` and `FollowPreview(event)` [The Bakery
+  itself, from deployments' hooks]: move the Work products of the
+  Application and Pull request number, as the Work product's invariants
+  say. An `opened` event whose head is an Agent branch of an Issue of the
+  Guild with that Application records a `pull_request` Work product when
+  there is none yet.
 - `RestoreRevision(revision)` [`manage_work`]: adds a new Revision with
   that Revision's title and body.
 - `DeleteDocument()` [`manage_work`]: removes the Issue document and its
@@ -160,6 +181,12 @@ Comment publishes nothing (Paperclip records none).
 | `IssueReleased` | `Release` | `issue.released` | the Run |
 | `DocumentSaved` | `SaveDocument`, `RestoreRevision` | `issue.document_created` on the first save, else `issue.document_updated` | Document key, title, Revision number, and the restored Revision's number for a Restore |
 | `DocumentDeleted` | `DeleteDocument` | `issue.document_deleted` | Document key, title |
+| `IssueApplicationChanged` | `SetApplication`, when it changed | `issue.application_changed` | the Application's id and name, from → to |
+| `PullRequestOpened` | `OpenPullRequest`, when it recorded a new one; `FollowPullRequest` for one opened by hand | `issue.pull_request_opened` | Provider, number, URL |
+| `PullRequestMerged` | `FollowPullRequest` | `issue.pull_request_merged` | Provider, number, URL |
+| `PullRequestClosed` | `FollowPullRequest` | `issue.pull_request_closed` | Provider, number, URL |
+| `PreviewReady` | `FollowPreview` | `issue.preview_ready` | number, the Preview's link |
+| `PreviewFailed` | `FollowPreview` | `issue.preview_failed` | number |
 | `ApprovalRequested` | `RequestApproval` | `approval.created` | Approval type, the payload's title, the Linked issues |
 | `ApprovalApproved` | `Approve`, when it changed something | `approval.approved` | Approval type, the payload's title, Decision note |
 | `ApprovalRejected` | `Reject`, when it changed something | `approval.rejected` | Approval type, the payload's title, Decision note |
@@ -207,6 +234,7 @@ type and the payload's title.
   | `DELETE /api/issues/{issue}/documents/{key}` | 204 |
   | `GET /api/issues/{issue}/documents/{key}/revisions` | `{"revisions": [Revision]}`, newest first |
   | `POST /api/issues/{issue}/documents/{key}/revisions/{revision}/restore` | `{"document": Issue document}`; 409 for the newest Revision |
+  | `POST /api/issues/{issue}/pull-requests` | `{title?, body?}`; 201 `{"work_product": Work product}` for a new Pull request, 200 with the same one when the Issue already has it open; 422 with a readable message when it cannot be opened |
   | `GET /api/activity` | `{"activity": [Activity event]}`, newest first; filters `entity` (`issue`, `goal`, `approval` or `agent`), `actor` (a Member id, or `agent:<id>`), `before` (an Activity event id, for the next page) and `limit` (default 50, 1 to 200); anything else in them is 422. A page is never short while older events the person may see are left |
   | `GET /api/issues/{issue}/activity` | `{"activity": [Activity event]}`, oldest first, as Paperclip's issue activity |
   | `POST /api/issues/{issue}/read`, `DELETE /api/issues/{issue}/read` | Sets or removes the asking Member's Read mark, with `view_resources` only |
@@ -318,7 +346,10 @@ type and the payload's title.
   run`. An Agent's `PATCH`, Comment or Issue document save on an Issue
   another live Run holds is the same 409 with `run_id`. Every Issue
   carries `checkout: {run_id, agent: {id, name, icon}, checked_out_at}`,
-  null when there is none or it is Stale. What an Agent writes carries `author_agent`
+  null when there is none or it is Stale, `application: {id, name}` (its
+  Issue's Application, or null) and, on `GET /api/issues/{issue}`,
+  `work_products`, newest first. `POST /api/issues/{id}/pull-requests` is
+  open to Run keys too. What an Agent writes carries `author_agent`
   (Comments, Approval comments), `created_by_agent` (Issues, Issue
   documents and Revisions), `updated_by_agent` (Issue documents) or
   `requester_agent` (Approvals) `{id, name, icon}` beside the Member field,
@@ -349,6 +380,16 @@ type and the payload's title.
     `projects.OnProjectDeleted`: the Project's Issues keep existing and lose
     their Project. `issues.project_id` has no foreign key, since the
     Project is projects' row.
+    `projects.ApplicationInProject(ctx, guild, project, application)` and
+    `projects.ApplicationNames(ctx, guild, ids)` check and name the
+    Issue's Application, and `projects.OnApplicationDeleted` clears it.
+  - from deployments: `deployments.OpenPullRequest(ctx, application,
+    head, title, body)` for `OpenPullRequest`, `deployments.OnPullRequest`
+    for every Pull request event (opened, pushed, closed, merged) and the
+    Preview hooks (`DeploymentFinished` with a Preview number, Preview
+    deploying and Preview removed) with `deployments.PreviewURL` for its
+    link, which move the Work products. Each is recorded with no Actor, since
+    nobody in the Guild did it.
 - **Publishes to other contexts** (Go functions, no routes):
   `work.RequestApproval(ctx, guild, hirer, HireAgentRequest)` (a
   `hire_agent` Approval; answers its id), `work.CancelApproval(ctx, guild,
@@ -571,3 +612,23 @@ type and the payload's title.
   edited, so its Approval's payload is always what the Board sees, and
   there is nothing a revision could change. The Board approves or rejects;
   a Hirer who wants a different Agent terminates this one and hires again.
+- **Work products are only `pull_request` and `preview_url`.** Paperclip's
+  `issue_work_products` also has branches, commits, runtime services,
+  artifacts and documents, a review state, a primary flag and a health
+  status. A branch is always the Issue's Agent branch and a commit lives
+  in its Pull request, Issue documents are already their own aggregate,
+  and Artifacts are Order step 7; review happens on the git host. Two
+  types with their own statuses say what a Board needs to see on an
+  Issue: is there a Pull request, and can I look at it running.
+- **The Issue's Application, not Paperclip's project workspaces.**
+  Paperclip lets a project hold several workspaces (local folders or
+  repositories) and an Issue pick one. In The Bakery a Project already
+  holds Applications with a git source, so an Issue names one of them and
+  that Application's repository and branch are where its Agent works.
+  It is one column on the Issue, kept in work; projects is asked only
+  whether the Application is in the Project and what it is called.
+- **Work products follow the git host, not the Agent.** Once the Pull
+  request is open, its status and Preview move only through deployments'
+  Webhook and Preview hooks, so a Pull request merged or closed by a person
+  on the git host shows on the Issue the same as one an Agent closed.
+  Those changes have no Actor in the Activity.

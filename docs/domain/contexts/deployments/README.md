@@ -31,8 +31,8 @@ Application is (projects) or for the Caddy configuration (routing).
 | Restart | A Deployment that starts the Image of the Application's newest finished Deployment again, skipping clone and build. |
 | Stop | The Application's Route out of its Proxy, its own Containers stopped and removed. |
 | Application status | `running:healthy`, `running:unhealthy`, `running:unknown`, `restarting`, `degraded:unhealthy` or `exited`, from its own Containers. |
-| Webhook | The URL and secret a git host calls on push and on Pull request events, with Previews on or off and the Git host token. |
-| Pull request | A git host's request to merge a branch into the Application's branch (a GitLab merge request too), as its Webhook calls describe it. |
+| Webhook | The URL and secret a git host calls on push and on Pull request events, with Previews on or off, the Git host token and the Provider of its last verified call. |
+| Pull request | A git host's request to merge a branch into the Application's branch (a GitLab merge request too), as its Webhook calls describe it, or as The Bakery opened it for an Agent branch. |
 | Preview | A copy of the Application built from one open Pull request's head branch, with its own Containers (`bakery-app-<id>-pr<n>-<deployment>`, labelled `bakery.preview=<n>`), Volumes (`bakery-app-<id>-pr<n>-<storage>`) and Preview route on the Preview domain `pr-<n>.<primary Domain>`. |
 | Preview Deployment | A Deployment that belongs to a Preview. The history shows it next to the Application's own, marked with its Preview number. |
 | Preview comment | The one comment on the Pull request The Bakery posts after the first Preview Deployment and edits after each later one and when the Preview goes. |
@@ -49,7 +49,7 @@ Application is (projects) or for the Caddy configuration (routing).
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Deployment | Belongs to the Application itself or to one of its Previews. Status only moves forward: `queued` → `cloning` → `building` → `starting` → `finished` (a `dockerimage` Deployment moves from `cloning` straight on to `building` without cloning), and any active status → `failed` (with an error) or `cancelled`. A Rollback moves from `queued` straight to `starting`; it names its source Deployment, which is `finished`, of the same Application, and whose Image still exists. An Application has at most one queued Deployment of its own and one per Preview, and at most one running Deployment in all; a queued one is only picked up once the Application has no running one, and a new Deploy while one is already queued (for the same Preview) is refused. A Preview Deployment cannot be rolled back to: a Preview always builds its head. Its log is append-only and ordered. |
-| Webhook | One per Application, with a secret and Auto-deploy on or off. A call is accepted only with a valid signature for that secret (HMAC-SHA256 of the body for GitHub, Gitea and Forgejo; the token for GitLab). Only a push to the Application's branch, with Auto-deploy on, queues a Deployment. Only a Pull request event, with Previews on, whose head is a branch of the same repository and whose base is the Application's branch, opens, deploys or closes a Preview. |
+| Webhook | One per Application, with a secret and Auto-deploy on or off. A call is accepted only with a valid signature for that secret (HMAC-SHA256 of the body for GitHub, Gitea and Forgejo; the token for GitLab). Only a push to the Application's branch, with Auto-deploy on, queues a Deployment. Only a Pull request event, with Previews on, whose head is a branch of the same repository and whose base is the Application's branch, opens, deploys or closes a Preview. Its Provider is the one its last verified call came from, and changes only with a verified call. |
 | Preview | One per Application and Preview number. `open` → `closed`, and back to `open` when the Pull request is reopened. Only an open Preview is deployed. Closing it removes its Containers, Volumes, Images and Preview route on its Server; a closed Preview has nothing left running. Never for a `dockerimage` Application. |
 | Known host | One per Guild and host (and port). The first clone from a host in a Guild records its keys; every later clone of that Guild's Applications must see the same ones, or the Deployment fails. Only an admin of the Guild can list or forget it. |
 
@@ -119,11 +119,27 @@ Application is (projects) or for the Caddy configuration (routing).
   failed. Not for a cancelled Deployment, nor for one failed because a
   restart interrupted it. Registered with `OnDeploymentFinished(f)`; each
   subscriber runs in its own goroutine so it cannot hold up the Worker.
+- `PullRequestEvent { guild, application, number, action, merged, branch,
+  url, title }`: a verified Webhook call told of a Pull request being
+  opened, pushed to, reopened or closed (merged or not), whatever the
+  Previews switch and the base branch. Registered with `OnPullRequest(f)`,
+  published before the Previews filters, each subscriber in its own
+  goroutine.
+- Preview deploying and Preview removed `{ application, number }`, beside
+  `DeploymentFinished` with its Preview number, so work can follow a
+  Pull request's Preview.
 
 ## Integration
 
 - **Publishes:** the Deployment and its log over HTTP (JSON and SSE), and
-  `OnDeploymentFinished` (notifications), carrying the Application's Guild.
+  `OnDeploymentFinished` (notifications, work), carrying the Application's
+  Guild. To work: `OpenPullRequest(ctx, application, head, title, body)`,
+  which finds the open Pull request from `head` into the Application's
+  branch or opens one through the git host's REST API with the Webhook's
+  Git host token, and answers its Provider, number and URL (errors: no
+  Git host token, an unknown git host, a branch not pushed);
+  `OnPullRequest`, the Preview hooks and `PreviewURL(ctx, application,
+  number)`.
 - **Consumes:** `projects.ApplicationsOnServer` and `servers.OnServerResources` (a Server's Resources list shows each Application with its latest own Deployment's state); `projects.ProjectOf("application")` (through `guilds.InProject`), so every route keyed by an Application or a Deployment answers 404 outside the Current guild or a Project the request may not view, and `deploy` and `manage_applications` count that Project's Permission overrides (the Webhook endpoint is found by its secret, in any Guild); `projects.ApplicationForDeploy` (the snapshot is taken once, at
   the start of a Deployment, so editing the Application mid-build does not
   change what is being built; it carries the Deploy key for SSH Git repositories
@@ -140,7 +156,9 @@ Application is (projects) or for the Caddy configuration (routing).
   pushes and Pull request events.
 - **Talks to:** the git hosts' REST APIs (Forgejo and Gitea, GitHub,
   GitLab) to write the Preview comment, with the Git host token; the API
-  base comes from the Pull request event.
+  base comes from the Pull request event. To open a Pull request, the API
+  base comes from the Application's git URL and the Webhook's Provider
+  (an SSH URL maps to `https://<host>`).
 
 ## Why it's shaped this way
 
@@ -394,3 +412,15 @@ Application is (projects) or for the Caddy configuration (routing).
   top bar for the breadcrumb. The Bakery's Actions menu (Deploy, Redeploy,
   Restart, Stop) sits on the Resource's page header with its name, status
   and Links, shown only to whoever may deploy.
+- **The Bakery opens an Agent's Pull request, not the laptop.** The
+  Desktop app could call the git host itself with the person's own token,
+  but that needs a token for each git host on each laptop, and a REST call
+  per host kind in the Desktop app. The Webhook already holds a Git host
+  token for the Preview comment and knows its Provider, so the server opens
+  the Pull request with it and records it on the Issue in the same
+  request. Pushing stays on the laptop, with the person's own git access.
+- **The Provider is remembered from the last verified call**, since a git
+  URL alone does not say whether `git.example.com` is Forgejo, Gitea or
+  GitLab. Until the Webhook has received one call, only `github.com` and
+  hosts named `gitlab…` are known, and opening a Pull request elsewhere
+  says so.

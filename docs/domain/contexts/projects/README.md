@@ -72,7 +72,13 @@ reaches an Application (routing).
   keyed by one of them or by something kept in one, so they answer 404
   outside the Current guild or a Project the request may not view, and the
   Project's Permission overrides count. `ApplicationInGuild(id, guild)` for
-  servers' Container owners. `GET /api/projects` leaves out the Projects
+  servers' Container owners. For work and agents, the Issue's Application:
+  `ProjectNames(guild, ids)`, `ApplicationInProject(guild, project,
+  application)` (whether an Issue may name it), `ApplicationNames(guild,
+  ids)`, `ApplicationRepository(guild, application)` (its name, git
+  repository URL and branch, none for a `dockerimage` Application, for a
+  Run's Workspace) and `OnApplicationDeleted` (an Issue naming it loses its
+  Issue's Application). `GET /api/projects` leaves out the Projects
   `guilds.VisibleProjects` hides; `GET /api/projects/{id}` adds the
   request's `permissions` there (`guilds.Permissions`). These two are the
   only projects routes open to an Agent's Run key (`guilds.AuthAgents`),
@@ -337,3 +343,9 @@ reaches an Application (routing).
   there is one list. The list/grid switch and the pagination are Coolify's
   and stay, since a Guild can hold more Projects and Resources than fit one
   screen.
+- **An Issue names an Application by id, without a foreign key.** The
+  Issue is work's and the Application is projects'; work asks
+  `ApplicationInProject` before storing one and forgets it on
+  `OnApplicationDeleted`, as it does with Projects. `ApplicationRepository`
+  answers only what a Run needs to find the code (URL and branch), never
+  the Deploy key: the laptop pushes with its person's own git access.

@@ -32,7 +32,8 @@ identity about them.
 The terms (Agent, Hirer, Job, Title, Agent icon, Capabilities, Agent status,
 Manager, Org chart, Hire, Pause, Resume, Terminate, Agent membership, Run,
 Run status, Run event, Transcript, Invocation source, Run usage, Runner,
-Lease, Heartbeat, Heartbeat policy, Wake, Wake reason) are in
+Lease, Heartbeat, Heartbeat policy, Wake, Wake reason, Workspace, Worktree,
+Agent branch) are in
 [`glossary.md`](../../glossary.md).
 
 | Term | Meaning |
@@ -135,6 +136,12 @@ admin always may (with `hire_agents`, which they always hold).
   issues:" with each Issue assigned to the Agent in `todo`, `in_progress`
   or `in_review` as `- {identifier} [{status}]: {title}`, oldest first, or
   "You have no open issues.".
+  When the Run has a Workspace, the prompt adds where the Agent works and
+  how it finishes: in a git Worktree of the Application's repository on
+  its Agent branch, based on the Application's branch; commit, push the
+  branch to `origin` and open the Pull request with
+  `bakeryOpenPullRequest`, after which a Preview of it appears on the
+  Issue.
 - `CancelRun(run)` [manage the Run's Agent]: only a `queued` or `running`
   Run (422 otherwise); it becomes `cancelled`, and a running one's Agent
   `idle`. The Desktop running it sees that on its next
@@ -144,7 +151,9 @@ admin always may (with `hire_agents`, which they always hold).
   atomically, with its Lease starting, and gets a new Run key: the claim's
   answer carries it as `run_key`, once, and the Run keeps only its SHA-256;
   a second claim is 409, a Desktop of another person 404 (it must not learn
-  the Run exists).
+  the Run exists). The answer also carries the Run's Workspace when its
+  Issue names an Issue's Application with a git source: the Desktop makes
+  or reuses the Issue's Worktree there and starts `claude` inside it.
 - `AppendRunEvents(run, events)` [the claiming Desktop's person]: appends
   Run events by `seq`, renews the Lease; on a Run that is no longer
   `running`, 409 with its status.
@@ -262,7 +271,8 @@ records nothing more.
   Every other request (a Session, an API token, a Run key) is 403. A Desktop run is
   `{id, status, guild: {id, name}, agent: {id, name, icon}, issue: {id,
   identifier, title} | null, invocation_source, wake_reason, wake_count,
-  prompt, retry_of_run_id, session_id,
+  prompt, retry_of_run_id, session_id, workspace: {application: {id,
+  name}, repository, base_branch, branch} | null,
   next_seq, created_at, started_at, lease_expires_at}`. The stream also
   counts as the Desktop being seen, once a minute.
 
@@ -337,7 +347,8 @@ records nothing more.
     and `work.OnIssueCommented` (registered, to wake the Agent assignee),
     `work.OpenIssuesOfAgent` for the timer's check and the Heartbeat
     prompts, `work.InboxOfAgent` for `MyInbox`, and `work.CommentsForRun`
-    for the comments a Run's prompt quotes. It registers the
+    for the comments a Run's prompt quotes, and the Issue's Application
+    from that same Issue call, for the Workspace. It registers the
     hook by which work asks whether an Agent may be an Assignee (in the
     Guild, not terminated).
   - from identity: the Desktop key principal (its person, across Guilds)
@@ -345,6 +356,9 @@ records nothing more.
     Agents (identity calls the Run key hook agents registers), and `identity.DesktopNames(ctx, ids)` to name
     the Desktop a Run ran on.
   - from identity: `identity.Members(ctx, ids)` for Hirers' names.
+  - from projects: `projects.ApplicationRepository(ctx, guild,
+    application)` (the Application's name, git repository URL and branch,
+    or none for an Application without a git source) for the Workspace.
 
 ## Why it's shaped this way
 
@@ -450,3 +464,25 @@ records nothing more.
   export are left out.
 - **No Request revision for a hire.** A `pending_approval` Agent cannot be
   changed, so there is nothing to revise; see the work document.
+- **The Workspace is the Issue's Application, and the Worktree lives on
+  the laptop.** Paperclip keeps project workspaces and execution
+  workspaces on its server, with branch templates, runtime services and
+  cleanup policies. The Bakery's server never runs an Agent and never
+  holds the laptop's files, so it only says which repository, base branch
+  and Agent branch a Run works on; the Desktop app keeps one cached clone
+  per repository and one Worktree per Bakery and Issue, kept between that
+  Issue's Runs (uncommitted work included) and removed after 14 idle days.
+  The Agent branch is fixed (`bakery/<identifier>`), not a template, so
+  every Run of an Issue and its Pull request meet on the same branch.
+- **git uses the person's own credentials.** The Runner inherits the
+  person's ssh agent and credential helpers and sets
+  `GIT_TERMINAL_PROMPT=0`, so a missing credential fails the Run instead
+  of hanging. The server never hands out a deploy key or a token for the
+  laptop to push with: the Agent belongs to its Hirer and can push where
+  the Hirer can, and a Bakery that gave out write keys would be a place
+  to steal them from.
+- **The Agent is the commit's author, the person its committer.** The
+  Runner sets `GIT_AUTHOR_NAME` to the Agent's name and
+  `GIT_AUTHOR_EMAIL` to `agent-<id>@<the Bakery's host>`, and leaves the
+  committer to the person's git config, so the history says which Agent
+  wrote a change and on whose behalf it was pushed, as a bot's commits do.
