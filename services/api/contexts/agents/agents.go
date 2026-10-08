@@ -66,13 +66,17 @@ func svc() *app.Service {
 	return service
 }
 
-// repositoriesOfAgents is projects' answer about an Issue's Application, in
-// agents' terms.
+// repositoriesOfAgents is projects' answer about an Issue's Application and
+// the names of a Guild's Projects, in agents' terms.
 type repositoriesOfAgents struct{}
 
 func (repositoriesOfAgents) ApplicationRepository(ctx context.Context, guildID, applicationID uint64) (app.GitRepository, bool, error) {
 	r, ok, err := projects.ApplicationRepository(ctx, guildID, applicationID)
 	return app.GitRepository(r), ok, err
+}
+
+func (repositoriesOfAgents) ProjectNames(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error) {
+	return projects.ProjectNames(ctx, guildID, ids)
 }
 
 // guildsOfAgents is guilds' answer about Agent memberships, in agents'
@@ -259,6 +263,12 @@ func Routes(r route.Router) {
 		r.Get("/api/agents", c.ListAgents)
 		r.Get("/api/org", c.ShowOrg)
 		r.Get("/api/runs", c.ListRuns)
+	})
+	// Costs are the Board's to read, as Paperclip's: not open to Agents.
+	r.Middleware(guilds.Auth, view).Group(func(r route.Router) {
+		r.Get("/api/costs/summary", c.CostSummary)
+		r.Get("/api/costs/by-agent", c.CostsByAgent)
+		r.Get("/api/costs/by-project", c.CostsByProject)
 	})
 	r.Middleware(guilds.AuthAgents, runInGuild, view).Group(func(r route.Router) {
 		r.Get("/api/runs/{id}", c.ShowRun)

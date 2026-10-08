@@ -181,11 +181,13 @@ admin always may (with `hire_agents`, which they always hold).
   message when it failed. Then every Budget the Run counts toward is
   evaluated (below).
 - `ReadCosts(from, to)` [`view_resources`]: the Costs of the Guild's Runs
-  that started in the date range (`from` inclusive, `to` exclusive; this
-  calendar month in UTC by default): a summary (input, output and cached
-  input tokens, Runs, run time, cost equivalent), then the same per Agent
-  and per Run's Project, biggest first. Runs that never started count
-  nowhere; Runs without a Project are left out of the per Project list.
+  that finished in the range (`from` inclusive, `to` exclusive, either one
+  open when left out), the moment their Run usage is known: a summary
+  (input, output and cached input tokens, Runs, run time, cost
+  equivalent), then the same per Agent and per Run's Project, most tokens
+  first. Runs that never started count nowhere; the Runs without a Project
+  are one "No project" row. A Project the person may not view counts in
+  the summary and its Agents' rows but has no row of its own.
 - `SetBudget(scope, metric, window, amount, warn percent, hard stop,
   notify)` [`manage_budgets`]: creates or changes the one Budget for that
   scope, metric and window, then evaluates it.
@@ -310,16 +312,18 @@ records nothing more.
   | `POST /api/runs/{id}/cancel` | manage | | `{"run": Run}` |
   | `GET /api/runs/{id}/events?after=` | `view_resources` | | `{"events": [Run event]}`, by `seq`, after the given one; `limit` ≤ 1000, 500 by default |
   | `GET /api/runs/{id}/stream` | `view_resources` | | server-sent events: the Run events after `Last-Event-ID` (or `after`), then each new one and each Run status change, until the Run is final |
-  | `GET /api/costs/summary?from=&to=` | `view_resources` | | `{"summary": Costs}` |
+  | `GET /api/costs/summary?from=&to=` | `view_resources` | | `Costs + {from, to}` |
   | `GET /api/costs/by-agent?from=&to=` | `view_resources` | | `{"agents": [Costs + {agent: {id, name, icon, status}}]}` |
-  | `GET /api/costs/by-project?from=&to=` | `view_resources` | | `{"projects": [Costs + {project: {id, name}}]}` |
+  | `GET /api/costs/by-project?from=&to=` | `view_resources` | | `{"projects": [Costs + {project: {id, name} \| null}]}` |
   | `GET /api/budgets/overview` | `view_resources` | | `{"budgets": [Budget], "incidents": [Budget incident], "paused_agents": n, "stopped_projects": n}` |
   | `PUT /api/budgets` | `manage_budgets` | `{scope_type, scope_id, metric, window, amount, warn_percent, hard_stop, notify}` | `{"budget": Budget}`; 422 for an unknown metric, window or scope type, or a scope outside the Guild |
   | `POST /api/budget-incidents/{id}/resolve` | `manage_budgets` | `{action: raise_budget_and_resume \| keep_paused, amount, decision_note}` | `{"incident": Budget incident}` |
 
-  Costs are `{input_tokens, cached_input_tokens, output_tokens, runs,
-  run_time_seconds, cost_equivalent_usd}`, `from` and `to` as dates
-  (`YYYY-MM-DD`, UTC). A Budget is `{id, scope: {type, id, name}, metric,
+  Costs are `{input_tokens, cached_input_tokens, output_tokens, tokens,
+  runs, run_time_ms, cost_equivalent_usd}` (`tokens` is input plus output,
+  as the `tokens` Budget metric counts), `from` and `to` as RFC 3339 times
+  (the dashboard sends the start of a UTC day); an unparsable one, or
+  `from` not before `to`, is 422. A Budget is `{id, scope: {type, id, name}, metric,
   window, amount, warn_percent, hard_stop, notify, observed, status,
   window_start, window_end, updated_at}`; a Budget incident `{id,
   budget_id, scope: {type, id, name}, metric, window, threshold, amount,

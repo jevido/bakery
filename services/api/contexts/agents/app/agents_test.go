@@ -136,6 +136,18 @@ type fakeWork struct {
 	issues     map[uint64]IssueBrief
 	comments   map[uint64]RunComment
 	inbox      map[uint64][]InboxIssue
+	projects   map[uint64]string
+}
+
+// ProjectNames answers for projects too: the names in projects.
+func (f *fakeWork) ProjectNames(_ context.Context, _ uint64, ids []uint64) (map[uint64]string, error) {
+	out := map[uint64]string{}
+	for _, id := range ids {
+		if name, ok := f.projects[id]; ok {
+			out[id] = name
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeWork) InboxOfAgent(_ context.Context, _, agentID uint64) ([]InboxIssue, error) {

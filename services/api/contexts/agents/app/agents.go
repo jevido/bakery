@@ -133,13 +133,16 @@ type GitRepository struct {
 	Branch string
 }
 
-// Repositories is what agents asks projects about the Application a Run's
-// Issue names.
+// Repositories is what agents asks projects: the Application a Run's Issue
+// names, and the names of the Projects Costs counts.
 type Repositories interface {
 	// ApplicationRepository tells the Guild's Application's git source;
 	// found is false for another Guild's, none, or one without a git
 	// source.
 	ApplicationRepository(ctx context.Context, guildID, applicationID uint64) (r GitRepository, found bool, err error)
+	// ProjectNames names the Guild's Projects among ids; another Guild's
+	// or a deleted one is left out.
+	ProjectNames(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)
 }
 
 type Service struct {

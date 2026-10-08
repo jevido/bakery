@@ -105,10 +105,13 @@ type Usage struct {
 // Run is one execution of an Agent on its Hirer's Desktop, optionally on
 // one Issue. Ids of 0 are none; ExitCode is nil until claude exits.
 type Run struct {
-	ID               uint64
-	GuildID          uint64
-	AgentID          uint64
-	IssueID          uint64
+	ID      uint64
+	GuildID uint64
+	AgentID uint64
+	IssueID uint64
+	// ProjectID is the Project of the Run's Issue when its Desktop claimed
+	// it, kept even if the Issue moves later: Costs and Budgets count it.
+	ProjectID        uint64
 	InvocationSource InvocationSource
 	// WakeReason is the first Wake's, which names the Run; WakeCount
 	// counts it and every Wake that joined it while it was queued.
@@ -208,13 +211,14 @@ func ValidRunKey(s string) bool {
 }
 
 // Claim makes a queued Run running on the Desktop, its Lease starting,
-// with the hash of the Run key its Desktop gets.
-func (r *Run) Claim(desktopID uint64, keyHash string, at time.Time) error {
+// with the hash of the Run key its Desktop gets and the Project its Issue
+// is in now (0 for none), which it keeps from then on.
+func (r *Run) Claim(desktopID, projectID uint64, keyHash string, at time.Time) error {
 	if r.Status != RunQueued {
 		return &RunStatusError{Status: r.Status, Action: "claimed"}
 	}
 	lease := at.Add(Lease)
-	r.Status, r.DesktopID, r.KeyHash, r.StartedAt, r.LeaseExpiresAt, r.UpdatedAt = RunRunning, desktopID, keyHash, &at, &lease, at
+	r.Status, r.DesktopID, r.ProjectID, r.KeyHash, r.StartedAt, r.LeaseExpiresAt, r.UpdatedAt = RunRunning, desktopID, projectID, keyHash, &at, &lease, at
 	return nil
 }
 

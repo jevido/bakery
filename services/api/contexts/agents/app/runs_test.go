@@ -233,7 +233,7 @@ func TestPauseAndTerminateCancelRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	claimed := runs.rows[first.ID]
-	_ = claimed.Claim(3, "abc", time.Now())
+	_ = claimed.Claim(3, 0, "abc", time.Now())
 	runs.rows[first.ID] = claimed
 	if got, _ := s.RunningRuns(ctx, []uint64{ada.ID}); got[ada.ID] != first.ID {
 		t.Errorf("running runs %v", got)

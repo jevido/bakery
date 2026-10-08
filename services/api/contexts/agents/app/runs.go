@@ -34,6 +34,7 @@ type Runs interface {
 	LiveRuns(ctx context.Context, runIDs []uint64) (map[uint64]bool, error)
 	RunEvents(ctx context.Context, runID uint64, after int64, limit int) ([]domain.RunEvent, error)
 	DeskRuns
+	CostRuns
 }
 
 // RunQuery picks a Guild's Runs; 0 and an empty list match any.
@@ -149,7 +150,7 @@ func agentLine(b *strings.Builder, a domain.Agent) {
 // promptOf writes the queued Run's prompt from what work tells now: its
 // Issue, the comments its Wakes carry, and for a Heartbeat the Agent's
 // open Issues; with it the Run's Workspace, nil for none.
-func (s *Service) promptOf(ctx context.Context, a domain.Agent, r domain.Run) (string, *Workspace, error) {
+func (s *Service) promptOf(ctx context.Context, a domain.Agent, r domain.Run) (string, *Workspace, uint64, error) {
 	var (
 		i        IssueBrief
 		comments []RunComment
@@ -159,21 +160,21 @@ func (s *Service) promptOf(ctx context.Context, a domain.Agent, r domain.Run) (s
 	if r.IssueID != 0 {
 		var ok bool
 		if i, ok, err = s.work.IssueForRun(ctx, r.GuildID, r.IssueID); err != nil {
-			return "", nil, err
+			return "", nil, 0, err
 		}
 		if !ok {
 			i = IssueBrief{}
 		}
 	} else if open, err = s.work.OpenIssuesOfAgent(ctx, r.GuildID, a.ID); err != nil {
-		return "", nil, err
+		return "", nil, 0, err
 	}
 	if len(r.WakeContext.CommentIDs) > 0 {
 		if comments, err = s.work.CommentsForRun(ctx, r.GuildID, r.WakeContext.CommentIDs); err != nil {
-			return "", nil, err
+			return "", nil, 0, err
 		}
 	}
 	ws := s.workspaceOf(ctx, r.GuildID, i)
-	return PromptFor(a, r.WakeReason, i, ws, comments, open), ws, nil
+	return PromptFor(a, r.WakeReason, i, ws, comments, open), ws, i.ProjectID, nil
 }
 
 // issueOf is the Guild's Issue as work tells it, when the person may view

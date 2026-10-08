@@ -188,9 +188,8 @@ func (s *Service) ClaimRun(ctx context.Context, d Desktop, runID uint64) (Queued
 		if err != nil {
 			return QueuedRun{}, err
 		}
-		key := newRunKey()
-		if err := r.Claim(d.ID, secret.Hash(key), s.now()); err != nil {
-			return QueuedRun{}, err
+		if r.Status != domain.RunQueued {
+			return QueuedRun{}, &domain.RunStatusError{Status: r.Status, Action: "claimed"}
 		}
 		if a.Status != domain.Idle && a.Status != domain.Error {
 			if a.Status == domain.Running {
@@ -198,10 +197,19 @@ func (s *Service) ClaimRun(ctx context.Context, d Desktop, runID uint64) (Queued
 			}
 			return QueuedRun{}, &domain.StatusError{Status: a.Status, Action: "run"}
 		}
-		var ws *Workspace
-		if r.Prompt, ws, err = s.promptOf(ctx, a, r); err != nil {
+		var (
+			ws        *Workspace
+			projectID uint64
+			prompt    string
+		)
+		if prompt, ws, projectID, err = s.promptOf(ctx, a, r); err != nil {
 			return QueuedRun{}, err
 		}
+		key := newRunKey()
+		if err := r.Claim(d.ID, projectID, secret.Hash(key), s.now()); err != nil {
+			return QueuedRun{}, err
+		}
+		r.Prompt = prompt
 		moved, err := s.runs.SaveRun(ctx, r, domain.RunQueued)
 		if err != nil {
 			if s.busy(ctx, a.ID, r.ID) {

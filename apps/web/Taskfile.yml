@@ -48,6 +48,12 @@ tasks:
     cmds:
       - bun e2e/agents.ts
 
+  costs:
+    desc: Check Costs and Budgets against Runs a headless Desktop runner finishes with the claude stand-in (needs task dev)
+    deps: [install]
+    cmds:
+      - bun e2e/costs.ts
+
   desktop:
     desc: Check the Desktop app's sign-in (approve, cancel, expired) and the Desktops page in headless Chromium (needs task dev)
     deps: [install]

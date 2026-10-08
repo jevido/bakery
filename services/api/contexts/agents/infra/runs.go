@@ -19,6 +19,7 @@ type runRecord struct {
 	GuildID             uint64
 	AgentID             uint64
 	IssueID             *uint64
+	ProjectID           *uint64
 	InvocationSource    string
 	WakeReason          string
 	WakeCount           int
@@ -66,7 +67,7 @@ func wakeContextColumn(c domain.WakeContext) string {
 
 func (r runRecord) toDomain() domain.Run {
 	return domain.Run{
-		ID: r.ID, GuildID: r.GuildID, AgentID: r.AgentID, IssueID: deref(r.IssueID),
+		ID: r.ID, GuildID: r.GuildID, AgentID: r.AgentID, IssueID: deref(r.IssueID), ProjectID: deref(r.ProjectID),
 		InvocationSource: domain.InvocationSource(r.InvocationSource), WakeReason: domain.WakeReason(r.WakeReason),
 		WakeCount: r.WakeCount, WakeContext: wakeContextOf(r.WakeContext), Status: domain.RunStatus(r.Status),
 		RequestedByID: deref(r.RequestedByMemberID), DesktopID: deref(r.DesktopID), RetryOfRunID: deref(r.RetryOfRunID),
@@ -206,11 +207,11 @@ func (s Runs) Runs(ctx context.Context, q app.RunQuery) ([]domain.Run, error) {
 // moved is false when another got there first.
 func (s Runs) SaveRun(ctx context.Context, r domain.Run, from domain.RunStatus) (moved bool, err error) {
 	u := r.Usage
-	res, err := s.query(ctx).Exec(`UPDATE runs SET status = ?, desktop_id = ?, key_hash = ?, prompt = ?, session_id = ?, exit_code = ?, error = ?,
+	res, err := s.query(ctx).Exec(`UPDATE runs SET status = ?, desktop_id = ?, project_id = ?, key_hash = ?, prompt = ?, session_id = ?, exit_code = ?, error = ?,
 		input_tokens = ?, cached_input_tokens = ?, output_tokens = ?, turns = ?, cost_equivalent_usd = ?, duration_ms = ?,
 		next_seq = ?, lease_expires_at = ?, started_at = ?, finished_at = ?, updated_at = ?
 		WHERE id = ? AND status = ? AND wake_count = ?`,
-		string(r.Status), nullable(r.DesktopID), nullableString(r.KeyHash), r.Prompt, r.SessionID, r.ExitCode, r.Error,
+		string(r.Status), nullable(r.DesktopID), nullable(r.ProjectID), nullableString(r.KeyHash), r.Prompt, r.SessionID, r.ExitCode, r.Error,
 		u.InputTokens, u.CachedInputTokens, u.OutputTokens, u.Turns, u.CostEquivalentUSD, u.DurationMS,
 		r.NextSeq, r.LeaseExpiresAt, r.StartedAt, r.FinishedAt, r.UpdatedAt, r.ID, string(from), r.WakeCount)
 	if err != nil {
@@ -343,6 +344,50 @@ func (s Runs) ExpiredRuns(ctx context.Context, at time.Time) ([]domain.Run, erro
 	out := make([]domain.Run, len(recs))
 	for i, r := range recs {
 		out[i] = r.toDomain()
+	}
+	return out, nil
+}
+
+// runTotalRecord is one row of RunTotals.
+type runTotalRecord struct {
+	AgentID           uint64
+	ProjectID         uint64
+	InputTokens       int64
+	CachedInputTokens int64
+	OutputTokens      int64
+	Runs              int64
+	RunTimeMs         int64
+	CostEquivalentUSD float64 `gorm:"column:cost_equivalent_usd"`
+}
+
+// RunTotals adds up the Guild's claimed Runs that finished in the range,
+// per Agent and Project (0 for none).
+func (s Runs) RunTotals(ctx context.Context, q app.CostRange) ([]app.RunTotal, error) {
+	sql := `SELECT agent_id, COALESCE(project_id, 0) AS project_id,
+		COALESCE(SUM(input_tokens), 0) AS input_tokens, COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
+		COALESCE(SUM(output_tokens), 0) AS output_tokens, COUNT(*) AS runs,
+		COALESCE(SUM(duration_ms), 0) AS run_time_ms, COALESCE(SUM(cost_equivalent_usd), 0)::float8 AS cost_equivalent_usd
+		FROM runs WHERE guild_id = ? AND started_at IS NOT NULL AND finished_at IS NOT NULL`
+	args := []any{q.GuildID}
+	if q.From != nil {
+		sql += ` AND finished_at >= ?`
+		args = append(args, *q.From)
+	}
+	if q.To != nil {
+		sql += ` AND finished_at < ?`
+		args = append(args, *q.To)
+	}
+	sql += ` GROUP BY agent_id, COALESCE(project_id, 0)`
+	var recs []runTotalRecord
+	if err := s.query(ctx).Raw(sql, args...).Scan(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]app.RunTotal, len(recs))
+	for i, r := range recs {
+		out[i] = app.RunTotal{AgentID: r.AgentID, ProjectID: r.ProjectID, Figures: app.Figures{
+			InputTokens: r.InputTokens, CachedInputTokens: r.CachedInputTokens, OutputTokens: r.OutputTokens,
+			Runs: r.Runs, RunTimeMS: r.RunTimeMs, CostEquivalentUSD: r.CostEquivalentUSD,
+		}}
 	}
 	return out, nil
 }
