@@ -42,14 +42,15 @@ type Service struct {
 	guilds   Guilds
 	projects Projects
 	activity Activity
+	inbox    Inbox
 	now      func() time.Time
 	// Logf logs what a request cannot report, such as an Activity event
 	// that was not recorded.
 	Logf func(format string, args ...any)
 }
 
-func NewService(goals Goals, issues Issues, comments Comments, docs Documents, guilds Guilds, projects Projects, activity Activity) *Service {
-	return &Service{goals: goals, issues: issues, comments: comments, docs: docs, guilds: guilds, projects: projects, activity: activity, now: time.Now, Logf: log.Printf}
+func NewService(goals Goals, issues Issues, comments Comments, docs Documents, guilds Guilds, projects Projects, activity Activity, inbox Inbox) *Service {
+	return &Service{goals: goals, issues: issues, comments: comments, docs: docs, guilds: guilds, projects: projects, activity: activity, inbox: inbox, now: time.Now, Logf: log.Printf}
 }
 
 // GoalInput is a new Goal as typed. Empty Level and Status take their

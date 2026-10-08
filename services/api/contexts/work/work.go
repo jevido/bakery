@@ -1,6 +1,6 @@
 // Package work is what the router may use from the work context: its
-// routes (Goals, Issues, Comments, Issue documents and the Activity). Nothing else in
-// contexts/work is for outside use.
+// routes (Goals, Issues, Comments, Issue documents, the Activity and the
+// Inbox). Nothing else in contexts/work is for outside use.
 package work
 
 import (
@@ -25,7 +25,7 @@ var (
 
 func svc() *app.Service {
 	once.Do(func() {
-		service = app.NewService(infra.Goals{}, infra.Issues{}, infra.Comments{}, infra.Documents{}, guildsOfWork{}, projectsOfWork{}, infra.Activity{})
+		service = app.NewService(infra.Goals{}, infra.Issues{}, infra.Comments{}, infra.Documents{}, guildsOfWork{}, projectsOfWork{}, infra.Activity{}, infra.Inbox{})
 		service.Logf = facades.Log().Errorf
 		guilds.OnGuildDeleting("goals", func(ctx context.Context, guildID uint64) (bool, error) {
 			gs, err := service.Goals(ctx, guildID)
@@ -74,7 +74,8 @@ var goalInGuild = guilds.Owns("goal", func(ctx context.Context, id, guildID uint
 })
 
 // Routes registers the Current guild's Goals, Issues, Comments, Issue
-// documents and Activity API: reading needs view_resources, changing manage_work, and
+// documents, Activity and Inbox API: reading (and a Member's own Read marks
+// and Inbox archives) needs view_resources, changing manage_work, and
 // changing a Comment also being its author. An Issue's {id} is its id or its
 // Issue identifier, so the service, not guilds.Owns, answers 404 for one
 // outside the Current guild or in a Project the request may not view.
@@ -99,6 +100,12 @@ func Routes(r route.Router) {
 	r.Middleware(guilds.Auth, view).Group(func(r route.Router) {
 		r.Get("/api/activity", c.ListActivity)
 		r.Get("/api/issues/{id}/activity", c.ListIssueActivity)
+	})
+	r.Middleware(guilds.Auth, view).Group(func(r route.Router) {
+		r.Post("/api/issues/{id}/read", c.MarkRead)
+		r.Delete("/api/issues/{id}/read", c.MarkUnread)
+		r.Post("/api/issues/{id}/inbox-archive", c.ArchiveFromInbox)
+		r.Delete("/api/issues/{id}/inbox-archive", c.UnarchiveFromInbox)
 	})
 	r.Middleware(guilds.Auth, view).Get("/api/issues/{id}/comments", c.ListComments)
 	r.Middleware(guilds.Auth, manage).Group(func(r route.Router) {
