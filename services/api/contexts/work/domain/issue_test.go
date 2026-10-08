@@ -132,3 +132,26 @@ func TestIdentifier(t *testing.T) {
 		}
 	}
 }
+
+func TestBlockWith(t *testing.T) {
+	i := Issue{ID: 1, GuildID: 1}
+	a, b := Issue{ID: 2, GuildID: 1}, Issue{ID: 3, GuildID: 1}
+	ids, err := i.BlockWith([]Issue{a, b, a}, []uint64{4})
+	if err != nil || len(ids) != 2 || ids[0] != 2 || ids[1] != 3 {
+		t.Errorf("BlockWith(a, b, a) = %v, %v", ids, err)
+	}
+	if ids, err := i.BlockWith(nil, nil); err != nil || len(ids) != 0 {
+		t.Errorf("BlockWith(none) = %v, %v", ids, err)
+	}
+	if _, err := i.BlockWith([]Issue{i}, nil); !errors.Is(err, ErrSelfBlock) {
+		t.Errorf("BlockWith(itself) = %v", err)
+	}
+	var fe *FieldError
+	if _, err := i.BlockWith([]Issue{{ID: 9, GuildID: 2}}, nil); !errors.As(err, &fe) || fe.Field != "blocked_by_ids" {
+		t.Errorf("BlockWith(another guild) = %v", err)
+	}
+	// 1 blocks 2, 2 blocks 3: 3 may not block 1.
+	if _, err := i.BlockWith([]Issue{b}, []uint64{2, 3}); !errors.Is(err, ErrBlockerCycle) {
+		t.Errorf("BlockWith(two-step cycle) = %v", err)
+	}
+}

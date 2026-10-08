@@ -12,6 +12,13 @@ import (
 // Sub-issues.
 var ErrIssueCycle error = &FieldError{Field: "parent_id", Message: "an issue cannot sit under itself or one of its sub-issues"}
 
+// ErrSelfBlock is an Issue named among its own Blockers.
+var ErrSelfBlock error = &FieldError{Field: "blocked_by_ids", Message: "an issue cannot block itself"}
+
+// ErrBlockerCycle is a Blocker that the Issue already blocks, directly or
+// through others.
+var ErrBlockerCycle error = &FieldError{Field: "blocked_by_ids", Message: "an issue cannot be blocked by an issue it blocks"}
+
 // IssueStatus is where an Issue stands.
 type IssueStatus string
 
@@ -171,6 +178,28 @@ func (i *Issue) MoveUnder(parent *Issue, ancestors []uint64) error {
 	}
 	i.ParentID = parent.ID
 	return nil
+}
+
+// BlockWith checks blockers as the Issue's Blockers and returns their ids
+// in order, without repeats. reachable are the ids of every Issue the
+// Issue already blocks, directly or through others: none of them may block
+// it, nor the Issue itself, nor another Guild's Issue.
+func (i Issue) BlockWith(blockers []Issue, reachable []uint64) ([]uint64, error) {
+	ids := make([]uint64, 0, len(blockers))
+	for _, b := range blockers {
+		switch {
+		case b.GuildID != i.GuildID:
+			return nil, invalid("blocked_by_ids", "blocked-by issue not found")
+		case b.ID == i.ID:
+			return nil, ErrSelfBlock
+		case slices.Contains(reachable, b.ID):
+			return nil, ErrBlockerCycle
+		}
+		if !slices.Contains(ids, b.ID) {
+			ids = append(ids, b.ID)
+		}
+	}
+	return ids, nil
 }
 
 // Identifier is an Issue identifier, e.g. DEF-12.

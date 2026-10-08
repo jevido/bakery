@@ -48,6 +48,17 @@ type issueJSON struct {
 	CancelledAt *time.Time    `json:"cancelled_at"`
 	CreatedAt   time.Time     `json:"created_at"`
 	UpdatedAt   time.Time     `json:"updated_at"`
+	// UnresolvedBlockers counts the Blockers the person can see that are
+	// not done; list rows only.
+	UnresolvedBlockers *int `json:"unresolved_blockers,omitempty"`
+}
+
+// blockerJSON is an Issue in another Issue's blocked_by or blocking.
+type blockerJSON struct {
+	ID         uint64 `json:"id"`
+	Identifier string `json:"identifier"`
+	Title      string `json:"title"`
+	Status     string `json:"status"`
 }
 
 // visible is the request's guilds.VisibleProjects as the service asks it.
@@ -150,6 +161,8 @@ type issueRequest struct {
 	ProjectID   optional[uint64] `json:"project_id"`
 	GoalID      optional[uint64] `json:"goal_id"`
 	ParentID    optional[uint64] `json:"parent_id"`
+	// BlockedByIDs is PATCH only; null clears like [].
+	BlockedByIDs optional[[]uint64] `json:"blocked_by_ids"`
 }
 
 func (r issueRequest) input() app.IssueInput {
@@ -163,6 +176,10 @@ func (r issueRequest) patch() app.IssuePatch {
 	p := app.IssuePatch{
 		Title: r.Title.ptr(), Description: r.Description.ptr(), Status: r.Status.ptr(), Priority: r.Priority.ptr(),
 		AssigneeID: idOf(r.AssigneeID), ProjectID: idOf(r.ProjectID), GoalID: idOf(r.GoalID), ParentID: idOf(r.ParentID),
+	}
+	if r.BlockedByIDs.Set {
+		ids := value(r.BlockedByIDs.Value)
+		p.BlockedByIDs = &ids
 	}
 	if r.Description.Set && p.Description == nil {
 		// A null description is an empty one.
@@ -259,10 +276,23 @@ func (c *Controller) ListIssues(ctx contractshttp.Context) contractshttp.Respons
 	if err != nil {
 		return fail(ctx, err)
 	}
+	blockedBy, _, err := c.service.Blockers(ctx.Context(), is, c.visible(ctx))
+	if err != nil {
+		return fail(ctx, err)
+	}
+	for n, i := range is {
+		unresolved := 0
+		for _, b := range blockedBy[i.ID] {
+			if b.Status != domain.Done {
+				unresolved++
+			}
+		}
+		out[n].UnresolvedBlockers = &unresolved
+	}
 	return ctx.Response().Success().Json(contractshttp.Json{"issues": out})
 }
 
-// oneIssue answers an Issue with its Sub-issues.
+// oneIssue answers an Issue with its Sub-issues and its Blockers both ways.
 func (c *Controller) oneIssue(ctx contractshttp.Context, status int, i domain.Issue, err error) contractshttp.Response {
 	if err != nil {
 		return fail(ctx, err)
@@ -279,10 +309,27 @@ func (c *Controller) oneIssue(ctx contractshttp.Context, status int, i domain.Is
 	if err != nil {
 		return fail(ctx, err)
 	}
+	blockedBy, blocking, err := c.service.Blockers(ctx.Context(), []domain.Issue{i}, c.visible(ctx))
+	if err != nil {
+		return fail(ctx, err)
+	}
+	prefix, err := c.service.IssuePrefix(ctx.Context(), c.guild(ctx))
+	if err != nil {
+		return fail(ctx, err)
+	}
+	refs := func(is []domain.Issue) []blockerJSON {
+		out := make([]blockerJSON, len(is))
+		for n, b := range is {
+			out[n] = blockerJSON{ID: b.ID, Identifier: domain.Identifier(prefix, b.Number), Title: b.Title, Status: string(b.Status)}
+		}
+		return out
+	}
 	return ctx.Response().Json(status, contractshttp.Json{"issue": struct {
 		issueJSON
-		Children []issueJSON `json:"children"`
-	}{out[0], children}})
+		Children  []issueJSON   `json:"children"`
+		BlockedBy []blockerJSON `json:"blocked_by"`
+		Blocking  []blockerJSON `json:"blocking"`
+	}{out[0], children, refs(blockedBy[i.ID]), refs(blocking[i.ID])}})
 }
 
 func (c *Controller) CreateIssue(ctx contractshttp.Context) contractshttp.Response {
@@ -305,7 +352,7 @@ func (c *Controller) UpdateIssue(ctx contractshttp.Context) contractshttp.Respon
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	i, err := c.service.ChangeIssue(ctx.Context(), c.guild(ctx), ctx.Request().Route("id"), req.patch(), c.visible(ctx))
+	i, err := c.service.ChangeIssue(ctx.Context(), c.guild(ctx), c.Member(ctx), ctx.Request().Route("id"), req.patch(), c.visible(ctx))
 	return c.oneIssue(ctx, contractshttp.StatusOK, i, err)
 }
 

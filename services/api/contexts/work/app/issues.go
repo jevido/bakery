@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -18,6 +19,16 @@ type Issues interface {
 	// IssuesByID returns the Issues with these ids that exist, in no order.
 	IssuesByID(ctx context.Context, ids []uint64) ([]domain.Issue, error)
 	SaveIssue(ctx context.Context, i domain.Issue) error
+	// SaveIssueBlockedBy stores the Issue and makes blockedBy its Blockers,
+	// in one transaction; memberID is who added the new ones.
+	SaveIssueBlockedBy(ctx context.Context, i domain.Issue, blockedBy []uint64, memberID uint64) error
+	// Blockers returns the ids of each Issue's Blockers.
+	Blockers(ctx context.Context, issueIDs []uint64) (map[uint64][]uint64, error)
+	// Blocking returns the ids of the Issues each Issue blocks.
+	Blocking(ctx context.Context, issueIDs []uint64) (map[uint64][]uint64, error)
+	// BlockedFrom returns the ids of every Issue the Issue blocks, directly
+	// or through others.
+	BlockedFrom(ctx context.Context, issueID uint64) ([]uint64, error)
 	// DeleteIssue deletes the Issue; its Sub-issues lose their parent.
 	DeleteIssue(ctx context.Context, id uint64) error
 	// FindIssues lists the Guild's Issues that q keeps, most recently
@@ -103,6 +114,9 @@ type IssuePatch struct {
 	ProjectID   *uint64
 	GoalID      *uint64
 	ParentID    *uint64
+	// BlockedByIDs replaces the Blockers the person can see; empty removes
+	// them.
+	BlockedByIDs *[]uint64
 }
 
 // IssuePrefix is the Guild's Issue prefix, for its Issue identifiers.
@@ -267,7 +281,8 @@ func (s *Service) relate(ctx context.Context, i *domain.Issue, assigneeID, proje
 	return s.moveIssueUnder(ctx, i, parentID, visible)
 }
 
-func (s *Service) ChangeIssue(ctx context.Context, guildID uint64, ref string, p IssuePatch, visible Visible) (domain.Issue, error) {
+// ChangeIssue changes the Issue by the Member.
+func (s *Service) ChangeIssue(ctx context.Context, guildID, memberID uint64, ref string, p IssuePatch, visible Visible) (domain.Issue, error) {
 	i, err := s.Issue(ctx, guildID, ref, visible)
 	if err != nil {
 		return domain.Issue{}, err
@@ -314,11 +329,113 @@ func (s *Service) ChangeIssue(ctx context.Context, guildID uint64, ref string, p
 			return domain.Issue{}, err
 		}
 	}
-	if err := s.issues.SaveIssue(ctx, i); err != nil {
+	if p.BlockedByIDs != nil {
+		blockedBy, err := s.blockWith(ctx, i, *p.BlockedByIDs, visible)
+		if err != nil {
+			return domain.Issue{}, err
+		}
+		err = s.issues.SaveIssueBlockedBy(ctx, i, blockedBy, memberID)
+	} else {
+		err = s.issues.SaveIssue(ctx, i)
+	}
+	if err != nil {
 		return domain.Issue{}, err
 	}
 	i, _, err = s.issues.Issue(ctx, i.ID)
 	return i, err
+}
+
+// blockWith checks ids as the Blockers the person sets on the Issue, each
+// an Issue they must be able to see, and returns the Issue's whole new set:
+// those, and the Blockers it has that the person cannot see.
+func (s *Service) blockWith(ctx context.Context, i domain.Issue, ids []uint64, visible Visible) ([]uint64, error) {
+	notFound := &domain.FieldError{Field: "blocked_by_ids", Message: "blocked-by issue not found"}
+	found, err := s.issues.IssuesByID(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[uint64]domain.Issue, len(found))
+	for _, b := range found {
+		byID[b.ID] = b
+	}
+	blockers := make([]domain.Issue, 0, len(ids))
+	for _, id := range ids {
+		b, ok := byID[id]
+		if !ok {
+			return nil, notFound
+		}
+		if b.GuildID == i.GuildID {
+			if ok, err = s.mayView(b.ProjectID, visible); err != nil {
+				return nil, err
+			}
+		}
+		if !ok {
+			return nil, notFound
+		}
+		blockers = append(blockers, b)
+	}
+	reachable, err := s.issues.BlockedFrom(ctx, i.ID)
+	if err != nil {
+		return nil, err
+	}
+	set, err := i.BlockWith(blockers, reachable)
+	if err != nil {
+		return nil, err
+	}
+	have, err := s.issues.Blockers(ctx, []uint64{i.ID})
+	if err != nil {
+		return nil, err
+	}
+	shown, err := s.VisibleIssues(ctx, have[i.ID], visible)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range have[i.ID] {
+		if !slices.ContainsFunc(shown, func(v domain.Issue) bool { return v.ID == id }) && !slices.Contains(set, id) {
+			set = append(set, id)
+		}
+	}
+	return set, nil
+}
+
+// Blockers returns, for each Issue, the Issues it is blocked by and the
+// Issues it is blocking that the person may see, by number.
+func (s *Service) Blockers(ctx context.Context, is []domain.Issue, visible Visible) (blockedBy, blocking map[uint64][]domain.Issue, err error) {
+	ids := make([]uint64, len(is))
+	for n, i := range is {
+		ids[n] = i.ID
+	}
+	by, err := s.issues.Blockers(ctx, ids)
+	if err != nil {
+		return nil, nil, err
+	}
+	ing, err := s.issues.Blocking(ctx, ids)
+	if err != nil {
+		return nil, nil, err
+	}
+	var all []uint64
+	for _, m := range []map[uint64][]uint64{by, ing} {
+		for _, v := range m {
+			all = append(all, v...)
+		}
+	}
+	shown, err := s.VisibleIssues(ctx, all, visible)
+	if err != nil {
+		return nil, nil, err
+	}
+	slices.SortFunc(shown, func(a, b domain.Issue) int { return a.Number - b.Number })
+	pick := func(m map[uint64][]uint64) map[uint64][]domain.Issue {
+		out := make(map[uint64][]domain.Issue, len(m))
+		for id, of := range m {
+			for _, v := range shown {
+				if slices.Contains(of, v.ID) {
+					out[id] = append(out[id], v)
+				}
+			}
+		}
+		return out
+	}
+	return pick(by), pick(ing), nil
 }
 
 // DeleteIssue deletes the Issue; its Sub-issues lose their parent.

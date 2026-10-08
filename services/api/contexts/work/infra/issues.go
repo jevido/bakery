@@ -126,13 +126,82 @@ func (s Issues) IssuesByID(ctx context.Context, ids []uint64) ([]domain.Issue, e
 }
 
 func (s Issues) SaveIssue(ctx context.Context, i domain.Issue) error {
-	_, err := s.query(ctx).Exec(`UPDATE issues SET title = ?, description = ?, status = ?, priority = ?,
+	return s.save(s.query(ctx), i)
+}
+
+func (Issues) save(q contractsorm.Query, i domain.Issue) error {
+	_, err := q.Exec(`UPDATE issues SET title = ?, description = ?, status = ?, priority = ?,
 		assignee_member_id = ?, project_id = ?, goal_id = ?, parent_id = ?,
 		started_at = ?, completed_at = ?, cancelled_at = ?, updated_at = now() WHERE id = ?`,
 		i.Title, i.Description, string(i.Status), string(i.Priority),
 		nullable(i.AssigneeID), nullable(i.ProjectID), nullable(i.GoalID), nullable(i.ParentID),
 		i.StartedAt, i.CompletedAt, i.CancelledAt, i.ID)
 	return err
+}
+
+// SaveIssueBlockedBy stores the Issue and its Blockers together: the rows
+// no longer named go, the new ones are added, and the ones kept keep who
+// added them.
+func (s Issues) SaveIssueBlockedBy(ctx context.Context, i domain.Issue, blockedBy []uint64, memberID uint64) error {
+	return facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		if err := s.save(tx, i); err != nil {
+			return err
+		}
+		if len(blockedBy) == 0 {
+			_, err := tx.Exec(`DELETE FROM issue_blockers WHERE issue_id = ?`, i.ID)
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM issue_blockers WHERE issue_id = ? AND NOT (blocker_id IN ?)`, i.ID, blockedBy); err != nil {
+			return err
+		}
+		for _, id := range blockedBy {
+			if _, err := tx.Exec(`INSERT INTO issue_blockers (guild_id, issue_id, blocker_id, created_by_member_id)
+				VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, i.GuildID, i.ID, id, nullable(memberID)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// edges reads issue_blockers rows whose from column is one of ids, as the
+// to column's ids per from id.
+func (s Issues) edges(ctx context.Context, from, to string, ids []uint64) (map[uint64][]uint64, error) {
+	out := map[uint64][]uint64{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		From uint64
+		To   uint64
+	}
+	if err := s.query(ctx).Raw(`SELECT `+from+` AS "from", `+to+` AS "to" FROM issue_blockers WHERE `+from+` IN ?`, ids).Scan(&rows); err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		out[r.From] = append(out[r.From], r.To)
+	}
+	return out, nil
+}
+
+func (s Issues) Blockers(ctx context.Context, issueIDs []uint64) (map[uint64][]uint64, error) {
+	return s.edges(ctx, "issue_id", "blocker_id", issueIDs)
+}
+
+func (s Issues) Blocking(ctx context.Context, issueIDs []uint64) (map[uint64][]uint64, error) {
+	return s.edges(ctx, "blocker_id", "issue_id", issueIDs)
+}
+
+// BlockedFrom walks the blocking edges out of the Issue; UNION (not UNION
+// ALL) drops repeats, so a stored cycle cannot make it loop.
+func (s Issues) BlockedFrom(ctx context.Context, issueID uint64) ([]uint64, error) {
+	var ids []uint64
+	err := s.query(ctx).Raw(`WITH RECURSIVE blocked(id) AS (
+			SELECT issue_id FROM issue_blockers WHERE blocker_id = ?
+			UNION
+			SELECT b.issue_id FROM issue_blockers b JOIN blocked ON b.blocker_id = blocked.id
+		) SELECT id FROM blocked`, issueID).Scan(&ids)
+	return ids, err
 }
 
 // DeleteIssue deletes the Issue; the foreign key takes its Sub-issues'

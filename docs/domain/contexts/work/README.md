@@ -122,7 +122,8 @@ None yet. Inbox and Activity, in a later phase, are where they start.
   project, goal, parent, created_by, started_at, completed_at, cancelled_at,
   created_at, updated_at}`, the references as `{id, name}` (`{id, title}`
   for a Goal, `{id, identifier, title}` for a parent) or null, and lists leave
-  `description` out; it is written with `title`, `description`, `status`,
+  `description` out and add `unresolved_blockers`, how many of its
+  Blockers the person may see are not `done`; it is written with `title`, `description`, `status`,
   `priority`, `assignee_id`, `project_id`, `goal_id` and `parent_id`, any of
   them null to clear it. `PATCH` also takes `blocked_by_ids`, a list of
   Issue ids (422 for the Issue itself, another Guild's Issue or a cycle),
