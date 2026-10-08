@@ -88,7 +88,12 @@
 //           Inbox badge and has its row on Mine and Unread; Approve on that
 //           row takes it off Unread and the badge drops; the Dashboard's
 //           "Pending Approvals" card shows the count and opens
-//           #/approvals/pending
+//           #/approvals/pending; the first's Linked issue links back to the
+//           Issue and the resubmitted second is rejected from its card on
+//           Pending; a Member, invited for the run, sees a fifth on Pending
+//           and its page without Approve, Reject or Request revision,
+//           comments on it, and does not see its Linked issue in a scratch
+//           Project whose Member Role is denied View resources
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -209,6 +214,8 @@ async function denyView(page: Page, project: number, role: 'Member' | 'Viewer'):
   await page.getByRole('button', { name: 'Remove override' }).waitFor()
   return async () => {
     await page.goto(`${WEB}/#/project/${project}/permissions`)
+    // The page opens on its first target, which need not be this Role's.
+    await page.getByTestId('override-target').filter({ hasText: new RegExp(`^\\s*${role}\\s+Role\\s*$`) }).click()
     await page.getByRole('button', { name: 'Remove override' }).click()
     await page.getByRole('button', { name: 'Remove', exact: true }).click()
     await page.getByRole('button', { name: 'Remove override' }).waitFor({ state: 'detached' })
@@ -947,6 +954,8 @@ const sections: Record<string, () => Promise<void>> = {
     for (const a of (await all()).filter((a) => a.payload.title.startsWith(prefix) && (a.status === 'pending' || a.status === 'revision_requested')))
       await page.request.post(`${WEB}/api/approvals/${a.id}/reject`, { data: {} })
     for (const i of (await issues(page)).filter((i) => i.title.startsWith(prefix))) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    const { projects } = (await (await page.request.get(`${WEB}/api/projects`)).json()) as { projects: { id: number; name: string }[] }
+    for (const p of projects.filter((p) => p.name === `${prefix} hidden`)) await page.request.delete(`${WEB}/api/projects/${p.id}`)
     const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title: `${prefix} issue` } })).json()) as { issue: Issue }
     const ask = async (title: string) => {
       const r = await page.request.post(`${WEB}/api/approvals`, {
@@ -975,6 +984,9 @@ const sections: Record<string, () => Promise<void>> = {
     expect('Approve opens the Approval page with the banner', true)
     expect('the banner offers the linked Issue', await page.getByRole('button', { name: 'Review linked issue' }).isVisible())
     expect('the page lists the Linked issue', await page.getByTestId('linked-issues').getByText(issue.identifier).isVisible())
+    await page.getByTestId('linked-issues').getByRole('link', { name: new RegExp(issue.identifier) }).click()
+    await page.waitForURL(new RegExp(`#/issues/${issue.identifier}$`))
+    expect('the Linked issue links back to the Issue', true)
 
     await page.goto(`${WEB}/#/approvals/all`)
     await card(first).and(page.locator('[data-status="approved"]')).waitFor()
@@ -1007,7 +1019,11 @@ const sections: Record<string, () => Promise<void>> = {
     await page.locator(`[data-approval="${second.id}"][data-status="pending"]`).waitFor()
     expect('Resubmit makes it pending again', await page.getByRole('button', { name: 'Request revision' }).isVisible())
     expect('Resubmit sends the edited request', await page.getByRole('heading', { name: `Board Approval: ${prefix} second, with rollback` }).isVisible())
-    await page.request.post(`${WEB}/api/approvals/${second.id}/reject`, { data: {} })
+    await page.goto(`${WEB}/#/approvals/pending`)
+    await card(second).getByRole('button', { name: 'Reject' }).click()
+    await card(second).waitFor({ state: 'detached' })
+    expect('Reject on its card takes it off Pending', page.url().endsWith('#/approvals/pending'), page.url())
+    expect('and it is rejected', (await all()).find((a) => a.id === second.id)?.status === 'rejected')
 
     await page.goto(`${WEB}/#/issues/${issue.identifier}`)
     await page.getByRole('button', { name: 'More issue actions' }).click()
@@ -1068,6 +1084,39 @@ const sections: Record<string, () => Promise<void>> = {
     await pendingCard.click()
     await page.waitForURL(/#\/approvals\/pending$/)
     expect('the card opens #/approvals/pending', true)
+
+    // A Member decides nothing, but reads and comments; a Linked issue in a
+    // Project their Role may not view is left out for them.
+    const { project } = (await (await page.request.post(`${WEB}/api/projects`, { data: { name: `${prefix} hidden` } })).json()) as { project: { id: number } }
+    const { issue: hidden } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title: `${prefix} hidden`, project_id: project.id } })).json()) as { issue: Issue }
+    const linked = await page.request.post(`${WEB}/api/approvals`, {
+      data: { type: 'request_board_approval', payload: { title: `${prefix} member` }, issue_ids: [issue.id, hidden.id] },
+    })
+    if (!linked.ok()) throw new Error(`request approval: ${linked.status()} ${await linked.text()}`)
+    const fifth = ((await linked.json()) as { approval: Approval }).approval
+    const undeny = await denyView(page, project.id, 'Member')
+    const m = await invited(page, 'member')
+    await m.page.goto(`${WEB}/#/approvals/pending`)
+    await m.page.locator(`[data-slot="card"][data-approval="${fifth.id}"]`).waitFor()
+    expect('a Member sees the Approvals', true)
+    expect('without Approve or Reject on the card', (await m.page.locator(`[data-slot="card"][data-approval="${fifth.id}"]`).getByRole('button', { name: /^(Approve|Reject)$/ }).count()) === 0)
+    await m.page.goto(`${WEB}/#/approvals/${fifth.id}`)
+    const memberLinks = m.page.getByTestId('linked-issues')
+    await memberLinks.getByText(issue.identifier).waitFor()
+    expect('nor Approve, Reject or Request revision on its page', (await m.page.getByRole('button', { name: /^(Approve|Reject|Request revision)$/ }).count()) === 0)
+    expect('the Linked issue in the denied Project is left out', !(await memberLinks.getByText(hidden.identifier).isVisible()))
+    await m.page.getByRole('textbox', { name: 'Comment' }).fill('Looks right to me.')
+    await m.page.getByRole('button', { name: 'Post comment' }).click()
+    await m.page.getByRole('region', { name: 'Comments' }).getByText('Looks right to me.').waitFor()
+    expect('the Member can comment', true)
+    await page.goto(`${WEB}/#/approvals/${fifth.id}`)
+    await page.getByTestId('linked-issues').getByText(hidden.identifier).waitFor()
+    expect('the owner still sees both Linked issues', true)
+    await page.request.post(`${WEB}/api/approvals/${fifth.id}/reject`, { data: {} })
+    await m.leave()
+    await undeny()
+    await page.request.delete(`${WEB}/api/issues/${hidden.id}`)
+    await page.request.delete(`${WEB}/api/projects/${project.id}`)
 
     await page.request.delete(`${WEB}/api/issues/${issue.id}`)
     await page.close()

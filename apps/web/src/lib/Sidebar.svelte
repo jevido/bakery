@@ -5,7 +5,9 @@
   // the Inbox with its count of Unread Issues and Actionable
   // Approvals ("unread", as Paperclip labels it); the Work section holds Projects,
   // Issues and Goals; the Guild section holds Activity, as Paperclip's
-  // Organization section does. Agents get their place here when they
+  // Organization section does. Approvals have no item, as in Paperclip:
+  // they are reached through the Inbox, the Dashboard's Pending Approvals
+  // card and an Issue's page. Agents get their place here when they
   // arrive; the Guild's settings, Notifications, Keys & Tokens and
   // Settings open under the settings sidebar instead.
   import { CircleDot, FolderOpen, HardDrive, History, Inbox, LayoutDashboard, Server, Target } from '@lucide/svelte'

@@ -184,7 +184,7 @@ type and the payload's title.
   | `POST /api/approvals` | 201 `{"approval": Approval}`; body `{type, payload, issue_ids}`; 422 for an unknown type, a payload that breaks the rules or an Issue id that is not the Guild's |
   | `GET /api/approvals/{id}` | `{"approval": Approval}` |
   | `GET /api/approvals/{id}/issues` | `{"issues": [Issue]}`, the Linked issues the person may see, as in Issue lists |
-  | `POST /api/approvals/{id}/approve`, `.../reject`, `.../request-revision` | `{"approval": Approval}`; body `{decision_note}`, optional; 422 when the Approval's status does not allow it |
+  | `POST /api/approvals/{id}/approve`, `.../reject`, `.../request-revision` | `{"approval": Approval}`; body `{decision_note}`, optional; the same Decision again answers the Approval unchanged; 422 when the Approval's status does not allow it |
   | `POST /api/approvals/{id}/resubmit` | `{"approval": Approval}`; body `{payload}`, optional; 403 for anyone but the Requester, 422 unless `revision_requested` |
   | `GET /api/approvals/{id}/comments` | `{"comments": [Approval comment]}`, oldest first |
   | `POST /api/approvals/{id}/comments` | 201 `{"comment": Approval comment}`; body `{body}` |
@@ -376,8 +376,8 @@ type and the payload's title.
   be Unread. The Issue's last change is its latest `issue.created` or
   `issue.updated` Activity event instead.
 - **No Blocked or All tab yet.** In Paperclip those tabs are filled by
-  agents' failed Runs, Approvals and join requests, which come with agents
-  and Approvals.
+  agents' failed Runs and join requests, which come with agents; Approvals
+  are on Mine, Recent and Unread already.
 - **Approvals live in work, not a context of their own.** They are the
   Board's decisions on its work and link to its Issues. The agents context
   (Order step 5) will ask work for a `hire_agent` Approval through work's
