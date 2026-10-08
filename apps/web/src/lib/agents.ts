@@ -5,6 +5,27 @@ import { api } from "./api";
 
 export { jobLabel, jobLabels } from "./approvals";
 
+/** The glossary's Jobs in Paperclip's order (AGENT_ROLES). */
+export const jobs = [
+  "ceo", "cto", "cmo", "cfo", "security", "engineer",
+  "designer", "pm", "qa", "devops", "researcher", "general",
+] as const;
+
+/** The Agent icons, Paperclip's AGENT_ICON_NAMES; an Agent without one is a bot. */
+export const agentIconNames = [
+  "bot", "cpu", "brain", "zap", "rocket", "code", "terminal", "shield", "eye",
+  "search", "wrench", "hammer", "lightbulb", "sparkles", "star", "heart",
+  "flame", "bug", "cog", "database", "globe", "lock", "mail",
+  "message-square", "file-code", "git-branch", "package", "puzzle", "target",
+  "wand", "atom", "circuit-board", "radar", "swords", "telescope",
+  "microscope", "crown", "gem", "hexagon", "pentagon", "fingerprint",
+] as const;
+export type AgentIconName = (typeof agentIconNames)[number];
+
+/** How an Agent status reads: "Pending approval". */
+export const agentStatusLabel = (s: AgentStatus) =>
+  s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ");
+
 /** An Agent status; running and error come with Runs. */
 export type AgentStatus = "pending_approval" | "idle" | "paused" | "terminated";
 

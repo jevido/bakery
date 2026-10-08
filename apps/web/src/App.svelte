@@ -14,6 +14,7 @@
   import Activity from './pages/Activity.svelte'
   import Inbox from './pages/Inbox.svelte'
   import Approval from './pages/approvals/Approval.svelte'
+  import Agents from './pages/agents/Agents.svelte'
   import Approvals from './pages/approvals/Approvals.svelte'
   import Goal from './pages/goals/Goal.svelte'
   import Goals from './pages/goals/Goals.svelte'
@@ -162,6 +163,8 @@
       {#key router.route.id}
         <Goal id={router.route.id} />
       {/key}
+    {:else if router.route.name === 'agents'}
+      <Agents tab={router.route.tab} />
     {:else if router.route.name === 'activity'}
       <Activity />
     {:else if router.route.name === 'inbox'}

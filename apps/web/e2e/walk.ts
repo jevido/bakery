@@ -99,6 +99,7 @@ const routes = [
   '/storages',
   '/issues',
   '/goals',
+  '/agents/all',
   '/settings',
   ...pages('guildPages').map((p) => sub('/guild', p)),
   `/guild/roles/${role.id}`,

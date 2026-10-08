@@ -46,3 +46,8 @@ export function canManage(target: Member, need: Permission, roles: GuildRole[]):
     myRank(roles) > rankOf(target, roles)
   )
 }
+
+/** Whether the signed-in Member may give an Agent they hire role: below their highest, never @everyone (CanAssignToAgent; manage_roles is not needed). */
+export function canGiveAgent(role: GuildRole, roles: GuildRole[]): boolean {
+  return !role.base && myRank(roles) > role.position
+}

@@ -4,13 +4,14 @@
   // header, then The Bakery's nav. The first section holds Dashboard and
   // the Inbox with its count of Unread Issues and Actionable
   // Approvals ("unread", as Paperclip labels it); the Work section holds Projects,
-  // Issues and Goals; the Guild section holds Activity, as Paperclip's
-  // Organization section does. Approvals have no item, as in Paperclip:
-  // they are reached through the Inbox, the Dashboard's Pending Approvals
-  // card and an Issue's page. Agents get their place here when they
-  // arrive; the Guild's settings, Notifications, Keys & Tokens and
-  // Settings open under the settings sidebar instead.
-  import { CircleDot, FolderOpen, HardDrive, History, Inbox, LayoutDashboard, Server, Target } from '@lucide/svelte'
+  // Issues and Goals; the Guild section holds Agents and Activity, as
+  // Paperclip's streamlined Sidebar puts Agents beside Audit in its Org
+  // section, which is what The Bakery's Guild section is. Approvals have no
+  // item, as in Paperclip: they are reached through the Inbox, the
+  // Dashboard's Pending Approvals card and an Issue's page. The Guild's
+  // settings, Notifications, Keys & Tokens and Settings open under the
+  // settings sidebar instead.
+  import { CircleDot, FolderOpen, HardDrive, History, Inbox, LayoutDashboard, Server, Target, Users } from '@lucide/svelte'
   import type { Component } from 'svelte'
   import GuildMenu from './GuildMenu.svelte'
   import { badges, pollBadges, refreshBadges } from './inbox.svelte'
@@ -52,7 +53,13 @@
           session.can('manage_servers') && { label: 'S3 Storage', path: '/storages', icon: HardDrive, routes: ['storages'] },
         ),
       },
-      { label: 'Guild', items: [{ label: 'Activity', path: '/activity', icon: History, routes: ['activity'] }] },
+      {
+        label: 'Guild',
+        items: [
+          { label: 'Agents', path: '/agents/all', icon: Users, routes: ['agents', 'agent'] },
+          { label: 'Activity', path: '/activity', icon: History, routes: ['activity'] },
+        ],
+      },
     ]
   })
 
