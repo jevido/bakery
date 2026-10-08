@@ -9,7 +9,7 @@
   // the loaded rows, as Paperclip's do. The filters live in the hash query
   // (#/issues?status=todo&q=…), so a reload keeps them. Left out: the board
   // view, nesting, columns and live runs, which wait for agents.
-  import { ChevronRight, Plus } from '@lucide/svelte'
+  import { ChevronRight, OctagonAlert, Plus } from '@lucide/svelte'
   import { untrack } from 'svelte'
   import { Button as UiButton } from '$lib/components/ui/button'
   import { api } from '../../lib/api'
@@ -282,6 +282,12 @@
               </span>
               <span class="flex min-w-0 flex-1 items-center gap-2">
                 <span class={['min-w-0 truncate', (issue.status === 'done' || issue.status === 'cancelled') && 'text-muted-foreground']}>{issue.title}</span>
+                {#if issue.unresolved_blockers}
+                  {@const label = `Blocked by ${issue.unresolved_blockers} ${issue.unresolved_blockers === 1 ? 'issue' : 'issues'}`}
+                  <span class="relative z-10 shrink-0 text-amber-600 dark:text-amber-300" title={label} aria-label={label} role="img" data-blocked-marker>
+                    <OctagonAlert class="size-3.5" />
+                  </span>
+                {/if}
               </span>
               <span class="ml-auto hidden min-w-0 shrink-0 items-center gap-3 sm:flex">
                 {#if issue.project}

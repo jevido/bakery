@@ -32,6 +32,13 @@
 //           Role View resources there: then it is gone from the list, by its
 //           identifier (404) and on its page; removing the override shows it
 //           again
+//   blockers  three scratch Issues: on the second, "Blocked by" picks the
+//           first through the search picker; the notice names it and the
+//           Issues list marks the row blocked; the first lists the second
+//           under "Blocking"; picking the second as the first's Blocker
+//           shows the cycle error; once the first is done the notice is
+//           gone; × removes the Blocker; a Viewer sees both rows without
+//           the picker or ×
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -409,6 +416,71 @@ const sections: Record<string, () => Promise<void>> = {
 
     await v.leave()
     await page.request.delete(`${WEB}/api/issues/${issue.id}`)
+    await page.close()
+  },
+  async blockers() {
+    const page = await signedIn()
+    const titles = ['Blocks the others', 'Waits on a blocker', 'Unrelated scratch']
+    for (const i of (await issues(page)).filter((i) => titles.includes(i.title))) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    const [a, b, c] = await Promise.all(
+      titles.map(async (title) => ((await (await page.request.post(`${WEB}/api/issues`, { data: { title, status: 'todo' } })).json()) as { issue: Issue }).issue),
+    )
+    const properties = page.getByRole('complementary', { name: 'Properties' })
+    const blockedBy = properties.locator('[data-property-label="Blocked by"]')
+    const blocking = properties.locator('[data-property-label="Blocking"]')
+    const notice = page.getByTestId('issue-blocked-notice')
+
+    await page.goto(`${WEB}/#/issues/${b.identifier}`)
+    await page.getByRole('heading', { name: b.title }).waitFor()
+    expect('no notice without Blockers', (await notice.count()) === 0)
+    await blockedBy.getByRole('button', { name: 'Add blocker' }).click()
+    await page.getByLabel('Search issues to add as blockers').fill(a.title)
+    await page.locator(`[data-candidate="${a.identifier}"]`).click()
+    await blockedBy.locator(`[data-blocker="${a.identifier}"]`).waitFor()
+    expect('the picker adds the Blocker', true)
+    expect('and keeps out the Issue itself', (await page.locator(`[data-candidate="${b.identifier}"]`).count()) === 0)
+    await page.keyboard.press('Escape')
+    await notice.locator(`[data-blocker="${a.identifier}"]`).waitFor()
+    expect('the notice names the Blocker', (await notice.textContent())?.includes(a.title) ?? false)
+
+    await page.goto(`${WEB}/#/issues`)
+    const row = page.locator(`[data-issue="${b.identifier}"]`)
+    await row.waitFor()
+    expect('the Issues list marks the row blocked', (await row.locator('[data-blocked-marker]').getAttribute('title')) === 'Blocked by 1 issue')
+    expect('and not the Blocker', (await page.locator(`[data-issue="${a.identifier}"] [data-blocked-marker]`).count()) === 0)
+
+    await page.goto(`${WEB}/#/issues/${a.identifier}`)
+    await page.getByRole('heading', { name: a.title }).waitFor()
+    await blocking.locator(`[data-blocker="${b.identifier}"]`).waitFor()
+    expect('the Blocker lists it under Blocking', true)
+    expect('Blocking has no controls', (await blocking.getByRole('button').count()) === 0)
+    await blockedBy.getByRole('button', { name: 'Add blocker' }).click()
+    await page.getByLabel('Search issues to add as blockers').fill(b.title)
+    await page.locator(`[data-candidate="${b.identifier}"]`).click()
+    await page.getByText('an issue cannot be blocked by an issue it blocks').first().waitFor()
+    expect('a cycle shows the API\'s error', true)
+    await page.keyboard.press('Escape')
+    expect('and adds nothing', (await blockedBy.locator('[data-blocker]').count()) === 0)
+
+    await page.request.patch(`${WEB}/api/issues/${a.id}`, { data: { status: 'done' } })
+    await page.goto(`${WEB}/#/issues/${b.identifier}`)
+    await page.getByRole('heading', { name: b.title }).waitFor()
+    await blockedBy.locator(`[data-blocker="${a.identifier}"]`).waitFor()
+    expect('a done Blocker ends the notice', (await notice.count()) === 0)
+
+    const v = await invited(page, 'viewer')
+    await v.page.goto(`${WEB}/#/issues/${b.identifier}`)
+    const vProps = v.page.getByRole('complementary', { name: 'Properties' })
+    await vProps.locator(`[data-property-label="Blocked by"] [data-blocker="${a.identifier}"]`).waitFor()
+    expect('a Viewer sees the Blocker', true)
+    expect('without the picker or ×', (await vProps.locator('[data-property-label="Blocked by"]').getByRole('button').count()) === 0)
+    await v.leave()
+
+    await blockedBy.getByRole('button', { name: `Remove ${a.identifier} as blocker` }).click()
+    await blockedBy.locator('[data-blocker]').waitFor({ state: 'detached' })
+    expect('× removes the Blocker', ((await (await page.request.get(`${WEB}/api/issues/${b.id}`)).json()) as { issue: { blocked_by: unknown[] } }).issue.blocked_by.length === 0)
+
+    for (const i of [a, b, c]) await page.request.delete(`${WEB}/api/issues/${i.id}`)
     await page.close()
   },
   async hidden() {

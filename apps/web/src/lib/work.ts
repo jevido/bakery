@@ -62,6 +62,9 @@ export const workLabel = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g
 
 export type IssueRef = { id: number; identifier: string; title: string }
 
+/** An Issue in another Issue's blocked_by or blocking, with its status so a resolved (done) one shows. */
+export type Blocker = IssueRef & { status: IssueStatus }
+
 export type Issue = {
   id: number
   number: number
@@ -80,10 +83,12 @@ export type Issue = {
   cancelled_at: string | null
   created_at: string
   updated_at: string
+  /** On list rows: how many of its Blockers are not done yet. */
+  unresolved_blockers?: number
 }
 
-/** One Issue as its page shows it: with its Sub-issues. */
-export type IssueDetail = Issue & { description: string; children: Issue[] }
+/** One Issue as its page shows it: with its Sub-issues and Blockers both ways. */
+export type IssueDetail = Issue & { description: string; children: Issue[]; blocked_by: Blocker[]; blocking: Blocker[] }
 
 /** What creating or changing an Issue sends; null clears a reference. */
 export type IssueInput = Partial<{
@@ -95,6 +100,8 @@ export type IssueInput = Partial<{
   project_id: number | null
   goal_id: number | null
   parent_id: number | null
+  /** The whole set of Issues that block it; [] clears them. */
+  blocked_by_ids: number[]
 }>
 
 /**

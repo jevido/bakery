@@ -5,10 +5,13 @@
   // Assignee, Project, Goal and parent, each a picker, then who created it
   // and when it started, completed, was cancelled and last changed. Every
   // pick is one PATCH, sent through `onsave`. Without `editable` the values
-  // are only shown, a Project, Goal or parent as a link. Left out with what
-  // the Issue does not have yet: labels, blockers, reviewers and approvers,
+  // are only shown, a Project, Goal or parent as a link. "Blocked by" and
+  // "Blocking" follow Parent, each Issue as a pill linking to it. Left out
+  // with what the Issue does not have yet: labels, reviewers and approvers,
   // the execution workspace and the agent's model.
+  import { X } from '@lucide/svelte'
   import type { Snippet } from 'svelte'
+  import BlockerPicker from './BlockerPicker.svelte'
   import { Separator } from '$lib/components/ui/separator'
   import { formatDate } from './format'
   import Identity from './Identity.svelte'
@@ -17,7 +20,7 @@
   import { href } from './router.svelte'
   import type { Member } from './session.svelte'
   import StatusIcon from './StatusIcon.svelte'
-  import type { Goal, Issue, IssueDetail, IssueInput } from './work'
+  import type { Blocker, Goal, Issue, IssueDetail, IssueInput } from './work'
 
   let {
     issue,
@@ -53,6 +56,7 @@
     }
     return out
   })
+  const blockedByIds = $derived(issue.blocked_by.map((b) => b.id))
   const none = { value: null, label: 'None' }
   const memberOptions = $derived([{ value: null, label: 'No assignee' }, ...members.map((m) => ({ value: m.id as number | null, label: m.name }))])
   const projectOptions = $derived([{ value: null, label: 'No project' }, ...projects.map((p) => ({ value: p.id as number | null, label: p.name }))])
@@ -63,11 +67,36 @@
   ])
 </script>
 
-{#snippet row(label: string, value: Snippet)}
-  <div class="flex w-full min-w-0 items-center gap-3 py-1" data-property-row={label}>
-    <span class="w-24 shrink-0 truncate text-xs text-muted-foreground" title={label}>{label}</span>
+<!-- wrap, for rows of pills, lines the label up with the first one. -->
+{#snippet row(label: string, value: Snippet, wrap = false)}
+  <div class={['flex w-full min-w-0 gap-3 py-1', wrap ? 'items-start' : 'items-center']} data-property-row={label} data-property-label={label}>
+    <span class={['w-24 shrink-0 truncate text-xs text-muted-foreground', wrap && 'mt-0.5']} title={label}>{label}</span>
     <div class="flex min-w-0 flex-1 items-center gap-1.5">{@render value()}</div>
   </div>
+{/snippet}
+
+{#snippet pill(b: Blocker, onremove?: () => void)}
+  <span class="group relative inline-flex max-w-full min-w-0" data-slot="issue-reference" data-blocker={b.identifier}>
+    <a
+      href={href(`/issues/${b.identifier}`)}
+      title={`${b.identifier}: ${b.title}`}
+      class={['inline-flex max-w-full min-w-0 items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs no-underline hover:bg-accent/50', onremove && 'pr-6']}
+    >
+      <StatusIcon status={b.status} size="sm" />
+      <span class="shrink-0">{b.identifier}</span>
+      <span class="min-w-0 truncate text-muted-foreground">{b.title}</span>
+    </a>
+    {#if onremove}
+      <button
+        type="button"
+        aria-label={`Remove ${b.identifier} as blocker`}
+        class="absolute top-1/2 right-1 inline-flex size-4 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        onclick={onremove}
+      >
+        <X class="size-3" />
+      </button>
+    {/if}
+  </span>
 {/snippet}
 
 {#snippet muted(text: string)}<span class="text-sm text-muted-foreground">{text}</span>{/snippet}
@@ -130,6 +159,29 @@
       {/if}
     {/snippet}
     {@render row('Parent', parent)}
+    {#snippet blockedBy()}
+      <div class="flex min-w-0 flex-col items-start gap-1">
+        {#each issue.blocked_by as b (b.id)}
+          {@render pill(b, editable ? () => onsave({ blocked_by_ids: blockedByIds.filter((id) => id !== b.id) }) : undefined)}
+        {/each}
+        {#if editable}
+          <BlockerPicker self={issue.id} chosen={blockedByIds} {issues} onchange={(blocked_by_ids) => onsave({ blocked_by_ids })} />
+        {:else if issue.blocked_by.length === 0}
+          {@render muted('None')}
+        {/if}
+      </div>
+    {/snippet}
+    {@render row('Blocked by', blockedBy, true)}
+    {#snippet blocking()}
+      <div class="flex min-w-0 flex-col items-start gap-1">
+        {#each issue.blocking as b (b.id)}
+          {@render pill(b)}
+        {:else}
+          {@render muted('None')}
+        {/each}
+      </div>
+    {/snippet}
+    {@render row('Blocking', blocking, true)}
   </div>
   <Separator />
   <div class="space-y-1">

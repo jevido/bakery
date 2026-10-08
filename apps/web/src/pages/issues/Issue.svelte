@@ -7,8 +7,9 @@
   // and the panel says "Saving..." until it answered. Without manage_work
   // the page only reads. Delete sits in the More actions menu with Add
   // sub-issue, and is The Bakery's own: Paperclip hides an Issue instead.
-  // Left out until the Issue has them: agents and runs, checkout, blockers,
-  // documents, attachments, work products, approvals and the activity tab.
+  // While a Blocker is not done, IssueBlockedNotice sits above the
+  // description. Left out until the Issue has them: agents and runs,
+  // checkout, documents, attachments, work products, approvals and the activity tab.
   import { ChevronRight, Ellipsis, Plus, Trash2 } from '@lucide/svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Button, buttonVariants } from '$lib/components/ui/button'
@@ -19,6 +20,7 @@
   import { ago } from '../../lib/format'
   import Identity from '../../lib/Identity.svelte'
   import InlineEditor from '../../lib/InlineEditor.svelte'
+  import IssueBlockedNotice from '../../lib/IssueBlockedNotice.svelte'
   import IssueProperties from '../../lib/IssueProperties.svelte'
   import NewIssueDialog from '../../lib/NewIssueDialog.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
@@ -81,7 +83,7 @@
     saving++
     try {
       issue = await updateIssue(issue!.id, patch)
-      if (patch.parent_id !== undefined) listIssues().then((is) => (issues = is)).catch(() => {})
+      if (patch.parent_id !== undefined || patch.blocked_by_ids !== undefined) listIssues().then((is) => (issues = is)).catch(() => {})
     } catch (e) {
       toast.error(e instanceof ApiError ? (Object.values(e.errors)[0] ?? e.message) : String(e))
     } finally {
@@ -165,6 +167,7 @@
         </div>
 
         <InlineEditor label="Title" value={i.title} {editable} as="h2" class="text-xl font-bold" onsave={(title) => save({ title })} />
+        <IssueBlockedNotice blockers={i.blocked_by} />
         <InlineEditor
           label="Description"
           value={i.description}
