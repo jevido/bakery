@@ -67,7 +67,9 @@ rows and stores the Guild's id on them.
 - An Agent holds Roles through its Agent membership like any Member, and is
   never placed above its Hirer: it is only given Roles below the Hirer's
   highest Role, by someone who could assign them (`CanAssign`), and loses
-  any that end up at or above it.
+  any that end up at or above it: in the same transaction as the change to
+  Roles or Memberships that put them there, and right after an accepted
+  Transfer offer that leaves the old Guild Master ranking by their Roles.
 
 ### Commands
 
@@ -214,12 +216,20 @@ other changes with `write`, `administrator` only with `root`.
   - `guilds.OnGuildDeleting(kind, f)` and `guilds.OnInvitationCreated(f)`:
     see Domain events. Projects, servers, databases (S3 storages),
     notifications, work and agents register `OnGuildDeleting`.
-  - Agent memberships, for the agents context: create one for an Agent with
-    its Hirer and Roles, give or take one of its Roles, end it, and read
-    its Roles and Permissions (the union of its Roles, as for any
-    Membership); each refuses a Role at or above the Hirer's highest (422).
-    agents registers a hook for a Member leaving or being removed from a
-    Guild, which terminates the Agents they hired there.
+  - Agent memberships, for the agents context: `guilds.JoinAgent`
+    (create one for an Agent with its Hirer and Roles),
+    `guilds.AssignAgentRole` / `guilds.RemoveAgentRole` (give or take one
+    of its Roles; the caller has already checked that the actor may manage
+    the Agent, so `manage_roles` is not asked), `guilds.LeaveAgent` (end
+    it), `guilds.AgentRoles` and `guilds.AgentPermissions` (the union of
+    its Roles, as for any Membership), `guilds.RoleNames` (Role names for
+    a payload) and `guilds.RankAbove` (whether one person ranks above
+    another). Giving a Role at or above the Hirer's highest is refused
+    (`guilds.ErrAboveHirer`, 422). The Roles an Agent loses because its
+    Hirer dropped are taken silently, with no Activity event. agents
+    registers `guilds.OnMemberLeaving`, called once a Member is removed
+    from a Guild (there is no other way to leave one yet, and no account
+    deletion), which terminates the Agents they hired there.
 - **Serves:** `GET /api/me` (the Member, their `permissions` in the Current
   guild as wire keys, `administrator` meaning every one, the former `role`
   derived from them for scripts, `instance_admin`, `guild_master` (whether

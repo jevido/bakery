@@ -198,3 +198,41 @@ func TestEveryPermissionIsDescribed(t *testing.T) {
 		t.Errorf("overridable: %v", overridable)
 	}
 }
+
+func TestCanAssignToAgent(t *testing.T) {
+	_, roles := hierarchy()
+	viewer, deployer, admin := roles[1], roles[2], roles[3]
+	cases := []struct {
+		name   string
+		actor  Rank
+		hirer  int
+		role   Role
+		wanted error
+	}{
+		{"a Role below the actor and the Hirer", 3, 3, deployer, nil},
+		{"a Role at the Hirer's highest", 3, 2, deployer, ErrAboveHirer},
+		{"a Role above the Hirer, below the actor", GuildMasterRank, 1, deployer, ErrAboveHirer},
+		{"a Role at the actor's highest", 2, 3, deployer, ErrRoleNotBelow},
+		{"the Base role", 3, 3, roles[0], ErrBaseRoleFixed},
+		{"a Guild Master's Agent", GuildMasterRank, int(GuildMasterRank), admin, nil},
+		{"an Instance admin's Agent", InstanceAdminRank, int(InstanceAdminRank), viewer, nil},
+	}
+	for _, c := range cases {
+		if err := CanAssignToAgent(c.actor, c.hirer, c.role); !errors.Is(err, c.wanted) {
+			t.Errorf("%s: %v, want %v", c.name, err, c.wanted)
+		}
+	}
+}
+
+func TestAgentRolesAbove(t *testing.T) {
+	_, roles := hierarchy()
+	agent := Membership{AgentID: 9, HirerID: 2, RoleIDs: []uint64{2, 5}}
+	if !agent.IsAgent() || (Membership{MemberID: 2}).IsAgent() {
+		t.Error("IsAgent")
+	}
+	for hirer, want := range map[int][]uint64{3: nil, 2: {5}, 1: {2, 5}, 0: {2, 5}} {
+		if got := AgentRolesAbove(roles, agent, hirer); !slices.Equal(got, want) {
+			t.Errorf("Hirer at %d: %v, want %v", hirer, got, want)
+		}
+	}
+}

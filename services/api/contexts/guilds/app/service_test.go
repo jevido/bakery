@@ -153,7 +153,7 @@ func (m *memStore) ListForMember(_ context.Context, memberID uint64) ([]domain.M
 	defer m.mu.Unlock()
 	var out []domain.Membership
 	for _, x := range m.memberships {
-		if x.MemberID == memberID {
+		if !x.IsAgent() && x.MemberID == memberID {
 			out = append(out, x)
 		}
 	}
@@ -164,7 +164,7 @@ func (m *memStore) Of(_ context.Context, guildID, memberID uint64) (domain.Membe
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, x := range m.memberships {
-		if x.GuildID == guildID && x.MemberID == memberID {
+		if x.GuildID == guildID && !x.IsAgent() && x.MemberID == memberID {
 			return x, true, nil
 		}
 	}
@@ -215,12 +215,23 @@ func (m *memStore) roleOf(guildID, memberID uint64) (string, bool) {
 	return "", true
 }
 
+func (m *memStore) OfAgent(_ context.Context, guildID, agentID uint64) (domain.Membership, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, x := range m.memberships {
+		if x.GuildID == guildID && x.IsAgent() && x.AgentID == agentID {
+			return x, true, nil
+		}
+	}
+	return domain.Membership{}, false, nil
+}
+
 func (m *memStore) ListForGuild(_ context.Context, guildID uint64) ([]domain.Membership, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []domain.Membership
 	for _, x := range m.memberships {
-		if x.GuildID == guildID {
+		if x.GuildID == guildID && !x.IsAgent() {
 			out = append(out, x)
 		}
 	}
@@ -300,6 +311,18 @@ func (m *memStore) Change(_ context.Context, guildID uint64, decide func(Hierarc
 	}
 	if c.Membership != nil {
 		m.memberships[slices.IndexFunc(m.memberships, func(x domain.Membership) bool { return x.ID == c.Membership.ID })].RoleIDs = c.Membership.RoleIDs
+	}
+	for i, a := range c.Agents {
+		if a.ID == 0 {
+			for _, x := range m.memberships {
+				a.ID = max(a.ID, x.ID+1)
+			}
+			a.GuildID = guildID
+			c.Agents[i] = a
+			m.memberships = append(m.memberships, a)
+			continue
+		}
+		m.memberships[slices.IndexFunc(m.memberships, func(x domain.Membership) bool { return x.ID == a.ID })].RoleIDs = a.RoleIDs
 	}
 	if c.Override != nil {
 		v := *c.Override

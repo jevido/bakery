@@ -30,10 +30,14 @@ func (r guildRecord) toDomain() domain.Guild {
 	return domain.Guild{ID: r.ID, Name: r.Name, Description: r.Description, MasterID: r.MasterID, IssuePrefix: r.IssuePrefix}
 }
 
+// membershipRecord is a person's Membership (UserID) or an Agent
+// membership (AgentID with its Hirer), never both.
 type membershipRecord struct {
-	ID      uint64 `gorm:"primaryKey"`
-	GuildID uint64
-	UserID  uint64
+	ID            uint64 `gorm:"primaryKey"`
+	GuildID       uint64
+	UserID        *uint64
+	AgentID       *uint64
+	HirerMemberID *uint64
 	orm.Timestamps
 }
 
@@ -201,7 +205,7 @@ func create(tx contractsorm.Query, g domain.Guild) (guildRecord, error) {
 			admin = rr.ID
 		}
 	}
-	m := membershipRecord{GuildID: rec.ID, UserID: g.MasterID}
+	m := membershipRecord{GuildID: rec.ID, UserID: &g.MasterID}
 	if err := tx.Create(&m); err != nil {
 		return guildRecord{}, err
 	}
@@ -217,7 +221,16 @@ func (Memberships) ListForMember(ctx context.Context, memberID uint64) ([]domain
 
 func (Memberships) ListForGuild(ctx context.Context, guildID uint64) ([]domain.Membership, error) {
 	q := query(ctx)
-	return list(q, q.Where("guild_id", guildID).OrderBy("id"))
+	return list(q, q.Where("guild_id", guildID).Where("user_id IS NOT NULL").OrderBy("id"))
+}
+
+func (Memberships) OfAgent(ctx context.Context, guildID, agentID uint64) (domain.Membership, bool, error) {
+	q := query(ctx)
+	ms, err := list(q, q.Where("guild_id", guildID).Where("agent_id", agentID))
+	if err != nil || len(ms) == 0 {
+		return domain.Membership{}, false, err
+	}
+	return ms[0], true, nil
 }
 
 func (Memberships) Of(ctx context.Context, guildID, memberID uint64) (domain.Membership, bool, error) {
@@ -243,7 +256,7 @@ func list(tx, q contractsorm.Query) ([]domain.Membership, error) {
 	ids := make([]any, len(recs))
 	at := make(map[uint64]int, len(recs))
 	for i, r := range recs {
-		out[i] = domain.Membership{ID: r.ID, GuildID: r.GuildID, MemberID: r.UserID}
+		out[i] = domain.Membership{ID: r.ID, GuildID: r.GuildID, MemberID: idOf(r.UserID), AgentID: idOf(r.AgentID), HirerID: idOf(r.HirerMemberID)}
 		ids[i], at[r.ID] = r.ID, i
 	}
 	var held []membershipRoleRecord
@@ -255,6 +268,13 @@ func list(tx, q contractsorm.Query) ([]domain.Membership, error) {
 		out[i].RoleIDs = append(out[i].RoleIDs, h.RoleID)
 	}
 	return out, nil
+}
+
+func idOf(id *uint64) uint64 {
+	if id == nil {
+		return 0
+	}
+	return *id
 }
 
 // lockGuild reads the Guild and locks its row until tx ends.
@@ -341,13 +361,20 @@ func store(tx contractsorm.Query, guildID uint64, c *app.Change) error {
 		}
 	}
 	if m := c.Membership; m != nil {
-		if _, err := tx.Exec("DELETE FROM membership_roles WHERE membership_id = ?", m.ID); err != nil {
+		if err := holdExactly(tx, m.ID, m.RoleIDs); err != nil {
 			return err
 		}
-		for _, id := range m.RoleIDs {
-			if err := tx.Create(&membershipRoleRecord{MembershipID: m.ID, RoleID: id}); err != nil {
+	}
+	for i, m := range c.Agents {
+		if m.ID == 0 {
+			rec := membershipRecord{GuildID: guildID, AgentID: &m.AgentID, HirerMemberID: &m.HirerID}
+			if err := tx.Create(&rec); err != nil {
 				return err
 			}
+			c.Agents[i].ID, c.Agents[i].GuildID = rec.ID, guildID
+		}
+		if err := holdExactly(tx, c.Agents[i].ID, m.RoleIDs); err != nil {
+			return err
 		}
 	}
 	if c.Override != nil {
@@ -361,6 +388,19 @@ func store(tx contractsorm.Query, guildID uint64, c *app.Change) error {
 			return err
 		}
 		if _, err := tx.Where("id", c.RemovedMembership).Where("guild_id", guildID).Delete(&membershipRecord{}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// holdExactly makes the Membership hold exactly roleIDs.
+func holdExactly(tx contractsorm.Query, membershipID uint64, roleIDs []uint64) error {
+	if _, err := tx.Exec("DELETE FROM membership_roles WHERE membership_id = ?", membershipID); err != nil {
+		return err
+	}
+	for _, id := range roleIDs {
+		if err := tx.Create(&membershipRoleRecord{MembershipID: membershipID, RoleID: id}); err != nil {
 			return err
 		}
 	}

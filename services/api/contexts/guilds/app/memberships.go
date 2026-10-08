@@ -131,7 +131,8 @@ func (s *Service) MembershipsIn(ctx context.Context, guildID uint64) ([]domain.M
 
 // RemoveMembership takes a Member out of the Guild by the hierarchy's
 // rules; their API tokens of the Guild and a Transfer offer to them go with
-// it, and they keep their account and other Memberships.
+// it, the Agents they hired lose every Role and OnMemberLeaving is told,
+// and they keep their account and other Memberships.
 func (s *Service) RemoveMembership(ctx context.Context, guildID, actorID uint64, actor domain.Permissions, memberID uint64) error {
 	_, err := s.manage(ctx, guildID, actorID, actor, domain.PermissionManageMembers, memberID, func(_ Hierarchy, _ domain.Actor, target domain.Membership) (Change, error) {
 		return Change{RemovedMembership: target.ID}, nil
@@ -142,7 +143,10 @@ func (s *Service) RemoveMembership(ctx context.Context, guildID, actorID uint64,
 	if err := s.offers.WithdrawTo(ctx, guildID, memberID); err != nil {
 		return err
 	}
-	return s.members.RevokeAPITokens(ctx, memberID, guildID)
+	if err := s.members.RevokeAPITokens(ctx, memberID, guildID); err != nil {
+		return err
+	}
+	return s.memberLeft(ctx, guildID, memberID)
 }
 
 // ResetTwoFactor switches off the two-factor of a Member of the Guild who
@@ -207,9 +211,9 @@ func (s *Service) manage(ctx context.Context, guildID, actorID uint64, perms dom
 	})
 }
 
-// changeRoles is Roles.Change with the actor asking for it.
+// changeRoles is change with the actor asking for it.
 func (s *Service) changeRoles(ctx context.Context, guildID, actorID uint64, perms domain.Permissions, decide func(Hierarchy, domain.Actor) (Change, error)) (Change, error) {
-	return s.roles.Change(ctx, guildID, func(h Hierarchy) (Change, error) {
+	return s.change(ctx, guildID, func(h Hierarchy) (Change, error) {
 		a, err := s.actor(ctx, h, actorID, perms)
 		if err != nil {
 			return Change{}, err
@@ -218,9 +222,22 @@ func (s *Service) changeRoles(ctx context.Context, guildID, actorID uint64, perm
 	})
 }
 
+// change is Roles.Change that also takes from every Agent membership the
+// Roles its Hirer no longer ranks above once the Change is made, so an
+// Agent never stays above the person who hired it.
+func (s *Service) change(ctx context.Context, guildID uint64, decide func(Hierarchy) (Change, error)) (Change, error) {
+	return s.roles.Change(ctx, guildID, func(h Hierarchy) (Change, error) {
+		c, err := decide(h)
+		if err != nil {
+			return Change{}, err
+		}
+		return c, s.keepAgentsBelowHirers(ctx, h, &c)
+	})
+}
+
 func membershipOf(ms []domain.Membership, memberID uint64) (domain.Membership, bool) {
 	for _, m := range ms {
-		if m.MemberID == memberID {
+		if !m.IsAgent() && m.MemberID == memberID {
 			return m, true
 		}
 	}

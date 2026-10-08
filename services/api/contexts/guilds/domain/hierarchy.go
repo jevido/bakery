@@ -12,6 +12,7 @@ var (
 	ErrMemberNotBelow = errors.New("you can only manage members whose highest role is below yours")
 	ErrNotHeld        = errors.New("you can only grant permissions you hold")
 	ErrInvalidOrder   = errors.New("the order must name every role except @everyone once")
+	ErrAboveHirer     = errors.New("an agent cannot hold a role at or above its hirer's highest role")
 )
 
 // ErrMissing refuses an actor without the Permission an action needs.
@@ -89,6 +90,32 @@ func CanAssign(actor Rank, role Role) error {
 		return ErrBaseRoleFixed
 	}
 	return CanEditRole(actor, role)
+}
+
+// CanAssignToAgent says whether actor may give an Agent role: CanAssign,
+// and role must rank below hirerHighest, the Rank of the Agent's Hirer
+// (above every Role for a Guild Master or the Instance admin), so an Agent
+// is never placed above the person who hired it.
+func CanAssignToAgent(actor Rank, hirerHighest int, role Role) error {
+	if err := CanAssign(actor, role); err != nil {
+		return err
+	}
+	if role.Position >= hirerHighest {
+		return ErrAboveHirer
+	}
+	return nil
+}
+
+// AgentRolesAbove is the ids of the Roles agent holds at or above
+// hirerHighest, which it loses when its Hirer drops there.
+func AgentRolesAbove(roles []Role, agent Membership, hirerHighest int) []uint64 {
+	var out []uint64
+	for _, r := range roles {
+		if !r.Base && r.Position >= hirerHighest && slices.Contains(agent.RoleIDs, r.ID) {
+			out = append(out, r.ID)
+		}
+	}
+	return out
 }
 
 // CanGrant says whether someone holding held may change a Role's

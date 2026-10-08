@@ -2,8 +2,10 @@
 // from the guilds context: the Auth, Deploy, Can, Owns and InProject
 // middlewares, Current, Allows, Permissions and VisibleProjects, a
 // Project's Permission override routes and ForgetProject, IsGuildMaster,
-// IssuePrefix and IsMember, the routes, the InvitationCreated event, the OnGuildDeleting check, and
-// Boot. Nothing else in contexts/guilds is for outside use.
+// IssuePrefix and IsMember, Agent memberships (JoinAgent, AssignAgentRole,
+// RemoveAgentRole, LeaveAgent, AgentRoles, AgentPermissions, RoleNames,
+// RankAbove, OnMemberLeaving), the routes, the InvitationCreated event, the
+// OnGuildDeleting check, and Boot. Nothing else in contexts/guilds is for outside use.
 package guilds
 
 import (
@@ -209,6 +211,112 @@ func IssuePrefix(ctx context.Context, guildID uint64) (string, error) {
 // an Assignee or an owner must.
 func IsMember(ctx context.Context, guildID, memberID uint64) (bool, error) {
 	return service.IsMember(ctx, guildID, memberID)
+}
+
+// ErrAboveHirer refuses an Agent a Role at or above its Hirer's highest
+// (422).
+var ErrAboveHirer = domain.ErrAboveHirer
+
+// ErrAgentNotFound is the answer for an Agent without an Agent membership
+// in the Guild.
+var ErrAgentNotFound = app.ErrAgentNotFound
+
+// Role is a Guild's Role as the agents context reads it.
+type Role struct {
+	ID       uint64
+	Name     string
+	Color    string
+	Position int
+}
+
+// JoinAgent gives an Agent of the Guild its Agent membership, hired by
+// hirerID (a Member there, with hirerPerms) and holding roleIDs: each one
+// below the Hirer's highest Role, with Permissions the Hirer holds. The
+// Agent never ranks above its Hirer: whenever the Hirer drops, the Agent
+// loses its Roles at or above the Hirer's new highest, silently.
+func JoinAgent(ctx context.Context, guildID, hirerID, agentID uint64, hirerPerms []string, roleIDs []uint64) error {
+	perms, err := domain.ParsePermissions(hirerPerms)
+	if err != nil {
+		return err
+	}
+	_, err = service.JoinAgent(ctx, guildID, hirerID, agentID, perms, roleIDs)
+	return err
+}
+
+// AssignAgentRole gives the Agent a Role below the actor's highest and its
+// Hirer's. The caller has already checked that the actor may manage this
+// Agent; manage_roles is not needed.
+func AssignAgentRole(ctx context.Context, guildID, actorID uint64, actorPerms []string, agentID, roleID uint64) error {
+	perms, err := domain.ParsePermissions(actorPerms)
+	if err != nil {
+		return err
+	}
+	_, err = service.AssignAgentRole(ctx, guildID, actorID, perms, agentID, roleID)
+	return err
+}
+
+// RemoveAgentRole takes a Role below the actor's highest from the Agent,
+// as AssignAgentRole.
+func RemoveAgentRole(ctx context.Context, guildID, actorID uint64, actorPerms []string, agentID, roleID uint64) error {
+	perms, err := domain.ParsePermissions(actorPerms)
+	if err != nil {
+		return err
+	}
+	_, err = service.RemoveAgentRole(ctx, guildID, actorID, perms, agentID, roleID)
+	return err
+}
+
+// LeaveAgent ends the Agent's Agent membership with its Roles, when it is
+// terminated; nothing when it has none.
+func LeaveAgent(ctx context.Context, guildID, agentID uint64) error {
+	return service.LeaveAgent(ctx, guildID, agentID)
+}
+
+// AgentRoles lists the Roles the Agent holds besides the Base role, top
+// first.
+func AgentRoles(ctx context.Context, guildID, agentID uint64) ([]Role, error) {
+	roles, err := service.AgentRoles(ctx, guildID, agentID)
+	return toRoles(roles), err
+}
+
+// AgentPermissions lists the wire keys of what the Agent's Roles allow, the
+// Base role's included; administrator means every one.
+func AgentPermissions(ctx context.Context, guildID, agentID uint64) ([]string, error) {
+	p, err := service.AgentPermissions(ctx, guildID, agentID)
+	return p.Expand().Keys(), err
+}
+
+// RoleNames are the names of the Guild's Roles among ids, top first, for an
+// Approval's payload; ids not in the Guild are left out.
+func RoleNames(ctx context.Context, guildID uint64, ids []uint64) ([]string, error) {
+	roles, err := service.RolesAmong(ctx, guildID, ids)
+	out := make([]string, len(roles))
+	for i, r := range roles {
+		out[i] = r.Name
+	}
+	return out, err
+}
+
+// RankAbove reports whether actorID ranks above memberID in the Guild: the
+// Guild Master above everyone, the Instance admin above everyone else,
+// otherwise by highest Role.
+func RankAbove(ctx context.Context, guildID, actorID, memberID uint64) (bool, error) {
+	return service.RankAbove(ctx, guildID, actorID, memberID)
+}
+
+// OnMemberLeaving registers f, called once a Member has been removed from
+// a Guild (the only way a person leaves one today), so the agents context
+// can terminate the Agents they hired there.
+func OnMemberLeaving(f func(ctx context.Context, guildID, memberID uint64) error) {
+	service.OnMemberLeaving(f)
+}
+
+func toRoles(roles []domain.Role) []Role {
+	out := make([]Role, len(roles))
+	for i, r := range roles {
+		out[i] = Role{ID: r.ID, Name: r.Name, Color: r.Color, Position: r.Position}
+	}
+	return out
 }
 
 // Boot subscribes guilds to what identity announces: Setup's Instance admin

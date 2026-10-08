@@ -138,15 +138,24 @@ func (s *Service) AcceptOffer(ctx context.Context, id, by uint64) error {
 	if _, err := s.offer(ctx, id, by); err != nil {
 		return err
 	}
-	return s.offers.Accept(ctx, id, func(g *domain.Guild, o *domain.Offer, isMember bool) error {
+	var guildID uint64
+	err := s.offers.Accept(ctx, id, func(g *domain.Guild, o *domain.Offer, isMember bool) error {
 		if err := o.Accept(g, s.Now(), by); err != nil {
 			return err
 		}
 		if !isMember {
 			return domain.ErrOfferNotMember
 		}
+		guildID = g.ID
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	// The old Guild Master now ranks by their Roles: the Agents they hired
+	// lose what is no longer below them, right after the swap.
+	_, err = s.change(ctx, guildID, func(Hierarchy) (Change, error) { return Change{}, nil })
+	return err
 }
 
 // DeclineOffer is the offered Member (by) turning the offer down.

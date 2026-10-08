@@ -41,10 +41,14 @@ type Guilds interface {
 type Memberships interface {
 	// ListForMember lists the Member's Memberships by Guild id.
 	ListForMember(ctx context.Context, memberID uint64) ([]domain.Membership, error)
-	// ListForGuild lists the Guild's Memberships.
+	// ListForGuild lists the Guild's Memberships of people, never an
+	// Agent membership.
 	ListForGuild(ctx context.Context, guildID uint64) ([]domain.Membership, error)
 	// Of is the Member's Membership in the Guild, false without one.
 	Of(ctx context.Context, guildID, memberID uint64) (domain.Membership, bool, error)
+	// OfAgent is the Agent's Agent membership in the Guild, false without
+	// one.
+	OfAgent(ctx context.Context, guildID, agentID uint64) (domain.Membership, bool, error)
 }
 
 // Roles stores the Roles of every Guild and which of them each Membership
@@ -60,8 +64,8 @@ type Roles interface {
 	Change(ctx context.Context, guildID uint64, decide func(Hierarchy) (Change, error)) (Change, error)
 }
 
-// Hierarchy is a Guild with its Roles by Position and its Memberships, as
-// Roles.Change hands them over.
+// Hierarchy is a Guild with its Roles by Position and its Memberships,
+// Agent memberships included, as Roles.Change hands them over.
 type Hierarchy struct {
 	Guild       domain.Guild
 	Roles       []domain.Role
@@ -82,6 +86,9 @@ type Change struct {
 	// Override, when set, replaces the Project's Override for its Role or
 	// Member; an empty one deletes it.
 	Override *domain.Override
+	// Agents are Agent memberships that hold exactly their RoleIDs
+	// afterwards; one without an ID is created.
+	Agents []domain.Membership
 }
 
 // Members is what guilds needs to know and ask of identity's Members.
@@ -109,6 +116,7 @@ type Service struct {
 	Now func() time.Time
 
 	onDeleting []deletingCheck
+	onLeaving  []func(ctx context.Context, guildID, memberID uint64) error
 }
 
 type deletingCheck struct {
