@@ -103,17 +103,23 @@ Desktop of the same person may win, which is a 409 and fine), and starts
 
 ```sh
 claude --print - --output-format stream-json --verbose --permission-mode acceptEdits \
-  --mcp-config <run dir>/mcp.json --strict-mcp-config \
-  --add-dir <run dir>/skill --allowedTools 'mcp__bakery__*'
+  --mcp-config <run dir>/.bakery/mcp.json --strict-mcp-config \
+  --add-dir <run dir>/.bakery --allowedTools mcp__bakery
 ```
 
-with the Issue as its prompt on stdin, `BAKERY_API_URL` (the Bakery's
-address) and `BAKERY_API_KEY` (the Run key from the claim's answer) in its
-environment, The Bakery's MCP server (`bakery-desktop mcp`, by this
-binary's own path) as its only MCP server, and The Bakery skill, embedded
-in the binary and written out per Run, as an extra directory, in the scratch directory
-`$BAKERY_DESKTOP_HOME/runs/<run id>` (0700), in its own process group, and
-with `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` removed from its
+in the scratch directory `$BAKERY_DESKTOP_HOME/runs/<run id>` (0700), with
+the Run's prompt on stdin, in its own process group. Its environment holds
+`BAKERY_API_URL` (the Bakery's address), `BAKERY_API_KEY` (the Run key from
+the claim's answer, never stored beyond the Run), `BAKERY_GUILD_ID`,
+`BAKERY_AGENT_ID`, `BAKERY_RUN_ID`, and for a Run woken for an Issue
+`BAKERY_ISSUE_ID` and `BAKERY_WAKE_REASON`. Per Run the Runner writes
+`.bakery/mcp.json` (0600: it holds the Run key), naming this binary's own
+`mcp` command as the only MCP server (`--strict-mcp-config` keeps the
+person's own MCP servers out of an Agent's Run), and The Bakery skill
+(`runner/skill/bakery/SKILL.md`, embedded in the binary) at
+`.bakery/.claude/skills/bakery/SKILL.md`, where `claude` finds it through
+`--add-dir`. The `.bakery` directory is removed when the Run ends. `claude`
+runs with `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` removed from its
 environment so `claude` uses the person's own login and never an API key.
 `BAKERY_CLAUDE` names another binary: every check uses the
 stand-in in `standin/claude` (`task desktop:standin` builds it to

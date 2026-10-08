@@ -37,6 +37,9 @@ type Runner struct {
 	// Claude is the claude binary; empty means BAKERY_CLAUDE, else
 	// `claude` on PATH.
 	Claude string
+	// Self is the binary claude starts as The Bakery's MCP server, with
+	// `mcp`; empty means this executable (bakery-desktop).
+	Self string
 	// Home is where each Run gets its working directory, runs/<run id>.
 	Home string
 	// Max is how many Runs run at once; 0 means BAKERY_RUNNER_MAX, else 2.

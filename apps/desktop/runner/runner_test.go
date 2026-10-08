@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/jevido/bakery/apps/desktop/bakery"
+	"github.com/jevido/bakery/apps/desktop/mcp"
 	"github.com/jevido/bakery/apps/desktop/store"
 )
 
@@ -23,6 +25,19 @@ import (
 var standin string
 
 func TestMain(m *testing.M) {
+	// The Runner names its own executable as the bakery MCP server; in
+	// these tests that is this test binary, started with `mcp`.
+	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+		cfg, err := mcp.ConfigFromEnv(os.Getenv)
+		if err == nil {
+			err = mcp.Run(context.Background(), cfg, "test")
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	dir, err := os.MkdirTemp("", "runner-standin")
 	if err != nil {
 		panic(err)
@@ -35,6 +50,66 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)
+}
+
+func TestRunEnvGivesTheRunAndNoAPIKey(t *testing.T) {
+	run := bakery.DesktopRun{ID: 41, Guild: bakery.Named{ID: 1}, Agent: bakery.RunAgent{ID: 3}, RunKey: "bky_run_x",
+		Issue: &bakery.RunIssue{ID: 12}, WakeReason: "issue_assigned"}
+	got := strings.Join(runEnv([]string{"PATH=/bin", "ANTHROPIC_API_KEY=sk-x", "BAKERY_API_KEY=old"}, "https://bakery.test", run), ",")
+	want := "PATH=/bin,BAKERY_API_KEY=old,BAKERY_AGENT_ID=3,BAKERY_API_KEY=bky_run_x,BAKERY_API_URL=https://bakery.test," +
+		"BAKERY_GUILD_ID=1,BAKERY_ISSUE_ID=12,BAKERY_RUN_ID=41,BAKERY_WAKE_REASON=issue_assigned"
+	if got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+}
+
+func TestPrepareWritesTheSkillAndTheMCPConfig(t *testing.T) {
+	dir := t.TempDir()
+	r := &Runner{Self: "/opt/bakery-desktop"}
+	run := bakery.DesktopRun{ID: 41, Guild: bakery.Named{ID: 1}, Agent: bakery.RunAgent{ID: 3}, RunKey: "bky_run_x"}
+	args, scratch, err := r.prepare(dir, "https://bakery.test", run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(dir, ".bakery")
+	config := filepath.Join(root, "mcp.json")
+	if scratch != root {
+		t.Fatalf("scratch %s", scratch)
+	}
+	if got, want := strings.Join(args[len(claudeArgs):], " "), "--mcp-config "+config+" --strict-mcp-config --add-dir "+root+" --allowedTools mcp__bakery"; got != want {
+		t.Fatalf("args %q, want %q", got, want)
+	}
+	if b, err := os.ReadFile(filepath.Join(root, ".claude", "skills", "bakery", "SKILL.md")); err != nil || !strings.HasPrefix(string(b), "---\nname: bakery\n") {
+		t.Fatalf("skill %q: %v", b, err)
+	}
+	st, err := os.Stat(config)
+	if err != nil || st.Mode().Perm() != 0o600 {
+		t.Fatalf("mcp.json %v: %v", st, err)
+	}
+	var c struct {
+		MCPServers map[string]struct {
+			Command string            `json:"command"`
+			Args    []string          `json:"args"`
+			Env     map[string]string `json:"env"`
+		} `json:"mcpServers"`
+	}
+	b, _ := os.ReadFile(config)
+	if err := json.Unmarshal(b, &c); err != nil {
+		t.Fatal(err)
+	}
+	s := c.MCPServers["bakery"]
+	if len(c.MCPServers) != 1 || s.Command != "/opt/bakery-desktop" || strings.Join(s.Args, " ") != "mcp" ||
+		s.Env["BAKERY_API_KEY"] != "bky_run_x" || s.Env["BAKERY_API_URL"] != "https://bakery.test" || s.Env["BAKERY_RUN_ID"] != "41" {
+		t.Fatalf("mcp.json %s", b)
+	}
+}
+
+func TestSkillSaysNothingOfPaperclip(t *testing.T) {
+	for _, word := range []string{"Paperclip", "paperclip", "PAPERCLIP", "company"} {
+		if strings.Contains(string(skill), word) {
+			t.Fatalf("the skill says %q", word)
+		}
+	}
 }
 
 func TestClaudeEnvRemovesAPIKeys(t *testing.T) {
@@ -186,12 +261,35 @@ type fakeBakery struct {
 	leases   int
 	finished *bakery.Finish
 	cancel   chan struct{}
+	// calls are the requests made with the Run key, as "METHOD path body".
+	calls []string
+	// onCall, when set, runs on each request made with the Run key.
+	onCall func()
 }
 
 func newFakeBakery(t *testing.T, prompt string) *fakeBakery {
 	f := &fakeBakery{t: t, cancel: make(chan struct{}),
-		run: bakery.DesktopRun{ID: 41, Status: "queued", Guild: bakery.Named{ID: 1, Name: "Bakers"}, Agent: bakery.RunAgent{ID: 3, Name: "Ada"}, Prompt: prompt, NextSeq: 1}}
+		run: bakery.DesktopRun{ID: 41, Status: "queued", Guild: bakery.Named{ID: 1, Name: "Bakers"}, Agent: bakery.RunAgent{ID: 3, Name: "Ada"}, Prompt: prompt, NextSeq: 1,
+			Issue: &bakery.RunIssue{ID: 12, Identifier: "DEF-12", Title: "Fix it"}, WakeReason: "issue_assigned"}}
 	mux := http.NewServeMux()
+	// What the bakery MCP server sends with the Run key, which only
+	// the claimed Run's claude has.
+	mux.HandleFunc("/api/issues/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer bky_run_test" || r.Header.Get("Bakery-Guild") != "1" {
+			writeJSON(w, 401, map[string]any{"message": "Unauthenticated."})
+			return
+		}
+		var body strings.Builder
+		_, _ = io.Copy(&body, r.Body)
+		f.mu.Lock()
+		f.calls = append(f.calls, r.Method+" "+r.URL.Path+" "+strings.TrimSpace(body.String()))
+		onCall := f.onCall
+		f.mu.Unlock()
+		if onCall != nil {
+			onCall()
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+	})
 	authed := func(h http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			if r.Header.Get("Authorization") != "Bearer bky_desk_test" {
@@ -236,7 +334,9 @@ func newFakeBakery(t *testing.T, prompt string) *fakeBakery {
 			return
 		}
 		f.run.Status = "running"
-		writeJSON(w, 200, map[string]any{"run": f.run})
+		claimed := f.run
+		claimed.RunKey = "bky_run_test"
+		writeJSON(w, 200, map[string]any{"run": claimed})
 	}))
 	state := func(w http.ResponseWriter) {
 		writeJSON(w, 200, map[string]any{"run": map[string]any{"id": f.run.ID, "status": f.run.Status, "next_seq": f.run.NextSeq}})
@@ -307,7 +407,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // ends, and answers its `runs` updates.
 func startRunner(t *testing.T, f *fakeBakery) <-chan RunUpdate {
 	t.Helper()
-	home := t.TempDir()
+	return startRunnerIn(t, f, t.TempDir())
+}
+
+func startRunnerIn(t *testing.T, f *fakeBakery, home string) <-chan RunUpdate {
+	t.Helper()
 	s := store.New(filepath.Join(home, "bakeries.json"))
 	if err := s.Put(store.Bakery{Address: f.srv.URL, DesktopID: 9, Key: "bky_desk_test"}); err != nil {
 		t.Fatal(err)
@@ -509,5 +613,55 @@ func TestRunnerTellsWhenSignedOut(t *testing.T) {
 	}
 	if b, _ := f.Find(srv.URL); !b.SignedOut {
 		t.Fatalf("bakery %+v not signed out", b)
+	}
+}
+
+func TestRunnerGivesClaudeTheBakerysTools(t *testing.T) {
+	f := newFakeBakery(t, `Fix it [mcp bakeryCheckoutIssue {"issueId":"DEF-12"}] [mcp bakeryAddComment {"issueId":"DEF-12","body":"hi"}]`)
+	home := t.TempDir()
+	skillFile := filepath.Join(home, "runs", "41", ".bakery", ".claude", "skills", "bakery", "SKILL.md")
+	skillThere := 0
+	f.onCall = func() {
+		if _, err := os.Stat(skillFile); err == nil {
+			skillThere++
+		}
+	}
+	updates := startRunnerIn(t, f, home)
+	u := until(t, updates, "succeeded", "failed", "stopped")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if u.Status != "succeeded" {
+		t.Fatalf("update %+v; finish %+v; events %+v", u, f.finished, f.events)
+	}
+	want := []string{
+		`POST /api/issues/DEF-12/checkout {"expected_statuses":["todo","backlog","blocked"]}`,
+		`POST /api/issues/DEF-12/comments {"body":"hi"}`,
+	}
+	if strings.Join(f.calls, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("calls\n%s\nwant\n%s", strings.Join(f.calls, "\n"), strings.Join(want, "\n"))
+	}
+	if skillThere != 2 {
+		t.Fatalf("the skill was there for %d of 2 calls", skillThere)
+	}
+	if _, err := os.Stat(filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(skillFile))))); !os.IsNotExist(err) {
+		t.Fatalf("the Run's .bakery is still there: %v", err)
+	}
+	var ks []string
+	var tools []string
+	for _, e := range f.events {
+		ks = append(ks, e.Kind)
+		if e.Kind == "tool_call" {
+			var call struct {
+				Name string `json:"name"`
+			}
+			_ = json.Unmarshal(e.Payload, &call)
+			tools = append(tools, call.Name)
+		}
+	}
+	if got, want := strings.Join(ks, " "), "init tool_call tool_result tool_call tool_result assistant result"; got != want {
+		t.Fatalf("events %q, want %q", got, want)
+	}
+	if got := strings.Join(tools, " "); got != "mcp__bakery__bakeryCheckoutIssue mcp__bakery__bakeryAddComment" {
+		t.Fatalf("tool calls %q", got)
 	}
 }

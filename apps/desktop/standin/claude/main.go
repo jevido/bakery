@@ -9,6 +9,10 @@
 //	[fail]   an error_during_execution result, exit 1
 //	[crash]  two lines, something on stderr, exit 1 with no result
 //	[limit]  the CLI's usage-limit message, exit 1
+//	[mcp <tool> <json arguments>]
+//	         calls tool on the bakery MCP server --mcp-config names, printing
+//	         the tool_use and tool_result lines the CLI would (several are
+//	         called in order), then a short successful Run
 //
 // Anything else prints a short successful Run. BAKERY_STANDIN_DELAY sets the
 // pause between lines (milliseconds or a Go duration, default 300 ms).
@@ -34,6 +38,8 @@ type options struct {
 	verbose        bool
 	permissionMode string
 	model          string
+	mcpConfig      string
+	strictMCP      bool
 	prompt         string
 }
 
@@ -62,6 +68,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "Error: When using --print, --output-format=stream-json requires --verbose")
 		return 2
 	}
+	if opts.strictMCP && opts.mcpConfig == "" {
+		fmt.Fprintln(stderr, "Error: --strict-mcp-config requires --mcp-config")
+		return 2
+	}
 	if opts.prompt == "" || opts.prompt == "-" {
 		b, err := io.ReadAll(stdin)
 		if err != nil {
@@ -84,6 +94,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	if s.model == "" {
 		s.model = "claude-standin"
+	}
+	if calls, err := mcpCalls(opts.prompt); err != nil || len(calls) > 0 {
+		if err != nil {
+			s.init()
+			s.result("error_during_execution", true, err.Error())
+			return 1
+		}
+		return s.callTools(opts.mcpConfig, calls)
 	}
 	return s.answer(opts.prompt, stderr)
 }
@@ -120,8 +138,12 @@ func parseArgs(args []string) (options, error) {
 			o.permissionMode = get()
 		case "--model":
 			o.model = get()
+		case "--mcp-config":
+			o.mcpConfig = get()
 		case "--append-system-prompt", "--max-turns", "--allowedTools", "--disallowedTools", "--resume", "--session-id", "--add-dir":
 			get()
+		case "--strict-mcp-config":
+			o.strictMCP = true
 		case "--dangerously-skip-permissions", "--include-partial-messages":
 		default:
 			if strings.HasPrefix(a, "-") && a != "-" {
@@ -172,7 +194,7 @@ func (s *session) emit(line map[string]any, pause time.Duration) {
 	s.lines++
 }
 
-func (s *session) init() {
+func (s *session) init(mcpServers ...map[string]any) {
 	cwd, _ := os.Getwd()
 	s.emit(map[string]any{
 		"type":           "system",
@@ -182,6 +204,7 @@ func (s *session) init() {
 		"tools":          []string{"Bash", "Edit", "Glob", "Grep", "Read", "Write"},
 		"permissionMode": "default",
 		"apiKeySource":   "none",
+		"mcp_servers":    append([]map[string]any{}, mcpServers...),
 	}, s.delay)
 }
 

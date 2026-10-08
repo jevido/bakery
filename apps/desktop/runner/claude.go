@@ -3,6 +3,8 @@ package runner
 import (
 	"bufio"
 	"context"
+	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,6 +61,98 @@ func claudeEnv(env []string) []string {
 		}
 	}
 	return out
+}
+
+// skill is The Bakery skill, written for each Run where claude finds it.
+//
+//go:embed skill/bakery/SKILL.md
+var skill []byte
+
+// runArgs are claudeArgs plus what gives claude The Bakery: the MCP server
+// in mcpConfig and nothing else (--strict-mcp-config, so the person's own
+// MCP servers stay out of an Agent's Run), the skill under addDir (claude
+// loads skills from .claude/skills in a directory added with --add-dir,
+// as Paperclip's claude adapter relies on), and the server's tools allowed
+// without asking.
+func runArgs(mcpConfig, addDir string) []string {
+	return append(append([]string{}, claudeArgs...),
+		"--mcp-config", mcpConfig, "--strict-mcp-config", "--add-dir", addDir, "--allowedTools", "mcp__bakery")
+}
+
+// mcpEnv is what the Bakery's MCP server needs to act for run on the
+// Bakery at address (mcp.ConfigFromEnv reads it).
+func mcpEnv(address string, run bakery.DesktopRun) map[string]string {
+	return map[string]string{
+		"BAKERY_API_URL":  address,
+		"BAKERY_API_KEY":  run.RunKey,
+		"BAKERY_GUILD_ID": strconv.FormatUint(run.Guild.ID, 10),
+		"BAKERY_AGENT_ID": strconv.FormatUint(run.Agent.ID, 10),
+		"BAKERY_RUN_ID":   strconv.FormatUint(run.ID, 10),
+	}
+}
+
+// runEnv is claude's environment for run: env without API keys, plus the
+// Run's Bakery, key, Guild, Agent and Run, and why it was woken (Paperclip's
+// PAPERCLIP_* wake variables), so the skill's curl fallback works too.
+func runEnv(env []string, address string, run bakery.DesktopRun) []string {
+	out := claudeEnv(env)
+	vars := mcpEnv(address, run)
+	if run.Issue != nil {
+		vars["BAKERY_ISSUE_ID"] = strconv.FormatUint(run.Issue.ID, 10)
+	}
+	if run.WakeReason != "" {
+		vars["BAKERY_WAKE_REASON"] = run.WakeReason
+	}
+	names := make([]string, 0, len(vars))
+	for name := range vars {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	// os/exec keeps the last of a repeated name, so these win over any
+	// BAKERY_* the desktop itself was started with.
+	for _, name := range names {
+		out = append(out, name+"="+vars[name])
+	}
+	return out
+}
+
+// prepare writes what claude needs for run under dir/.bakery: the skill at
+// .claude/skills/bakery/SKILL.md and mcp.json naming this executable's
+// `mcp` command as the bakery server. It answers claude's arguments and the
+// directory to remove when the Run ends; mcp.json holds the Run key, so it
+// is the person's alone (0600).
+func (r *Runner) prepare(dir, address string, run bakery.DesktopRun) ([]string, string, error) {
+	self, err := r.self()
+	if err != nil {
+		return nil, "", fmt.Errorf("finding the desktop app's own binary: %w", err)
+	}
+	root := filepath.Join(dir, ".bakery")
+	skillDir := filepath.Join(root, ".claude", "skills", "bakery")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		return nil, "", err
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), skill, 0o600); err != nil {
+		return nil, root, err
+	}
+	config, err := json.MarshalIndent(map[string]any{"mcpServers": map[string]any{
+		"bakery": map[string]any{"type": "stdio", "command": self, "args": []string{"mcp"}, "env": mcpEnv(address, run)},
+	}}, "", "  ")
+	if err != nil {
+		return nil, root, err
+	}
+	mcpConfig := filepath.Join(root, "mcp.json")
+	if err := os.WriteFile(mcpConfig, config, 0o600); err != nil {
+		return nil, root, err
+	}
+	return runArgs(mcpConfig, root), root, nil
+}
+
+// self is the binary that serves `mcp`: Self, else this executable.
+func (r *Runner) self() (string, error) {
+	if r.Self != "" {
+		return r.Self, nil
+	}
+	return os.Executable()
 }
 
 // claude is the binary to start: Claude, else BAKERY_CLAUDE, else
@@ -114,9 +209,17 @@ func (r *Runner) execute(ctx context.Context, c *bakery.Client, run bakery.Deskt
 		fail(err.Error())
 		return
 	}
-	cmd := exec.Command(bin, claudeArgs...)
+	args, scratch, err := r.prepare(dir, c.Address, run)
+	if scratch != "" {
+		defer os.RemoveAll(scratch)
+	}
+	if err != nil {
+		fail("preparing the run's directory: " + err.Error())
+		return
+	}
+	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
-	cmd.Env = claudeEnv(os.Environ())
+	cmd.Env = runEnv(os.Environ(), c.Address, run)
 	cmd.Stdin = strings.NewReader(run.Prompt)
 	ownGroup(cmd)
 	stdout, err := cmd.StdoutPipe()

@@ -143,3 +143,32 @@ func TestRefusesWithoutStreamJSONFlags(t *testing.T) {
 		}
 	}
 }
+
+func TestMCPCallsAreReadInOrder(t *testing.T) {
+	calls, err := mcpCalls(`Do it [mcp bakeryCheckoutIssue {"issueId":"DEF-1"}] then [mcp bakeryAddComment {"issueId":"DEF-1","body":"a ] in it"}]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 || calls[0].tool != "bakeryCheckoutIssue" || calls[1].tool != "bakeryAddComment" || calls[1].args["body"] != "a ] in it" {
+		t.Fatalf("calls %+v", calls)
+	}
+	if _, err := mcpCalls(`[mcp bakeryMe {"x":1}`); err == nil {
+		t.Fatal("no error for a missing ]")
+	}
+}
+
+func TestMCPNeedsAConfig(t *testing.T) {
+	withoutAPIKey(t)
+	var out, errOut bytes.Buffer
+	if code := run(append(baseArgs, "--strict-mcp-config", "hi"), strings.NewReader(""), &out, &errOut); code != 2 ||
+		!strings.Contains(errOut.String(), "--strict-mcp-config requires --mcp-config") {
+		t.Fatalf("strict without a config: exit %d, %q", code, errOut.String())
+	}
+	out.Reset()
+	code := run(append(baseArgs, `ENG-5 [mcp bakeryMe {}]`), strings.NewReader(""), &out, &errOut)
+	ls := lines(t, out.String())
+	last := ls[len(ls)-1]
+	if code != 1 || last["type"] != "result" || last["is_error"] != true || !strings.Contains(last["result"].(string), "--mcp-config") {
+		t.Fatalf("exit %d, last %v", code, last)
+	}
+}
