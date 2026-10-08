@@ -17,8 +17,11 @@ the Board to make, with their Linked issues and Approval comments. Every
 Goal, Issue and Approval belongs to exactly one Guild, and an Issue in a
 Project follows that Project's Permission overrides.
 
-It is **not** responsible (yet) for checkout or document locks: later phases of the guilds goal add them. Agents and their Runs
-are the agents context's; work holds only an Issue's Agent assignee, and
+It also holds each Issue's Checkout: which live Run of its Agent assignee
+works on it now. It is **not** responsible (yet) for document locks: a
+later phase of the guilds goal may add them. Agents and their Runs
+are the agents context's; work holds only an Issue's Agent assignee and the
+Run id of its Checkout, asks agents whether that Run is live, and
 tells agents when an Agent is assigned an open Issue or one of its Issues
 gets a Comment, so agents can wake it.
 It does not own Members, Guilds or Projects either; it stores their ids and asks guilds and projects about them.
@@ -51,10 +54,10 @@ Approval comment, Linked issue) are in
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Goal | Belongs to one Guild. Title 1–200 characters. Goal level and Goal status from their lists. Its parent Goal is in the same Guild and is never the Goal itself or one of its Sub-goals (no cycle). Its owner, if any, is a Member of the Guild. |
-| Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild or an Agent of the Guild that is not terminated (its Agent assignee), never both; terminating the Agent clears it as Assignee of its open Issues. Its Project is in the Guild and its Goal is in the Guild. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. |
-| Comment | Belongs to one Issue and is written by one Member. Body 1–20000 characters. Only its author edits or deletes it. A deleted Comment keeps its place in the thread, its body gone, shown as "deleted". |
-| Issue document | Belongs to one Issue and its Guild. Its Document key is unique per Issue and never changes. Title at most 200 characters (may be empty), body at most 524288 characters, Markdown only. Its Revisions are numbered 1, 2, … without gaps; each save and each Restore adds exactly one Revision, and Revisions are never changed. A save needs the newest Revision as its Base revision (none for the first save), or it is refused. Restoring the newest Revision is refused, since it would change nothing. Deleting the Issue document removes its Revisions. |
-| Activity event | Append-only. Belongs to one Guild and has one Actor (or none once that Member's account is gone) and one Action from the glossary's list, about exactly one Goal, Issue, Approval or Agent. It keeps the Issue's number and title, the Goal's title, the Approval's type and payload title, or the Agent's name, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
+| Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild or an Agent of the Guild that is not terminated (its Agent assignee), never both; terminating the Agent clears it as Assignee of its open Issues. Its Project is in the Guild and its Goal is in the Guild. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. Its Checkout (`checkout_run_id`, `checked_out_at`) names at most one Run, a Run of its Agent assignee; Checkout moves it from one of the expected statuses (`todo`, `backlog`, `blocked` by default, as Paperclip's) to `in_progress`, and an Issue without Assignee takes the checking-out Agent as its Agent assignee. While that Run is `running`, an Agent's change to the Issue from any other Run is 409; once it is not, the Checkout is a Stale checkout, which the same Agent's next Run takes over. A person changing the Assignee clears the Checkout. Release clears it, moves `in_progress` back to `todo` and, on an open Issue, clears the Agent assignee. It is created by a Member or an Agent actor. |
+| Comment | Belongs to one Issue and is written by one Member or one Agent actor (`author_agent`). Body 1–20000 characters. Only its author edits or deletes it. A deleted Comment keeps its place in the thread, its body gone, shown as "deleted". |
+| Issue document | Belongs to one Issue and its Guild. Its Document key is unique per Issue and never changes. Title at most 200 characters (may be empty), body at most 524288 characters, Markdown only. Its Revisions are numbered 1, 2, … without gaps; each save and each Restore adds exactly one Revision, and Revisions are never changed. A save needs the newest Revision as its Base revision (none for the first save), or it is refused. Restoring the newest Revision is refused, since it would change nothing. A Revision's author is a Member or an Agent actor. Deleting the Issue document removes its Revisions. |
+| Activity event | Append-only. Belongs to one Guild and has one Actor, a Member or an Agent actor (none once that Member's account is gone) and one Action from the glossary's list, about exactly one Goal, Issue, Approval or Agent. It keeps the Issue's number and title, the Goal's title, the Approval's type and payload title, or the Agent's name, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
 | Approval | Belongs to one Guild. Approval type and Approval status from their lists; it starts `pending`. A `request_board_approval` payload has a `title` of 1–200 characters and optional `summary`, `recommended_action` and `next_action_on_approval` (each at most 20000 characters) and `risks` (at most 20 strings of at most 500 characters), and nothing else. A `hire_agent` payload is `agent_id`, `name`, `job`, `title`, `icon`, `reports_to` (`{id, name}` or null), `capabilities` and `roles` (Role names), as the agents context sends it; its title is "Hire Agent: <name>". A `hire_agent` Approval is created only through `work.RequestApproval`, never gets Request revision (its Agent cannot change while it waits, so there is nothing to revise), and becomes `cancelled` when its Agent is terminated before a Decision; `cancelled` is not Actionable and never changes again. Approve and reject only from `pending` or `revision_requested` (Actionable); Request revision only from `pending`; Resubmit only from `revision_requested`, which clears the decider, the decision time and the Decision note. A Decision records its decider, time and optional Decision note (at most 20000 characters). Making the same Decision again on an Approval that already has it answers the Approval unchanged and records nothing, as Paperclip's `applied: false`; any other move from a status that does not allow it is refused (422). Its Linked issues are Issues of the same Guild, set when it is requested. Its Approval comments each have one author and a body of 1–20000 characters, and are never edited or deleted. The Approval, its links and its Approval comments go with their Guild; a Linked issue's link goes with the Issue. |
 | Read mark and Inbox archive | Per Member per Issue, at most one of each. Belongs to an Issue and its Guild, and goes with the Issue and with the Member's Membership. Only that Member sets or removes it. Neither is part of the Issue aggregate: they change nothing about the Issue, belong to one person, and many people write them at once, so each is its own small record keyed by (Issue, Member). |
 
@@ -82,12 +85,22 @@ in that Project after its Permission overrides, and is otherwise hidden
 - `WriteComment(body)` [`manage_work`]: moves the Issue's last update to
   now, so a discussed Issue sorts up in lists, as Paperclip's does. This
   touches only the Issue's timestamp, none of its rules, so it is stored
-  with the Comment in one transaction. `EditComment(body)`,
+  with the Comment in one transaction. A Comment by the Issue's own Agent
+  assignee does not wake it (Paperclip skips self-wakes). `EditComment(body)`,
   `DeleteComment()` [`manage_work`, and only the author; anyone else is
   refused (403), and a deleted Comment cannot be changed (409)].
 - `SaveDocument(key, title, body, change summary, base revision)`
   [`manage_work`]: creates the Issue document on its first save, and adds
   a Revision on every save; a stale Base revision is refused (409).
+- `Checkout(expected statuses)` [an Agent principal with `manage_work`,
+  only; a person is 403]: atomically takes the Issue for the Agent's Run,
+  as the Issue's invariants say; another live Run's Checkout, or a status
+  outside the expected ones, is 409 naming the holder or the status.
+  Taking over a Stale checkout of the same Agent is a Checkout like any
+  other. Recorded as `issue.checked_out`.
+- `Release()` [the Run holding the Checkout only; 409 for any other]: gives
+  the Issue back, as the Issue's invariants say. Recorded as
+  `issue.released`.
 - `RestoreRevision(revision)` [`manage_work`]: adds a new Revision with
   that Revision's title and body.
 - `DeleteDocument()` [`manage_work`]: removes the Issue document and its
@@ -285,8 +298,24 @@ type and the payload's title.
   when read, null for none. One that no longer exists, or an Issue or
   Project the person may not view, keeps its id with a null name (or
   title and identifier), so the event never names what is hidden.
+  Routes open to Agent principals (a Run key, through
+  `guilds.AgentsAllowed`), with the Agent membership's Permissions: reading
+  Goals, Issues, their Comments, Issue documents and Revisions, Blockers,
+  the Activity and Approvals; creating and changing Issues, writing
+  Comments, saving Issue documents; and, for Run keys only,
+  `POST /api/issues/{id}/checkout` `{expected_statuses}` and
+  `POST /api/issues/{id}/release`. Tasks 04 and 05 of phase 41 keep this
+  list in step with what they open. An Agent's writes carry `author_agent`
+  / `created_by_agent` `{id, name, icon}`, and its Activity events an
+  Actor of type `agent`. Inbox, Read marks, Approval decisions and
+  deleting are not open to Agents.
+
 - **Consumes:**
-  - from guilds: `guilds.Auth`, `guilds.Can(permission)`,
+  - from agents: the hook it registers to tell whether a Run is live
+    (`running`) and whose it is, for Checkout and Stale checkouts, and the
+    Agent principal's Agent and Run (`guilds.AgentID(ctx)`, the Run from
+    identity's Principal).
+  - from guilds: `guilds.Auth`, `guilds.AgentsAllowed`, `guilds.Can(permission)`,
     `guilds.Current(ctx)` (the Guild every Goal and Issue is stored and
     filtered by), `guilds.MemberID(ctx)` (who creates an Issue, and whom
     `assignee=me` means), `guilds.VisibleProjects(ctx, ids)` (which Projects the
@@ -439,8 +468,23 @@ type and the payload's title.
   has an Agent Actions mode, a CSV export and filters by agent and by kind
   of action. With only the Board acting, entity kind and Actor are the
   filters that mean something.
-- **No atomic checkout yet.** Paperclip's checkout takes an agent and a Run
-  (`POST /issues/:id/checkout` with `agentId`), so it comes with agents.
+- **Checkout only for a Run key.** Paperclip's UI never checks an Issue
+  out for a person either; people assign, Agents check out. The Agent and
+  the Run come from the key, not the body (Paperclip's `agentId` in the
+  body is left out), so an Agent cannot check out for another.
+- **Paperclip's checkout rules kept, its execution locks left out.**
+  Expected statuses with Paperclip's defaults, 409 against another live
+  Run, and the same Agent's next Run taking over a Stale checkout are
+  Paperclip's `checkoutRunId` rules. Its separate `executionRunId` lock,
+  pause holds and run-scoped issue workspaces are left out: one Run per
+  Agent at a time already keeps an Agent from racing itself, and git
+  workspaces are the next slice of the goal.
+- **Release unassigns, as in Paperclip.** A released open Issue goes back
+  to the pool without an Assignee, so a person or another Agent picks it
+  up, instead of waking the same Agent on its next Heartbeat.
+- **An Agent does not wake itself.** A Comment by the Issue's own Agent
+  assignee would queue a Run for the Agent that just wrote it, a loop
+  Paperclip also cuts.
 - **Read marks and Inbox archives are not Activity.** Paperclip logs
   `issue.read_marked` and `issue.inbox_archived` in its activity log. Here
   they are one person's view of the work, not a change to it, and logging

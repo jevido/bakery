@@ -159,7 +159,15 @@ other changes with `write`, `administrator` only with `root`.
     resources permission`), and an API token is refused what its Token
     permissions do not cover by method, as identity describes them. It
     refuses no change by itself: every change route names its Permission
-    with `guilds.Can`.
+    with `guilds.Can`. For an Agent principal (a Run key), its Guild is
+    the Run's (a `Bakery-Guild` header naming another is 403), its
+    Permissions are its Agent membership's, Project overrides resolved as
+    for a Member, and it is let in only on routes marked open to Agents
+    (`guilds.AgentsAllowed`); every other route answers 403 `agents cannot
+    use this route`.
+  - `guilds.AgentsAllowed`: marks a route as open to Agent principals,
+    behind `guilds.Auth`; the owning context still names the route's
+    Permission with `guilds.Can`.
   - `guilds.Deploy`: `guilds.Auth` for Coolify's deploy actions, where an
     API token needs the `deploy` Token permission instead of `write`.
   - `guilds.Can(permission)`: after `guilds.Auth`, only requests that may
@@ -205,6 +213,9 @@ other changes with `write`, `administrator` only with `root`.
   - `guilds.Current(ctx) uint64`: the Current guild's id, which every other
     context stores on what it creates (or reaches through something that
     does) and filters every list and read by.
+  - `guilds.MemberID(ctx)` and `guilds.AgentID(ctx)`: who is asking. For an
+    Agent principal `MemberID` is 0 and `AgentID` names the Agent; for a
+    person it is the other way round.
   - `guilds.IsGuildMaster(ctx, member) bool`: whether the Member is the
     Guild Master of any Guild. Whatever deletes an account or lets a Member
     leave a Guild asks it first and refuses while it is true.
@@ -300,7 +311,7 @@ other changes with `write`, `administrator` only with `root`.
   `POST /api/invitations/by-token/{token}/decline` (204).
 - **Consumes:** identity's `identity.Authenticate(ctx)` (a Principal: the
   Member, whether they are the Instance admin, and for an API token its
-  Guild and Permissions), `identity.ActIn`, identity's API token routes
+  Guild and Permissions; for a Run key the Agent principal), `identity.ActIn`, identity's API token routes
   (registered behind guilds' middlewares), `identity.Members`,
   `identity.MemberByID`, `identity.MemberByEmail`,
   `identity.ResetTwoFactor`, `identity.RevokeAPITokens`,
@@ -509,6 +520,11 @@ other changes with `write`, `administrator` only with `root`.
   highest are removed in the same change, as a Discord bot loses what its
   inviter could not give it. Paperclip's own per-agent permission grants
   are left out: one permission system, not two.
+- **Agents are let in route by route.** Paperclip's agent JWT reaches most
+  of its API and each route checks the actor type. Here every route is
+  closed to Agent principals unless its context marks it open, so a route
+  written for people never serves an Agent by accident; each slice of the
+  goal opens what its Agents need.
 - **The Guild Master changes only by an accepted offer.** A Guild must have
   exactly one at every moment, so it is never deleted or removed, only
   swapped, and only with the receiving person's consent, as Discord's

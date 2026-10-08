@@ -39,6 +39,14 @@ on `PATH` and Wails' Linux libraries (`wails3 doctor`).
 - **`runner`**: no window and no frontend: only the Runner, for every
   connected Bakery, until interrupted. This is how a laptop runs Agents
   without the window open, and how the checks drive it.
+- **`mcp`**: The Bakery's MCP server, over stdio (the official MCP Go SDK).
+  The Runner starts one per `claude` through `--mcp-config`; it reads
+  `BAKERY_API_URL` and `BAKERY_API_KEY` (the Run key) from its environment
+  and turns each tool call into a call to that Bakery's API: who am I, my
+  Inbox, list and read Issues with their Comments and Issue documents,
+  Checkout and Release, write a Comment, change an Issue's status, create
+  a sub-issue, save an Issue document, read Goals and Approvals.
+  Paperclip's `@paperclipai/mcp-server` tool surface in The Bakery's words.
 - **`version`**: prints the version.
 
 ## Connected Bakeries
@@ -88,10 +96,16 @@ has room for (none of that Agent's Runs already running here, and at most
 Desktop of the same person may win, which is a 409 and fine), and starts
 
 ```sh
-claude --print - --output-format stream-json --verbose --permission-mode acceptEdits
+claude --print - --output-format stream-json --verbose --permission-mode acceptEdits \
+  --mcp-config <run dir>/mcp.json --strict-mcp-config \
+  --add-dir <run dir>/skill --allowedTools 'mcp__bakery__*'
 ```
 
-with the Issue as its prompt on stdin, in the scratch directory
+with the Issue as its prompt on stdin, `BAKERY_API_URL` (the Bakery's
+address) and `BAKERY_API_KEY` (the Run key from the claim's answer) in its
+environment, The Bakery's MCP server (`bakery-desktop mcp`, by this
+binary's own path) as its only MCP server, and The Bakery skill, embedded
+in the binary and written out per Run, as an extra directory, in the scratch directory
 `$BAKERY_DESKTOP_HOME/runs/<run id>` (0700), in its own process group, and
 with `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` removed from its
 environment so `claude` uses the person's own login and never an API key.
@@ -101,7 +115,9 @@ stand-in in `standin/claude` (`task desktop:standin` builds it to
 model. It exits 3 when `ANTHROPIC_API_KEY` is in its environment, so each
 check also proves the Runner removed it, and words in the prompt pick what it
 does: `[slow]` (20 lines a second apart), `[fail]`, `[crash]` (no result
-line) and `[limit]` (the CLI's usage-limit message).
+line), `[limit]` (the CLI's usage-limit message) and `[mcp <tool> <json>]`
+(calls that tool of the MCP server it was given and prints the call and
+its result as `tool_use`/`tool_result`).
 `BAKERY_STANDIN_DELAY` sets its pause between lines (300 ms by default).
 
 `runner/transcript.go` turns each line `claude` prints into Run events:

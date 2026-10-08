@@ -7,7 +7,7 @@
 
 Knows who may use this installation of The Bakery: the Members, the one
 Instance admin created by Setup, how a request proves who sent it (a Session,
-an API token or a Desktop key), the Desktops a Member signed in with the
+an API token, a Desktop key or a Run key), the Desktops a Member signed in with the
 Desktop app and the Desktop sign-ins that made them, and each Member's own Profile, Two-factor authentication
 included. It is **not** responsible for what a Member may do where: Guilds,
 Memberships with their Roles and Invitations belong to
@@ -35,6 +35,8 @@ context.
 | Desktop | One signed-in copy of the Desktop app as the server knows it: its Member, a name (the machine's hostname unless the app says otherwise), created, last seen, signed out. |
 | Desktop sign-in | A request the Desktop app makes to be approved in the browser: an id, a secret the app mints (`bky_signin_` and 48 hex characters, stored hashed), the hash of the Desktop key it minted, the name it asks for, and its status `pending`, `approved`, `cancelled` or `expired`. |
 | Desktop key | The `bky_desk_…` bearer secret of a Desktop, stored only as its SHA-256. It acts as its Member in any of their Guilds; the request header `Bakery-Guild` names which. |
+| Run key | The `bky_run_…` bearer secret of one Run, kept by agents as its SHA-256 on the Run. identity only recognises the prefix and asks agents' hook who it is. |
+| Agent principal | Who a Run key request acts as: the Run's Agent in the Run's Guild during that Run. Never a Member. |
 | Sessions valid from | The moment before which a Member's Sessions no longer count; set by a password change, "sign out everywhere else" and a two-factor reset. |
 
 ## Model
@@ -93,6 +95,19 @@ Two-factor authentication, approve a Desktop sign-in, or create, switch,
 leave or delete Guilds or act on Guild Master Transfer offers: those answer
 403 `this needs a signed-in session`.
 
+### What a Run key may do
+
+A request whose bearer starts with `bky_run_` is never looked up as an API
+token or a Desktop key. identity hands the key to the Run key hook agents
+registers, which answers the Run, its Agent and its Guild while the Run is
+`running`, or nothing (401 `invalid token`, also once the Run has ended).
+The request's Principal is then the Agent principal: no Member, no Token
+permissions, the Run's Guild only. It never reaches a SelfService route
+(`/api/me`, Profile, API tokens, Two-factor, Desktop sign-ins, Guild
+switching, Guild Master Transfer offers) nor the Desktop routes: those
+answer 403 `agents cannot use this route`. guilds decides what it may do
+inside its Guild.
+
 ## Integration
 
 - **Publishes:**
@@ -126,6 +141,9 @@ leave or delete Guilds or act on Guild Master Transfer offers: those answer
     answering 401 itself, for guilds when an existing Member accepts an
     Invitation.
   - `identity.OnSetUp(f)`: see Domain events.
+  - `identity.OnRunKey(f)`: the hook agents registers to resolve a Run key
+    to its Run, Agent and Guild; `Principal.Agent()` answers that Agent
+    principal, and `Principal.Member` is empty for it.
   Other contexts learn nothing else about Members.
 - **Consumes:** nothing. Identity never imports guilds; where the first
   Member needs a Guild, guilds subscribes to `SetUp`, and where identity's
@@ -168,6 +186,12 @@ leave or delete Guilds or act on Guild Master Transfer offers: those answer
   scripts must not break. A Desktop key acts as the whole person in every
   Guild, which is what a Session does, so it ends where a Session ends: a
   person who fears their password leaked also cuts off a lost laptop.
+
+- **A Run key is resolved by agents, not identity.** The key belongs to a
+  Run, which is agents' aggregate, and identity must not read agents'
+  tables; a hook keeps identity free of imports, as `OnSetUp` does for
+  guilds. The prefix is checked first so a Run key never costs an API token
+  lookup and is never mistaken for one.
 
 - **The Session lives in a cookie, not an Authorization header.** The
   dashboard follows live logs with `EventSource`, which cannot send headers.
