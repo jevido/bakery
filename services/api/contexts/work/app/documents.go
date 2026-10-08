@@ -103,7 +103,7 @@ func (s *Service) stale(ctx context.Context, d domain.IssueDocument) error {
 
 // SaveDocument creates the Issue's document under key, or saves a new
 // Revision of it on top of the Base revision. created tells which.
-func (s *Service) SaveDocument(ctx context.Context, guildID, memberID uint64, ref, key string, in DocumentInput, visible Visible) (d domain.IssueDocument, created bool, err error) {
+func (s *Service) SaveDocument(ctx context.Context, guildID uint64, by domain.Actor, ref, key string, in DocumentInput, visible Visible) (d domain.IssueDocument, created bool, err error) {
 	i, err := s.Issue(ctx, guildID, ref, visible)
 	if err != nil {
 		return domain.IssueDocument{}, false, err
@@ -121,14 +121,14 @@ func (s *Service) SaveDocument(ctx context.Context, guildID, memberID uint64, re
 		if in.BaseRevisionID != 0 {
 			return domain.IssueDocument{}, false, ErrNoDocumentYet
 		}
-		d, r, err := domain.NewIssueDocument(i.GuildID, i.ID, k, in.Title, in.Body, in.ChangeSummary, memberID, now)
+		d, r, err := domain.NewIssueDocument(i.GuildID, i.ID, k, in.Title, in.Body, in.ChangeSummary, by, now)
 		if err != nil {
 			return domain.IssueDocument{}, false, err
 		}
 		if d, err = s.docs.CreateDocument(ctx, d, r); err != nil {
 			return domain.IssueDocument{}, false, err
 		}
-		s.publish(ctx, domain.DocumentSaved{Happened: s.happened(memberID), Issue: i, Document: d, First: true})
+		s.publish(ctx, domain.DocumentSaved{Happened: s.happened(by), Issue: i, Document: d, First: true})
 		return d, true, nil
 	}
 	// The Base revision travels as an id; one that is not this document's
@@ -143,7 +143,7 @@ func (s *Service) SaveDocument(ctx context.Context, guildID, memberID uint64, re
 			base = r.Number
 		}
 	}
-	r, err := d.Save(in.Title, in.Body, in.ChangeSummary, base, memberID, now)
+	r, err := d.Save(in.Title, in.Body, in.ChangeSummary, base, by, now)
 	if errors.Is(err, domain.ErrStaleRevision) {
 		return domain.IssueDocument{}, false, &StaleRevisionError{Current: d}
 	}
@@ -157,7 +157,7 @@ func (s *Service) SaveDocument(ctx context.Context, guildID, memberID uint64, re
 	if err != nil {
 		return domain.IssueDocument{}, false, err
 	}
-	s.publish(ctx, domain.DocumentSaved{Happened: s.happened(memberID), Issue: i, Document: saved})
+	s.publish(ctx, domain.DocumentSaved{Happened: s.happened(by), Issue: i, Document: saved})
 	return saved, false, nil
 }
 
@@ -171,7 +171,7 @@ func (s *Service) DeleteDocument(ctx context.Context, guildID, memberID uint64, 
 	if err := s.docs.DeleteDocument(ctx, d.ID); err != nil {
 		return err
 	}
-	s.publish(ctx, domain.DocumentDeleted{Happened: s.happened(memberID), Issue: i, Document: d})
+	s.publish(ctx, domain.DocumentDeleted{Happened: s.happened(domain.ByMember(memberID)), Issue: i, Document: d})
 	return nil
 }
 
@@ -197,7 +197,7 @@ func (s *Service) RestoreRevision(ctx context.Context, guildID, memberID uint64,
 	if !found {
 		return domain.IssueDocument{}, ErrNotFound
 	}
-	r, err := d.Restore(old, memberID, s.now())
+	r, err := d.Restore(old, domain.ByMember(memberID), s.now())
 	if err != nil {
 		return domain.IssueDocument{}, err
 	}
@@ -208,6 +208,6 @@ func (s *Service) RestoreRevision(ctx context.Context, guildID, memberID uint64,
 	if err != nil {
 		return domain.IssueDocument{}, err
 	}
-	s.publish(ctx, domain.DocumentSaved{Happened: s.happened(memberID), Issue: i, Document: saved, RestoredFrom: old.Number})
+	s.publish(ctx, domain.DocumentSaved{Happened: s.happened(domain.ByMember(memberID)), Issue: i, Document: saved, RestoredFrom: old.Number})
 	return saved, nil
 }

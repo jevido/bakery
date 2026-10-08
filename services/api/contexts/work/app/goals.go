@@ -137,7 +137,7 @@ func (s *Service) CreateGoal(ctx context.Context, guildID, memberID uint64, in G
 	if err != nil {
 		return domain.Goal{}, err
 	}
-	s.publish(ctx, domain.GoalCreated{Happened: s.happened(memberID), Goal: g})
+	s.publish(ctx, domain.GoalCreated{Happened: s.happened(domain.ByMember(memberID)), Goal: g})
 	return g, nil
 }
 
@@ -187,7 +187,7 @@ func (s *Service) ChangeGoal(ctx context.Context, memberID, id uint64, p GoalPat
 	if err != nil {
 		return domain.Goal{}, err
 	}
-	if e := (domain.GoalChanged{Happened: s.happened(memberID), Before: before, After: g}); len(e.Changes()) > 0 {
+	if e := (domain.GoalChanged{Happened: s.happened(domain.ByMember(memberID)), Before: before, After: g}); len(e.Changes()) > 0 {
 		s.publish(ctx, e)
 	}
 	return g, nil
@@ -203,7 +203,7 @@ func (s *Service) DeleteGoal(ctx context.Context, memberID, id uint64) error {
 	if err := s.goals.DeleteGoal(ctx, g); err != nil {
 		return err
 	}
-	s.publish(ctx, domain.GoalDeleted{Happened: s.happened(memberID), Goal: g})
+	s.publish(ctx, domain.GoalDeleted{Happened: s.happened(domain.ByMember(memberID)), Goal: g})
 	return nil
 }
 

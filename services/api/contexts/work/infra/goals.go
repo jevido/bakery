@@ -120,3 +120,8 @@ func (Goals) DeleteGoal(ctx context.Context, g domain.Goal) error {
 		return err
 	})
 }
+
+// actor reads a member and an agent column into an Actor.
+func actor(member, agent *uint64) domain.Actor {
+	return domain.Actor{MemberID: deref(member), AgentID: deref(agent)}
+}

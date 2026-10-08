@@ -33,13 +33,13 @@ func TestApprovalStatusActionable(t *testing.T) {
 }
 
 func TestRequestApproval(t *testing.T) {
-	a, err := RequestApproval(1, 7, RequestBoardApproval, BoardApprovalPayload{
+	a, err := RequestApproval(1, ByMember(7), RequestBoardApproval, BoardApprovalPayload{
 		Title: "  Approve hosting ", Summary: " Costs **42** ", Risks: []string{"May grow", "  ", "Lock-in"},
 	}, []uint64{3, 4, 3})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Status != StatusPending || !a.Actionable() || a.RequesterID != 7 || a.DeciderID != 0 || a.DecidedAt != nil {
+	if a.Status != StatusPending || !a.Actionable() || a.Requester != ByMember(7) || a.DeciderID != 0 || a.DecidedAt != nil {
 		t.Errorf("starting state %+v", a)
 	}
 	if p := a.Payload.(BoardApprovalPayload); p.Title != "Approve hosting" || p.Summary != "Costs **42**" || len(p.Risks) != 2 {
@@ -65,7 +65,7 @@ func TestBoardApprovalPayloadRules(t *testing.T) {
 		"long risk":      {Title: "t", Risks: []string{strings.Repeat("r", MaxRisk+1)}},
 		"too many risks": {Title: "t", Risks: many},
 	} {
-		if _, err := RequestApproval(1, 1, RequestBoardApproval, p, nil); err == nil {
+		if _, err := RequestApproval(1, ByMember(1), RequestBoardApproval, p, nil); err == nil {
 			t.Errorf("%s accepted", name)
 		}
 	}
@@ -73,8 +73,8 @@ func TestBoardApprovalPayloadRules(t *testing.T) {
 
 func TestApprovalRequestedActivity(t *testing.T) {
 	a := Approval{ID: 5, GuildID: 1, Type: RequestBoardApproval, Payload: BoardApprovalPayload{Title: "Approve hosting"}, IssueIDs: []uint64{3}}
-	e := ApprovalRequested{Happened: Happened{ActorID: 7}, Approval: a}.Activity()
-	if e.Action != ApprovalCreatedAction || e.EntityType != ApprovalEntity || e.EntityID != 5 || e.ProjectID != 0 || e.ActorID != 7 {
+	e := ApprovalRequested{Happened: Happened{Actor: ByMember(7)}, Approval: a}.Activity()
+	if e.Action != ApprovalCreatedAction || e.EntityType != ApprovalEntity || e.EntityID != 5 || e.ProjectID != 0 || e.Actor != ByMember(7) {
 		t.Errorf("event %+v", e)
 	}
 	if e.Details["title"] != "Approve hosting" || e.Details["type"] != RequestBoardApproval {
@@ -83,7 +83,7 @@ func TestApprovalRequestedActivity(t *testing.T) {
 }
 
 func approvalIn(st ApprovalStatus) Approval {
-	return Approval{ID: 5, GuildID: 1, Type: RequestBoardApproval, Status: st, RequesterID: 7, Payload: BoardApprovalPayload{Title: "Ship it", Risks: []string{}}}
+	return Approval{ID: 5, GuildID: 1, Type: RequestBoardApproval, Status: st, Requester: ByMember(7), Payload: BoardApprovalPayload{Title: "Ship it", Risks: []string{}}}
 }
 
 func refused(t *testing.T, err error, msg string) {
@@ -147,13 +147,13 @@ func TestResubmit(t *testing.T) {
 	if err := a.RequestRevision(9, "more detail", at); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Resubmit(9, nil, at); !errors.Is(err, ErrNotRequester) {
+	if err := a.Resubmit(ByMember(9), nil, at); !errors.Is(err, ErrNotRequester) {
 		t.Errorf("Resubmit by another = %v", err)
 	}
-	if err := a.Resubmit(7, &BoardApprovalPayload{Title: " "}, at); err == nil || a.Status != StatusRevisionRequested {
+	if err := a.Resubmit(ByMember(7), &BoardApprovalPayload{Title: " "}, at); err == nil || a.Status != StatusRevisionRequested {
 		t.Errorf("Resubmit with a bad payload = %v, %s", err, a.Status)
 	}
-	if err := a.Resubmit(7, &BoardApprovalPayload{Title: " Ship it now ", Risks: []string{"", "late"}}, at); err != nil {
+	if err := a.Resubmit(ByMember(7), &BoardApprovalPayload{Title: " Ship it now ", Risks: []string{"", "late"}}, at); err != nil {
 		t.Fatal(err)
 	}
 	if a.Status != StatusPending || a.DeciderID != 0 || a.DecisionNote != "" || a.DecidedAt != nil || a.Payload.Label() != "Ship it now" || len(a.Payload.(BoardApprovalPayload).Risks) != 1 {
@@ -161,29 +161,29 @@ func TestResubmit(t *testing.T) {
 	}
 	for _, from := range []ApprovalStatus{StatusPending, StatusApproved, StatusRejected} {
 		a := approvalIn(from)
-		refused(t, a.Resubmit(7, nil, at), "Only revision requested approvals can be resubmitted")
+		refused(t, a.Resubmit(ByMember(7), nil, at), "Only revision requested approvals can be resubmitted")
 	}
 	// Without a new payload the old one stays.
 	a = approvalIn(StatusRevisionRequested)
-	if err := a.Resubmit(7, nil, at); err != nil || a.Payload.Label() != "Ship it" {
+	if err := a.Resubmit(ByMember(7), nil, at); err != nil || a.Payload.Label() != "Ship it" {
 		t.Errorf("Resubmit without payload = %v, %+v", err, a.Payload)
 	}
 }
 
 func TestNewApprovalComment(t *testing.T) {
-	c, err := NewApprovalComment(5, 7, "  looks good ")
-	if err != nil || c.Body != "looks good" || c.ApprovalID != 5 || c.AuthorID != 7 {
+	c, err := NewApprovalComment(5, ByMember(7), "  looks good ")
+	if err != nil || c.Body != "looks good" || c.ApprovalID != 5 || c.Author != ByMember(7) {
 		t.Errorf("NewApprovalComment = %+v, %v", c, err)
 	}
 	for _, b := range []string{"", "   ", strings.Repeat("x", MaxComment+1)} {
-		if _, err := NewApprovalComment(5, 7, b); err == nil {
+		if _, err := NewApprovalComment(5, ByMember(7), b); err == nil {
 			t.Errorf("NewApprovalComment(%d characters) accepted", len(b))
 		}
 	}
 }
 
 func TestApprovalDecisionEvents(t *testing.T) {
-	h := Happened{ActorID: 9, At: time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)}
+	h := Happened{Actor: ByMember(9), At: time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)}
 	a := approvalIn(StatusApproved)
 	a.DecisionNote = "fine"
 	for _, tc := range []struct {
@@ -211,11 +211,11 @@ func TestApprovalDecisionEvents(t *testing.T) {
 }
 
 func hireIn(st ApprovalStatus) Approval {
-	return Approval{ID: 6, GuildID: 1, Type: HireAgent, Status: st, RequesterID: 7, Payload: HireAgentPayload{AgentID: 3, Name: "Ada", Roles: []string{}}}
+	return Approval{ID: 6, GuildID: 1, Type: HireAgent, Status: st, Requester: ByMember(7), Payload: HireAgentPayload{AgentID: 3, Name: "Ada", Roles: []string{}}}
 }
 
 func TestHireAgentPayload(t *testing.T) {
-	a, err := RequestApproval(1, 7, HireAgent, HireAgentPayload{
+	a, err := RequestApproval(1, ByMember(7), HireAgent, HireAgentPayload{
 		AgentID: 3, Name: "  Ada ", Job: "engineer", Title: " Backend ", ManagerID: 0, ManagerName: "stale", Roles: []string{" Deployer "},
 	}, nil)
 	if err != nil {
@@ -241,20 +241,20 @@ func TestHireAgentPayload(t *testing.T) {
 		"too many roles":  {AgentID: 3, Name: "Ada", Roles: many},
 		"empty role name": {AgentID: 3, Name: "Ada", Roles: []string{" "}},
 	} {
-		if _, err := RequestApproval(1, 7, HireAgent, p, nil); err == nil {
+		if _, err := RequestApproval(1, ByMember(7), HireAgent, p, nil); err == nil {
 			t.Errorf("%s accepted", name)
 		}
 	}
 }
 
 func TestPayloadMustFitType(t *testing.T) {
-	if _, err := RequestApproval(1, 7, HireAgent, BoardApprovalPayload{Title: "t"}, nil); err == nil {
+	if _, err := RequestApproval(1, ByMember(7), HireAgent, BoardApprovalPayload{Title: "t"}, nil); err == nil {
 		t.Error("hire_agent with a board payload accepted")
 	}
-	if _, err := RequestApproval(1, 7, RequestBoardApproval, HireAgentPayload{AgentID: 3, Name: "Ada"}, nil); err == nil {
+	if _, err := RequestApproval(1, ByMember(7), RequestBoardApproval, HireAgentPayload{AgentID: 3, Name: "Ada"}, nil); err == nil {
 		t.Error("request_board_approval with a hire payload accepted")
 	}
-	if _, err := RequestApproval(1, 7, RequestBoardApproval, nil, nil); err == nil {
+	if _, err := RequestApproval(1, ByMember(7), RequestBoardApproval, nil, nil); err == nil {
 		t.Error("no payload accepted")
 	}
 }
@@ -292,14 +292,14 @@ func TestHireNeverRevised(t *testing.T) {
 	a := hireIn(StatusPending)
 	refused(t, a.RequestRevision(9, "", at), "Hire agent approvals cannot be sent back for revision")
 	a = hireIn(StatusRevisionRequested)
-	refused(t, a.Resubmit(7, HireAgentPayload{AgentID: 3, Name: "Bob"}, at), "A hire agent approval's payload cannot change")
-	if err := a.Resubmit(7, nil, at); err != nil || a.Status != StatusPending {
+	refused(t, a.Resubmit(ByMember(7), HireAgentPayload{AgentID: 3, Name: "Bob"}, at), "A hire agent approval's payload cannot change")
+	if err := a.Resubmit(ByMember(7), nil, at); err != nil || a.Status != StatusPending {
 		t.Errorf("plain Resubmit of a hire = %v, %s", err, a.Status)
 	}
 }
 
 func TestHireActivity(t *testing.T) {
-	h := Happened{ActorID: 9}
+	h := Happened{Actor: ByMember(9)}
 	e := ApprovalRequested{Happened: h, Approval: hireIn(StatusPending)}.Activity()
 	if e.Details["title"] != "Hire Agent: Ada" || e.Details["type"] != HireAgent {
 		t.Errorf("created details %v", e.Details)
@@ -311,7 +311,7 @@ func TestHireActivity(t *testing.T) {
 }
 
 func TestAgentEvent(t *testing.T) {
-	ev := AgentEvent{Happened: Happened{ActorID: 9}, GuildID: 1, AgentID: 3, AgentName: "Ada", Action: AgentPausedAction, Details: map[string]any{"x": 1}}
+	ev := AgentEvent{Happened: Happened{Actor: ByMember(9)}, GuildID: 1, AgentID: 3, AgentName: "Ada", Action: AgentPausedAction, Details: map[string]any{"x": 1}}
 	v, err := ev.Validated()
 	if err != nil {
 		t.Fatal(err)

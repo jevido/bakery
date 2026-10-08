@@ -299,23 +299,30 @@ type and the payload's title.
   Project the person may not view, keeps its id with a null name (or
   title and identifier), so the event never names what is hidden.
   Routes open to Agent principals (a Run key, through
-  `guilds.AgentsAllowed`), with the Agent membership's Permissions: reading
-  Goals, Issues, their Comments, Issue documents and Revisions, Blockers,
-  the Activity and Approvals; creating and changing Issues, writing
-  Comments, saving Issue documents; and, for Run keys only,
+  `guilds.AuthAgents`), with the Agent membership's Permissions: reading
+  Goals, Issues, their Comments, Issue documents and Revisions, the
+  Activity, Approvals with their Issues and comments (`view_resources`);
+  creating and changing Issues, writing Comments and editing or deleting
+  its own, saving Issue documents, requesting an Approval and commenting
+  on one (`manage_work`); and, for Run keys only,
   `POST /api/issues/{id}/checkout` `{expected_statuses}` and
-  `POST /api/issues/{id}/release`. Tasks 04 and 05 of phase 41 keep this
-  list in step with what they open. An Agent's writes carry `author_agent`
-  / `created_by_agent` `{id, name, icon}`, and its Activity events an
-  Actor of type `agent`. Inbox, Read marks, Approval decisions and
-  deleting are not open to Agents.
+  `POST /api/issues/{id}/release`. Task 05 of phase 41 keeps this list in
+  step with what it opens. What an Agent writes carries `author_agent`
+  (Comments, Approval comments), `created_by_agent` (Issues, Issue
+  documents and Revisions), `updated_by_agent` (Issue documents) or
+  `requester_agent` (Approvals) `{id, name, icon}` beside the Member field,
+  which is then null; its Activity events carry `actor_agent` beside a null
+  `actor`, and `GET /api/activity?actor=agent:<id>` filters by it. Goal
+  changes, deleting Issues and Issue documents, restoring Revisions, Read
+  marks, the Inbox and sidebar badges, Approval Decisions and resubmitting
+  stay a person's: 403 `agents cannot use this route`.
 
 - **Consumes:**
   - from agents: the hook it registers to tell whether a Run is live
     (`running`) and whose it is, for Checkout and Stale checkouts, and the
     Agent principal's Agent and Run (`guilds.AgentID(ctx)`, the Run from
     identity's Principal).
-  - from guilds: `guilds.Auth`, `guilds.AgentsAllowed`, `guilds.Can(permission)`,
+  - from guilds: `guilds.Auth`, `guilds.AuthAgents`, `guilds.Can(permission)`,
     `guilds.Current(ctx)` (the Guild every Goal and Issue is stored and
     filtered by), `guilds.MemberID(ctx)` (who creates an Issue, and whom
     `assignee=me` means), `guilds.VisibleProjects(ctx, ids)` (which Projects the

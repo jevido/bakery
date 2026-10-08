@@ -188,7 +188,7 @@ func OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]IssueBri
 }
 
 // RunComment is a Comment as a Run's prompt quotes it, with its author's
-// name.
+// name: a Member's or an Agent's.
 type RunComment struct {
 	ID         uint64
 	AuthorName string
@@ -202,11 +202,16 @@ func CommentsForRun(ctx context.Context, guildID uint64, ids []uint64) ([]RunCom
 	if err != nil || len(cs) == 0 {
 		return nil, err
 	}
-	authors := make([]uint64, len(cs))
-	for n, c := range cs {
-		authors[n] = c.AuthorID
+	var members, agents []uint64
+	for _, c := range cs {
+		if c.Author.MemberID != 0 {
+			members = append(members, c.Author.MemberID)
+		}
+		if c.Author.AgentID != 0 {
+			agents = append(agents, c.Author.AgentID)
+		}
 	}
-	ms, err := memberNames(ctx, authors)
+	ms, err := memberNames(ctx, members)
 	if err != nil {
 		return nil, err
 	}
@@ -214,9 +219,16 @@ func CommentsForRun(ctx context.Context, guildID uint64, ids []uint64) ([]RunCom
 	for _, m := range ms {
 		names[m.ID] = m.Name
 	}
+	as, err := svc().AssigneeAgents(ctx, guildID, agents)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]RunComment, len(cs))
 	for n, c := range cs {
-		out[n] = RunComment{ID: c.ID, AuthorName: names[c.AuthorID], Body: c.Body}
+		out[n] = RunComment{ID: c.ID, AuthorName: names[c.Author.MemberID], Body: c.Body}
+		if c.Author.AgentID != 0 {
+			out[n].AuthorName = as[c.Author.AgentID].Name
+		}
 	}
 	return out, nil
 }
@@ -233,7 +245,8 @@ type IssueAssigned struct {
 }
 
 // IssueCommented is a Comment, once stored, on an Issue an Agent is the
-// Assignee of and that is not done or cancelled. ActorID is its author.
+// Assignee of and that is not done or cancelled, written by anyone but
+// that Agent. ActorID is its author when a Member wrote it, else 0.
 type IssueCommented struct {
 	GuildID   uint64
 	IssueID   uint64
@@ -281,7 +294,7 @@ func issueCommented(ctx context.Context, i domain.Issue, c domain.Comment) error
 	if f == nil {
 		return nil
 	}
-	return f(ctx, IssueCommented{GuildID: i.GuildID, IssueID: i.ID, AgentID: i.AssigneeAgentID, CommentID: c.ID, ActorID: c.AuthorID})
+	return f(ctx, IssueCommented{GuildID: i.GuildID, IssueID: i.ID, AgentID: i.AssigneeAgentID, CommentID: c.ID, ActorID: c.Author.MemberID})
 }
 
 // OnApprovalDecided registers f to hear every approve or reject of an
@@ -308,23 +321,25 @@ func approvalDecided(ctx context.Context, a domain.Approval) error {
 	return f(ctx, d)
 }
 
-// AgentActivity is an Activity event about an Agent: its Actor, one of
+// AgentActivity is an Activity event about an Agent: its Actor (a Member,
+// or with ActorAgentID an Agent), one of
 // the glossary's agent.* and run.* Actions, the Agent's name (kept, so the event
 // still reads after a rename) and the details its Action carries.
 type AgentActivity struct {
-	GuildID   uint64
-	ActorID   uint64
-	AgentID   uint64
-	Action    string
-	AgentName string
-	Details   map[string]any
+	GuildID      uint64
+	ActorID      uint64
+	ActorAgentID uint64
+	AgentID      uint64
+	Action       string
+	AgentName    string
+	Details      map[string]any
 }
 
 // RecordActivity adds the event to the Guild's Activity. Anything but an
 // agent.* or run.* Action is refused.
 func RecordActivity(ctx context.Context, e AgentActivity) error {
 	return svc().RecordAgentActivity(ctx, domain.AgentEvent{
-		Happened: domain.Happened{ActorID: e.ActorID}, GuildID: e.GuildID, AgentID: e.AgentID,
+		Happened: domain.Happened{Actor: domain.Actor{MemberID: e.ActorID, AgentID: e.ActorAgentID}}, GuildID: e.GuildID, AgentID: e.AgentID,
 		AgentName: e.AgentName, Action: e.Action, Details: e.Details,
 	})
 }
@@ -397,27 +412,47 @@ var approvalInGuild = guilds.Owns("approval", func(ctx context.Context, id, guil
 // changing a Comment also being its author. An Issue's {id} is its id or its
 // Issue identifier, so the service, not guilds.Owns, answers 404 for one
 // outside the Current guild or in a Project the request may not view.
+// Agents (guilds.AuthAgents) may read all of it but the Inbox, and create
+// and change Issues, write and change their own Comments, save Issue
+// documents, request Approvals and comment on them; deleting, Goal changes,
+// Read marks, Inbox archives, Decisions and restoring Revisions stay a
+// person's.
 func Routes(r route.Router) {
 	c := workhttp.NewController(svc(), guilds.Current, memberNames)
-	c.Visible, c.Member, c.AgentNames = guilds.VisibleProjects, guilds.MemberID, agentNames
+	c.Visible, c.Member, c.Agent, c.AgentNames = guilds.VisibleProjects, guilds.MemberID, guilds.AgentID, agentNames
 	view, manage := guilds.Can("view_resources"), guilds.Can("manage_work")
-	r.Middleware(guilds.Auth, view).Get("/api/goals", c.ListGoals)
+	r.Middleware(guilds.AuthAgents, view).Get("/api/goals", c.ListGoals)
 	r.Middleware(guilds.Auth, manage).Post("/api/goals", c.CreateGoal)
-	r.Middleware(guilds.Auth, goalInGuild, view).Get("/api/goals/{id}", c.ShowGoal)
+	r.Middleware(guilds.AuthAgents, goalInGuild, view).Get("/api/goals/{id}", c.ShowGoal)
 	r.Middleware(guilds.Auth, goalInGuild, manage).Group(func(r route.Router) {
 		r.Patch("/api/goals/{id}", c.UpdateGoal)
 		r.Delete("/api/goals/{id}", c.DeleteGoal)
 	})
-	r.Middleware(guilds.Auth, view).Get("/api/issues", c.ListIssues)
-	r.Middleware(guilds.Auth, manage).Post("/api/issues", c.CreateIssue)
-	r.Middleware(guilds.Auth, view).Get("/api/issues/{id}", c.ShowIssue)
-	r.Middleware(guilds.Auth, manage).Group(func(r route.Router) {
-		r.Patch("/api/issues/{id}", c.UpdateIssue)
-		r.Delete("/api/issues/{id}", c.DeleteIssue)
-	})
-	r.Middleware(guilds.Auth, view).Group(func(r route.Router) {
+	r.Middleware(guilds.AuthAgents, view).Group(func(r route.Router) {
+		r.Get("/api/issues", c.ListIssues)
+		r.Get("/api/issues/{id}", c.ShowIssue)
 		r.Get("/api/activity", c.ListActivity)
 		r.Get("/api/issues/{id}/activity", c.ListIssueActivity)
+		r.Get("/api/issues/{id}/comments", c.ListComments)
+		r.Get("/api/issues/{id}/documents", c.ListDocuments)
+		r.Get("/api/issues/{id}/documents/{key}", c.ShowDocument)
+		r.Get("/api/issues/{id}/documents/{key}/revisions", c.ListRevisions)
+		r.Get("/api/approvals", c.ListApprovals)
+		r.Get("/api/issues/{id}/approvals", c.ListIssueApprovals)
+	})
+	r.Middleware(guilds.AuthAgents, manage).Group(func(r route.Router) {
+		r.Post("/api/issues", c.CreateIssue)
+		r.Patch("/api/issues/{id}", c.UpdateIssue)
+		r.Post("/api/issues/{id}/comments", c.WriteComment)
+		r.Patch("/api/issues/{id}/comments/{comment}", c.EditComment)
+		r.Delete("/api/issues/{id}/comments/{comment}", c.DeleteComment)
+		r.Put("/api/issues/{id}/documents/{key}", c.SaveDocument)
+		r.Post("/api/approvals", c.RequestApproval)
+	})
+	r.Middleware(guilds.Auth, manage).Group(func(r route.Router) {
+		r.Delete("/api/issues/{id}", c.DeleteIssue)
+		r.Delete("/api/issues/{id}/documents/{key}", c.DeleteDocument)
+		r.Post("/api/issues/{id}/documents/{key}/revisions/{revision}/restore", c.RestoreRevision)
 	})
 	r.Middleware(guilds.Auth, view).Group(func(r route.Router) {
 		r.Post("/api/issues/{id}/read", c.MarkRead)
@@ -426,39 +461,16 @@ func Routes(r route.Router) {
 		r.Delete("/api/issues/{id}/inbox-archive", c.UnarchiveFromInbox)
 		r.Get("/api/sidebar-badges", c.SidebarBadges)
 	})
-	r.Middleware(guilds.Auth, view).Get("/api/issues/{id}/comments", c.ListComments)
-	r.Middleware(guilds.Auth, manage).Group(func(r route.Router) {
-		r.Post("/api/issues/{id}/comments", c.WriteComment)
-		r.Patch("/api/issues/{id}/comments/{comment}", c.EditComment)
-		r.Delete("/api/issues/{id}/comments/{comment}", c.DeleteComment)
-	})
-	r.Middleware(guilds.Auth, view).Group(func(r route.Router) {
-		r.Get("/api/issues/{id}/documents", c.ListDocuments)
-		r.Get("/api/issues/{id}/documents/{key}", c.ShowDocument)
-		r.Get("/api/issues/{id}/documents/{key}/revisions", c.ListRevisions)
-	})
-	r.Middleware(guilds.Auth, manage).Group(func(r route.Router) {
-		r.Put("/api/issues/{id}/documents/{key}", c.SaveDocument)
-		r.Delete("/api/issues/{id}/documents/{key}", c.DeleteDocument)
-		r.Post("/api/issues/{id}/documents/{key}/revisions/{revision}/restore", c.RestoreRevision)
-	})
-	r.Middleware(guilds.Auth, view).Group(func(r route.Router) {
-		r.Get("/api/approvals", c.ListApprovals)
-		r.Get("/api/issues/{id}/approvals", c.ListIssueApprovals)
-	})
-	r.Middleware(guilds.Auth, manage).Post("/api/approvals", c.RequestApproval)
-	r.Middleware(guilds.Auth, approvalInGuild, view).Group(func(r route.Router) {
+	r.Middleware(guilds.AuthAgents, approvalInGuild, view).Group(func(r route.Router) {
 		r.Get("/api/approvals/{id}", c.ShowApproval)
 		r.Get("/api/approvals/{id}/issues", c.ListApprovalIssues)
 		r.Get("/api/approvals/{id}/comments", c.ListApprovalComments)
 	})
+	r.Middleware(guilds.AuthAgents, approvalInGuild, manage).Post("/api/approvals/{id}/comments", c.AddApprovalComment)
 	r.Middleware(guilds.Auth, approvalInGuild, guilds.Can("approve")).Group(func(r route.Router) {
 		r.Post("/api/approvals/{id}/approve", c.ApproveApproval)
 		r.Post("/api/approvals/{id}/reject", c.RejectApproval)
 		r.Post("/api/approvals/{id}/request-revision", c.RequestApprovalRevision)
 	})
-	r.Middleware(guilds.Auth, approvalInGuild, manage).Group(func(r route.Router) {
-		r.Post("/api/approvals/{id}/resubmit", c.ResubmitApproval)
-		r.Post("/api/approvals/{id}/comments", c.AddApprovalComment)
-	})
+	r.Middleware(guilds.Auth, approvalInGuild, manage).Post("/api/approvals/{id}/resubmit", c.ResubmitApproval)
 }

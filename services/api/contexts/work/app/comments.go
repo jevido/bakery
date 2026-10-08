@@ -27,13 +27,14 @@ func (s *Service) Comments(ctx context.Context, guildID uint64, ref string, visi
 	return s.comments.Comments(ctx, i.ID)
 }
 
-// WriteComment adds the Member's Comment to the Issue.
-func (s *Service) WriteComment(ctx context.Context, guildID, memberID uint64, ref, body string, visible Visible) (domain.Comment, error) {
+// WriteComment adds the Member's or Agent's Comment to the Issue. A Comment
+// by the Issue's own Agent assignee does not wake it again.
+func (s *Service) WriteComment(ctx context.Context, guildID uint64, by domain.Actor, ref, body string, visible Visible) (domain.Comment, error) {
 	i, err := s.Issue(ctx, guildID, ref, visible)
 	if err != nil {
 		return domain.Comment{}, err
 	}
-	c, err := domain.NewComment(i.ID, memberID, body)
+	c, err := domain.NewComment(i.ID, by, body)
 	if err != nil {
 		return domain.Comment{}, err
 	}
@@ -41,8 +42,8 @@ func (s *Service) WriteComment(ctx context.Context, guildID, memberID uint64, re
 	if err != nil {
 		return domain.Comment{}, err
 	}
-	s.publish(ctx, domain.CommentWritten{Happened: s.happened(memberID), Issue: i, Comment: c})
-	if s.Commented != nil && i.AssigneeAgentID != 0 && i.Status != domain.Done && i.Status != domain.IssueCancelled {
+	s.publish(ctx, domain.CommentWritten{Happened: s.happened(by), Issue: i, Comment: c})
+	if s.Commented != nil && i.AssigneeAgentID != 0 && by.AgentID != i.AssigneeAgentID && i.Status != domain.Done && i.Status != domain.IssueCancelled {
 		if err := s.Commented(ctx, i, c); err != nil {
 			s.Logf("work: after comment %d on issue %d: %v", c.ID, i.ID, err)
 		}
@@ -67,32 +68,32 @@ func (s *Service) comment(ctx context.Context, guildID uint64, ref string, comme
 	return i, c, nil
 }
 
-// EditComment replaces the body of the Member's own Comment.
-func (s *Service) EditComment(ctx context.Context, guildID, memberID uint64, ref string, commentID uint64, body string, visible Visible) (domain.Comment, error) {
+// EditComment replaces the body of one's own Comment.
+func (s *Service) EditComment(ctx context.Context, guildID uint64, by domain.Actor, ref string, commentID uint64, body string, visible Visible) (domain.Comment, error) {
 	_, c, err := s.comment(ctx, guildID, ref, commentID, visible)
 	if err != nil {
 		return domain.Comment{}, err
 	}
-	if err := c.Edit(memberID, body); err != nil {
+	if err := c.Edit(by, body); err != nil {
 		return domain.Comment{}, err
 	}
 	return s.comments.SaveComment(ctx, c)
 }
 
-// DeleteComment deletes the Member's own Comment; it stays in the thread
+// DeleteComment deletes one's own Comment; it stays in the thread
 // as deleted.
-func (s *Service) DeleteComment(ctx context.Context, guildID, memberID uint64, ref string, commentID uint64, visible Visible) error {
+func (s *Service) DeleteComment(ctx context.Context, guildID uint64, by domain.Actor, ref string, commentID uint64, visible Visible) error {
 	i, c, err := s.comment(ctx, guildID, ref, commentID, visible)
 	if err != nil {
 		return err
 	}
-	if err := c.Delete(memberID, s.now()); err != nil {
+	if err := c.Delete(by, s.now()); err != nil {
 		return err
 	}
 	if _, err = s.comments.SaveComment(ctx, c); err != nil {
 		return err
 	}
-	s.publish(ctx, domain.CommentDeleted{Happened: s.happened(memberID), Issue: i, Comment: c})
+	s.publish(ctx, domain.CommentDeleted{Happened: s.happened(by), Issue: i, Comment: c})
 	return nil
 }
 

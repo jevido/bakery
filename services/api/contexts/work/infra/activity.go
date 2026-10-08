@@ -17,6 +17,7 @@ type activityRecord struct {
 	ID            uint64 `gorm:"primaryKey"`
 	GuildID       uint64
 	ActorMemberID *uint64
+	ActorAgentID  *uint64
 	Action        string
 	EntityType    string
 	EntityID      uint64
@@ -36,7 +37,7 @@ func (Activity) Record(ctx context.Context, e domain.ActivityEvent) error {
 		return err
 	}
 	rec := activityRecord{
-		GuildID: e.GuildID, ActorMemberID: nullable(e.ActorID), Action: e.Action,
+		GuildID: e.GuildID, ActorMemberID: nullable(e.Actor.MemberID), ActorAgentID: nullable(e.Actor.AgentID), Action: e.Action,
 		EntityType: e.EntityType, EntityID: e.EntityID, ProjectID: nullable(e.ProjectID),
 		Details: string(details), CreatedAt: e.CreatedAt,
 	}
@@ -53,7 +54,7 @@ func (r activityRecord) toDomain() (domain.ActivityEvent, error) {
 		return domain.ActivityEvent{}, err
 	}
 	return domain.ActivityEvent{
-		ID: r.ID, GuildID: r.GuildID, ActorID: deref(r.ActorMemberID), Action: r.Action,
+		ID: r.ID, GuildID: r.GuildID, Actor: actor(r.ActorMemberID, r.ActorAgentID), Action: r.Action,
 		EntityType: r.EntityType, EntityID: r.EntityID, ProjectID: deref(r.ProjectID),
 		Details: details, CreatedAt: r.CreatedAt.UTC(),
 	}, nil
@@ -80,8 +81,11 @@ func (a Activity) Activity(ctx context.Context, guildID uint64, q app.ActivityQu
 	if q.EntityType != "" {
 		query = query.Where("entity_type", q.EntityType)
 	}
-	if q.ActorID != 0 {
-		query = query.Where("actor_member_id", q.ActorID)
+	if q.Actor.MemberID != 0 {
+		query = query.Where("actor_member_id", q.Actor.MemberID)
+	}
+	if q.Actor.AgentID != 0 {
+		query = query.Where("actor_agent_id", q.Actor.AgentID)
 	}
 	if q.Before != 0 {
 		query = query.Where("id < ?", q.Before)

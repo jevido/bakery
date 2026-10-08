@@ -26,12 +26,13 @@ type entityJSON struct {
 }
 
 type activityJSON struct {
-	ID        uint64         `json:"id"`
-	Action    string         `json:"action"`
-	Actor     *Member        `json:"actor"`
-	Entity    entityJSON     `json:"entity"`
-	Details   map[string]any `json:"details"`
-	CreatedAt time.Time      `json:"created_at"`
+	ID         uint64         `json:"id"`
+	Action     string         `json:"action"`
+	Actor      *Member        `json:"actor"`
+	ActorAgent *Agent         `json:"actor_agent"`
+	Entity     entityJSON     `json:"entity"`
+	Details    map[string]any `json:"details"`
+	CreatedAt  time.Time      `json:"created_at"`
 }
 
 // idIn reads an id the details stored: a json.Number from the store, a
@@ -66,7 +67,8 @@ type activityRefs struct {
 	// agents is nil when no one answers for Agents: every one counts as
 	// existing under the name its event kept.
 	agents map[uint64]string
-	// assignees are the Agents Issues were assigned to, terminated ones too.
+	// assignees are the Agents Issues were assigned to and the Agents that
+	// acted, terminated ones too.
 	assignees map[uint64]app.AssigneeAgent
 }
 
@@ -193,7 +195,8 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 		}
 	}
 	for _, e := range es {
-		add(&memberIDs)(e.ActorID)
+		add(&memberIDs)(e.Actor.MemberID)
+		add(&assigneeIDs)(e.Actor.AgentID)
 		if e.EntityType == domain.IssueEntity {
 			add(&issueIDs)(e.EntityID)
 		}
@@ -291,8 +294,11 @@ func (c *Controller) activityJSON(ctx contractshttp.Context, es []domain.Activit
 	}
 	for n, e := range es {
 		a := activityJSON{ID: e.ID, Action: e.Action, Details: e.Details, CreatedAt: e.CreatedAt}
-		if m, ok := refs.members[e.ActorID]; ok {
+		if m, ok := refs.members[e.Actor.MemberID]; ok {
 			a.Actor = &m
+		}
+		if g, ok := refs.assignees[e.Actor.AgentID]; ok && e.Actor.AgentID != 0 {
+			a.ActorAgent = &Agent{ID: e.Actor.AgentID, Name: g.Name, Icon: g.Icon}
 		}
 		a.Entity = entityJSON{Type: e.EntityType, ID: e.EntityID}
 		switch e.EntityType {
@@ -386,23 +392,30 @@ func activityID(ctx contractshttp.Context, field string) (uint64, bool) {
 }
 
 // ListActivity answers a page of the Current guild's Activity, newest
-// first: entity (issue, goal, approval or agent), actor (a Member id), before (an Activity
+// first: entity (issue, goal, approval or agent), actor (a Member id, or
+// agent:<id> for an Agent), before (an Activity
 // event id, for the next page) and limit (1 to 200, 50 by default).
 func (c *Controller) ListActivity(ctx contractshttp.Context) contractshttp.Response {
 	q := app.ActivityQuery{EntityType: ctx.Request().Query("entity"), Limit: app.DefaultActivity}
 	if q.EntityType != "" && !slices.Contains([]string{domain.IssueEntity, domain.GoalEntity, domain.ApprovalEntity, domain.AgentEntity}, q.EntityType) {
 		return respond.Invalid(ctx, "entity", "entity must be issue, goal, approval or agent")
 	}
-	for _, f := range []struct {
-		field string
-		into  *uint64
-	}{{"actor", &q.ActorID}, {"before", &q.Before}} {
-		id, ok := activityID(ctx, f.field)
-		if !ok {
-			return respond.Invalid(ctx, f.field, f.field+" must be an id")
+	if a, ok := strings.CutPrefix(ctx.Request().Query("actor"), "agent:"); ok {
+		id, err := strconv.ParseUint(a, 10, 64)
+		if err != nil || id == 0 {
+			return respond.Invalid(ctx, "actor", "actor must be a member id or agent:<id>")
 		}
-		*f.into = id
+		q.Actor = domain.ByAgent(id)
+	} else if id, ok := activityID(ctx, "actor"); !ok {
+		return respond.Invalid(ctx, "actor", "actor must be a member id or agent:<id>")
+	} else {
+		q.Actor = domain.ByMember(id)
 	}
+	before, ok := activityID(ctx, "before")
+	if !ok {
+		return respond.Invalid(ctx, "before", "before must be an id")
+	}
+	q.Before = before
 	if s := ctx.Request().Query("limit"); s != "" {
 		v, err := strconv.Atoi(s)
 		if err != nil || v < 1 || v > app.MaxActivity {

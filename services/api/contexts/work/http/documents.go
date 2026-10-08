@@ -22,20 +22,23 @@ type documentJSON struct {
 	LatestRevisionID     uint64    `json:"latest_revision_id"`
 	LatestRevisionNumber int       `json:"latest_revision_number"`
 	CreatedBy            *Member   `json:"created_by"`
+	CreatedByAgent       *Agent    `json:"created_by_agent"`
 	UpdatedBy            *Member   `json:"updated_by"`
+	UpdatedByAgent       *Agent    `json:"updated_by_agent"`
 	CreatedAt            time.Time `json:"created_at"`
 	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 // revisionJSON is one Revision of an Issue document.
 type revisionJSON struct {
-	ID            uint64    `json:"id"`
-	Number        int       `json:"number"`
-	Title         string    `json:"title"`
-	Body          string    `json:"body"`
-	ChangeSummary *string   `json:"change_summary"`
-	CreatedBy     *Member   `json:"created_by"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID             uint64    `json:"id"`
+	Number         int       `json:"number"`
+	Title          string    `json:"title"`
+	Body           string    `json:"body"`
+	ChangeSummary  *string   `json:"change_summary"`
+	CreatedBy      *Member   `json:"created_by"`
+	CreatedByAgent *Agent    `json:"created_by_agent"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // memberMap names the Members among ids (0 left out) in one go.
@@ -67,12 +70,12 @@ func memberOf(ms map[uint64]Member, id uint64) *Member {
 	return nil
 }
 
-func (c *Controller) documentsJSON(ctx context.Context, ds []domain.IssueDocument) ([]documentJSON, error) {
-	var ids []uint64
+func (c *Controller) documentsJSON(ctx contractshttp.Context, ds []domain.IssueDocument) ([]documentJSON, error) {
+	var actors []domain.Actor
 	for _, d := range ds {
-		ids = append(ids, d.CreatedByID, d.UpdatedByID)
+		actors = append(actors, d.CreatedBy, d.UpdatedBy)
 	}
-	ms, err := c.memberMap(ctx, ids)
+	ns, err := c.actorNames(ctx, actors)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +84,8 @@ func (c *Controller) documentsJSON(ctx context.Context, ds []domain.IssueDocumen
 		out[n] = documentJSON{
 			ID: d.ID, Key: d.Key, Title: d.Title, Body: d.Body, Format: "markdown",
 			LatestRevisionID: d.LatestRevisionID, LatestRevisionNumber: d.Latest,
-			CreatedBy: memberOf(ms, d.CreatedByID), UpdatedBy: memberOf(ms, d.UpdatedByID),
+			CreatedBy: ns.member(d.CreatedBy), CreatedByAgent: ns.agent(d.CreatedBy),
+			UpdatedBy: ns.member(d.UpdatedBy), UpdatedByAgent: ns.agent(d.UpdatedBy),
 			CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 		}
 	}
@@ -92,7 +96,7 @@ func (c *Controller) oneDocument(ctx contractshttp.Context, status int, d domain
 	if err != nil {
 		return fail(ctx, err)
 	}
-	out, err := c.documentsJSON(ctx.Context(), []domain.IssueDocument{d})
+	out, err := c.documentsJSON(ctx, []domain.IssueDocument{d})
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -105,7 +109,7 @@ func (c *Controller) ListDocuments(ctx contractshttp.Context) contractshttp.Resp
 	if err != nil {
 		return fail(ctx, err)
 	}
-	out, err := c.documentsJSON(ctx.Context(), ds)
+	out, err := c.documentsJSON(ctx, ds)
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -132,7 +136,7 @@ func (c *Controller) SaveDocument(ctx contractshttp.Context) contractshttp.Respo
 		return respond.BadBody(ctx)
 	}
 	in := app.DocumentInput{Title: req.Title, Body: req.Body, ChangeSummary: req.ChangeSummary, BaseRevisionID: req.BaseRevisionID}
-	d, created, err := c.service.SaveDocument(ctx.Context(), c.guild(ctx), c.Member(ctx), ctx.Request().Route("id"), ctx.Request().Route("key"), in, c.visible(ctx))
+	d, created, err := c.service.SaveDocument(ctx.Context(), c.guild(ctx), c.actor(ctx), ctx.Request().Route("id"), ctx.Request().Route("key"), in, c.visible(ctx))
 	status := contractshttp.StatusOK
 	if created {
 		status = contractshttp.StatusCreated
@@ -154,17 +158,17 @@ func (c *Controller) ListRevisions(ctx contractshttp.Context) contractshttp.Resp
 	if err != nil {
 		return fail(ctx, err)
 	}
-	ids := make([]uint64, len(rs))
+	authors := make([]domain.Actor, len(rs))
 	for n, r := range rs {
-		ids[n] = r.AuthorID
+		authors[n] = r.Author
 	}
-	ms, err := c.memberMap(ctx.Context(), ids)
+	ns, err := c.actorNames(ctx, authors)
 	if err != nil {
 		return fail(ctx, err)
 	}
 	out := make([]revisionJSON, len(rs))
 	for n, r := range rs {
-		out[n] = revisionJSON{ID: r.ID, Number: r.Number, Title: r.Title, Body: r.Body, CreatedBy: memberOf(ms, r.AuthorID), CreatedAt: r.CreatedAt}
+		out[n] = revisionJSON{ID: r.ID, Number: r.Number, Title: r.Title, Body: r.Body, CreatedBy: ns.member(r.Author), CreatedByAgent: ns.agent(r.Author), CreatedAt: r.CreatedAt}
 		if r.Summary != "" {
 			out[n].ChangeSummary = &r.Summary
 		}

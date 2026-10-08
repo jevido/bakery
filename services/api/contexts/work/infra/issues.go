@@ -29,6 +29,7 @@ type issueRecord struct {
 	GoalID            *uint64
 	ParentID          *uint64
 	CreatedByMemberID *uint64
+	CreatedByAgentID  *uint64
 	StartedAt         *time.Time
 	CompletedAt       *time.Time
 	CancelledAt       *time.Time
@@ -50,7 +51,7 @@ func (r issueRecord) toDomain() domain.Issue {
 		ID: r.ID, GuildID: r.GuildID, Number: r.Number, Title: r.Title, Description: r.Description,
 		Status: domain.IssueStatus(r.Status), Priority: domain.Priority(r.Priority),
 		AssigneeID: deref(r.AssigneeMemberID), AssigneeAgentID: deref(r.AssigneeAgentID), ProjectID: deref(r.ProjectID), GoalID: deref(r.GoalID),
-		ParentID: deref(r.ParentID), CreatedByID: deref(r.CreatedByMemberID),
+		ParentID: deref(r.ParentID), CreatedBy: actor(r.CreatedByMemberID, r.CreatedByAgentID),
 		StartedAt: utc(r.StartedAt), CompletedAt: utc(r.CompletedAt), CancelledAt: utc(r.CancelledAt),
 	}
 	i.CreatedAt, i.UpdatedAt = stamp(&r.Timestamps)
@@ -79,7 +80,7 @@ func (Issues) CreateIssue(ctx context.Context, i domain.Issue) (domain.Issue, er
 	rec := issueRecord{
 		GuildID: i.GuildID, Title: i.Title, Description: i.Description, Status: string(i.Status), Priority: string(i.Priority),
 		AssigneeMemberID: nullable(i.AssigneeID), AssigneeAgentID: nullable(i.AssigneeAgentID), ProjectID: nullable(i.ProjectID), GoalID: nullable(i.GoalID),
-		ParentID: nullable(i.ParentID), CreatedByMemberID: nullable(i.CreatedByID),
+		ParentID: nullable(i.ParentID), CreatedByMemberID: nullable(i.CreatedBy.MemberID), CreatedByAgentID: nullable(i.CreatedBy.AgentID),
 		StartedAt: i.StartedAt, CompletedAt: i.CompletedAt, CancelledAt: i.CancelledAt,
 	}
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {

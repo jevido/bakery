@@ -10,45 +10,37 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
 )
 
-// commentJSON is a Comment in an Issue's thread. A deleted one has an
-// empty body; Edited is an edit after it was written.
+// commentJSON is a Comment in an Issue's thread, by a Member (Author) or an
+// Agent (AuthorAgent). A deleted one has an empty body; Edited is an edit
+// after it was written.
 type commentJSON struct {
-	ID        uint64    `json:"id"`
-	Body      string    `json:"body"`
-	Deleted   bool      `json:"deleted"`
-	Author    *Member   `json:"author"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Edited    bool      `json:"edited"`
+	ID          uint64    `json:"id"`
+	Body        string    `json:"body"`
+	Deleted     bool      `json:"deleted"`
+	Author      *Member   `json:"author"`
+	AuthorAgent *Agent    `json:"author_agent"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Edited      bool      `json:"edited"`
 }
 
 // commentsJSON shows Comments with their authors' names, asked for in one
 // go.
 func (c *Controller) commentsJSON(ctx contractshttp.Context, cs []domain.Comment) ([]commentJSON, error) {
-	var ids []uint64
-	for _, cm := range cs {
-		if cm.AuthorID != 0 {
-			ids = append(ids, cm.AuthorID)
-		}
+	authors := make([]domain.Actor, len(cs))
+	for n, cm := range cs {
+		authors[n] = cm.Author
 	}
-	members := map[uint64]Member{}
-	if len(ids) > 0 {
-		ms, err := c.members(ctx.Context(), ids)
-		if err != nil {
-			return nil, err
-		}
-		for _, m := range ms {
-			members[m.ID] = m
-		}
+	names, err := c.actorNames(ctx, authors)
+	if err != nil {
+		return nil, err
 	}
 	out := make([]commentJSON, len(cs))
 	for n, cm := range cs {
 		out[n] = commentJSON{
 			ID: cm.ID, Body: cm.Body, Deleted: cm.Deleted(), CreatedAt: cm.CreatedAt, UpdatedAt: cm.UpdatedAt,
 			Edited: !cm.Deleted() && cm.UpdatedAt.After(cm.CreatedAt),
-		}
-		if m, ok := members[cm.AuthorID]; ok {
-			out[n].Author = &m
+			Author: names.member(cm.Author), AuthorAgent: names.agent(cm.Author),
 		}
 	}
 	return out, nil
@@ -95,7 +87,7 @@ func (c *Controller) WriteComment(ctx contractshttp.Context) contractshttp.Respo
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	cm, err := c.service.WriteComment(ctx.Context(), c.guild(ctx), c.Member(ctx), ctx.Request().Route("id"), req.Body, c.visible(ctx))
+	cm, err := c.service.WriteComment(ctx.Context(), c.guild(ctx), c.actor(ctx), ctx.Request().Route("id"), req.Body, c.visible(ctx))
 	return c.oneComment(ctx, contractshttp.StatusCreated, cm, err)
 }
 
@@ -109,7 +101,7 @@ func (c *Controller) EditComment(ctx contractshttp.Context) contractshttp.Respon
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	cm, err := c.service.EditComment(ctx.Context(), c.guild(ctx), c.Member(ctx), ctx.Request().Route("id"), id, req.Body, c.visible(ctx))
+	cm, err := c.service.EditComment(ctx.Context(), c.guild(ctx), c.actor(ctx), ctx.Request().Route("id"), id, req.Body, c.visible(ctx))
 	return c.oneComment(ctx, contractshttp.StatusOK, cm, err)
 }
 
@@ -120,7 +112,7 @@ func (c *Controller) DeleteComment(ctx contractshttp.Context) contractshttp.Resp
 	if !ok {
 		return notFound(ctx)
 	}
-	if err := c.service.DeleteComment(ctx.Context(), c.guild(ctx), c.Member(ctx), ctx.Request().Route("id"), id, c.visible(ctx)); err != nil {
+	if err := c.service.DeleteComment(ctx.Context(), c.guild(ctx), c.actor(ctx), ctx.Request().Route("id"), id, c.visible(ctx)); err != nil {
 		return fail(ctx, err)
 	}
 	return ctx.Response().NoContent()

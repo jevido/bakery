@@ -21,7 +21,9 @@ type documentRecord struct {
 	RevisionNumber    int
 	LatestRevisionID  uint64
 	CreatedByMemberID *uint64
+	CreatedByAgentID  *uint64
 	UpdatedByMemberID *uint64
+	UpdatedByAgentID  *uint64
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
@@ -30,7 +32,7 @@ func (r documentRecord) toDomain() domain.IssueDocument {
 	return domain.IssueDocument{
 		ID: r.ID, GuildID: r.GuildID, IssueID: r.IssueID, Key: r.Key, Title: r.Title, Body: r.Body,
 		Latest: r.RevisionNumber, LatestRevisionID: r.LatestRevisionID,
-		CreatedByID: deref(r.CreatedByMemberID), UpdatedByID: deref(r.UpdatedByMemberID),
+		CreatedBy: actor(r.CreatedByMemberID, r.CreatedByAgentID), UpdatedBy: actor(r.UpdatedByMemberID, r.UpdatedByAgentID),
 		CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(),
 	}
 }
@@ -43,13 +45,14 @@ type revisionRecord struct {
 	Body              string
 	ChangeSummary     *string
 	CreatedByMemberID *uint64
+	CreatedByAgentID  *uint64
 	CreatedAt         time.Time
 }
 
 func (r revisionRecord) toDomain() domain.Revision {
 	rev := domain.Revision{
 		ID: r.ID, DocumentID: r.DocumentID, Number: r.Number, Title: r.Title, Body: r.Body,
-		AuthorID: deref(r.CreatedByMemberID), CreatedAt: r.CreatedAt.UTC(),
+		Author: actor(r.CreatedByMemberID, r.CreatedByAgentID), CreatedAt: r.CreatedAt.UTC(),
 	}
 	if r.ChangeSummary != nil {
 		rev.Summary = *r.ChangeSummary
@@ -130,8 +133,8 @@ func (s Documents) Revision(ctx context.Context, documentID, id uint64) (domain.
 // not depend on updated_at, so this does not change the Issue as an
 // aggregate.
 func addRevision(tx contractsorm.Query, id, issueID uint64, r domain.Revision) error {
-	if _, err := tx.Exec(`INSERT INTO issue_document_revisions (document_id, number, title, body, change_summary, created_by_member_id, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, id, r.Number, r.Title, r.Body, summary(r.Summary), nullable(r.AuthorID), r.CreatedAt); err != nil {
+	if _, err := tx.Exec(`INSERT INTO issue_document_revisions (document_id, number, title, body, change_summary, created_by_member_id, created_by_agent_id, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, r.Number, r.Title, r.Body, summary(r.Summary), nullable(r.Author.MemberID), nullable(r.Author.AgentID), r.CreatedAt); err != nil {
 		return err
 	}
 	_, err := tx.Exec(`UPDATE issues SET updated_at = now() WHERE id = ?`, issueID)
@@ -144,9 +147,9 @@ func (s Documents) CreateDocument(ctx context.Context, d domain.IssueDocument, r
 	var saved domain.IssueDocument
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		var ids []uint64
-		if err := tx.Raw(`INSERT INTO issue_documents (guild_id, issue_id, key, title, body, revision_number, created_by_member_id, updated_by_member_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (issue_id, key) DO NOTHING RETURNING id`,
-			d.GuildID, d.IssueID, d.Key, d.Title, d.Body, d.Latest, nullable(d.CreatedByID), nullable(d.UpdatedByID), d.CreatedAt, d.UpdatedAt).Scan(&ids); err != nil {
+		if err := tx.Raw(`INSERT INTO issue_documents (guild_id, issue_id, key, title, body, revision_number, created_by_member_id, created_by_agent_id, updated_by_member_id, updated_by_agent_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (issue_id, key) DO NOTHING RETURNING id`,
+			d.GuildID, d.IssueID, d.Key, d.Title, d.Body, d.Latest, nullable(d.CreatedBy.MemberID), nullable(d.CreatedBy.AgentID), nullable(d.UpdatedBy.MemberID), nullable(d.UpdatedBy.AgentID), d.CreatedAt, d.UpdatedAt).Scan(&ids); err != nil {
 			return err
 		}
 		if len(ids) == 0 {
@@ -168,8 +171,8 @@ func (s Documents) CreateDocument(ctx context.Context, d domain.IssueDocument, r
 func (s Documents) SaveRevision(ctx context.Context, d domain.IssueDocument, r domain.Revision) (domain.IssueDocument, error) {
 	var saved domain.IssueDocument
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
-		res, err := tx.Exec(`UPDATE issue_documents SET title = ?, body = ?, revision_number = ?, updated_by_member_id = ?, updated_at = ?
-			WHERE id = ? AND revision_number = ?`, d.Title, d.Body, r.Number, nullable(d.UpdatedByID), d.UpdatedAt, d.ID, r.Number-1)
+		res, err := tx.Exec(`UPDATE issue_documents SET title = ?, body = ?, revision_number = ?, updated_by_member_id = ?, updated_by_agent_id = ?, updated_at = ?
+			WHERE id = ? AND revision_number = ?`, d.Title, d.Body, r.Number, nullable(d.UpdatedBy.MemberID), nullable(d.UpdatedBy.AgentID), d.UpdatedAt, d.ID, r.Number-1)
 		if err != nil {
 			return err
 		}

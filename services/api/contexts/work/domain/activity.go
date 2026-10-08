@@ -54,11 +54,11 @@ const SnippetLength = 140
 
 // ActivityEvent is one entry in the Guild's Activity: an Actor did an
 // Action to one Goal, Issue, Approval or Agent at a time, with what changed. ID is 0 until
-// it is recorded; ActorID and ProjectID are 0 for none.
+// it is recorded; ProjectID is 0 for none and the Actor is nobody for none.
 type ActivityEvent struct {
 	ID         uint64
 	GuildID    uint64
-	ActorID    uint64
+	Actor      Actor
 	Action     string
 	EntityType string
 	EntityID   uint64
@@ -75,20 +75,20 @@ type Event interface {
 
 // Happened is who caused a domain event and when.
 type Happened struct {
-	ActorID uint64
-	At      time.Time
+	Actor Actor
+	At    time.Time
 }
 
 func (h Happened) goal(g Goal, action string, details map[string]any) ActivityEvent {
 	details["title"] = g.Title
-	return ActivityEvent{GuildID: g.GuildID, ActorID: h.ActorID, Action: action, EntityType: GoalEntity, EntityID: g.ID, Details: details, CreatedAt: h.At}
+	return ActivityEvent{GuildID: g.GuildID, Actor: h.Actor, Action: action, EntityType: GoalEntity, EntityID: g.ID, Details: details, CreatedAt: h.At}
 }
 
 // issue keeps the Issue's number and title in every event about it, so
 // one about a deleted Issue still reads.
 func (h Happened) issue(i Issue, action string, details map[string]any) ActivityEvent {
 	details["issue_number"], details["issue_title"] = i.Number, i.Title
-	return ActivityEvent{GuildID: i.GuildID, ActorID: h.ActorID, Action: action, EntityType: IssueEntity, EntityID: i.ID, ProjectID: i.ProjectID, Details: details, CreatedAt: h.At}
+	return ActivityEvent{GuildID: i.GuildID, Actor: h.Actor, Action: action, EntityType: IssueEntity, EntityID: i.ID, ProjectID: i.ProjectID, Details: details, CreatedAt: h.At}
 }
 
 // approval keeps the Approval's type and payload title in every event
@@ -96,7 +96,7 @@ func (h Happened) issue(i Issue, action string, details map[string]any) Activity
 // Project.
 func (h Happened) approval(a Approval, action string, details map[string]any) ActivityEvent {
 	details["type"], details["title"] = a.Type, a.Payload.Label()
-	return ActivityEvent{GuildID: a.GuildID, ActorID: h.ActorID, Action: action, EntityType: ApprovalEntity, EntityID: a.ID, Details: details, CreatedAt: h.At}
+	return ActivityEvent{GuildID: a.GuildID, Actor: h.Actor, Action: action, EntityType: ApprovalEntity, EntityID: a.ID, Details: details, CreatedAt: h.At}
 }
 
 // snippet is the first SnippetLength characters of a comment's body.
@@ -425,5 +425,5 @@ func (e AgentEvent) Activity() ActivityEvent {
 		details[k] = v
 	}
 	details["name"] = e.AgentName
-	return ActivityEvent{GuildID: e.GuildID, ActorID: e.ActorID, Action: e.Action, EntityType: AgentEntity, EntityID: e.AgentID, Details: details, CreatedAt: e.At}
+	return ActivityEvent{GuildID: e.GuildID, Actor: e.Actor, Action: e.Action, EntityType: AgentEntity, EntityID: e.AgentID, Details: details, CreatedAt: e.At}
 }

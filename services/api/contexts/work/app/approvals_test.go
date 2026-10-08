@@ -72,7 +72,7 @@ func TestHireApprovalDecided(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.RequesterID != 7 || a.Type != domain.HireAgent || a.Status != domain.StatusPending {
+	if a.Requester != domain.ByMember(7) || a.Type != domain.HireAgent || a.Status != domain.StatusPending {
 		t.Fatalf("hire approval %+v", a)
 	}
 	if _, err := s.ApproveApproval(ctx, 1, 9, a.ID, ""); err != nil {
@@ -138,7 +138,7 @@ func TestCancelledHireCannotBeDecided(t *testing.T) {
 
 func TestHireNotThroughRequestApproval(t *testing.T) {
 	s, _, _ := hireService(t)
-	_, err := s.RequestApproval(context.Background(), 1, 7, "hire_agent", domain.HireAgentPayload{AgentID: 3, Name: "Ada"}, nil, nil)
+	_, err := s.RequestApproval(context.Background(), 1, domain.ByMember(7), "hire_agent", domain.HireAgentPayload{AgentID: 3, Name: "Ada"}, nil, nil)
 	var fe *domain.FieldError
 	if !errors.As(err, &fe) || fe.Field != "type" {
 		t.Errorf("RequestApproval(hire_agent) = %v", err)

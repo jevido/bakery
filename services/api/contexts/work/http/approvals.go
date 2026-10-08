@@ -60,50 +60,35 @@ func payloadOut(p domain.ApprovalPayload) any {
 }
 
 type approvalJSON struct {
-	ID           uint64     `json:"id"`
-	Type         string     `json:"type"`
-	Status       string     `json:"status"`
-	Payload      any        `json:"payload"`
-	Requester    *Member    `json:"requester"`
-	DecidedBy    *Member    `json:"decided_by"`
-	DecisionNote *string    `json:"decision_note"`
-	DecidedAt    *time.Time `json:"decided_at"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID             uint64     `json:"id"`
+	Type           string     `json:"type"`
+	Status         string     `json:"status"`
+	Payload        any        `json:"payload"`
+	Requester      *Member    `json:"requester"`
+	RequesterAgent *Agent     `json:"requester_agent"`
+	DecidedBy      *Member    `json:"decided_by"`
+	DecisionNote   *string    `json:"decision_note"`
+	DecidedAt      *time.Time `json:"decided_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 // approvalsJSON shows Approvals with their Requesters' and deciders'
 // names, asked for in one go.
-func (c *Controller) approvalsJSON(ctx context.Context, as []domain.Approval) ([]approvalJSON, error) {
-	var ids []uint64
+func (c *Controller) approvalsJSON(ctx contractshttp.Context, as []domain.Approval) ([]approvalJSON, error) {
+	var actors []domain.Actor
 	for _, a := range as {
-		for _, id := range []uint64{a.RequesterID, a.DeciderID} {
-			if id != 0 {
-				ids = append(ids, id)
-			}
-		}
+		actors = append(actors, a.Requester, domain.ByMember(a.DeciderID))
 	}
-	names := map[uint64]Member{}
-	if len(ids) > 0 {
-		ms, err := c.members(ctx, ids)
-		if err != nil {
-			return nil, err
-		}
-		for _, m := range ms {
-			names[m.ID] = m
-		}
-	}
-	member := func(id uint64) *Member {
-		if m, ok := names[id]; ok {
-			return &m
-		}
-		return nil
+	names, err := c.actorNames(ctx, actors)
+	if err != nil {
+		return nil, err
 	}
 	out := make([]approvalJSON, len(as))
 	for i, a := range as {
 		out[i] = approvalJSON{
 			ID: a.ID, Type: string(a.Type), Status: string(a.Status), Payload: payloadOut(a.Payload),
-			Requester: member(a.RequesterID), DecidedBy: member(a.DeciderID),
+			Requester: names.member(a.Requester), RequesterAgent: names.agent(a.Requester), DecidedBy: names.member(domain.ByMember(a.DeciderID)),
 			DecidedAt: a.DecidedAt, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
 		}
 		if a.DecisionNote != "" {
@@ -118,7 +103,7 @@ func (c *Controller) approvalsResponse(ctx contractshttp.Context, as []domain.Ap
 	if err != nil {
 		return fail(ctx, err)
 	}
-	out, err := c.approvalsJSON(ctx.Context(), as)
+	out, err := c.approvalsJSON(ctx, as)
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -129,7 +114,7 @@ func (c *Controller) oneApproval(ctx contractshttp.Context, status int, a domain
 	if err != nil {
 		return fail(ctx, err)
 	}
-	out, err := c.approvalsJSON(ctx.Context(), []domain.Approval{a})
+	out, err := c.approvalsJSON(ctx, []domain.Approval{a})
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -177,7 +162,7 @@ func (c *Controller) RequestApproval(ctx contractshttp.Context) contractshttp.Re
 	if err != nil {
 		return fail(ctx, err)
 	}
-	a, err := c.service.RequestApproval(ctx.Context(), c.guild(ctx), c.Member(ctx), req.Type, p, req.IssueIDs, c.visible(ctx))
+	a, err := c.service.RequestApproval(ctx.Context(), c.guild(ctx), c.actor(ctx), req.Type, p, req.IssueIDs, c.visible(ctx))
 	return c.oneApproval(ctx, contractshttp.StatusCreated, a, err)
 }
 
@@ -273,37 +258,27 @@ func (c *Controller) ResubmitApproval(ctx contractshttp.Context) contractshttp.R
 
 // approvalCommentJSON is a comment in an Approval's thread.
 type approvalCommentJSON struct {
-	ID        uint64    `json:"id"`
-	Body      string    `json:"body"`
-	Author    *Member   `json:"author"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          uint64    `json:"id"`
+	Body        string    `json:"body"`
+	Author      *Member   `json:"author"`
+	AuthorAgent *Agent    `json:"author_agent"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // approvalCommentsJSON shows Approval comments with their authors' names,
 // asked for in one go.
-func (c *Controller) approvalCommentsJSON(ctx context.Context, cs []domain.ApprovalComment) ([]approvalCommentJSON, error) {
-	var ids []uint64
-	for _, cm := range cs {
-		if cm.AuthorID != 0 {
-			ids = append(ids, cm.AuthorID)
-		}
+func (c *Controller) approvalCommentsJSON(ctx contractshttp.Context, cs []domain.ApprovalComment) ([]approvalCommentJSON, error) {
+	authors := make([]domain.Actor, len(cs))
+	for n, cm := range cs {
+		authors[n] = cm.Author
 	}
-	names := map[uint64]Member{}
-	if len(ids) > 0 {
-		ms, err := c.members(ctx, ids)
-		if err != nil {
-			return nil, err
-		}
-		for _, m := range ms {
-			names[m.ID] = m
-		}
+	names, err := c.actorNames(ctx, authors)
+	if err != nil {
+		return nil, err
 	}
 	out := make([]approvalCommentJSON, len(cs))
-	for i, cm := range cs {
-		out[i] = approvalCommentJSON{ID: cm.ID, Body: cm.Body, CreatedAt: cm.CreatedAt}
-		if m, ok := names[cm.AuthorID]; ok {
-			out[i].Author = &m
-		}
+	for n, cm := range cs {
+		out[n] = approvalCommentJSON{ID: cm.ID, Body: cm.Body, CreatedAt: cm.CreatedAt, Author: names.member(cm.Author), AuthorAgent: names.agent(cm.Author)}
 	}
 	return out, nil
 }
@@ -318,7 +293,7 @@ func (c *Controller) ListApprovalComments(ctx contractshttp.Context) contractsht
 	if err != nil {
 		return fail(ctx, err)
 	}
-	out, err := c.approvalCommentsJSON(ctx.Context(), cs)
+	out, err := c.approvalCommentsJSON(ctx, cs)
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -334,11 +309,11 @@ func (c *Controller) AddApprovalComment(ctx contractshttp.Context) contractshttp
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	cm, err := c.service.AddApprovalComment(ctx.Context(), c.guild(ctx), c.Member(ctx), id, req.Body)
+	cm, err := c.service.AddApprovalComment(ctx.Context(), c.guild(ctx), c.actor(ctx), id, req.Body)
 	if err != nil {
 		return fail(ctx, err)
 	}
-	out, err := c.approvalCommentsJSON(ctx.Context(), []domain.ApprovalComment{cm})
+	out, err := c.approvalCommentsJSON(ctx, []domain.ApprovalComment{cm})
 	if err != nil {
 		return fail(ctx, err)
 	}

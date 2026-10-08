@@ -67,8 +67,8 @@ func ParsePriority(s string) (Priority, error) {
 
 // Issue is one piece of work in a Guild. Its Assignee is a Member
 // (AssigneeID) or an Agent (AssigneeAgentID), never both. AssigneeID,
-// AssigneeAgentID, ProjectID, GoalID, ParentID and CreatedByID are 0 for
-// none; the times are nil until the
+// AssigneeAgentID, ProjectID, GoalID and ParentID are 0 for none, and
+// CreatedBy is the Member or Agent that created it; the times are nil until the
 // Issue status sets them.
 type Issue struct {
 	ID          uint64
@@ -84,7 +84,7 @@ type Issue struct {
 	ProjectID       uint64
 	GoalID          uint64
 	ParentID        uint64
-	CreatedByID     uint64
+	CreatedBy       Actor
 	StartedAt       *time.Time
 	CompletedAt     *time.Time
 	CancelledAt     *time.Time
@@ -92,11 +92,11 @@ type Issue struct {
 	UpdatedAt       time.Time
 }
 
-// NewIssue is an Issue of the Guild, created by a Member, in the Backlog
+// NewIssue is an Issue of the Guild, created by a Member or an Agent, in the Backlog
 // at medium Priority until told otherwise. Its number is given when it is
 // stored.
-func NewIssue(guildID, createdByID uint64, title, description string) (Issue, error) {
-	i := Issue{GuildID: guildID, CreatedByID: createdByID, Description: description, Status: Backlog, Priority: Medium}
+func NewIssue(guildID uint64, createdBy Actor, title, description string) (Issue, error) {
+	i := Issue{GuildID: guildID, CreatedBy: createdBy, Description: description, Status: Backlog, Priority: Medium}
 	if err := i.Rename(title); err != nil {
 		return Issue{}, err
 	}

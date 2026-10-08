@@ -19,6 +19,7 @@ type approvalRecord struct {
 	Status              string
 	Payload             string
 	RequestedByMemberID *uint64
+	RequestedByAgentID  *uint64
 	DecidedByMemberID   *uint64
 	DecisionNote        *string
 	DecidedAt           *time.Time
@@ -94,8 +95,8 @@ func (r approvalRecord) toDomain(issueIDs []uint64) (domain.Approval, error) {
 	}
 	a := domain.Approval{
 		ID: r.ID, GuildID: r.GuildID, Type: domain.ApprovalType(r.Type), Status: domain.ApprovalStatus(r.Status),
-		Payload:     p,
-		RequesterID: deref(r.RequestedByMemberID), DeciderID: deref(r.DecidedByMemberID),
+		Payload:   p,
+		Requester: actor(r.RequestedByMemberID, r.RequestedByAgentID), DeciderID: deref(r.DecidedByMemberID),
 		DecidedAt: utc(r.DecidedAt), IssueIDs: issueIDs,
 		CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(),
 	}
@@ -143,9 +144,9 @@ func (s Approvals) CreateApproval(ctx context.Context, a domain.Approval) (domai
 	var id uint64
 	err = facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		var ids []uint64
-		if err := tx.Raw(`INSERT INTO approvals (guild_id, type, status, payload, requested_by_member_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?::jsonb, ?, ?, ?) RETURNING id`,
-			a.GuildID, string(a.Type), string(a.Status), payload, nullable(a.RequesterID), a.CreatedAt, a.UpdatedAt).Scan(&ids); err != nil {
+		if err := tx.Raw(`INSERT INTO approvals (guild_id, type, status, payload, requested_by_member_id, requested_by_agent_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?::jsonb, ?, ?, ?, ?) RETURNING id`,
+			a.GuildID, string(a.Type), string(a.Status), payload, nullable(a.Requester.MemberID), nullable(a.Requester.AgentID), a.CreatedAt, a.UpdatedAt).Scan(&ids); err != nil {
 			return err
 		}
 		id = ids[0]
@@ -269,12 +270,13 @@ type approvalCommentRecord struct {
 	ID             uint64
 	ApprovalID     uint64
 	AuthorMemberID *uint64
+	AuthorAgentID  *uint64
 	Body           string
 	CreatedAt      time.Time
 }
 
 func (r approvalCommentRecord) toDomain() domain.ApprovalComment {
-	return domain.ApprovalComment{ID: r.ID, ApprovalID: r.ApprovalID, AuthorID: deref(r.AuthorMemberID), Body: r.Body, CreatedAt: r.CreatedAt.UTC()}
+	return domain.ApprovalComment{ID: r.ID, ApprovalID: r.ApprovalID, Author: actor(r.AuthorMemberID, r.AuthorAgentID), Body: r.Body, CreatedAt: r.CreatedAt.UTC()}
 }
 
 // ApprovalComments lists the Approval's comments, oldest first.
@@ -292,8 +294,8 @@ func (s Approvals) ApprovalComments(ctx context.Context, approvalID uint64) ([]d
 
 func (s Approvals) CreateApprovalComment(ctx context.Context, c domain.ApprovalComment) (domain.ApprovalComment, error) {
 	var recs []approvalCommentRecord
-	if err := s.query(ctx).Raw(`INSERT INTO approval_comments (approval_id, author_member_id, body, created_at) VALUES (?, ?, ?, ?) RETURNING *`,
-		c.ApprovalID, nullable(c.AuthorID), c.Body, c.CreatedAt).Scan(&recs); err != nil {
+	if err := s.query(ctx).Raw(`INSERT INTO approval_comments (approval_id, author_member_id, author_agent_id, body, created_at) VALUES (?, ?, ?, ?, ?) RETURNING *`,
+		c.ApprovalID, nullable(c.Author.MemberID), nullable(c.Author.AgentID), c.Body, c.CreatedAt).Scan(&recs); err != nil {
 		return domain.ApprovalComment{}, err
 	}
 	return recs[0].toDomain(), nil

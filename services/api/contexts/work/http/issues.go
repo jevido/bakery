@@ -40,23 +40,24 @@ type issueRefJSON struct {
 // issueJSON is an Issue as a list row shows it; Description is nil where a
 // row leaves it out (an Issue's sub-issues).
 type issueJSON struct {
-	ID          uint64        `json:"id"`
-	Number      int           `json:"number"`
-	Identifier  string        `json:"identifier"`
-	Title       string        `json:"title"`
-	Description *string       `json:"description,omitempty"`
-	Status      string        `json:"status"`
-	Priority    string        `json:"priority"`
-	Assignee    *assigneeJSON `json:"assignee"`
-	Project     *projectJSON  `json:"project"`
-	Goal        *goalRefJSON  `json:"goal"`
-	Parent      *issueRefJSON `json:"parent"`
-	CreatedBy   *Member       `json:"created_by"`
-	StartedAt   *time.Time    `json:"started_at"`
-	CompletedAt *time.Time    `json:"completed_at"`
-	CancelledAt *time.Time    `json:"cancelled_at"`
-	CreatedAt   time.Time     `json:"created_at"`
-	UpdatedAt   time.Time     `json:"updated_at"`
+	ID             uint64        `json:"id"`
+	Number         int           `json:"number"`
+	Identifier     string        `json:"identifier"`
+	Title          string        `json:"title"`
+	Description    *string       `json:"description,omitempty"`
+	Status         string        `json:"status"`
+	Priority       string        `json:"priority"`
+	Assignee       *assigneeJSON `json:"assignee"`
+	Project        *projectJSON  `json:"project"`
+	Goal           *goalRefJSON  `json:"goal"`
+	Parent         *issueRefJSON `json:"parent"`
+	CreatedBy      *Member       `json:"created_by"`
+	CreatedByAgent *Agent        `json:"created_by_agent"`
+	StartedAt      *time.Time    `json:"started_at"`
+	CompletedAt    *time.Time    `json:"completed_at"`
+	CancelledAt    *time.Time    `json:"cancelled_at"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
 	// UnresolvedBlockers counts the Blockers the person can see that are
 	// not done; list rows only.
 	UnresolvedBlockers *int `json:"unresolved_blockers,omitempty"`
@@ -95,10 +96,12 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 	}
 	var memberIDs, agentIDs, projectIDs, parentIDs []uint64
 	for _, i := range is {
-		if i.AssigneeAgentID != 0 {
-			agentIDs = append(agentIDs, i.AssigneeAgentID)
+		for _, id := range []uint64{i.AssigneeAgentID, i.CreatedBy.AgentID} {
+			if id != 0 {
+				agentIDs = append(agentIDs, id)
+			}
 		}
-		for _, id := range []uint64{i.AssigneeID, i.CreatedByID} {
+		for _, id := range []uint64{i.AssigneeID, i.CreatedBy.MemberID} {
 			if id != 0 {
 				memberIDs = append(memberIDs, id)
 			}
@@ -161,8 +164,11 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 		if a, ok := agents[i.AssigneeAgentID]; ok {
 			out[n].Assignee = &assigneeJSON{ID: i.AssigneeAgentID, Name: a.Name, Kind: "agent", Icon: a.Icon}
 		}
-		if m, ok := members[i.CreatedByID]; ok {
+		if m, ok := members[i.CreatedBy.MemberID]; ok {
 			out[n].CreatedBy = &m
+		}
+		if a, ok := agents[i.CreatedBy.AgentID]; ok && i.CreatedBy.AgentID != 0 {
+			out[n].CreatedByAgent = &Agent{ID: i.CreatedBy.AgentID, Name: a.Name, Icon: a.Icon}
 		}
 		if name, ok := projects[i.ProjectID]; ok {
 			out[n].Project = &projectJSON{ID: i.ProjectID, Name: name}
@@ -400,7 +406,7 @@ func (c *Controller) CreateIssue(ctx contractshttp.Context) contractshttp.Respon
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	i, err := c.service.CreateIssue(ctx.Context(), c.guild(ctx), c.Member(ctx), req.input(), c.visible(ctx))
+	i, err := c.service.CreateIssue(ctx.Context(), c.guild(ctx), c.actor(ctx), req.input(), c.visible(ctx))
 	return c.oneIssue(ctx, contractshttp.StatusCreated, i, err)
 }
 
@@ -415,7 +421,7 @@ func (c *Controller) UpdateIssue(ctx contractshttp.Context) contractshttp.Respon
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	i, err := c.service.ChangeIssue(ctx.Context(), c.guild(ctx), c.Member(ctx), ctx.Request().Route("id"), req.patch(), c.visible(ctx))
+	i, err := c.service.ChangeIssue(ctx.Context(), c.guild(ctx), c.actor(ctx), ctx.Request().Route("id"), req.patch(), c.visible(ctx))
 	return c.oneIssue(ctx, contractshttp.StatusOK, i, err)
 }
 

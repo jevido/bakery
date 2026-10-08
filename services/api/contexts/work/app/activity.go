@@ -16,9 +16,9 @@ type Activity interface {
 	IssueActivity(ctx context.Context, issueID uint64) ([]domain.ActivityEvent, error)
 }
 
-// happened is the Member's domain event at this moment.
-func (s *Service) happened(memberID uint64) domain.Happened {
-	return domain.Happened{ActorID: memberID, At: s.now()}
+// happened is the Actor's domain event at this moment.
+func (s *Service) happened(by domain.Actor) domain.Happened {
+	return domain.Happened{Actor: by, At: s.now()}
 }
 
 // publish records the domain event as an Activity event. The change it
@@ -51,11 +51,11 @@ const (
 )
 
 // ActivityQuery is what a page of the Guild's Activity keeps: events about
-// EntityType ("" for both), by ActorID (0 for anyone), older than Before (0
+// EntityType ("" for both), by Actor (nobody for anyone), older than Before (0
 // for the newest), at most Limit of them.
 type ActivityQuery struct {
 	EntityType string
-	ActorID    uint64
+	Actor      domain.Actor
 	Before     uint64
 	Limit      int
 }

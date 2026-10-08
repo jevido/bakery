@@ -44,8 +44,8 @@ func ParseDocumentKey(key string) (string, error) {
 	return key, nil
 }
 
-// Revision is one saved version of an Issue document. AuthorID is 0 once
-// the author's account is gone.
+// Revision is one saved version of an Issue document. Its Author is a
+// Member or an Agent, and nobody once that account or Agent is gone.
 type Revision struct {
 	ID         uint64
 	DocumentID uint64
@@ -53,7 +53,7 @@ type Revision struct {
 	Title      string
 	Body       string
 	Summary    string
-	AuthorID   uint64
+	Author     Actor
 	CreatedAt  time.Time
 }
 
@@ -70,8 +70,8 @@ type IssueDocument struct {
 	Latest  int
 	// LatestRevisionID is the id of the newest Revision, set by the store.
 	LatestRevisionID uint64
-	CreatedByID      uint64
-	UpdatedByID      uint64
+	CreatedBy        Actor
+	UpdatedBy        Actor
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -93,7 +93,7 @@ func documentText(title, body, summary string) (string, string, string, error) {
 
 // NewIssueDocument is a new Issue document on an Issue with its first
 // Revision.
-func NewIssueDocument(guildID, issueID uint64, key, title, body, summary string, authorID uint64, now time.Time) (IssueDocument, Revision, error) {
+func NewIssueDocument(guildID, issueID uint64, key, title, body, summary string, author Actor, now time.Time) (IssueDocument, Revision, error) {
 	k, err := ParseDocumentKey(key)
 	if err != nil {
 		return IssueDocument{}, Revision{}, err
@@ -104,20 +104,20 @@ func NewIssueDocument(guildID, issueID uint64, key, title, body, summary string,
 	}
 	d := IssueDocument{
 		GuildID: guildID, IssueID: issueID, Key: k, Title: t, Body: b, Latest: 1,
-		CreatedByID: authorID, UpdatedByID: authorID, CreatedAt: now, UpdatedAt: now,
+		CreatedBy: author, UpdatedBy: author, CreatedAt: now, UpdatedAt: now,
 	}
-	return d, Revision{Number: 1, Title: t, Body: b, Summary: s, AuthorID: authorID, CreatedAt: now}, nil
+	return d, Revision{Number: 1, Title: t, Body: b, Summary: s, Author: author, CreatedAt: now}, nil
 }
 
-func (d *IssueDocument) revise(title, body, summary string, authorID uint64, now time.Time) Revision {
-	d.Title, d.Body, d.Latest, d.UpdatedByID, d.UpdatedAt = title, body, d.Latest+1, authorID, now
-	return Revision{DocumentID: d.ID, Number: d.Latest, Title: title, Body: body, Summary: summary, AuthorID: authorID, CreatedAt: now}
+func (d *IssueDocument) revise(title, body, summary string, author Actor, now time.Time) Revision {
+	d.Title, d.Body, d.Latest, d.UpdatedBy, d.UpdatedAt = title, body, d.Latest+1, author, now
+	return Revision{DocumentID: d.ID, Number: d.Latest, Title: title, Body: body, Summary: summary, Author: author, CreatedAt: now}
 }
 
 // Save makes title and body the newest Revision. baseRevision is the
 // number of the Revision the edit started from; anything but the newest is
 // ErrStaleRevision.
-func (d *IssueDocument) Save(title, body, summary string, baseRevision int, authorID uint64, now time.Time) (Revision, error) {
+func (d *IssueDocument) Save(title, body, summary string, baseRevision int, author Actor, now time.Time) (Revision, error) {
 	if baseRevision != d.Latest {
 		return Revision{}, ErrStaleRevision
 	}
@@ -125,13 +125,13 @@ func (d *IssueDocument) Save(title, body, summary string, baseRevision int, auth
 	if err != nil {
 		return Revision{}, err
 	}
-	return d.revise(t, b, s, authorID, now), nil
+	return d.revise(t, b, s, author, now), nil
 }
 
 // Restore saves an older Revision's title and body as the newest Revision.
-func (d *IssueDocument) Restore(old Revision, authorID uint64, now time.Time) (Revision, error) {
+func (d *IssueDocument) Restore(old Revision, author Actor, now time.Time) (Revision, error) {
 	if old.Number >= d.Latest {
 		return Revision{}, ErrRestoreNewest
 	}
-	return d.revise(old.Title, old.Body, fmt.Sprintf("Restored from revision %d", old.Number), authorID, now), nil
+	return d.revise(old.Title, old.Body, fmt.Sprintf("Restored from revision %d", old.Number), author, now), nil
 }

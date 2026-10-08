@@ -339,9 +339,9 @@ func (s *Service) mayView(projectID uint64, visible Visible) (bool, error) {
 	return len(ids) == 1, err
 }
 
-// CreateIssue creates an Issue in the Guild by the Member.
-func (s *Service) CreateIssue(ctx context.Context, guildID, memberID uint64, in IssueInput, visible Visible) (domain.Issue, error) {
-	i, err := domain.NewIssue(guildID, memberID, in.Title, in.Description)
+// CreateIssue creates an Issue in the Guild by the Member or Agent.
+func (s *Service) CreateIssue(ctx context.Context, guildID uint64, by domain.Actor, in IssueInput, visible Visible) (domain.Issue, error) {
+	i, err := domain.NewIssue(guildID, by, in.Title, in.Description)
 	if err != nil {
 		return domain.Issue{}, err
 	}
@@ -368,9 +368,9 @@ func (s *Service) CreateIssue(ctx context.Context, guildID, memberID uint64, in 
 	if i, err = s.issues.CreateIssue(ctx, i); err != nil {
 		return domain.Issue{}, err
 	}
-	s.publish(ctx, domain.IssueCreated{Happened: s.happened(memberID), Issue: i})
+	s.publish(ctx, domain.IssueCreated{Happened: s.happened(by), Issue: i})
 	if i.AssigneeAgentID != 0 && agentWorksOn(i.Status) {
-		s.assigned(ctx, i, memberID)
+		s.assigned(ctx, i, by.MemberID)
 	}
 	return i, nil
 }
@@ -403,13 +403,13 @@ func (s *Service) relate(ctx context.Context, i *domain.Issue, projectID, goalID
 	return s.moveIssueUnder(ctx, i, parentID, visible)
 }
 
-// ChangeIssue changes the Issue by the Member.
-func (s *Service) ChangeIssue(ctx context.Context, guildID, memberID uint64, ref string, p IssuePatch, visible Visible) (domain.Issue, error) {
+// ChangeIssue changes the Issue by the Member or Agent.
+func (s *Service) ChangeIssue(ctx context.Context, guildID uint64, by domain.Actor, ref string, p IssuePatch, visible Visible) (domain.Issue, error) {
 	i, err := s.Issue(ctx, guildID, ref, visible)
 	if err != nil {
 		return domain.Issue{}, err
 	}
-	e := domain.IssueChanged{Happened: s.happened(memberID), Before: i}
+	e := domain.IssueChanged{Happened: s.happened(by), Before: i}
 	if p.Title != nil {
 		if err := i.Rename(*p.Title); err != nil {
 			return domain.Issue{}, err
@@ -459,7 +459,7 @@ func (s *Service) ChangeIssue(ctx context.Context, guildID, memberID uint64, ref
 			return domain.Issue{}, err
 		}
 		e.BlockersAfter = *p.BlockedByIDs
-		err = s.issues.SaveIssueBlockedBy(ctx, i, blockedBy, memberID)
+		err = s.issues.SaveIssueBlockedBy(ctx, i, blockedBy, by.MemberID)
 	} else {
 		err = s.issues.SaveIssue(ctx, i)
 	}
@@ -474,7 +474,7 @@ func (s *Service) ChangeIssue(ctx context.Context, guildID, memberID uint64, ref
 	}
 	if a := e.After; a.AssigneeAgentID != 0 && agentWorksOn(a.Status) &&
 		(a.AssigneeAgentID != e.Before.AssigneeAgentID || e.Before.Status == domain.Backlog) {
-		s.assigned(ctx, a, memberID)
+		s.assigned(ctx, a, by.MemberID)
 	}
 	return e.After, nil
 }
@@ -599,7 +599,7 @@ func (s *Service) DeleteIssue(ctx context.Context, guildID, memberID uint64, ref
 	if err := s.issues.DeleteIssue(ctx, i.ID); err != nil {
 		return err
 	}
-	s.publish(ctx, domain.IssueDeleted{Happened: s.happened(memberID), Issue: i})
+	s.publish(ctx, domain.IssueDeleted{Happened: s.happened(domain.ByMember(memberID)), Issue: i})
 	return nil
 }
 
@@ -692,7 +692,7 @@ func (s *Service) UnassignAgent(ctx context.Context, guildID, agentID, actorID u
 		return err
 	}
 	for _, i := range is {
-		e := domain.IssueChanged{Happened: s.happened(actorID), Before: i}
+		e := domain.IssueChanged{Happened: s.happened(domain.ByMember(actorID)), Before: i}
 		i.AssignAgent(0)
 		if err := s.issues.SaveIssue(ctx, i); err != nil {
 			return err

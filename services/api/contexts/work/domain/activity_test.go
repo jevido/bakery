@@ -8,7 +8,7 @@ import (
 )
 
 func TestActivityActions(t *testing.T) {
-	h := Happened{ActorID: 4, At: time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)}
+	h := Happened{Actor: ByMember(4), At: time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)}
 	g := Goal{ID: 2, GuildID: 1, Title: "Ship", Level: TaskLevel, Status: Planned}
 	i := Issue{ID: 9, GuildID: 1, Number: 3, Title: "Fix", ProjectID: 5, Status: Todo, Priority: Medium}
 	d := IssueDocument{Key: "plan", Title: "Plan", Latest: 2}
@@ -30,7 +30,7 @@ func TestActivityActions(t *testing.T) {
 		{DocumentDeleted{h, i, d}, "issue.document_deleted", IssueEntity},
 	} {
 		a := tc.e.Activity()
-		if a.Action != tc.action || a.EntityType != tc.entity || a.GuildID != 1 || a.ActorID != 4 || !a.CreatedAt.Equal(h.At) {
+		if a.Action != tc.action || a.EntityType != tc.entity || a.GuildID != 1 || a.Actor != ByMember(4) || !a.CreatedAt.Equal(h.At) {
 			t.Errorf("%T: %+v", tc.e, a)
 		}
 		if tc.entity == IssueEntity && (a.EntityID != 9 || a.ProjectID != 5 || a.Details["issue_number"] != 3 || a.Details["issue_title"] != "Fix") {

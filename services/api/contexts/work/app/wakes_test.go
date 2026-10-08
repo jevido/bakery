@@ -110,7 +110,7 @@ func TestIssueAssignedHook(t *testing.T) {
 	s, heard := wakeService(t)
 	all := func([]uint64) ([]uint64, error) { return nil, nil }
 	// Assigned to an Agent while todo: heard.
-	todo, err := s.CreateIssue(ctx, 1, 7, IssueInput{Title: "Fix it", Status: "todo", AssigneeAgentID: 3}, all)
+	todo, err := s.CreateIssue(ctx, 1, domain.ByMember(7), IssueInput{Title: "Fix it", Status: "todo", AssigneeAgentID: 3}, all)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,36 +118,36 @@ func TestIssueAssignedHook(t *testing.T) {
 		t.Fatalf("created todo: %v", *heard)
 	}
 	// Created in the backlog: not heard until it leaves the backlog.
-	backlog, err := s.CreateIssue(ctx, 1, 7, IssueInput{Title: "Later", Status: "backlog", AssigneeAgentID: 3}, all)
+	backlog, err := s.CreateIssue(ctx, 1, domain.ByMember(7), IssueInput{Title: "Later", Status: "backlog", AssigneeAgentID: 3}, all)
 	if err != nil || len(*heard) != 1 {
 		t.Fatalf("created in backlog: %v %v", err, *heard)
 	}
 	ref := func(i domain.Issue) string { return strconv.FormatUint(i.ID, 10) }
-	if _, err := s.ChangeIssue(ctx, 1, 7, ref(backlog), IssuePatch{Title: ptr("Later, renamed")}, all); err != nil || len(*heard) != 1 {
+	if _, err := s.ChangeIssue(ctx, 1, domain.ByMember(7), ref(backlog), IssuePatch{Title: ptr("Later, renamed")}, all); err != nil || len(*heard) != 1 {
 		t.Fatalf("renamed in backlog: %v %v", err, *heard)
 	}
-	if _, err := s.ChangeIssue(ctx, 1, 7, ref(backlog), IssuePatch{Status: ptr("todo")}, all); err != nil || len(*heard) != 2 || (*heard)[1].issue != backlog.ID {
+	if _, err := s.ChangeIssue(ctx, 1, domain.ByMember(7), ref(backlog), IssuePatch{Status: ptr("todo")}, all); err != nil || len(*heard) != 2 || (*heard)[1].issue != backlog.ID {
 		t.Fatalf("left the backlog: %v %v", err, *heard)
 	}
 	// A change that leaves the same Agent on an open Issue is not heard.
-	if _, err := s.ChangeIssue(ctx, 1, 7, ref(todo), IssuePatch{Status: ptr("in_progress"), AssigneeAgentID: ptr(uint64(3))}, all); err != nil || len(*heard) != 2 {
+	if _, err := s.ChangeIssue(ctx, 1, domain.ByMember(7), ref(todo), IssuePatch{Status: ptr("in_progress"), AssigneeAgentID: ptr(uint64(3))}, all); err != nil || len(*heard) != 2 {
 		t.Fatalf("same agent: %v %v", err, *heard)
 	}
 	// A Member as the Assignee is not heard; handing it to the Agent is.
-	member, err := s.CreateIssue(ctx, 1, 7, IssueInput{Title: "Mine", Status: "todo", AssigneeID: 8}, all)
+	member, err := s.CreateIssue(ctx, 1, domain.ByMember(7), IssueInput{Title: "Mine", Status: "todo", AssigneeID: 8}, all)
 	if err != nil || len(*heard) != 2 {
 		t.Fatalf("assigned to a member: %v %v", err, *heard)
 	}
-	if _, err := s.ChangeIssue(ctx, 1, 7, ref(member), IssuePatch{AssigneeID: ptr(uint64(0)), AssigneeAgentID: ptr(uint64(3))}, all); err != nil || len(*heard) != 3 {
+	if _, err := s.ChangeIssue(ctx, 1, domain.ByMember(7), ref(member), IssuePatch{AssigneeID: ptr(uint64(0)), AssigneeAgentID: ptr(uint64(3))}, all); err != nil || len(*heard) != 3 {
 		t.Fatalf("handed to the agent: %v %v", err, *heard)
 	}
 	// Assigned while done: not heard.
-	if _, err := s.CreateIssue(ctx, 1, 7, IssueInput{Title: "Old", Status: "done", AssigneeAgentID: 3}, all); err != nil || len(*heard) != 3 {
+	if _, err := s.CreateIssue(ctx, 1, domain.ByMember(7), IssueInput{Title: "Old", Status: "done", AssigneeAgentID: 3}, all); err != nil || len(*heard) != 3 {
 		t.Fatalf("done: %v %v", err, *heard)
 	}
 	// A failing hook is logged, and the change still succeeds.
 	s.Assigned = func(context.Context, domain.Issue, uint64) error { return errors.New("agents down") }
-	if _, err := s.CreateIssue(ctx, 1, 7, IssueInput{Title: "Anyway", Status: "todo", AssigneeAgentID: 3}, all); err != nil {
+	if _, err := s.CreateIssue(ctx, 1, domain.ByMember(7), IssueInput{Title: "Anyway", Status: "todo", AssigneeAgentID: 3}, all); err != nil {
 		t.Fatalf("hook error failed the change: %v", err)
 	}
 }
@@ -156,25 +156,33 @@ func TestIssueCommentedHook(t *testing.T) {
 	ctx := context.Background()
 	s, heard := wakeService(t)
 	all := func([]uint64) ([]uint64, error) { return nil, nil }
-	agent, _ := s.CreateIssue(ctx, 1, 7, IssueInput{Title: "Fix it", Status: "todo", AssigneeAgentID: 3}, all)
-	member, _ := s.CreateIssue(ctx, 1, 7, IssueInput{Title: "Mine", Status: "todo", AssigneeID: 8}, all)
-	done, _ := s.CreateIssue(ctx, 1, 7, IssueInput{Title: "Old", Status: "done", AssigneeAgentID: 3}, all)
+	agent, _ := s.CreateIssue(ctx, 1, domain.ByMember(7), IssueInput{Title: "Fix it", Status: "todo", AssigneeAgentID: 3}, all)
+	member, _ := s.CreateIssue(ctx, 1, domain.ByMember(7), IssueInput{Title: "Mine", Status: "todo", AssigneeID: 8}, all)
+	done, _ := s.CreateIssue(ctx, 1, domain.ByMember(7), IssueInput{Title: "Old", Status: "done", AssigneeAgentID: 3}, all)
 	*heard = nil
-	c, err := s.WriteComment(ctx, 1, 7, "1", "Also the link.", all)
+	c, err := s.WriteComment(ctx, 1, domain.ByMember(7), "1", "Also the link.", all)
 	if err != nil || len(*heard) != 1 || (*heard)[0] != (woken{issue: agent.ID, comment: c.ID}) {
 		t.Fatalf("comment on the agent's issue: %v %v", err, *heard)
 	}
 	for _, i := range []domain.Issue{member, done} {
-		if _, err := s.WriteComment(ctx, 1, 7, strconv.FormatUint(i.ID, 10), "Hm.", all); err != nil || len(*heard) != 1 {
+		if _, err := s.WriteComment(ctx, 1, domain.ByMember(7), strconv.FormatUint(i.ID, 10), "Hm.", all); err != nil || len(*heard) != 1 {
 			t.Fatalf("comment on %s: %v %v", i.Title, err, *heard)
 		}
 	}
+	// The Agent assignee's own Comment does not wake it; another Agent's does.
+	if _, err := s.WriteComment(ctx, 1, domain.ByAgent(3), "1", "On it.", all); err != nil || len(*heard) != 1 {
+		t.Fatalf("the agent's own comment: %v %v", err, *heard)
+	}
+	if _, err := s.WriteComment(ctx, 1, domain.ByAgent(4), "1", "Me too.", all); err != nil || len(*heard) != 2 {
+		t.Fatalf("another agent's comment: %v %v", err, *heard)
+	}
+	*heard = (*heard)[:1]
 	s.Commented = func(context.Context, domain.Issue, domain.Comment) error { return errors.New("agents down") }
-	if _, err := s.WriteComment(ctx, 1, 7, "1", "Anyway.", all); err != nil {
+	if _, err := s.WriteComment(ctx, 1, domain.ByMember(7), "1", "Anyway.", all); err != nil {
 		t.Fatalf("hook error failed the comment: %v", err)
 	}
 	// The Comments a Run quotes: the Guild's, in order, deleted ones left out.
-	if err := s.DeleteComment(ctx, 1, 7, strconv.FormatUint(member.ID, 10), 2, all); err != nil {
+	if err := s.DeleteComment(ctx, 1, domain.ByMember(7), strconv.FormatUint(member.ID, 10), 2, all); err != nil {
 		t.Fatal(err)
 	}
 	cs, err := s.CommentsOfGuild(ctx, 1, []uint64{4, 2, c.ID, 99})
@@ -191,7 +199,7 @@ func TestAgentWork(t *testing.T) {
 	s, _ := wakeService(t)
 	all := func([]uint64) ([]uint64, error) { return nil, nil }
 	for _, st := range []string{"in_review", "backlog", "todo", "blocked", "done", "in_progress"} {
-		if _, err := s.CreateIssue(ctx, 1, 7, IssueInput{Title: st, Status: st, AssigneeAgentID: 3}, all); err != nil {
+		if _, err := s.CreateIssue(ctx, 1, domain.ByMember(7), IssueInput{Title: st, Status: st, AssigneeAgentID: 3}, all); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -61,7 +61,7 @@ func inMine(m uint64) sqlFragment {
 		WHERE a.issue_id = issues.id AND a.member_id = ?
 		AND NOT (
 			EXISTS (SELECT 1 FROM issue_comments c WHERE c.issue_id = issues.id AND c.deleted_at IS NULL
-				AND c.author_member_id IS NOT NULL AND c.author_member_id <> ? AND c.created_at > a.archived_at)
+				AND (c.author_agent_id IS NOT NULL OR c.author_member_id IS NOT NULL AND c.author_member_id <> ?) AND c.created_at > a.archived_at)
 			OR EXISTS (SELECT 1 FROM activity_events e WHERE e.entity_type = 'issue' AND e.entity_id = issues.id
 				AND e.action = ? AND e.created_at > a.archived_at
 				AND jsonb_extract_path_text(e.details, ?, ?, ?) IN ?

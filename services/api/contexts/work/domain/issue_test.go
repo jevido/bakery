@@ -30,14 +30,14 @@ func TestParseIssueStatusAndPriority(t *testing.T) {
 }
 
 func TestNewIssue(t *testing.T) {
-	i, err := NewIssue(1, 7, "  Fix the login  ", "")
+	i, err := NewIssue(1, ByMember(7), "  Fix the login  ", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if i.Title != "Fix the login" || i.Status != Backlog || i.Priority != Medium || i.CreatedByID != 7 {
+	if i.Title != "Fix the login" || i.Status != Backlog || i.Priority != Medium || i.CreatedBy != ByMember(7) {
 		t.Errorf("NewIssue = %+v", i)
 	}
-	if _, err := NewIssue(1, 7, " ", ""); err == nil {
+	if _, err := NewIssue(1, ByMember(7), " ", ""); err == nil {
 		t.Error("an empty title was accepted")
 	}
 }

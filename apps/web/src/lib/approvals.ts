@@ -4,7 +4,7 @@
 // (ui/src/components/ApprovalPayload.tsx; MIT, see NOTICE).
 import { ShieldCheck, UserPlus } from "@lucide/svelte";
 import { api } from "./api";
-import type { Issue, WorkMember } from "./work";
+import type { Issue, WorkAgent, WorkMember } from "./work";
 
 /**
  * Where an Approval stands; pending and revision_requested are Actionable.
@@ -41,6 +41,7 @@ export type Approval = {
   /** A HirePayload when type is hire_agent. */
   payload: ApprovalPayload;
   requester: WorkMember | null;
+  requester_agent?: WorkAgent | null;
   decided_by: WorkMember | null;
   decision_note: string | null;
   decided_at: string | null;
@@ -52,6 +53,7 @@ export type ApprovalComment = {
   id: number;
   body: string;
   author: WorkMember | null;
+  author_agent?: WorkAgent | null;
   created_at: string;
 };
 

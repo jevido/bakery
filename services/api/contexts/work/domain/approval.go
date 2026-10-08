@@ -212,16 +212,16 @@ func (p HireAgentPayload) Validated() (HireAgentPayload, error) {
 	return out, nil
 }
 
-// Approval is a decision a Member asks the Board of a Guild to make, with
-// the Issues it is about. RequesterID and DeciderID are 0 for none (or
-// once that Member's account is gone).
+// Approval is a decision a Member or an Agent asks the Board of a Guild to
+// make, with the Issues it is about. The Requester is nobody and DeciderID
+// 0 for none (or once that account or Agent is gone); only a Member decides.
 type Approval struct {
 	ID           uint64
 	GuildID      uint64
 	Type         ApprovalType
 	Status       ApprovalStatus
 	Payload      ApprovalPayload
-	RequesterID  uint64
+	Requester    Actor
 	DeciderID    uint64
 	DecisionNote string
 	DecidedAt    *time.Time
@@ -230,10 +230,10 @@ type Approval struct {
 	UpdatedAt    time.Time
 }
 
-// RequestApproval is a pending Approval of the Guild by the Member about
+// RequestApproval is a pending Approval of the Guild by the Member or Agent about
 // the Issues, already known to be the Guild's; duplicate ids are dropped.
 // The payload must be the type's kind.
-func RequestApproval(guildID, requesterID uint64, t ApprovalType, p ApprovalPayload, issueIDs []uint64) (Approval, error) {
+func RequestApproval(guildID uint64, requester Actor, t ApprovalType, p ApprovalPayload, issueIDs []uint64) (Approval, error) {
 	if p == nil || p.Type() != t {
 		return Approval{}, invalid("payload", "payload does not fit type %s", t)
 	}
@@ -247,7 +247,7 @@ func RequestApproval(guildID, requesterID uint64, t ApprovalType, p ApprovalPayl
 			ids = append(ids, id)
 		}
 	}
-	return Approval{GuildID: guildID, Type: t, Status: StatusPending, Payload: p, RequesterID: requesterID, IssueIDs: ids}, nil
+	return Approval{GuildID: guildID, Type: t, Status: StatusPending, Payload: p, Requester: requester, IssueIDs: ids}, nil
 }
 
 // Actionable is whether the Approval still waits for a Decision.
@@ -340,8 +340,8 @@ func (a *Approval) RequestRevision(by uint64, note string, at time.Time) error {
 // payload when there is one; only its Requester may. It clears the
 // decider, the Decision note and the decision time. A hire's payload
 // never changes.
-func (a *Approval) Resubmit(by uint64, p ApprovalPayload, at time.Time) error {
-	if by == 0 || by != a.RequesterID {
+func (a *Approval) Resubmit(by Actor, p ApprovalPayload, at time.Time) error {
+	if !by.Is(a.Requester) {
 		return ErrNotRequester
 	}
 	if a.Status != StatusRevisionRequested {
@@ -364,21 +364,22 @@ func (a *Approval) Resubmit(by uint64, p ApprovalPayload, at time.Time) error {
 	return nil
 }
 
-// ApprovalComment is a Member's message on an Approval. It is never edited
-// or deleted. AuthorID is 0 once the author's account is gone.
+// ApprovalComment is a Member's or an Agent's message on an Approval. It
+// is never edited or deleted. Its Author is nobody once that account or
+// Agent is gone.
 type ApprovalComment struct {
 	ID         uint64
 	ApprovalID uint64
-	AuthorID   uint64
+	Author     Actor
 	Body       string
 	CreatedAt  time.Time
 }
 
-// NewApprovalComment is a comment by a Member on an Approval.
-func NewApprovalComment(approvalID, authorID uint64, body string) (ApprovalComment, error) {
+// NewApprovalComment is a comment by a Member or an Agent on an Approval.
+func NewApprovalComment(approvalID uint64, author Actor, body string) (ApprovalComment, error) {
 	b, err := commentBody(body)
 	if err != nil {
 		return ApprovalComment{}, err
 	}
-	return ApprovalComment{ApprovalID: approvalID, AuthorID: authorID, Body: b}, nil
+	return ApprovalComment{ApprovalID: approvalID, Author: author, Body: b}, nil
 }

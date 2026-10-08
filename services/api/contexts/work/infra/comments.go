@@ -17,6 +17,7 @@ type commentRecord struct {
 	ID             uint64 `gorm:"primaryKey"`
 	IssueID        uint64
 	AuthorMemberID *uint64
+	AuthorAgentID  *uint64
 	Body           string
 	DeletedAt      *time.Time
 	orm.Timestamps
@@ -25,7 +26,7 @@ type commentRecord struct {
 func (commentRecord) TableName() string { return "issue_comments" }
 
 func (r commentRecord) toDomain() domain.Comment {
-	c := domain.Comment{ID: r.ID, IssueID: r.IssueID, AuthorID: deref(r.AuthorMemberID), Body: r.Body, DeletedAt: utc(r.DeletedAt)}
+	c := domain.Comment{ID: r.ID, IssueID: r.IssueID, Author: actor(r.AuthorMemberID, r.AuthorAgentID), Body: r.Body, DeletedAt: utc(r.DeletedAt)}
 	c.CreatedAt, c.UpdatedAt = stamp(&r.Timestamps)
 	return c
 }
@@ -64,7 +65,7 @@ func (s Comments) Comment(ctx context.Context, id uint64) (domain.Comment, bool,
 // the same transaction. The Issue's rules do not depend on updated_at, so
 // this does not change the Issue as an aggregate.
 func (Comments) CreateComment(ctx context.Context, c domain.Comment) (domain.Comment, error) {
-	rec := commentRecord{IssueID: c.IssueID, AuthorMemberID: nullable(c.AuthorID), Body: c.Body}
+	rec := commentRecord{IssueID: c.IssueID, AuthorMemberID: nullable(c.Author.MemberID), AuthorAgentID: nullable(c.Author.AgentID), Body: c.Body}
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		if err := tx.Create(&rec); err != nil {
 			return err

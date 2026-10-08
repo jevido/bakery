@@ -70,15 +70,15 @@ func RequestableType(typ string) (domain.ApprovalType, error) {
 	return t, nil
 }
 
-// RequestApproval asks the Board of the Guild, as the Member, to decide on
-// the payload, about the Issues; each must be one of the Guild's that the
-// Member may view.
-func (s *Service) RequestApproval(ctx context.Context, guildID, memberID uint64, typ string, p domain.ApprovalPayload, issueIDs []uint64, visible Visible) (domain.Approval, error) {
+// RequestApproval asks the Board of the Guild, as the Member or Agent, to
+// decide on the payload, about the Issues; each must be one of the Guild's
+// that the request may view.
+func (s *Service) RequestApproval(ctx context.Context, guildID uint64, by domain.Actor, typ string, p domain.ApprovalPayload, issueIDs []uint64, visible Visible) (domain.Approval, error) {
 	t, err := RequestableType(typ)
 	if err != nil {
 		return domain.Approval{}, err
 	}
-	a, err := domain.RequestApproval(guildID, memberID, t, p, issueIDs)
+	a, err := domain.RequestApproval(guildID, by, t, p, issueIDs)
 	if err != nil {
 		return domain.Approval{}, err
 	}
@@ -95,17 +95,17 @@ func (s *Service) RequestApproval(ctx context.Context, guildID, memberID uint64,
 			return domain.Approval{}, &domain.FieldError{Field: "issue_ids", Message: "issue " + strconv.FormatUint(id, 10) + " not found"}
 		}
 	}
-	return s.createApproval(ctx, memberID, a)
+	return s.createApproval(ctx, by, a)
 }
 
-func (s *Service) createApproval(ctx context.Context, memberID uint64, a domain.Approval) (domain.Approval, error) {
+func (s *Service) createApproval(ctx context.Context, by domain.Actor, a domain.Approval) (domain.Approval, error) {
 	a.CreatedAt = s.now()
 	a.UpdatedAt = a.CreatedAt
 	a, err := s.approvals.CreateApproval(ctx, a)
 	if err != nil {
 		return domain.Approval{}, err
 	}
-	s.publish(ctx, domain.ApprovalRequested{Happened: s.happened(memberID), Approval: a})
+	s.publish(ctx, domain.ApprovalRequested{Happened: s.happened(by), Approval: a})
 	return a, nil
 }
 
@@ -113,11 +113,11 @@ func (s *Service) createApproval(ctx context.Context, memberID uint64, a domain.
 // Agent, as its Hirer; the agents context has already checked that the
 // Hirer may.
 func (s *Service) RequestHireApproval(ctx context.Context, guildID, hirerID uint64, p domain.HireAgentPayload) (domain.Approval, error) {
-	a, err := domain.RequestApproval(guildID, hirerID, domain.HireAgent, p, nil)
+	a, err := domain.RequestApproval(guildID, domain.ByMember(hirerID), domain.HireAgent, p, nil)
 	if err != nil {
 		return domain.Approval{}, err
 	}
-	return s.createApproval(ctx, hirerID, a)
+	return s.createApproval(ctx, domain.ByMember(hirerID), a)
 }
 
 // CancelApproval cancels one of the Guild's hire_agent Approvals still
@@ -233,7 +233,7 @@ func (s *Service) moveApproval(ctx context.Context, guildID, memberID, id uint64
 			return domain.Approval{}, err
 		}
 		if saved {
-			s.publish(ctx, m.event(s.happened(memberID), a))
+			s.publish(ctx, m.event(s.happened(domain.ByMember(memberID)), a))
 			return a, nil
 		}
 	}
@@ -299,7 +299,7 @@ func (s *Service) ResubmitApproval(ctx context.Context, guildID, memberID, id ui
 	return s.moveApproval(ctx, guildID, memberID, id, move{
 		from: []domain.ApprovalStatus{domain.StatusRevisionRequested},
 		apply: func(a *domain.Approval, at time.Time) (bool, error) {
-			return true, a.Resubmit(memberID, p, at)
+			return true, a.Resubmit(domain.ByMember(memberID), p, at)
 		},
 		event: func(h domain.Happened, a domain.Approval) domain.Event {
 			return domain.ApprovalResubmitted{Happened: h, Approval: a}
@@ -316,14 +316,14 @@ func (s *Service) ApprovalComments(ctx context.Context, guildID, id uint64) ([]d
 	return s.approvals.ApprovalComments(ctx, id)
 }
 
-// AddApprovalComment adds the Member's comment to one of the Guild's
-// Approvals.
-func (s *Service) AddApprovalComment(ctx context.Context, guildID, memberID, id uint64, body string) (domain.ApprovalComment, error) {
+// AddApprovalComment adds the Member's or Agent's comment to one of the
+// Guild's Approvals.
+func (s *Service) AddApprovalComment(ctx context.Context, guildID uint64, by domain.Actor, id uint64, body string) (domain.ApprovalComment, error) {
 	a, err := s.Approval(ctx, guildID, id)
 	if err != nil {
 		return domain.ApprovalComment{}, err
 	}
-	c, err := domain.NewApprovalComment(a.ID, memberID, body)
+	c, err := domain.NewApprovalComment(a.ID, by, body)
 	if err != nil {
 		return domain.ApprovalComment{}, err
 	}
@@ -332,6 +332,6 @@ func (s *Service) AddApprovalComment(ctx context.Context, guildID, memberID, id 
 	if err != nil {
 		return domain.ApprovalComment{}, err
 	}
-	s.publish(ctx, domain.ApprovalCommentWritten{Happened: s.happened(memberID), Approval: a, Comment: c})
+	s.publish(ctx, domain.ApprovalCommentWritten{Happened: s.happened(by), Approval: a, Comment: c})
 	return c, nil
 }

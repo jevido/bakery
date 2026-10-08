@@ -15,6 +15,9 @@ export const goalLevelLabels: Record<GoalLevel, string> = { guild: 'Guild', agen
 /** A Member as a Goal or an Issue names them. */
 export type WorkMember = { id: number; name: string }
 
+/** An Agent as the author or Actor of something in work. */
+export type WorkAgent = { id: number; name: string; icon: string }
+
 export type Goal = {
   id: number
   title: string
@@ -90,6 +93,7 @@ export type Issue = {
   goal: { id: number; title: string } | null
   parent: IssueRef | null
   created_by: WorkMember | null
+  created_by_agent?: WorkAgent | null
   started_at: string | null
   completed_at: string | null
   cancelled_at: string | null
@@ -174,6 +178,7 @@ export type Comment = {
   body: string
   deleted: boolean
   author: WorkMember | null
+  author_agent?: WorkAgent | null
   created_at: string
   updated_at: string
   edited: boolean
@@ -200,7 +205,9 @@ export type IssueDocument = {
   latest_revision_id: number
   latest_revision_number: number
   created_by: WorkMember | null
+  created_by_agent?: WorkAgent | null
   updated_by: WorkMember | null
+  updated_by_agent?: WorkAgent | null
   created_at: string
   updated_at: string
 }
@@ -213,6 +220,7 @@ export type DocumentRevision = {
   body: string
   change_summary: string | null
   created_by: WorkMember | null
+  created_by_agent?: WorkAgent | null
   created_at: string
 }
 
@@ -242,6 +250,7 @@ export type ActivityEvent = {
   id: number
   action: string
   actor: WorkMember | null
+  actor_agent?: WorkAgent | null
   entity: { type: ActivityEntity; id: number; identifier?: string; title: string; exists: boolean }
   details: Record<string, unknown>
   created_at: string
@@ -251,7 +260,7 @@ export type ActivityEvent = {
 export type ActivityEntity = 'issue' | 'goal' | 'approval' | 'agent'
 
 /** The Guild-wide feed's filters: entity kind, Actor, and before an event id for the next page. */
-export type ActivityFilter = Partial<{ entity: ActivityEntity; actor: number; before: number; limit: number }>
+export type ActivityFilter = Partial<{ entity: ActivityEntity; actor: number | `agent:${number}`; before: number; limit: number }>
 
 export function listActivity(filter: ActivityFilter = {}) {
   const query = new URLSearchParams()
