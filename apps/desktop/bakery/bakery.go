@@ -359,6 +359,9 @@ type DesktopRun struct {
 	CreatedAt        time.Time  `json:"created_at"`
 	StartedAt        *time.Time `json:"started_at"`
 	LeaseExpiresAt   *time.Time `json:"lease_expires_at"`
+	// RunKey is only in the claim's answer: the Run key the Runner hands to
+	// this Run's claude. It is kept in memory only, never stored or logged.
+	RunKey string `json:"run_key,omitempty"`
 }
 
 // RunEvent is one thing a Run's claude printed, numbered by Seq from 1.

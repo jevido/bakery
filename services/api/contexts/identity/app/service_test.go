@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/jevido/bakery/services/api/app/secret"
 	"github.com/jevido/bakery/services/api/contexts/identity/domain"
 )
 
@@ -276,5 +278,26 @@ func TestCreateMember(t *testing.T) {
 	}
 	if found, ok, err := s.MemberByEmail(ctx, "DEV@example.com "); err != nil || !ok || found.ID != m.ID {
 		t.Errorf("by email: %+v %v %v", found, ok, err)
+	}
+}
+
+func TestAuthenticateRun(t *testing.T) {
+	ctx := context.Background()
+	s := newTestService()
+	key := domain.RunKeyPrefix + strings.Repeat("ab", 24)
+	if _, err := s.AuthenticateRun(ctx, key); !errors.Is(err, ErrInvalidRunKey) {
+		t.Errorf("no finder registered: %v", err)
+	}
+	want := RunKeyHolder{AgentID: 4, GuildID: 1, RunID: 9, HirerMemberID: 7}
+	s.RunKeyHolders = func(_ context.Context, hash string) (RunKeyHolder, bool, error) {
+		return want, hash == secret.Hash(key), nil
+	}
+	if h, err := s.AuthenticateRun(ctx, key); err != nil || h != want {
+		t.Errorf("a running run's key: %+v %v", h, err)
+	}
+	for _, bad := range []string{domain.RunKeyPrefix + strings.Repeat("cd", 24), domain.DesktopKeyPrefix + strings.Repeat("ab", 24)} {
+		if _, err := s.AuthenticateRun(ctx, bad); !errors.Is(err, ErrInvalidRunKey) {
+			t.Errorf("%s: %v", bad, err)
+		}
 	}
 }

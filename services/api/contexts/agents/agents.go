@@ -54,6 +54,10 @@ func svc() *app.Service {
 			}
 			return out, nil
 		})
+		identity.OnRunKey(func(ctx context.Context, keyHash string) (identity.RunKeyHolder, bool, error) {
+			h, ok, err := service.RunKeyHolder(ctx, keyHash)
+			return identity.RunKeyHolder(h), ok, err
+		})
 		guilds.OnGuildDeleting("agents", service.HasAgents)
 		guilds.OnMemberLeaving(service.HirerLeft)
 	})

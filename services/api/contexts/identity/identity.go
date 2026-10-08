@@ -56,7 +56,12 @@ type Principal struct {
 	// DesktopID is the Desktop whose Desktop key made the request, 0
 	// otherwise. A Desktop key acts as its Member in any of their Guilds,
 	// uncapped by Token permissions.
-	DesktopID   uint64
+	DesktopID uint64
+	// AgentID and RunID are the Agent and its Run a Run key made the
+	// request for, 0 otherwise: an Agent principal, whose MemberID is 0 and
+	// whose GuildID is the Run's.
+	AgentID     uint64
+	RunID       uint64
 	permissions []domain.Permission
 }
 
@@ -81,8 +86,8 @@ func TokenPrincipal(memberID, guildID uint64, permissions ...Permission) Princip
 	return p
 }
 
-// Authenticate finds the Principal of a request, by Desktop key or API
-// token in the Authorization header or the Session cookie, and answers 401 itself (and
+// Authenticate finds the Principal of a request, by Run key, Desktop key or
+// API token in the Authorization header or the Session cookie, and answers 401 itself (and
 // false) when there is none.
 func Authenticate(ctx contractshttp.Context) (Principal, bool) {
 	p, ok := identityhttp.Authenticate(service, ctx)
@@ -97,6 +102,9 @@ func Authenticate(ctx contractshttp.Context) (Principal, bool) {
 	}
 	if p.Desktop != nil {
 		out.DesktopID = p.Desktop.ID
+	}
+	if p.Agent != nil {
+		out.AgentID, out.RunID, out.GuildID = p.Agent.AgentID, p.Agent.RunID, p.Agent.GuildID
 	}
 	return out, true
 }
@@ -281,6 +289,29 @@ func APITokenRoutes(r route.Router) {
 // Commands are identity's artisan commands.
 func Commands() []contractsconsole.Command {
 	return []contractsconsole.Command{identityconsole.ResetTwoFactor{Service: service}}
+}
+
+// AgentsRefused is the 403 an Agent principal gets on a route not open to
+// Agents.
+const AgentsRefused = identityhttp.AgentsRefused
+
+// RunKeyHolder is who a Run key speaks for: the Agent, in its Run's Guild,
+// during that Run, and the Member who hired it.
+type RunKeyHolder struct {
+	AgentID       uint64
+	GuildID       uint64
+	RunID         uint64
+	HirerMemberID uint64
+}
+
+// OnRunKey registers the one finder of Run keys (agents): given a Run
+// key's SHA-256 in hex, the holder while its Run is running, else false.
+// Until it is registered every Run key is 401.
+func OnRunKey(f func(ctx context.Context, keyHash string) (RunKeyHolder, bool, error)) {
+	service.RunKeyHolders = func(ctx context.Context, keyHash string) (app.RunKeyHolder, bool, error) {
+		h, ok, err := f(ctx, keyHash)
+		return app.RunKeyHolder(h), ok, err
+	}
 }
 
 var (

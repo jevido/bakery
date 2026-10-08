@@ -2,10 +2,13 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/jevido/bakery/services/api/app/secret"
 	"github.com/jevido/bakery/services/api/contexts/agents/domain"
 )
 
@@ -48,6 +51,9 @@ type QueuedRun struct {
 	Agent     domain.Agent
 	Issue     IssueBrief
 	HasIssue  bool
+	// RunKey is the Run key, filled only in ClaimRun's answer: the one
+	// time it exists outside the Desktop.
+	RunKey string
 }
 
 // DesktopRuns lists the Runs waiting for the Desktop's Member, oldest
@@ -147,7 +153,8 @@ func (s *Service) ClaimRun(ctx context.Context, d Desktop, runID uint64) (Queued
 		if err != nil {
 			return QueuedRun{}, err
 		}
-		if err := r.Claim(d.ID, s.now()); err != nil {
+		key := newRunKey()
+		if err := r.Claim(d.ID, secret.Hash(key), s.now()); err != nil {
 			return QueuedRun{}, err
 		}
 		if a.Status != domain.Idle && a.Status != domain.Error {
@@ -179,9 +186,42 @@ func (s *Service) ClaimRun(ctx context.Context, d Desktop, runID uint64) (Queued
 		if a, err = s.agentRunning(ctx, a.ID); err != nil {
 			return QueuedRun{}, err
 		}
-		return s.queued(ctx, r, map[uint64]string{}, map[uint64]domain.Agent{a.ID: a})
+		q, err := s.queued(ctx, r, map[uint64]string{}, map[uint64]domain.Agent{a.ID: a})
+		q.RunKey = key
+		return q, err
 	}
 	return QueuedRun{}, fmt.Errorf("agents: run %d kept being joined while it was claimed", runID)
+}
+
+// newRunKey mints a Run key: the prefix and 24 random bytes in hex.
+func newRunKey() string {
+	b := make([]byte, 24)
+	_, _ = rand.Read(b) // never fails: crypto/rand panics instead
+	return domain.RunKeyPrefix + hex.EncodeToString(b)
+}
+
+// RunKeyHolder is who a Run key speaks for: the Agent, in its Run's
+// Guild, during that Run, and the Member who hired it.
+type RunKeyHolder struct {
+	AgentID       uint64
+	GuildID       uint64
+	RunID         uint64
+	HirerMemberID uint64
+}
+
+// RunKeyHolder is the holder of the Run key with this hash; false when no
+// running Run has it or its Agent is paused or terminated, so the key
+// stops working the moment its Run ends.
+func (s *Service) RunKeyHolder(ctx context.Context, keyHash string) (RunKeyHolder, bool, error) {
+	r, ok, err := s.runs.RunningRunByKeyHash(ctx, keyHash)
+	if err != nil || !ok {
+		return RunKeyHolder{}, false, err
+	}
+	a, ok, err := s.agents.Agent(ctx, r.AgentID)
+	if err != nil || !ok || a.Status == domain.Paused || a.Status == domain.Terminated {
+		return RunKeyHolder{}, false, err
+	}
+	return RunKeyHolder{AgentID: a.ID, GuildID: r.GuildID, RunID: r.ID, HirerMemberID: a.HirerID}, true, nil
 }
 
 // busy reports whether another Run of the Agent is running, which is what

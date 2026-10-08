@@ -23,6 +23,10 @@ const SessionCookie = "bakery_session"
 
 type principalKey struct{}
 
+// AgentsRefused is the 403 an Agent principal gets on a route not open to
+// Agents.
+const AgentsRefused = "agents cannot use this route"
+
 // Principal is who a request comes from.
 type Principal struct {
 	MemberID      uint64
@@ -33,6 +37,9 @@ type Principal struct {
 	// Desktop is the Desktop whose Desktop key authenticated the request,
 	// nil otherwise.
 	Desktop *domain.Desktop
+	// Agent is who the Run key that authenticated the request speaks for,
+	// nil otherwise; MemberID is then 0.
+	Agent *app.RunKeyHolder
 }
 
 // Allows reports whether the request's API token, if any, carries p.
@@ -170,8 +177,8 @@ func sessionCookie(value string, maxAge int) contractshttp.Cookie {
 	}
 }
 
-// Authenticate finds the Member a request comes from, by a Desktop key or
-// an API token in the Authorization header or else the Session cookie, and puts the
+// Authenticate finds who a request comes from, by a Run key, a Desktop key
+// or an API token in the Authorization header or else the Session cookie, and puts the
 // Principal on the context for MemberID. It answers 401 itself when there is
 // none. The Member is read on every request, so a removed Member counts at
 // once; an expired or unknown token is 401 alike.
@@ -195,6 +202,18 @@ func authenticate(service *app.Service, ctx contractshttp.Context) (Principal, b
 			return Principal{}, false
 		}
 		value = strings.TrimSpace(value)
+		if strings.HasPrefix(value, domain.RunKeyPrefix) {
+			h, err := service.AuthenticateRun(ctx.Context(), value)
+			if errors.Is(err, app.ErrInvalidRunKey) {
+				_ = respond.Error(ctx, contractshttp.StatusUnauthorized, err.Error()).Abort()
+				return Principal{}, false
+			}
+			if err != nil {
+				_ = respond.ServerError(ctx, err).Abort()
+				return Principal{}, false
+			}
+			return Principal{Agent: &h}, true
+		}
 		// A Desktop key also starts with the API token prefix, so it is
 		// told apart first.
 		if strings.HasPrefix(value, domain.DesktopKeyPrefix) {
@@ -277,6 +296,10 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 		_ = respond.Error(ctx, contractshttp.StatusForbidden, "this needs a signed-in session, not an API token").Abort()
 		return
 	}
+	if p.Agent != nil {
+		_ = respond.Error(ctx, contractshttp.StatusForbidden, AgentsRefused).Abort()
+		return
+	}
 	if p.Desktop != nil {
 		_ = respond.Error(ctx, contractshttp.StatusForbidden, "this needs a signed-in session").Abort()
 		return
@@ -285,7 +308,8 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 }
 
 // DesktopAuth is for the routes where a Member lists and signs out their
-// Desktops: with a Session or a Desktop key, never an API token.
+// Desktops: with a Session or a Desktop key, never an API token or a Run
+// key.
 type DesktopAuth struct {
 	Service *app.Service
 }
@@ -299,6 +323,10 @@ func (a DesktopAuth) Handle(ctx contractshttp.Context) {
 	}
 	if p.Token != nil {
 		_ = respond.Error(ctx, contractshttp.StatusForbidden, "this needs a signed-in session, not an API token").Abort()
+		return
+	}
+	if p.Agent != nil {
+		_ = respond.Error(ctx, contractshttp.StatusForbidden, AgentsRefused).Abort()
 		return
 	}
 	ctx.Request().Next()
@@ -315,6 +343,10 @@ func (DesktopOnly) Signature() string { return "identity.desktop_only" }
 func (a DesktopOnly) Handle(ctx contractshttp.Context) {
 	p, ok := Authenticate(a.Service, ctx)
 	if !ok {
+		return
+	}
+	if p.Agent != nil {
+		_ = respond.Error(ctx, contractshttp.StatusForbidden, AgentsRefused).Abort()
 		return
 	}
 	if p.Desktop == nil {

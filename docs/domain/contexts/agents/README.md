@@ -249,7 +249,7 @@ records nothing more.
   | ----- | ---- | ------- |
   | `GET /api/desktop/runs` | | `{"runs": [Desktop run]}`: the `queued` Runs of the person's Agents that are not paused or terminated, oldest first, and the `running` Runs this Desktop holds |
   | `GET /api/desktop/runs/stream` | | server-sent events: `runs` with that same list whenever it changes, and `cancel` `{run_id}` when a Run the Desktop holds is cancelled |
-  | `POST /api/runs/{id}/claim` | | `{"run": Desktop run, "run_key": "bky_run_…"}`, now `running`; 409 when already claimed, final, or its Agent has a running Run or is paused |
+  | `POST /api/runs/{id}/claim` | | `{"run": Desktop run}` with `run.run_key` (`bky_run_…`), the only answer that carries it, now `running`; 409 when already claimed, final, or its Agent has a running Run or is paused |
   | `POST /api/runs/{id}/events` | `{"events": [{seq, kind, payload}]}` | `{"run": {id, status, next_seq, session_id, lease_expires_at}}`; a `seq` already kept is ignored, a gap is 422 with `expected_seq`; 403 for another Desktop of the same person; 409 when not `running`; 413 over 500 events or a payload over 256 KiB |
   | `POST /api/runs/{id}/lease` | | as `events`; 409 when not `running` |
   | `POST /api/runs/{id}/finish` | `{status, exit_code, error, usage}` | as `events`; a Run cancelled meanwhile answers 200 as it is; 409 when otherwise not `running` |

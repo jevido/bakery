@@ -123,6 +123,7 @@ func TestAuthRefuses(t *testing.T) {
 	session := identity.Principal{MemberID: 1}
 	token := identity.TokenPrincipal(1, 2, identity.PermissionRoot)
 	desktop := identity.Principal{MemberID: 1, DesktopID: 3}
+	agent := identity.Principal{AgentID: 4, RunID: 9, GuildID: 1}
 	cases := []struct {
 		name      string
 		auth      Auth
@@ -136,6 +137,9 @@ func TestAuthRefuses(t *testing.T) {
 		{"an API token where Desktop lets a Desktop key", Auth{SelfService: true, Desktop: true}, token, true},
 		{"a Desktop key on a Guild's route", Auth{}, desktop, false},
 		{"a Desktop key on GET /api/me", Auth{Guildless: true}, desktop, false},
+		{"a Run key on a Guild's route", Auth{}, agent, true},
+		{"a Run key on GET /api/me", Auth{Guildless: true}, agent, true},
+		{"a Run key where Desktop lets a Desktop key", Auth{SelfService: true, Desktop: true}, agent, true},
 	}
 	for _, c := range cases {
 		if got := c.auth.refused(c.principal) != ""; got != c.refused {

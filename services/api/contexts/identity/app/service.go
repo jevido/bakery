@@ -81,6 +81,8 @@ type Service struct {
 	// stored them (guilds makes the first Guild). An error fails the
 	// request, though the Instance admin stays.
 	SetUpDone func(ctx context.Context, instanceAdminID uint64) error
+	// RunKeyHolders, when set (by agents), finds who a Run key speaks for.
+	RunKeyHolders RunKeyHolders
 }
 
 func NewService(members Members, apiTokens APITokens, desktopSignIns DesktopSignIns, hasher Hasher) *Service {

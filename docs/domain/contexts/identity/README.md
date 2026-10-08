@@ -100,7 +100,8 @@ leave or delete Guilds or act on Guild Master Transfer offers: those answer
 A request whose bearer starts with `bky_run_` is never looked up as an API
 token or a Desktop key. identity hands the key to the Run key hook agents
 registers, which answers the Run, its Agent and its Guild while the Run is
-`running`, or nothing (401 `invalid token`, also once the Run has ended).
+`running`, or nothing (401 `invalid run key`, also once the Run has ended
+or its Agent is paused or terminated).
 The request's Principal is then the Agent principal: no Member, no Token
 permissions, the Run's Guild only. It never reaches a SelfService route
 (`/api/me`, Profile, API tokens, Two-factor, Desktop sign-ins, Guild
@@ -142,8 +143,8 @@ inside its Guild.
     Invitation.
   - `identity.OnSetUp(f)`: see Domain events.
   - `identity.OnRunKey(f)`: the hook agents registers to resolve a Run key
-    to its Run, Agent and Guild; `Principal.Agent()` answers that Agent
-    principal, and `Principal.Member` is empty for it.
+    to its Run, Agent and Guild; the Principal then has `AgentID`, `RunID`
+    and `GuildID` set and `MemberID` 0.
   Other contexts learn nothing else about Members.
 - **Consumes:** nothing. Identity never imports guilds; where the first
   Member needs a Guild, guilds subscribes to `SetUp`, and where identity's

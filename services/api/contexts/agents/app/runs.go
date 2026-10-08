@@ -20,6 +20,8 @@ type Runs interface {
 	// wake count from; moved is false otherwise.
 	JoinRun(ctx context.Context, r domain.Run, from int) (moved bool, err error)
 	Run(ctx context.Context, id uint64) (domain.Run, bool, error)
+	// RunningRunByKeyHash is the running Run whose Run key has this hash.
+	RunningRunByKeyHash(ctx context.Context, keyHash string) (domain.Run, bool, error)
 	// Runs lists the Runs in the query, newest first.
 	Runs(ctx context.Context, q RunQuery) ([]domain.Run, error)
 	// SaveRun stores the Run's changes only while it is still in the

@@ -15,6 +15,9 @@ const (
 	// DesktopKeyPrefix starts every Desktop key, so a leaked one is
 	// recognisable and never mistaken for an API token.
 	DesktopKeyPrefix = "bky_desk_"
+	// RunKeyPrefix starts every Run key, which agents mints when a Desktop
+	// claims a Run; identity only recognises it and asks agents.
+	RunKeyPrefix = "bky_run_"
 	// DesktopSignInLasts is how long a Desktop sign-in may wait for Approve.
 	DesktopSignInLasts = 10 * time.Minute
 	// DesktopIdleLimit is how long after it was last used a Desktop key

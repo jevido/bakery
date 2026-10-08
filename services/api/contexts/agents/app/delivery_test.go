@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jevido/bakery/services/api/app/secret"
 	"github.com/jevido/bakery/services/api/contexts/agents/domain"
 )
 
@@ -204,5 +205,35 @@ func TestPromptIsWrittenAtClaim(t *testing.T) {
 	if runs.rows[r.ID].Status != domain.RunLost || got.Status != domain.RunQueued || got.WakeCount != 2 ||
 		!slices.Equal(got.WakeContext.CommentIDs, []uint64{53, 51, 52}) || runs.next != twin.ID {
 		t.Errorf("twin after the sweep %+v", got)
+	}
+}
+
+func TestRunKeyLivesWithItsRun(t *testing.T) {
+	ctx := context.Background()
+	s, _, _, w := newTest()
+	ada, r := queuedRun(t, s, w)
+	laptop := Desktop{ID: 3, MemberID: 7}
+	if qs, _ := s.DesktopRuns(ctx, laptop); len(qs) != 1 || qs[0].RunKey != "" {
+		t.Fatalf("the queue shows a run key: %+v", qs)
+	}
+	q, err := s.ClaimRun(ctx, laptop, r.ID)
+	if err != nil || !domain.ValidRunKey(q.RunKey) || q.Run.KeyHash != secret.Hash(q.RunKey) {
+		t.Fatalf("claim: %q %+v %v", q.RunKey, q.Run, err)
+	}
+	if qs, _ := s.DesktopRuns(ctx, laptop); len(qs) != 1 || qs[0].RunKey != "" {
+		t.Errorf("the running run's listing shows its key: %+v", qs)
+	}
+	h, ok, err := s.RunKeyHolder(ctx, secret.Hash(q.RunKey))
+	if err != nil || !ok || h != (RunKeyHolder{AgentID: ada.ID, GuildID: 1, RunID: r.ID, HirerMemberID: 7}) {
+		t.Fatalf("holder: %+v %v %v", h, ok, err)
+	}
+	if _, ok, _ := s.RunKeyHolder(ctx, secret.Hash(domain.RunKeyPrefix+"00")); ok {
+		t.Error("a made-up key has a holder")
+	}
+	if _, err := s.FinishRun(ctx, laptop, r.ID, Finish{Status: "succeeded"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.RunKeyHolder(ctx, secret.Hash(q.RunKey)); ok {
+		t.Error("the key outlived its run")
 	}
 }

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -25,10 +26,10 @@ func TestRunMoves(t *testing.T) {
 	if err := r.Finish(RunSucceeded, Usage{}, nil, "", at); err == nil {
 		t.Error("a queued run finished")
 	}
-	if err := r.Claim(3, at); err != nil || r.Status != RunRunning || r.DesktopID != 3 || !r.LeaseExpiresAt.Equal(at.Add(Lease)) {
+	if err := r.Claim(3, "abc", at); err != nil || r.Status != RunRunning || r.DesktopID != 3 || r.KeyHash != "abc" || !r.LeaseExpiresAt.Equal(at.Add(Lease)) {
 		t.Fatalf("claim: %+v %v", r, err)
 	}
-	if err := r.Claim(3, at); err == nil {
+	if err := r.Claim(3, "abc", at); err == nil {
 		t.Error("a running run claimed again")
 	}
 	keep, err := r.Append([]RunEvent{{Seq: 1, Kind: "init"}, {Seq: 2, Kind: "assistant"}}, at)
@@ -81,7 +82,7 @@ func TestJoinAndWakeable(t *testing.T) {
 	if r.WakeCount != 3 || len(r.WakeContext.CommentIDs) != 2 || r.InvocationSource != Assignment || r.WakeReason != IssueAssigned {
 		t.Errorf("joined: %+v", r)
 	}
-	_ = r.Claim(3, at)
+	_ = r.Claim(3, "abc", at)
 	var rse *RunStatusError
 	if err := r.Join(WakeContext{}, at); !errors.As(err, &rse) || r.WakeCount != 3 {
 		t.Errorf("a running run joined: %v", err)
@@ -109,7 +110,7 @@ func TestRunLostIsRequeued(t *testing.T) {
 	if _, err := r.Lose(at); err == nil {
 		t.Error("a queued run lost")
 	}
-	_ = r.Claim(3, at)
+	_ = r.Claim(3, "abc", at)
 	retry, err := r.Lose(at.Add(time.Hour))
 	if err != nil || r.Status != RunLost || retry.Status != RunQueued || retry.RetryOfRunID != 11 || retry.IssueID != 9 ||
 		retry.InvocationSource != Automation || retry.WakeReason != IssueCommented || retry.WakeContext.CommentIDs[0] != 5 {
@@ -155,5 +156,17 @@ func TestAgentFollowsItsRuns(t *testing.T) {
 	}
 	if a.RunEnded(RunSucceeded, at) || a.Status != Paused {
 		t.Error("a paused agent moved when its run ended")
+	}
+}
+
+func TestValidRunKey(t *testing.T) {
+	good := RunKeyPrefix + strings.Repeat("ab", 24)
+	if !ValidRunKey(good) {
+		t.Errorf("%s refused", good)
+	}
+	for _, bad := range []string{"", strings.Repeat("ab", 24), RunKeyPrefix + strings.Repeat("ab", 23), RunKeyPrefix + strings.Repeat("AB", 24), "bky_desk_" + strings.Repeat("ab", 24)} {
+		if ValidRunKey(bad) {
+			t.Errorf("%q let through", bad)
+		}
 	}
 }

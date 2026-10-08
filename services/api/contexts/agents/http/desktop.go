@@ -70,6 +70,8 @@ type desktopRunJSON struct {
 	CreatedAt      time.Time     `json:"created_at"`
 	StartedAt      *time.Time    `json:"started_at"`
 	LeaseExpiresAt *time.Time    `json:"lease_expires_at"`
+	// RunKey is only in the claim's answer, the one time it is shown.
+	RunKey string `json:"run_key,omitempty"`
 }
 
 func desktopRunOf(q app.QueuedRun) desktopRunJSON {
@@ -79,7 +81,7 @@ func desktopRunOf(q app.QueuedRun) desktopRunJSON {
 		Agent:  runAgentJSON{ID: q.Agent.ID, Name: q.Agent.Name, Icon: string(q.Agent.Icon)},
 		Source: string(r.InvocationSource), WakeReason: string(r.WakeReason), WakeCount: r.WakeCount,
 		Prompt: r.Prompt, SessionID: r.SessionID, NextSeq: r.NextSeq, CreatedAt: r.CreatedAt.UTC(),
-		StartedAt: utc(r.StartedAt), LeaseExpiresAt: utc(r.LeaseExpiresAt),
+		StartedAt: utc(r.StartedAt), LeaseExpiresAt: utc(r.LeaseExpiresAt), RunKey: q.RunKey,
 	}
 	if q.HasIssue {
 		j.Issue = &runIssueJSON{ID: q.Issue.ID, Identifier: q.Issue.Identifier, Title: q.Issue.Title}

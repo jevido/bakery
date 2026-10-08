@@ -54,6 +54,21 @@ func deref(id *uint64) uint64 {
 	return *id
 }
 
+// nullableString stores "" as NULL.
+func nullableString(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 func utc(t *time.Time) *time.Time {
 	if t == nil {
 		return nil

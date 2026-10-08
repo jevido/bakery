@@ -27,6 +27,7 @@ type runRecord struct {
 	RequestedByMemberID *uint64
 	DesktopID           *uint64
 	RetryOfRunID        *uint64
+	KeyHash             *string
 	Prompt              string
 	SessionID           string
 	ExitCode            *int
@@ -69,7 +70,7 @@ func (r runRecord) toDomain() domain.Run {
 		InvocationSource: domain.InvocationSource(r.InvocationSource), WakeReason: domain.WakeReason(r.WakeReason),
 		WakeCount: r.WakeCount, WakeContext: wakeContextOf(r.WakeContext), Status: domain.RunStatus(r.Status),
 		RequestedByID: deref(r.RequestedByMemberID), DesktopID: deref(r.DesktopID), RetryOfRunID: deref(r.RetryOfRunID),
-		Prompt: r.Prompt, SessionID: r.SessionID, ExitCode: r.ExitCode, Error: r.Error,
+		KeyHash: derefString(r.KeyHash), Prompt: r.Prompt, SessionID: r.SessionID, ExitCode: r.ExitCode, Error: r.Error,
 		Usage: domain.Usage{
 			InputTokens: r.InputTokens, CachedInputTokens: r.CachedInputTokens, OutputTokens: r.OutputTokens,
 			Turns: r.Turns, CostEquivalentUSD: r.CostEquivalentUSD, DurationMS: r.DurationMs,
@@ -155,6 +156,20 @@ func (s Runs) Run(ctx context.Context, id uint64) (domain.Run, bool, error) {
 	return rec.toDomain(), true, nil
 }
 
+// RunningRunByKeyHash is the running Run whose Run key has this hash; the
+// hash is the index key, so the lookup needs no constant-time compare.
+func (s Runs) RunningRunByKeyHash(ctx context.Context, keyHash string) (domain.Run, bool, error) {
+	var recs []runRecord
+	if err := s.query(ctx).Raw(`SELECT * FROM runs WHERE key_hash = ? AND status = ?`,
+		keyHash, string(domain.RunRunning)).Scan(&recs); err != nil {
+		return domain.Run{}, false, err
+	}
+	if len(recs) == 0 {
+		return domain.Run{}, false, nil
+	}
+	return recs[0].toDomain(), true, nil
+}
+
 // Runs lists the Runs in the query, newest first.
 func (s Runs) Runs(ctx context.Context, q app.RunQuery) ([]domain.Run, error) {
 	query := s.query(ctx).Where("guild_id", q.GuildID)
@@ -191,11 +206,11 @@ func (s Runs) Runs(ctx context.Context, q app.RunQuery) ([]domain.Run, error) {
 // moved is false when another got there first.
 func (s Runs) SaveRun(ctx context.Context, r domain.Run, from domain.RunStatus) (moved bool, err error) {
 	u := r.Usage
-	res, err := s.query(ctx).Exec(`UPDATE runs SET status = ?, desktop_id = ?, prompt = ?, session_id = ?, exit_code = ?, error = ?,
+	res, err := s.query(ctx).Exec(`UPDATE runs SET status = ?, desktop_id = ?, key_hash = ?, prompt = ?, session_id = ?, exit_code = ?, error = ?,
 		input_tokens = ?, cached_input_tokens = ?, output_tokens = ?, turns = ?, cost_equivalent_usd = ?, duration_ms = ?,
 		next_seq = ?, lease_expires_at = ?, started_at = ?, finished_at = ?, updated_at = ?
 		WHERE id = ? AND status = ? AND wake_count = ?`,
-		string(r.Status), nullable(r.DesktopID), r.Prompt, r.SessionID, r.ExitCode, r.Error,
+		string(r.Status), nullable(r.DesktopID), nullableString(r.KeyHash), r.Prompt, r.SessionID, r.ExitCode, r.Error,
 		u.InputTokens, u.CachedInputTokens, u.OutputTokens, u.Turns, u.CostEquivalentUSD, u.DurationMS,
 		r.NextSeq, r.LeaseExpiresAt, r.StartedAt, r.FinishedAt, r.UpdatedAt, r.ID, string(from), r.WakeCount)
 	if err != nil {

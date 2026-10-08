@@ -124,10 +124,12 @@ func (a Auth) Handle(ctx contractshttp.Context) {
 }
 
 // refused is why the route refuses the Principal outright, "" when it
-// does not: a SelfService route takes only a Session, and a Desktop key
-// where Desktop says so.
+// does not: an Agent principal is let in nowhere yet, a SelfService route
+// takes only a Session, and a Desktop key where Desktop says so.
 func (a Auth) refused(p identity.Principal) string {
 	switch {
+	case p.AgentID != 0:
+		return identity.AgentsRefused
 	case a.SelfService && p.Token:
 		return "this needs a signed-in session, not an API token"
 	case a.SelfService && p.DesktopID != 0 && !a.Desktop:

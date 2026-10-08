@@ -119,11 +119,14 @@ type Run struct {
 	RequestedByID uint64
 	DesktopID     uint64
 	RetryOfRunID  uint64
-	Prompt        string
-	SessionID     string
-	ExitCode      *int
-	Error         string
-	Usage         Usage
+	// KeyHash is the SHA-256 of the Run key Claim gave the Run, "" before;
+	// the key itself is never kept.
+	KeyHash   string
+	Prompt    string
+	SessionID string
+	ExitCode  *int
+	Error     string
+	Usage     Usage
 	// NextSeq is the seq the next Run event must have at least.
 	NextSeq        int64
 	LeaseExpiresAt *time.Time
@@ -185,13 +188,33 @@ func (r *Run) Join(wc WakeContext, at time.Time) error {
 	return nil
 }
 
-// Claim makes a queued Run running on the Desktop, its Lease starting.
-func (r *Run) Claim(desktopID uint64, at time.Time) error {
+// RunKeyPrefix starts every Run key, so a leaked one is recognisable and
+// never mistaken for a Desktop key or an API token.
+const RunKeyPrefix = "bky_run_"
+
+// ValidRunKey reports whether s has the shape ClaimRun mints: the prefix
+// and 24 random bytes in hex.
+func ValidRunKey(s string) bool {
+	rest, ok := strings.CutPrefix(s, RunKeyPrefix)
+	if !ok || len(rest) != 48 {
+		return false
+	}
+	for _, c := range rest {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// Claim makes a queued Run running on the Desktop, its Lease starting,
+// with the hash of the Run key its Desktop gets.
+func (r *Run) Claim(desktopID uint64, keyHash string, at time.Time) error {
 	if r.Status != RunQueued {
 		return &RunStatusError{Status: r.Status, Action: "claimed"}
 	}
 	lease := at.Add(Lease)
-	r.Status, r.DesktopID, r.StartedAt, r.LeaseExpiresAt, r.UpdatedAt = RunRunning, desktopID, &at, &lease, at
+	r.Status, r.DesktopID, r.KeyHash, r.StartedAt, r.LeaseExpiresAt, r.UpdatedAt = RunRunning, desktopID, keyHash, &at, &lease, at
 	return nil
 }
 

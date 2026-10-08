@@ -95,6 +95,15 @@ func (f *fakeRuns) Run(_ context.Context, id uint64) (domain.Run, bool, error) {
 	return r, ok, nil
 }
 
+func (f *fakeRuns) RunningRunByKeyHash(_ context.Context, keyHash string) (domain.Run, bool, error) {
+	for _, r := range f.rows {
+		if r.KeyHash == keyHash && r.Status == domain.RunRunning {
+			return r, true, nil
+		}
+	}
+	return domain.Run{}, false, nil
+}
+
 func (f *fakeRuns) Runs(_ context.Context, q RunQuery) ([]domain.Run, error) {
 	var out []domain.Run
 	for id := f.next; id > 0; id-- {
@@ -216,7 +225,7 @@ func TestPauseAndTerminateCancelRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	claimed := runs.rows[first.ID]
-	_ = claimed.Claim(3, time.Now())
+	_ = claimed.Claim(3, "abc", time.Now())
 	runs.rows[first.ID] = claimed
 	if got, _ := s.RunningRuns(ctx, []uint64{ada.ID}); got[ada.ID] != first.ID {
 		t.Errorf("running runs %v", got)
