@@ -18,7 +18,9 @@ Goal, Issue and Approval belongs to exactly one Guild, and an Issue in a
 Project follows that Project's Permission overrides.
 
 It is **not** responsible (yet) for checkout or document locks: later phases of the guilds goal add them. Agents and their Runs
-are the agents context's; work holds only an Issue's Agent assignee.
+are the agents context's; work holds only an Issue's Agent assignee, and
+tells agents when an Agent is assigned an open Issue or one of its Issues
+gets a Comment, so agents can wake it.
 It does not own Members, Guilds or Projects either; it stores their ids and asks guilds and projects about them.
 
 ## Language
@@ -323,7 +325,20 @@ type and the payload's title.
   view it, so agents asks guilds for that) and `work.UnassignAgent(ctx, guild,
   agent, actor)` (a terminated Agent stops being the Assignee of the open
   Issues, each recorded as `issue.updated` with the terminating person as
-  Actor). Work never imports the contexts that call them.
+  Actor), `work.OnIssueAssigned(f)` (called after an Issue is created with,
+  or changed to, an Agent assignee while its Issue status is not
+  `backlog`, `done` or `cancelled`, and after an Issue with an Agent
+  assignee moves out of `backlog` into an open status; with the Issue's
+  brief and the Member who did it), `work.OnIssueCommented(f)` (called
+  after a Comment is written on an Issue whose Agent assignee is set and
+  whose Issue status is not `done` or `cancelled`; with the Issue's brief,
+  the Comment and its author) and `work.OpenIssuesOfAgent(ctx, guild,
+  agent)` (the Issues assigned to an Agent with Issue status `todo`,
+  `in_progress` or `in_review`, oldest first, with identifier, Issue
+  status, Priority and title, for the Heartbeat timer's check and its
+  prompt). A hook's error is logged and never fails the person's request:
+  the Issue or Comment is already stored, and the Agent wakes on the next
+  change or its timer. Work never imports the contexts that call them.
 
 ## Why it's shaped this way
 
@@ -345,6 +360,10 @@ type and the payload's title.
   Agent assignee apart, so each has its own foreign key and `assignee=me`
   never matches an Agent. Work asks agents (through a hook it registers)
   whether an Agent may be assigned, so work never reads agents' tables.
+- **Wakes are hooks, not events on a bus.** Paperclip's issue routes call
+  the heartbeat service directly. Work calls the hooks agents registered
+  after its change is stored, so work never imports agents and a failed
+  wake never undoes an assignment or a Comment.
 - **Issues hidden by the Project's `view_resources` override.** An Issue has
   no overrides of its own. Whoever may not view a Project may not see the
   work in it either, so the existing Permission overrides already say who

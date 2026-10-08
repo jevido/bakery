@@ -9,12 +9,14 @@ Holds a Guild's Agents: the AI workers its people hire, who hired each one
 (its Hirer), what it does (its Job and Title), whom it reports to (its
 Manager, and so the Guild's Org chart), its Agent status and its Runs: each
 execution of the Agent by `claude` on its Hirer's Desktop app, with the
-Transcript the Desktop reports. An Agent holds
+Transcript the Desktop reports, and its Heartbeats: the Agent waking by
+itself on its Heartbeat policy's timer, on being assigned an Issue, on a
+Comment on its Issue, or on Run heartbeat. An Agent holds
 Roles through its Agent membership in guilds, so it can only do what those
 Roles allow, and it is never placed above its Hirer. Hiring always goes
 through a `hire_agent` Approval the Board decides in work.
 
-It is **not** responsible (yet) for Heartbeats, git, budgets, instructions,
+It is **not** responsible (yet) for git, budgets, instructions,
 skills or keys: later phases of the guilds goal add them. It never executes
 anything: the Runner in the Desktop app does, and reports back. Who an Issue
 is assigned to belongs to work; agents only answers whether an Agent may be
@@ -27,13 +29,16 @@ identity about them.
 The terms (Agent, Hirer, Job, Title, Agent icon, Capabilities, Agent status,
 Manager, Org chart, Hire, Pause, Resume, Terminate, Agent membership, Run,
 Run status, Run event, Transcript, Invocation source, Run usage, Runner,
-Lease) are in
+Lease, Heartbeat, Heartbeat policy, Wake, Wake reason) are in
 [`glossary.md`](../../glossary.md).
 
 | Term | Meaning |
 | ---- | ------- |
 | Reports to | The other side of Manager: an Agent's direct reports are the Agents whose Manager it is. |
 | Chain of command | An Agent's Manager, that one's Manager, and so on up to the top of the Org chart. |
+| Wake count | How many Wakes a Run stands for: 1 when queued, +1 for each Wake that joined it while it was `queued`. |
+| Wake context | What the Wakes that joined a Run add to its prompt: the ids of the Comments they were made for. |
+| Run policy | The Agent page's card that edits its Heartbeat policy (Paperclip's AgentConfigForm "Run Policy"). |
 
 ## Model
 
@@ -41,8 +46,8 @@ Lease) are in
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Agent | Belongs to one Guild, and has one Hirer, a person with a Membership in that Guild when it is hired. Name 1–100 characters after trimming, unique (case-insensitive) among the Guild's Agents that are not terminated, as Paperclip's shortname uniqueness. Job from the glossary's list (`general` when none is given). Title at most 200 characters, Capabilities at most 20000, both optional. Agent icon from the glossary's list, or none. The Manager is an Agent of the same Guild that is not terminated, never the Agent itself and never one of its reports: setting it walks the new Manager's Chain of command up at most 50 levels, as Paperclip's `getChainOfCommand`, and refuses a cycle (422). Agent status moves only `pending_approval → idle` (its Approval approved), `pending_approval → terminated` (rejected, or terminated by a person), `idle`, `running` or `error` → `paused`, `paused → idle`, `idle` or `error` → `running` (a Run of it is claimed), `running → idle` (its Run `succeeded` or was `cancelled`), `running → error` (its Run `failed` or was `lost`), and any of `idle`, `running`, `error` or `paused` → `terminated`; nothing leaves `terminated`. A `pending_approval` Agent cannot be edited, paused or given Roles, so its Approval's payload is what the Board sees; it can only be terminated, which cancels its Approval. A terminated Agent cannot be edited. Only the Run moves set `running` and `error`; a person never does. When an Agent is terminated, its direct reports report to its Manager, or become roots when it had none. |
-| Run | Belongs to one Guild and one Agent of it, and optionally one Issue of that Guild. Starts `queued`. Run status moves only `queued → running` (claimed by a Desktop of the Agent's Hirer), `queued → cancelled`, and `running → succeeded`, `failed`, `cancelled` or `lost`; a final status never changes. At most one `running` Run per Agent; further ones wait `queued` and are claimed in order of creation. Its Run events have `seq` 1, 2, 3… per Run without a gap, and appending a `seq` it already has is a no-op. Run events are appended only while it is `running`. A `running` Run whose Lease runs out becomes `lost`, and a new `queued` Run with the same Agent, Issue and Invocation source takes its place, its `retry_of_run_id` pointing at the lost one (Paperclip's `retryOfRunId`), at most 3 times along one chain; after that the last one stays `lost`. Run usage is set once, when it finishes. |
+| Agent | Belongs to one Guild, and has one Hirer, a person with a Membership in that Guild when it is hired. Name 1–100 characters after trimming, unique (case-insensitive) among the Guild's Agents that are not terminated, as Paperclip's shortname uniqueness. Job from the glossary's list (`general` when none is given). Title at most 200 characters, Capabilities at most 20000, both optional. Agent icon from the glossary's list, or none. The Manager is an Agent of the same Guild that is not terminated, never the Agent itself and never one of its reports: setting it walks the new Manager's Chain of command up at most 50 levels, as Paperclip's `getChainOfCommand`, and refuses a cycle (422). Agent status moves only `pending_approval → idle` (its Approval approved), `pending_approval → terminated` (rejected, or terminated by a person), `idle`, `running` or `error` → `paused`, `paused → idle`, `idle` or `error` → `running` (a Run of it is claimed), `running → idle` (its Run `succeeded` or was `cancelled`), `running → error` (its Run `failed` or was `lost`), and any of `idle`, `running`, `error` or `paused` → `terminated`; nothing leaves `terminated`. A `pending_approval` Agent cannot be edited, paused or given Roles, so its Approval's payload is what the Board sees; it can only be terminated, which cancels its Approval. A terminated Agent cannot be edited. Only the Run moves set `running` and `error`; a person never does. When an Agent is terminated, its direct reports report to its Manager, or become roots when it had none. Its Heartbeat policy has `interval_sec` 60–86400 (300 by default), `enabled` off and `wake_on_demand` on by default; `last_heartbeat_at` is when its timer last woke it, set only by the timer's claim. |
+| Run | Belongs to one Guild and one Agent of it, and optionally one Issue of that Guild. Starts `queued`. Run status moves only `queued → running` (claimed by a Desktop of the Agent's Hirer), `queued → cancelled`, and `running → succeeded`, `failed`, `cancelled` or `lost`; a final status never changes. At most one `running` Run per Agent; further ones wait `queued` and are claimed in order of creation. Its Run events have `seq` 1, 2, 3… per Run without a gap, and appending a `seq` it already has is a no-op. Run events are appended only while it is `running`. A `running` Run whose Lease runs out becomes `lost`, and a new `queued` Run with the same Agent, Issue and Invocation source takes its place, its `retry_of_run_id` pointing at the lost one (Paperclip's `retryOfRunId`), at most 3 times along one chain; after that the last one stays `lost`. Run usage is set once, when it finishes. It has a Wake reason and a wake count: 1 when queued, +1 for each Wake that joins it, and only while it is `queued`; its wake context keeps the ids of the Comments that joined it, for its prompt. A Wake that joins keeps the Run's first Invocation source and Wake reason. A lost Run's replacement keeps its Invocation source, Wake reason and wake context. |
 
 The Agent's Roles are not part of the Agent aggregate: they are its Agent
 membership's in guilds, which keeps the rule that each is below the
@@ -68,8 +73,10 @@ admin always may (with `hire_agents`, which they always hold).
 - `Approved`, `Rejected` (no Permission of its own; it follows the Board's
   Decision on the `hire_agent` Approval, through `work.OnApprovalDecided`):
   the Agent becomes `idle` or `terminated`.
-- `Edit(name, job, title, icon, manager, capabilities)` [manage]: only an
-  `idle`, `error` or `paused` Agent.
+- `Edit(name, job, title, icon, manager, capabilities, heartbeat)`
+  [manage]: only an `idle`, `error` or `paused` Agent, except that the
+  Heartbeat policy alone may also change while it is `running`. An
+  `interval_sec` under 60 or over 86400 is 422 on `heartbeat.interval_sec`.
 - `Pause` [manage]: only an `idle`, `running` or `error` Agent; cancels
   its `queued` and `running` Runs. `Resume` [manage]: only a `paused` Agent
   (resuming a terminated one is 422).
@@ -83,15 +90,44 @@ admin always may (with `hire_agents`, which they always hold).
   asking person's, and grant only Permissions the asking person holds, as
   at the hire, since managing an Agent does not need `manage_roles`; a
   Role removed must be below the asking person's highest (422 otherwise).
-- `StartRun(agent, issue)` [manage]: only an `idle`, `running` or
-  `error` Agent (a `paused`, `pending_approval` or `terminated` one is
-  422), only on an Issue of its Guild whose Agent assignee is that Agent
-  (422 on `issue_id` otherwise, as for an Issue of another Guild or in a
-  Project the person may not view; work answers it through a published
-  call). Creates a `queued` Run with Invocation source `on_demand` and its
-  prompt: `{identifier}: {title}`, a blank line, the description, and one
-  line naming the Agent's Job, Title and Capabilities. It waits behind the
-  Agent's running Run, if any.
+- `Wake(agent, source, reason, issue, actor, context)` (no Permission of
+  its own; StartRun, RunHeartbeat, work's hooks and the timer call it):
+  only for an `idle`, `running` or `error` Agent; with `wake_on_demand`
+  off, only a `timer` Wake. When the Agent has a `queued` Run for the same
+  Issue (or for no Issue, when the Wake has none), the Wake joins it: its
+  wake count goes up by one and a Comment in the context is added to its
+  wake context. Otherwise it creates a `queued` Run with the Wake's
+  Invocation source and Wake reason, which waits behind the Agent's
+  running Run, if any. A Wake that is not accepted is dropped, not an
+  error, when a hook or the timer made it; the routes answer 422 for it.
+- `StartRun(agent, issue)` [manage]: a Wake `on_demand` / `manual`. Only
+  an `idle`, `running` or `error` Agent (a `paused`, `pending_approval` or
+  `terminated` one is 422), only on an Issue of its Guild whose Agent
+  assignee is that Agent (422 on `issue_id` otherwise, as for an Issue of
+  another Guild or in a Project the person may not view; work answers it
+  through a published call), and 422 `wake on demand is off` when the
+  Heartbeat policy says so.
+- `RunHeartbeat(agent)` [manage]: a Wake `on_demand` /
+  `heartbeat_invoked` without an Issue (Paperclip's heartbeat invoke); the
+  same 422s as StartRun but for the Issue.
+- The timer (no Permission; the 30-second sweep that also runs LoseRun):
+  for each Agent whose Heartbeat policy is enabled, that is `idle`,
+  `running` or `error`, has at least one Issue assigned to it with status
+  `todo`, `in_progress` or `in_review`, and whose `last_heartbeat_at` (or,
+  before its first, its creation) is at least `interval_sec` ago, a
+  conditional update of `last_heartbeat_at` claims it (Paperclip's
+  `claimDueTimerHeartbeat`), so two API processes never both wake it, and
+  a Wake `timer` / `heartbeat_timer` without an Issue follows. A timer Wake
+  while its last timer Run is still `queued` joins that Run.
+- A Run's prompt is built when a Desktop claims it, not when it is queued,
+  so the Comments that joined it are in it. Every prompt ends with one line
+  naming the Agent's Job, Title and Capabilities. Per Wake reason:
+  `manual` and `issue_assigned`: `{identifier}: {title}`, a blank line and
+  the description (for `issue_assigned`, preceded by a line saying the
+  Issue was assigned to the Agent); `issue_commented`: the same, then each
+  Comment of its wake context with its author; `heartbeat_invoked` and
+  `heartbeat_timer`: the Agent's open assigned Issues, one line each with
+  identifier, status, priority and title, oldest first.
 - `CancelRun(run)` [manage the Run's Agent]: only a `queued` or `running`
   Run (422 otherwise); it becomes `cancelled`, and a running one's Agent
   `idle`. The Desktop running it sees that on its next
@@ -148,9 +184,14 @@ did it as Actor.
 | `AgentTerminated` | `Terminate`, `Rejected`, the Hirer leaving | `agent.terminated` |
 | `AgentRoleAdded` | `AddRole` | `agent.role_added` |
 | `AgentRoleRemoved` | `RemoveRole` | `agent.role_removed` |
-| `RunStarted` | `StartRun` | `run.started` |
+| `RunStarted` | a Wake that queued a Run, except a `timer` one | `run.started` |
 | `RunClaimed` | `ClaimRun` | none |
 | `RunFinished` (with its Run status) | `FinishRun`, `CancelRun`, `LoseRun`, Pause, Terminate | `run.finished` |
+
+`run.started` has as Actor the person who caused the Wake: who pressed
+Run or Run heartbeat, who assigned the Issue, who wrote the Comment. A
+`timer` Run records nothing (one per interval would drown the Activity),
+nor does a Wake that joined a queued Run.
 
 The Run events themselves are never Activity: one Run writes hundreds of
 them, and the Activity would drown. `RunClaimed` only moves the Agent to
@@ -173,12 +214,13 @@ records nothing more.
   | `GET /api/agents` | `view_resources` | | `{"agents": [Agent]}`, by name; filter `status`: `all` (every Agent but the terminated ones, the default, as Paperclip's All tab), `active` (idle or running), `paused`, `error`, `pending` (pending approval) or `terminated` |
   | `POST /api/agents` | `hire_agents` | `{name, job, title, icon, reports_to, capabilities, role_ids}` | 201 `{"agent": Agent, "approval_id": id}` |
   | `GET /api/agents/{id}` | `view_resources` | | `{"agent": Agent}` |
-  | `PATCH /api/agents/{id}` | manage | any of `{name, job, title, icon, reports_to, capabilities}` | `{"agent": Agent}` |
+  | `PATCH /api/agents/{id}` | manage | any of `{name, job, title, icon, reports_to, capabilities, heartbeat: {enabled, interval_sec, wake_on_demand}}` | `{"agent": Agent}` |
   | `POST /api/agents/{id}/pause`, `.../resume`, `.../terminate` | manage | | `{"agent": Agent}` |
   | `PUT /api/agents/{id}/roles/{role_id}` | manage | | `{"agent": Agent}` |
   | `DELETE /api/agents/{id}/roles/{role_id}` | manage | | `{"agent": Agent}` |
   | `GET /api/org` | `view_resources` | | `{"org": [Org node]}`, the roots of the Org chart |
-  | `POST /api/agents/{id}/runs` | manage | `{issue_id}` | 201 `{"run": Run}` |
+  | `POST /api/agents/{id}/runs` | manage | `{issue_id}` | 201 `{"run": Run}`, 200 when it joined a queued Run |
+  | `POST /api/agents/{id}/heartbeat` | manage | | 201 `{"run": Run}`, 200 when it joined a queued Run; 422 `wake on demand is off` |
   | `GET /api/runs` | `view_resources` | | `{"runs": [Run]}`, newest first; filters `agent` and `issue` (ids), `status`, `limit` (≤ 200, 50 by default) |
   | `GET /api/runs/{id}` | `view_resources` | | `{"run": Run}` |
   | `POST /api/runs/{id}/cancel` | manage | | `{"run": Run}` |
@@ -199,12 +241,14 @@ records nothing more.
 
   Every other request (a Session, an API token) is 403. A Desktop run is
   `{id, status, guild: {id, name}, agent: {id, name, icon}, issue: {id,
-  identifier, title} | null, prompt, retry_of_run_id, session_id,
+  identifier, title} | null, invocation_source, wake_reason, wake_count,
+  prompt, retry_of_run_id, session_id,
   next_seq, created_at, started_at, lease_expires_at}`. The stream also
   counts as the Desktop being seen, once a minute.
 
   A Run is `{id, agent: {id, name, icon}, issue: {id, identifier, title}
-  | null, invocation_source, status, requested_by: {id, name} | null,
+  | null, invocation_source, wake_reason, wake_count, status,
+  requested_by: {id, name} | null,
   desktop: {id, name} | null, retry_of_run_id, usage: {input_tokens,
   cached_input_tokens, output_tokens, turns, cost_equivalent_usd,
   duration_ms}, exit_code, error, created_at, started_at, finished_at,
@@ -225,7 +269,9 @@ records nothing more.
 
   An Agent is `{id, name, job, job_label, title, icon, capabilities, status,
   reports_to: {id, name} | null, hirer: {id, name} | null, roles: [{id,
-  name, color, position}], approval_id, current_run_id, can_manage, created_at,
+  name, color, position}], heartbeat: {enabled, interval_sec,
+  wake_on_demand, last_heartbeat_at}, approval_id, current_run_id,
+  can_manage, created_at,
   updated_at, paused_at, terminated_at}`. An Org node is `{id, name, job,
   job_label, title, icon, status, reports: [Org node]}`; an Agent whose
   Manager is terminated is a root, each level ordered by name. A hire
@@ -249,7 +295,10 @@ records nothing more.
     `work.OnAgentNames` (registered, so the Activity knows which Agents
     still exist), the Issue call that answers an Issue's Agent assignee,
     number, title and description (for a Run's check and its prompt), and
-    the call that clears a terminated Agent as Assignee. It registers the
+    the call that clears a terminated Agent as Assignee, `work.OnIssueAssigned`
+    and `work.OnIssueCommented` (registered, to wake the Agent assignee),
+    and `work.OpenIssuesOfAgent` for the timer's check and the Heartbeat
+    prompts. It registers the
     hook by which work asks whether an Agent may be an Assignee (in the
     Guild, not terminated).
   - from identity: the Desktop key principal (its person, across Guilds)
@@ -316,9 +365,28 @@ records nothing more.
   shows `error` until the new Run is claimed.
 - **Only `claude`.** Paperclip's Codex, Gemini, OpenCode, Cursor, HTTP and
   process adapters are left out, as the goal fixes.
-- **Assigning an Issue to an Agent does not start a Run yet.** Paperclip
-  wakes the assignee with a Heartbeat; Heartbeats are Order step 6. Until
-  then a person presses Run, the `on_demand` Invocation source.
+- **The Heartbeat policy is three columns.** Paperclip keeps it in a
+  free-form `runtimeConfig` JSON; The Bakery keeps `enabled`,
+  `interval_sec` and `wake_on_demand` only, and leaves out the cooldown,
+  max concurrent runs (one running Run per Agent stays the invariant), the
+  timeout and max-turn continuation. Paperclip's separate wake-on-assignment
+  and wake-on-automation switches fold into `wake_on_demand`, as its own
+  `isHeartbeatWakeOnDemandEnabled` already reads them.
+- **The prompt carries the context.** Paperclip's Agent reads its Issue
+  and Comments through the API; The Bakery's cannot call the API until the
+  next phase, so everything it needs is in its prompt, built at claim time
+  so joined Comments are in it.
+- **A timer Run waits for open assigned Issues.** Every Run spends the
+  Hirer's own subscription, and an Agent without the API has nothing else
+  to look at. Revisit once it has the API.
+- **Wakes coalesce on a queued Run only.** Paperclip also defers wakes
+  behind a running Run of the same Issue; here a Wake while the Run runs
+  queues the next one, which is what a Comment written during a Run wants.
+- **@-mentions do not wake an Agent yet.** Agent chat is Order step 7.
+- **Timer Runs are not in the Activity**, since one per interval would
+  drown it; their Runs list shows them.
+- **The Heartbeat policy may change while the Agent runs**, unlike its
+  other fields, so a person can switch a busy timer off without waiting.
 - **One running Run per Agent.** Paperclip allows a configurable
   concurrency; one keeps the Agent status meaningful and a laptop's
   subscription from being spent twice at once.
