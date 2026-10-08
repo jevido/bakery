@@ -35,6 +35,54 @@ export async function version(): Promise<string> {
   return rpc<string>('Version')
 }
 
+/** A connected Bakery; its key never leaves the Go side. */
+export type Bakery = {
+  address: string
+  member: { id: number; name: string; email: string }
+  connected_at: string
+  active: boolean
+  signed_out: boolean
+}
+
+/** A started connect: the link the person approves this desktop at. */
+export type ConnectStart = { id: number; address: string; approval_url: string; expires_at: string }
+
+export type ConnectStatus = 'pending' | 'approved' | 'expired' | 'cancelled' | 'failed'
+
+/** Where a connect stands; also the `connect` event's data. */
+export type ConnectState = { id: number; address: string; status: ConnectStatus; error?: string }
+
+// The bindings' generated models carry the same JSON fields as these types.
+type Methods = {
+  Bakeries(): Promise<Bakery[]>
+  Activate(address: string): Promise<void>
+  Connect(address: string): Promise<ConnectStart>
+  ConnectStatus(id: number): Promise<ConnectState>
+  CancelConnect(id: number): Promise<void>
+  Disconnect(address: string): Promise<void>
+}
+
+async function call<K extends keyof Methods>(method: K, ...args: Parameters<Methods[K]>): Promise<Awaited<ReturnType<Methods[K]>>> {
+  if (bindings) {
+    const fn = (await bindings).Desktop[method] as unknown as (...a: unknown[]) => Promise<Awaited<ReturnType<Methods[K]>>>
+    return fn(...args)
+  }
+  return rpc<Awaited<ReturnType<Methods[K]>>>(method, ...args)
+}
+
+/** The connected Bakeries, the active one marked. */
+export const bakeries = () => call('Bakeries')
+/** Makes the Bakery at address the one the window shows. */
+export const activate = (address: string) => call('Activate', address)
+/** Starts connecting to the Bakery at address; the window also opens the approve link in the browser. */
+export const connect = (address: string) => call('Connect', address)
+/** Where the connect id stands. */
+export const connectStatus = (id: number) => call('ConnectStatus', id)
+/** Cancels a pending connect. */
+export const cancelConnect = (id: number) => call('CancelConnect', id)
+/** Signs this desktop out of the Bakery at address and forgets its key. */
+export const disconnect = (address: string) => call('Disconnect', address)
+
 /** Calls handler with each `name` event's data until the returned function is called. */
 export function onEvent<T>(name: string, handler: (data: T) => void): () => void {
   if (inWindow) {

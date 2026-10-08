@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/jevido/bakery/apps/desktop/store"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -29,22 +31,43 @@ func main() {
 		err = runWindow()
 	case args[0] == "serve":
 		err = runServe(args[1:])
+	case args[0] == "login":
+		err = runLogin(args[1:])
 	case args[0] == "version":
 		fmt.Println(version)
 	default:
-		err = fmt.Errorf("unknown command %q; commands: serve [--addr 127.0.0.1:4991], version", args[0])
+		err = fmt.Errorf("unknown command %q; commands: serve [--addr 127.0.0.1:4991], login --server <address> [--no-browser], version", args[0])
 	}
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
+// openStore opens bakeries.json where store.DefaultPath puts it.
+func openStore() (*store.Store, error) {
+	path, err := store.DefaultPath()
+	if err != nil {
+		return nil, err
+	}
+	return store.New(path), nil
+}
+
+// openInBrowser opens url in the system browser through Wails' browser
+// helper, which needs no running app.
+func openInBrowser(url string) error {
+	return (&application.BrowserManager{}).OpenURL(url)
+}
+
 func runWindow() error {
+	bakeries, err := openStore()
+	if err != nil {
+		return err
+	}
 	events := NewEvents()
 	app := application.New(application.Options{
 		Name:        "The Bakery",
 		Description: "Runs your Bakery Agents on this computer",
-		Services:    []application.Service{application.NewService(NewDesktop(events))},
+		Services:    []application.Service{application.NewService(NewDesktop(events, bakeries, openInBrowser))},
 		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
 		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 	})
@@ -74,6 +97,10 @@ func runServe(args []string) error {
 	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
 		return fmt.Errorf("serve listens on a loopback address only, not %q", host)
 	}
+	bakeries, err := openStore()
+	if err != nil {
+		return err
+	}
 	dist, err := fs.Sub(assets, "frontend/dist")
 	if err != nil {
 		return err
@@ -84,7 +111,7 @@ func runServe(args []string) error {
 		return err
 	}
 	log.Printf("The Bakery desktop app serving on http://%s", ln.Addr())
-	err = http.Serve(ln, newServer(NewDesktop(NewEvents()), dist))
+	err = http.Serve(ln, newServer(NewDesktop(NewEvents(), bakeries, nil), dist))
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}

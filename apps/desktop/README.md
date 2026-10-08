@@ -32,7 +32,21 @@ on `PATH` and Wails' Linux libraries (`wails3 doctor`).
   404) and live updates as SSE on `GET /rpc/events`. Loopback addresses only,
   and a taken port fails instead of moving. This is how a headless browser
   drives the real Go code.
+- **`login --server <address> [--no-browser]`**: connects a Bakery without a
+  window, as Paperclip's `auth login` does: prints the approve link (and opens
+  it unless `--no-browser`), waits until it is approved, expired or
+  cancelled, stores the Bakery and exits 0, or 1 with the reason.
 - **`version`**: prints the version.
+
+## Connected Bakeries
+
+"Connect a Bakery" starts a Desktop sign-in on that Bakery: the app mints the
+sign-in's secret and its Desktop key, sends only the key's SHA-256, and the
+person approves it in the browser. The connected Bakeries, with their keys,
+are in `bakeries.json` under `$BAKERY_DESKTOP_HOME` (default: `the-bakery`
+in the OS's config directory, e.g. `~/.config/the-bakery`), mode 0600. An
+address without a scheme means `https://`. `bakery/` is the thin API client
+(a 401 to the key marks that Bakery signed out), `store/` the file.
 
 `frontend/src/lib/desktop.ts` is the frontend's only way to the Go side: one
 typed function per `Desktop` method, choosing the bindings in the window and

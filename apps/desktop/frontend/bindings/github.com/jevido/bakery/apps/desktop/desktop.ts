@@ -13,6 +13,57 @@
 // @ts-ignore: Unused imports
 import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
+/**
+ * Activate makes the Bakery at address the one the window shows.
+ */
+export function Activate(address: string): $CancellablePromise<void> {
+    return $Call.ByID(3058243509, address);
+}
+
+/**
+ * Bakeries lists the connected Bakeries, the active one marked.
+ */
+export function Bakeries(): $CancellablePromise<$models.ConnectedBakery[] | null> {
+    return $Call.ByID(1470319212);
+}
+
+/**
+ * CancelConnect cancels a pending connect on the Bakery and stops polling.
+ */
+export function CancelConnect(id: number): $CancellablePromise<void> {
+    return $Call.ByID(1591542868, id);
+}
+
+/**
+ * Connect starts a Desktop sign-in at address, opens its approve link in
+ * the browser (in the window; in `serve` the page shows the link) and polls
+ * it until it is approved, expired or cancelled. Every change is a
+ * "connect" event and ConnectStatus's answer.
+ */
+export function Connect(address: string): $CancellablePromise<$models.ConnectStart> {
+    return $Call.ByID(4076694394, address);
+}
+
+/**
+ * ConnectStatus is where the connect id stands.
+ */
+export function ConnectStatus(id: number): $CancellablePromise<$models.ConnectState> {
+    return $Call.ByID(906565636, id);
+}
+
+/**
+ * Disconnect signs this Desktop out of the Bakery at address and forgets
+ * its key, also when the sign-out fails (the Bakery unreachable, the key
+ * already signed out), as Paperclip's logout does.
+ */
+export function Disconnect(address: string): $CancellablePromise<void> {
+    return $Call.ByID(938215710, address);
+}
+
 /**
  * Version answers the Desktop app's version.
  */

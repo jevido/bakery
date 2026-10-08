@@ -1,5 +1,11 @@
 package main
 
+import (
+	"sync"
+
+	"github.com/jevido/bakery/apps/desktop/store"
+)
+
 // version is the Desktop app's version, set at build time with
 // -ldflags "-X main.version=…".
 var version = "dev"
@@ -10,11 +16,20 @@ var version = "dev"
 // transports run the same code.
 type Desktop struct {
 	events *Events
+	store  *store.Store
+	// openURL opens a link in the system browser; nil in `serve`, where the
+	// page shows the link instead.
+	openURL func(url string) error
+
+	mu          sync.Mutex
+	connects    map[uint64]*connecting
+	lastConnect uint64
 }
 
-// NewDesktop returns the Desktop service, sending its live updates to events.
-func NewDesktop(events *Events) *Desktop {
-	return &Desktop{events: events}
+// NewDesktop returns the Desktop service, keeping the connected Bakeries in
+// bakeries and sending its live updates to events.
+func NewDesktop(events *Events, bakeries *store.Store, openURL func(string) error) *Desktop {
+	return &Desktop{events: events, store: bakeries, openURL: openURL, connects: map[uint64]*connecting{}}
 }
 
 // Version answers the Desktop app's version.

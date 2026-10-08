@@ -25,6 +25,47 @@ func (d *Desktop) methods() map[string]method {
 			}
 			return d.Version(), nil
 		},
+		"Bakeries": func(args []json.RawMessage) (any, error) {
+			if err := decodeArgs(args); err != nil {
+				return nil, err
+			}
+			return d.Bakeries()
+		},
+		"Activate": func(args []json.RawMessage) (any, error) {
+			var address string
+			if err := decodeArgs(args, &address); err != nil {
+				return nil, err
+			}
+			return nil, d.Activate(address)
+		},
+		"Connect": func(args []json.RawMessage) (any, error) {
+			var address string
+			if err := decodeArgs(args, &address); err != nil {
+				return nil, err
+			}
+			return d.Connect(address)
+		},
+		"ConnectStatus": func(args []json.RawMessage) (any, error) {
+			var id uint64
+			if err := decodeArgs(args, &id); err != nil {
+				return nil, err
+			}
+			return d.ConnectStatus(id)
+		},
+		"CancelConnect": func(args []json.RawMessage) (any, error) {
+			var id uint64
+			if err := decodeArgs(args, &id); err != nil {
+				return nil, err
+			}
+			return nil, d.CancelConnect(id)
+		},
+		"Disconnect": func(args []json.RawMessage) (any, error) {
+			var address string
+			if err := decodeArgs(args, &address); err != nil {
+				return nil, err
+			}
+			return nil, d.Disconnect(address)
+		},
 	}
 }
 

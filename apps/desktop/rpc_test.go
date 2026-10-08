@@ -9,13 +9,15 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/jevido/bakery/apps/desktop/store"
 )
 
 func testServer(t *testing.T) (*httptest.Server, *Events) {
 	t.Helper()
 	events := NewEvents()
 	assets := fstest.MapFS{"index.html": {Data: []byte("<title>The Bakery</title>")}}
-	srv := httptest.NewServer(newServer(NewDesktop(events), assets))
+	srv := httptest.NewServer(newServer(NewDesktop(events, store.New(t.TempDir()+"/bakeries.json"), nil), assets))
 	t.Cleanup(srv.Close)
 	return srv, events
 }
