@@ -202,6 +202,16 @@ func (s *session) assistant(content ...map[string]any) {
 func text(t string) map[string]any { return map[string]any{"type": "text", "text": t} }
 
 func (s *session) result(subtype string, isError bool, result string) {
+	// The real CLI reports the subscription's window before its result.
+	s.emit(map[string]any{
+		"type": "rate_limit_event",
+		"rate_limit_info": map[string]any{
+			"status":        "allowed",
+			"resetsAt":      s.start.Add(5 * time.Hour).Unix(),
+			"rateLimitType": "five_hour",
+			"utilization":   0.1,
+		},
+	}, s.delay)
 	line := map[string]any{
 		"type":            "result",
 		"subtype":         subtype,

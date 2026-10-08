@@ -149,8 +149,16 @@ func TestTranscriptOfOddLines(t *testing.T) {
 	if got := kinds(tr.Stdout("not json at all")); got != "system" {
 		t.Fatalf("not JSON: %q", got)
 	}
-	if got := tr.Stdout(`{"type":"system","subtype":"compact_boundary"}`); len(got) != 0 {
-		t.Fatalf("other system line: %v", got)
+	// Lines the real CLI prints that are no Run event (seen in the run by hand).
+	for _, l := range []string{
+		`{"type":"system","subtype":"compact_boundary"}`,
+		`{"type":"system","subtype":"hook_started","hook_name":"SessionStart:startup","hook_event":"SessionStart"}`,
+		`{"type":"system","subtype":"hook_response","hook_name":"SessionStart:startup","exit_code":0,"outcome":"success"}`,
+		`{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","rateLimitType":"seven_day","utilization":0.55}}`,
+	} {
+		if got := tr.Stdout(l); len(got) != 0 {
+			t.Fatalf("%s: %v", l, got)
+		}
 	}
 	big := strings.Repeat("x", maxToolResult+10)
 	line, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"content": []any{

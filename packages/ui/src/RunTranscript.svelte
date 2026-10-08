@@ -107,6 +107,14 @@
             <SquareTerminal class="mt-0.5 size-3.5 shrink-0" />
             <pre class="min-w-0 flex-1 overflow-x-auto font-mono text-[11px] break-words whitespace-pre-wrap">{block.lines.join('\n')}</pre>
           </div>
+        {:else if block.type === 'event'}
+          <div data-block={block.label} class="flex items-start gap-2 text-sky-700 dark:text-sky-300">
+            <span class="mt-[7px] size-1.5 shrink-0 rounded-full bg-current/50"></span>
+            <div class="min-w-0 flex-1 text-xs break-words whitespace-pre-wrap">
+              <span class="text-[10px] font-semibold tracking-wide text-muted-foreground/70 uppercase">{block.label}</span>
+              <span class="ml-2">{block.text}</span>
+            </div>
+          </div>
         {:else if block.type === 'result'}
           {@const r = block.result}
           <div data-block="result" class={['rounded-xl border px-3 py-2.5 text-xs', r.is_error ? 'border-destructive/30 bg-destructive/[0.05]' : 'border-border/70 bg-muted/30']}>

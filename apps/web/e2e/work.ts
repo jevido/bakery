@@ -1231,6 +1231,7 @@ const sections: Record<string, () => Promise<void>> = {
         .waitForFunction((n) => document.querySelectorAll('[data-testid="live-run"] [data-block]').length > n, first, { timeout: 20_000 })
         .then(() => true, () => false)
       expect('the Transcript grows live on the Issue page', grew, first)
+      expect('the init line shows the model', (await live.locator('[data-block="init"]').first().innerText()).includes('model '))
       expect('the assistant text shows', await live.locator('[data-block="assistant"]').first().isVisible())
       await live.waitFor({ state: 'detached', timeout: 60_000 })
       const row = page.getByTestId('run-ledger').locator('[data-run]').first()

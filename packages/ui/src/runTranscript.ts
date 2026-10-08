@@ -2,7 +2,7 @@
 // as Paperclip's normalizeTranscript does for its RunTranscriptView
 // (ui/src/components/transcript/RunTranscriptView.tsx; MIT, see NOTICE),
 // trimmed to what the Runner reports from `claude --output-format
-// stream-json`: `assistant`, `thinking`, `tool_call` + `tool_result`,
+// stream-json`: `init`, `assistant`, `thinking`, `tool_call` + `tool_result`,
 // `stderr`, `system` and `result` (the payloads are in the agents document).
 
 /** A Run event as the API answers it. */
@@ -24,6 +24,7 @@ export type TranscriptBlock =
   | { type: 'thinking'; key: string; text: string }
   | { type: 'tool'; key: string; name: string; input: unknown; result: string | null; status: 'running' | 'completed' | 'error' }
   | { type: 'log'; key: string; kind: 'stderr' | 'system'; lines: string[] }
+  | { type: 'event'; key: string; label: 'init'; text: string }
   | { type: 'result'; key: string; result: RunResult }
 
 const record = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {})
@@ -39,6 +40,11 @@ export function transcriptBlocks(events: readonly RunEvent[]): TranscriptBlock[]
     const p = record(e.payload)
     const key = String(e.seq)
     switch (e.kind) {
+      case 'init': {
+        const session = str(p.session_id)
+        out.push({ type: 'event', key, label: 'init', text: `model ${str(p.model) || 'unknown'}${session ? ` • session ${session}` : ''}` })
+        break
+      }
       case 'assistant':
         if (str(p.text)) out.push({ type: 'message', key, text: str(p.text) })
         break
