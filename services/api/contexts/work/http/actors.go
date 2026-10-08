@@ -19,7 +19,11 @@ type Agent struct {
 func (c *Controller) actor(ctx contractshttp.Context) domain.Actor {
 	if c.Agent != nil {
 		if id := c.Agent(ctx); id != 0 {
-			return domain.ByAgent(id)
+			a := domain.ByAgent(id)
+			if c.Run != nil {
+				a.RunID = c.Run(ctx)
+			}
+			return a
 		}
 	}
 	return domain.ByMember(c.Member(ctx))

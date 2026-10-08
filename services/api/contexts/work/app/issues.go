@@ -46,6 +46,10 @@ type Issues interface {
 	// Project.
 	LeaveProject(ctx context.Context, projectID uint64) error
 	HasIssues(ctx context.Context, guildID uint64) (bool, error)
+	// SaveCheckout stores the Issue's Checkout, Assignee and status only
+	// while its row still has before's holder, Assignee and status; moved
+	// is false when another change got there first.
+	SaveCheckout(ctx context.Context, i, before domain.Issue) (moved bool, err error)
 	// OpenIssuesOfAgent lists the Guild's Issues assigned to the Agent that
 	// are not done or cancelled, whatever Project they are in.
 	OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]domain.Issue, error)
@@ -409,6 +413,9 @@ func (s *Service) ChangeIssue(ctx context.Context, guildID uint64, by domain.Act
 	if err != nil {
 		return domain.Issue{}, err
 	}
+	if err := s.mayTouch(ctx, i, by); err != nil {
+		return domain.Issue{}, err
+	}
 	e := domain.IssueChanged{Happened: s.happened(by), Before: i}
 	if p.Title != nil {
 		if err := i.Rename(*p.Title); err != nil {
@@ -477,6 +484,127 @@ func (s *Service) ChangeIssue(ctx context.Context, guildID uint64, by domain.Act
 		s.assigned(ctx, a, by.MemberID)
 	}
 	return e.After, nil
+}
+
+// mayTouch refuses an Agent's change to an Issue whose Checkout another
+// live Run holds; a person is never stopped by a Checkout.
+func (s *Service) mayTouch(ctx context.Context, i domain.Issue, by domain.Actor) error {
+	if by.AgentID == 0 || i.CheckoutRunID == 0 || i.CheckoutRunID == by.RunID {
+		return nil
+	}
+	live, err := s.live(ctx, i.CheckoutRunID)
+	if err != nil {
+		return err
+	}
+	if i.HeldByOther(by.RunID, live) {
+		return &domain.HeldError{RunID: i.CheckoutRunID}
+	}
+	return nil
+}
+
+// live asks which of the Runs are running (RunsLive); without it none is.
+func (s *Service) live(ctx context.Context, runIDs ...uint64) (func(uint64) bool, error) {
+	if s.RunsLive == nil || len(runIDs) == 0 {
+		return func(uint64) bool { return false }, nil
+	}
+	m, err := s.RunsLive(ctx, runIDs)
+	if err != nil {
+		return nil, err
+	}
+	return func(id uint64) bool { return m[id] }, nil
+}
+
+// LiveCheckouts tells, for each Issue holding a Checkout, whether its Run
+// is still running: a Stale checkout shows as none.
+func (s *Service) LiveCheckouts(ctx context.Context, is []domain.Issue) (func(uint64) bool, error) {
+	var ids []uint64
+	for _, i := range is {
+		if i.CheckoutRunID != 0 {
+			ids = append(ids, i.CheckoutRunID)
+		}
+	}
+	return s.live(ctx, ids...)
+}
+
+// checkoutTries is how often a Checkout or Release reads the Issue again
+// after another change won the row, before it gives up.
+const checkoutTries = 3
+
+// CheckoutIssue gives the Agent's Run (by.RunID) the Issue's Checkout and
+// moves it to in progress; expected are the Issue statuses it may be taken
+// from, none for domain.CheckoutStatuses. The store only takes it while
+// the Issue is as it was read, so two Runs never both hold it.
+func (s *Service) CheckoutIssue(ctx context.Context, guildID uint64, by domain.Actor, ref string, expected []string, visible Visible) (domain.Issue, error) {
+	if by.AgentID == 0 || by.RunID == 0 {
+		return domain.Issue{}, ErrAgentsOnly
+	}
+	var want []domain.IssueStatus
+	for _, e := range expected {
+		st, err := domain.ParseIssueStatus(e)
+		if err != nil {
+			return domain.Issue{}, &domain.FieldError{Field: "expected_statuses", Message: "expected statuses must be backlog, todo, in_progress, in_review, blocked, done or cancelled"}
+		}
+		want = append(want, st)
+	}
+	for range checkoutTries {
+		i, err := s.Issue(ctx, guildID, ref, visible)
+		if err != nil {
+			return domain.Issue{}, err
+		}
+		live, err := s.live(ctx, i.CheckoutRunID)
+		if err != nil {
+			return domain.Issue{}, err
+		}
+		before := i
+		changed, err := i.Checkout(by.AgentID, by.RunID, want, live, s.now())
+		if err != nil || !changed {
+			return i, err
+		}
+		moved, err := s.issues.SaveCheckout(ctx, i, before)
+		if err != nil {
+			return domain.Issue{}, err
+		}
+		if !moved {
+			continue
+		}
+		if i, _, err = s.issues.Issue(ctx, i.ID); err != nil {
+			return domain.Issue{}, err
+		}
+		s.publish(ctx, domain.IssueCheckedOut{Happened: s.happened(by), Issue: i, RunID: by.RunID})
+		return i, nil
+	}
+	return domain.Issue{}, ErrBusy
+}
+
+// ReleaseIssue gives up the Checkout the Agent's Run (by.RunID) holds, as
+// domain.Issue.Release does.
+func (s *Service) ReleaseIssue(ctx context.Context, guildID uint64, by domain.Actor, ref string, visible Visible) (domain.Issue, error) {
+	if by.AgentID == 0 || by.RunID == 0 {
+		return domain.Issue{}, ErrAgentsOnly
+	}
+	for range checkoutTries {
+		i, err := s.Issue(ctx, guildID, ref, visible)
+		if err != nil {
+			return domain.Issue{}, err
+		}
+		before := i
+		if err := i.Release(by.RunID, s.now()); err != nil {
+			return domain.Issue{}, err
+		}
+		moved, err := s.issues.SaveCheckout(ctx, i, before)
+		if err != nil {
+			return domain.Issue{}, err
+		}
+		if !moved {
+			continue
+		}
+		if i, _, err = s.issues.Issue(ctx, i.ID); err != nil {
+			return domain.Issue{}, err
+		}
+		s.publish(ctx, domain.IssueReleased{Happened: s.happened(by), Issue: i, RunID: by.RunID})
+		return i, nil
+	}
+	return domain.Issue{}, ErrBusy
 }
 
 // visibleBlockers is the ids of the Issue's Blockers the person may see.

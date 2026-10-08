@@ -278,6 +278,8 @@ const activityVerbs: Record<string, string> = {
   'issue.created': 'created',
   'issue.updated': 'updated',
   'issue.deleted': 'deleted',
+  'issue.checked_out': 'checked out',
+  'issue.released': 'released',
   'issue.comment_added': 'commented on',
   'issue.comment_deleted': 'deleted a comment on',
   'issue.document_created': 'created document for',

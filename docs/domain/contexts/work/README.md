@@ -54,7 +54,7 @@ Approval comment, Linked issue) are in
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Goal | Belongs to one Guild. Title 1–200 characters. Goal level and Goal status from their lists. Its parent Goal is in the same Guild and is never the Goal itself or one of its Sub-goals (no cycle). Its owner, if any, is a Member of the Guild. |
-| Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild or an Agent of the Guild that is not terminated (its Agent assignee), never both; terminating the Agent clears it as Assignee of its open Issues. Its Project is in the Guild and its Goal is in the Guild. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. Its Checkout (`checkout_run_id`, `checked_out_at`) names at most one Run, a Run of its Agent assignee; Checkout moves it from one of the expected statuses (`todo`, `backlog`, `blocked` by default, as Paperclip's) to `in_progress`, and an Issue without Assignee takes the checking-out Agent as its Agent assignee. While that Run is `running`, an Agent's change to the Issue from any other Run is 409; once it is not, the Checkout is a Stale checkout, which the same Agent's next Run takes over. A person changing the Assignee clears the Checkout. Release clears it, moves `in_progress` back to `todo` and, on an open Issue, clears the Agent assignee. It is created by a Member or an Agent actor. |
+| Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild or an Agent of the Guild that is not terminated (its Agent assignee), never both; terminating the Agent clears it as Assignee of its open Issues. Its Project is in the Guild and its Goal is in the Guild. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. Its Checkout (`checkout_run_id`, `checked_out_at`) names at most one Run, a Run of its Agent assignee; Checkout moves it from one of the expected statuses (`todo`, `backlog`, `blocked` by default, as Paperclip's MCP server's), or from `in_progress` when it is already the Agent's, to `in_progress`; an Issue assigned to anyone else cannot be checked out, and an Issue without Assignee takes the checking-out Agent as its Agent assignee. While that Run is `running`, an Agent's change to the Issue from any other Run is 409; once it is not, the Checkout is a Stale checkout, which the same Agent's next Run takes over. A new Assignee, set by anyone, clears the Checkout. Release clears it, moves `in_progress` back to `todo` and, on an open Issue, clears the Agent assignee. It is created by a Member or an Agent actor. |
 | Comment | Belongs to one Issue and is written by one Member or one Agent actor (`author_agent`). Body 1–20000 characters. Only its author edits or deletes it. A deleted Comment keeps its place in the thread, its body gone, shown as "deleted". |
 | Issue document | Belongs to one Issue and its Guild. Its Document key is unique per Issue and never changes. Title at most 200 characters (may be empty), body at most 524288 characters, Markdown only. Its Revisions are numbered 1, 2, … without gaps; each save and each Restore adds exactly one Revision, and Revisions are never changed. A save needs the newest Revision as its Base revision (none for the first save), or it is refused. Restoring the newest Revision is refused, since it would change nothing. A Revision's author is a Member or an Agent actor. Deleting the Issue document removes its Revisions. |
 | Activity event | Append-only. Belongs to one Guild and has one Actor, a Member or an Agent actor (none once that Member's account is gone) and one Action from the glossary's list, about exactly one Goal, Issue, Approval or Agent. It keeps the Issue's number and title, the Goal's title, the Approval's type and payload title, or the Agent's name, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
@@ -306,8 +306,16 @@ type and the payload's title.
   its own, saving Issue documents, requesting an Approval and commenting
   on one (`manage_work`); and, for Run keys only,
   `POST /api/issues/{id}/checkout` `{expected_statuses}` and
-  `POST /api/issues/{id}/release`. Task 05 of phase 41 keeps this list in
-  step with what it opens. What an Agent writes carries `author_agent`
+  `POST /api/issues/{id}/release` (a person is 403 `only an agent's run
+  can check out an issue`). Checkout answers the Issue (200, also when
+  this Run holds it already); 409 is `{message: "checked out by another
+  run", run_id}` for another live Run, `{message: "issue status is …",
+  status}` for an unexpected status, or `issue is assigned to someone
+  else`; Release by any other Run is 409 `issue is not checked out by this
+  run`. An Agent's `PATCH`, Comment or Issue document save on an Issue
+  another live Run holds is the same 409 with `run_id`. Every Issue
+  carries `checkout: {run_id, agent: {id, name, icon}, checked_out_at}`,
+  null when there is none or it is Stale. What an Agent writes carries `author_agent`
   (Comments, Approval comments), `created_by_agent` (Issues, Issue
   documents and Revisions), `updated_by_agent` (Issue documents) or
   `requester_agent` (Approvals) `{id, name, icon}` beside the Member field,
@@ -318,8 +326,8 @@ type and the payload's title.
   stay a person's: 403 `agents cannot use this route`.
 
 - **Consumes:**
-  - from agents: the hook it registers to tell whether a Run is live
-    (`running`) and whose it is, for Checkout and Stale checkouts, and the
+  - from agents: the hook it registers (`work.OnRunLive`) to tell which
+    Runs are live (`running`), for Checkout and Stale checkouts, and the
     Agent principal's Agent and Run (`guilds.AgentID(ctx)`, the Run from
     identity's Principal).
   - from guilds: `guilds.Auth`, `guilds.AuthAgents`, `guilds.Can(permission)`,
@@ -482,7 +490,10 @@ type and the payload's title.
 - **Paperclip's checkout rules kept, its execution locks left out.**
   Expected statuses with Paperclip's defaults, 409 against another live
   Run, and the same Agent's next Run taking over a Stale checkout are
-  Paperclip's `checkoutRunId` rules. Its separate `executionRunId` lock,
+  Paperclip's `checkoutRunId` rules. The Checkout keeps only the Run: its
+  Agent is always the Issue's Agent assignee, since a new Assignee ends it,
+  and work asks agents whether the Run is live instead of reading `runs`.
+  Its separate `executionRunId` lock,
   pause holds and run-scoped issue workspaces are left out: one Run per
   Agent at a time already keeps an Agent from racing itself, and git
   workspaces are the next slice of the goal.

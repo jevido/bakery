@@ -31,6 +31,13 @@ type assigneeJSON struct {
 	Icon string `json:"icon,omitempty"`
 }
 
+// checkoutJSON is the Run holding an Issue's Checkout and its Agent.
+type checkoutJSON struct {
+	RunID        uint64    `json:"run_id"`
+	Agent        *Agent    `json:"agent"`
+	CheckedOutAt time.Time `json:"checked_out_at"`
+}
+
 type issueRefJSON struct {
 	ID         uint64 `json:"id"`
 	Identifier string `json:"identifier"`
@@ -53,11 +60,13 @@ type issueJSON struct {
 	Parent         *issueRefJSON `json:"parent"`
 	CreatedBy      *Member       `json:"created_by"`
 	CreatedByAgent *Agent        `json:"created_by_agent"`
-	StartedAt      *time.Time    `json:"started_at"`
-	CompletedAt    *time.Time    `json:"completed_at"`
-	CancelledAt    *time.Time    `json:"cancelled_at"`
-	CreatedAt      time.Time     `json:"created_at"`
-	UpdatedAt      time.Time     `json:"updated_at"`
+	// Checkout is nil when no live Run holds it.
+	Checkout    *checkoutJSON `json:"checkout"`
+	StartedAt   *time.Time    `json:"started_at"`
+	CompletedAt *time.Time    `json:"completed_at"`
+	CancelledAt *time.Time    `json:"cancelled_at"`
+	CreatedAt   time.Time     `json:"created_at"`
+	UpdatedAt   time.Time     `json:"updated_at"`
 	// UnresolvedBlockers counts the Blockers the person can see that are
 	// not done; list rows only.
 	UnresolvedBlockers *int `json:"unresolved_blockers,omitempty"`
@@ -143,6 +152,10 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 	if err != nil {
 		return nil, err
 	}
+	live, err := c.service.LiveCheckouts(cx, is)
+	if err != nil {
+		return nil, err
+	}
 	parents := make(map[uint64]issueRefJSON, len(ps))
 	for _, p := range ps {
 		parents[p.ID] = issueRefJSON{ID: p.ID, Identifier: domain.Identifier(prefix, p.Number), Title: p.Title}
@@ -178,6 +191,14 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 		}
 		if p, ok := parents[i.ParentID]; ok {
 			out[n].Parent = &p
+		}
+		// The holder is always the Agent assignee: a new Assignee ends a
+		// Checkout.
+		if i.CheckoutRunID != 0 && i.CheckedOutAt != nil && live(i.CheckoutRunID) {
+			out[n].Checkout = &checkoutJSON{RunID: i.CheckoutRunID, CheckedOutAt: *i.CheckedOutAt}
+			if a, ok := agents[i.AssigneeAgentID]; ok {
+				out[n].Checkout.Agent = &Agent{ID: i.AssigneeAgentID, Name: a.Name, Icon: a.Icon}
+			}
 		}
 	}
 	return out, nil
@@ -422,6 +443,24 @@ func (c *Controller) UpdateIssue(ctx contractshttp.Context) contractshttp.Respon
 		return respond.BadBody(ctx)
 	}
 	i, err := c.service.ChangeIssue(ctx.Context(), c.guild(ctx), c.actor(ctx), ctx.Request().Route("id"), req.patch(), c.visible(ctx))
+	return c.oneIssue(ctx, contractshttp.StatusOK, i, err)
+}
+
+// CheckoutIssue gives the asking Run the Issue's Checkout.
+func (c *Controller) CheckoutIssue(ctx contractshttp.Context) contractshttp.Response {
+	var req struct {
+		ExpectedStatuses []string `json:"expected_statuses"`
+	}
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	i, err := c.service.CheckoutIssue(ctx.Context(), c.guild(ctx), c.actor(ctx), ctx.Request().Route("id"), req.ExpectedStatuses, c.visible(ctx))
+	return c.oneIssue(ctx, contractshttp.StatusOK, i, err)
+}
+
+// ReleaseIssue gives up the asking Run's Checkout of the Issue.
+func (c *Controller) ReleaseIssue(ctx contractshttp.Context) contractshttp.Response {
+	i, err := c.service.ReleaseIssue(ctx.Context(), c.guild(ctx), c.actor(ctx), ctx.Request().Route("id"), c.visible(ctx))
 	return c.oneIssue(ctx, contractshttp.StatusOK, i, err)
 }
 

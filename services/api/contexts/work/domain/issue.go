@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -85,11 +86,15 @@ type Issue struct {
 	GoalID          uint64
 	ParentID        uint64
 	CreatedBy       Actor
-	StartedAt       *time.Time
-	CompletedAt     *time.Time
-	CancelledAt     *time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// CheckoutRunID is the Run holding the Issue's Checkout, 0 for none;
+	// CheckedOutAt is when it took it.
+	CheckoutRunID uint64
+	CheckedOutAt  *time.Time
+	StartedAt     *time.Time
+	CompletedAt   *time.Time
+	CancelledAt   *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // NewIssue is an Issue of the Guild, created by a Member or an Agent, in the Backlog
@@ -146,8 +151,11 @@ func (i *Issue) SetPriority(p Priority) { i.Priority = p }
 
 // Assign hands the Issue to a Member, already known to be one of the
 // Guild's, taking it from an Agent; 0 takes it from the Member it is
-// assigned to.
+// assigned to. A new Assignee ends any Checkout.
 func (i *Issue) Assign(memberID uint64) {
+	if memberID != i.AssigneeID {
+		i.clearCheckout()
+	}
 	i.AssigneeID = memberID
 	if memberID != 0 {
 		i.AssigneeAgentID = 0
@@ -156,12 +164,97 @@ func (i *Issue) Assign(memberID uint64) {
 
 // AssignAgent hands the Issue to an Agent, already known to be one of the
 // Guild's and not terminated, taking it from a Member; 0 takes it from the
-// Agent it is assigned to.
+// Agent it is assigned to. A new Assignee ends any Checkout.
 func (i *Issue) AssignAgent(agentID uint64) {
+	if agentID != i.AssigneeAgentID {
+		i.clearCheckout()
+	}
 	i.AssigneeAgentID = agentID
 	if agentID != 0 {
 		i.AssigneeID = 0
 	}
+}
+
+func (i *Issue) clearCheckout() {
+	i.CheckoutRunID = 0
+	i.CheckedOutAt = nil
+}
+
+// CheckoutStatuses are the Issue statuses a Checkout takes the Issue from
+// when it names none, as Paperclip's MCP server's.
+var CheckoutStatuses = []IssueStatus{Todo, Backlog, Blocked}
+
+// ErrNotHolder is a Release by a Run that does not hold the Checkout.
+var ErrNotHolder = errors.New("issue is not checked out by this run")
+
+// ErrNotAssignee is a Checkout by an Agent the Issue is not assigned to.
+var ErrNotAssignee = errors.New("issue is assigned to someone else")
+
+// HeldError is an Issue whose Checkout another live Run holds.
+type HeldError struct{ RunID uint64 }
+
+func (e *HeldError) Error() string { return "checked out by another run" }
+
+// StatusError is a Checkout of an Issue in a status it was not expected
+// in.
+type StatusError struct{ Status IssueStatus }
+
+func (e *StatusError) Error() string { return fmt.Sprintf("issue status is %s", e.Status) }
+
+// HeldByOther tells whether a Run other than runID holds the Issue's
+// Checkout and is live; a Stale checkout holds nothing.
+func (i Issue) HeldByOther(runID uint64, live func(runID uint64) bool) bool {
+	return i.CheckoutRunID != 0 && i.CheckoutRunID != runID && live(i.CheckoutRunID)
+}
+
+// Checkout gives the Issue's Checkout to the Agent's Run at now and moves
+// it to in progress. The Issue must be assigned to the Agent, or to nobody
+// (then it is assigned to it), and in one of expected (CheckoutStatuses
+// when empty), or already in progress for the Agent, as Paperclip adopts
+// it. A Run that holds it already changes nothing (changed is false); a
+// Stale checkout, whose Run live says is not running, is taken over; one
+// held by a live Run is a HeldError.
+func (i *Issue) Checkout(agentID, runID uint64, expected []IssueStatus, live func(runID uint64) bool, now time.Time) (changed bool, err error) {
+	switch {
+	case i.AssigneeAgentID == agentID:
+	case i.AssigneeAgentID == 0 && i.AssigneeID == 0:
+	default:
+		return false, ErrNotAssignee
+	}
+	if i.CheckoutRunID == runID && i.AssigneeAgentID == agentID {
+		return false, nil
+	}
+	if len(expected) == 0 {
+		expected = CheckoutStatuses
+	}
+	if !slices.Contains(expected, i.Status) && (i.Status != InProgress || i.AssigneeAgentID != agentID) {
+		return false, &StatusError{Status: i.Status}
+	}
+	if i.HeldByOther(runID, live) {
+		return false, &HeldError{RunID: i.CheckoutRunID}
+	}
+	i.AssignAgent(agentID)
+	t := now.UTC()
+	i.CheckoutRunID, i.CheckedOutAt = runID, &t
+	i.SetStatus(InProgress, now)
+	return true, nil
+}
+
+// Release gives up the Run's Checkout at now, as Paperclip's: an Issue in
+// progress goes back to todo, and an open one loses its Agent assignee,
+// so it goes back to the pool.
+func (i *Issue) Release(runID uint64, now time.Time) error {
+	if i.CheckoutRunID == 0 || i.CheckoutRunID != runID {
+		return ErrNotHolder
+	}
+	i.clearCheckout()
+	if i.Status == InProgress {
+		i.SetStatus(Todo, now)
+	}
+	if i.Status != Done && i.Status != IssueCancelled {
+		i.AssignAgent(0)
+	}
+	return nil
 }
 
 // PlaceIn puts the Issue in a Project, already known to be one of the

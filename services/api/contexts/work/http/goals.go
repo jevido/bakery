@@ -36,6 +36,8 @@ type Controller struct {
 	// Agent is the Agent a Run key acts as (guilds.AgentID), 0 for a person;
 	// nil counts every request as a person's.
 	Agent func(ctx contractshttp.Context) uint64
+	// Run is the Run a Run key acts in (guilds.RunID), 0 for a person.
+	Run func(ctx contractshttp.Context) uint64
 	// AgentNames names the Guild's Agents with these ids that still exist;
 	// nil (or a nil answer) counts every Agent as existing.
 	AgentNames func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)
@@ -166,7 +168,17 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 	var fe *domain.FieldError
 	var stale *app.StaleRevisionError
 	var refused *domain.ApprovalRefusedError
+	var held *domain.HeldError
+	var status *domain.StatusError
 	switch {
+	case errors.As(err, &held):
+		return ctx.Response().Json(contractshttp.StatusConflict, contractshttp.Json{"message": err.Error(), "run_id": held.RunID})
+	case errors.As(err, &status):
+		return ctx.Response().Json(contractshttp.StatusConflict, contractshttp.Json{"message": err.Error(), "status": string(status.Status)})
+	case errors.Is(err, domain.ErrNotHolder), errors.Is(err, domain.ErrNotAssignee), errors.Is(err, app.ErrBusy):
+		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
+	case errors.Is(err, app.ErrAgentsOnly):
+		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
 	case errors.As(err, &refused):
 		return respond.Error(ctx, contractshttp.StatusUnprocessableEntity, err.Error())
 	case errors.As(err, &stale):

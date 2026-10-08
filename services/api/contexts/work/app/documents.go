@@ -108,6 +108,9 @@ func (s *Service) SaveDocument(ctx context.Context, guildID uint64, by domain.Ac
 	if err != nil {
 		return domain.IssueDocument{}, false, err
 	}
+	if err := s.mayTouch(ctx, i, by); err != nil {
+		return domain.IssueDocument{}, false, err
+	}
 	k, err := domain.ParseDocumentKey(key)
 	if err != nil {
 		return domain.IssueDocument{}, false, err

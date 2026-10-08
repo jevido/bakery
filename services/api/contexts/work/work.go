@@ -3,7 +3,8 @@
 // Activity, the Inbox and Approvals), and for the agents context
 // RequestApproval, CancelApproval, OnApprovalDecided, RecordActivity,
 // OnAgentNames, OnAgentAssignees, UnassignAgent, IssueForRun,
-// OpenIssuesOfAgent, CommentsForRun, OnIssueAssigned and OnIssueCommented.
+// OpenIssuesOfAgent, CommentsForRun, OnIssueAssigned, OnIssueCommented and
+// OnRunLive.
 // Nothing else in contexts/work is for outside use.
 package work
 
@@ -36,6 +37,7 @@ func svc() *app.Service {
 		service.Agents = assigneeAgents
 		service.Assigned = issueAssigned
 		service.Commented = issueCommented
+		service.RunsLive = runsLive
 		guilds.OnGuildDeleting("goals", func(ctx context.Context, guildID uint64) (bool, error) {
 			gs, err := service.Goals(ctx, guildID)
 			return len(gs) > 0, err
@@ -134,6 +136,30 @@ func assigneeAgents(ctx context.Context, guildID uint64, ids []uint64) (map[uint
 		out[id] = app.AssigneeAgent(a)
 	}
 	return out, nil
+}
+
+var (
+	liveMu sync.RWMutex
+	onLive func(ctx context.Context, runIDs []uint64) (map[uint64]bool, error)
+)
+
+// OnRunLive registers f to tell which of the Runs are running, so a
+// Checkout whose Run has ended counts as Stale. Until it is registered,
+// every Checkout is Stale.
+func OnRunLive(f func(ctx context.Context, runIDs []uint64) (map[uint64]bool, error)) {
+	liveMu.Lock()
+	defer liveMu.Unlock()
+	onLive = f
+}
+
+func runsLive(ctx context.Context, runIDs []uint64) (map[uint64]bool, error) {
+	liveMu.RLock()
+	f := onLive
+	liveMu.RUnlock()
+	if f == nil {
+		return map[uint64]bool{}, nil
+	}
+	return f(ctx, runIDs)
 }
 
 // UnassignAgent takes the terminated Agent off the Guild's Issues that are
@@ -414,12 +440,13 @@ var approvalInGuild = guilds.Owns("approval", func(ctx context.Context, id, guil
 // outside the Current guild or in a Project the request may not view.
 // Agents (guilds.AuthAgents) may read all of it but the Inbox, and create
 // and change Issues, write and change their own Comments, save Issue
-// documents, request Approvals and comment on them; deleting, Goal changes,
+// documents, request Approvals and comment on them, and only they check
+// an Issue out and release it; deleting, Goal changes,
 // Read marks, Inbox archives, Decisions and restoring Revisions stay a
 // person's.
 func Routes(r route.Router) {
 	c := workhttp.NewController(svc(), guilds.Current, memberNames)
-	c.Visible, c.Member, c.Agent, c.AgentNames = guilds.VisibleProjects, guilds.MemberID, guilds.AgentID, agentNames
+	c.Visible, c.Member, c.Agent, c.Run, c.AgentNames = guilds.VisibleProjects, guilds.MemberID, guilds.AgentID, guilds.RunID, agentNames
 	view, manage := guilds.Can("view_resources"), guilds.Can("manage_work")
 	r.Middleware(guilds.AuthAgents, view).Get("/api/goals", c.ListGoals)
 	r.Middleware(guilds.Auth, manage).Post("/api/goals", c.CreateGoal)
@@ -443,6 +470,8 @@ func Routes(r route.Router) {
 	r.Middleware(guilds.AuthAgents, manage).Group(func(r route.Router) {
 		r.Post("/api/issues", c.CreateIssue)
 		r.Patch("/api/issues/{id}", c.UpdateIssue)
+		r.Post("/api/issues/{id}/checkout", c.CheckoutIssue)
+		r.Post("/api/issues/{id}/release", c.ReleaseIssue)
 		r.Post("/api/issues/{id}/comments", c.WriteComment)
 		r.Patch("/api/issues/{id}/comments/{comment}", c.EditComment)
 		r.Delete("/api/issues/{id}/comments/{comment}", c.DeleteComment)

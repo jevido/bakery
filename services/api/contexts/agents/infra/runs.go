@@ -239,6 +239,22 @@ func (s Runs) RunningRuns(ctx context.Context, agentIDs []uint64) (map[uint64]ui
 	return out, nil
 }
 
+// LiveRuns tells which of the Runs are running.
+func (s Runs) LiveRuns(ctx context.Context, runIDs []uint64) (map[uint64]bool, error) {
+	out := make(map[uint64]bool, len(runIDs))
+	if len(runIDs) == 0 {
+		return out, nil
+	}
+	var ids []uint64
+	if err := s.query(ctx).Raw(`SELECT id FROM runs WHERE status = ? AND id IN ?`, string(domain.RunRunning), runIDs).Scan(&ids); err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, nil
+}
+
 // RunEvents lists the Run's events after the seq, at most limit, by seq.
 func (s Runs) RunEvents(ctx context.Context, runID uint64, after int64, limit int) ([]domain.RunEvent, error) {
 	var recs []runEventRecord

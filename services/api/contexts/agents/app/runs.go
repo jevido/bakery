@@ -30,6 +30,8 @@ type Runs interface {
 	SaveRun(ctx context.Context, r domain.Run, from domain.RunStatus) (moved bool, err error)
 	// RunningRuns answers the running Run of each Agent that has one.
 	RunningRuns(ctx context.Context, agentIDs []uint64) (map[uint64]uint64, error)
+	// LiveRuns tells which of the Runs are running; a missing one is not.
+	LiveRuns(ctx context.Context, runIDs []uint64) (map[uint64]bool, error)
 	RunEvents(ctx context.Context, runID uint64, after int64, limit int) ([]domain.RunEvent, error)
 	DeskRuns
 }
@@ -373,6 +375,11 @@ func (s *Service) RunEvents(ctx context.Context, guildID, runID uint64, after in
 // RunningRuns answers the running Run of each Agent that has one.
 func (s *Service) RunningRuns(ctx context.Context, agentIDs []uint64) (map[uint64]uint64, error) {
 	return s.runs.RunningRuns(ctx, agentIDs)
+}
+
+// LiveRuns tells which of the Runs are running, for work's Checkouts.
+func (s *Service) LiveRuns(ctx context.Context, runIDs []uint64) (map[uint64]bool, error) {
+	return s.runs.LiveRuns(ctx, runIDs)
 }
 
 // IssueBriefs tells the Issues of the Guild's Runs that the person may

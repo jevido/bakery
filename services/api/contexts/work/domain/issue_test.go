@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"slices"
 	"testing"
 	"time"
 )
@@ -173,5 +174,110 @@ func TestIssueHasOneAssignee(t *testing.T) {
 	i.AssignAgent(0)
 	if i.AssigneeID != 3 {
 		t.Errorf("AssignAgent(0) took the issue from its member")
+	}
+}
+
+func TestIssueCheckout(t *testing.T) {
+	now := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	live := func(ids ...uint64) func(uint64) bool {
+		return func(id uint64) bool { return slices.Contains(ids, id) }
+	}
+	assigned := func(st IssueStatus, holder uint64) Issue {
+		return Issue{ID: 1, Status: st, AssigneeAgentID: 7, CheckoutRunID: holder}
+	}
+
+	i := assigned(Todo, 0)
+	if changed, err := i.Checkout(7, 30, nil, live(), now); err != nil || !changed {
+		t.Fatalf("free: %v %v", changed, err)
+	}
+	if i.CheckoutRunID != 30 || i.CheckedOutAt == nil || i.Status != InProgress || i.StartedAt == nil {
+		t.Errorf("free: %+v", i)
+	}
+	if changed, err := i.Checkout(7, 30, nil, live(30), now.Add(time.Hour)); err != nil || changed {
+		t.Errorf("same run: %v %v", changed, err)
+	}
+	if !i.CheckedOutAt.Equal(now) {
+		t.Errorf("same run moved the time: %v", i.CheckedOutAt)
+	}
+
+	held := assigned(InProgress, 30)
+	var he *HeldError
+	if _, err := held.Checkout(7, 31, nil, live(30), now); !errors.As(err, &he) || he.RunID != 30 {
+		t.Errorf("held: %v", err)
+	}
+	if !held.HeldByOther(31, live(30)) || held.HeldByOther(30, live(30)) || held.HeldByOther(31, live()) {
+		t.Error("HeldByOther")
+	}
+
+	stale := assigned(InProgress, 30)
+	if changed, err := stale.Checkout(7, 31, nil, live(), now); err != nil || !changed || stale.CheckoutRunID != 31 {
+		t.Errorf("stale: %v %v %+v", changed, err, stale)
+	}
+
+	other := Issue{Status: Todo, AssigneeAgentID: 8}
+	if _, err := other.Checkout(7, 30, nil, live(), now); !errors.Is(err, ErrNotAssignee) {
+		t.Errorf("other agent: %v", err)
+	}
+	member := Issue{Status: Todo, AssigneeID: 3}
+	if _, err := member.Checkout(7, 30, nil, live(), now); !errors.Is(err, ErrNotAssignee) {
+		t.Errorf("member: %v", err)
+	}
+
+	done := assigned(Done, 0)
+	var se *StatusError
+	if _, err := done.Checkout(7, 30, nil, live(), now); !errors.As(err, &se) || se.Status != Done {
+		t.Errorf("done: %v", err)
+	}
+	review := assigned(InReview, 0)
+	if _, err := review.Checkout(7, 30, nil, live(), now); !errors.As(err, &se) || se.Status != InReview {
+		t.Errorf("in review by default: %v", err)
+	}
+	if changed, err := review.Checkout(7, 30, []IssueStatus{InReview}, live(), now); err != nil || !changed {
+		t.Errorf("in review expected: %v %v", changed, err)
+	}
+	otherInProgress := Issue{Status: InProgress}
+	if _, err := otherInProgress.Checkout(7, 30, nil, live(), now); !errors.As(err, &se) {
+		t.Errorf("unassigned in progress: %v", err)
+	}
+
+	free := Issue{Status: Backlog}
+	if changed, err := free.Checkout(7, 30, nil, live(), now); err != nil || !changed || free.AssigneeAgentID != 7 || free.CheckoutRunID != 30 {
+		t.Errorf("unassigned: %v %v %+v", changed, err, free)
+	}
+}
+
+func TestIssueRelease(t *testing.T) {
+	at := time.Now()
+	i := Issue{Status: InProgress, AssigneeAgentID: 7, CheckoutRunID: 30, CheckedOutAt: &at}
+	if err := i.Release(31, at); !errors.Is(err, ErrNotHolder) {
+		t.Errorf("other run: %v", err)
+	}
+	if err := i.Release(30, at); err != nil || i.CheckoutRunID != 0 || i.CheckedOutAt != nil || i.Status != Todo || i.AssigneeAgentID != 0 {
+		t.Errorf("release: %v %+v", err, i)
+	}
+	if err := i.Release(30, at); !errors.Is(err, ErrNotHolder) {
+		t.Errorf("released twice: %v", err)
+	}
+	done := Issue{Status: Done, AssigneeAgentID: 7, CheckoutRunID: 30, CheckedOutAt: &at}
+	if err := done.Release(30, at); err != nil || done.Status != Done || done.AssigneeAgentID != 7 {
+		t.Errorf("release done: %v %+v", err, done)
+	}
+}
+
+func TestIssueAssigneeChangeEndsCheckout(t *testing.T) {
+	at := time.Now()
+	i := Issue{Status: InProgress, AssigneeAgentID: 7, CheckoutRunID: 30, CheckedOutAt: &at}
+	i.AssignAgent(7)
+	if i.CheckoutRunID != 30 {
+		t.Error("same assignee ended the checkout")
+	}
+	i.AssignAgent(8)
+	if i.CheckoutRunID != 0 || i.CheckedOutAt != nil {
+		t.Error("new agent kept the checkout")
+	}
+	i = Issue{AssigneeAgentID: 7, CheckoutRunID: 30, CheckedOutAt: &at}
+	i.Assign(3)
+	if i.CheckoutRunID != 0 {
+		t.Error("a member kept the checkout")
 	}
 }

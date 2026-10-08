@@ -34,6 +34,9 @@ func (s *Service) WriteComment(ctx context.Context, guildID uint64, by domain.Ac
 	if err != nil {
 		return domain.Comment{}, err
 	}
+	if err := s.mayTouch(ctx, i, by); err != nil {
+		return domain.Comment{}, err
+	}
 	c, err := domain.NewComment(i.ID, by, body)
 	if err != nil {
 		return domain.Comment{}, err

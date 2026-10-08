@@ -15,6 +15,14 @@ import (
 // person asking may not see.
 var ErrNotFound = errors.New("not found")
 
+// ErrAgentsOnly is a Checkout or Release asked for by a person: only an
+// Agent's Run holds one.
+var ErrAgentsOnly = errors.New("only an agent's run can check out an issue")
+
+// ErrBusy is a Checkout or Release that lost the Issue's row to other
+// changes every time it tried.
+var ErrBusy = errors.New("issue kept changing, try again")
+
 // Goals keeps Goals.
 type Goals interface {
 	// Goals lists the Guild's Goals, oldest first.
@@ -62,6 +70,10 @@ type Service struct {
 	// Commented hears a Comment, once stored, on an Issue an Agent is the
 	// Assignee of and that is not done or cancelled. nil hears nothing.
 	Commented func(ctx context.Context, i domain.Issue, c domain.Comment) error
+	// RunsLive tells which of the Runs are running (agents, through
+	// work.OnRunLive); nil counts none as running, so every Checkout is
+	// Stale.
+	RunsLive func(ctx context.Context, runIDs []uint64) (map[uint64]bool, error)
 }
 
 func NewService(goals Goals, issues Issues, comments Comments, docs Documents, guilds Guilds, projects Projects, activity Activity, inbox Inbox, approvals Approvals) *Service {

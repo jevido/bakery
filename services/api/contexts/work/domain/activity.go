@@ -14,6 +14,8 @@ const (
 	IssueCreatedAction         = "issue.created"
 	IssueUpdatedAction         = "issue.updated"
 	IssueDeletedAction         = "issue.deleted"
+	IssueCheckedOutAction      = "issue.checked_out"
+	IssueReleasedAction        = "issue.released"
 	CommentAddedAction         = "issue.comment_added"
 	CommentDeletedAction       = "issue.comment_deleted"
 	DocumentCreatedAction      = "issue.document_created"
@@ -264,6 +266,28 @@ type IssueDeleted struct {
 
 func (e IssueDeleted) Activity() ActivityEvent {
 	return e.issue(e.Issue, IssueDeletedAction, map[string]any{})
+}
+
+// IssueCheckedOut is a Run taking an Issue's Checkout.
+type IssueCheckedOut struct {
+	Happened
+	Issue Issue
+	RunID uint64
+}
+
+func (e IssueCheckedOut) Activity() ActivityEvent {
+	return e.issue(e.Issue, IssueCheckedOutAction, map[string]any{"run_id": e.RunID})
+}
+
+// IssueReleased is a Run giving up an Issue's Checkout.
+type IssueReleased struct {
+	Happened
+	Issue Issue
+	RunID uint64
+}
+
+func (e IssueReleased) Activity() ActivityEvent {
+	return e.issue(e.Issue, IssueReleasedAction, map[string]any{"run_id": e.RunID})
 }
 
 type CommentWritten struct {

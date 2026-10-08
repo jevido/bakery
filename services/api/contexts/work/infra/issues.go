@@ -30,6 +30,8 @@ type issueRecord struct {
 	ParentID          *uint64
 	CreatedByMemberID *uint64
 	CreatedByAgentID  *uint64
+	CheckoutRunID     *uint64
+	CheckedOutAt      *time.Time
 	StartedAt         *time.Time
 	CompletedAt       *time.Time
 	CancelledAt       *time.Time
@@ -52,6 +54,7 @@ func (r issueRecord) toDomain() domain.Issue {
 		Status: domain.IssueStatus(r.Status), Priority: domain.Priority(r.Priority),
 		AssigneeID: deref(r.AssigneeMemberID), AssigneeAgentID: deref(r.AssigneeAgentID), ProjectID: deref(r.ProjectID), GoalID: deref(r.GoalID),
 		ParentID: deref(r.ParentID), CreatedBy: actor(r.CreatedByMemberID, r.CreatedByAgentID),
+		CheckoutRunID: deref(r.CheckoutRunID), CheckedOutAt: utc(r.CheckedOutAt),
 		StartedAt: utc(r.StartedAt), CompletedAt: utc(r.CompletedAt), CancelledAt: utc(r.CancelledAt),
 	}
 	i.CreatedAt, i.UpdatedAt = stamp(&r.Timestamps)
@@ -143,11 +146,30 @@ func (s Issues) SaveIssue(ctx context.Context, i domain.Issue) error {
 func (Issues) save(q contractsorm.Query, i domain.Issue) error {
 	_, err := q.Exec(`UPDATE issues SET title = ?, description = ?, status = ?, priority = ?,
 		assignee_member_id = ?, assignee_agent_id = ?, project_id = ?, goal_id = ?, parent_id = ?,
+		checkout_run_id = ?, checked_out_at = ?,
 		started_at = ?, completed_at = ?, cancelled_at = ?, updated_at = now() WHERE id = ?`,
 		i.Title, i.Description, string(i.Status), string(i.Priority),
 		nullable(i.AssigneeID), nullable(i.AssigneeAgentID), nullable(i.ProjectID), nullable(i.GoalID), nullable(i.ParentID),
+		nullable(i.CheckoutRunID), i.CheckedOutAt,
 		i.StartedAt, i.CompletedAt, i.CancelledAt, i.ID)
 	return err
+}
+
+// SaveCheckout stores the Issue's Checkout, Assignee and status only while
+// the row still has before's: two Runs checking out at once both read the
+// same holder, and only the first UPDATE matches it.
+func (s Issues) SaveCheckout(ctx context.Context, i, before domain.Issue) (bool, error) {
+	res, err := s.query(ctx).Exec(`UPDATE issues SET status = ?, assignee_member_id = ?, assignee_agent_id = ?,
+		checkout_run_id = ?, checked_out_at = ?, started_at = ?, completed_at = ?, cancelled_at = ?, updated_at = now()
+		WHERE id = ? AND status = ? AND checkout_run_id IS NOT DISTINCT FROM ?
+		AND assignee_member_id IS NOT DISTINCT FROM ? AND assignee_agent_id IS NOT DISTINCT FROM ?`,
+		string(i.Status), nullable(i.AssigneeID), nullable(i.AssigneeAgentID),
+		nullable(i.CheckoutRunID), i.CheckedOutAt, i.StartedAt, i.CompletedAt, i.CancelledAt,
+		i.ID, string(before.Status), nullable(before.CheckoutRunID), nullable(before.AssigneeID), nullable(before.AssigneeAgentID))
+	if err != nil {
+		return false, err
+	}
+	return res.RowsAffected == 1, nil
 }
 
 // SaveIssueBlockedBy stores the Issue and its Blockers together: the rows

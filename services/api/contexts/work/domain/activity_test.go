@@ -23,6 +23,8 @@ func TestActivityActions(t *testing.T) {
 		{IssueCreated{h, i}, "issue.created", IssueEntity},
 		{IssueChanged{Happened: h, Before: i, After: i}, "issue.updated", IssueEntity},
 		{IssueDeleted{h, i}, "issue.deleted", IssueEntity},
+		{IssueCheckedOut{h, i, 30}, "issue.checked_out", IssueEntity},
+		{IssueReleased{h, i, 30}, "issue.released", IssueEntity},
 		{CommentWritten{h, i, Comment{ID: 7}}, "issue.comment_added", IssueEntity},
 		{CommentDeleted{h, i, Comment{ID: 7}}, "issue.comment_deleted", IssueEntity},
 		{DocumentSaved{Happened: h, Issue: i, Document: d, First: true}, "issue.document_created", IssueEntity},

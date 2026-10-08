@@ -146,6 +146,14 @@ func (f *fakeRuns) RunningRuns(_ context.Context, ids []uint64) (map[uint64]uint
 	return out, nil
 }
 
+func (f *fakeRuns) LiveRuns(_ context.Context, ids []uint64) (map[uint64]bool, error) {
+	out := map[uint64]bool{}
+	for _, id := range ids {
+		out[id] = f.rows[id].Status == domain.RunRunning
+	}
+	return out, nil
+}
+
 func (f *fakeRuns) RunEvents(context.Context, uint64, int64, int) ([]domain.RunEvent, error) {
 	return nil, nil
 }

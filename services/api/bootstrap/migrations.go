@@ -106,5 +106,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000091AddRunWake{},
 		&migrations.M20260930000092AddRunKey{},
 		&migrations.M20260930000093AddAgentActors{},
+		&migrations.M20260930000094AddIssueCheckout{},
 	}
 }
