@@ -155,3 +155,48 @@ export const writeComment = (issue: number | string, body: string) =>
 export const editComment = (issue: number | string, id: number, body: string) =>
   api<{ comment: Comment }>('PATCH', `/issues/${issue}/comments/${id}`, { body }).then((r) => r.comment)
 export const deleteComment = (issue: number | string, id: number) => api<void>('DELETE', `/issues/${issue}/comments/${id}`)
+
+/** The rule the API holds a Document key to: lowercase letters, digits, _ and -, starting with a letter or digit. */
+export const documentKeyPattern = /^[a-z0-9][a-z0-9_-]{0,63}$/
+
+/** An Issue document at its newest Revision. */
+export type IssueDocument = {
+  id: number
+  key: string
+  title: string
+  body: string
+  format: 'markdown'
+  latest_revision_id: number
+  latest_revision_number: number
+  created_by: WorkMember | null
+  updated_by: WorkMember | null
+  created_at: string
+  updated_at: string
+}
+
+/** One saved version of an Issue document. */
+export type DocumentRevision = {
+  id: number
+  number: number
+  title: string
+  body: string
+  change_summary: string | null
+  created_by: WorkMember | null
+  created_at: string
+}
+
+/** What saving a document sends; `base_revision_id` is the Revision the text was written against, absent for a new key. */
+export type DocumentInput = { title: string; body: string; change_summary?: string; base_revision_id?: number }
+
+export const listIssueDocuments = (issue: number | string) =>
+  api<{ documents: IssueDocument[] }>('GET', `/issues/${issue}/documents`).then((r) => r.documents)
+export const getIssueDocument = (issue: number | string, key: string) =>
+  api<{ document: IssueDocument }>('GET', `/issues/${issue}/documents/${key}`).then((r) => r.document)
+export const saveIssueDocument = (issue: number | string, key: string, input: DocumentInput) =>
+  api<{ document: IssueDocument }>('PUT', `/issues/${issue}/documents/${key}`, input).then((r) => r.document)
+export const deleteIssueDocument = (issue: number | string, key: string) => api<void>('DELETE', `/issues/${issue}/documents/${key}`)
+/** Newest first. */
+export const listDocumentRevisions = (issue: number | string, key: string) =>
+  api<{ revisions: DocumentRevision[] }>('GET', `/issues/${issue}/documents/${key}/revisions`).then((r) => r.revisions)
+export const restoreDocumentRevision = (issue: number | string, key: string, revision: number) =>
+  api<{ document: IssueDocument }>('POST', `/issues/${issue}/documents/${key}/revisions/${revision}/restore`).then((r) => r.document)

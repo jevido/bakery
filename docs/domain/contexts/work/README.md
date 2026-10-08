@@ -215,5 +215,11 @@ None yet. Inbox and Activity, in a later phase, are where they start.
 - **No document locks, annotations, feedback votes or system documents.**
   Paperclip uses them for its agents' Runs and review flows, which come
   with agents.
+- **A document is saved with Save, not autosaved.** Paperclip autosaves a
+  document when its editor loses focus and on a conflict offers to keep the
+  draft or overwrite. Here every save is a Revision someone chose to make,
+  with an optional change summary, so History is not filled with half-typed
+  states; on a conflict the draft stays and the person compares or reloads,
+  never overwrites blindly.
 - **No atomic checkout yet.** Paperclip's checkout takes an agent and a Run
   (`POST /issues/:id/checkout` with `agentId`), so it comes with agents.

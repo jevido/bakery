@@ -8,8 +8,8 @@
   // the page only reads. Delete sits in the More actions menu with Add
   // sub-issue, and is The Bakery's own: Paperclip hides an Issue instead.
   // While a Blocker is not done, IssueBlockedNotice sits above the
-  // description. Left out until the Issue has them: agents and runs,
-  // checkout, documents, attachments, work products, approvals and the activity tab.
+  // description; the Documents follow the description. Left out until the
+  // Issue has them: agents and runs, checkout, attachments, work products, approvals and the activity tab.
   import { ChevronRight, Ellipsis, Plus, Trash2 } from '@lucide/svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Button, buttonVariants } from '$lib/components/ui/button'
@@ -20,6 +20,7 @@
   import { ago } from '../../lib/format'
   import Identity from '../../lib/Identity.svelte'
   import InlineEditor from '../../lib/InlineEditor.svelte'
+  import IssueDocuments from '../../lib/IssueDocuments.svelte'
   import IssueBlockedNotice from '../../lib/IssueBlockedNotice.svelte'
   import IssueProperties from '../../lib/IssueProperties.svelte'
   import NewIssueDialog from '../../lib/NewIssueDialog.svelte'
@@ -178,6 +179,8 @@
           onsave={(description) => save({ description })}
         />
       </div>
+
+      <IssueDocuments issue={i.id} {editable} onchange={refresh} />
 
       <section class="space-y-3" aria-label="Sub-issues">
         <div class="flex items-center justify-between gap-2">

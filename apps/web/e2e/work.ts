@@ -39,6 +39,13 @@
 //           shows the cycle error; once the first is done the notice is
 //           gone; × removes the Blocker; a Viewer sees both rows without
 //           the picker or ×
+//   documents  on a scratch Issue, New document "plan" is created (rev 1),
+//           edited and saved (rev 2); History opens rev 1 read-only,
+//           Compare shows a removed and an added line, Restore makes rev 3
+//           with rev 1's text; a second page saves first, so the first's
+//           save shows the conflict notice and Reload shows rev 4; Download
+//           gives plan.md; a Viewer sees the document and History without
+//           Edit or Delete; Delete removes it
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -481,6 +488,112 @@ const sections: Record<string, () => Promise<void>> = {
     expect('× removes the Blocker', ((await (await page.request.get(`${WEB}/api/issues/${b.id}`)).json()) as { issue: { blocked_by: unknown[] } }).issue.blocked_by.length === 0)
 
     for (const i of [a, b, c]) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    await page.close()
+  },
+  async documents() {
+    const page = await signedIn()
+    const title = 'Documents scratch'
+    for (const i of (await issues(page)).filter((i) => i.title === title)) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title } })).json()) as { issue: Issue }
+    const docs = page.getByRole('region', { name: 'Documents' })
+    const card = docs.locator('[data-document="plan"]')
+    const body = page.getByRole('textbox', { name: 'Document body' })
+    const history = card.getByRole('button', { name: 'Revision history of plan' })
+    const rev = async () =>
+      ((await (await page.request.get(`${WEB}/api/issues/${issue.id}/documents/plan`)).json()) as { document: { latest_revision_number: number; body: string } }).document
+
+    await page.goto(`${WEB}/#/issues/${issue.identifier}`)
+    await page.getByRole('heading', { name: title }).waitFor()
+    await docs.getByRole('button', { name: 'New document' }).click()
+    await page.getByLabel('Document key').fill('Bad Key')
+    expect('a bad key is refused before saving', await page.getByText('Use lowercase letters').isVisible())
+    await page.getByLabel('Document key').fill('plan')
+    await page.getByLabel('Document title').fill('Plan')
+    await body.fill('# Plan\n\nFirst line\nKept line')
+    await page.getByRole('button', { name: 'Create document' }).click()
+    await card.getByText('First line').waitFor()
+    expect('New document creates rev 1', (await history.textContent())?.includes('rev 1') ?? false)
+
+    await card.getByRole('button', { name: 'Document actions' }).click()
+    await page.getByRole('menuitem', { name: 'Edit document' }).click()
+    await body.fill('# Plan\n\nSecond line\nKept line')
+    await page.getByLabel('Change summary').fill('Rewrite the first line')
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await card.getByText('Second line').waitFor()
+    expect('editing saves rev 2', (await rev()).latest_revision_number === 2)
+
+    await history.click()
+    await page.locator('[data-revision="1"]').click()
+    await page.getByTestId('revision-preview').waitFor()
+    expect('History opens rev 1 read-only', (await page.getByTestId('revision-preview').textContent())?.includes('Viewing revision 1') ?? false)
+    expect('showing its text', await card.getByText('First line').isVisible())
+    await page.getByRole('button', { name: 'Compare with current' }).click()
+    const diff = page.getByTestId('document-diff')
+    await diff.waitFor()
+    const removed = await diff.locator('[data-diff="removed"]').allTextContents()
+    const added = await diff.locator('[data-diff="added"]').allTextContents()
+    expect('Compare shows a removed line', removed.length === 1 && removed[0].includes('First line'), removed)
+    expect('and an added line', added.length === 1 && added[0].includes('Second line'), added)
+    await page.keyboard.press('Escape')
+    await diff.waitFor({ state: 'detached' })
+    await page.getByRole('button', { name: 'Restore this revision' }).click()
+    await page.getByTestId('revision-preview').waitFor({ state: 'detached' })
+    const restored = await rev()
+    expect('Restore makes rev 3 with rev 1\'s text', restored.latest_revision_number === 3 && restored.body.includes('First line'), restored)
+
+    await card.getByRole('button', { name: 'Document actions' }).click()
+    await page.getByRole('menuitem', { name: 'Edit document' }).click()
+    await body.fill('# Plan\n\nMine')
+    const other = await signedIn()
+    await other.goto(`${WEB}/#/issues/${issue.identifier}`)
+    const otherCard = other.locator('[data-document="plan"]')
+    await otherCard.getByRole('button', { name: 'Document actions' }).click()
+    await other.getByRole('menuitem', { name: 'Edit document' }).click()
+    await other.getByRole('textbox', { name: 'Document body' }).fill('# Plan\n\nTheirs')
+    await other.getByRole('button', { name: 'Save', exact: true }).click()
+    await otherCard.getByText('Theirs').waitFor()
+    await other.context().close()
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await page.getByTestId('document-conflict').waitFor()
+    expect('saving second shows the conflict notice', (await page.getByTestId('document-conflict').textContent())?.includes('Someone saved a newer revision') ?? false)
+    expect('and keeps the person\'s text', (await body.inputValue()).includes('Mine'))
+    expect('and did not overwrite', (await rev()).body.includes('Theirs'))
+    await page.getByTestId('document-conflict').getByRole('button', { name: 'Reload' }).click()
+    await card.getByText('Theirs').waitFor()
+    expect('Reload shows the newest revision', (await history.textContent())?.includes('rev 4') ?? false)
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      (async () => {
+        await card.getByRole('button', { name: 'Document actions' }).click()
+        await page.getByRole('menuitem', { name: 'Download document' }).click()
+      })(),
+    ])
+    expect('Download gives plan.md', download.suggestedFilename() === 'plan.md', download.suggestedFilename())
+
+    const v = await invited(page, 'viewer')
+    await v.page.goto(`${WEB}/#/issues/${issue.identifier}`)
+    const vCard = v.page.locator('[data-document="plan"]')
+    await vCard.getByText('Theirs').waitFor()
+    expect('a Viewer sees the document', true)
+    expect('without New document', (await v.page.getByRole('button', { name: 'New document' }).count()) === 0)
+    await vCard.getByRole('button', { name: 'Revision history of plan' }).click()
+    await v.page.locator('[data-revision="1"]').waitFor()
+    expect('and with History', (await v.page.locator('[data-revision]').count()) === 4)
+    await v.page.keyboard.press('Escape')
+    await vCard.getByRole('button', { name: 'Document actions' }).click()
+    expect('but no Edit', (await v.page.getByRole('menuitem', { name: 'Edit document' }).count()) === 0)
+    expect('or Delete', (await v.page.getByRole('menuitem', { name: 'Delete document' }).count()) === 0)
+    await v.leave()
+
+    await card.getByRole('button', { name: 'Document actions' }).click()
+    await page.getByRole('menuitem', { name: 'Delete document' }).click()
+    await page.getByTestId('confirm-delete-document').click()
+    await card.waitFor({ state: 'detached' })
+    const gone = await page.request.get(`${WEB}/api/issues/${issue.id}/documents/plan`)
+    expect('Delete removes it', gone.status() === 404, gone.status())
+
+    await page.request.delete(`${WEB}/api/issues/${issue.id}`)
     await page.close()
   },
   async hidden() {
