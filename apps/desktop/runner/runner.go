@@ -42,7 +42,8 @@ type Runner struct {
 	// Max is how many Runs run at once; 0 means BAKERY_RUNNER_MAX, else 2.
 	Max int
 	// Events, when set, is told about each Run on this desktop: `runs`
-	// with a RunUpdate when it starts, reports and ends.
+	// with a RunUpdate when it starts, reports and ends, and `bakeries`
+	// when a Bakery signed this desktop out.
 	Events func(name string, data any)
 	// Logf logs one line per claim and finish; nil means the log package.
 	Logf func(format string, args ...any)
@@ -220,6 +221,8 @@ func (r *Runner) watch(ctx context.Context, c *bakery.Client) {
 		r.logf("runner: %s signed this desktop out", c.Address)
 		if err := r.Store.MarkSignedOut(c.Address); err != nil {
 			r.logf("runner: %v", err)
+		} else if r.Events != nil {
+			r.Events("bakeries", nil)
 		}
 	}
 }

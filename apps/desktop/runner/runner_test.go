@@ -470,3 +470,36 @@ func TestRunnerFailsARunWithoutClaude(t *testing.T) {
 		t.Fatalf("finish %+v", f.finished)
 	}
 }
+
+func TestRunnerTellsWhenSignedOut(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"message": "Unauthenticated."})
+	}))
+	t.Cleanup(srv.Close)
+	home := t.TempDir()
+	s := store.New(filepath.Join(home, "bakeries.json"))
+	if err := s.Put(store.Bakery{Address: srv.URL, DesktopID: 9, Key: "bky_desk_test"}); err != nil {
+		t.Fatal(err)
+	}
+	told := make(chan struct{}, 10)
+	r := &Runner{Store: s, Claude: standin, Home: home, Logf: t.Logf, Events: func(name string, _ any) {
+		if name == "bakeries" {
+			told <- struct{}{}
+		}
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	r.Start(ctx)
+	t.Cleanup(func() { cancel(); r.Wait() })
+	select {
+	case <-told:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no bakeries event")
+	}
+	f, err := s.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := f.Find(srv.URL); !b.SignedOut {
+		t.Fatalf("bakery %+v not signed out", b)
+	}
+}
