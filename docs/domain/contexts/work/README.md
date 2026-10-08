@@ -14,8 +14,9 @@ Revisions, and the Activity: who did what to the Guild's Goals and Issues,
 and when. Every Goal and Issue belongs to exactly one Guild, and an Issue
 in a Project follows that Project's Permission overrides.
 
-It is **not** responsible (yet) for agents, Runs, checkout, document locks,
-the Inbox or Approvals: later phases of the guilds goal add them.
+It is **not** responsible (yet) for checkout, document locks, the Inbox or
+Approvals: later phases of the guilds goal add them. Agents and their Runs
+are not work's at all; they get a context of their own.
 It does not own Members, Guilds or Projects either; it stores their ids and asks guilds and projects about them.
 
 ## Language

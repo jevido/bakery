@@ -50,9 +50,13 @@
 //           created and commented on, #/activity lists "<you> commented on
 //           <title> DEF-n" first; the Goals filter hides it and a reload
 //           keeps entity=goal; clicking the Issue's row opens the Issue;
-//           its Activity tab, after a status, priority and Blocker change,
-//           lists those and the comment in Paperclip's words, ?tab=activity
-//           opens on it after a reload, and the Comments tab still posts
+//           its Activity tab, after a status, priority, Blocker and document
+//           change, lists those and the comment oldest first in Paperclip's
+//           words, ?tab=activity
+//           opens on it after a reload, and the Comments tab still posts;
+//           the Actor filter set to you keeps the Issue; a Viewer, invited
+//           for the run, sees the feed but not an Issue in a scratch Project
+//           whose Viewer Role is denied View resources there
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -154,6 +158,28 @@ async function invited(owner: Page, role: 'viewer' | 'member'): Promise<{ page: 
       await ctx.close()
       await owner.request.delete(`${WEB}/api/members/${member.id}`)
     },
+  }
+}
+
+/**
+ * Denies the seeded Role `role` View resources in a Project through its
+ * permissions page; the returned function removes the override again.
+ */
+async function denyView(page: Page, project: number, role: 'Member' | 'Viewer'): Promise<() => Promise<void>> {
+  const { roles } = (await (await page.request.get(`${WEB}/api/roles`)).json()) as { roles: { id: number; name: string }[] }
+  const target = roles.find((r) => r.name === role)!
+  await page.goto(`${WEB}/#/project/${project}/permissions`)
+  await page.getByTestId('project-permissions').waitFor()
+  await page.getByRole('button', { name: 'Add role or member' }).click()
+  await page.locator(`[data-testid="add-target"][data-target="role:${target.id}"]`).click()
+  await page.locator('[data-permission="view_resources"]').getByRole('radio', { name: 'Deny' }).click()
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await page.getByRole('button', { name: 'Remove override' }).waitFor()
+  return async () => {
+    await page.goto(`${WEB}/#/project/${project}/permissions`)
+    await page.getByRole('button', { name: 'Remove override' }).click()
+    await page.getByRole('button', { name: 'Remove', exact: true }).click()
+    await page.getByRole('button', { name: 'Remove override' }).waitFor({ state: 'detached' })
   }
 }
 
@@ -620,15 +646,7 @@ const sections: Record<string, () => Promise<void>> = {
     expect('a Member sees the Issue before the override', await sees())
     expect('and its Activity in the feed', await inFeed())
 
-    const { roles } = (await (await page.request.get(`${WEB}/api/roles`)).json()) as { roles: { id: number; name: string }[] }
-    const memberRole = roles.find((r) => r.name === 'Member')!
-    await page.goto(`${WEB}/#/project/${project.id}/permissions`)
-    await page.getByTestId('project-permissions').waitFor()
-    await page.getByRole('button', { name: 'Add role or member' }).click()
-    await page.locator(`[data-testid="add-target"][data-target="role:${memberRole.id}"]`).click()
-    await page.locator('[data-permission="view_resources"]').getByRole('radio', { name: 'Deny' }).click()
-    await page.getByRole('button', { name: 'Save changes' }).click()
-    await page.getByRole('button', { name: 'Remove override' }).waitFor()
+    const undeny = await denyView(page, project.id, 'Member')
 
     expect('a Member no longer sees the Issue in the list', !(await sees()))
     const byId = await m.page.request.get(`${WEB}/api/issues/${issue.identifier}`)
@@ -643,9 +661,7 @@ const sections: Record<string, () => Promise<void>> = {
     await m.page.getByRole('button', { name: 'New Issue' }).first().waitFor()
     expect('the Issues list has no row for it', (await m.page.locator(`[data-issue="${issue.identifier}"]`).count()) === 0)
 
-    await page.getByRole('button', { name: 'Remove override' }).click()
-    await page.getByRole('button', { name: 'Remove', exact: true }).click()
-    await page.getByRole('button', { name: 'Remove override' }).waitFor({ state: 'detached' })
+    await undeny()
     expect('removing the override shows it again', await sees())
 
     await m.leave()
@@ -679,6 +695,12 @@ const sections: Record<string, () => Promise<void>> = {
     await page.reload()
     await page.getByRole('button', { name: 'Entity', exact: true }).waitFor()
     expect('a reload keeps entity=goal', (await page.getByRole('button', { name: 'Entity', exact: true }).innerText()).trim() === 'Goals')
+    await page.goto(`${WEB}/#/activity?entity=issue`)
+    await page.getByRole('button', { name: 'Actor', exact: true }).click()
+    await page.getByRole('option', { name: member.name, exact: true }).click()
+    await page.waitForFunction(() => /[?&]actor=\d+/.test(location.hash))
+    await rows.first().waitFor()
+    expect('the Actor filter set to you keeps it', (await rows.first().innerText()).includes(issue.identifier), await rows.first().innerText())
 
     await page.goto(`${WEB}/#/activity?entity=issue`)
     await rows.first().waitFor()
@@ -690,20 +712,27 @@ const sections: Record<string, () => Promise<void>> = {
     await page.request.patch(`${WEB}/api/issues/${issue.id}`, { data: { status: 'todo' } })
     await page.request.patch(`${WEB}/api/issues/${issue.id}`, { data: { status: 'in_progress', priority: 'high' } })
     await page.request.patch(`${WEB}/api/issues/${issue.id}`, { data: { blocked_by_ids: [blocker.id] } })
+    const doc = `${WEB}/api/issues/${issue.id}/documents/plan`
+    const { document: plan } = (await (await page.request.put(doc, { data: { title: '', body: 'First draft' } })).json()) as { document: { latest_revision_id: number } }
+    await page.request.put(doc, { data: { title: '', body: 'Second draft', base_revision_id: plan.latest_revision_id } })
     await page.reload()
     await page.getByRole('tab', { name: 'Activity' }).click()
     await page.waitForFunction(() => location.hash.endsWith('?tab=activity'))
     const tab = page.getByRole('region', { name: 'Activity' })
-    await tab.locator('[data-activity="issue.updated"]').nth(2).waitFor()
+    await tab.locator('[data-activity="issue.document_updated"]').waitFor()
     const said = (await tab.innerText()).replace(/\s+/g, ' ')
-    for (const words of [
+    const sentences = [
       'created the issue',
       'commented Seen in the feed',
       'changed the status from Todo to In Progress',
       'changed the priority from Medium to High',
       `added blocker ${blocker.identifier}`,
-    ])
-      expect(`the Activity tab says "${words}"`, said.includes(words), said)
+      'created document plan',
+      'updated document plan (rev 2)',
+    ]
+    for (const words of sentences) expect(`the Activity tab says "${words}"`, said.includes(words), said)
+    const at = sentences.map((w) => said.indexOf(w))
+    expect('oldest first, as Paperclip lists them', at.every((i, n) => n === 0 || at[n - 1] < i), at)
     expect('the Blocker links to its Issue', await tab.getByRole('link', { name: blocker.identifier }).isVisible())
     await page.reload()
     await tab.locator('[data-activity="issue.created"]').waitFor()
@@ -718,6 +747,24 @@ const sections: Record<string, () => Promise<void>> = {
     await tab.locator('[data-activity="issue.comment_added"]', { hasText: 'Posted from the tab' }).waitFor()
     expect('the Activity tab shows the new comment', true)
 
+    const hiddenName = 'Activity e2e hidden'
+    const { projects } = (await (await page.request.get(`${WEB}/api/projects`)).json()) as { projects: { id: number; name: string }[] }
+    for (const p of projects.filter((p) => p.name === hiddenName)) await page.request.delete(`${WEB}/api/projects/${p.id}`)
+    const { project } = (await (await page.request.post(`${WEB}/api/projects`, { data: { name: hiddenName } })).json()) as { project: { id: number } }
+    const { issue: hidden } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title: `${title} hidden`, project_id: project.id } })).json()) as { issue: Issue }
+    const undeny = await denyView(page, project.id, 'Viewer')
+    const v = await invited(page, 'viewer')
+    await v.page.goto(`${WEB}/#/activity`)
+    const theirs = v.page.getByRole('list', { name: 'Activity' }).getByRole('listitem')
+    await theirs.first().waitFor()
+    const feed = await v.page.getByRole('list', { name: 'Activity' }).innerText()
+    expect('a Viewer sees the feed', feed.includes(issue.identifier), feed)
+    expect('without the Issue in a Project they may not view', !feed.includes(hidden.identifier), feed)
+    await v.leave()
+    await undeny()
+
+    await page.request.delete(`${WEB}/api/issues/${hidden.id}`)
+    await page.request.delete(`${WEB}/api/projects/${project.id}`)
     await page.request.delete(`${WEB}/api/issues/${blocker.id}`)
     await page.request.delete(`${WEB}/api/issues/${issue.id}`)
     await page.close()
