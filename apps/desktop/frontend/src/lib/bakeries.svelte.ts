@@ -11,8 +11,10 @@ class Bakeries {
   loaded = $state(false)
   error = $state('')
   active = $derived(this.list.find((b) => b.active))
-  /** The Bakery the route shows, by its place in the list; the active one is only the default. */
-  shownIndex = $derived(router.route.bakery ?? -1)
+  /** The Bakery the route shows, by its place in the list; a route with none
+   * (home before one is picked, or "Runs on this desktop", which spans every
+   * Bakery) shows the active one instead, so the shell keeps its context. */
+  shownIndex = $derived('bakery' in router.route && router.route.bakery !== null ? router.route.bakery : this.list.findIndex((b) => b.active))
   shown = $derived(this.list[this.shownIndex] as Bakery | undefined)
   #listening = false
 

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"sync"
 
+	"github.com/jevido/bakery/apps/desktop/runner"
 	"github.com/jevido/bakery/apps/desktop/store"
 )
 
@@ -20,6 +22,9 @@ type Desktop struct {
 	// openURL opens a link in the system browser; nil in `serve`, where the
 	// page shows the link instead.
 	openURL func(url string) error
+	// runner is this process's Runner, for LocalRuns; nil in `serve
+	// --no-runner`, where this desktop runs no Run of its own.
+	runner *runner.Runner
 
 	mu          sync.Mutex
 	connects    map[uint64]*connecting
@@ -27,12 +32,17 @@ type Desktop struct {
 	shown       shown
 	cache       map[string]cached
 	refreshing  sync.Once
+	following   map[followKey]context.CancelFunc
 }
 
 // NewDesktop returns the Desktop service, keeping the connected Bakeries in
-// bakeries and sending its live updates to events.
-func NewDesktop(events *Events, bakeries *store.Store, openURL func(string) error) *Desktop {
-	return &Desktop{events: events, store: bakeries, openURL: openURL, connects: map[uint64]*connecting{}, cache: map[string]cached{}}
+// bakeries and sending its live updates to events. r is this process's
+// Runner (nil when it runs none, as `serve --no-runner` does).
+func NewDesktop(events *Events, bakeries *store.Store, openURL func(string) error, r *runner.Runner) *Desktop {
+	return &Desktop{
+		events: events, store: bakeries, openURL: openURL, runner: r,
+		connects: map[uint64]*connecting{}, cache: map[string]cached{}, following: map[followKey]context.CancelFunc{},
+	}
 }
 
 // Version answers the Desktop app's version.

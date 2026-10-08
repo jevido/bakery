@@ -15,15 +15,17 @@
   import Sidebar from './lib/Sidebar.svelte'
   import Agent from './pages/Agent.svelte'
   import Agents from './pages/Agents.svelte'
+  import Runs from './pages/Runs.svelte'
 
   connected.start()
   const route = $derived(router.route)
   const active = $derived(connected.shown)
   const guild = $derived('guild' in route ? shownGuilds.list?.find((g) => g.id === route.guild) : undefined)
 
-  // No Bakery in the route, or one no longer in the list: show the active one.
+  // No Bakery in the route, or one no longer in the list: show the active
+  // one. "Runs on this desktop" names no Bakery: it spans every one.
   $effect(() => {
-    if (!connected.loaded) return
+    if (!connected.loaded || route.page === 'runs') return
     if (route.bakery === null || !connected.list[route.bakery]) {
       const i = connected.list.findIndex((b) => b.active)
       go(i >= 0 ? `/b/${i}` : '/', true)
@@ -41,6 +43,7 @@
   // last on this Bakery, else the first. A Guild shown is remembered.
   $effect(() => {
     const gs = shownGuilds.list
+    if (route.page === 'runs') return
     if (!active || route.bakery === null || !gs || shownGuilds.address !== active.address) return
     if ('guild' in route && gs.some((g) => g.id === route.guild)) {
       shownGuilds.remember(active.address, route.guild)
@@ -61,12 +64,14 @@
     <div class="flex h-full min-w-0 flex-1 flex-col">
       <header class="flex h-12 shrink-0 items-center border-b border-border px-6">
         <h1 class="truncate text-sm font-semibold">
-          {#if guild && route.page === 'agent'}{guild.name} · Agent{:else if guild}{guild.name} · Agents{:else if active}{new URL(active.address).host}{:else}Connect a Bakery{/if}
+          {#if route.page === 'runs'}Runs on this desktop{:else if guild && route.page === 'agent'}{guild.name} · Agent{:else if guild}{guild.name} · Agents{:else if active}{new URL(active.address).host}{:else}Connect a Bakery{/if}
         </h1>
       </header>
-      <main class={['flex flex-1 overflow-auto p-6', !(guild && !active?.signed_out) && 'items-center justify-center']}>
+      <main class={['flex flex-1 overflow-auto p-6', !(route.page === 'runs' || (guild && !active?.signed_out)) && 'items-center justify-center']}>
         {#if !connected.loaded}
           <span></span>
+        {:else if route.page === 'runs'}
+          <div class="w-full"><Runs /></div>
         {:else if active && !active.signed_out && guild && route.page === 'agents'}
           <div class="w-full"><Agents address={active.address} bakery={route.bakery} guild={route.guild} tab={route.tab} /></div>
         {:else if active && !active.signed_out && guild && route.page === 'agent'}

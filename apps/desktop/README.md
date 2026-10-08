@@ -125,3 +125,13 @@ the `running` Runs it no longer runs to that. The window and `serve` get a
 `runs` event `{address, guild_id, agent_id, run_id, status, events}` when a
 Run here starts, reports and ends.
 Nothing is pushed or committed yet: git comes with Heartbeats.
+
+The frontend draws an Agent's Runs from `Runs`/`RunEvents` (the dashboard's
+`GET /api/runs`/`GET /api/runs/{id}/events`, with the Desktop key and
+`Bakery-Guild`) with `@bakery/ui`'s `RunTranscript`; a Run this desktop
+executes is read straight from the Runner's `LocalRuns()` (what it holds in
+`running`, no round trip to a Bakery) instead, kept current by the `runs`
+event. A Run on another of the person's connected desktops is followed with
+`FollowRun`/`UnfollowRun`, which read `GET /api/runs/{id}/stream` and forward
+it as `run-events`. The sidebar's "Runs on this desktop" (`#/runs`) lists
+`LocalRuns()` across every connected Bakery, live.

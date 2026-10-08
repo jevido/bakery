@@ -8,9 +8,9 @@
   import BakeryLockup from '@bakery/ui/BakeryLockup.svelte'
   import ThemeToggle from '@bakery/ui/ThemeToggle.svelte'
   import * as DropdownMenu from '@bakery/ui/components/ui/dropdown-menu'
-  import { Bot, Ellipsis, LogOut, Plug, Server } from '@lucide/svelte'
+  import { Bot, Ellipsis, ListChecks, LogOut, Plug, Server } from '@lucide/svelte'
   import { connected, connectDialog } from './bakeries.svelte'
-  import { disconnect, version } from './desktop'
+  import { disconnect, localRuns, onEvent, version, type LocalRun, type RunsEvent } from './desktop'
   import { shownGuilds } from './guilds.svelte'
   import { agentsPath, go, href, router } from './router.svelte'
 
@@ -21,6 +21,20 @@
   $effect(() => {
     version().then((v) => (current = v), () => (current = ''))
   })
+
+  // What the Runner is doing right now, for "Runs on this desktop"'s badge.
+  let runsHere = $state.raw<LocalRun[]>([])
+  function loadRuns() {
+    localRuns().then((r) => (runsHere = r))
+  }
+  $effect(() => {
+    if (connected.list.length === 0) {
+      runsHere = []
+      return
+    }
+    loadRuns()
+  })
+  $effect(() => onEvent<RunsEvent>('runs', loadRuns))
 
   async function signOut(address: string) {
     try {
@@ -91,6 +105,25 @@
       <Plug class="size-4 shrink-0" />
       Connect a Bakery
     </button>
+    {#if connected.list.length > 0}
+      <a
+        href={href('/runs')}
+        class={[
+          'flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-medium',
+          route.page === 'runs' ? 'bg-accent text-foreground' : 'text-foreground/80 hover:bg-accent/50 hover:text-foreground',
+        ]}
+        aria-current={route.page === 'runs' ? 'page' : undefined}
+        data-testid="runs-on-this-desktop"
+      >
+        <ListChecks class="size-4 shrink-0" />
+        Runs on this desktop
+        {#if runsHere.length > 0}
+          <span class="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-semibold tabular-nums">
+            {runsHere.length}
+          </span>
+        {/if}
+      </a>
+    {/if}
     {#if guild && 'guild' in route}
       <div class="my-2 border-t border-border"></div>
       <div class="truncate px-3 pt-1 pb-1.5 text-[13px] font-semibold" data-testid="guild-name">{guild.name}</div>

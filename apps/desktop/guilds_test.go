@@ -82,7 +82,7 @@ func connected(t *testing.T, address string) (*Desktop, <-chan Event) {
 	events := NewEvents()
 	got, stop := events.Subscribe()
 	t.Cleanup(stop)
-	return NewDesktop(events, store.New(path), nil), got
+	return NewDesktop(events, store.New(path), nil, nil), got
 }
 
 // next is the next event named name, skipping others.

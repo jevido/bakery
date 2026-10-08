@@ -17,7 +17,7 @@ func testServer(t *testing.T) (*httptest.Server, *Events) {
 	t.Helper()
 	events := NewEvents()
 	assets := fstest.MapFS{"index.html": {Data: []byte("<title>The Bakery</title>")}}
-	srv := httptest.NewServer(newServer(NewDesktop(events, store.New(t.TempDir()+"/bakeries.json"), nil), assets))
+	srv := httptest.NewServer(newServer(NewDesktop(events, store.New(t.TempDir()+"/bakeries.json"), nil, nil), assets))
 	t.Cleanup(srv.Close)
 	return srv, events
 }
@@ -30,6 +30,7 @@ func TestRPC(t *testing.T) {
 		want               string
 	}{
 		{"version", "Version", "[]", http.StatusOK, `{"result":"dev"}`},
+		{"local runs with no runner", "LocalRuns", "[]", http.StatusOK, `{"result":null}`},
 		{"unknown method", "Nope", "[]", http.StatusNotFound, `{"error":"unknown method"}`},
 		{"unexported method", "methods", "[]", http.StatusNotFound, `{"error":"unknown method"}`},
 		{"not an array", "Version", "{}", http.StatusBadRequest, `{"error":"the body must be a JSON array of arguments"}`},

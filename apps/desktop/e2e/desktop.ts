@@ -343,6 +343,65 @@ const sections: Record<string, () => Promise<void>> = {
     await web.context().close()
     await p.context().close()
   },
+
+  async runs() {
+    const { p, errors } = await desktop()
+    const { browserPage: web } = await connectTo(p)
+    const { def } = await defaultGuild(web)
+    await p.getByTestId('guild-rail').getByRole('link', { name: def.name, exact: true }).click()
+    await p.getByTestId('guild-name').filter({ hasText: def.name }).waitFor()
+
+    const name = `Runs e2e agent ${Date.now()}`
+    const hire = (await (await web.request.post(`${WEB}/api/agents`, { data: { name, job: 'engineer', icon: 'bot' } })).json()) as {
+      agent: { id: number; approval_id: number }
+    }
+    await web.request.post(`${WEB}/api/approvals/${hire.agent.approval_id}/approve`, { data: {} })
+    const { issue } = (await (
+      await web.request.post(`${WEB}/api/issues`, { data: { title: 'Runs e2e: [slow] count', assignee_agent_id: hire.agent.id } })
+    ).json()) as { issue: { id: number; identifier: string } }
+
+    try {
+      const sidebar = p.getByTestId('sidebar')
+      const badge = sidebar.getByTestId('runs-on-this-desktop')
+      await badge.waitFor()
+      expect('no Run is on this desktop yet', (await badge.locator('span').count()) === 0)
+
+      await web.request.post(`${WEB}/api/agents/${hire.agent.id}/runs`, { data: { issue_id: issue.id } })
+
+      await badge.locator('span').filter({ hasText: '1' }).waitFor({ timeout: 30_000 })
+      expect('"Runs on this desktop" shows a count of 1', true)
+      await badge.click()
+      const runsPage = p.getByTestId('local-runs')
+      const blocks = runsPage.locator('[data-testid="run-transcript"][data-live="true"] [data-block]')
+      await blocks.first().waitFor({ timeout: 30_000 })
+      const first = await blocks.count()
+      const grew = await p
+        .waitForFunction((n) => document.querySelectorAll('[data-testid="local-runs"] [data-block]').length > n, first, { timeout: 20_000 })
+        .then(() => true, () => false)
+      expect('the Transcript grows on the Runs page', grew, first)
+
+      await badge.locator('span').waitFor({ state: 'detached', timeout: 60_000 })
+      expect('the Run leaves "Runs on this desktop" once it ends', true)
+
+      // The Agent page lists it, Succeeded, with its result footer.
+      await p.getByTestId('guild-rail').getByRole('link', { name: def.name, exact: true }).click()
+      await p.getByTestId('guild-name').filter({ hasText: def.name }).waitFor()
+      await p.getByTestId('agent-row').filter({ hasText: name }).getByRole('link', { name: `Open ${name}` }).click({ position: { x: 8, y: 8 } })
+      const row = p.getByTestId('run-ledger').locator('[data-run]').first()
+      await row.locator('[data-run-status="succeeded"]').waitFor({ timeout: 15_000 })
+      expect('the Agent page lists the Run, Succeeded', true)
+      await row.getByRole('button', { name: /^Run #/ }).click()
+      await row.locator('[data-block="result"]').waitFor()
+      expect('its Transcript shows the result', true)
+    } finally {
+      await web.request.delete(`${WEB}/api/issues/${issue.id}`)
+      await web.request.post(`${WEB}/api/agents/${hire.agent.id}/terminate`)
+      await disconnectFrom(p)
+      expect('no page errors', errors.length === 0, errors)
+      await web.context().close()
+      await p.context().close()
+    }
+  },
 }
 
 const asked = process.argv.slice(2)

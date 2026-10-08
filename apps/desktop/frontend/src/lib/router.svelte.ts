@@ -5,6 +5,7 @@
  *   #/b/{bakery}                          the Bakery, before a Guild is picked
  *   #/b/{bakery}/g/{guild}/agents[/{tab}]  the Guild's Agents on a tab
  *   #/b/{bakery}/g/{guild}/agents/{id}     one Agent
+ *   #/runs                                Runs on this desktop, across every Bakery
  */
 import type { AgentsTab } from './desktop'
 
@@ -15,9 +16,11 @@ export type Route =
   | { page: 'guild'; bakery: number; guild: number }
   | { page: 'agents'; bakery: number; guild: number; tab: AgentsTab }
   | { page: 'agent'; bakery: number; guild: number; id: number }
+  | { page: 'runs' }
 
 export function parse(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('?')[0].split('/').filter(Boolean)
+  if (parts[0] === 'runs') return { page: 'runs' }
   const num = (s: string | undefined) => (s && /^\d+$/.test(s) ? Number(s) : null)
   const bakery = parts[0] === 'b' ? num(parts[1]) : null
   if (bakery === null) return { page: 'home', bakery: null }

@@ -32,7 +32,7 @@ func runLogin(args []string) error {
 	if *noBrowser {
 		open = nil
 	}
-	d := NewDesktop(events, bakeries, open)
+	d := NewDesktop(events, bakeries, open, nil)
 	start, err := d.Connect(*server)
 	if err != nil {
 		return err

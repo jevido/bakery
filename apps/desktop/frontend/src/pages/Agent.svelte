@@ -9,26 +9,40 @@
   import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { agentStatusLabel, agentStatusTones } from '@bakery/ui/agentStatus'
-  import { agent as getAgent, openInBrowser, type Agent } from '../lib/desktop'
+  import { agent as getAgent, onEvent, openInBrowser, runs as listRuns, type Agent, type Run, type RunsEvent } from '../lib/desktop'
   import { shownGuilds } from '../lib/guilds.svelte'
+  import RunLedger from '../lib/RunLedger.svelte'
   import { agentsPath, href } from '../lib/router.svelte'
 
   let { address, bakery, guild, id }: { address: string; bakery: number; guild: number; id: number } = $props()
 
   let agent = $state.raw<Agent | null>(null)
   let loadError = $state('')
+  let runs = $state.raw<Run[]>([])
 
   $effect(() => {
     const [a, g, i] = [address, guild, id]
     agent = null
     loadError = ''
+    runs = []
     getAgent(a, g, i).then(
       (x) => {
         if (a === address && g === guild && i === id) agent = x
       },
       (e: Error) => (loadError = e.message === 'not found' ? 'This agent does not exist or you cannot see it.' : e.message),
     )
+    listRuns(a, g, i).then((rs) => {
+      if (a === address && g === guild && i === id) runs = rs
+    })
   })
+
+  // A Run started, reported or ended on this desktop refreshes the ledger
+  // with no fixed delay; an issue page elsewhere may have started it.
+  $effect(() =>
+    onEvent<RunsEvent>('runs', (e) => {
+      if (e.address === address && e.agent_id === id) listRuns(address, guild, id).then((rs) => (runs = rs))
+    }),
+  )
 
   const runsHere = $derived(agent !== null && shownGuilds.member !== null && agent.hirer?.id === shownGuilds.member.id)
 </script>
@@ -123,6 +137,11 @@
             {@render muted('Only @everyone.')}
           {/each}
         </div>
+      </section>
+
+      <section class="rounded-lg border border-border p-4 md:col-span-2" aria-labelledby="agent-runs-heading">
+        <h3 id="agent-runs-heading" class="mb-3 text-sm font-medium">Runs</h3>
+        <RunLedger {address} guildID={guild} {runs} />
       </section>
     </div>
   </div>

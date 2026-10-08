@@ -16,6 +16,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as bakery$0 from "./bakery/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as runner$0 from "./runner/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -87,6 +90,15 @@ export function Disconnect(address: string): $CancellablePromise<void> {
 }
 
 /**
+ * FollowRun starts following the Run id's stream in the Guild guildID, for
+ * a Run this desktop did not claim, until UnfollowRun or the Run ends.
+ * Idempotent: following the same Run again does nothing.
+ */
+export function FollowRun(address: string, guildID: number, id: number): $CancellablePromise<void> {
+    return $Call.ByID(3478328238, address, guildID, id);
+}
+
+/**
  * Guilds lists the person's Guilds on the Bakery at address, and keeps
  * them current with `guilds` events while the window shows them.
  */
@@ -95,10 +107,39 @@ export function Guilds(address: string): $CancellablePromise<bakery$0.Guild[] | 
 }
 
 /**
+ * LocalRuns is the Runs this desktop executes right now, across every
+ * connected Bakery, for the Agent page's live Transcript and "Runs on this
+ * desktop" without a round trip to a Bakery: nil when this process runs no
+ * Runner (`serve --no-runner`).
+ */
+export function LocalRuns(): $CancellablePromise<runner$0.LocalRun[] | null> {
+    return $Call.ByID(407696129);
+}
+
+/**
  * Me is the person the Desktop key acts as on the Bakery at address.
  */
 export function Me(address: string): $CancellablePromise<bakery$0.Member> {
     return $Call.ByID(2040295850, address);
+}
+
+/**
+ * RunEvents answers the Run id's stored events after seq after, in the
+ * Guild guildID: a final Run's Transcript, read once.
+ */
+export function RunEvents(address: string, guildID: number, id: number, after: number): $CancellablePromise<bakery$0.RunEvent[] | null> {
+    return $Call.ByID(2910066680, address, guildID, id, after);
+}
+
+export function Runs(address: string, guildID: number, id: number): $CancellablePromise<bakery$0.Run[] | null> {
+    return $Call.ByID(3789588182, address, guildID, id);
+}
+
+/**
+ * UnfollowRun stops following the Run id's stream started by FollowRun.
+ */
+export function UnfollowRun(address: string, guildID: number, id: number): $CancellablePromise<void> {
+    return $Call.ByID(1781655771, address, guildID, id);
 }
 
 /**

@@ -163,9 +163,9 @@ func (r *Runner) execute(ctx context.Context, c *bakery.Client, run bakery.Deskt
 				continue
 			}
 			if l.stderr {
-				rep.add(t.Stderr(l.text))
+				e.record(toLocal(rep.add(t.Stderr(l.text))))
 			} else {
-				rep.add(t.Stdout(l.text))
+				e.record(toLocal(rep.add(t.Stdout(l.text))))
 			}
 			if len(rep.pending) >= flushAt {
 				r.report(ctx, c, run, rep)
@@ -304,14 +304,33 @@ type reporter struct {
 	signedOut bool
 }
 
-func (p *reporter) add(events []Event) {
-	if p.gone {
-		return
+// add numbers events and queues them to send, answering them numbered for
+// LocalRuns to record.
+func (p *reporter) add(events []Event) []bakery.RunEvent {
+	if p.gone || len(events) == 0 {
+		return nil
 	}
+	added := make([]bakery.RunEvent, 0, len(events))
 	for _, e := range events {
-		p.pending = append(p.pending, bakery.RunEvent{Seq: p.next, Kind: e.Kind, Payload: e.Payload})
+		re := bakery.RunEvent{Seq: p.next, Kind: e.Kind, Payload: e.Payload}
+		p.pending = append(p.pending, re)
+		added = append(added, re)
 		p.next++
 	}
+	return added
+}
+
+// toLocal turns numbered Run events into LocalEvents, stamped with now.
+func toLocal(events []bakery.RunEvent) []LocalEvent {
+	if len(events) == 0 {
+		return nil
+	}
+	now := time.Now()
+	out := make([]LocalEvent, len(events))
+	for i, e := range events {
+		out[i] = LocalEvent{Seq: e.Seq, Kind: e.Kind, Payload: e.Payload, CreatedAt: now}
+	}
+	return out
 }
 
 func (p *reporter) flush(ctx context.Context) error {

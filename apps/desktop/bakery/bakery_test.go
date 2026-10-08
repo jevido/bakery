@@ -239,3 +239,59 @@ func TestWatchRuns(t *testing.T) {
 		t.Fatalf("a refused key: %v", err)
 	}
 }
+
+func TestRunsAndRunEvents(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/runs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Bakery-Guild") != "1" || r.URL.Query().Get("agent") != "2" || r.URL.Query().Get("limit") != "20" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write([]byte(`{"runs":[{"id":4,"agent":{"id":2,"name":"Ada"},"status":"succeeded","usage":{"turns":3},"can_cancel":false}]}`))
+	})
+	mux.HandleFunc("GET /api/runs/4/events", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Bakery-Guild") != "1" || r.URL.Query().Get("after") != "2" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write([]byte(`{"events":[{"seq":3,"kind":"result","payload":{"subtype":"success"}}]}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	c := New(srv.URL, "bky_desk_x")
+	ctx := context.Background()
+	runs, err := c.Runs(ctx, 1, 2, 20)
+	if err != nil || len(runs) != 1 || runs[0].ID != 4 || runs[0].Status != "succeeded" || runs[0].Usage.Turns != 3 {
+		t.Fatalf("runs %+v, %v", runs, err)
+	}
+	events, err := c.RunEvents(ctx, 1, 4, 2)
+	if err != nil || len(events) != 1 || events[0].Seq != 3 || events[0].Kind != "result" {
+		t.Fatalf("events %+v, %v", events, err)
+	}
+}
+
+func TestFollowRunStream(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/runs/4/stream", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer bky_desk_x" || r.Header.Get("Bakery-Guild") != "1" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: event\ndata: {\"seq\":1,\"kind\":\"assistant\",\"payload\":{\"text\":\"hi\"}}\n\n: ping\n\nevent: end\ndata: {\"status\":\"succeeded\"}\n\n"))
+		w.(http.Flusher).Flush()
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	var got []RunStreamUpdate
+	err := New(srv.URL, "bky_desk_x").FollowRunStream(context.Background(), 1, 4, func(u RunStreamUpdate) { got = append(got, u) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Kind != "event" || got[0].Event.Seq != 1 || got[0].Event.Kind != "assistant" || got[1].Kind != "end" || got[1].Status != "succeeded" {
+		t.Fatalf("got %+v", got)
+	}
+	if err := New(srv.URL, "bky_desk_wrong").FollowRunStream(context.Background(), 1, 4, nil); !errors.Is(err, ErrSignedOut) {
+		t.Fatalf("a refused key: %v", err)
+	}
+}

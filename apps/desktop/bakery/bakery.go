@@ -365,6 +365,53 @@ type RunEvent struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
+// Run is a Run as the Bakery's agents context shows it
+// (services/api contexts/agents/http/runs.go), for an Agent's Runs on its
+// page.
+type Run struct {
+	ID               uint64     `json:"id"`
+	Agent            RunAgent   `json:"agent"`
+	Issue            *RunIssue  `json:"issue"`
+	InvocationSource string     `json:"invocation_source"`
+	Status           string     `json:"status"`
+	RequestedBy      *Named     `json:"requested_by"`
+	Desktop          *Named     `json:"desktop"`
+	RetryOfRunID     *uint64    `json:"retry_of_run_id"`
+	Usage            Usage      `json:"usage"`
+	ExitCode         *int       `json:"exit_code"`
+	Error            string     `json:"error"`
+	CreatedAt        time.Time  `json:"created_at"`
+	StartedAt        *time.Time `json:"started_at"`
+	FinishedAt       *time.Time `json:"finished_at"`
+	CanCancel        bool       `json:"can_cancel"`
+}
+
+// Runs lists the Agent id's Runs in the Guild guildID, newest first, at
+// most limit.
+func (c *Client) Runs(ctx context.Context, guildID, id uint64, limit int) ([]Run, error) {
+	var out struct {
+		Runs []Run `json:"runs"`
+	}
+	path := fmt.Sprintf("/api/runs?agent=%d&limit=%d", id, limit)
+	if err := c.do(ctx, http.MethodGet, path, guildID, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Runs, nil
+}
+
+// RunEvents answers the Run id's stored events after seq after, in the
+// Guild guildID.
+func (c *Client) RunEvents(ctx context.Context, guildID, id uint64, after int64) ([]RunEvent, error) {
+	var out struct {
+		Events []RunEvent `json:"events"`
+	}
+	path := fmt.Sprintf("/api/runs/%d/events?after=%d", id, after)
+	if err := c.do(ctx, http.MethodGet, path, guildID, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Events, nil
+}
+
 // RunState is where a Run stands after a report.
 type RunState struct {
 	ID             uint64     `json:"id"`
@@ -539,6 +586,79 @@ func (c *Client) streamRuns(ctx context.Context, w RunsWatcher) (connected bool,
 		}
 	}
 	return true, scanner.Err()
+}
+
+// RunStreamUpdate is one message off a Run's own stream
+// (GET /api/runs/{id}/stream): "event" carries one of its Run events,
+// "end" its final status.
+type RunStreamUpdate struct {
+	Kind   string
+	Event  RunEvent
+	Status string
+}
+
+// FollowRunStream reads the Run id's stream in the Guild guildID until ctx
+// ends or the Run ends, calling onUpdate for each Run event and once more
+// for "end". Used for a Run this Desktop did not claim: one of the
+// person's other connected Desktops runs it.
+func (c *Client) FollowRunStream(ctx context.Context, guildID, id uint64, onUpdate func(RunStreamUpdate)) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/runs/%d/stream", c.Address, id), nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Authorization", "Bearer "+c.Key)
+	req.Header.Set("Bakery-Guild", strconv.FormatUint(guildID, 10))
+	res, err := (&http.Client{Transport: c.HTTP.Transport}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	switch {
+	case res.StatusCode == http.StatusUnauthorized:
+		return ErrSignedOut
+	case res.StatusCode == http.StatusNotFound:
+		return ErrNotFound
+	case res.StatusCode != http.StatusOK:
+		return &Error{Status: res.StatusCode}
+	}
+	scanner := bufio.NewScanner(res.Body)
+	scanner.Buffer(make([]byte, 64<<10), 8<<20)
+	var event string
+	var data []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		switch {
+		case line == "":
+			if event != "" || len(data) > 0 {
+				dispatchRunStream(onUpdate, event, strings.Join(data, "\n"))
+			}
+			event, data = "", nil
+		case strings.HasPrefix(line, ":"):
+		case strings.HasPrefix(line, "event:"):
+			event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+		case strings.HasPrefix(line, "data:"):
+			data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+		}
+	}
+	return scanner.Err()
+}
+
+func dispatchRunStream(onUpdate func(RunStreamUpdate), event, data string) {
+	switch event {
+	case "event":
+		var e RunEvent
+		if json.Unmarshal([]byte(data), &e) == nil {
+			onUpdate(RunStreamUpdate{Kind: "event", Event: e})
+		}
+	case "end":
+		var m struct {
+			Status string `json:"status"`
+		}
+		if json.Unmarshal([]byte(data), &m) == nil {
+			onUpdate(RunStreamUpdate{Kind: "end", Status: m.Status})
+		}
+	}
 }
 
 func dispatch(w RunsWatcher, event, data string) {

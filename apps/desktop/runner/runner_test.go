@@ -404,6 +404,49 @@ func TestRunnerStopsClaudeOnCancel(t *testing.T) {
 	}
 }
 
+func TestRunnerLocalRunsReportsWhatIsRunning(t *testing.T) {
+	f := newFakeBakery(t, "Take your time [slow]")
+	home := t.TempDir()
+	s := store.New(filepath.Join(home, "bakeries.json"))
+	if err := s.Put(store.Bakery{Address: f.srv.URL, DesktopID: 9, Key: "bky_desk_test"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ANTHROPIC_API_KEY", "sk-must-not-reach-claude")
+	t.Setenv("BAKERY_STANDIN_DELAY", "20ms")
+	r := &Runner{Store: s, Claude: standin, Home: home, Logf: t.Logf}
+	ctx, cancel := context.WithCancel(context.Background())
+	r.Start(ctx)
+	t.Cleanup(func() { cancel(); r.Wait() })
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		ls := r.LocalRuns()
+		if len(ls) == 1 && len(ls[0].Events) > 0 {
+			l := ls[0]
+			if l.RunID != 41 || l.Agent.ID != 3 || l.Guild.ID != 1 || l.Status != "running" || l.Events[0].Seq != 1 {
+				t.Fatalf("local run %+v", l)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("LocalRuns never showed the running run: %+v", ls)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	f.mu.Lock()
+	f.run.Status = "cancelled"
+	f.mu.Unlock()
+	close(f.cancel)
+	deadline = time.Now().Add(10 * time.Second)
+	for len(r.LocalRuns()) != 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("LocalRuns still reports a stopped run: %+v", r.LocalRuns())
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 func TestRunnerFailsARunWithoutClaude(t *testing.T) {
 	f := newFakeBakery(t, "Anything")
 	home := t.TempDir()

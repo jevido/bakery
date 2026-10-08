@@ -58,7 +58,7 @@ func TestConnectAndDisconnect(t *testing.T) {
 	got, stop := events.Subscribe()
 	defer stop()
 	var opened string
-	d := NewDesktop(events, store.New(path), func(u string) error { opened = u; return nil })
+	d := NewDesktop(events, store.New(path), func(u string) error { opened = u; return nil }, nil)
 
 	start, err := d.Connect(srv.URL + "/")
 	if err != nil {
@@ -112,7 +112,7 @@ func TestDisconnectSignsOut(t *testing.T) {
 	srv, signOuts := fakeSignIns(t, 1)
 	path := filepath.Join(t.TempDir(), "bakeries.json")
 	_ = store.New(path).Put(store.Bakery{Address: srv.URL, Key: "bky_desk_x"})
-	d := NewDesktop(NewEvents(), store.New(path), nil)
+	d := NewDesktop(NewEvents(), store.New(path), nil, nil)
 	if err := d.Disconnect(srv.URL); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestDisconnectSignsOut(t *testing.T) {
 }
 
 func TestConnectRefusesBadAddress(t *testing.T) {
-	d := NewDesktop(NewEvents(), store.New(filepath.Join(t.TempDir(), "b.json")), nil)
+	d := NewDesktop(NewEvents(), store.New(filepath.Join(t.TempDir(), "b.json")), nil, nil)
 	if _, err := d.Connect("ftp://x"); err == nil {
 		t.Fatal("want an error")
 	}

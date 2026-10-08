@@ -82,17 +82,18 @@ func runWindow() error {
 		return err
 	}
 	events := NewEvents()
+	r := newRunner(bakeries, events)
 	app := application.New(application.Options{
 		Name:        "The Bakery",
 		Description: "Runs your Bakery Agents on this computer",
-		Services:    []application.Service{application.NewService(NewDesktop(events, bakeries, openInBrowser))},
+		Services:    []application.Service{application.NewService(NewDesktop(events, bakeries, openInBrowser, r))},
 		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
 		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 	})
 	events.SetWindow(func(name string, data any) { app.Event.Emit(name, data) })
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
-	newRunner(bakeries, events).Start(ctx)
+	r.Start(ctx)
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "The Bakery",
 		Width:  1280,
@@ -134,10 +135,12 @@ func runServe(args []string) error {
 	}
 	log.Printf("The Bakery desktop app serving on http://%s", ln.Addr())
 	events := NewEvents()
+	var r *runner.Runner
 	if !*noRunner {
-		newRunner(bakeries, events).Start(context.Background())
+		r = newRunner(bakeries, events)
+		r.Start(context.Background())
 	}
-	err = http.Serve(ln, newServer(NewDesktop(events, bakeries, nil), dist))
+	err = http.Serve(ln, newServer(NewDesktop(events, bakeries, nil, r), dist))
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}

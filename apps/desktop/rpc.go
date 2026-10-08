@@ -96,6 +96,46 @@ func (d *Desktop) methods() map[string]method {
 			}
 			return nil, d.Disconnect(address)
 		},
+		"LocalRuns": func(args []json.RawMessage) (any, error) {
+			if err := decodeArgs(args); err != nil {
+				return nil, err
+			}
+			return d.LocalRuns(), nil
+		},
+		"Runs": func(args []json.RawMessage) (any, error) {
+			var address string
+			var guildID, id uint64
+			if err := decodeArgs(args, &address, &guildID, &id); err != nil {
+				return nil, err
+			}
+			return d.Runs(address, guildID, id)
+		},
+		"RunEvents": func(args []json.RawMessage) (any, error) {
+			var address string
+			var guildID, id uint64
+			var after int64
+			if err := decodeArgs(args, &address, &guildID, &id, &after); err != nil {
+				return nil, err
+			}
+			return d.RunEvents(address, guildID, id, after)
+		},
+		"FollowRun": func(args []json.RawMessage) (any, error) {
+			var address string
+			var guildID, id uint64
+			if err := decodeArgs(args, &address, &guildID, &id); err != nil {
+				return nil, err
+			}
+			return nil, d.FollowRun(address, guildID, id)
+		},
+		"UnfollowRun": func(args []json.RawMessage) (any, error) {
+			var address string
+			var guildID, id uint64
+			if err := decodeArgs(args, &address, &guildID, &id); err != nil {
+				return nil, err
+			}
+			d.UnfollowRun(address, guildID, id)
+			return nil, nil
+		},
 	}
 }
 

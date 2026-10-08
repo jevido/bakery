@@ -7,10 +7,12 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -63,19 +65,72 @@ type RunUpdate struct {
 	Events  int64  `json:"events"`
 }
 
+// LocalEvent is one Run event this desktop's claude generated, with when it
+// generated it; the Transcript the frontend draws needs no more.
+type LocalEvent struct {
+	Seq       int64           `json:"seq"`
+	Kind      string          `json:"kind"`
+	Payload   json.RawMessage `json:"payload"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
+// LocalRun is a Run this desktop executes right now: LocalRuns reports it so
+// the frontend draws its Transcript without a round trip to the Bakery.
+type LocalRun struct {
+	Address   string           `json:"address"`
+	Guild     bakery.Named     `json:"guild"`
+	Agent     bakery.RunAgent  `json:"agent"`
+	RunID     uint64           `json:"run_id"`
+	Issue     *bakery.RunIssue `json:"issue"`
+	Status    string           `json:"status"`
+	StartedAt time.Time        `json:"started_at"`
+	Events    []LocalEvent     `json:"events"`
+}
+
 type runKey struct {
 	address string
 	id      uint64
 }
 
-// execution is a Run this desktop holds.
+// execution is a Run this desktop holds, and what it has reported so far
+// for LocalRuns to show without a round trip to the Bakery.
 type execution struct {
 	agentID   uint64
 	cancelled chan struct{}
 	once      sync.Once
+
+	mu    sync.Mutex
+	local LocalRun
 }
 
 func (e *execution) cancel() { e.once.Do(func() { close(e.cancelled) }) }
+
+// start records the Run this execution holds, once claimed.
+func (e *execution) start(address string, run bakery.DesktopRun) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.local = LocalRun{Address: address, Guild: run.Guild, Agent: run.Agent, RunID: run.ID, Issue: run.Issue, Status: "running", StartedAt: time.Now()}
+}
+
+// record appends events this execution's claude printed, in seq order.
+func (e *execution) record(events []LocalEvent) {
+	if len(events) == 0 {
+		return
+	}
+	e.mu.Lock()
+	e.local.Events = append(e.local.Events, events...)
+	e.mu.Unlock()
+}
+
+// snapshot is this execution's LocalRun right now, or the zero value before
+// start was called (claimed but not yet recorded: offer filters it out).
+func (e *execution) snapshot() LocalRun {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	l := e.local
+	l.Events = append([]LocalEvent(nil), l.Events...)
+	return l
+}
 
 // watch is one Bakery's stream being followed, with the key it uses.
 type watch struct {
@@ -191,6 +246,7 @@ func (r *Runner) offer(ctx context.Context, c *bakery.Client, runs []bakery.Desk
 			}
 			continue
 		}
+		e.start(c.Address, claimed)
 		r.logf("runner: claimed run %d of %s (%s) on %s", claimed.ID, claimed.Agent.Name, claimed.Guild.Name, c.Address)
 		r.wg.Add(1)
 		go func() {
@@ -242,6 +298,28 @@ func (r *Runner) max() int {
 		return n
 	}
 	return defaultMax
+}
+
+// LocalRuns is the Runs this Runner executes right now, across every
+// connected Bakery, oldest first: for the frontend's Agent page and its
+// "Runs on this desktop" without a round trip to a Bakery. A Run claimed
+// but not yet started (no claude output yet) is still included, with no
+// events.
+func (r *Runner) LocalRuns() []LocalRun {
+	r.mu.Lock()
+	es := make([]*execution, 0, len(r.running))
+	for _, e := range r.running {
+		es = append(es, e)
+	}
+	r.mu.Unlock()
+	out := make([]LocalRun, 0, len(es))
+	for _, e := range es {
+		if l := e.snapshot(); l.RunID != 0 {
+			out = append(out, l)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt.Before(out[j].StartedAt) })
+	return out
 }
 
 func (r *Runner) emit(c *bakery.Client, run bakery.DesktopRun, status string, events int64) {

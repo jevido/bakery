@@ -86,6 +86,60 @@ export type GuildsEvent = { address: string; guilds: Guild[] | null }
 /** The `agents` event: one Guild's Agents on one tab, sent when a refresh changed them. */
 export type AgentsEvent = { address: string; guild_id: number; status: AgentsTab; agents: Agent[] | null }
 
+import type { RunEvent } from '@bakery/ui/runTranscript'
+import type { RunStatus } from '@bakery/ui/runStatus'
+
+export type { RunEvent } from '@bakery/ui/runTranscript'
+export type { RunStatus } from '@bakery/ui/runStatus'
+
+/** A Run's usage as the claude CLI reported it; the cost is an equivalent only. */
+export type RunUsage = {
+  input_tokens: number
+  cached_input_tokens: number
+  output_tokens: number
+  turns: number
+  cost_equivalent_usd: number
+  duration_ms: number
+}
+
+/** A Run as the Bakery shows it (contexts/agents/http/runs.go), for an Agent's Runs on its page. */
+export type Run = {
+  id: number
+  agent: { id: number; name: string; icon: string }
+  issue: { id: number; identifier: string; title: string } | null
+  invocation_source: string
+  status: RunStatus
+  requested_by: { id: number; name: string } | null
+  desktop: { id: number; name: string } | null
+  retry_of_run_id: number | null
+  usage: RunUsage
+  exit_code: number | null
+  error: string
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  can_cancel: boolean
+}
+
+/** A Run this desktop executes right now, from the Runner, with its events so far. */
+export type LocalRun = {
+  address: string
+  guild: { id: number; name: string }
+  agent: { id: number; name: string; icon: string }
+  run_id: number
+  issue: { id: number; identifier: string; title: string } | null
+  status: RunStatus
+  started_at: string
+  events: RunEvent[] | null
+}
+
+/** The `runs` event: a Run on this desktop and where it stands. */
+export type RunsEvent = { address: string; guild_id: number; agent_id: number; run_id: number; status: RunStatus; events: number }
+
+/** The `run-events` event: one message off a Run's stream this desktop did
+ * not claim, forwarded by FollowRun. */
+export type RunEventsUpdate = { address: string; guild_id: number; run_id: number; kind: 'event' | 'end'; event?: RunEvent; status?: RunStatus }
+
 // The bindings' generated models carry the same JSON fields as these types.
 type Methods = {
   Bakeries(): Promise<Bakery[]>
@@ -98,6 +152,11 @@ type Methods = {
   Guilds(address: string): Promise<Guild[] | null>
   Agents(address: string, guildID: number, status: AgentsTab): Promise<Agent[] | null>
   Agent(address: string, guildID: number, id: number): Promise<Agent>
+  LocalRuns(): Promise<LocalRun[] | null>
+  Runs(address: string, guildID: number, id: number): Promise<Run[] | null>
+  RunEvents(address: string, guildID: number, id: number, after: number): Promise<RunEvent[] | null>
+  FollowRun(address: string, guildID: number, id: number): Promise<void>
+  UnfollowRun(address: string, guildID: number, id: number): Promise<void>
 }
 
 async function call<K extends keyof Methods>(method: K, ...args: Parameters<Methods[K]>): Promise<Awaited<ReturnType<Methods[K]>>> {
@@ -129,6 +188,17 @@ export const guilds = (address: string) => call('Guilds', address).then((g) => g
 export const agents = (address: string, guildID: number, status: AgentsTab) => call('Agents', address, guildID, status).then((a) => a ?? [])
 /** One Agent of a Guild. */
 export const agent = (address: string, guildID: number, id: number) => call('Agent', address, guildID, id)
+
+/** The Runs this desktop executes right now, across every connected Bakery. */
+export const localRuns = () => call('LocalRuns').then((r) => r ?? [])
+/** An Agent's last Runs, newest first. */
+export const runs = (address: string, guildID: number, id: number) => call('Runs', address, guildID, id).then((r) => r ?? [])
+/** A Run's stored events after seq after: a final Run's Transcript, read once. */
+export const runEvents = (address: string, guildID: number, id: number, after = 0) => call('RunEvents', address, guildID, id, after).then((e) => e ?? [])
+/** Follows a Run this desktop did not claim; its events arrive as `run-events`. */
+export const followRun = (address: string, guildID: number, id: number) => call('FollowRun', address, guildID, id)
+/** Stops a FollowRun started earlier. */
+export const unfollowRun = (address: string, guildID: number, id: number) => call('UnfollowRun', address, guildID, id)
 
 /** Opens url in the system browser: through Wails in the window, a new tab in the browser. */
 export async function openInBrowser(url: string) {
