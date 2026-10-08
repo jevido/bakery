@@ -151,3 +151,45 @@ func TestStatusMovesAndEdit(t *testing.T) {
 		t.Error("a terminated agent moved")
 	}
 }
+
+func TestEditHeartbeat(t *testing.T) {
+	a, _ := Hire(1, 7, Profile{Name: "Ada"}, 0, now)
+	if a.Heartbeat != DefaultHeartbeatPolicy() || a.Heartbeat.Enabled || a.Heartbeat.IntervalSec != 300 || !a.Heartbeat.WakeOnDemand {
+		t.Fatalf("default policy %+v", a.Heartbeat)
+	}
+	a.Status = Idle
+	on := true
+	changes, err := a.Edit(Patch{Heartbeat: &HeartbeatPatch{Enabled: &on}}, now)
+	if err != nil || !a.Heartbeat.Enabled || a.Heartbeat.IntervalSec != 300 || len(changes) != 1 || changes["heartbeat.enabled"] != (Change{From: false, To: true}) {
+		t.Fatalf("partial patch: %+v %v %v", a.Heartbeat, changes, err)
+	}
+	for _, sec := range []int{59, 86401, 0} {
+		var fe *FieldError
+		if _, err := a.Edit(Patch{Heartbeat: &HeartbeatPatch{IntervalSec: &sec}}, now); !errors.As(err, &fe) || fe.Field != "heartbeat.interval_sec" {
+			t.Errorf("interval %d: %v", sec, err)
+		}
+	}
+	for _, sec := range []int{60, 86400} {
+		if _, err := a.Edit(Patch{Heartbeat: &HeartbeatPatch{IntervalSec: &sec}}, now); err != nil || a.Heartbeat.IntervalSec != sec {
+			t.Errorf("interval %d: %+v %v", sec, a.Heartbeat, err)
+		}
+	}
+	later := now.Add(time.Hour)
+	if changes, err := a.Edit(Patch{Heartbeat: &HeartbeatPatch{Enabled: &on}}, later); err != nil || len(changes) != 0 || a.UpdatedAt.Equal(later) {
+		t.Errorf("no-op: %v %v", changes, err)
+	}
+}
+
+func TestEditHeartbeatWhileRunning(t *testing.T) {
+	a, _ := Hire(1, 7, Profile{Name: "Ada"}, 0, now)
+	a.Status = Running
+	off := false
+	if _, err := a.Edit(Patch{Heartbeat: &HeartbeatPatch{WakeOnDemand: &off}}, now); err != nil || a.Heartbeat.WakeOnDemand {
+		t.Fatalf("policy while running: %+v %v", a.Heartbeat, err)
+	}
+	title := "Head"
+	var se *StatusError
+	if _, err := a.Edit(Patch{Title: &title, Heartbeat: &HeartbeatPatch{WakeOnDemand: &off}}, now); !errors.As(err, &se) {
+		t.Errorf("title while running: %v", err)
+	}
+}

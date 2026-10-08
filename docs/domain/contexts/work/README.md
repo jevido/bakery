@@ -275,7 +275,7 @@ type and the payload's title.
   | `approval.comment_added` | `type`, `title`, `comment_id`, `snippet` |
   | `approval.cancelled` | `type`, `title` |
   | `agent.hired` | `name`, `job`, `approval_id` |
-  | `agent.updated` | `name`, `changes`: field → `{from, to}` for `name`, `job`, `title`, `icon` and `reports_to` (`{id, name}`), and `capabilities: true` when they changed |
+  | `agent.updated` | `name`, `changes`: field → `{from, to}` for `name`, `job`, `title`, `icon`, `reports_to` (`{id, name}`), `heartbeat.enabled`, `heartbeat.interval_sec` and `heartbeat.wake_on_demand`, and `capabilities: true` when they changed |
   | `agent.paused`, `agent.resumed`, `agent.terminated` | `name` |
   | `agent.role_added`, `agent.role_removed` | `name`, `role` (the Role's name when it was added or removed) |
   | `run.started` | `name`, `run_id`, `agent` (`{id, name}`), `issue` (`{id, identifier}`) when the Run has one |

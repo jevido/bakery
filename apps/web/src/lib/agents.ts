@@ -31,6 +31,15 @@ export type AgentRole = {
   position: number;
 };
 
+/** When an Agent wakes by itself: a timer Run every `interval_sec`
+ * seconds while `enabled`, and Runs on demand while `wake_on_demand`. */
+export type HeartbeatPolicy = {
+  enabled: boolean;
+  interval_sec: number;
+  wake_on_demand: boolean;
+  last_heartbeat_at: string | null;
+};
+
 export type Agent = {
   id: number;
   name: string;
@@ -45,6 +54,7 @@ export type Agent = {
   roles: AgentRole[];
   approval_id: number | null;
   current_run_id: number | null;
+  heartbeat: HeartbeatPolicy;
   /** Whether the asker may edit, pause, resume, terminate and re-role it. */
   can_manage: boolean;
   created_at: string;

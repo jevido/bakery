@@ -168,3 +168,30 @@ func TestRolesAndHirerLeaving(t *testing.T) {
 		t.Error("another hirer's agent was terminated")
 	}
 }
+
+func TestEditHeartbeat(t *testing.T) {
+	ctx := context.Background()
+	s, _, g, w := newTest()
+	ada := hired(t, s, "Ada", 0)
+	g.rank = map[uint64]int{7: 5, 9: 1}
+	sec := 120
+	p := domain.Patch{Heartbeat: &domain.HeartbeatPatch{Enabled: ptr(true), IntervalSec: &sec}}
+	if _, err := s.Edit(ctx, 1, Actor{ID: 9, Permissions: hirer}, ada.ID, p); !errors.Is(err, ErrMayNotManage) {
+		t.Errorf("edit by someone below: %v", err)
+	}
+	a, err := s.Edit(ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID, p)
+	if err != nil || !a.Heartbeat.Enabled || a.Heartbeat.IntervalSec != 120 || !a.Heartbeat.WakeOnDemand {
+		t.Fatalf("edit: %+v %v", a.Heartbeat, err)
+	}
+	ch := w.last.Details["changes"].(map[string]any)
+	if iv := ch["heartbeat.interval_sec"].(map[string]any); iv["from"] != 300 || iv["to"] != 120 || ch["heartbeat.enabled"] == nil {
+		t.Errorf("changes %v", ch)
+	}
+	if _, err := s.Terminate(ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID); err != nil {
+		t.Fatal(err)
+	}
+	var se *domain.StatusError
+	if _, err := s.Edit(ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID, p); !errors.As(err, &se) {
+		t.Errorf("edit terminated: %v", err)
+	}
+}

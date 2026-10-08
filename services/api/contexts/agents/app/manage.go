@@ -37,8 +37,9 @@ func (s *Service) managed(ctx context.Context, guildID uint64, actor Actor, id u
 	return a, nil
 }
 
-// Edit changes an idle, error or paused Agent's profile and Manager. A Patch
-// that changes nothing records nothing.
+// Edit changes an idle, error or paused Agent's profile, Manager and
+// Heartbeat policy, or a running one's Heartbeat policy. A Patch that
+// changes nothing records nothing.
 func (s *Service) Edit(ctx context.Context, guildID uint64, actor Actor, id uint64, p domain.Patch) (domain.Agent, error) {
 	a, err := s.managed(ctx, guildID, actor, id)
 	if err != nil {
@@ -64,7 +65,11 @@ func (s *Service) Edit(ctx context.Context, guildID uint64, actor Actor, id uint
 			}
 		}
 	}
-	if err := s.agents.SaveAgent(ctx, a); err != nil {
+	save := s.agents.SaveAgent
+	if p.HeartbeatOnly() {
+		save = s.agents.SaveHeartbeat
+	}
+	if err := save(ctx, a); err != nil {
 		return domain.Agent{}, err
 	}
 	// The Activity names Managers as {id, name}, so a later rename there

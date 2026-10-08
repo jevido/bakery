@@ -27,8 +27,13 @@ type agentRecord struct {
 	ManagerAgentID *uint64
 	Status         string
 	HireApprovalID *uint64
-	PausedAt       *time.Time
-	TerminatedAt   *time.Time
+	// The Heartbeat policy; the columns are named as the policy reads.
+	HeartbeatEnabled     bool
+	HeartbeatIntervalSec int
+	WakeOnDemand         bool
+	LastHeartbeatAt      *time.Time
+	PausedAt             *time.Time
+	TerminatedAt         *time.Time
 	orm.Timestamps
 }
 
@@ -62,6 +67,8 @@ func (r agentRecord) toDomain() domain.Agent {
 		ID: r.ID, GuildID: r.GuildID, HirerID: r.HirerMemberID, Name: r.Name, Job: domain.Job(r.Job), Title: r.Title,
 		Icon: domain.Icon(r.Icon), Capabilities: r.Capabilities, ManagerID: deref(r.ManagerAgentID), Status: domain.Status(r.Status),
 		HireApprovalID: deref(r.HireApprovalID), PausedAt: utc(r.PausedAt), TerminatedAt: utc(r.TerminatedAt),
+		Heartbeat:       domain.HeartbeatPolicy{Enabled: r.HeartbeatEnabled, IntervalSec: r.HeartbeatIntervalSec, WakeOnDemand: r.WakeOnDemand},
+		LastHeartbeatAt: utc(r.LastHeartbeatAt),
 	}
 	if r.CreatedAt != nil {
 		a.CreatedAt = r.CreatedAt.StdTime().UTC()
@@ -108,6 +115,7 @@ func (s Agents) CreateAgent(ctx context.Context, a domain.Agent) (domain.Agent, 
 		GuildID: a.GuildID, HirerMemberID: a.HirerID, Name: a.Name, Job: string(a.Job), Title: a.Title, Icon: string(a.Icon),
 		Capabilities: a.Capabilities, ManagerAgentID: nullable(a.ManagerID), Status: string(a.Status),
 		HireApprovalID: nullable(a.HireApprovalID), PausedAt: a.PausedAt, TerminatedAt: a.TerminatedAt,
+		HeartbeatEnabled: a.Heartbeat.Enabled, HeartbeatIntervalSec: a.Heartbeat.IntervalSec, WakeOnDemand: a.Heartbeat.WakeOnDemand,
 	}
 	if err := s.query(ctx).Create(&rec); err != nil {
 		if taken(err) {
@@ -118,14 +126,24 @@ func (s Agents) CreateAgent(ctx context.Context, a domain.Agent) (domain.Agent, 
 	return rec.toDomain(), nil
 }
 
+// SaveAgent stores the Agent but not LastHeartbeatAt, which only the
+// timer's conditional claim writes.
 func (s Agents) SaveAgent(ctx context.Context, a domain.Agent) error {
 	_, err := s.query(ctx).Exec(`UPDATE agents SET name = ?, job = ?, title = ?, icon = ?, capabilities = ?, manager_agent_id = ?,
-		status = ?, hire_approval_id = ?, paused_at = ?, terminated_at = ?, updated_at = now() WHERE id = ?`,
+		status = ?, hire_approval_id = ?, heartbeat_enabled = ?, heartbeat_interval_sec = ?, wake_on_demand = ?,
+		paused_at = ?, terminated_at = ?, updated_at = now() WHERE id = ?`,
 		a.Name, string(a.Job), a.Title, string(a.Icon), a.Capabilities, nullable(a.ManagerID),
-		string(a.Status), nullable(a.HireApprovalID), a.PausedAt, a.TerminatedAt, a.ID)
+		string(a.Status), nullable(a.HireApprovalID), a.Heartbeat.Enabled, a.Heartbeat.IntervalSec, a.Heartbeat.WakeOnDemand,
+		a.PausedAt, a.TerminatedAt, a.ID)
 	if taken(err) {
 		return domain.ErrNameTaken
 	}
+	return err
+}
+
+func (s Agents) SaveHeartbeat(ctx context.Context, a domain.Agent) error {
+	_, err := s.query(ctx).Exec(`UPDATE agents SET heartbeat_enabled = ?, heartbeat_interval_sec = ?, wake_on_demand = ?,
+		updated_at = now() WHERE id = ?`, a.Heartbeat.Enabled, a.Heartbeat.IntervalSec, a.Heartbeat.WakeOnDemand, a.ID)
 	return err
 }
 

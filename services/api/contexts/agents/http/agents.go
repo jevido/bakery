@@ -60,24 +60,33 @@ type roleJSON struct {
 }
 
 type agentJSON struct {
-	ID           uint64     `json:"id"`
-	Name         string     `json:"name"`
-	Job          string     `json:"job"`
-	JobLabel     string     `json:"job_label"`
-	Title        string     `json:"title"`
-	Icon         string     `json:"icon"`
-	Capabilities string     `json:"capabilities"`
-	Status       string     `json:"status"`
-	ReportsTo    *Named     `json:"reports_to"`
-	Hirer        *Named     `json:"hirer"`
-	Roles        []roleJSON `json:"roles"`
-	ApprovalID   *uint64    `json:"approval_id"`
-	CurrentRunID *uint64    `json:"current_run_id"`
-	CanManage    bool       `json:"can_manage"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	PausedAt     *time.Time `json:"paused_at"`
-	TerminatedAt *time.Time `json:"terminated_at"`
+	ID           uint64        `json:"id"`
+	Name         string        `json:"name"`
+	Job          string        `json:"job"`
+	JobLabel     string        `json:"job_label"`
+	Title        string        `json:"title"`
+	Icon         string        `json:"icon"`
+	Capabilities string        `json:"capabilities"`
+	Status       string        `json:"status"`
+	ReportsTo    *Named        `json:"reports_to"`
+	Hirer        *Named        `json:"hirer"`
+	Roles        []roleJSON    `json:"roles"`
+	ApprovalID   *uint64       `json:"approval_id"`
+	CurrentRunID *uint64       `json:"current_run_id"`
+	Heartbeat    heartbeatJSON `json:"heartbeat"`
+	CanManage    bool          `json:"can_manage"`
+	CreatedAt    time.Time     `json:"created_at"`
+	UpdatedAt    time.Time     `json:"updated_at"`
+	PausedAt     *time.Time    `json:"paused_at"`
+	TerminatedAt *time.Time    `json:"terminated_at"`
+}
+
+// heartbeatJSON is an Agent's Heartbeat policy.
+type heartbeatJSON struct {
+	Enabled         bool       `json:"enabled"`
+	IntervalSec     int        `json:"interval_sec"`
+	WakeOnDemand    bool       `json:"wake_on_demand"`
+	LastHeartbeatAt *time.Time `json:"last_heartbeat_at"`
 }
 
 // agentsJSON shows Agents with their Managers, Hirers, Roles and whether
@@ -126,6 +135,10 @@ func (c *Controller) agentsJSON(ctx context.Context, actor app.Actor, as []domai
 			ID: a.ID, Name: a.Name, Job: string(a.Job), JobLabel: domain.JobLabel(a.Job), Title: a.Title, Icon: string(a.Icon),
 			Capabilities: a.Capabilities, Status: string(a.Status), Roles: make([]roleJSON, len(roles)), CanManage: may,
 			CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt, PausedAt: a.PausedAt, TerminatedAt: a.TerminatedAt,
+			Heartbeat: heartbeatJSON{
+				Enabled: a.Heartbeat.Enabled, IntervalSec: a.Heartbeat.IntervalSec, WakeOnDemand: a.Heartbeat.WakeOnDemand,
+				LastHeartbeatAt: a.LastHeartbeatAt,
+			},
 		}
 		for k, r := range roles {
 			j.Roles[k] = roleJSON{ID: r.ID, Name: r.Name, Color: r.Color, Position: r.Position}
@@ -325,6 +338,12 @@ type editRequest struct {
 	Capabilities optional[string] `json:"capabilities"`
 	// ReportsTo null (or 0) reports to no one.
 	ReportsTo optional[uint64] `json:"reports_to"`
+	// Heartbeat changes the fields of the Heartbeat policy it names.
+	Heartbeat *struct {
+		Enabled      *bool `json:"enabled"`
+		IntervalSec  *int  `json:"interval_sec"`
+		WakeOnDemand *bool `json:"wake_on_demand"`
+	} `json:"heartbeat"`
 }
 
 // answer answers the Agent after a change, or the change's error.
@@ -340,7 +359,7 @@ func (c *Controller) answer(ctx contractshttp.Context, a domain.Agent, err error
 }
 
 // EditAgent changes any of the Agent's name, job, title, icon,
-// capabilities and reports_to.
+// capabilities, reports_to and heartbeat.
 func (c *Controller) EditAgent(ctx contractshttp.Context) contractshttp.Response {
 	id, ok := routeID(ctx)
 	if !ok {
@@ -350,9 +369,13 @@ func (c *Controller) EditAgent(ctx contractshttp.Context) contractshttp.Response
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
+	var heartbeat *domain.HeartbeatPatch
+	if h := req.Heartbeat; h != nil {
+		heartbeat = &domain.HeartbeatPatch{Enabled: h.Enabled, IntervalSec: h.IntervalSec, WakeOnDemand: h.WakeOnDemand}
+	}
 	a, err := c.service.Edit(ctx.Context(), c.Guild(ctx), c.actor(ctx), id, domain.Patch{
 		Name: req.Name.text(), Job: req.Job.text(), Title: req.Title.text(), Icon: req.Icon.text(),
-		Capabilities: req.Capabilities.text(), ManagerID: req.ReportsTo.text(),
+		Capabilities: req.Capabilities.text(), ManagerID: req.ReportsTo.text(), Heartbeat: heartbeat,
 	})
 	return c.answer(ctx, a, err)
 }

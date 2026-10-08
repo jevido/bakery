@@ -35,6 +35,9 @@ type Agents interface {
 	// of the Guild that is not terminated has its name.
 	CreateAgent(ctx context.Context, a domain.Agent) (domain.Agent, error)
 	SaveAgent(ctx context.Context, a domain.Agent) error
+	// SaveHeartbeat stores the Agent's Heartbeat policy alone, so it
+	// cannot undo a Run's change of the Agent status made meanwhile.
+	SaveHeartbeat(ctx context.Context, a domain.Agent) error
 	// DeleteAgent removes an Agent whose hire did not go through.
 	DeleteAgent(ctx context.Context, id uint64) error
 }

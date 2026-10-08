@@ -35,7 +35,13 @@ func (f *fakeAgents) CreateAgent(_ context.Context, a domain.Agent) (domain.Agen
 	return a, nil
 }
 func (f *fakeAgents) SaveAgent(_ context.Context, a domain.Agent) error { f.rows[a.ID] = a; return nil }
-func (f *fakeAgents) DeleteAgent(_ context.Context, id uint64) error    { delete(f.rows, id); return nil }
+func (f *fakeAgents) SaveHeartbeat(_ context.Context, a domain.Agent) error {
+	r := f.rows[a.ID]
+	r.Heartbeat, r.UpdatedAt = a.Heartbeat, a.UpdatedAt
+	f.rows[a.ID] = r
+	return nil
+}
+func (f *fakeAgents) DeleteAgent(_ context.Context, id uint64) error { delete(f.rows, id); return nil }
 
 type fakeGuilds struct {
 	joined map[uint64][]uint64

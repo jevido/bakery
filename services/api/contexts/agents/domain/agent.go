@@ -40,7 +40,50 @@ const (
 	// MaxChain is how far up a Manager's Chain of command is walked when
 	// looking for a cycle, as Paperclip's getChainOfCommand.
 	MaxChain = 50
+	// MinHeartbeatInterval and MaxHeartbeatInterval bound a Heartbeat
+	// policy's interval, in seconds: a minute to a day.
+	MinHeartbeatInterval = 60
+	MaxHeartbeatInterval = 86400
 )
+
+// HeartbeatPolicy is when an Agent wakes by itself (Paperclip's
+// runtimeConfig.heartbeat, trimmed): a timer Run every IntervalSec seconds
+// while Enabled, and Runs on demand (Run heartbeat, assignments, comments)
+// while WakeOnDemand.
+type HeartbeatPolicy struct {
+	Enabled      bool
+	IntervalSec  int
+	WakeOnDemand bool
+}
+
+// DefaultHeartbeatPolicy is the policy of a new Agent: no timer, every 300
+// seconds once switched on, woken on demand.
+func DefaultHeartbeatPolicy() HeartbeatPolicy {
+	return HeartbeatPolicy{IntervalSec: 300, WakeOnDemand: true}
+}
+
+// HeartbeatPatch changes a HeartbeatPolicy: a nil field stays as it is.
+type HeartbeatPatch struct {
+	Enabled      *bool
+	IntervalSec  *int
+	WakeOnDemand *bool
+}
+
+func (p HeartbeatPatch) applied(to HeartbeatPolicy) (HeartbeatPolicy, error) {
+	if p.Enabled != nil {
+		to.Enabled = *p.Enabled
+	}
+	if p.IntervalSec != nil {
+		to.IntervalSec = *p.IntervalSec
+	}
+	if p.WakeOnDemand != nil {
+		to.WakeOnDemand = *p.WakeOnDemand
+	}
+	if to.IntervalSec < MinHeartbeatInterval || to.IntervalSec > MaxHeartbeatInterval {
+		return HeartbeatPolicy{}, invalid("heartbeat.interval_sec", "must be %d to %d seconds", MinHeartbeatInterval, MaxHeartbeatInterval)
+	}
+	return to, nil
+}
 
 // Job is what an Agent does in the Org chart (Paperclip's agent role).
 type Job string
@@ -113,22 +156,25 @@ const (
 
 // Agent is an AI worker hired into one Guild by its Hirer. ManagerID is 0
 // for the top of the Org chart; HireApprovalID is its hire_agent Approval.
+// LastHeartbeatAt is when its last timer Run was claimed.
 type Agent struct {
-	ID             uint64
-	GuildID        uint64
-	HirerID        uint64
-	Name           string
-	Job            Job
-	Title          string
-	Icon           Icon
-	Capabilities   string
-	ManagerID      uint64
-	Status         Status
-	HireApprovalID uint64
-	PausedAt       *time.Time
-	TerminatedAt   *time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID              uint64
+	GuildID         uint64
+	HirerID         uint64
+	Name            string
+	Job             Job
+	Title           string
+	Icon            Icon
+	Capabilities    string
+	ManagerID       uint64
+	Status          Status
+	HireApprovalID  uint64
+	Heartbeat       HeartbeatPolicy
+	LastHeartbeatAt *time.Time
+	PausedAt        *time.Time
+	TerminatedAt    *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // Profile is what a person types about an Agent.
@@ -171,7 +217,7 @@ func Hire(guildID, hirerID uint64, p Profile, managerID uint64, at time.Time) (A
 	}
 	return Agent{
 		GuildID: guildID, HirerID: hirerID, Name: name, Job: job, Title: title, Icon: icon, Capabilities: caps,
-		ManagerID: managerID, Status: PendingApproval, CreatedAt: at, UpdatedAt: at,
+		ManagerID: managerID, Status: PendingApproval, Heartbeat: DefaultHeartbeatPolicy(), CreatedAt: at, UpdatedAt: at,
 	}, nil
 }
 
@@ -246,11 +292,18 @@ func (a *Agent) Reject(at time.Time) (changed bool, err error) {
 	return false, &StatusError{Status: a.Status, Action: "rejected"}
 }
 
-// Patch changes an Agent's Profile and Manager: a nil field stays as it
-// is, a ManagerID of 0 reports to no one.
+// Patch changes an Agent's Profile, Manager and Heartbeat policy: a nil
+// field stays as it is, a ManagerID of 0 reports to no one.
 type Patch struct {
 	Name, Job, Title, Icon, Capabilities *string
 	ManagerID                            *uint64
+	Heartbeat                            *HeartbeatPatch
+}
+
+// HeartbeatOnly reports whether the Patch changes the Heartbeat policy
+// and nothing else.
+func (p Patch) HeartbeatOnly() bool {
+	return p.Heartbeat != nil && p.Name == nil && p.Job == nil && p.Title == nil && p.Icon == nil && p.Capabilities == nil && p.ManagerID == nil
 }
 
 // Change is one field's change, as the Activity records it.
@@ -258,11 +311,14 @@ type Change struct {
 	From, To any
 }
 
-// Edit applies the Patch to an idle, error or paused Agent and answers what
+// Edit applies the Patch to an idle, error or paused Agent, or a Patch of
+// the Heartbeat policy alone to a running one, and answers what
 // changed, keyed by the API's field names (reports_to for the Manager,
-// by id). The new Manager is checked with CheckManager first.
+// by id; heartbeat.enabled, heartbeat.interval_sec and
+// heartbeat.wake_on_demand for the policy). The new Manager is checked
+// with CheckManager first.
 func (a *Agent) Edit(p Patch, at time.Time) (map[string]Change, error) {
-	if a.Status != Idle && a.Status != Error && a.Status != Paused {
+	if a.Status == Running && !p.HeartbeatOnly() || a.Status != Running && a.Status != Idle && a.Status != Error && a.Status != Paused {
 		return nil, &StatusError{Status: a.Status, Action: "edited"}
 	}
 	in := Profile{Name: a.Name, Job: string(a.Job), Title: a.Title, Icon: string(a.Icon), Capabilities: a.Capabilities}
@@ -279,6 +335,12 @@ func (a *Agent) Edit(p Patch, at time.Time) (map[string]Change, error) {
 	if p.ManagerID != nil {
 		manager = *p.ManagerID
 	}
+	heartbeat := a.Heartbeat
+	if p.Heartbeat != nil {
+		if heartbeat, err = p.Heartbeat.applied(a.Heartbeat); err != nil {
+			return nil, err
+		}
+	}
 	changes := map[string]Change{}
 	note := func(field string, from, to any) {
 		if from != to {
@@ -291,8 +353,12 @@ func (a *Agent) Edit(p Patch, at time.Time) (map[string]Change, error) {
 	note("icon", string(a.Icon), string(icon))
 	note("capabilities", a.Capabilities, caps)
 	note("reports_to", a.ManagerID, manager)
+	note("heartbeat.enabled", a.Heartbeat.Enabled, heartbeat.Enabled)
+	note("heartbeat.interval_sec", a.Heartbeat.IntervalSec, heartbeat.IntervalSec)
+	note("heartbeat.wake_on_demand", a.Heartbeat.WakeOnDemand, heartbeat.WakeOnDemand)
 	if len(changes) > 0 {
 		a.Name, a.Job, a.Title, a.Icon, a.Capabilities, a.ManagerID, a.UpdatedAt = name, job, title, icon, caps, manager, at
+		a.Heartbeat = heartbeat
 	}
 	return changes, nil
 }
