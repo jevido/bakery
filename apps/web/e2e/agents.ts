@@ -12,6 +12,14 @@
 //           below Ada's joined by a line; dragging moves the chart; zoom in
 //           changes the scale; Fit brings both into view; ?view=org survives
 //           a reload; the Paused tab hides both; clicking Bob opens his page.
+//   agent   Agent Ada's page (Agent Bob reporting to her) shows her
+//           properties; renaming her in place survives a reload; Reports
+//           to Bob shows the cycle error; Pause shows Paused and Resume
+//           Idle; Add role "Deployer" shows the chip and × removes it;
+//           Terminate after confirming shows Terminated and no actions;
+//           #/agents/999999 shows not-found.
+//   viewer  a Viewer, invited for the run and removed again, sees an
+//           Agent's page without actions, editors or Add role.
 //
 //   bun e2e/agents.ts [section ...]   (task web:agents; needs task dev)
 //
@@ -79,6 +87,37 @@ async function hired(page: Page, hire: { name: string; job: string; reports_to?:
 /** The card layer's transform: its translate and scale. */
 async function cardLayer(page: Page): Promise<string> {
   return (await page.getByTestId('org-chart-card-layer').getAttribute('style')) ?? ''
+}
+
+/** The Guild's Role named name, created with only deploy when it is missing. */
+async function role(page: Page, name: string): Promise<number> {
+  const { roles } = (await (await page.request.get(`${WEB}/api/roles`)).json()) as { roles: { id: number; name: string }[] }
+  const found = roles.find((r) => r.name === name)
+  if (found) return found.id
+  const r = await page.request.post(`${WEB}/api/roles`, { data: { name, color: '#3b82f6', permissions: ['view_resources', 'deploy'] } })
+  if (!r.ok()) throw new Error(`role ${name}: ${r.status()} ${await r.text()}`)
+  return ((await r.json()) as { role: { id: number } }).role.id
+}
+
+/** A Viewer invited for the run, signed in in a context of their own; leave removes them. */
+async function viewer(owner: Page): Promise<{ page: Page; leave: () => Promise<void> }> {
+  const { members } = (await (await owner.request.get(`${WEB}/api/members`)).json()) as { members: { id: number; email: string }[] }
+  for (const m of members.filter((m) => m.email.startsWith('agents-viewer-'))) await owner.request.delete(`${WEB}/api/members/${m.id}`)
+  const inv = await owner.request.post(`${WEB}/api/invitations`, { data: { email: `agents-viewer-${Date.now()}@example.test`, role: 'viewer' } })
+  if (!inv.ok()) throw new Error(`invite: ${inv.status()}`)
+  const token = ((await inv.json()) as { path: string }).path.split('/').pop()
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+  await ctx.addInitScript(() => localStorage.setItem('theme', 'dark'))
+  const accept = await ctx.request.post(`${WEB}/api/invitations/by-token/${token}/accept`, { data: { name: 'Agents viewer', password: 'a long enough password' } })
+  if (!accept.ok()) throw new Error(`accept: ${accept.status()} ${await accept.text()}`)
+  const { member } = (await accept.json()) as { member: { id: number } }
+  return {
+    page: await ctx.newPage(),
+    leave: async () => {
+      await ctx.close()
+      await owner.request.delete(`${WEB}/api/members/${member.id}`)
+    },
+  }
 }
 
 const row = (page: Page, name: string) => page.getByTestId('agent-row').filter({ hasText: name })
@@ -182,6 +221,86 @@ const sections: Record<string, () => Promise<void>> = {
     await page.waitForURL(new RegExp(`#/agents/${bob.id}$`))
     expect('clicking Bob opens his page', true)
     await terminate(page, ['Org Ada', 'Org Bob'])
+    await page.context().close()
+  },
+
+  async agent() {
+    const page = await signedIn()
+    await terminate(page, ['Agent Ada', 'Agent Ava', 'Agent Bob'])
+    const ada = await hired(page, { name: 'Agent Ada', job: 'cto' })
+    await hired(page, { name: 'Agent Bob', job: 'engineer', reports_to: ada.id })
+    await role(page, 'Deployer')
+    const prop = (label: string) => page.locator(`[data-property-row="${label}"]`)
+
+    await page.goto(`${WEB}/#/agents/${ada.id}`)
+    await page.getByRole('heading', { name: 'Identity' }).waitFor()
+    expect('the page shows her name', (await page.getByRole('button', { name: 'Edit name' }).textContent())?.trim() === 'Agent Ada')
+    expect('Job is CTO', (await prop('Job').textContent())?.includes('CTO') === true, await prop('Job').textContent())
+    expect('Bob is a direct report', (await page.getByTestId('direct-report').filter({ hasText: 'Agent Bob' }).count()) === 1)
+    expect('the Hirer is shown', !(await prop('Hirer').textContent())?.includes('Unknown'))
+
+    await page.getByRole('button', { name: 'Edit name' }).click()
+    await page.getByRole('textbox', { name: 'Name' }).fill('Agent Ava')
+    await page.keyboard.press('Enter')
+    await page.waitForResponse((r) => r.url().endsWith(`/api/agents/${ada.id}`) && r.request().method() === 'PATCH')
+    await page.reload()
+    await page.getByRole('heading', { name: 'Identity' }).waitFor()
+    expect('the rename survives a reload', (await page.getByRole('button', { name: 'Edit name' }).textContent())?.trim() === 'Agent Ava')
+
+    await prop('Reports to').getByRole('button').first().click()
+    await page.getByRole('option', { name: 'Agent Bob' }).click()
+    await page.getByTestId('reports-to-error').waitFor()
+    expect('Reports to Bob shows the cycle error', ((await page.getByTestId('reports-to-error').textContent()) ?? '').length > 0)
+
+    await page.getByRole('button', { name: 'Pause' }).click()
+    await page.getByRole('button', { name: 'Resume' }).waitFor()
+    expect('Pause shows Paused', (await page.getByRole('region', { name: 'Identity' }).textContent())?.includes('Paused') === true)
+    await page.getByRole('button', { name: 'Resume' }).click()
+    await page.getByRole('button', { name: 'Pause' }).waitFor()
+    expect('Resume shows Idle', (await page.getByRole('region', { name: 'Identity' }).textContent())?.includes('Idle') === true)
+
+    await page.getByRole('button', { name: 'Add role' }).click()
+    await page.getByRole('option', { name: 'Deployer', exact: true }).click()
+    const chip = page.getByTestId('agent-roles').locator('[data-role="Deployer"]')
+    await chip.waitFor()
+    expect('Add role shows the Deployer chip', true)
+    await page.getByRole('button', { name: 'Remove Deployer', exact: true }).click()
+    await chip.waitFor({ state: 'detached' })
+    expect('× removes it', true)
+
+    await page.getByRole('button', { name: 'Open actions for Agent Ava' }).click()
+    await page.getByRole('button', { name: 'Terminate' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Terminate' }).click()
+    await page.getByRole('alertdialog').waitFor({ state: 'detached' })
+    await page.locator('[data-property-row="Terminated"]').waitFor()
+    expect(
+      'Terminate shows Terminated and no actions',
+      (await page.getByRole('button', { name: /^(Pause|Resume)$/ }).count()) === 0 && (await page.getByRole('button', { name: /Open actions/ }).count()) === 0,
+    )
+
+    await page.goto(`${WEB}/#/agents/999999`)
+    await page.getByText('Agent not found').waitFor()
+    expect('#/agents/999999 shows not-found', true)
+    await terminate(page, ['Agent Bob'])
+    await page.context().close()
+  },
+
+  async viewer() {
+    const page = await signedIn()
+    await terminate(page, ['Viewer Ada'])
+    const ada = await hired(page, { name: 'Viewer Ada', job: 'cto' })
+    const v = await viewer(page)
+    await v.page.goto(`${WEB}/#/agents/${ada.id}`)
+    await v.page.getByRole('heading', { name: 'Identity' }).waitFor()
+    expect('the Viewer sees her page', (await v.page.getByText('Viewer Ada').count()) > 0)
+    expect('no Pause or Resume', (await v.page.getByRole('button', { name: /^(Pause|Resume)$/ }).count()) === 0)
+    expect('no editors', (await v.page.locator('[data-inline-editor]').count()) === 0)
+    expect('no Add role', (await v.page.getByRole('button', { name: 'Add role' }).count()) === 0)
+    await v.page.getByRole('button', { name: 'Open actions for Viewer Ada' }).click()
+    await v.page.getByRole('button', { name: 'Copy Agent ID' }).waitFor()
+    expect('the menu has no Terminate', (await v.page.getByRole('button', { name: 'Terminate' }).count()) === 0)
+    await v.leave()
+    await terminate(page, ['Viewer Ada'])
     await page.context().close()
   },
 }

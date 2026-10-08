@@ -14,7 +14,7 @@
   import { Button as UiButton } from '$lib/components/ui/button'
   import * as Tabs from '$lib/components/ui/tabs'
   import AgentIcon from '../../lib/AgentIcon.svelte'
-  import { agentStatusLabel, getOrg, listAgents, type Agent, type AgentStatus, type OrgNode } from '../../lib/agents'
+  import { agentStatusLabel, agentStatusTones, getOrg, listAgents, type Agent, type AgentStatus, type OrgNode } from '../../lib/agents'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import HireAgentDialog from '../../lib/HireAgentDialog.svelte'
   import OrgChart from '../../lib/OrgChart.svelte'
@@ -22,7 +22,6 @@
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
   import { agentsTabs, go, href, type AgentsTab } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
-  import type { StatusType } from '../../lib/statusColors'
   import Button from '../../lib/ui/Button.svelte'
   import StatusBadge from '../../lib/ui/StatusBadge.svelte'
   import EntityRow from '../../lib/EntityRow.svelte'
@@ -30,9 +29,6 @@
   let { tab }: { tab: AgentsTab } = $props()
 
   const tabLabels: Record<AgentsTab, string> = { all: 'All', active: 'Active', paused: 'Paused', terminated: 'Terminated' }
-  // Paperclip's agent status hues: idle grey, paused amber; a waiting hire
-  // is amber too and a terminated Agent red.
-  const statusTones: Record<AgentStatus, StatusType> = { idle: 'neutral', paused: 'warning', pending_approval: 'warning', terminated: 'error' }
 
   let agents = $state.raw<Agent[] | null>(null)
   let loadError = $state('')
@@ -140,7 +136,7 @@
               <span class="w-36 truncate" title="Reports to">{agent.reports_to ? `Reports to ${agent.reports_to.name}` : ''}</span>
               <span class="w-36 truncate" title="Hirer">{agent.hirer ? `Hired by ${agent.hirer.name}` : ''}</span>
             </div>
-            <span class="flex w-32 justify-end"><StatusBadge type={statusTones[agent.status]} label={agentStatusLabel(agent.status)} /></span>
+            <span class="flex w-32 justify-end"><StatusBadge type={agentStatusTones[agent.status]} label={agentStatusLabel(agent.status)} /></span>
           {/snippet}
         </EntityRow>
       {/each}
