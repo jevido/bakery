@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// Actions: the dotted names of what happened to a Goal or an Issue, as
-// Paperclip names them.
+// Actions: the dotted names of what happened to a Goal, an Issue or an
+// Approval, as Paperclip names them.
 const (
 	GoalCreatedAction     = "goal.created"
 	GoalUpdatedAction     = "goal.updated"
@@ -19,12 +19,14 @@ const (
 	DocumentCreatedAction = "issue.document_created"
 	DocumentUpdatedAction = "issue.document_updated"
 	DocumentDeletedAction = "issue.document_deleted"
+	ApprovalCreatedAction = "approval.created"
 )
 
 // The kinds of thing an Activity event is about.
 const (
-	IssueEntity = "issue"
-	GoalEntity  = "goal"
+	IssueEntity    = "issue"
+	GoalEntity     = "goal"
+	ApprovalEntity = "approval"
 )
 
 // SnippetLength is how many characters of a Comment its Activity event
@@ -68,6 +70,14 @@ func (h Happened) goal(g Goal, action string, details map[string]any) ActivityEv
 func (h Happened) issue(i Issue, action string, details map[string]any) ActivityEvent {
 	details["issue_number"], details["issue_title"] = i.Number, i.Title
 	return ActivityEvent{GuildID: i.GuildID, ActorID: h.ActorID, Action: action, EntityType: IssueEntity, EntityID: i.ID, ProjectID: i.ProjectID, Details: details, CreatedAt: h.At}
+}
+
+// approval keeps the Approval's type and payload title in every event
+// about it, so one still reads after the title changes. An Approval has no
+// Project.
+func (h Happened) approval(a Approval, action string, details map[string]any) ActivityEvent {
+	details["type"], details["title"] = a.Type, a.Payload.Title
+	return ActivityEvent{GuildID: a.GuildID, ActorID: h.ActorID, Action: action, EntityType: ApprovalEntity, EntityID: a.ID, Details: details, CreatedAt: h.At}
 }
 
 // change is one field's from → to; a reference is its id, null for none.
@@ -268,4 +278,13 @@ type DocumentDeleted struct {
 
 func (e DocumentDeleted) Activity() ActivityEvent {
 	return e.issue(e.Issue, DocumentDeletedAction, map[string]any{"key": e.Document.Key, "title": e.Document.Title})
+}
+
+type ApprovalRequested struct {
+	Happened
+	Approval Approval
+}
+
+func (e ApprovalRequested) Activity() ActivityEvent {
+	return e.approval(e.Approval, ApprovalCreatedAction, map[string]any{"issue_ids": e.Approval.IssueIDs})
 }

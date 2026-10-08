@@ -180,7 +180,7 @@ type and the payload's title.
   | `POST /api/issues/{issue}/read`, `DELETE /api/issues/{issue}/read` | Sets or removes the asking Member's Read mark, with `view_resources` only |
   | `POST /api/issues/{issue}/inbox-archive`, `DELETE /api/issues/{issue}/inbox-archive` | Sets or removes the asking Member's Inbox archive, with `view_resources` only |
   | `GET /api/sidebar-badges` | `{"inbox": n, "approvals": n}`: how many Issues in the asking Member's Mine tab are Unread, and how many of the Guild's Approvals are Actionable (counted in `inbox` too for someone with `approve`) |
-  | `GET /api/approvals` | `{"approvals": [Approval]}`, newest first; filter `status`, a comma list of Approval statuses (anything else is 422) |
+  | `GET /api/approvals` | `{"approvals": [Approval]}`, newest first and unpaged, as Paperclip's; filter `status`, a comma list of Approval statuses and `actionable` (both `pending` and `revision_requested`); anything else is 422 |
   | `POST /api/approvals` | 201 `{"approval": Approval}`; body `{type, payload, issue_ids}`; 422 for an unknown type, a payload that breaks the rules or an Issue id that is not the Guild's |
   | `GET /api/approvals/{id}` | `{"approval": Approval}` |
   | `GET /api/approvals/{id}/issues` | `{"issues": [Issue]}`, the Linked issues the person may see, as in Issue lists |

@@ -14,7 +14,7 @@ import (
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
 )
 
-// entityJSON is the Goal or Issue an Activity event is about: its current
+// entityJSON is the Goal, Issue or Approval an Activity event is about: its current
 // title while it exists, else the title the event kept.
 type entityJSON struct {
 	Type       string `json:"type"`
@@ -56,11 +56,12 @@ func numberIn(v any) int {
 // activityRefs is what the references in a page of Activity events are
 // called now; a missing one no longer exists or may not be seen.
 type activityRefs struct {
-	prefix   string
-	members  map[uint64]Member
-	projects map[uint64]string
-	goals    map[uint64]string
-	issues   map[uint64]domain.Issue
+	prefix    string
+	members   map[uint64]Member
+	projects  map[uint64]string
+	goals     map[uint64]string
+	issues    map[uint64]domain.Issue
+	approvals map[uint64]string
 }
 
 func (r activityRefs) member(id uint64) map[string]any {
@@ -142,12 +143,13 @@ func refKind(entityType, field string) string {
 // in one go. Issues and Projects the person may not view count as gone.
 func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.ActivityEvent) (activityRefs, error) {
 	cx, guildID := ctx.Context(), c.guild(ctx)
-	refs := activityRefs{members: map[uint64]Member{}, projects: map[uint64]string{}, goals: map[uint64]string{}, issues: map[uint64]domain.Issue{}}
+	refs := activityRefs{members: map[uint64]Member{}, projects: map[uint64]string{}, goals: map[uint64]string{}, issues: map[uint64]domain.Issue{}, approvals: map[uint64]string{}}
 	var err error
 	if refs.prefix, err = c.service.IssuePrefix(cx, guildID); err != nil {
 		return refs, err
 	}
 	var memberIDs, projectIDs, issueIDs []uint64
+	withApprovals := false
 	add := func(list *[]uint64) func(uint64) {
 		return func(id uint64) {
 			if id != 0 && !slices.Contains(*list, id) {
@@ -160,6 +162,7 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 		if e.EntityType == domain.IssueEntity {
 			add(&issueIDs)(e.EntityID)
 		}
+		withApprovals = withApprovals || e.EntityType == domain.ApprovalEntity
 		for field, v := range changes(e) {
 			switch refKind(e.EntityType, field) {
 			case "member":
@@ -198,6 +201,15 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 	}
 	for _, g := range gs {
 		refs.goals[g.ID] = g.Title
+	}
+	if withApprovals {
+		as, err := c.service.Approvals(cx, guildID, "")
+		if err != nil {
+			return refs, err
+		}
+		for _, a := range as {
+			refs.approvals[a.ID] = a.Payload.Title
+		}
 	}
 	is, err := c.service.VisibleIssues(cx, issueIDs, c.visible(ctx))
 	if err != nil {
@@ -238,6 +250,11 @@ func (c *Controller) activityJSON(ctx contractshttp.Context, es []domain.Activit
 		case domain.GoalEntity:
 			a.Entity.Title, _ = e.Details["title"].(string)
 			if title, ok := refs.goals[e.EntityID]; ok {
+				a.Entity.Title, a.Entity.Exists = title, true
+			}
+		case domain.ApprovalEntity:
+			a.Entity.Title, _ = e.Details["title"].(string)
+			if title, ok := refs.approvals[e.EntityID]; ok {
 				a.Entity.Title, a.Entity.Exists = title, true
 			}
 		}
@@ -305,12 +322,12 @@ func activityID(ctx contractshttp.Context, field string) (uint64, bool) {
 }
 
 // ListActivity answers a page of the Current guild's Activity, newest
-// first: entity (issue or goal), actor (a Member id), before (an Activity
+// first: entity (issue, goal or approval), actor (a Member id), before (an Activity
 // event id, for the next page) and limit (1 to 200, 50 by default).
 func (c *Controller) ListActivity(ctx contractshttp.Context) contractshttp.Response {
 	q := app.ActivityQuery{EntityType: ctx.Request().Query("entity"), Limit: app.DefaultActivity}
-	if q.EntityType != "" && q.EntityType != domain.IssueEntity && q.EntityType != domain.GoalEntity {
-		return respond.Invalid(ctx, "entity", "entity must be issue or goal")
+	if q.EntityType != "" && !slices.Contains([]string{domain.IssueEntity, domain.GoalEntity, domain.ApprovalEntity}, q.EntityType) {
+		return respond.Invalid(ctx, "entity", "entity must be issue, goal or approval")
 	}
 	for _, f := range []struct {
 		field string

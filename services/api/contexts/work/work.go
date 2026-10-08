@@ -1,6 +1,6 @@
 // Package work is what the router may use from the work context: its
-// routes (Goals, Issues, Comments, Issue documents, the Activity and the
-// Inbox). Nothing else in contexts/work is for outside use.
+// routes (Goals, Issues, Comments, Issue documents, the Activity, the
+// Inbox and Approvals). Nothing else in contexts/work is for outside use.
 package work
 
 import (
@@ -25,7 +25,7 @@ var (
 
 func svc() *app.Service {
 	once.Do(func() {
-		service = app.NewService(infra.Goals{}, infra.Issues{}, infra.Comments{}, infra.Documents{}, guildsOfWork{}, projectsOfWork{}, infra.Activity{}, infra.Inbox{})
+		service = app.NewService(infra.Goals{}, infra.Issues{}, infra.Comments{}, infra.Documents{}, guildsOfWork{}, projectsOfWork{}, infra.Activity{}, infra.Inbox{}, infra.Approvals{})
 		service.Logf = facades.Log().Errorf
 		guilds.OnGuildDeleting("goals", func(ctx context.Context, guildID uint64) (bool, error) {
 			gs, err := service.Goals(ctx, guildID)
@@ -73,8 +73,14 @@ var goalInGuild = guilds.Owns("goal", func(ctx context.Context, id, guildID uint
 	return svc().GoalInGuild(ctx, id, guildID)
 })
 
+// approvalInGuild answers 404 for a route whose {id} Approval is another
+// Guild's.
+var approvalInGuild = guilds.Owns("approval", func(ctx context.Context, id, guildID uint64) (bool, error) {
+	return svc().ApprovalInGuild(ctx, id, guildID)
+})
+
 // Routes registers the Current guild's Goals, Issues, Comments, Issue
-// documents, Activity and Inbox API: reading (and a Member's own Read marks
+// documents, Activity, Inbox and Approvals API: reading (and a Member's own Read marks
 // and Inbox archives) needs view_resources, changing manage_work, and
 // changing a Comment also being its author. An Issue's {id} is its id or its
 // Issue identifier, so the service, not guilds.Owns, answers 404 for one
@@ -123,5 +129,14 @@ func Routes(r route.Router) {
 		r.Put("/api/issues/{id}/documents/{key}", c.SaveDocument)
 		r.Delete("/api/issues/{id}/documents/{key}", c.DeleteDocument)
 		r.Post("/api/issues/{id}/documents/{key}/revisions/{revision}/restore", c.RestoreRevision)
+	})
+	r.Middleware(guilds.Auth, view).Group(func(r route.Router) {
+		r.Get("/api/approvals", c.ListApprovals)
+		r.Get("/api/issues/{id}/approvals", c.ListIssueApprovals)
+	})
+	r.Middleware(guilds.Auth, manage).Post("/api/approvals", c.RequestApproval)
+	r.Middleware(guilds.Auth, approvalInGuild, view).Group(func(r route.Router) {
+		r.Get("/api/approvals/{id}", c.ShowApproval)
+		r.Get("/api/approvals/{id}/issues", c.ListApprovalIssues)
 	})
 }

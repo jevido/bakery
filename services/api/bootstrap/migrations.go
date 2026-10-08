@@ -95,5 +95,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000080CreateActivityEventsTable{},
 		&migrations.M20260930000081CreateIssueInboxTables{},
 		&migrations.M20260930000082AddInboxTouchIndexes{},
+		&migrations.M20260930000083CreateApprovalsTables{},
 	}
 }
