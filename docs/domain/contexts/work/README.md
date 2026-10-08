@@ -380,7 +380,12 @@ type and the payload's title.
   agent)` (the Issues assigned to an Agent with Issue status `todo`,
   `in_progress` or `in_review`, oldest first, with identifier, Issue
   status, Priority and title, for the Heartbeat timer's check and its
-  prompt) and `work.CommentsForRun(ctx, guild, ids)` (the Guild's Comments
+  prompt), `work.InboxOfAgent(ctx, guild, agent)` (the Issues assigned
+  to an Agent in `in_progress`, `in_review`, `todo` or `blocked`, in that
+  order, then most urgent and oldest first, with identifier, Issue
+  status, Priority, Project and its name, Goal, parent and the Run
+  holding its Checkout, for the Agent's own inbox; agents leaves out
+  Projects the Agent may not view) and `work.CommentsForRun(ctx, guild, ids)` (the Guild's Comments
   with those ids, in order, with their author's name, leaving out deleted
   ones, for the prompt of a Run that comments woke). A hook's error is logged and never fails the person's request:
   the Issue or Comment is already stored, and the Agent wakes on the next

@@ -66,6 +66,9 @@ type Guilds interface {
 	RoleNames(ctx context.Context, guildID uint64, ids []uint64) ([]string, error)
 	// GuildName names the Guild, for the Desktop that runs its Agents.
 	GuildName(ctx context.Context, guildID uint64) (string, error)
+	// IssuePrefix is the Guild's Issue prefix, for the Agent that asks who
+	// it is.
+	IssuePrefix(ctx context.Context, guildID uint64) (string, error)
 	// AssignAgentRole and RemoveAgentRole change the Agent's Roles by the
 	// actor, below their highest Role and the Hirer's.
 	AssignAgentRole(ctx context.Context, guildID uint64, actor Actor, agentID, roleID uint64) error
@@ -115,6 +118,9 @@ type Work interface {
 	// OpenIssuesOfAgent lists the Guild's Issues the Agent is the assignee
 	// of in todo, in_progress or in_review, by Issue identifier.
 	OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]IssueBrief, error)
+	// InboxOfAgent lists the Guild's Issues the Agent is the assignee of
+	// in in_progress, in_review, todo or blocked, in its inbox's order.
+	InboxOfAgent(ctx context.Context, guildID, agentID uint64) ([]InboxIssue, error)
 	// CommentsForRun tells the Guild's comments with the ids, in order.
 	CommentsForRun(ctx context.Context, guildID uint64, ids []uint64) ([]RunComment, error)
 }

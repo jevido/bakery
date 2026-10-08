@@ -264,6 +264,28 @@ func CheckManager(agents []Agent, id, managerID uint64) error {
 	return nil
 }
 
+// ChainOfCommand is the Agent's Managers among the Guild's Agents, its
+// own Manager first, walked up at most MaxChain levels, as Paperclip's
+// getChainOfCommand.
+func ChainOfCommand(agents []Agent, a Agent) []Agent {
+	byID := make(map[uint64]Agent, len(agents))
+	for _, x := range agents {
+		byID[x.ID] = x
+	}
+	var chain []Agent
+	seen := map[uint64]bool{a.ID: true}
+	for at := a; len(chain) < MaxChain; {
+		next, ok := byID[at.ManagerID]
+		if at.ManagerID == 0 || !ok || seen[next.ID] {
+			break
+		}
+		seen[next.ID] = true
+		chain = append(chain, next)
+		at = next
+	}
+	return chain
+}
+
 // Approve follows an approved hire_agent Approval: pending_approval
 // becomes idle. An Agent already past it stays as it is (a Decision made
 // again); a terminated one cannot be approved.

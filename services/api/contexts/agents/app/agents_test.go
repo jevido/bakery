@@ -112,6 +112,10 @@ func (f *fakeGuilds) GuildName(_ context.Context, guildID uint64) (string, error
 	return "Guild " + strconv.FormatUint(guildID, 10), nil
 }
 
+func (f *fakeGuilds) IssuePrefix(_ context.Context, _ uint64) (string, error) {
+	return "BAK", nil
+}
+
 func (f *fakeGuilds) RoleNames(_ context.Context, _ uint64, ids []uint64) ([]string, error) {
 	out := make([]string, len(ids))
 	for i := range ids {
@@ -130,6 +134,11 @@ type fakeWork struct {
 	unassigned []uint64
 	issues     map[uint64]IssueBrief
 	comments   map[uint64]RunComment
+	inbox      map[uint64][]InboxIssue
+}
+
+func (f *fakeWork) InboxOfAgent(_ context.Context, _, agentID uint64) ([]InboxIssue, error) {
+	return f.inbox[agentID], nil
 }
 
 func (f *fakeWork) OpenIssuesOfAgent(_ context.Context, _, agentID uint64) ([]IssueBrief, error) {
@@ -248,5 +257,23 @@ func TestHireLeavesNothingOnFailure(t *testing.T) {
 	}
 	if len(store.rows) != 0 || len(g.joined) != 0 || g.leaves != 1 || len(w.actions) != 0 {
 		t.Fatalf("left behind: %v %v %d %v", store.rows, g.joined, g.leaves, w.actions)
+	}
+}
+
+func TestInboxLeavesOutHiddenProjects(t *testing.T) {
+	s, _, _, w := newTest()
+	w.inbox = map[uint64][]InboxIssue{3: {{ID: 1, ProjectID: 5}, {ID: 2}, {ID: 3, ProjectID: 6}}}
+	visible := func(ids []uint64) ([]uint64, error) {
+		var out []uint64
+		for _, id := range ids {
+			if id == 5 {
+				out = append(out, id)
+			}
+		}
+		return out, nil
+	}
+	is, err := s.Inbox(context.Background(), 1, 3, visible)
+	if err != nil || len(is) != 2 || is[0].ID != 1 || is[1].ID != 2 {
+		t.Fatalf("inbox: %v %+v", err, is)
 	}
 }

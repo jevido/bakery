@@ -120,6 +120,10 @@ func (guildsOfAgents) GuildName(ctx context.Context, guildID uint64) (string, er
 	return guilds.GuildName(ctx, guildID)
 }
 
+func (guildsOfAgents) IssuePrefix(ctx context.Context, guildID uint64) (string, error) {
+	return guilds.IssuePrefix(ctx, guildID)
+}
+
 func (guildsOfAgents) RoleNames(ctx context.Context, guildID uint64, ids []uint64) ([]string, error) {
 	return guilds.RoleNames(ctx, guildID, ids)
 }
@@ -163,6 +167,18 @@ func (workOfAgents) OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint
 	out := make([]app.IssueBrief, len(is))
 	for n, i := range is {
 		out[n] = app.IssueBrief(i)
+	}
+	return out, nil
+}
+
+func (workOfAgents) InboxOfAgent(ctx context.Context, guildID, agentID uint64) ([]app.InboxIssue, error) {
+	is, err := work.InboxOfAgent(ctx, guildID, agentID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]app.InboxIssue, len(is))
+	for n, i := range is {
+		out[n] = app.InboxIssue(i)
 	}
 	return out, nil
 }
@@ -215,7 +231,7 @@ func controller() *agentshttp.Controller {
 	c := agentshttp.NewController(svc())
 	c.Guild, c.Member, c.Permissions, c.Members = guilds.Current, guilds.MemberID, guilds.Permissions, memberNames
 	c.InstanceAdmin, c.Visible, c.Desktops = guilds.InstanceAdmin, guilds.VisibleProjects, identity.DesktopNames
-	c.Agent = guilds.AgentID
+	c.Agent, c.Run = guilds.AgentID, guilds.RunID
 	c.Shutdown = shutdown
 	return c
 }
@@ -223,6 +239,12 @@ func controller() *agentshttp.Controller {
 func Routes(r route.Router) {
 	c := controller()
 	view := guilds.Can("view_resources")
+	// Who the Agent is and what is assigned to it are its own to know,
+	// whatever its Roles, as Paperclip's /agents/me; a person gets 403.
+	r.Middleware(guilds.AuthAgents).Group(func(r route.Router) {
+		r.Get("/api/agents/me", c.ShowMe)
+		r.Get("/api/agents/me/inbox", c.ShowMyInbox)
+	})
 	r.Middleware(guilds.AuthAgents, view).Group(func(r route.Router) {
 		r.Get("/api/agents", c.ListAgents)
 		r.Get("/api/org", c.ShowOrg)

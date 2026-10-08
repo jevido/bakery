@@ -35,6 +35,9 @@ type Controller struct {
 	// Agent is the Agent a Run key's request comes from, 0 for a
 	// person's (guilds.AgentID); nil reads as 0.
 	Agent func(ctx contractshttp.Context) uint64
+	// Run is the Run whose key the request carries, 0 for a person's
+	// (guilds.RunID).
+	Run func(ctx contractshttp.Context) uint64
 	// InstanceAdmin reports whether the request comes from the Instance
 	// admin.
 	InstanceAdmin func(ctx contractshttp.Context) bool

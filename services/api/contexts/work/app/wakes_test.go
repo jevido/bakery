@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -206,5 +207,33 @@ func TestAgentWork(t *testing.T) {
 	is, prefix, err := s.AgentWork(ctx, 1, 3)
 	if err != nil || prefix != "BAK" || len(is) != 3 || is[0].Title != "in_review" || is[1].Title != "todo" || is[2].Title != "in_progress" {
 		t.Fatalf("agent work: %v %s %+v", err, prefix, is)
+	}
+}
+
+func TestAgentInbox(t *testing.T) {
+	ctx := context.Background()
+	s, _ := wakeService(t)
+	all := func([]uint64) ([]uint64, error) { return nil, nil }
+	for _, c := range []struct{ title, status, priority string }{
+		{"blocked", "blocked", "critical"}, {"todo low", "todo", "low"}, {"backlog", "backlog", "high"},
+		{"todo high", "todo", "high"}, {"done", "done", "high"}, {"review", "in_review", "low"}, {"working", "in_progress", "low"},
+	} {
+		if _, err := s.CreateIssue(ctx, 1, domain.ByMember(7), IssueInput{Title: c.title, Status: c.status, Priority: c.priority, AssigneeAgentID: 3}, all); err != nil {
+			t.Fatal(err)
+		}
+	}
+	is, prefix, err := s.AgentInbox(ctx, 1, 3)
+	if err != nil || prefix != "BAK" {
+		t.Fatalf("agent inbox: %v %s", err, prefix)
+	}
+	var got []string
+	for _, i := range is {
+		got = append(got, i.Title)
+	}
+	if want := []string{"working", "review", "todo high", "todo low", "blocked"}; !slices.Equal(got, want) {
+		t.Fatalf("agent inbox order: %v, want %v", got, want)
+	}
+	if is, _, _ := s.AgentWork(ctx, 1, 3); len(is) != 4 {
+		t.Fatalf("a Heartbeat's work counts blocked Issues: %d", len(is))
 	}
 }

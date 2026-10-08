@@ -3,7 +3,7 @@
 // Activity, the Inbox and Approvals), and for the agents context
 // RequestApproval, CancelApproval, OnApprovalDecided, RecordActivity,
 // OnAgentNames, OnAgentAssignees, UnassignAgent, IssueForRun,
-// OpenIssuesOfAgent, CommentsForRun, OnIssueAssigned, OnIssueCommented and
+// OpenIssuesOfAgent, InboxOfAgent, CommentsForRun, OnIssueAssigned, OnIssueCommented and
 // OnRunLive.
 // Nothing else in contexts/work is for outside use.
 package work
@@ -11,6 +11,7 @@ package work
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/goravel/framework/contracts/route"
 
@@ -208,6 +209,55 @@ func OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]IssueBri
 		out[n] = IssueBrief{
 			ID: i.ID, ProjectID: i.ProjectID, Identifier: domain.Identifier(prefix, i.Number), Title: i.Title,
 			Description: i.Description, Status: string(i.Status), AgentAssigneeID: i.AssigneeAgentID,
+		}
+	}
+	return out, nil
+}
+
+// InboxIssue is an Issue in an Agent's inbox: its Issue identifier,
+// status, priority, Project (0 for none, with its name), Goal and parent
+// (0 for none), and the Run holding its Checkout (0 for none).
+type InboxIssue struct {
+	ID            uint64
+	Identifier    string
+	Title         string
+	Status        string
+	Priority      string
+	ProjectID     uint64
+	ProjectName   string
+	GoalID        uint64
+	ParentID      uint64
+	CheckoutRunID uint64
+	UpdatedAt     time.Time
+}
+
+// InboxOfAgent lists the Guild's Issues the Agent is the assignee of that
+// are in progress, in review, todo or blocked, in that order, then most
+// urgent and oldest first, whatever Project they are in. It does not
+// check who may view them.
+func InboxOfAgent(ctx context.Context, guildID, agentID uint64) ([]InboxIssue, error) {
+	is, prefix, err := svc().AgentInbox(ctx, guildID, agentID)
+	if err != nil || len(is) == 0 {
+		return nil, err
+	}
+	var projectIDs []uint64
+	for _, i := range is {
+		if i.ProjectID != 0 {
+			projectIDs = append(projectIDs, i.ProjectID)
+		}
+	}
+	names := map[uint64]string{}
+	if len(projectIDs) > 0 {
+		if names, err = svc().ProjectNames(ctx, guildID, projectIDs); err != nil {
+			return nil, err
+		}
+	}
+	out := make([]InboxIssue, len(is))
+	for n, i := range is {
+		out[n] = InboxIssue{
+			ID: i.ID, Identifier: domain.Identifier(prefix, i.Number), Title: i.Title, Status: string(i.Status),
+			Priority: string(i.Priority), ProjectID: i.ProjectID, ProjectName: names[i.ProjectID], GoalID: i.GoalID,
+			ParentID: i.ParentID, CheckoutRunID: i.CheckoutRunID, UpdatedAt: i.UpdatedAt,
 		}
 	}
 	return out, nil

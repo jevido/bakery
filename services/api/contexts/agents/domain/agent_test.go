@@ -220,3 +220,22 @@ func TestHeartbeatDue(t *testing.T) {
 		}
 	}
 }
+
+func TestChainOfCommand(t *testing.T) {
+	ceo := Agent{ID: 1, Name: "Ceo"}
+	cto := Agent{ID: 2, Name: "Cto", ManagerID: 1}
+	dev := Agent{ID: 3, Name: "Dev", ManagerID: 2}
+	all := []Agent{ceo, cto, dev}
+	chain := ChainOfCommand(all, dev)
+	if len(chain) != 2 || chain[0].ID != 2 || chain[1].ID != 1 {
+		t.Fatalf("chain of dev: %+v", chain)
+	}
+	if chain := ChainOfCommand(all, ceo); len(chain) != 0 {
+		t.Fatalf("chain of the top: %+v", chain)
+	}
+	// A cycle in stored rows ends the walk instead of looping.
+	loop := []Agent{{ID: 1, ManagerID: 2}, {ID: 2, ManagerID: 1}}
+	if chain := ChainOfCommand(loop, loop[0]); len(chain) != 1 || chain[0].ID != 2 {
+		t.Fatalf("chain through a cycle: %+v", chain)
+	}
+}

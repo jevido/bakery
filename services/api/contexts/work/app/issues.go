@@ -811,6 +811,44 @@ func (s *Service) AgentWork(ctx context.Context, guildID, agentID uint64) (is []
 	return is, prefix, err
 }
 
+// inboxOrder is where each status an Agent's inbox lists sorts: what it
+// is working on first, then what waits for review, then what is next,
+// then what is stuck, as Paperclip's inbox-lite.
+var inboxOrder = map[domain.IssueStatus]int{domain.InProgress: 0, domain.InReview: 1, domain.Todo: 2, domain.Blocked: 3}
+
+// AgentInbox lists the Guild's Issues the Agent is the assignee of that
+// are in progress, in review, todo or blocked, in that order, then most
+// urgent and oldest first, with the Guild's Issue prefix: what an Agent
+// asks for to pick its work.
+func (s *Service) AgentInbox(ctx context.Context, guildID, agentID uint64) (is []domain.Issue, prefix string, err error) {
+	all, err := s.issues.OpenIssuesOfAgent(ctx, guildID, agentID)
+	if err != nil {
+		return nil, "", err
+	}
+	for _, i := range all {
+		if _, ok := inboxOrder[i.Status]; ok {
+			is = append(is, i)
+		}
+	}
+	if len(is) == 0 {
+		return nil, "", nil
+	}
+	slices.SortFunc(is, func(a, b domain.Issue) int {
+		if d := inboxOrder[a.Status] - inboxOrder[b.Status]; d != 0 {
+			return d
+		}
+		if d := slices.Index(domain.Priorities, a.Priority) - slices.Index(domain.Priorities, b.Priority); d != 0 {
+			return d
+		}
+		if d := a.CreatedAt.Compare(b.CreatedAt); d != 0 {
+			return d
+		}
+		return a.Number - b.Number
+	})
+	prefix, err = s.guilds.IssuePrefix(ctx, guildID)
+	return is, prefix, err
+}
+
 // UnassignAgent takes a terminated Agent off the Guild's Issues that are
 // not done or cancelled, each change recorded with the actor who
 // terminated it.

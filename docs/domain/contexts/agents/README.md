@@ -154,11 +154,16 @@ admin always may (with `hire_agents`, which they always hold).
   `succeeded`, `failed` or `cancelled`, with its Run usage and an error
   message when it failed.
 - `Me()` [an Agent principal only]: the Agent of the Run key, with its
-  Guild, its Roles, its Permissions there and its Run (Paperclip's
-  `GET /agents/me`).
-- `MyInbox()` [an Agent principal only]: the open Issues the Agent is the
-  Agent assignee of, in its Guild, most urgent first (Paperclip's
-  `GET /agents/me/inbox-lite`).
+  Guild, its Roles, its Permissions there, its Run (with the Run's Issue
+  when the Agent may view its Project) and its Chain of command, its own
+  Manager first (Paperclip's `GET /agents/me`).
+- `MyInbox()` [an Agent principal only]: the Issues the Agent is the Agent
+  assignee of in its Guild that it can work on: `in_progress`, then
+  `in_review`, `todo` and `blocked`, each most urgent and oldest first,
+  leaving out Issues in Projects it may not view (Paperclip's
+  `GET /agents/me/inbox-lite`). A Heartbeat's prompt still lists only
+  `todo`, `in_progress` and `in_review`: a blocked Issue does not make a
+  Heartbeat worth running.
 - `LoseRun` (no Permission; the server's own sweep, every 30 seconds): a
   `running` Run whose Lease ran out becomes `lost` and is requeued as
   above, recorded as `run.finished` with no actor. The write is
@@ -262,12 +267,15 @@ records nothing more.
   counts as the Desktop being seen, once a minute.
 
   For a Run key (the Agent principal), in the Run's Guild only, with the
-  Agent membership's Permissions (task 06 fills the shapes):
+  Agent membership's Permissions:
 
   | Route | Permission | Answers |
   | ----- | ---------- | ------- |
-  | `GET /api/agents/me` | none | `{"agent": Agent, "run": Run, "permissions": [...]}` |
-  | `GET /api/agents/me/inbox` | none | `{"issues": [...]}`, the Agent's open assigned Issues |
+  | `GET /api/agents/me` | none | `{"agent": Agent, "guild": {id, name, issue_prefix}, "run": {id, issue: {id, identifier, title} \| null, invocation_source, wake_reason}, "chain_of_command": [{id, name, job, title}], "permissions": [key]}` |
+  | `GET /api/agents/me/inbox` | none | `{"issues": [{id, identifier, title, status, priority, project: {id, name} \| null, goal_id, parent_id, updated_at, checkout_run_id}]}` in `MyInbox`'s order |
+
+  Both are 403 `only an agent's run key may use this` for a person, as
+  Paperclip's are agent-only.
   | `GET /api/agents`, `GET /api/agents/{id}`, `GET /api/org` | `view_resources` | as for a person |
   | `GET /api/runs`, `GET /api/runs/{id}`, `GET /api/runs/{id}/events` | `view_resources` | its own Runs only: the list as if `?agent=` named it, another Agent's Run is 404 |
 
