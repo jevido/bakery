@@ -6,8 +6,9 @@
 ## Purpose
 
 Knows who may use this installation of The Bakery: the Members, the one
-Instance admin created by Setup, how a request proves who sent it (a Session
-or an API token), and each Member's own Profile, Two-factor authentication
+Instance admin created by Setup, how a request proves who sent it (a Session,
+an API token or a Desktop key), the Desktops a Member signed in with the
+Desktop app and the Desktop sign-ins that made them, and each Member's own Profile, Two-factor authentication
 included. It is **not** responsible for what a Member may do where: Guilds,
 Memberships with their Roles and Invitations belong to
 [guilds](../guilds/README.md). OAuth login comes later and will grow this
@@ -30,6 +31,10 @@ context.
 | Authenticator code | 6 digits from the Member's app (RFC 6238, SHA-1, 30 s steps), accepted for the current step ± 1 and only once. |
 | Recovery code | One of 10 single-use codes handed out when Two-factor authentication is switched on or the codes are renewed. |
 | Login challenge | The 5 minutes between a correct password and the second step, carried in the `bakery_login` cookie; at most 5 wrong codes. |
+| Desktop app | The Bakery's app a Member installs on their own machine (`apps/desktop`). It talks to one or more Bakeries only through the published HTTP API, signs in through a Desktop sign-in, and keeps its Desktop key in a file only its user can read. |
+| Desktop | One signed-in copy of the Desktop app as the server knows it: its Member, a name (the machine's hostname unless the app says otherwise), created, last seen, signed out. |
+| Desktop sign-in | A request the Desktop app makes to be approved in the browser: an id, a secret only the app knows (`bky_signin_…`, stored hashed), the hash of the Desktop key it minted, the name it asks for, and its status `pending`, `approved`, `cancelled` or `expired`. |
+| Desktop key | The `bky_desk_…` bearer secret of a Desktop, stored only as its SHA-256. It acts as its Member in any of their Guilds; the request header `Bakery-Guild` names which. |
 | Sessions valid from | The moment before which a Member's Sessions no longer count; set by a password change, "sign out everywhere else" and a two-factor reset. |
 
 ## Model
@@ -40,6 +45,9 @@ context.
 | --------- | ---------- |
 | Member | Email is a valid address and unique; name is not empty; password has at least 12 characters and is only stored hashed. Exactly one Member is the Instance admin, and the Instance admin is never removed. Two-factor authentication only counts for sign-in when `on`; its secret is stored only encrypted and Recovery codes only hashed; an Authenticator code is accepted only for a time step later than the last one accepted. A new password has at least 12 characters and needs the current one. |
 | API token | Name (the "Description") is 3–255 characters when made and unique per Member; belongs to one Member and one Guild and is removed with either; only the SHA-256 of its value is stored, and the value is shown once. Its Token permissions are known ones, never empty (none means `read`), `root` stands alone, `read:sensitive` brings `read`. The Member's Permissions in that Guild cap what it may be given: `root` only with `administrator`, `write` only with `manage_applications`, `deploy` only with `deploy`, `read:sensitive` only with `see_secrets`, `read` always (refused with 422 `your permissions cannot grant <permission>`). An expiry is in the future when set; from then on the token no longer authenticates. |
+
+| Desktop sign-in | Lasts 10 minutes from when it is made; after that it is `expired` and can be neither approved nor cancelled. It is approved at most once, only while `pending`, only by a Member signed in with a Session (never with an API token or a Desktop key), and approving it makes its Desktop for that Member with the Desktop key the app minted when it made the sign-in. Cancelled only while `pending`, by whoever holds its secret. Its status, and the key's validity, are read only with its secret; without it the sign-in does not exist (404). |
+| Desktop | Belongs to exactly one Member and is removed with them. Its Desktop key is stored only as a hash and is never shown again by the server. The key stops counting when the Desktop is signed out, 30 days after it was last used, or when the Member's Sessions valid from moves past the Desktop's creation (a password change, "sign out everywhere else", a two-factor reset). Last seen is updated at most once a minute. A signed-out Desktop stays signed out. |
 
 ### Commands
 
@@ -58,6 +66,12 @@ Who may run each is in brackets.
 - `RegenerateRecoveryCodes(code)` [the Member, with a Session]: 10 new Recovery codes; the old ones stop working.
 - `DisableTwoFactor(password, code or Recovery code)` [the Member, with a Session].
 - `LoginTwoFactor(challenge, code or Recovery code)` [anyone holding a Login challenge]: returns a Session; the fifth wrong code ends the challenge.
+- `StartDesktopSignIn(name, secret hash, key hash)` [anyone]: the Desktop app's request; answers its id and the approve link (`#/desktop-sign-in/{id}?token=<secret>`).
+- `DescribeDesktopSignIn(id, secret)` [whoever holds the secret]: its status, the name asked for, when it expires, and who approved it.
+- `ApproveDesktopSignIn(id, secret)` [any Member, with a Session]: see the invariants.
+- `CancelDesktopSignIn(id, secret)` [whoever holds the secret].
+- `Desktops()` [the Member, with a Session or a Desktop key]: their own Desktops, marking the one making the request.
+- `SignOutDesktop(id)` [the Desktop's Member, with a Session or a Desktop key]; `SignOutCurrentDesktop()` [a Desktop key, for itself].
 - `ResetTwoFactor(member)` [an admin of a Guild the Member is in]: switches it off for someone locked out and ends their Sessions; never the Instance admin's, never your own. From the server, `artisan identity:reset-two-factor <email>` does it for anyone, the Instance admin included.
 
 ### Domain events
@@ -66,6 +80,18 @@ Who may run each is in brackets.
   subscriber (guilds, with `OnSetUp(f)`) is called synchronously and makes
   the first Guild; its error fails the request, though the Instance admin
   stays.
+
+### What a Desktop key may do
+
+A Desktop key acts as its Member with their own Permissions in the Guild
+`Bakery-Guild` names (403 `not a member of this guild` when they may not act
+there; their first Guild when the header is absent), uncapped by Token
+permissions. It may also list its Member's Guilds (`GET /api/guilds`), read
+`GET /api/me`, and list and sign out Desktops. It may not create, list or
+revoke API tokens, change the Profile (name, password, Sessions), touch
+Two-factor authentication, approve a Desktop sign-in, or create, switch,
+leave or delete Guilds or act on Guild Master Transfer offers: those answer
+403 `this needs a signed-in session`.
 
 ## Integration
 
@@ -112,6 +138,33 @@ Who may run each is in brackets.
   without a cascade.
 
 ## Why it's shaped this way
+
+- **The Desktop sign-in is Paperclip's CLI auth, with four differences.**
+  It follows Paperclip's `/cli-auth/*` routes (`server/src/routes/access.ts`,
+  `server/src/services/board-auth.ts`, `ui/src/pages/CliAuth.tsx`): the app
+  mints both its secret and its key, sends only their hashes, opens the
+  browser on the approve page and polls until approved, so the key never
+  travels from the server and no password is typed into the app. It
+  differs in four ways. There is no `instance_admin_required` access: the
+  Desktop app never needs the Instance admin, it acts as whoever approves
+  it. A Desktop key counts until 30 days after it was last used, not 30
+  days after it was made: an unattended desktop running Agents must not
+  drop off silently on day 30. There is no `board_api_key.created` Activity
+  event: identity is not Guild-scoped and the Activity belongs to a Guild,
+  and the Desktops page shows the same thing to the only person it
+  concerns. The Guild is chosen per request with the `Bakery-Guild` header
+  instead of Paperclip's company in the URL, because The Bakery's routes
+  take the Current guild from the request, not the path.
+- **Desktop key, not board API key.** The Bakery's other bearer secret is
+  the API token (Coolify's), made in one Guild for a script; this one
+  belongs to a person's machine and spans their Guilds, so it gets its own
+  word and its own `bky_desk_` prefix.
+- **A Desktop ends with the Sessions, unlike an API token.** A password
+  change, "sign out everywhere else" and a two-factor reset leave API tokens
+  alone, since each is pinned to one Guild with capped Token permissions and
+  scripts must not break. A Desktop key acts as the whole person in every
+  Guild, which is what a Session does, so it ends where a Session ends: a
+  person who fears their password leaked also cuts off a lost laptop.
 
 - **The Session lives in a cookie, not an Authorization header.** The
   dashboard follows live logs with `EventSource`, which cannot send headers.
