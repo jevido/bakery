@@ -51,6 +51,10 @@ type Service struct {
 	// Decided hears every approve or reject of an Approval once it is
 	// stored, the same Decision made again included; nil hears nothing.
 	Decided func(ctx context.Context, a domain.Approval) error
+	// Agents names the Guild's Agents among ids, terminated ones too
+	// (agents, through work.OnAgentAssignees); nil knows no Agent, so none
+	// can be an Assignee.
+	Agents func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]AssigneeAgent, error)
 }
 
 func NewService(goals Goals, issues Issues, comments Comments, docs Documents, guilds Guilds, projects Projects, activity Activity, inbox Inbox, approvals Approvals) *Service {

@@ -22,6 +22,15 @@ type goalRefJSON struct {
 	Title string `json:"title"`
 }
 
+// assigneeJSON is an Issue's Assignee: a Member, or an Agent with its
+// Agent icon.
+type assigneeJSON struct {
+	ID   uint64 `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	Icon string `json:"icon,omitempty"`
+}
+
 type issueRefJSON struct {
 	ID         uint64 `json:"id"`
 	Identifier string `json:"identifier"`
@@ -38,7 +47,7 @@ type issueJSON struct {
 	Description *string       `json:"description,omitempty"`
 	Status      string        `json:"status"`
 	Priority    string        `json:"priority"`
-	Assignee    *Member       `json:"assignee"`
+	Assignee    *assigneeJSON `json:"assignee"`
 	Project     *projectJSON  `json:"project"`
 	Goal        *goalRefJSON  `json:"goal"`
 	Parent      *issueRefJSON `json:"parent"`
@@ -84,8 +93,11 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 	if err != nil {
 		return nil, err
 	}
-	var memberIDs, projectIDs, parentIDs []uint64
+	var memberIDs, agentIDs, projectIDs, parentIDs []uint64
 	for _, i := range is {
+		if i.AssigneeAgentID != 0 {
+			agentIDs = append(agentIDs, i.AssigneeAgentID)
+		}
 		for _, id := range []uint64{i.AssigneeID, i.CreatedByID} {
 			if id != 0 {
 				memberIDs = append(memberIDs, id)
@@ -107,6 +119,10 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 		for _, m := range ms {
 			members[m.ID] = m
 		}
+	}
+	agents, err := c.service.AssigneeAgents(cx, guildID, agentIDs)
+	if err != nil {
+		return nil, err
 	}
 	projects, err := c.service.ProjectNames(cx, guildID, projectIDs)
 	if err != nil {
@@ -140,7 +156,10 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 			out[n].Description = &d
 		}
 		if m, ok := members[i.AssigneeID]; ok {
-			out[n].Assignee = &m
+			out[n].Assignee = &assigneeJSON{ID: m.ID, Name: m.Name, Kind: "member"}
+		}
+		if a, ok := agents[i.AssigneeAgentID]; ok {
+			out[n].Assignee = &assigneeJSON{ID: i.AssigneeAgentID, Name: a.Name, Kind: "agent", Icon: a.Icon}
 		}
 		if m, ok := members[i.CreatedByID]; ok {
 			out[n].CreatedBy = &m
@@ -164,9 +183,11 @@ type issueRequest struct {
 	Status      optional[string] `json:"status"`
 	Priority    optional[string] `json:"priority"`
 	AssigneeID  optional[uint64] `json:"assignee_id"`
-	ProjectID   optional[uint64] `json:"project_id"`
-	GoalID      optional[uint64] `json:"goal_id"`
-	ParentID    optional[uint64] `json:"parent_id"`
+	// AssigneeAgentID assigns an Agent instead of a Member.
+	AssigneeAgentID optional[uint64] `json:"assignee_agent_id"`
+	ProjectID       optional[uint64] `json:"project_id"`
+	GoalID          optional[uint64] `json:"goal_id"`
+	ParentID        optional[uint64] `json:"parent_id"`
 	// BlockedByIDs is PATCH only; null clears like [].
 	BlockedByIDs optional[[]uint64] `json:"blocked_by_ids"`
 }
@@ -174,14 +195,14 @@ type issueRequest struct {
 func (r issueRequest) input() app.IssueInput {
 	return app.IssueInput{
 		Title: value(r.Title.ptr()), Description: value(r.Description.ptr()), Status: value(r.Status.ptr()), Priority: value(r.Priority.ptr()),
-		AssigneeID: value(idOf(r.AssigneeID)), ProjectID: value(idOf(r.ProjectID)), GoalID: value(idOf(r.GoalID)), ParentID: value(idOf(r.ParentID)),
+		AssigneeID: value(idOf(r.AssigneeID)), AssigneeAgentID: value(idOf(r.AssigneeAgentID)), ProjectID: value(idOf(r.ProjectID)), GoalID: value(idOf(r.GoalID)), ParentID: value(idOf(r.ParentID)),
 	}
 }
 
 func (r issueRequest) patch() app.IssuePatch {
 	p := app.IssuePatch{
 		Title: r.Title.ptr(), Description: r.Description.ptr(), Status: r.Status.ptr(), Priority: r.Priority.ptr(),
-		AssigneeID: idOf(r.AssigneeID), ProjectID: idOf(r.ProjectID), GoalID: idOf(r.GoalID), ParentID: idOf(r.ParentID),
+		AssigneeID: idOf(r.AssigneeID), AssigneeAgentID: idOf(r.AssigneeAgentID), ProjectID: idOf(r.ProjectID), GoalID: idOf(r.GoalID), ParentID: idOf(r.ParentID),
 	}
 	if r.BlockedByIDs.Set {
 		ids := value(r.BlockedByIDs.Value)
@@ -230,6 +251,13 @@ func idFilter(ctx contractshttp.Context, field string, me uint64) (*uint64, bool
 func (c *Controller) filter(ctx contractshttp.Context) (app.IssueFilter, contractshttp.Response) {
 	r := ctx.Request()
 	f := app.IssueFilter{Statuses: list(r.Query("status")), Priorities: list(r.Query("priority")), Search: r.Query("q")}
+	if a, ok := strings.CutPrefix(strings.TrimSpace(r.Query("assignee")), "agent:"); ok {
+		id, err := strconv.ParseUint(a, 10, 64)
+		if err != nil || id == 0 {
+			return f, respond.Invalid(ctx, "assignee", "assignee must be an id, agent:<id>, me or none")
+		}
+		f.AssigneeAgentID = &id
+	}
 	for _, idf := range []struct {
 		field string
 		me    uint64
@@ -240,6 +268,9 @@ func (c *Controller) filter(ctx contractshttp.Context) (app.IssueFilter, contrac
 		{"goal", 0, &f.GoalID},
 		{"parent", 0, &f.ParentID},
 	} {
+		if idf.field == "assignee" && f.AssigneeAgentID != nil {
+			continue
+		}
 		id, ok := idFilter(ctx, idf.field, idf.me)
 		if !ok {
 			return f, respond.Invalid(ctx, idf.field, idf.field+" must be an id or none")
@@ -279,7 +310,8 @@ func (c *Controller) filter(ctx contractshttp.Context) (app.IssueFilter, contrac
 
 // ListIssues answers the Current guild's Issues that the filters keep and
 // the request may see, most recently updated first: status and priority
-// (comma lists), assignee (an id, me or none), project, goal and parent
+// (comma lists), assignee (a Member's id, me,
+// agent:<id> or none: no Member and no Agent), project, goal and parent
 // (an id or none), touched, unread and inbox (only me: the asking
 // Member's Inbox tabs), q (title, description, identifier), limit (at
 // most 200, the default) and offset. With touched, unread or inbox each

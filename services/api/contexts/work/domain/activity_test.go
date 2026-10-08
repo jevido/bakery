@@ -49,10 +49,23 @@ func TestIssueChangedStatusAndBlocker(t *testing.T) {
 	e := IssueChanged{Before: before, After: after, BlockersBefore: []uint64{11}, BlockersAfter: []uint64{12, 11}}
 	want := map[string]any{
 		"status":   map[string]any{"from": Todo, "to": InProgress},
-		"assignee": map[string]any{"from": uint64(3), "to": nil},
+		"assignee": map[string]any{"from": map[string]any{"id": uint64(3), "kind": "member"}, "to": nil},
 		"blockers": map[string]any{"added": []uint64{12}, "removed": []uint64{}},
 	}
 	if got := e.Changes(); !reflect.DeepEqual(got, want) {
+		t.Errorf("Changes() = %#v, want %#v", got, want)
+	}
+}
+
+func TestIssueChangedToAnAgent(t *testing.T) {
+	before := Issue{ID: 9, Status: Todo, Priority: Medium, AssigneeID: 3}
+	after := before
+	after.AssignAgent(5)
+	want := map[string]any{"assignee": map[string]any{
+		"from": map[string]any{"id": uint64(3), "kind": "member"},
+		"to":   map[string]any{"id": uint64(5), "kind": "agent"},
+	}}
+	if got := (IssueChanged{Before: before, After: after}).Changes(); !reflect.DeepEqual(got, want) {
 		t.Errorf("Changes() = %#v, want %#v", got, want)
 	}
 }

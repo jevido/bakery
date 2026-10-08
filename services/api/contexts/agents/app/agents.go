@@ -92,6 +92,9 @@ type Work interface {
 	// CancelApproval cancels a hire_agent Approval still waiting for a
 	// Decision, by the actor.
 	CancelApproval(ctx context.Context, guildID, actorID, approvalID uint64) error
+	// UnassignAgent takes the Agent off the Guild's Issues that are not done
+	// or cancelled, by the actor.
+	UnassignAgent(ctx context.Context, guildID, agentID, actorID uint64) error
 }
 
 type Service struct {
@@ -323,6 +326,22 @@ func (s *Service) Names(ctx context.Context, guildID uint64, ids []uint64) (map[
 	for _, a := range all {
 		if a.Status != domain.Terminated && slices.Contains(ids, a.ID) {
 			out[a.ID] = a.Name
+		}
+	}
+	return out, nil
+}
+
+// Assignees names the Guild's Agents among ids, terminated ones too, for
+// the Issues they are the Assignee of.
+func (s *Service) Assignees(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]domain.Agent, error) {
+	all, err := s.agents.Agents(ctx, guildID)
+	if err != nil {
+		return nil, err
+	}
+	out := map[uint64]domain.Agent{}
+	for _, a := range all {
+		if slices.Contains(ids, a.ID) {
+			out[a.ID] = a
 		}
 	}
 	return out, nil

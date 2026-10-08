@@ -1,8 +1,9 @@
 // Package work is what the router and other contexts may use from the
 // work context: its routes (Goals, Issues, Comments, Issue documents, the
 // Activity, the Inbox and Approvals), and for the agents context
-// RequestApproval, CancelApproval, OnApprovalDecided, RecordActivity and
-// OnAgentNames. Nothing else in contexts/work is for outside use.
+// RequestApproval, CancelApproval, OnApprovalDecided, RecordActivity,
+// OnAgentNames, OnAgentAssignees and UnassignAgent. Nothing else in
+// contexts/work is for outside use.
 package work
 
 import (
@@ -31,6 +32,7 @@ func svc() *app.Service {
 		service = app.NewService(infra.Goals{}, infra.Issues{}, infra.Comments{}, infra.Documents{}, guildsOfWork{}, projectsOfWork{}, infra.Activity{}, infra.Inbox{}, infra.Approvals{})
 		service.Logf = facades.Log().Errorf
 		service.Decided = approvalDecided
+		service.Agents = assigneeAgents
 		guilds.OnGuildDeleting("goals", func(ctx context.Context, guildID uint64) (bool, error) {
 			gs, err := service.Goals(ctx, guildID)
 			return len(gs) > 0, err
@@ -92,7 +94,51 @@ var (
 	onDecided = map[string]func(ctx context.Context, d ApprovalDecided) error{}
 	agentsMu  sync.RWMutex
 	onNames   func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)
+	onAssign  func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]AssigneeAgent, error)
 )
+
+// AssigneeAgent is an Agent as an Issue's Assignee shows it: its name, its
+// Agent icon and whether it is terminated, which keeps it from being
+// assigned.
+type AssigneeAgent struct {
+	Name       string
+	Icon       string
+	Terminated bool
+}
+
+// OnAgentAssignees registers f to name the Guild's Agents among ids,
+// terminated ones too, so an Issue can be assigned to one and show it.
+// Until it is registered, no Agent can be an Assignee.
+func OnAgentAssignees(f func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]AssigneeAgent, error)) {
+	agentsMu.Lock()
+	defer agentsMu.Unlock()
+	onAssign = f
+}
+
+func assigneeAgents(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]app.AssigneeAgent, error) {
+	agentsMu.RLock()
+	f := onAssign
+	agentsMu.RUnlock()
+	if f == nil {
+		return nil, nil
+	}
+	as, err := f(ctx, guildID, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uint64]app.AssigneeAgent, len(as))
+	for id, a := range as {
+		out[id] = app.AssigneeAgent(a)
+	}
+	return out, nil
+}
+
+// UnassignAgent takes the terminated Agent off the Guild's Issues that are
+// not done or cancelled; each change is recorded with actorID, who
+// terminated it, as its Actor.
+func UnassignAgent(ctx context.Context, guildID, agentID, actorID uint64) error {
+	return svc().UnassignAgent(ctx, guildID, agentID, actorID)
+}
 
 // OnApprovalDecided registers f to hear every approve or reject of an
 // Approval of the type. Making the same Decision again calls f again, so

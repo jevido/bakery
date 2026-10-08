@@ -1,7 +1,7 @@
 // Package agents is what the router may use from the agents context: its
 // routes (the Current guild's Agents, hiring and managing one, its Org
 // chart). It hears work's Decisions on hire_agent Approvals and Members
-// leaving a Guild, and keeps a Guild with Agents from being deleted. Nothing else in contexts/agents is for outside use.
+// leaving a Guild, names Agents as Issue Assignees for work, and keeps a Guild with Agents from being deleted. Nothing else in contexts/agents is for outside use.
 package agents
 
 import (
@@ -34,6 +34,17 @@ func svc() *app.Service {
 			return service.Decided(ctx, app.Decision{GuildID: d.GuildID, AgentID: d.AgentID, DeciderID: d.DeciderID, Approved: d.Approved})
 		})
 		work.OnAgentNames(service.Names)
+		work.OnAgentAssignees(func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]work.AssigneeAgent, error) {
+			as, err := service.Assignees(ctx, guildID, ids)
+			if err != nil {
+				return nil, err
+			}
+			out := make(map[uint64]work.AssigneeAgent, len(as))
+			for id, a := range as {
+				out[id] = work.AssigneeAgent{Name: a.Name, Icon: string(a.Icon), Terminated: a.Status == domain.Terminated}
+			}
+			return out, nil
+		})
 		guilds.OnGuildDeleting("agents", service.HasAgents)
 		guilds.OnMemberLeaving(service.HirerLeft)
 	})
@@ -115,6 +126,10 @@ func (workOfAgents) RecordActivity(ctx context.Context, e app.Activity) error {
 
 func (workOfAgents) CancelApproval(ctx context.Context, guildID, actorID, approvalID uint64) error {
 	return work.CancelApproval(ctx, guildID, actorID, approvalID)
+}
+
+func (workOfAgents) UnassignAgent(ctx context.Context, guildID, agentID, actorID uint64) error {
+	return work.UnassignAgent(ctx, guildID, agentID, actorID)
 }
 
 func memberNames(ctx context.Context, ids []uint64) ([]agentshttp.Named, error) {

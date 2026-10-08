@@ -20,7 +20,9 @@
   import * as DropdownMenu from '@bakery/ui/components/ui/dropdown-menu'
   import * as Tabs from '@bakery/ui/components/ui/tabs'
   import { api, ApiError } from '../../lib/api'
+  import { listAgents, type Agent } from '../../lib/agents'
   import ApprovalCard from '../../lib/ApprovalCard.svelte'
+  import Assignee from '../../lib/Assignee.svelte'
   import { decide, listIssueApprovals, type Approval } from '../../lib/approvals'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import CommentThread from '../../lib/CommentThread.svelte'
@@ -51,6 +53,7 @@
   let loadError = $state('')
   let saving = $state(0)
   let members = $state.raw<Member[]>([])
+  let agents = $state.raw<Agent[]>([])
   let projects = $state.raw<{ id: number; name: string }[]>([])
   let goals = $state.raw<Goal[]>([])
   let issues = $state.raw<Issue[]>([])
@@ -106,6 +109,7 @@
   loadApprovals()
   api<{ members: Member[] }>('GET', '/members').then((r) => (members = r.members)).catch(() => {})
   api<{ projects: { id: number; name: string }[] }>('GET', '/projects').then((r) => (projects = r.projects)).catch(() => {})
+  listAgents().then((as) => (agents = as)).catch(() => {})
   listGoals().then((gs) => (goals = gs)).catch(() => {})
   listIssues().then((is) => (issues = is)).catch(() => {})
 
@@ -265,7 +269,7 @@
                 <StatusIcon status={child.status} />
                 <PriorityIcon priority={child.priority} class="ml-1" />
                 <span class={['min-w-0 flex-1 truncate', (child.status === 'done' || child.status === 'cancelled') && 'text-muted-foreground']}>{child.title}</span>
-                {#if child.assignee}<Identity name={child.assignee.name} size="sm" />{/if}
+                {#if child.assignee}<Assignee assignee={child.assignee} />{/if}
                 <span class="w-20 shrink-0 text-right font-mono text-xs text-muted-foreground">{child.identifier}</span>
               </a>
             {/each}
@@ -307,7 +311,7 @@
         <h3 class="text-sm font-medium">Properties</h3>
         {#if saving > 0}<span class="text-xs text-muted-foreground" role="status">Saving...</span>{/if}
       </div>
-      <IssueProperties issue={i} {members} {projects} {goals} {issues} {editable} onsave={save} />
+      <IssueProperties issue={i} {members} {agents} {projects} {goals} {issues} {editable} onsave={save} />
     </aside>
   </div>
 

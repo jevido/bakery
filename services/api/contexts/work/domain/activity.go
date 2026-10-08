@@ -116,6 +116,19 @@ func ref(id uint64) any {
 	return id
 }
 
+// assignee is the Issue's Assignee as an Activity event keeps it: its id
+// and kind, member or agent; nil for none. Events from before Agents could
+// be Assignees keep a Member's bare id.
+func assignee(i Issue) any {
+	switch {
+	case i.AssigneeAgentID != 0:
+		return map[string]any{"id": i.AssigneeAgentID, "kind": "agent"}
+	case i.AssigneeID != 0:
+		return map[string]any{"id": i.AssigneeID, "kind": "member"}
+	}
+	return nil
+}
+
 type GoalCreated struct {
 	Happened
 	Goal Goal
@@ -204,11 +217,13 @@ func (e IssueChanged) Changes() map[string]any {
 	if b.Priority != a.Priority {
 		out["priority"] = change(b.Priority, a.Priority)
 	}
+	if b.AssigneeID != a.AssigneeID || b.AssigneeAgentID != a.AssigneeAgentID {
+		out["assignee"] = change(assignee(b), assignee(a))
+	}
 	for _, f := range []struct {
 		name     string
 		from, to uint64
 	}{
-		{"assignee", b.AssigneeID, a.AssigneeID},
 		{"project", b.ProjectID, a.ProjectID},
 		{"goal", b.GoalID, a.GoalID},
 		{"parent", b.ParentID, a.ParentID},

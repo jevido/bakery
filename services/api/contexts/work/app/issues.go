@@ -46,6 +46,16 @@ type Issues interface {
 	// Project.
 	LeaveProject(ctx context.Context, projectID uint64) error
 	HasIssues(ctx context.Context, guildID uint64) (bool, error)
+	// OpenIssuesOfAgent lists the Guild's Issues assigned to the Agent that
+	// are not done or cancelled, whatever Project they are in.
+	OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]domain.Issue, error)
+}
+
+// AssigneeAgent is an Agent as an Issue's Assignee shows it.
+type AssigneeAgent struct {
+	Name       string
+	Icon       string
+	Terminated bool
 }
 
 // Projects names the Guild's Projects among ids (projects.ProjectNames); an
@@ -67,10 +77,12 @@ const MaxIssues = 200
 type IssueFilter struct {
 	Statuses   []string
 	Priorities []string
-	AssigneeID *uint64
-	ProjectID  *uint64
-	GoalID     *uint64
-	ParentID   *uint64
+	// AssigneeID 0 keeps the Issues with no Assignee at all.
+	AssigneeID      *uint64
+	AssigneeAgentID *uint64
+	ProjectID       *uint64
+	GoalID          *uint64
+	ParentID        *uint64
 	// TouchedBy keeps the Issues the Member is Touched by, UnreadFor the
 	// Touched ones that are Unread to them, and InboxFor the Touched ones
 	// in their Mine tab: not in their Inbox archive, or Resurfaced since.
@@ -90,20 +102,21 @@ type IssueFilter struct {
 // and the Guild's Issue prefix to search identifiers by. A Limit of 0 is
 // no limit.
 type IssueQuery struct {
-	Statuses   []domain.IssueStatus
-	Priorities []domain.Priority
-	AssigneeID *uint64
-	ProjectID  *uint64
-	GoalID     *uint64
-	ParentID   *uint64
-	TouchedBy  *uint64
-	UnreadFor  *uint64
-	InboxFor   *uint64
-	Search     string
-	Limit      int
-	Offset     int
-	Visible    []uint64
-	Prefix     string
+	Statuses        []domain.IssueStatus
+	Priorities      []domain.Priority
+	AssigneeID      *uint64
+	AssigneeAgentID *uint64
+	ProjectID       *uint64
+	GoalID          *uint64
+	ParentID        *uint64
+	TouchedBy       *uint64
+	UnreadFor       *uint64
+	InboxFor        *uint64
+	Search          string
+	Limit           int
+	Offset          int
+	Visible         []uint64
+	Prefix          string
 }
 
 // InboxMember is the Member whose Inbox the filter asks about, or 0 when
@@ -134,9 +147,11 @@ type IssueInput struct {
 	Status      string
 	Priority    string
 	AssigneeID  uint64
-	ProjectID   uint64
-	GoalID      uint64
-	ParentID    uint64
+	// AssigneeAgentID is an Agent Assignee, instead of a Member.
+	AssigneeAgentID uint64
+	ProjectID       uint64
+	GoalID          uint64
+	ParentID        uint64
 }
 
 // IssuePatch changes the fields that are not nil. An id of 0 removes the
@@ -147,9 +162,12 @@ type IssuePatch struct {
 	Status      *string
 	Priority    *string
 	AssigneeID  *uint64
-	ProjectID   *uint64
-	GoalID      *uint64
-	ParentID    *uint64
+	// AssigneeAgentID is an Agent Assignee; it and AssigneeID may not both
+	// be set to one.
+	AssigneeAgentID *uint64
+	ProjectID       *uint64
+	GoalID          *uint64
+	ParentID        *uint64
 	// BlockedByIDs replaces the Blockers the person can see; empty removes
 	// them.
 	BlockedByIDs *[]uint64
@@ -164,7 +182,7 @@ func (s *Service) IssuePrefix(ctx context.Context, guildID uint64) (string, erro
 // most recently updated first.
 func (s *Service) Issues(ctx context.Context, guildID uint64, f IssueFilter, visible Visible) ([]domain.Issue, error) {
 	q := IssueQuery{
-		AssigneeID: f.AssigneeID, ProjectID: f.ProjectID, GoalID: f.GoalID, ParentID: f.ParentID,
+		AssigneeID: f.AssigneeID, AssigneeAgentID: f.AssigneeAgentID, ProjectID: f.ProjectID, GoalID: f.GoalID, ParentID: f.ParentID,
 		TouchedBy: f.TouchedBy, UnreadFor: f.UnreadFor, InboxFor: f.InboxFor,
 		Search: strings.TrimSpace(f.Search), Limit: f.Limit, Offset: max(f.Offset, 0),
 	}
@@ -327,7 +345,10 @@ func (s *Service) CreateIssue(ctx context.Context, guildID, memberID uint64, in 
 		}
 		i.SetPriority(p)
 	}
-	if err := s.relate(ctx, &i, in.AssigneeID, in.ProjectID, in.GoalID, in.ParentID, visible); err != nil {
+	if err := s.assignOne(ctx, &i, &in.AssigneeID, &in.AssigneeAgentID); err != nil {
+		return domain.Issue{}, err
+	}
+	if err := s.relate(ctx, &i, in.ProjectID, in.GoalID, in.ParentID, visible); err != nil {
 		return domain.Issue{}, err
 	}
 	if i, err = s.issues.CreateIssue(ctx, i); err != nil {
@@ -337,11 +358,8 @@ func (s *Service) CreateIssue(ctx context.Context, guildID, memberID uint64, in 
 	return i, nil
 }
 
-// relate sets an Issue's Assignee, Project, Goal and parent, each checked.
-func (s *Service) relate(ctx context.Context, i *domain.Issue, assigneeID, projectID, goalID, parentID uint64, visible Visible) error {
-	if err := s.assign(ctx, i, assigneeID); err != nil {
-		return err
-	}
+// relate sets an Issue's Project, Goal and parent, each checked.
+func (s *Service) relate(ctx context.Context, i *domain.Issue, projectID, goalID, parentID uint64, visible Visible) error {
 	if err := s.placeIn(ctx, i, projectID, visible); err != nil {
 		return err
 	}
@@ -380,10 +398,8 @@ func (s *Service) ChangeIssue(ctx context.Context, guildID, memberID uint64, ref
 		}
 		i.SetPriority(pr)
 	}
-	if p.AssigneeID != nil {
-		if err := s.assign(ctx, &i, *p.AssigneeID); err != nil {
-			return domain.Issue{}, err
-		}
+	if err := s.assignOne(ctx, &i, p.AssigneeID, p.AssigneeAgentID); err != nil {
+		return domain.Issue{}, err
 	}
 	if p.ProjectID != nil {
 		if err := s.placeIn(ctx, &i, *p.ProjectID, visible); err != nil {
@@ -563,6 +579,71 @@ func (s *Service) HasIssues(ctx context.Context, guildID uint64) (bool, error) {
 // ProjectNames names the Guild's Projects among ids.
 func (s *Service) ProjectNames(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error) {
 	return s.projects.ProjectNames(ctx, guildID, ids)
+}
+
+// assignOne hands the Issue to the Member or the Agent that is set and not
+// 0; a nil one is left as it is, a 0 one taken off. Both set to one is
+// refused, as an Issue has one Assignee.
+func (s *Service) assignOne(ctx context.Context, i *domain.Issue, memberID, agentID *uint64) error {
+	if memberID != nil && agentID != nil && *memberID != 0 && *agentID != 0 {
+		return &domain.FieldError{Field: "assignee_agent_id", Message: "an issue is assigned to a member or an agent, not both"}
+	}
+	if memberID != nil {
+		if err := s.assign(ctx, i, *memberID); err != nil {
+			return err
+		}
+	}
+	if agentID != nil {
+		return s.assignAgent(ctx, i, *agentID)
+	}
+	return nil
+}
+
+// assignAgent hands the Issue to one of the Guild's Agents that is not
+// terminated.
+func (s *Service) assignAgent(ctx context.Context, i *domain.Issue, agentID uint64) error {
+	if agentID != 0 {
+		a, err := s.AssigneeAgents(ctx, i.GuildID, []uint64{agentID})
+		if err != nil {
+			return err
+		}
+		if found, ok := a[agentID]; !ok || found.Terminated {
+			return &domain.FieldError{Field: "assignee_agent_id", Message: "assignee must be an agent of this guild that is not terminated"}
+		}
+	}
+	i.AssignAgent(agentID)
+	return nil
+}
+
+// AssigneeAgents names the Guild's Agents among ids, terminated ones too;
+// an id that is not one of them is left out.
+func (s *Service) AssigneeAgents(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]AssigneeAgent, error) {
+	if s.Agents == nil || len(ids) == 0 {
+		return map[uint64]AssigneeAgent{}, nil
+	}
+	return s.Agents(ctx, guildID, ids)
+}
+
+// UnassignAgent takes a terminated Agent off the Guild's Issues that are
+// not done or cancelled, each change recorded with the actor who
+// terminated it.
+func (s *Service) UnassignAgent(ctx context.Context, guildID, agentID, actorID uint64) error {
+	is, err := s.issues.OpenIssuesOfAgent(ctx, guildID, agentID)
+	if err != nil {
+		return err
+	}
+	for _, i := range is {
+		e := domain.IssueChanged{Happened: s.happened(actorID), Before: i}
+		i.AssignAgent(0)
+		if err := s.issues.SaveIssue(ctx, i); err != nil {
+			return err
+		}
+		if e.After, _, err = s.issues.Issue(ctx, i.ID); err != nil {
+			return err
+		}
+		s.publish(ctx, e)
+	}
+	return nil
 }
 
 func (s *Service) assign(ctx context.Context, i *domain.Issue, memberID uint64) error {

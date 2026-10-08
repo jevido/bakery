@@ -65,8 +65,10 @@ func ParsePriority(s string) (Priority, error) {
 	return "", invalid("priority", "priority must be critical, high, medium or low")
 }
 
-// Issue is one piece of work in a Guild. AssigneeID, ProjectID, GoalID,
-// ParentID and CreatedByID are 0 for none; the times are nil until the
+// Issue is one piece of work in a Guild. Its Assignee is a Member
+// (AssigneeID) or an Agent (AssigneeAgentID), never both. AssigneeID,
+// AssigneeAgentID, ProjectID, GoalID, ParentID and CreatedByID are 0 for
+// none; the times are nil until the
 // Issue status sets them.
 type Issue struct {
 	ID          uint64
@@ -77,15 +79,17 @@ type Issue struct {
 	Status      IssueStatus
 	Priority    Priority
 	AssigneeID  uint64
-	ProjectID   uint64
-	GoalID      uint64
-	ParentID    uint64
-	CreatedByID uint64
-	StartedAt   *time.Time
-	CompletedAt *time.Time
-	CancelledAt *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// AssigneeAgentID is the Agent the Issue is assigned to.
+	AssigneeAgentID uint64
+	ProjectID       uint64
+	GoalID          uint64
+	ParentID        uint64
+	CreatedByID     uint64
+	StartedAt       *time.Time
+	CompletedAt     *time.Time
+	CancelledAt     *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // NewIssue is an Issue of the Guild, created by a Member, in the Backlog
@@ -141,8 +145,24 @@ func (i *Issue) SetStatus(status IssueStatus, now time.Time) {
 func (i *Issue) SetPriority(p Priority) { i.Priority = p }
 
 // Assign hands the Issue to a Member, already known to be one of the
-// Guild's; 0 is no Assignee.
-func (i *Issue) Assign(memberID uint64) { i.AssigneeID = memberID }
+// Guild's, taking it from an Agent; 0 takes it from the Member it is
+// assigned to.
+func (i *Issue) Assign(memberID uint64) {
+	i.AssigneeID = memberID
+	if memberID != 0 {
+		i.AssigneeAgentID = 0
+	}
+}
+
+// AssignAgent hands the Issue to an Agent, already known to be one of the
+// Guild's and not terminated, taking it from a Member; 0 takes it from the
+// Agent it is assigned to.
+func (i *Issue) AssignAgent(agentID uint64) {
+	i.AssigneeAgentID = agentID
+	if agentID != 0 {
+		i.AssigneeID = 0
+	}
+}
 
 // PlaceIn puts the Issue in a Project, already known to be one of the
 // Guild's; 0 is none.

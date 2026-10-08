@@ -125,7 +125,7 @@ func (s *Service) Terminate(ctx context.Context, guildID uint64, actor Actor, id
 }
 
 // terminate ends the Agent: its direct reports report to its Manager, its
-// Agent membership ends, and a hire_agent Approval still waiting is
+// Agent membership ends, it leaves the Issues still open, and a hire_agent Approval still waiting is
 // cancelled.
 func (s *Service) terminate(ctx context.Context, a domain.Agent, actorID uint64) (domain.Agent, error) {
 	pending := a.Status == domain.PendingApproval
@@ -155,6 +155,9 @@ func (s *Service) terminate(ctx context.Context, a domain.Agent, actorID uint64)
 		if err := s.work.CancelApproval(ctx, a.GuildID, actorID, a.HireApprovalID); err != nil {
 			return domain.Agent{}, err
 		}
+	}
+	if err := s.work.UnassignAgent(ctx, a.GuildID, a.ID, actorID); err != nil {
+		return domain.Agent{}, err
 	}
 	s.record(ctx, domain.AgentTerminated{Agent: a, ActorID: actorID})
 	return a, nil

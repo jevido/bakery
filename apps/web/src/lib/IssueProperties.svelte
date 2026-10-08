@@ -14,17 +14,20 @@
   import BlockerPicker from './BlockerPicker.svelte'
   import { Separator } from '@bakery/ui/components/ui/separator'
   import { formatDate } from './format'
+  import Assignee from './Assignee.svelte'
   import Identity from './Identity.svelte'
+  import type { Agent } from './agents'
   import OptionPopover from './OptionPopover.svelte'
   import PriorityIcon from './PriorityIcon.svelte'
   import { href } from './router.svelte'
   import type { Member } from './session.svelte'
   import StatusIcon from './StatusIcon.svelte'
-  import type { Blocker, Goal, Issue, IssueDetail, IssueInput } from './work'
+  import { assigneeKey, assigneePatch, type Blocker, type Goal, type Issue, type IssueDetail, type IssueInput } from './work'
 
   let {
     issue,
     members,
+    agents = [],
     projects,
     goals,
     issues,
@@ -33,6 +36,8 @@
   }: {
     issue: IssueDetail
     members: Member[]
+    /** The Guild's Agents that are not terminated, listed under the Members as Assignees. */
+    agents?: Agent[]
     projects: { id: number; name: string }[]
     goals: Goal[]
     /** The Guild's Issues, to pick a parent from. */
@@ -58,7 +63,11 @@
   })
   const blockedByIds = $derived(issue.blocked_by.map((b) => b.id))
   const none = { value: null, label: 'None' }
-  const memberOptions = $derived([{ value: null, label: 'No assignee' }, ...members.map((m) => ({ value: m.id as number | null, label: m.name }))])
+  const assigneeOptions = $derived([
+    { value: null, label: 'No assignee' },
+    ...members.map((m) => ({ value: assigneeKey({ id: m.id, kind: 'member' }), label: m.name })),
+    ...agents.map((a) => ({ value: assigneeKey({ id: a.id, kind: 'agent' }), label: a.name })),
+  ])
   const projectOptions = $derived([{ value: null, label: 'No project' }, ...projects.map((p) => ({ value: p.id as number | null, label: p.name }))])
   const goalOptions = $derived([{ value: null, label: 'No goal' }, ...goals.map((g) => ({ value: g.id as number | null, label: g.title }))])
   const parentOptions = $derived([
@@ -113,11 +122,11 @@
     {@render row('Priority', priority)}
     {#snippet assignee()}
       {#if editable}
-        <OptionPopover align="end" label="Assignee" value={issue.assignee?.id ?? null} options={memberOptions} onpick={(assignee_id) => onsave({ assignee_id })}>
-          {#if issue.assignee}<Identity name={issue.assignee.name} size="sm" />{:else}{@render muted('No assignee')}{/if}
+        <OptionPopover align="end" label="Assignee" value={assigneeKey(issue.assignee)} options={assigneeOptions} onpick={(key) => onsave(assigneePatch(key))}>
+          {#if issue.assignee}<Assignee assignee={issue.assignee} />{:else}{@render muted('No assignee')}{/if}
         </OptionPopover>
       {:else if issue.assignee}
-        <Identity name={issue.assignee.name} size="sm" />
+        <Assignee assignee={issue.assignee} />
       {:else}
         {@render muted('No assignee')}
       {/if}

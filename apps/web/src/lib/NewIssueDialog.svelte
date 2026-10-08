@@ -6,6 +6,7 @@
   // one is preset. Left out: drafts, image uploads, the agent model options
   // and execution workspaces, which The Bakery has no use for yet.
   import { CircleDot, FolderOpen, Target, User } from '@lucide/svelte'
+  import { listAgents, type Agent } from './agents'
   import { api, ApiError } from './api'
   import MarkdownField from './MarkdownField.svelte'
   import OptionPopover from './OptionPopover.svelte'
@@ -17,6 +18,8 @@
   import Modal from './ui/Modal.svelte'
   import { toast } from './ui/toast.svelte'
   import {
+    assigneeKey,
+    assigneePatch,
     createIssue,
     issueStatuses,
     listGoals,
@@ -51,8 +54,10 @@
   // undefined until picked, so the dialog follows its presets until then.
   let picked = $state<{ status?: IssueStatus; project?: number | null; goal?: number | null; parent?: number | null }>({})
   let priority = $state<Priority>('medium')
-  let assignee = $state<number | null>(null)
+  // assignee is a picker key, "member:<id>" or "agent:<id>".
+  let assignee = $state<string | null>(null)
   let members = $state.raw<Member[]>([])
+  let agents = $state.raw<Agent[]>([])
   let projects = $state.raw<{ id: number; name: string }[]>([])
   let goals = $state.raw<Goal[]>([])
   let issues = $state.raw<Issue[]>([])
@@ -69,11 +74,18 @@
     if (!open) return
     api<{ members: Member[] }>('GET', '/members').then((r) => (members = r.members)).catch(() => {})
     api<{ projects: { id: number; name: string }[] }>('GET', '/projects').then((r) => (projects = r.projects)).catch(() => {})
+    listAgents().then((as) => (agents = as)).catch(() => {})
     listGoals().then((gs) => (goals = gs)).catch(() => {})
     listIssues().then((is) => (issues = is)).catch(() => {})
   })
 
-  const assigneeName = $derived(assignee === me ? 'Me' : members.find((m) => m.id === assignee)?.name)
+  const memberKey = (id: number) => assigneeKey({ id, kind: 'member' })
+  const agentKey = (id: number) => assigneeKey({ id, kind: 'agent' })
+  const assigneeName = $derived(
+    me !== null && assignee === memberKey(me)
+      ? 'Me'
+      : (members.find((m) => memberKey(m.id) === assignee)?.name ?? agents.find((a) => agentKey(a.id) === assignee)?.name),
+  )
   const projectName = $derived(projects.find((p) => p.id === project)?.name)
   const goalTitle = $derived(goals.find((g) => g.id === goal)?.title)
   const parentIssue = $derived(issues.find((i) => i.id === parent))
@@ -97,7 +109,7 @@
         description: description.trim(),
         status,
         priority,
-        assignee_id: assignee,
+        ...assigneePatch(assignee),
         project_id: project,
         goal_id: goal,
         parent_id: parent,
@@ -146,8 +158,9 @@
         value={assignee}
         options={[
           { value: null, label: 'No assignee' },
-          ...(me !== null ? [{ value: me, label: 'Me' }] : []),
-          ...members.filter((m) => m.id !== me).map((m) => ({ value: m.id, label: m.name })),
+          ...(me !== null ? [{ value: memberKey(me), label: 'Me' }] : []),
+          ...members.filter((m) => m.id !== me).map((m) => ({ value: memberKey(m.id), label: m.name })),
+          ...agents.map((a) => ({ value: agentKey(a.id), label: a.name })),
         ]}
         onpick={(v) => (assignee = v)}
       >

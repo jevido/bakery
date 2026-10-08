@@ -65,6 +65,18 @@ export type IssueRef = { id: number; identifier: string; title: string }
 /** An Issue in another Issue's blocked_by or blocking, with its status so a resolved (done) one shows. */
 export type Blocker = IssueRef & { status: IssueStatus }
 
+/** An Issue's Assignee: a Member, or an Agent with its Agent icon. */
+export type IssueAssignee = { id: number; name: string; kind: 'member' | 'agent'; icon?: string }
+
+/** An Assignee as a picker's value: "member:<id>" or "agent:<id>", null for none. */
+export const assigneeKey = (a: Pick<IssueAssignee, 'id' | 'kind'> | null) => (a ? `${a.kind}:${a.id}` : null)
+
+/** The PATCH that makes a picked Assignee key the Issue's only Assignee. */
+export function assigneePatch(key: string | null): Pick<IssueInput, 'assignee_id' | 'assignee_agent_id'> {
+  const [kind, id] = key ? key.split(':') : []
+  return { assignee_id: kind === 'member' ? Number(id) : null, assignee_agent_id: kind === 'agent' ? Number(id) : null }
+}
+
 export type Issue = {
   id: number
   number: number
@@ -73,7 +85,7 @@ export type Issue = {
   description?: string
   status: IssueStatus
   priority: Priority
-  assignee: WorkMember | null
+  assignee: IssueAssignee | null
   project: { id: number; name: string } | null
   goal: { id: number; title: string } | null
   parent: IssueRef | null
@@ -103,6 +115,8 @@ export type IssueInput = Partial<{
   status: IssueStatus
   priority: Priority
   assignee_id: number | null
+  /** An Agent as the Assignee instead of a Member; not both. */
+  assignee_agent_id: number | null
   project_id: number | null
   goal_id: number | null
   parent_id: number | null
@@ -112,8 +126,8 @@ export type IssueInput = Partial<{
 
 /**
  * What GET /api/issues keeps: comma lists of statuses and priorities, an
- * assignee, project, goal or parent as an id, "none" (or "me" for the
- * assignee), q to search, and a page by limit and offset. inbox, touched and
+ * assignee, project, goal or parent as an id, "none" (or "me" and
+ * "agent:<id>" for the assignee), q to search, and a page by limit and offset. inbox, touched and
  * unread take only "me": the asking Member's Inbox (Touched, not archived),
  * Touched, and Unread.
  */

@@ -12,12 +12,13 @@
   import { ChevronRight, OctagonAlert, Plus } from '@lucide/svelte'
   import { untrack } from 'svelte'
   import { Button as UiButton } from '@bakery/ui/components/ui/button'
+  import { listAgents, type Agent } from '../../lib/agents'
   import { api } from '../../lib/api'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import CollectionToolbar from '../../lib/CollectionToolbar.svelte'
   import FilterPopover from '../../lib/FilterPopover.svelte'
   import { ago } from '../../lib/format'
-  import Identity from '../../lib/Identity.svelte'
+  import Assignee from '../../lib/Assignee.svelte'
   import NewIssueDialog from '../../lib/NewIssueDialog.svelte'
   import OptionPopover from '../../lib/OptionPopover.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
@@ -70,6 +71,7 @@
   let loadingMore = $state(false)
   let loadError = $state('')
   let members = $state.raw<Member[]>([])
+  let agents = $state.raw<Agent[]>([])
   let projects = $state.raw<{ id: number; name: string }[]>([])
   let creating = $state(false)
   let createStatus = $state<IssueStatus>('todo')
@@ -82,6 +84,7 @@
   const projectKeys = $derived(picked('project'))
 
   api<{ members: Member[] }>('GET', '/members').then((r) => (members = r.members)).catch(() => {})
+  listAgents().then((as) => (agents = as)).catch(() => {})
   api<{ projects: { id: number; name: string }[] }>('GET', '/projects').then((r) => (projects = r.projects)).catch(() => {})
 
   // The search asks 150 ms after the last key, as the other list pages do.
@@ -140,8 +143,9 @@
   const shown = $derived(
     (issues ?? []).filter((i) => {
       if (assignees.length) {
-        const key = i.assignee ? String(i.assignee.id) : 'none'
-        if (!assignees.includes(key) && !(assignees.includes('me') && i.assignee?.id === me)) return false
+        // A Member by their id, an Agent as agent:<id>, as GET /api/issues takes them.
+        const key = !i.assignee ? 'none' : i.assignee.kind === 'agent' ? `agent:${i.assignee.id}` : String(i.assignee.id)
+        if (!assignees.includes(key) && !(assignees.includes('me') && i.assignee?.kind === 'member' && i.assignee.id === me)) return false
       }
       if (projectKeys.length && !projectKeys.includes(i.project ? String(i.project.id) : 'none')) return false
       return true
@@ -170,6 +174,7 @@
         { value: 'assignee:me', label: 'Me' },
         { value: 'assignee:none', label: 'No assignee' },
         ...members.filter((m) => m.id !== me).map((m) => ({ value: `assignee:${m.id}`, label: m.name })),
+        ...agents.map((a) => ({ value: `assignee:agent:${a.id}`, label: a.name })),
       ],
     },
     { label: 'Project', options: [{ value: 'project:none', label: 'No project' }, ...projects.map((p) => ({ value: `project:${p.id}`, label: p.name }))] },
@@ -295,7 +300,7 @@
                 {/if}
                 <span class="flex w-36 justify-end">
                   {#if issue.assignee}
-                    <Identity name={issue.assignee.name} size="sm" />
+                    <Assignee assignee={issue.assignee} />
                   {/if}
                 </span>
                 <span class="w-20 shrink-0 text-right font-mono text-xs text-muted-foreground">{issue.identifier}</span>

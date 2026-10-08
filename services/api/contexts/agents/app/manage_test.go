@@ -116,6 +116,9 @@ func TestTerminateMovesReportsUp(t *testing.T) {
 	if _, err := s.Resume(ctx, 1, me, ada.ID); err == nil {
 		t.Error("a terminated agent was resumed")
 	}
+	if !slices.Equal(w.unassigned, []uint64{ada.ID}) {
+		t.Errorf("unassigned %v, want ada", w.unassigned)
+	}
 	if len(w.cancelled) != 0 {
 		t.Errorf("an approved hire was cancelled: %v", w.cancelled)
 	}

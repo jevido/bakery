@@ -93,6 +93,13 @@ type fakeWork struct {
 	actions   []string
 	cancelled []uint64
 	last      Activity
+	// unassigned are the Agents taken off Issues.
+	unassigned []uint64
+}
+
+func (f *fakeWork) UnassignAgent(_ context.Context, _, agentID, _ uint64) error {
+	f.unassigned = append(f.unassigned, agentID)
+	return nil
 }
 
 func (f *fakeWork) CancelApproval(_ context.Context, _, _, approvalID uint64) error {

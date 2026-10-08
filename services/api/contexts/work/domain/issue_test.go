@@ -155,3 +155,23 @@ func TestBlockWith(t *testing.T) {
 		t.Errorf("BlockWith(two-step cycle) = %v", err)
 	}
 }
+
+func TestIssueHasOneAssignee(t *testing.T) {
+	i := Issue{AssigneeID: 3}
+	i.AssignAgent(5)
+	if i.AssigneeID != 0 || i.AssigneeAgentID != 5 {
+		t.Fatalf("AssignAgent(5) = member %d, agent %d", i.AssigneeID, i.AssigneeAgentID)
+	}
+	i.Assign(0)
+	if i.AssigneeAgentID != 5 {
+		t.Errorf("Assign(0) took the issue from its agent")
+	}
+	i.Assign(3)
+	if i.AssigneeID != 3 || i.AssigneeAgentID != 0 {
+		t.Errorf("Assign(3) = member %d, agent %d", i.AssigneeID, i.AssigneeAgentID)
+	}
+	i.AssignAgent(0)
+	if i.AssigneeID != 3 {
+		t.Errorf("AssignAgent(0) took the issue from its member")
+	}
+}

@@ -221,7 +221,8 @@ type and the payload's title.
   created_at, updated_at}`, the references as `{id, name}` (`{id, title}`
   for a Goal, `{id, identifier, title}` for a parent) or null, and lists leave
   `description` out and add `unresolved_blockers`, an `assignee` is `{id,
-  name, kind}` with `kind` `member` or `agent`, how many of its
+  name, kind}` with `kind` `member` or `agent` (an Agent's with its
+  `icon` too), how many of its
   Blockers the person may see are not `done`; it is written with `title`, `description`, `status`,
   `priority`, `assignee_id` (a Member) or `assignee_agent_id` (an Agent,
   422 for one that is terminated or of another Guild; setting one clears
@@ -308,12 +309,14 @@ type and the payload's title.
   only the `agent.*` Actions) and `work.OnAgentNames(f)` (the agents
   context names the Guild's Agents that still exist, so the Activity can
   tell `exists`; until it registers, every Agent counts as existing),
-  `work.OnAgentAssignable(f)` (the agents context answers whether an Agent
-  of the Guild may be an Assignee: it exists and is not terminated; until
-  it registers, no Agent may), `work.IssueForRun(ctx, guild, issue)` (an
+  `work.OnAgentAssignees(f)` (the agents context names the Guild's Agents
+  among some ids, with their Agent icon and whether they are terminated,
+  terminated ones included so a done Issue still shows its Agent; an
+  Agent may be an Assignee when it is the Guild's and not terminated, and
+  until it registers, no Agent may), `work.IssueForRun(ctx, guild, issue)` (an
   Issue's number, identifier, title, description and Agent assignee, for
-  a Run's check and its prompt) and `work.ClearAgentAssignee(ctx, guild,
-  actor, agent)` (a terminated Agent stops being the Assignee of the open
+  a Run's check and its prompt) and `work.UnassignAgent(ctx, guild,
+  agent, actor)` (a terminated Agent stops being the Assignee of the open
   Issues, each recorded as `issue.updated` with the terminating person as
   Actor). Work never imports the contexts that call them.
 

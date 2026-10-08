@@ -66,6 +66,35 @@ type activityRefs struct {
 	// agents is nil when no one answers for Agents: every one counts as
 	// existing under the name its event kept.
 	agents map[uint64]string
+	// assignees are the Agents Issues were assigned to, terminated ones too.
+	assignees map[uint64]app.AssigneeAgent
+}
+
+// assigneeIn reads one side of an assignee change: {id, kind} since Agents
+// can be Assignees, a Member's bare id before; 0 for none.
+func assigneeIn(v any) (uint64, string) {
+	if m, ok := v.(map[string]any); ok {
+		kind, _ := m["kind"].(string)
+		return idIn(m["id"]), kind
+	}
+	return idIn(v), "member"
+}
+
+// assignee names one side of an assignee change, nil for none.
+func (r activityRefs) assignee(v any) any {
+	id, kind := assigneeIn(v)
+	if id == 0 {
+		return nil
+	}
+	out := map[string]any{"id": id, "name": nil, "kind": kind}
+	if kind == "agent" {
+		if a, ok := r.assignees[id]; ok {
+			out["name"], out["icon"] = a.Name, a.Icon
+		}
+	} else if m, ok := r.members[id]; ok {
+		out["name"] = m.Name
+	}
+	return out
 }
 
 func (r activityRefs) member(id uint64) map[string]any {
@@ -123,12 +152,14 @@ func blockerIDs(v any, f func(id uint64)) {
 	}
 }
 
-// refKind is what a changed field refers to: a member, project, goal or
-// issue; "" for a plain value. A Goal's parent is a Goal, an Issue's an
+// refKind is what a changed field refers to: a member, an assignee (a
+// member or an agent), project, goal or issue; "" for a plain value. A Goal's parent is a Goal, an Issue's an
 // Issue.
 func refKind(entityType, field string) string {
 	switch field {
-	case "assignee", "owner":
+	case "assignee":
+		return "assignee"
+	case "owner":
 		return "member"
 	case "project":
 		return "project"
@@ -152,7 +183,7 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 	if refs.prefix, err = c.service.IssuePrefix(cx, guildID); err != nil {
 		return refs, err
 	}
-	var memberIDs, projectIDs, issueIDs, agentIDs []uint64
+	var memberIDs, projectIDs, issueIDs, agentIDs, assigneeIDs []uint64
 	withApprovals := false
 	add := func(list *[]uint64) func(uint64) {
 		return func(id uint64) {
@@ -174,6 +205,15 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 			switch refKind(e.EntityType, field) {
 			case "member":
 				fromTo(v, add(&memberIDs))
+			case "assignee":
+				c, _ := v.(map[string]any)
+				for _, k := range []string{"from", "to"} {
+					if id, kind := assigneeIn(c[k]); kind == "agent" {
+						add(&assigneeIDs)(id)
+					} else {
+						add(&memberIDs)(id)
+					}
+				}
 			case "project":
 				fromTo(v, add(&projectIDs))
 			case "issue":
@@ -222,6 +262,9 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 		if refs.agents, err = c.AgentNames(cx, guildID, agentIDs); err != nil {
 			return refs, err
 		}
+	}
+	if refs.assignees, err = c.service.AssigneeAgents(cx, guildID, assigneeIDs); err != nil {
+		return refs, err
 	}
 	is, err := c.service.VisibleIssues(cx, issueIDs, c.visible(ctx))
 	if err != nil {
@@ -292,6 +335,9 @@ func (c *Controller) activityJSON(ctx contractshttp.Context, es []domain.Activit
 func (r activityRefs) name(entityType, field string, v any) any {
 	var by func(uint64) map[string]any
 	switch refKind(entityType, field) {
+	case "assignee":
+		c, _ := v.(map[string]any)
+		return map[string]any{"from": r.assignee(c["from"]), "to": r.assignee(c["to"])}
 	case "member":
 		by = r.member
 	case "project":

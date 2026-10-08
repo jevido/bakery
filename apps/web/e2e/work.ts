@@ -17,7 +17,8 @@
 //   issue   a scratch Issue opens by its identifier; its title is renamed in
 //           place and a reload keeps it; status In Progress shows the
 //           Started time, priority and the Assignee and Goal change from the
-//           properties panel; Add sub-issue creates one under it, listed and
+//           properties panel; a scratch Agent picked as the Assignee shows its
+//           name and icon, and terminating it unassigns the Issue; Add sub-issue creates one under it, listed and
 //           opening its own page with the parent link; a Markdown comment
 //           with a code block is posted, edited and deleted (the placeholder
 //           stays); the Goal's page and the Issues list open it from
@@ -148,7 +149,7 @@ async function clean(page: Page) {
   for (const g of left) await page.request.delete(`${WEB}/api/goals/${g.id}`)
 }
 
-type Issue = { id: number; identifier: string; title: string; status: string; priority: string; assignee: { id: number; name: string } | null; project: { id: number } | null }
+type Issue = { id: number; identifier: string; title: string; status: string; priority: string; assignee: { id: number; name: string; kind: 'member' | 'agent' } | null; project: { id: number } | null }
 async function issues(page: Page): Promise<Issue[]> {
   return ((await (await page.request.get(`${WEB}/api/issues`)).json()) as { issues: Issue[] }).issues
 }
@@ -412,6 +413,21 @@ const sections: Record<string, () => Promise<void>> = {
     await properties.getByRole('button', { name: 'Goal' }).getByText('Issue page goal').waitFor()
     const saved = ((await (await page.request.get(`${WEB}/api/issues/${issue.identifier}`)).json()) as { issue: Issue & { goal: { title: string } | null; started_at: string | null } }).issue
     expect('status, priority, Assignee and Goal are saved', saved.status === 'in_progress' && saved.priority === 'high' && saved.assignee?.name === me && saved.goal?.title === 'Issue page goal' && !!saved.started_at, saved)
+
+    // An Agent of the Guild as the Assignee, picked under the Members.
+    const hire = (await (await page.request.post(`${WEB}/api/agents`, { data: { name: 'Issue page agent', job: 'engineer', icon: 'rocket' } })).json()) as { agent: { id: number; approval_id: number } }
+    await page.request.post(`${WEB}/api/approvals/${hire.agent.approval_id}/approve`, { data: {} })
+    await page.reload()
+    await header.getByText(issue.identifier, { exact: true }).waitFor()
+    await pick(page, properties, 'Assignee', 'Issue page agent')
+    const agentCell = properties.locator(`[data-assignee-agent="${hire.agent.id}"]`)
+    await agentCell.waitFor()
+    expect("an Agent Assignee shows its name and icon", (await agentCell.innerText()).trim() === 'Issue page agent' && (await agentCell.locator('svg.lucide-rocket').count()) === 1)
+    const toAgent = ((await (await page.request.get(`${WEB}/api/issues/${issue.identifier}`)).json()) as { issue: Issue }).issue
+    expect('the API answers the Agent as the Assignee', toAgent.assignee?.kind === 'agent' && toAgent.assignee.id === hire.agent.id, toAgent.assignee)
+    await page.request.post(`${WEB}/api/agents/${hire.agent.id}/terminate`)
+    const unassigned = ((await (await page.request.get(`${WEB}/api/issues/${issue.identifier}`)).json()) as { issue: Issue }).issue
+    expect('terminating the Agent takes it off the Issue', unassigned.assignee === null, unassigned.assignee)
 
     await page.getByRole('region', { name: 'Sub-issues' }).getByRole('button', { name: 'Add sub-issue' }).click()
     const dialog = page.getByRole('dialog', { name: 'New sub-issue' })

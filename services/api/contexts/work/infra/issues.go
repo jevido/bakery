@@ -24,6 +24,7 @@ type issueRecord struct {
 	Status            string
 	Priority          string
 	AssigneeMemberID  *uint64
+	AssigneeAgentID   *uint64
 	ProjectID         *uint64
 	GoalID            *uint64
 	ParentID          *uint64
@@ -48,7 +49,7 @@ func (r issueRecord) toDomain() domain.Issue {
 	i := domain.Issue{
 		ID: r.ID, GuildID: r.GuildID, Number: r.Number, Title: r.Title, Description: r.Description,
 		Status: domain.IssueStatus(r.Status), Priority: domain.Priority(r.Priority),
-		AssigneeID: deref(r.AssigneeMemberID), ProjectID: deref(r.ProjectID), GoalID: deref(r.GoalID),
+		AssigneeID: deref(r.AssigneeMemberID), AssigneeAgentID: deref(r.AssigneeAgentID), ProjectID: deref(r.ProjectID), GoalID: deref(r.GoalID),
 		ParentID: deref(r.ParentID), CreatedByID: deref(r.CreatedByMemberID),
 		StartedAt: utc(r.StartedAt), CompletedAt: utc(r.CompletedAt), CancelledAt: utc(r.CancelledAt),
 	}
@@ -77,7 +78,7 @@ func (Issues) query(ctx context.Context) contractsorm.Query {
 func (Issues) CreateIssue(ctx context.Context, i domain.Issue) (domain.Issue, error) {
 	rec := issueRecord{
 		GuildID: i.GuildID, Title: i.Title, Description: i.Description, Status: string(i.Status), Priority: string(i.Priority),
-		AssigneeMemberID: nullable(i.AssigneeID), ProjectID: nullable(i.ProjectID), GoalID: nullable(i.GoalID),
+		AssigneeMemberID: nullable(i.AssigneeID), AssigneeAgentID: nullable(i.AssigneeAgentID), ProjectID: nullable(i.ProjectID), GoalID: nullable(i.GoalID),
 		ParentID: nullable(i.ParentID), CreatedByMemberID: nullable(i.CreatedByID),
 		StartedAt: i.StartedAt, CompletedAt: i.CompletedAt, CancelledAt: i.CancelledAt,
 	}
@@ -125,16 +126,25 @@ func (s Issues) IssuesByID(ctx context.Context, ids []uint64) ([]domain.Issue, e
 	return issuesOf(recs), nil
 }
 
+func (s Issues) OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]domain.Issue, error) {
+	var recs []issueRecord
+	if err := s.query(ctx).Where("guild_id", guildID).Where("assignee_agent_id", agentID).
+		Where("status NOT IN ?", []string{string(domain.Done), string(domain.IssueCancelled)}).Find(&recs); err != nil {
+		return nil, err
+	}
+	return issuesOf(recs), nil
+}
+
 func (s Issues) SaveIssue(ctx context.Context, i domain.Issue) error {
 	return s.save(s.query(ctx), i)
 }
 
 func (Issues) save(q contractsorm.Query, i domain.Issue) error {
 	_, err := q.Exec(`UPDATE issues SET title = ?, description = ?, status = ?, priority = ?,
-		assignee_member_id = ?, project_id = ?, goal_id = ?, parent_id = ?,
+		assignee_member_id = ?, assignee_agent_id = ?, project_id = ?, goal_id = ?, parent_id = ?,
 		started_at = ?, completed_at = ?, cancelled_at = ?, updated_at = now() WHERE id = ?`,
 		i.Title, i.Description, string(i.Status), string(i.Priority),
-		nullable(i.AssigneeID), nullable(i.ProjectID), nullable(i.GoalID), nullable(i.ParentID),
+		nullable(i.AssigneeID), nullable(i.AssigneeAgentID), nullable(i.ProjectID), nullable(i.GoalID), nullable(i.ParentID),
 		i.StartedAt, i.CompletedAt, i.CancelledAt, i.ID)
 	return err
 }
@@ -234,7 +244,12 @@ func where(q contractsorm.Query, guildID uint64, f app.IssueQuery) contractsorm.
 	if len(f.Priorities) > 0 {
 		q = q.Where("priority IN ?", f.Priorities)
 	}
-	q = none(q, "assignee_member_id", f.AssigneeID)
+	if f.AssigneeID != nil && *f.AssigneeID == 0 {
+		q = q.Where("assignee_member_id IS NULL AND assignee_agent_id IS NULL")
+	} else {
+		q = none(q, "assignee_member_id", f.AssigneeID)
+	}
+	q = none(q, "assignee_agent_id", f.AssigneeAgentID)
 	q = none(q, "project_id", f.ProjectID)
 	q = none(q, "goal_id", f.GoalID)
 	q = none(q, "parent_id", f.ParentID)
