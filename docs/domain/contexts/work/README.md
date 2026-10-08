@@ -10,8 +10,8 @@ Holds the work a Guild's Board plans and tracks together: the Guild's Goals
 with a status, a Priority and an Assignee, tied to a Project and a Goal),
 the Comments people write on an Issue, which Issues block which (Blockers),
 the Issue documents (plans, specs, notes) kept on an Issue with their
-Revisions, and the Activity: who did what to the Guild's Goals and Issues,
-and when. It also holds each Member's Inbox: their Read marks and Inbox
+Revisions, and the Activity: who did what to the Guild's Goals, Issues,
+Approvals and (recorded for the agents context) Agents, and when. It also holds each Member's Inbox: their Read marks and Inbox
 archives on the Guild's Issues, and the Approvals: decisions a Member asks
 the Board to make, with their Linked issues and Approval comments. Every
 Goal, Issue and Approval belongs to exactly one Guild, and an Issue in a
@@ -52,8 +52,8 @@ Approval comment, Linked issue) are in
 | Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild, its Project is in the Guild and its Goal is in the Guild. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. |
 | Comment | Belongs to one Issue and is written by one Member. Body 1–20000 characters. Only its author edits or deletes it. A deleted Comment keeps its place in the thread, its body gone, shown as "deleted". |
 | Issue document | Belongs to one Issue and its Guild. Its Document key is unique per Issue and never changes. Title at most 200 characters (may be empty), body at most 524288 characters, Markdown only. Its Revisions are numbered 1, 2, … without gaps; each save and each Restore adds exactly one Revision, and Revisions are never changed. A save needs the newest Revision as its Base revision (none for the first save), or it is refused. Restoring the newest Revision is refused, since it would change nothing. Deleting the Issue document removes its Revisions. |
-| Activity event | Append-only. Belongs to one Guild and has one Actor (or none once that Member's account is gone) and one Action from the glossary's list, about exactly one Goal, Issue or Approval. It keeps the Issue's number and title, the Goal's title, or the Approval's type and payload title, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
-| Approval | Belongs to one Guild. Approval type and Approval status from their lists; it starts `pending`. A `request_board_approval` payload has a `title` of 1–200 characters and optional `summary`, `recommended_action` and `next_action_on_approval` (each at most 20000 characters) and `risks` (at most 20 strings of at most 500 characters), and nothing else. Approve and reject only from `pending` or `revision_requested` (Actionable); Request revision only from `pending`; Resubmit only from `revision_requested`, which clears the decider, the decision time and the Decision note. A Decision records its decider, time and optional Decision note (at most 20000 characters). Making the same Decision again on an Approval that already has it answers the Approval unchanged and records nothing, as Paperclip's `applied: false`; any other move from a status that does not allow it is refused (422). Its Linked issues are Issues of the same Guild, set when it is requested. Its Approval comments each have one author and a body of 1–20000 characters, and are never edited or deleted. The Approval, its links and its Approval comments go with their Guild; a Linked issue's link goes with the Issue. |
+| Activity event | Append-only. Belongs to one Guild and has one Actor (or none once that Member's account is gone) and one Action from the glossary's list, about exactly one Goal, Issue, Approval or Agent. It keeps the Issue's number and title, the Goal's title, the Approval's type and payload title, or the Agent's name, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
+| Approval | Belongs to one Guild. Approval type and Approval status from their lists; it starts `pending`. A `request_board_approval` payload has a `title` of 1–200 characters and optional `summary`, `recommended_action` and `next_action_on_approval` (each at most 20000 characters) and `risks` (at most 20 strings of at most 500 characters), and nothing else. A `hire_agent` payload is `agent_id`, `name`, `job`, `title`, `icon`, `reports_to` (`{id, name}` or null), `capabilities` and `roles` (Role names), as the agents context sends it; its title is "Hire Agent: <name>". A `hire_agent` Approval is created only through `work.RequestApproval`, never gets Request revision (its Agent cannot change while it waits, so there is nothing to revise), and becomes `cancelled` when its Agent is terminated before a Decision; `cancelled` is not Actionable and never changes again. Approve and reject only from `pending` or `revision_requested` (Actionable); Request revision only from `pending`; Resubmit only from `revision_requested`, which clears the decider, the decision time and the Decision note. A Decision records its decider, time and optional Decision note (at most 20000 characters). Making the same Decision again on an Approval that already has it answers the Approval unchanged and records nothing, as Paperclip's `applied: false`; any other move from a status that does not allow it is refused (422). Its Linked issues are Issues of the same Guild, set when it is requested. Its Approval comments each have one author and a body of 1–20000 characters, and are never edited or deleted. The Approval, its links and its Approval comments go with their Guild; a Linked issue's link goes with the Issue. |
 | Read mark and Inbox archive | Per Member per Issue, at most one of each. Belongs to an Issue and its Guild, and goes with the Issue and with the Member's Membership. Only that Member sets or removes it. Neither is part of the Issue aggregate: they change nothing about the Issue, belong to one person, and many people write them at once, so each is its own small record keyed by (Issue, Member). |
 
 ### Commands
@@ -97,7 +97,8 @@ in that Project after its Permission overrides, and is otherwise hidden
   Activity events.
 - `RequestApproval(type, payload, issue ids)` [`manage_work`]: the asking
   Member is the Requester; every Issue id must be the Guild's (422
-  otherwise).
+  otherwise). Only `request_board_approval` through the API; `hire_agent`
+  comes only from the agents context (below).
 - `Approve(note)`, `Reject(note)` [`approve`]: a Decision on an Actionable
   Approval.
 - `RequestRevision(note)` [`approve`]: on a `pending` Approval.
@@ -105,6 +106,11 @@ in that Project after its Permission overrides, and is otherwise hidden
   is refused (403)]: on a `revision_requested` Approval, replacing the
   payload when one is given.
 - `CommentOnApproval(body)` [`manage_work`].
+- For other contexts, without a route of their own: `work.RequestApproval`
+  (a `hire_agent` Approval, its Requester the Hirer, checked by the
+  calling context), `work.CancelApproval` (an Actionable `hire_agent`
+  Approval whose Agent was terminated) and `work.RecordActivity` (one
+  Activity event about an Agent, with its Actor, Action and details).
 
 Reading Approvals, their Linked issues and Approval comments needs
 `view_resources`. An Approval has no Project, so everyone who may read the
@@ -143,6 +149,13 @@ Comment publishes nothing (Paperclip records none).
 | `RevisionRequested` | `RequestRevision` | `approval.revision_requested` | Approval type, the payload's title, Decision note |
 | `ApprovalResubmitted` | `Resubmit` | `approval.resubmitted` | Approval type, the payload's title |
 | `ApprovalCommentWritten` | `CommentOnApproval` | `approval.comment_added` | the Approval comment and its first 140 characters |
+| `ApprovalCancelled` | `CancelApproval` | `approval.cancelled` | Approval type, the payload's title |
+
+The agents context's own events (`AgentHired`, `AgentUpdated`,
+`AgentPaused`, `AgentResumed`, `AgentTerminated`, `AgentRoleAdded`,
+`AgentRoleRemoved`) reach the Activity through `work.RecordActivity` as
+`agent.hired`, `agent.updated`, `agent.paused`, `agent.resumed`,
+`agent.terminated`, `agent.role_added` and `agent.role_removed`.
 
 Every Issue event also carries the Issue's number, title and Project; every
 Goal event the Goal's title, and every Approval event the Approval's
@@ -175,13 +188,13 @@ type and the payload's title.
   | `DELETE /api/issues/{issue}/documents/{key}` | 204 |
   | `GET /api/issues/{issue}/documents/{key}/revisions` | `{"revisions": [Revision]}`, newest first |
   | `POST /api/issues/{issue}/documents/{key}/revisions/{revision}/restore` | `{"document": Issue document}`; 409 for the newest Revision |
-  | `GET /api/activity` | `{"activity": [Activity event]}`, newest first; filters `entity` (`issue`, `goal` or `approval`), `actor` (a Member id), `before` (an Activity event id, for the next page) and `limit` (default 50, 1 to 200); anything else in them is 422. A page is never short while older events the person may see are left |
+  | `GET /api/activity` | `{"activity": [Activity event]}`, newest first; filters `entity` (`issue`, `goal`, `approval` or `agent`), `actor` (a Member id), `before` (an Activity event id, for the next page) and `limit` (default 50, 1 to 200); anything else in them is 422. A page is never short while older events the person may see are left |
   | `GET /api/issues/{issue}/activity` | `{"activity": [Activity event]}`, oldest first, as Paperclip's issue activity |
   | `POST /api/issues/{issue}/read`, `DELETE /api/issues/{issue}/read` | Sets or removes the asking Member's Read mark, with `view_resources` only |
   | `POST /api/issues/{issue}/inbox-archive`, `DELETE /api/issues/{issue}/inbox-archive` | Sets or removes the asking Member's Inbox archive, with `view_resources` only |
   | `GET /api/sidebar-badges` | `{"inbox": n, "approvals": n}`: `approvals` is how many of the Guild's Approvals are Actionable, and `inbox` adds them to how many Issues in the asking Member's Mine tab are Unread, for every Member as in Paperclip, since the Unread tab shows those Approvals to everyone |
   | `GET /api/approvals` | `{"approvals": [Approval]}`, newest first and unpaged, as Paperclip's; filter `status`, a comma list of Approval statuses and `actionable` (both `pending` and `revision_requested`); anything else is 422 |
-  | `POST /api/approvals` | 201 `{"approval": Approval}`; body `{type, payload, issue_ids}`; 422 for an unknown type, a payload that breaks the rules or an Issue id that is not the Guild's |
+  | `POST /api/approvals` | 201 `{"approval": Approval}`; body `{type, payload, issue_ids}`; 422 for an unknown type or `hire_agent`, a payload that breaks the rules or an Issue id that is not the Guild's |
   | `GET /api/approvals/{id}` | `{"approval": Approval}` |
   | `GET /api/approvals/{id}/issues` | `{"issues": [Issue]}`, the Linked issues the person may see, as in Issue lists |
   | `POST /api/approvals/{id}/approve`, `.../reject`, `.../request-revision` | `{"approval": Approval}`; body `{decision_note}`, optional; the same Decision again answers the Approval unchanged; 422 when the Approval's status does not allow it |
@@ -222,7 +235,7 @@ type and the payload's title.
   `baseRevisionId`. A Revision is `{id, number, title, body,
   change_summary, created_by, created_at}`; a Restore's change summary is
   "Restored from revision N". An Activity event is `{id, action, actor:
-  {id, name} | null, entity: {type: "issue" | "goal" | "approval", id, identifier?,
+  {id, name} | null, entity: {type: "issue" | "goal" | "approval" | "agent", id, identifier?,
   title, exists}, details, created_at}`, `exists` false once the Goal or
   Issue is deleted. An Approval is `{id, type, status, payload, requester:
   {id, name} | null, decided_by: {id, name} | null, decision_note,
@@ -230,7 +243,9 @@ type and the payload's title.
   `summary`, `recommended_action`, `next_action_on_approval`, `risks`). An
   Approval comment is `{id, body, author: {id, name} | null, created_at}`.
   An Activity event about an Approval has `entity: {type: "approval", id,
-  title, exists}`, the payload's title. Its `details` by Action:
+  title, exists}`, the payload's title; one about an Agent has `entity:
+  {type: "agent", id, title, exists}`, the Agent's name. Its `details` by
+  Action:
 
   | Action | `details` |
   | ------ | --------- |
@@ -248,6 +263,11 @@ type and the payload's title.
   | `approval.approved`, `approval.rejected`, `approval.revision_requested` | `type`, `title`, `decision_note` |
   | `approval.resubmitted` | `type`, `title` |
   | `approval.comment_added` | `type`, `title`, `comment_id`, `snippet` |
+  | `approval.cancelled` | `type`, `title` |
+  | `agent.hired` | `name`, `job`, `approval_id` |
+  | `agent.updated` | `name`, `changes`: field → `{from, to}` for `name`, `job`, `title`, `icon` and `reports_to` (`{id, name}`), and `capabilities: true` when they changed |
+  | `agent.paused`, `agent.resumed`, `agent.terminated` | `name` |
+  | `agent.role_added`, `agent.role_removed` | `name`, `role` (`{id, name}`) |
 
   References are stored as ids and answered with their names as they are
   when read, null for none. One that no longer exists, or an Issue or
@@ -270,6 +290,13 @@ type and the payload's title.
     `projects.OnProjectDeleted`: the Project's Issues keep existing and lose
     their Project. `issues.project_id` has no foreign key, since the
     Project is projects' row.
+- **Publishes to other contexts** (Go functions, no routes):
+  `work.RequestApproval(ctx, guild, requester, type, payload)` (only
+  `hire_agent`), `work.CancelApproval(ctx, id)`, `work.OnApprovalDecided(type,
+  f)` (called after an approve or reject of that type is stored, with the
+  Approval's id, payload and the Decision; the agents context registers for
+  `hire_agent`) and `work.RecordActivity(ctx, event)` (one Activity event
+  about an Agent). Work never imports the contexts that call them.
 
 ## Why it's shaped this way
 
@@ -336,12 +363,14 @@ type and the payload's title.
   with an optional change summary, so History is not filled with half-typed
   states; on a conflict the draft stays and the person compares or reloads,
   never overwrites blindly.
-- **Activity lives in work, for now.** Paperclip keeps one company-wide
-  `activity_log` for every entity. Here only work's Goals and Issues have
-  Activity yet, so it is work's own table. When agents (their own context)
-  arrive, work subscribes to their published events and records them as it
-  does its own; a context of its own waits until something outside the
-  Guild's work needs the feed.
+- **Activity lives in work, and agents write to it through
+  `work.RecordActivity`.** Paperclip keeps one company-wide `activity_log`
+  for every entity. Here it is work's own table, and the agents context
+  records its events by calling work's published `RecordActivity`, not by
+  work subscribing to agents: agents already imports work for its
+  Approvals, and work importing agents back would be an import cycle in Go.
+  A context of its own for the feed waits until something outside the
+  Guild's work and Agents needs it.
 - **Recorded after the change, not in its transaction.** One transaction
   changes one aggregate. The Activity event is written by the event's
   handler right after the change is stored, and a failure to record it is
@@ -380,8 +409,9 @@ type and the payload's title.
   are on Mine, Recent and Unread already.
 - **Approvals live in work, not a context of their own.** They are the
   Board's decisions on its work and link to its Issues. The agents context
-  (Order step 5) will ask work for a `hire_agent` Approval through work's
-  published contract rather than own a second kind of decision.
+  asks work for a `hire_agent` Approval through `work.RequestApproval` and
+  learns the Decision through `work.OnApprovalDecided`, rather than own a
+  second kind of decision.
 - **A Member can request an Approval from an Issue's page.** Paperclip's UI
   has no form for it; only agents create Approvals there. Without agents
   the feature would be unreachable, so the Issue page has a "Request
@@ -408,7 +438,13 @@ type and the payload's title.
 - **Approvals have no Project.** Everyone with `view_resources` sees every
   Approval and its comments; only Linked issues in Projects someone may not
   view are left out for them.
-- **No `cancelled`, no hire or budget Approvals, no waking the Requester.**
-  Paperclip cancels an Approval when its requesting agent goes away, and
-  wakes that agent after a Decision. Both, with `hire_agent` and the budget
-  types, come with agents.
+- **`cancelled` only for a hire; no budget Approvals; no waking the
+  Requester.** Paperclip cancels a `hire_agent` Approval when its Agent is
+  terminated first, and so does The Bakery. It also cancels Approvals when
+  their requesting agent goes away and wakes that agent after a Decision;
+  here only people request Approvals, so neither applies yet. The budget
+  types come with budgets.
+- **No Request revision for a hire.** A `pending_approval` Agent cannot be
+  edited, so its Approval's payload is always what the Board sees, and
+  there is nothing a revision could change. The Board approves or rejects;
+  a Hirer who wants a different Agent terminates this one and hires again.

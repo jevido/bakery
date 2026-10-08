@@ -17,6 +17,7 @@ depend on each other.
 | identity | generic | `services/api` (`contexts/identity`) | Members, the Instance admin, Setup, Sessions, API tokens, Profiles and Two-factor authentication |
 | notifications | generic | `services/api` (`contexts/notifications`) | Notification channels and their Deliveries |
 | work | supporting | `services/api` (`contexts/work`) | Goals, Issues, Comments, Blockers and Issue documents a Guild's Board plans and tracks work with, the Activity recording who changed them, and each Member's Inbox (Read marks and Inbox archives), and the Approvals the Board decides, with their Linked issues and Approval comments |
+| agents | supporting | `services/api` (`contexts/agents`) | Agents, their Hirers, Jobs, Managers and Agent statuses, and the Org chart |
 
 - **Core:** where the project competes. Gets the most care and the richest model.
 - **Supporting:** needed and specific to this project, but not the differentiator.
@@ -51,6 +52,9 @@ adapt to.
 | projects | work | customer/supplier | `projects.ProjectNames(ctx, guildID, ids)` for the names of Issues' Projects, and before an Issue takes a Project (one that is not named is not the Guild's); `projects.OnProjectDeleted`, after which its Issues keep existing without a Project |
 | identity | work | customer/supplier | `identity.Members(ctx, ids)` for the names of Goal owners, Assignees, Issue creators and Comment authors |
 | guilds | notifications | customer/supplier | `guilds.OnInvitationCreated { guild, email, role, invited by, link, expires }`, called synchronously; notifications answers whether it emailed the link |
+| guilds | agents | customer/supplier | `guilds.Auth`, `guilds.Can(permission)` (reading needs `view_resources`, the rest `hire_agents`), `guilds.Current(ctx)`, `guilds.MemberID(ctx)` (the Hirer), the Agent membership calls (create one with its Roles and Hirer, add or remove a Role, end it), `guilds.CanAssign` and the hierarchy (a Role only below the Hirer's highest, who ranks above a Hirer), `guilds.IsGuildMaster`; agents registers `guilds.OnGuildDeleting` (a Guild with Agents that are not terminated is not deleted) and the hook for a Member leaving or being removed (their Agents are terminated), and guilds calls agents back nothing else. When a Hirer's highest Role drops, guilds removes the Agent's Roles at or above it in the same change |
+| work | agents | customer/supplier | `work.RequestApproval` (the `hire_agent` Approval, with the Hirer as Requester), `work.CancelApproval` (its Agent was terminated before a Decision), `work.OnApprovalDecided` (agents registers for `hire_agent` and moves the Agent to `idle` or `terminated`) and `work.RecordActivity` (every Agent event in the Guild's Activity). Work never imports agents |
+| identity | agents | customer/supplier | `identity.Members(ctx, ids)` for Hirers' names |
 
 ## External systems
 

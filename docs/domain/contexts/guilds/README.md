@@ -25,6 +25,7 @@ rows and stores the Guild's id on them.
 | ---- | ------- |
 | Guild | A group of Members that owns Projects, Servers (all but the Local server), S3 storages, Notification channels, Known hosts, API tokens, Goals and Issues. Name, optional description and Issue prefix. Coolify's Team, Paperclip's Company. |
 | Membership | A Member's place in a Guild, holding any number of Roles and always the Base role. At most one per Member and Guild. |
+| Agent membership | An Agent's place in its Guild: a Membership whose member is an Agent, with its Hirer. It holds Roles like any Membership but never makes the Agent a Member. |
 | Role | A named set of Permissions in one Guild, with a color and a Position. Seeded in every Guild: `Admin` (Administrator), `Member` (View resources, See secrets, Deploy, Manage applications, Manage work), `Viewer` (View resources). Discord's role. |
 | Base role | The Role every Member holds, shown as `@everyone`, at Position 0. Cannot be assigned, removed, renamed or deleted; only its Permissions change. Seeded with none. Discord's `@everyone`. |
 | Position | A Role's place in its Guild's order, higher above lower. A Member's highest Role is the highest-placed Role they hold. |
@@ -43,10 +44,11 @@ rows and stores the Guild's id on them.
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Guild | Name is 1–255 characters after trimming; the description is optional, at most 255 characters. Deleted only when it owns nothing: no Projects, Servers, S3 storages, Notification channels, Goals or Issues (each owning context answers through `OnGuildDeleting`); its Memberships, Invitations, API tokens and Known hosts go with it. |
+| Guild | Name is 1–255 characters after trimming; the description is optional, at most 255 characters. Deleted only when it owns nothing: no Projects, Servers, S3 storages, Notification channels, Goals, Issues or Agents that are not terminated (each owning context answers through `OnGuildDeleting`); its Memberships (Agent memberships too), Invitations, API tokens and Known hosts go with it. |
 | Guild (Guild Master) | Exactly one Guild Master at all times, a Member with a Membership in the Guild. The Guild Master is never removed from the Guild, never re-roled by anyone, cannot leave it, and cannot have their account deleted while they hold it; they transfer it first or delete the Guild. At most one open Transfer offer, to another Member of the Guild who is a person (never an agent); it changes nothing until accepted, can be withdrawn by the Guild Master and declined by its Member, and expires 7 days after it was made. Accepting swaps the Guild Master in one step; both keep their other Roles. |
 | Role | Belongs to one Guild. Name is 1–100 characters after trimming; color is `#rrggbb`; Permissions are from the fixed list. Positions are unique per Guild. The Base role is at Position 0, always exists, and cannot be renamed, deleted, assigned or removed; every other Role sits above it. A Role held by Members can be deleted; they simply stop holding it. |
 | Membership | One per Member and Guild. Holds a set of Roles of its own Guild (never the Base role explicitly; it holds that implicitly). The Instance admin's Memberships are never removed. |
+| Agent membership | One per Agent, in the Agent's Guild. Has an Agent and a Hirer (a Member with a Membership in the same Guild), never a person as its member. Each of its Roles ranks below the Hirer's highest Role; when the Hirer's highest Role drops (re-roled, or a Role moved or deleted), the Roles at or above the new one are removed in the same change. It is never the Guild Master, never offered a Transfer, never invited and never listed with the Members, and `IsMember` is false for it. It is ended when its Agent is terminated. |
 | Permission overrides | Keyed by one Project of the Guild. Each entry is a Role or a Member, a Permission from `view_resources`, `see_secrets`, `deploy` and `manage_applications`, and allow or deny (inherit is no entry). For a Member on that Project: start from their Guild Permissions; then the Base role's entry; then, over all the other Roles they hold, a deny removes the Permission and otherwise an allow adds it; then the Member's own entry, if any, decides. Deleting the Project, the Role or the Member's Membership deletes its entries. `administrator`, the Instance admin and the Guild Master skip overrides. |
 | Invitation | Belongs to one Guild. Email is valid and not already a Member of this Guild; its Roles are Roles of that Guild below the inviter's highest Role (none means the Base role only); at most one open Invitation per Guild and email; expires 7 days after it was made; accepted at most once; a revoked, declined or expired one cannot be accepted. Only the hash of its token is stored. |
 
@@ -62,8 +64,10 @@ rows and stores the Guild's id on them.
 - Nobody changes their own Roles or removes their own Membership; a Member
   leaves a Guild instead (but the Guild Master cannot).
 - A Member can give a Role only Permissions they have themselves.
-- An agent holds Roles like any Member and is never placed above the person
-  who hired it.
+- An Agent holds Roles through its Agent membership like any Member, and is
+  never placed above its Hirer: it is only given Roles below the Hirer's
+  highest Role, by someone who could assign them (`CanAssign`), and loses
+  any that end up at or above it.
 
 ### Commands
 
@@ -209,7 +213,13 @@ other changes with `write`, `administrator` only with `root`.
     Assignee or a Goal's owner.
   - `guilds.OnGuildDeleting(kind, f)` and `guilds.OnInvitationCreated(f)`:
     see Domain events. Projects, servers, databases (S3 storages),
-    notifications and work register `OnGuildDeleting`.
+    notifications, work and agents register `OnGuildDeleting`.
+  - Agent memberships, for the agents context: create one for an Agent with
+    its Hirer and Roles, give or take one of its Roles, end it, and read
+    its Roles and Permissions (the union of its Roles, as for any
+    Membership); each refuses a Role at or above the Hirer's highest (422).
+    agents registers a hook for a Member leaving or being removed from a
+    Guild, which terminates the Agents they hired there.
 - **Serves:** `GET /api/me` (the Member, their `permissions` in the Current
   guild as wire keys, `administrator` meaning every one, the former `role`
   derived from them for scripts, `instance_admin`, `guild_master` (whether
@@ -469,13 +479,18 @@ other changes with `write`, `administrator` only with `root`.
   admin ranks just below the Guild Master in every Guild, so nothing the
   Owner could do before Guilds stops working, but a Guild Master is never at
   their mercy.
-- **Agents get their Roles when agents arrive.** The goal gives an agent
-  Roles like a Discord bot, but agents come with the goal's Order 5. A
-  Membership is the only thing that holds Roles, and nothing in it assumes
-  a person, so an agent will hold Roles through a Membership of its own and
-  every check (`Can`, `InProject`, the hierarchy) applies unchanged. "Never
-  placed above the person who hired it" needs a hirer, so that rule is
-  enforced in the agents phase, not here.
+- **An Agent holds Roles through an Agent membership.** The goal gives an
+  Agent Roles like a Discord bot. A Membership is the only thing that holds
+  Roles, so an Agent gets a Membership of its own, marked as an Agent's and
+  carrying its Hirer, and every check (`Can`, `InProject`, the hierarchy)
+  applies to it unchanged. It is kept out of everything that means a person
+  (the Members page, Invitations, Transfer offers, `IsMember`), so nothing
+  that worked on Members changes. "Never placed above the person who hired
+  it" is kept twice: a Role at or above the Hirer's highest is refused, and
+  when the Hirer drops, the Agent's Roles at or above the Hirer's new
+  highest are removed in the same change, as a Discord bot loses what its
+  inviter could not give it. Paperclip's own per-agent permission grants
+  are left out: one permission system, not two.
 - **The Guild Master changes only by an accepted offer.** A Guild must have
   exactly one at every moment, so it is never deleted or removed, only
   swapped, and only with the receiving person's consent, as Discord's
