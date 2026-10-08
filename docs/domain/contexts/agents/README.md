@@ -118,7 +118,8 @@ admin always may (with `hire_agents`, which they always hold).
   conditional update of `last_heartbeat_at` claims it (Paperclip's
   `claimDueTimerHeartbeat`), so two API processes never both wake it, and
   a Wake `timer` / `heartbeat_timer` without an Issue follows. A timer Wake
-  while its last timer Run is still `queued` joins that Run.
+  while the Agent still has a `queued` Run without an Issue (its last
+  timer Run, or a Run heartbeat) joins that Run instead of adding one.
 - A Run's prompt is built when a Desktop claims it, not when it is queued,
   so the Comments that joined it are in it. A Run on an Issue gets
   `{identifier}: {title}`, a blank line and the description, then one line
