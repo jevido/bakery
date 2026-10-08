@@ -17,6 +17,8 @@ export const statusTypes: Record<string, StatusType> = {
   // A Goal under way or reached.
   active: 'success',
   achieved: 'success',
+  // An Approval decided for.
+  approved: 'success',
   // Waiting or in flight.
   queued: 'warning',
   pending: 'warning',
@@ -26,6 +28,7 @@ export const statusTypes: Record<string, StatusType> = {
   restarting: 'warning',
   deploying: 'warning',
   in_progress: 'warning',
+  revision_requested: 'warning',
   degraded: 'warning',
   unvalidated: 'warning',
   // Down or broken.
@@ -34,6 +37,7 @@ export const statusTypes: Record<string, StatusType> = {
   stopped: 'error',
   unhealthy: 'error',
   unreachable: 'error',
+  rejected: 'error',
   // Neither.
   cancelled: 'neutral',
   missing: 'neutral',

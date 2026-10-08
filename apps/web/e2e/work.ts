@@ -72,6 +72,12 @@
 //           first to In Review it is back on Mine; an Issue in a scratch
 //           Project whose Member Role is denied View resources, assigned to
 //           the Member, is on neither their Mine nor Recent
+//   approvals  #/approvals opens Pending, listing a Board Approval made
+//           through the API for a scratch Issue, with the count; Approve on
+//           its card opens its page with "Approval confirmed" and "Review
+//           linked issue"; All lists it approved and Pending no longer does;
+//           a second one gets Request revision with a Decision note, which
+//           its page shows, a comment, and Resubmit makes it pending again
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -915,6 +921,74 @@ const sections: Record<string, () => Promise<void>> = {
 
     await m.leave()
     for (const i of [first, second]) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    await page.close()
+  },
+  approvals: async () => {
+    const page = await signedIn()
+    const prefix = 'Approvals e2e'
+    type Approval = { id: number; status: string; payload: { title: string } }
+    const all = async () => ((await (await page.request.get(`${WEB}/api/approvals`)).json()) as { approvals: Approval[] }).approvals
+    // Approvals cannot be deleted; a run before leaves its own decided.
+    for (const a of (await all()).filter((a) => a.payload.title.startsWith(prefix) && (a.status === 'pending' || a.status === 'revision_requested')))
+      await page.request.post(`${WEB}/api/approvals/${a.id}/reject`, { data: {} })
+    for (const i of (await issues(page)).filter((i) => i.title.startsWith(prefix))) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title: `${prefix} issue` } })).json()) as { issue: Issue }
+    const ask = async (title: string) => {
+      const r = await page.request.post(`${WEB}/api/approvals`, {
+        data: {
+          type: 'request_board_approval',
+          payload: { title, summary: 'Ship the **guild rail**.', recommended_action: 'Approve it.', next_action_on_approval: 'Merge.', risks: ['- Layout shift'] },
+          issue_ids: [issue.id],
+        },
+      })
+      if (!r.ok()) throw new Error(`request approval: ${r.status()} ${await r.text()}`)
+      return ((await r.json()) as { approval: Approval }).approval
+    }
+    const first = await ask(`${prefix} first`)
+    const card = (a: Approval) => page.locator(`[data-slot="card"][data-approval="${a.id}"]`)
+
+    await page.goto(`${WEB}/#/approvals`)
+    await card(first).waitFor()
+    expect('#/approvals opens Pending', page.url().endsWith('#/approvals/pending'), page.url())
+    expect('Pending shows its count', Number(await page.getByTestId('approvals-pending-count').textContent()) >= 1)
+    expect('the card shows the kind, the subject and the recommended action', (await card(first).textContent())!.includes('Board Approval') && (await card(first).getByText('Approve it.').isVisible()))
+    expect('a leading list marker is dropped from a Risk', await card(first).getByText('Layout shift', { exact: true }).isVisible())
+
+    await card(first).getByRole('button', { name: 'Approve' }).click()
+    await page.waitForURL(new RegExp(`#/approvals/${first.id}\\?resolved=approved$`))
+    await page.getByTestId('approval-confirmed').waitFor()
+    expect('Approve opens the Approval page with the banner', true)
+    expect('the banner offers the linked Issue', await page.getByRole('button', { name: 'Review linked issue' }).isVisible())
+    expect('the page lists the Linked issue', await page.getByTestId('linked-issues').getByText(issue.identifier).isVisible())
+
+    await page.goto(`${WEB}/#/approvals/all`)
+    await card(first).and(page.locator('[data-status="approved"]')).waitFor()
+    expect('All lists it approved', true)
+    await page.getByRole('tab', { name: /Pending/ }).click()
+    await page.waitForURL(/#\/approvals\/pending$/)
+    await card(first).waitFor({ state: 'detached' })
+    expect('Pending no longer lists it', true)
+
+    const second = await ask(`${prefix} second`)
+    await page.goto(`${WEB}/#/approvals/${second.id}`)
+    const detail = page.locator(`[data-approval="${second.id}"]`).first()
+    await detail.waitFor()
+    await page.getByRole('textbox', { name: 'Decision note' }).fill('Add a rollback plan.')
+    await page.getByRole('button', { name: 'Request revision' }).click()
+    await page.locator(`[data-approval="${second.id}"][data-status="revision_requested"]`).waitFor()
+    expect('Request revision shows the Decision note', !!(await page.getByTestId('decision-note').textContent())?.includes('Add a rollback plan.'), await page.getByTestId('decision-note').textContent())
+    await page.getByRole('textbox', { name: 'Comment' }).fill('Rollback plan is in the Issue.')
+    await page.getByRole('button', { name: 'Post comment' }).click()
+    await page.getByRole('region', { name: 'Comments' }).getByText('Rollback plan is in the Issue.').waitFor()
+    await page.reload()
+    await page.getByRole('heading', { name: 'Comments (1)' }).waitFor()
+    expect('the comment stays after a reload', true)
+    await page.getByRole('button', { name: 'Resubmit' }).click()
+    await page.locator(`[data-approval="${second.id}"][data-status="pending"]`).waitFor()
+    expect('Resubmit makes it pending again', await page.getByRole('button', { name: 'Request revision' }).isVisible())
+
+    await page.request.post(`${WEB}/api/approvals/${second.id}/reject`, { data: {} })
+    await page.request.delete(`${WEB}/api/issues/${issue.id}`)
     await page.close()
   },
 }

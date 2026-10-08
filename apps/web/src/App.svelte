@@ -13,6 +13,8 @@
   import Profile from './pages/Profile.svelte'
   import Activity from './pages/Activity.svelte'
   import Inbox from './pages/Inbox.svelte'
+  import Approval from './pages/approvals/Approval.svelte'
+  import Approvals from './pages/approvals/Approvals.svelte'
   import Goal from './pages/goals/Goal.svelte'
   import Goals from './pages/goals/Goals.svelte'
   import Issue from './pages/issues/Issue.svelte'
@@ -164,6 +166,12 @@
       <Activity />
     {:else if router.route.name === 'inbox'}
       <Inbox tab={router.route.tab} />
+    {:else if router.route.name === 'approvals'}
+      <Approvals tab={router.route.tab} />
+    {:else if router.route.name === 'approval'}
+      {#key router.route.id}
+        <Approval id={router.route.id} />
+      {/key}
     {:else if router.route.name === 'profile'}
       <Profile />
     {:else if router.route.name === 'dev-components' && devComponents}
