@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -19,6 +20,9 @@ type runRecord struct {
 	AgentID             uint64
 	IssueID             *uint64
 	InvocationSource    string
+	WakeReason          string
+	WakeCount           int
+	WakeContext         string `gorm:"type:jsonb"`
 	Status              string
 	RequestedByMemberID *uint64
 	DesktopID           *uint64
@@ -43,10 +47,27 @@ type runRecord struct {
 
 func (runRecord) TableName() string { return "runs" }
 
+// wakeContextJSON is a Run's wake_context column.
+type wakeContextJSON struct {
+	CommentIDs []uint64 `json:"comment_ids,omitempty"`
+}
+
+func wakeContextOf(raw string) domain.WakeContext {
+	var j wakeContextJSON
+	_ = json.Unmarshal([]byte(raw), &j)
+	return domain.WakeContext{CommentIDs: j.CommentIDs}
+}
+
+func wakeContextColumn(c domain.WakeContext) string {
+	raw, _ := json.Marshal(wakeContextJSON{CommentIDs: c.CommentIDs})
+	return string(raw)
+}
+
 func (r runRecord) toDomain() domain.Run {
 	return domain.Run{
 		ID: r.ID, GuildID: r.GuildID, AgentID: r.AgentID, IssueID: deref(r.IssueID),
-		InvocationSource: domain.InvocationSource(r.InvocationSource), Status: domain.RunStatus(r.Status),
+		InvocationSource: domain.InvocationSource(r.InvocationSource), WakeReason: domain.WakeReason(r.WakeReason),
+		WakeCount: r.WakeCount, WakeContext: wakeContextOf(r.WakeContext), Status: domain.RunStatus(r.Status),
 		RequestedByID: deref(r.RequestedByMemberID), DesktopID: deref(r.DesktopID), RetryOfRunID: deref(r.RetryOfRunID),
 		Prompt: r.Prompt, SessionID: r.SessionID, ExitCode: r.ExitCode, Error: r.Error,
 		Usage: domain.Usage{
@@ -76,20 +97,50 @@ func (Runs) query(ctx context.Context) contractsorm.Query {
 	return facades.Orm().WithContext(ctx).Query()
 }
 
+// CreateRun stores a new Run. A queued one its Agent already has a queued
+// twin of, on the same Issue or on none, is app.ErrQueuedTwin: the
+// runs_agent_id_issue_id_queued_unique index settles two API processes.
 func (s Runs) CreateRun(ctx context.Context, r domain.Run) (domain.Run, error) {
 	var recs []runRecord
-	err := s.query(ctx).Raw(`INSERT INTO runs (guild_id, agent_id, issue_id, invocation_source, status, requested_by_member_id,
-		retry_of_run_id, prompt, next_seq, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
-		r.GuildID, r.AgentID, nullable(r.IssueID), string(r.InvocationSource), string(r.Status), nullable(r.RequestedByID),
+	err := s.query(ctx).Raw(`INSERT INTO runs (guild_id, agent_id, issue_id, invocation_source, wake_reason, wake_count, wake_context,
+		status, requested_by_member_id, retry_of_run_id, prompt, next_seq, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (agent_id, (COALESCE(issue_id, 0))) WHERE status = 'queued' DO NOTHING RETURNING *`,
+		r.GuildID, r.AgentID, nullable(r.IssueID), string(r.InvocationSource), string(r.WakeReason), r.WakeCount,
+		wakeContextColumn(r.WakeContext), string(r.Status), nullable(r.RequestedByID),
 		nullable(r.RetryOfRunID), r.Prompt, r.NextSeq, r.CreatedAt, r.UpdatedAt).Scan(&recs)
 	if err != nil {
 		return domain.Run{}, err
 	}
 	if len(recs) == 0 {
-		return domain.Run{}, errors.New("agents: the new run was not returned")
+		return domain.Run{}, app.ErrQueuedTwin
 	}
 	return recs[0].toDomain(), nil
+}
+
+// QueuedRunOf is the Agent's queued Run on the Issue (0 for none).
+func (s Runs) QueuedRunOf(ctx context.Context, agentID, issueID uint64) (domain.Run, bool, error) {
+	var recs []runRecord
+	if err := s.query(ctx).Raw(`SELECT * FROM runs WHERE agent_id = ? AND COALESCE(issue_id, 0) = ? AND status = ?`,
+		agentID, issueID, string(domain.RunQueued)).Scan(&recs); err != nil {
+		return domain.Run{}, false, err
+	}
+	if len(recs) == 0 {
+		return domain.Run{}, false, nil
+	}
+	return recs[0].toDomain(), true, nil
+}
+
+// JoinRun stores a Join only while the Run is queued with the wake count
+// from, so two Wakes joining one Run both count.
+func (s Runs) JoinRun(ctx context.Context, r domain.Run, from int) (bool, error) {
+	res, err := s.query(ctx).Exec(`UPDATE runs SET wake_count = ?, wake_context = ?::jsonb, updated_at = ?
+		WHERE id = ? AND status = ? AND wake_count = ?`,
+		r.WakeCount, wakeContextColumn(r.WakeContext), r.UpdatedAt, r.ID, string(domain.RunQueued), from)
+	if err != nil {
+		return false, err
+	}
+	return res.RowsAffected == 1, nil
 }
 
 // Run returns the Run; found is false when there is none.
@@ -135,17 +186,18 @@ func (s Runs) Runs(ctx context.Context, q app.RunQuery) ([]domain.Run, error) {
 }
 
 // SaveRun stores the Run's changes only while it is still in the status
-// it was read in, so two requests moving one Run never both win; moved
-// is false when another got there first.
+// and with the wake count it was read in, so two requests moving one Run
+// never both win and a claim never drops a Wake that joined meanwhile;
+// moved is false when another got there first.
 func (s Runs) SaveRun(ctx context.Context, r domain.Run, from domain.RunStatus) (moved bool, err error) {
 	u := r.Usage
-	res, err := s.query(ctx).Exec(`UPDATE runs SET status = ?, desktop_id = ?, session_id = ?, exit_code = ?, error = ?,
+	res, err := s.query(ctx).Exec(`UPDATE runs SET status = ?, desktop_id = ?, prompt = ?, session_id = ?, exit_code = ?, error = ?,
 		input_tokens = ?, cached_input_tokens = ?, output_tokens = ?, turns = ?, cost_equivalent_usd = ?, duration_ms = ?,
 		next_seq = ?, lease_expires_at = ?, started_at = ?, finished_at = ?, updated_at = ?
-		WHERE id = ? AND status = ?`,
-		string(r.Status), nullable(r.DesktopID), r.SessionID, r.ExitCode, r.Error,
+		WHERE id = ? AND status = ? AND wake_count = ?`,
+		string(r.Status), nullable(r.DesktopID), r.Prompt, r.SessionID, r.ExitCode, r.Error,
 		u.InputTokens, u.CachedInputTokens, u.OutputTokens, u.Turns, u.CostEquivalentUSD, u.DurationMS,
-		r.NextSeq, r.LeaseExpiresAt, r.StartedAt, r.FinishedAt, r.UpdatedAt, r.ID, string(from))
+		r.NextSeq, r.LeaseExpiresAt, r.StartedAt, r.FinishedAt, r.UpdatedAt, r.ID, string(from), r.WakeCount)
 	if err != nil {
 		return false, err
 	}

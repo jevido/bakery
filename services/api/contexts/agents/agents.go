@@ -144,6 +144,17 @@ func (workOfAgents) IssueForRun(ctx context.Context, guildID, issueID uint64) (a
 	return app.IssueBrief(i), ok, err
 }
 
+// OpenIssuesOfAgent and CommentsForRun answer nothing until work
+// publishes them (phase 40, task 04): a Heartbeat's prompt then says the
+// Agent has no open Issues and a Run quotes no comments.
+func (workOfAgents) OpenIssuesOfAgent(context.Context, uint64, uint64) ([]app.IssueBrief, error) {
+	return nil, nil
+}
+
+func (workOfAgents) CommentsForRun(context.Context, uint64, []uint64) ([]app.RunComment, error) {
+	return nil, nil
+}
+
 func memberNames(ctx context.Context, ids []uint64) ([]agentshttp.Named, error) {
 	ms, err := identity.Members(ctx, ids)
 	if err != nil {
@@ -206,6 +217,7 @@ func Routes(r route.Router) {
 		r.Put("/api/agents/{id}/roles/{role_id}", c.AddAgentRole)
 		r.Delete("/api/agents/{id}/roles/{role_id}", c.RemoveAgentRole)
 		r.Post("/api/agents/{id}/runs", c.StartRun)
+		r.Post("/api/agents/{id}/heartbeat", c.RunHeartbeat)
 	})
 	d := desktopController()
 	r.Middleware(identity.DesktopOnly).Group(func(r route.Router) {

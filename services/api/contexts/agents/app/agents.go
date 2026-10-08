@@ -104,6 +104,11 @@ type Work interface {
 	// IssueForRun tells the Guild's Issue; found is false for another
 	// Guild's or none.
 	IssueForRun(ctx context.Context, guildID, issueID uint64) (i IssueBrief, found bool, err error)
+	// OpenIssuesOfAgent lists the Guild's Issues the Agent is the assignee
+	// of in todo, in_progress or in_review, by Issue identifier.
+	OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]IssueBrief, error)
+	// CommentsForRun tells the Guild's comments with the ids, in order.
+	CommentsForRun(ctx context.Context, guildID uint64, ids []uint64) ([]RunComment, error)
 }
 
 type Service struct {

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -15,7 +16,7 @@ func queuedRun(t *testing.T, s *Service, w *fakeWork) (domain.Agent, domain.Run)
 	t.Helper()
 	ada := hired(t, s, "Ada", 0)
 	w.issues = map[uint64]IssueBrief{30: {ID: 30, Identifier: "BAK-3", Title: "Fix it", AgentAssigneeID: ada.ID}}
-	r, err := s.StartRun(context.Background(), 1, Actor{ID: 7, Permissions: hirer}, ada.ID, 30, nil)
+	r, err := startRun(s, context.Background(), 1, Actor{ID: 7, Permissions: hirer}, ada.ID, 30, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +56,7 @@ func TestDesktopClaimsOnce(t *testing.T) {
 		t.Errorf("other desktop's queue %+v", qs)
 	}
 	// A second queued Run of the busy Agent waits.
-	second, err := s.StartRun(ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID, 30, nil)
+	second, err := startRun(s, ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID, 30, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +109,7 @@ func TestDesktopReportsAndFinishes(t *testing.T) {
 	}
 
 	// Finishing a Run cancelled meanwhile answers it as it is.
-	second, _ := s.StartRun(ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID, 30, nil)
+	second, _ := startRun(s, ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID, 30, nil)
 	if _, err := s.ClaimRun(ctx, laptop, second.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -166,5 +167,42 @@ func TestSweepLosesAndRequeues(t *testing.T) {
 				t.Errorf("agent %s after the last lost run", a.Status)
 			}
 		}
+	}
+}
+
+func TestPromptIsWrittenAtClaim(t *testing.T) {
+	ctx := context.Background()
+	s, _, _, w := newTest()
+	runs := s.runs.(*fakeRuns)
+	ada, r := queuedRun(t, s, w)
+	w.comments = map[uint64]RunComment{51: {ID: 51, AuthorName: "Grace", Body: "Also the link."}, 52: {ID: 52, AuthorName: "Linus", Body: "And the icon."}}
+	for _, c := range []uint64{51, 52} {
+		if _, _, err := s.Wake(ctx, 1, ada.ID, WakeInput{Source: domain.Automation, Reason: domain.IssueCommented, IssueID: 30, CommentID: c}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if qs, _ := s.DesktopRuns(ctx, Desktop{ID: 3, MemberID: 7}); len(qs) != 1 || qs[0].Run.Prompt != "" || qs[0].Run.WakeCount != 3 {
+		t.Fatalf("queue %+v", qs)
+	}
+	q, err := s.ClaimRun(ctx, Desktop{ID: 3, MemberID: 7}, r.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "BAK-3: Fix it\n\nYou are Ada, the guild's General.\n\nNew comments:\n\nGrace wrote:\nAlso the link.\n\nLinus wrote:\nAnd the icon."
+	if q.Run.Prompt != want || runs.rows[r.ID].Prompt != want {
+		t.Errorf("prompt %q", q.Run.Prompt)
+	}
+	// A lost Run's replacement keeps its Wake reason and comments, and
+	// joins a twin queued meanwhile.
+	twin, _, _ := s.Wake(ctx, 1, ada.ID, WakeInput{Source: domain.Automation, Reason: domain.IssueCommented, IssueID: 30, CommentID: 53})
+	at := time.Now().Add(domain.Lease + time.Second)
+	s.now = func() time.Time { return at }
+	if err := s.SweepLostRuns(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got := runs.rows[twin.ID]
+	if runs.rows[r.ID].Status != domain.RunLost || got.Status != domain.RunQueued || got.WakeCount != 2 ||
+		!slices.Equal(got.WakeContext.CommentIDs, []uint64{53, 51, 52}) || runs.next != twin.ID {
+		t.Errorf("twin after the sweep %+v", got)
 	}
 }

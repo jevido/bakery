@@ -60,6 +60,9 @@ type desktopRunJSON struct {
 	Guild          namedJSON     `json:"guild"`
 	Agent          runAgentJSON  `json:"agent"`
 	Issue          *runIssueJSON `json:"issue"`
+	Source         string        `json:"invocation_source"`
+	WakeReason     string        `json:"wake_reason"`
+	WakeCount      int           `json:"wake_count"`
 	Prompt         string        `json:"prompt"`
 	RetryOfRunID   *uint64       `json:"retry_of_run_id"`
 	SessionID      string        `json:"session_id"`
@@ -74,6 +77,7 @@ func desktopRunOf(q app.QueuedRun) desktopRunJSON {
 	j := desktopRunJSON{
 		ID: r.ID, Status: string(r.Status), Guild: namedJSON{ID: r.GuildID, Name: q.GuildName},
 		Agent:  runAgentJSON{ID: q.Agent.ID, Name: q.Agent.Name, Icon: string(q.Agent.Icon)},
+		Source: string(r.InvocationSource), WakeReason: string(r.WakeReason), WakeCount: r.WakeCount,
 		Prompt: r.Prompt, SessionID: r.SessionID, NextSeq: r.NextSeq, CreatedAt: r.CreatedAt.UTC(),
 		StartedAt: utc(r.StartedAt), LeaseExpiresAt: utc(r.LeaseExpiresAt),
 	}

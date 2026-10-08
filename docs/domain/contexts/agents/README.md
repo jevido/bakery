@@ -120,14 +120,17 @@ admin always may (with `hire_agents`, which they always hold).
   a Wake `timer` / `heartbeat_timer` without an Issue follows. A timer Wake
   while its last timer Run is still `queued` joins that Run.
 - A Run's prompt is built when a Desktop claims it, not when it is queued,
-  so the Comments that joined it are in it. Every prompt ends with one line
-  naming the Agent's Job, Title and Capabilities. Per Wake reason:
-  `manual` and `issue_assigned`: `{identifier}: {title}`, a blank line and
-  the description (for `issue_assigned`, preceded by a line saying the
-  Issue was assigned to the Agent); `issue_commented`: the same, then each
-  Comment of its wake context with its author; `heartbeat_invoked` and
-  `heartbeat_timer`: the Agent's open assigned Issues, one line each with
-  identifier, status, priority and title, oldest first.
+  so the Comments that joined it are in it. A Run on an Issue gets
+  `{identifier}: {title}`, a blank line and the description, then one line
+  naming the Agent's Job, Title and Capabilities; for `issue_assigned` it
+  starts with "You were assigned this issue.", and when its wake context
+  holds Comments (an `issue_commented` Run, or any Run Comments joined
+  while it waited) "New comments:" and each Comment as `{author} wrote:`
+  and its body follow. A `heartbeat_invoked` or `heartbeat_timer` Run
+  without an Issue gets "Heartbeat.", the Agent line, and "Your open
+  issues:" with each Issue assigned to the Agent in `todo`, `in_progress`
+  or `in_review` as `- {identifier} [{status}]: {title}`, oldest first, or
+  "You have no open issues.".
 - `CancelRun(run)` [manage the Run's Agent]: only a `queued` or `running`
   Run (422 otherwise); it becomes `cancelled`, and a running one's Agent
   `idle`. The Desktop running it sees that on its next

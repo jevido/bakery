@@ -48,6 +48,8 @@ type runJSON struct {
 	Agent            runAgentJSON  `json:"agent"`
 	Issue            *runIssueJSON `json:"issue"`
 	InvocationSource string        `json:"invocation_source"`
+	WakeReason       string        `json:"wake_reason"`
+	WakeCount        int           `json:"wake_count"`
 	Status           string        `json:"status"`
 	RequestedBy      *Named        `json:"requested_by"`
 	Desktop          *Named        `json:"desktop"`
@@ -124,7 +126,7 @@ func (c *Controller) runsJSON(ctx contractshttp.Context, guildID uint64, rs []do
 		u := r.Usage
 		j := runJSON{
 			ID: r.ID, Agent: runAgentJSON{ID: a.ID, Name: a.Name, Icon: string(a.Icon)}, InvocationSource: string(r.InvocationSource),
-			Status: string(r.Status), Usage: usageJSON{
+			WakeReason: string(r.WakeReason), WakeCount: r.WakeCount, Status: string(r.Status), Usage: usageJSON{
 				InputTokens: u.InputTokens, CachedInputTokens: u.CachedInputTokens, OutputTokens: u.OutputTokens,
 				Turns: u.Turns, CostEquivalentUSD: u.CostEquivalentUSD, DurationMS: u.DurationMS,
 			},
@@ -168,7 +170,7 @@ func (c *Controller) runAnswer(ctx contractshttp.Context, status int, r domain.R
 func runFail(ctx contractshttp.Context, err error) contractshttp.Response {
 	var rse *domain.RunStatusError
 	switch {
-	case errors.As(err, &rse):
+	case errors.As(err, &rse), errors.As(err, &domain.WakeRefused{}):
 		return respond.Error(ctx, contractshttp.StatusUnprocessableEntity, err.Error())
 	case errors.Is(err, app.ErrRunNotFound):
 		return notFound(ctx)
@@ -178,6 +180,14 @@ func runFail(ctx contractshttp.Context, err error) contractshttp.Response {
 
 type startRunRequest struct {
 	IssueID uint64 `json:"issue_id"`
+}
+
+// queuedAnswer is 201 for a new Run, 200 for the queued Run a Wake joined.
+func (c *Controller) queuedAnswer(ctx contractshttp.Context, r domain.Run, joined bool) contractshttp.Response {
+	if joined {
+		return c.runAnswer(ctx, contractshttp.StatusOK, r)
+	}
+	return c.runAnswer(ctx, contractshttp.StatusCreated, r)
 }
 
 // StartRun queues a Run of the Agent on the Issue assigned to it.
@@ -190,11 +200,25 @@ func (c *Controller) StartRun(ctx contractshttp.Context) contractshttp.Response 
 	if err := ctx.Request().Bind(&req); err != nil {
 		return respond.BadBody(ctx)
 	}
-	r, err := c.service.StartRun(ctx.Context(), c.Guild(ctx), c.actor(ctx), id, req.IssueID, c.visible(ctx))
+	r, joined, err := c.service.StartRun(ctx.Context(), c.Guild(ctx), c.actor(ctx), id, req.IssueID, c.visible(ctx))
 	if err != nil {
 		return runFail(ctx, err)
 	}
-	return c.runAnswer(ctx, contractshttp.StatusCreated, r)
+	return c.queuedAnswer(ctx, r, joined)
+}
+
+// RunHeartbeat queues an on_demand Run of the Agent without an Issue
+// (Paperclip's /agents/:id/heartbeat/invoke).
+func (c *Controller) RunHeartbeat(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	r, joined, err := c.service.RunHeartbeat(ctx.Context(), c.Guild(ctx), c.actor(ctx), id)
+	if err != nil {
+		return runFail(ctx, err)
+	}
+	return c.queuedAnswer(ctx, r, joined)
 }
 
 // queryID reads an id filter; "" is 0, anything but a number is not ok.

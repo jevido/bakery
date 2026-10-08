@@ -36,11 +36,46 @@ func (s RunStatus) Final() bool {
 	return s != RunQueued && s != RunRunning
 }
 
-// InvocationSource is why a Run was started.
+// InvocationSource is what started a Run: Paperclip's
+// heartbeat_runs.invocationSource.
 type InvocationSource string
 
-// OnDemand is a Run a person started with Run.
-const OnDemand InvocationSource = "on_demand"
+const (
+	// OnDemand is a Run a person started, with Run or Run heartbeat.
+	OnDemand InvocationSource = "on_demand"
+	// Timer is a Run the Agent's Heartbeat policy started on its interval.
+	Timer InvocationSource = "timer"
+	// Assignment is a Run started by an Issue assigned to the Agent.
+	Assignment InvocationSource = "assignment"
+	// Automation is a Run started by something else in the Guild, such as
+	// a comment on the Agent's Issue.
+	Automation InvocationSource = "automation"
+)
+
+// WakeReason is why a Wake happened, finer than its Invocation source.
+type WakeReason string
+
+const (
+	Manual           WakeReason = "manual"
+	HeartbeatInvoked WakeReason = "heartbeat_invoked"
+	IssueAssigned    WakeReason = "issue_assigned"
+	IssueCommented   WakeReason = "issue_commented"
+	HeartbeatTimer   WakeReason = "heartbeat_timer"
+)
+
+// WakeContext is what the Wakes of a Run carry for its prompt: the
+// comments that woke it or joined it while it waited.
+type WakeContext struct {
+	CommentIDs []uint64
+}
+
+// WakeRefused refuses a Wake the Agent's Heartbeat policy does not
+// allow: anything but its timer while Wake on demand is off.
+type WakeRefused struct{}
+
+func (WakeRefused) Error() string {
+	return "wake on demand is off"
+}
 
 // Lease is how long a running Run lives without a word from its Desktop
 // before it is lost.
@@ -75,15 +110,20 @@ type Run struct {
 	AgentID          uint64
 	IssueID          uint64
 	InvocationSource InvocationSource
-	Status           RunStatus
-	RequestedByID    uint64
-	DesktopID        uint64
-	RetryOfRunID     uint64
-	Prompt           string
-	SessionID        string
-	ExitCode         *int
-	Error            string
-	Usage            Usage
+	// WakeReason is the first Wake's, which names the Run; WakeCount
+	// counts it and every Wake that joined it while it was queued.
+	WakeReason    WakeReason
+	WakeCount     int
+	WakeContext   WakeContext
+	Status        RunStatus
+	RequestedByID uint64
+	DesktopID     uint64
+	RetryOfRunID  uint64
+	Prompt        string
+	SessionID     string
+	ExitCode      *int
+	Error         string
+	Usage         Usage
 	// NextSeq is the seq the next Run event must have at least.
 	NextSeq        int64
 	LeaseExpiresAt *time.Time
@@ -102,16 +142,47 @@ func (a Agent) Runnable() error {
 	return nil
 }
 
-// StartRun queues a Run of the Agent on the Issue (0 for none), asked by
-// a Member.
-func StartRun(a Agent, issueID, requestedByID uint64, source InvocationSource, prompt string, at time.Time) (Run, error) {
+// Wakeable reports whether a Wake from the source may start a Run of the
+// Agent: it must be Runnable, and only its timer wakes it while Wake on
+// demand is off.
+func (a Agent) Wakeable(source InvocationSource) error {
 	if err := a.Runnable(); err != nil {
+		return err
+	}
+	if source != Timer && !a.Heartbeat.WakeOnDemand {
+		return WakeRefused{}
+	}
+	return nil
+}
+
+// StartRun queues a Run of the Agent on the Issue (0 for none) for a
+// Wake, asked by a Member (0 for none). Its prompt is written when it is
+// claimed, so Wakes that join it meanwhile are in it.
+func StartRun(a Agent, issueID, requestedByID uint64, source InvocationSource, reason WakeReason, wc WakeContext, at time.Time) (Run, error) {
+	if err := a.Wakeable(source); err != nil {
 		return Run{}, err
 	}
 	return Run{
-		GuildID: a.GuildID, AgentID: a.ID, IssueID: issueID, InvocationSource: source, Status: RunQueued,
-		RequestedByID: requestedByID, Prompt: prompt, NextSeq: 1, CreatedAt: at, UpdatedAt: at,
+		GuildID: a.GuildID, AgentID: a.ID, IssueID: issueID, InvocationSource: source, WakeReason: reason, WakeCount: 1,
+		WakeContext: wc, Status: RunQueued, RequestedByID: requestedByID, NextSeq: 1, CreatedAt: at, UpdatedAt: at,
 	}, nil
+}
+
+// Join adds a Wake to a queued Run instead of queueing another: the count
+// and the comments grow, and the Run keeps its own Invocation source and
+// Wake reason.
+func (r *Run) Join(wc WakeContext, at time.Time) error {
+	if r.Status != RunQueued {
+		return &RunStatusError{Status: r.Status, Action: "joined"}
+	}
+	r.WakeCount++
+	for _, id := range wc.CommentIDs {
+		if !slices.Contains(r.WakeContext.CommentIDs, id) {
+			r.WakeContext.CommentIDs = append(r.WakeContext.CommentIDs, id)
+		}
+	}
+	r.UpdatedAt = at
+	return nil
 }
 
 // Claim makes a queued Run running on the Desktop, its Lease starting.
@@ -170,8 +241,9 @@ func (r *Run) Lose(at time.Time) (Run, error) {
 	r.end(RunLost, at)
 	r.Error = "the desktop stopped reporting"
 	return Run{
-		GuildID: r.GuildID, AgentID: r.AgentID, IssueID: r.IssueID, InvocationSource: r.InvocationSource, Status: RunQueued,
-		RequestedByID: r.RequestedByID, RetryOfRunID: r.ID, Prompt: r.Prompt, NextSeq: 1, CreatedAt: at, UpdatedAt: at,
+		GuildID: r.GuildID, AgentID: r.AgentID, IssueID: r.IssueID, InvocationSource: r.InvocationSource,
+		WakeReason: r.WakeReason, WakeCount: 1, WakeContext: WakeContext{CommentIDs: slices.Clone(r.WakeContext.CommentIDs)},
+		Status: RunQueued, RequestedByID: r.RequestedByID, RetryOfRunID: r.ID, NextSeq: 1, CreatedAt: at, UpdatedAt: at,
 	}, nil
 }
 
@@ -248,7 +320,8 @@ func SessionOf(e RunEvent) string {
 // along its retry_of_run_id chain, before the last one stays lost.
 const MaxChainRetries = 3
 
-// RunStarted is published when a Member has started a Run.
+// RunStarted is published when a Wake queued a new Run, other than the
+// timer's.
 type RunStarted struct {
 	Run     Run
 	Agent   Agent

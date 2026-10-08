@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/agents/domain"
@@ -135,42 +136,52 @@ func (s *Service) claimed(ctx context.Context, d Desktop, runID uint64) (domain.
 	return r, a, nil
 }
 
-// ClaimRun makes a queued Run running on the Desktop, its Agent running.
-// One claimed already or final is a *domain.RunStatusError, one whose
-// Agent runs another Run ErrAgentBusy, one whose Agent was paused or
-// terminated a *domain.StatusError.
+// ClaimRun makes a queued Run running on the Desktop, its Agent running,
+// and writes its prompt then, so the Wakes that joined it are in it. One
+// claimed already or final is a *domain.RunStatusError, one whose Agent
+// runs another Run ErrAgentBusy, one whose Agent was paused or terminated
+// a *domain.StatusError.
 func (s *Service) ClaimRun(ctx context.Context, d Desktop, runID uint64) (QueuedRun, error) {
-	r, a, err := s.desktopRun(ctx, d, runID)
-	if err != nil {
-		return QueuedRun{}, err
-	}
-	if err := r.Claim(d.ID, s.now()); err != nil {
-		return QueuedRun{}, err
-	}
-	if a.Status != domain.Idle && a.Status != domain.Error {
-		if a.Status == domain.Running {
-			return QueuedRun{}, ErrAgentBusy
-		}
-		return QueuedRun{}, &domain.StatusError{Status: a.Status, Action: "run"}
-	}
-	moved, err := s.runs.SaveRun(ctx, r, domain.RunQueued)
-	if err != nil {
-		if s.busy(ctx, a.ID, r.ID) {
-			return QueuedRun{}, ErrAgentBusy
-		}
-		return QueuedRun{}, err
-	}
-	if !moved {
-		now, _, err := s.runs.Run(ctx, r.ID)
+	for range wakeAttempts {
+		r, a, err := s.desktopRun(ctx, d, runID)
 		if err != nil {
 			return QueuedRun{}, err
 		}
-		return QueuedRun{}, &domain.RunStatusError{Status: now.Status, Action: "claimed"}
+		if err := r.Claim(d.ID, s.now()); err != nil {
+			return QueuedRun{}, err
+		}
+		if a.Status != domain.Idle && a.Status != domain.Error {
+			if a.Status == domain.Running {
+				return QueuedRun{}, ErrAgentBusy
+			}
+			return QueuedRun{}, &domain.StatusError{Status: a.Status, Action: "run"}
+		}
+		if r.Prompt, err = s.promptOf(ctx, a, r); err != nil {
+			return QueuedRun{}, err
+		}
+		moved, err := s.runs.SaveRun(ctx, r, domain.RunQueued)
+		if err != nil {
+			if s.busy(ctx, a.ID, r.ID) {
+				return QueuedRun{}, ErrAgentBusy
+			}
+			return QueuedRun{}, err
+		}
+		if !moved {
+			now, _, err := s.runs.Run(ctx, r.ID)
+			if err != nil {
+				return QueuedRun{}, err
+			}
+			if now.Status == domain.RunQueued {
+				continue // a Wake joined it meanwhile: write the prompt again
+			}
+			return QueuedRun{}, &domain.RunStatusError{Status: now.Status, Action: "claimed"}
+		}
+		if a, err = s.agentRunning(ctx, a.ID); err != nil {
+			return QueuedRun{}, err
+		}
+		return s.queued(ctx, r, map[uint64]string{}, map[uint64]domain.Agent{a.ID: a})
 	}
-	if a, err = s.agentRunning(ctx, a.ID); err != nil {
-		return QueuedRun{}, err
-	}
-	return s.queued(ctx, r, map[uint64]string{}, map[uint64]domain.Agent{a.ID: a})
+	return QueuedRun{}, fmt.Errorf("agents: run %d kept being joined while it was claimed", runID)
 }
 
 // busy reports whether another Run of the Agent is running, which is what
@@ -326,7 +337,8 @@ func (s *Service) lose(ctx context.Context, r domain.Run, now time.Time) error {
 	}
 	requeued := retries < domain.MaxChainRetries
 	if requeued {
-		if _, err := s.runs.CreateRun(ctx, next); err != nil {
+		// A twin queued meanwhile on the same Issue takes this one in.
+		if _, _, err := s.queue(ctx, next); err != nil {
 			return err
 		}
 	}

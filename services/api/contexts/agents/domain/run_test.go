@@ -8,15 +8,15 @@ import (
 
 func TestRunMoves(t *testing.T) {
 	at := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
-	a := Agent{ID: 4, GuildID: 1, Status: Idle}
+	a := Agent{ID: 4, GuildID: 1, Status: Idle, Heartbeat: DefaultHeartbeatPolicy()}
 	for _, s := range []Status{PendingApproval, Paused, Terminated} {
 		var se *StatusError
-		if _, err := StartRun(Agent{Status: s}, 0, 7, OnDemand, "", at); !errors.As(err, &se) {
+		if _, err := StartRun(Agent{Status: s}, 0, 7, OnDemand, Manual, WakeContext{}, at); !errors.As(err, &se) {
 			t.Errorf("a run of a %s agent started: %v", s, err)
 		}
 	}
-	r, err := StartRun(a, 9, 7, OnDemand, "prompt", at)
-	if err != nil || r.Status != RunQueued || r.NextSeq != 1 || r.IssueID != 9 {
+	r, err := StartRun(a, 9, 7, OnDemand, Manual, WakeContext{}, at)
+	if err != nil || r.Status != RunQueued || r.NextSeq != 1 || r.IssueID != 9 || r.WakeCount != 1 || r.WakeReason != Manual {
 		t.Fatalf("start: %+v %v", r, err)
 	}
 	if _, err := r.Append([]RunEvent{{Seq: 1, Kind: "assistant"}}, at); err == nil {
@@ -65,19 +65,57 @@ func TestRunMoves(t *testing.T) {
 	}
 }
 
+func TestJoinAndWakeable(t *testing.T) {
+	at := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	a := Agent{ID: 4, GuildID: 1, Status: Idle, Heartbeat: DefaultHeartbeatPolicy()}
+	r, err := StartRun(a, 9, 7, Assignment, IssueAssigned, WakeContext{}, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Join(WakeContext{CommentIDs: []uint64{5}}, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Join(WakeContext{CommentIDs: []uint64{5, 6}}, at); err != nil {
+		t.Fatal(err)
+	}
+	if r.WakeCount != 3 || len(r.WakeContext.CommentIDs) != 2 || r.InvocationSource != Assignment || r.WakeReason != IssueAssigned {
+		t.Errorf("joined: %+v", r)
+	}
+	_ = r.Claim(3, at)
+	var rse *RunStatusError
+	if err := r.Join(WakeContext{}, at); !errors.As(err, &rse) || r.WakeCount != 3 {
+		t.Errorf("a running run joined: %v", err)
+	}
+	a.Heartbeat.WakeOnDemand = false
+	for _, src := range []InvocationSource{OnDemand, Assignment, Automation} {
+		if err := a.Wakeable(src); !errors.As(err, &WakeRefused{}) {
+			t.Errorf("%s woke an agent without wake on demand: %v", src, err)
+		}
+	}
+	if err := a.Wakeable(Timer); err != nil {
+		t.Errorf("the timer: %v", err)
+	}
+	a.Status = Paused
+	var se *StatusError
+	if err := a.Wakeable(Timer); !errors.As(err, &se) {
+		t.Errorf("a paused agent woke: %v", err)
+	}
+}
+
 func TestRunLostIsRequeued(t *testing.T) {
 	at := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
-	r, _ := StartRun(Agent{ID: 4, GuildID: 1, Status: Error}, 9, 7, OnDemand, "prompt", at)
+	r, _ := StartRun(Agent{ID: 4, GuildID: 1, Status: Error, Heartbeat: DefaultHeartbeatPolicy()}, 9, 7, Automation, IssueCommented, WakeContext{CommentIDs: []uint64{5}}, at)
 	r.ID = 11
 	if _, err := r.Lose(at); err == nil {
 		t.Error("a queued run lost")
 	}
 	_ = r.Claim(3, at)
 	retry, err := r.Lose(at.Add(time.Hour))
-	if err != nil || r.Status != RunLost || retry.Status != RunQueued || retry.RetryOfRunID != 11 || retry.IssueID != 9 || retry.Prompt != "prompt" {
+	if err != nil || r.Status != RunLost || retry.Status != RunQueued || retry.RetryOfRunID != 11 || retry.IssueID != 9 ||
+		retry.InvocationSource != Automation || retry.WakeReason != IssueCommented || retry.WakeContext.CommentIDs[0] != 5 {
 		t.Fatalf("lose: %+v %+v %v", r, retry, err)
 	}
-	q, _ := StartRun(Agent{ID: 4, Status: Idle}, 0, 7, OnDemand, "", at)
+	q, _ := StartRun(Agent{ID: 4, Status: Idle, Heartbeat: DefaultHeartbeatPolicy()}, 0, 7, OnDemand, HeartbeatInvoked, WakeContext{}, at)
 	if err := q.Cancel(at); err != nil || q.Status != RunCancelled || q.FinishedAt == nil {
 		t.Fatalf("cancel queued: %+v %v", q, err)
 	}

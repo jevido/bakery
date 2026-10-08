@@ -103,5 +103,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000088AddIssueAgentAssignee{},
 		&migrations.M20260930000089CreateRunsTables{},
 		&migrations.M20260930000090AddAgentHeartbeatPolicy{},
+		&migrations.M20260930000091AddRunWake{},
 	}
 }

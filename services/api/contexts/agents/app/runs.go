@@ -11,12 +11,20 @@ import (
 
 // Runs keeps Runs and their Run events.
 type Runs interface {
+	// CreateRun stores a new Run; ErrQueuedTwin when it is queued and its
+	// Agent already has a queued Run on the same Issue (or on none).
 	CreateRun(ctx context.Context, r domain.Run) (domain.Run, error)
+	// QueuedRunOf is the Agent's queued Run on the Issue (0 for none).
+	QueuedRunOf(ctx context.Context, agentID, issueID uint64) (domain.Run, bool, error)
+	// JoinRun stores a Join of the Run only while it is queued with the
+	// wake count from; moved is false otherwise.
+	JoinRun(ctx context.Context, r domain.Run, from int) (moved bool, err error)
 	Run(ctx context.Context, id uint64) (domain.Run, bool, error)
 	// Runs lists the Runs in the query, newest first.
 	Runs(ctx context.Context, q RunQuery) ([]domain.Run, error)
 	// SaveRun stores the Run's changes only while it is still in the
-	// status from; moved is false when another request moved it first.
+	// status from with its wake count; moved is false when another request
+	// moved or joined it first.
 	SaveRun(ctx context.Context, r domain.Run, from domain.RunStatus) (moved bool, err error)
 	// RunningRuns answers the running Run of each Agent that has one.
 	RunningRuns(ctx context.Context, agentIDs []uint64) (map[uint64]uint64, error)
@@ -45,12 +53,23 @@ type IssueBrief struct {
 	AgentAssigneeID uint64
 }
 
+// RunComment is a comment on an Issue as a Run's prompt quotes it.
+type RunComment struct {
+	ID         uint64
+	AuthorName string
+	Body       string
+}
+
 // Visible keeps the Projects among ids that the person asking may view;
 // nil keeps all of them.
 type Visible func(ids []uint64) ([]uint64, error)
 
 // ErrRunNotFound is a Run that does not exist in the Guild.
 var ErrRunNotFound = errors.New("not found")
+
+// ErrQueuedTwin is a new queued Run refused because its Agent already has
+// a queued Run on the same Issue: the Wake joins that one instead.
+var ErrQueuedTwin = errors.New("the agent already has a queued run on this issue")
 
 // The most Runs and Run events one page answers, and how many without a
 // limit.
@@ -61,24 +80,86 @@ const (
 	DefaultRunEvents = 500
 )
 
-// Prompt is what claude is asked in a Run of the Agent on the Issue: the
-// Issue as "{identifier}: {title}", a blank line and its description,
-// then one line naming the Agent. Heartbeats will replace it.
-func Prompt(a domain.Agent, i IssueBrief) string {
+// PromptFor is what claude is asked in a Run of the Agent for the Wake
+// reason. A Run on an Issue gets the Issue as "{identifier}: {title}", a
+// blank line and its description, then one line naming the Agent, then the
+// comments that woke it or joined it; an Assignment Run starts with "You
+// were assigned this issue.". A Heartbeat Run without an Issue gets
+// "Heartbeat.", the Agent line and its open Issues. The Agent cannot reach
+// The Bakery's API yet, so the prompt carries all it knows.
+func PromptFor(a domain.Agent, reason domain.WakeReason, i IssueBrief, comments []RunComment, open []IssueBrief) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s: %s\n\n", i.Identifier, i.Title)
-	if d := strings.TrimSpace(i.Description); d != "" {
-		b.WriteString(d + "\n\n")
+	if i.ID == 0 && (reason == domain.HeartbeatInvoked || reason == domain.HeartbeatTimer) {
+		b.WriteString("Heartbeat.\n\n")
+		agentLine(&b, a)
+		if len(open) == 0 {
+			b.WriteString("\n\nYou have no open issues.")
+			return b.String()
+		}
+		b.WriteString("\n\nYour open issues:")
+		for _, o := range open {
+			fmt.Fprintf(&b, "\n- %s [%s]: %s", o.Identifier, o.Status, o.Title)
+		}
+		return b.String()
 	}
-	fmt.Fprintf(&b, "You are %s, the guild's %s", a.Name, domain.JobLabel(a.Job))
+	if reason == domain.IssueAssigned {
+		b.WriteString("You were assigned this issue.\n\n")
+	}
+	if i.ID != 0 {
+		fmt.Fprintf(&b, "%s: %s\n\n", i.Identifier, i.Title)
+		if d := strings.TrimSpace(i.Description); d != "" {
+			b.WriteString(d + "\n\n")
+		}
+	}
+	agentLine(&b, a)
+	if len(comments) > 0 {
+		b.WriteString("\n\nNew comments:")
+		for _, c := range comments {
+			fmt.Fprintf(&b, "\n\n%s wrote:\n%s", c.AuthorName, strings.TrimSpace(c.Body))
+		}
+	}
+	return b.String()
+}
+
+// agentLine names the Agent, its job, title and capabilities.
+func agentLine(b *strings.Builder, a domain.Agent) {
+	fmt.Fprintf(b, "You are %s, the guild's %s", a.Name, domain.JobLabel(a.Job))
 	if a.Title != "" {
-		fmt.Fprintf(&b, " (%s)", a.Title)
+		fmt.Fprintf(b, " (%s)", a.Title)
 	}
 	if a.Capabilities != "" {
-		fmt.Fprintf(&b, ". Your capabilities: %s", strings.Join(strings.Fields(a.Capabilities), " "))
+		fmt.Fprintf(b, ". Your capabilities: %s", strings.Join(strings.Fields(a.Capabilities), " "))
 	}
 	b.WriteString(".")
-	return b.String()
+}
+
+// promptOf writes the queued Run's prompt from what work tells now: its
+// Issue, the comments its Wakes carry, and for a Heartbeat the Agent's
+// open Issues.
+func (s *Service) promptOf(ctx context.Context, a domain.Agent, r domain.Run) (string, error) {
+	var (
+		i        IssueBrief
+		comments []RunComment
+		open     []IssueBrief
+		err      error
+	)
+	if r.IssueID != 0 {
+		var ok bool
+		if i, ok, err = s.work.IssueForRun(ctx, r.GuildID, r.IssueID); err != nil {
+			return "", err
+		}
+		if !ok {
+			i = IssueBrief{}
+		}
+	} else if open, err = s.work.OpenIssuesOfAgent(ctx, r.GuildID, a.ID); err != nil {
+		return "", err
+	}
+	if len(r.WakeContext.CommentIDs) > 0 {
+		if comments, err = s.work.CommentsForRun(ctx, r.GuildID, r.WakeContext.CommentIDs); err != nil {
+			return "", err
+		}
+	}
+	return PromptFor(a, r.WakeReason, i, comments, open), nil
 }
 
 // issueOf is the Guild's Issue as work tells it, when the person may view
@@ -93,37 +174,122 @@ func (s *Service) issueOf(ctx context.Context, guildID, issueID uint64, visible 
 }
 
 // StartRun queues a Run of the Agent on the Issue assigned to it, by a
-// person who may manage the Agent.
-func (s *Service) StartRun(ctx context.Context, guildID uint64, actor Actor, agentID, issueID uint64, visible Visible) (domain.Run, error) {
+// person who may manage the Agent: an on_demand Wake. joined is true when
+// it joined the Agent's queued Run on that Issue.
+func (s *Service) StartRun(ctx context.Context, guildID uint64, actor Actor, agentID, issueID uint64, visible Visible) (r domain.Run, joined bool, err error) {
 	a, err := s.managed(ctx, guildID, actor, agentID)
 	if err != nil {
-		return domain.Run{}, err
+		return domain.Run{}, false, err
 	}
-	if err := a.Runnable(); err != nil {
-		return domain.Run{}, err
+	if err := a.Wakeable(domain.OnDemand); err != nil {
+		return domain.Run{}, false, err
 	}
 	if issueID == 0 {
-		return domain.Run{}, &domain.FieldError{Field: "issue_id", Message: "is required"}
+		return domain.Run{}, false, &domain.FieldError{Field: "issue_id", Message: "is required"}
 	}
 	i, ok, err := s.issueOf(ctx, guildID, issueID, visible)
 	if err != nil {
-		return domain.Run{}, err
+		return domain.Run{}, false, err
 	}
 	if !ok {
-		return domain.Run{}, &domain.FieldError{Field: "issue_id", Message: "is not an issue of this guild"}
+		return domain.Run{}, false, &domain.FieldError{Field: "issue_id", Message: "is not an issue of this guild"}
 	}
 	if i.AgentAssigneeID != a.ID {
-		return domain.Run{}, &domain.FieldError{Field: "issue_id", Message: "is not assigned to this agent"}
+		return domain.Run{}, false, &domain.FieldError{Field: "issue_id", Message: "is not assigned to this agent"}
 	}
-	r, err := domain.StartRun(a, i.ID, actor.ID, domain.OnDemand, Prompt(a, i), s.now())
+	return s.wake(ctx, a, WakeInput{Source: domain.OnDemand, Reason: domain.Manual, IssueID: i.ID, ActorID: actor.ID})
+}
+
+// RunHeartbeat queues an on_demand Run of the Agent without an Issue, by
+// a person who may manage it: Run heartbeat.
+func (s *Service) RunHeartbeat(ctx context.Context, guildID uint64, actor Actor, agentID uint64) (r domain.Run, joined bool, err error) {
+	a, err := s.managed(ctx, guildID, actor, agentID)
 	if err != nil {
-		return domain.Run{}, err
+		return domain.Run{}, false, err
 	}
-	if r, err = s.runs.CreateRun(ctx, r); err != nil {
-		return domain.Run{}, err
+	return s.wake(ctx, a, WakeInput{Source: domain.OnDemand, Reason: domain.HeartbeatInvoked, ActorID: actor.ID})
+}
+
+// WakeInput is one Wake: what started it and why, its Issue (0 for none),
+// the person behind it (0 for none) and the comment it brings (0 for none).
+type WakeInput struct {
+	Source    domain.InvocationSource
+	Reason    domain.WakeReason
+	IssueID   uint64
+	ActorID   uint64
+	CommentID uint64
+}
+
+// Wake is the one way a Run of the Guild's Agent starts. It joins the
+// Agent's queued Run on the same Issue (or on none) when there is one,
+// and otherwise queues a new Run. A Wake the Agent's status or Heartbeat
+// policy refuses is a *domain.StatusError or domain.WakeRefused.
+func (s *Service) Wake(ctx context.Context, guildID, agentID uint64, w WakeInput) (r domain.Run, joined bool, err error) {
+	a, err := s.Agent(ctx, guildID, agentID)
+	if err != nil {
+		return domain.Run{}, false, err
 	}
-	s.recordRun(ctx, domain.RunStarted{Run: r, Agent: a, ActorID: actor.ID, Identifier: i.Identifier})
-	return r, nil
+	return s.wake(ctx, a, w)
+}
+
+// wakeAttempts bounds how often a Wake looks again when another request
+// queued, joined or claimed the Run it was about to join.
+const wakeAttempts = 5
+
+func (s *Service) wake(ctx context.Context, a domain.Agent, w WakeInput) (domain.Run, bool, error) {
+	var wc domain.WakeContext
+	if w.CommentID != 0 {
+		wc.CommentIDs = []uint64{w.CommentID}
+	}
+	next, err := domain.StartRun(a, w.IssueID, w.ActorID, w.Source, w.Reason, wc, s.now())
+	if err != nil {
+		return domain.Run{}, false, err
+	}
+	r, joined, err := s.queue(ctx, next)
+	if err != nil {
+		return domain.Run{}, false, err
+	}
+	if !joined && w.Source != domain.Timer {
+		e := domain.RunStarted{Run: r, Agent: a, ActorID: w.ActorID}
+		if r.IssueID != 0 {
+			if i, ok, err := s.work.IssueForRun(ctx, r.GuildID, r.IssueID); err == nil && ok {
+				e.Identifier = i.Identifier
+			}
+		}
+		s.recordRun(ctx, e)
+	}
+	return r, joined, nil
+}
+
+// queue stores the new queued Run, or joins the Agent's queued Run on the
+// same Issue: the database's one-queued rule settles two requests racing.
+func (s *Service) queue(ctx context.Context, next domain.Run) (domain.Run, bool, error) {
+	for range wakeAttempts {
+		twin, ok, err := s.runs.QueuedRunOf(ctx, next.AgentID, next.IssueID)
+		if err != nil {
+			return domain.Run{}, false, err
+		}
+		if ok {
+			from := twin.WakeCount
+			if err := twin.Join(next.WakeContext, s.now()); err != nil {
+				continue
+			}
+			moved, err := s.runs.JoinRun(ctx, twin, from)
+			if err != nil {
+				return domain.Run{}, false, err
+			}
+			if moved {
+				return twin, true, nil
+			}
+			continue
+		}
+		r, err := s.runs.CreateRun(ctx, next)
+		if errors.Is(err, ErrQueuedTwin) {
+			continue
+		}
+		return r, false, err
+	}
+	return domain.Run{}, false, fmt.Errorf("agents: the queued run of agent %d kept moving", next.AgentID)
 }
 
 // Run is the Guild's Run; ErrRunNotFound when it is another Guild's.

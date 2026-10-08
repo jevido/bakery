@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/jevido/bakery/services/api/contexts/agents/domain"
@@ -107,6 +108,28 @@ type fakeWork struct {
 	// unassigned are the Agents taken off Issues.
 	unassigned []uint64
 	issues     map[uint64]IssueBrief
+	comments   map[uint64]RunComment
+}
+
+func (f *fakeWork) OpenIssuesOfAgent(_ context.Context, _, agentID uint64) ([]IssueBrief, error) {
+	var out []IssueBrief
+	for _, i := range f.issues {
+		if i.AgentAssigneeID == agentID && slices.Contains([]string{"todo", "in_progress", "in_review"}, i.Status) {
+			out = append(out, i)
+		}
+	}
+	slices.SortFunc(out, func(a, b IssueBrief) int { return strings.Compare(a.Identifier, b.Identifier) })
+	return out, nil
+}
+
+func (f *fakeWork) CommentsForRun(_ context.Context, _ uint64, ids []uint64) ([]RunComment, error) {
+	var out []RunComment
+	for _, id := range ids {
+		if c, ok := f.comments[id]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeWork) IssueForRun(_ context.Context, _, issueID uint64) (IssueBrief, bool, error) {
