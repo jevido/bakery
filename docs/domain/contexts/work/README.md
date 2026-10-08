@@ -11,11 +11,11 @@ with a status, a Priority and an Assignee, tied to a Project and a Goal),
 the Comments people write on an Issue, which Issues block which (Blockers),
 the Issue documents (plans, specs, notes) kept on an Issue with their
 Revisions, and the Activity: who did what to the Guild's Goals and Issues,
-and when. Every Goal and Issue belongs to exactly one Guild, and an Issue
-in a Project follows that Project's Permission overrides.
+and when. It also holds each Member's Inbox: their Read marks and Inbox
+archives on the Guild's Issues. Every Goal and Issue belongs to exactly one
+Guild, and an Issue in a Project follows that Project's Permission overrides.
 
-It is **not** responsible (yet) for checkout, document locks, the Inbox or
-Approvals: later phases of the guilds goal add them. Agents and their Runs
+It is **not** responsible (yet) for checkout, document locks or Approvals: later phases of the guilds goal add them. Agents and their Runs
 are not work's at all; they get a context of their own.
 It does not own Members, Guilds or Projects either; it stores their ids and asks guilds and projects about them.
 
@@ -24,7 +24,8 @@ It does not own Members, Guilds or Projects either; it stores their ids and asks
 Shared terms (Board, Goal, Goal level, Goal status, Issue, Issue status,
 Priority, Assignee, Issue prefix, Issue identifier, Comment, Blocker, Issue
 document, Document key, Revision, Base revision, Restore, Activity, Activity event,
-Action, Actor) are in
+Action, Actor, Inbox, Inbox tab, Touched, Last touch, Unread, Read mark,
+Inbox archive, Resurface) are in
 [`glossary.md`](../../glossary.md).
 
 | Term | Meaning |
@@ -48,6 +49,7 @@ Action, Actor) are in
 | Comment | Belongs to one Issue and is written by one Member. Body 1–20000 characters. Only its author edits or deletes it. A deleted Comment keeps its place in the thread, its body gone, shown as "deleted". |
 | Issue document | Belongs to one Issue and its Guild. Its Document key is unique per Issue and never changes. Title at most 200 characters (may be empty), body at most 524288 characters, Markdown only. Its Revisions are numbered 1, 2, … without gaps; each save and each Restore adds exactly one Revision, and Revisions are never changed. A save needs the newest Revision as its Base revision (none for the first save), or it is refused. Restoring the newest Revision is refused, since it would change nothing. Deleting the Issue document removes its Revisions. |
 | Activity event | Append-only. Belongs to one Guild and has one Actor (or none once that Member's account is gone) and one Action from the glossary's list, about exactly one Goal or Issue. It keeps the Issue's number and title, or the Goal's title, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
+| Read mark and Inbox archive | Per Member per Issue, at most one of each. Belongs to an Issue and its Guild, and goes with the Issue and with the Member's Membership. Only that Member sets or removes it. Neither is part of the Issue aggregate: they change nothing about the Issue, belong to one person, and many people write them at once, so each is its own small record keyed by (Issue, Member). |
 
 ### Commands
 
@@ -83,6 +85,11 @@ in that Project after its Permission overrides, and is otherwise hidden
   that Revision's title and body.
 - `DeleteDocument()` [`manage_work`]: removes the Issue document and its
   Revisions.
+- `MarkRead()`, `MarkUnread()`, `ArchiveFromInbox()`,
+  `UnarchiveFromInbox()` [`view_resources`, on an Issue the Member may
+  view; for the asking Member only]: set or remove that Member's Read mark
+  or Inbox archive on the Issue. They publish no domain events and add no
+  Activity events.
 
 Reading an Issue's Blockers, Issue documents and Revisions needs what
 reading the Issue needs.
@@ -143,6 +150,17 @@ Goal event the Goal's title.
   | `POST /api/issues/{issue}/documents/{key}/revisions/{revision}/restore` | `{"document": Issue document}`; 409 for the newest Revision |
   | `GET /api/activity` | `{"activity": [Activity event]}`, newest first; filters `entity` (`issue` or `goal`), `actor` (a Member id), `before` (an Activity event id, for the next page) and `limit` (default 50, 1 to 200); anything else in them is 422. A page is never short while older events the person may see are left |
   | `GET /api/issues/{issue}/activity` | `{"activity": [Activity event]}`, oldest first, as Paperclip's issue activity |
+  | `POST /api/issues/{issue}/read`, `DELETE /api/issues/{issue}/read` | Sets or removes the asking Member's Read mark, with `view_resources` only |
+  | `POST /api/issues/{issue}/inbox-archive`, `DELETE /api/issues/{issue}/inbox-archive` | Sets or removes the asking Member's Inbox archive, with `view_resources` only |
+  | `GET /api/sidebar-badges` | `{"inbox": n}`: how many Issues in the asking Member's Mine tab are Unread |
+
+  `GET /api/issues` also takes `touched`, `unread` and `inbox`, each only
+  `me` (anything else is 422): `touched=me` keeps the Issues the asking
+  Member is Touched by (the Recent tab), `unread=me` the Unread ones (the
+  Unread tab), and `inbox=me` leaves out the ones they archived and have
+  not Resurfaced (with `touched=me`, the Mine tab). With any of them, each
+  Issue also answers `unread` and `last_touched_at` for that Member, and
+  the list is sorted by the Issue's latest Comment or update, newest first.
 
   A Goal is `{id, title, description, level, status, parent_id, owner:
   {id, name} | null, created_at, updated_at}`; it is written with `title`,
@@ -239,11 +257,10 @@ Goal event the Goal's title.
   Markdown and writes it in a plain Textarea with Write and Preview tabs,
   which keeps a large editor and its React dependencies out of the
   dashboard. The rendered Markdown is the same.
-- **No labels, attachments or read states yet.** Paperclip's Issues carry
-  labels, file attachments and per-person read markers. None of them is
-  needed for a Board to plan and talk about work, and attachments would
-  need storage of their own; they are left out until a phase needs them.
-  The Inbox, in a later phase, is where read states would start.
+- **No labels or attachments yet.** Paperclip's Issues carry labels and
+  file attachments. Neither is needed for a Board to plan and talk about
+  work, and attachments would need storage of their own; they are left out
+  until a phase needs them. Read states came with the Inbox.
 - **A Viewer sees everything and changes nothing.** Reading needs only
   `view_resources`, so the base Role's Viewers read the Board's Goals,
   Issues and Comments; the dashboard hides New Issue, New Goal, the
@@ -294,3 +311,16 @@ Goal event the Goal's title.
   filters that mean something.
 - **No atomic checkout yet.** Paperclip's checkout takes an agent and a Run
   (`POST /issues/:id/checkout` with `agentId`), so it comes with agents.
+- **Read marks and Inbox archives are not Activity.** Paperclip logs
+  `issue.read_marked` and `issue.inbox_archived` in its activity log. Here
+  they are one person's view of the work, not a change to it, and logging
+  them would flood the Guild's feed with every opened Issue, so they are
+  their own records and publish nothing.
+- **Marking read or archiving needs only `view_resources`.** It changes
+  nothing anyone else sees, so a Viewer keeps an Inbox like everyone else.
+- **Touched through Activity counts only what was recorded.** The Activity
+  table started empty and was not backfilled, so Issues older than it are
+  Touched only through creation, assignment and Comments.
+- **No Blocked or All tab yet.** In Paperclip those tabs are filled by
+  agents' failed Runs, Approvals and join requests, which come with agents
+  and Approvals.
