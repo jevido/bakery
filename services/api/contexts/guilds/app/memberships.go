@@ -146,7 +146,7 @@ func (s *Service) RemoveMembership(ctx context.Context, guildID, actorID uint64,
 	if err := s.members.RevokeAPITokens(ctx, memberID, guildID); err != nil {
 		return err
 	}
-	return s.memberLeft(ctx, guildID, memberID)
+	return s.memberLeft(ctx, guildID, memberID, actorID)
 }
 
 // ResetTwoFactor switches off the two-factor of a Member of the Guild who

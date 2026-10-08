@@ -191,15 +191,15 @@ func (s *Service) RankAbove(ctx context.Context, guildID, actorID, memberID uint
 }
 
 // OnMemberLeaving registers f, called once a Member has left the Guild or
-// been removed from it; the agents context terminates the Agents they
-// hired there.
-func (s *Service) OnMemberLeaving(f func(ctx context.Context, guildID, memberID uint64) error) {
+// been removed from it by actorID (the Member themself when they left);
+// the agents context terminates the Agents they hired there.
+func (s *Service) OnMemberLeaving(f func(ctx context.Context, guildID, memberID, actorID uint64) error) {
 	s.onLeaving = append(s.onLeaving, f)
 }
 
-func (s *Service) memberLeft(ctx context.Context, guildID, memberID uint64) error {
+func (s *Service) memberLeft(ctx context.Context, guildID, memberID, actorID uint64) error {
 	for _, f := range s.onLeaving {
-		if err := f(ctx, guildID, memberID); err != nil {
+		if err := f(ctx, guildID, memberID, actorID); err != nil {
 			return err
 		}
 	}

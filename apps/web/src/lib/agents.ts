@@ -32,6 +32,8 @@ export type Agent = {
   hirer: { id: number; name: string } | null;
   roles: AgentRole[];
   approval_id: number | null;
+  /** Whether the asker may edit, pause, resume, terminate and re-role it. */
+  can_manage: boolean;
   created_at: string;
   updated_at: string;
   paused_at: string | null;
@@ -71,3 +73,22 @@ export const hireAgent = (hire: Hire) =>
   api<{ agent: Agent; approval_id: number }>("POST", "/agents", hire);
 export const getOrg = () =>
   api<{ org: OrgNode[] }>("GET", "/org").then((r) => r.org);
+
+/** Any of an Agent's editable fields; reports_to null reports to no one. */
+export type AgentPatch = Partial<Omit<Hire, "role_ids">>;
+
+const agentOf = (r: { agent: Agent }) => r.agent;
+export const editAgent = (id: number, patch: AgentPatch) =>
+  api<{ agent: Agent }>("PATCH", `/agents/${id}`, patch).then(agentOf);
+export const pauseAgent = (id: number) =>
+  api<{ agent: Agent }>("POST", `/agents/${id}/pause`).then(agentOf);
+export const resumeAgent = (id: number) =>
+  api<{ agent: Agent }>("POST", `/agents/${id}/resume`).then(agentOf);
+export const terminateAgent = (id: number) =>
+  api<{ agent: Agent }>("POST", `/agents/${id}/terminate`).then(agentOf);
+export const addAgentRole = (id: number, roleID: number) =>
+  api<{ agent: Agent }>("PUT", `/agents/${id}/roles/${roleID}`).then(agentOf);
+export const removeAgentRole = (id: number, roleID: number) =>
+  api<{ agent: Agent }>("DELETE", `/agents/${id}/roles/${roleID}`).then(
+    agentOf,
+  );

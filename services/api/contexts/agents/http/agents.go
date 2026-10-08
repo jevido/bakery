@@ -1,9 +1,10 @@
 // Package http is the agents JSON API: the Current guild's Agents, hiring
-// one, and its Org chart.
+// and managing one, and its Org chart.
 package http
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"time"
@@ -31,6 +32,13 @@ type Controller struct {
 	// Members names the Members with these ids (identity.Members); a
 	// removed Member is left out.
 	Members func(ctx context.Context, ids []uint64) ([]Named, error)
+	// InstanceAdmin reports whether the request comes from the Instance
+	// admin.
+	InstanceAdmin func(ctx contractshttp.Context) bool
+}
+
+func (c *Controller) actor(ctx contractshttp.Context) app.Actor {
+	return app.Actor{ID: c.Member(ctx), Permissions: c.Permissions(ctx), InstanceAdmin: c.InstanceAdmin(ctx)}
 }
 
 func NewController(service *app.Service) *Controller {
@@ -57,15 +65,17 @@ type agentJSON struct {
 	Hirer        *Named     `json:"hirer"`
 	Roles        []roleJSON `json:"roles"`
 	ApprovalID   *uint64    `json:"approval_id"`
+	CanManage    bool       `json:"can_manage"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	PausedAt     *time.Time `json:"paused_at"`
 	TerminatedAt *time.Time `json:"terminated_at"`
 }
 
-// agentsJSON shows Agents with their Managers, Hirers and Roles. all is
-// the Guild's Agents, to name Managers from.
-func (c *Controller) agentsJSON(ctx context.Context, as []domain.Agent, all []domain.Agent) ([]agentJSON, error) {
+// agentsJSON shows Agents with their Managers, Hirers, Roles and whether
+// the actor may manage them. all is the Guild's Agents, to name Managers
+// from.
+func (c *Controller) agentsJSON(ctx context.Context, actor app.Actor, as []domain.Agent, all []domain.Agent) ([]agentJSON, error) {
 	names := map[uint64]string{}
 	for _, a := range all {
 		names[a.ID] = a.Name
@@ -84,15 +94,25 @@ func (c *Controller) agentsJSON(ctx context.Context, as []domain.Agent, all []do
 			hirers[m.ID] = m
 		}
 	}
+	// Whether the actor may manage an Agent depends only on its Hirer.
+	manages := map[uint64]bool{}
 	out := make([]agentJSON, len(as))
 	for i, a := range as {
+		may, ok := manages[a.HirerID]
+		if !ok {
+			var err error
+			if may, err = c.service.MayManage(ctx, actor, a); err != nil {
+				return nil, err
+			}
+			manages[a.HirerID] = may
+		}
 		roles, err := c.service.Roles(ctx, a)
 		if err != nil {
 			return nil, err
 		}
 		j := agentJSON{
 			ID: a.ID, Name: a.Name, Job: string(a.Job), JobLabel: domain.JobLabel(a.Job), Title: a.Title, Icon: string(a.Icon),
-			Capabilities: a.Capabilities, Status: string(a.Status), Roles: make([]roleJSON, len(roles)),
+			Capabilities: a.Capabilities, Status: string(a.Status), Roles: make([]roleJSON, len(roles)), CanManage: may,
 			CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt, PausedAt: a.PausedAt, TerminatedAt: a.TerminatedAt,
 		}
 		for k, r := range roles {
@@ -165,6 +185,8 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 		return respond.Error(ctx, contractshttp.StatusUnprocessableEntity, err.Error())
 	case errors.Is(err, app.ErrNotFound):
 		return notFound(ctx)
+	case errors.Is(err, app.ErrMayNotManage):
+		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
 	}
 	return respond.ServerError(ctx, err)
 }
@@ -181,7 +203,7 @@ func (c *Controller) ListAgents(ctx contractshttp.Context) contractshttp.Respons
 	if err != nil {
 		return fail(ctx, err)
 	}
-	out, err := c.agentsJSON(ctx.Context(), as, all)
+	out, err := c.agentsJSON(ctx.Context(), c.actor(ctx), as, all)
 	if err != nil {
 		return fail(ctx, err)
 	}
@@ -197,7 +219,7 @@ func (c *Controller) oneAgent(ctx contractshttp.Context, a domain.Agent) (agentJ
 		}
 		all = append(all, m)
 	}
-	out, err := c.agentsJSON(ctx.Context(), []domain.Agent{a}, all)
+	out, err := c.agentsJSON(ctx.Context(), c.actor(ctx), []domain.Agent{a}, all)
 	if err != nil {
 		return agentJSON{}, err
 	}
@@ -252,4 +274,113 @@ func (c *Controller) ShowOrg(ctx contractshttp.Context) contractshttp.Response {
 		return fail(ctx, err)
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"org": nodesJSON(org)})
+}
+
+// optional is a PATCH field: Set when the body names it, Value nil when
+// it is null.
+type optional[T any] struct {
+	Set   bool
+	Value *T
+}
+
+func (o *optional[T]) UnmarshalJSON(b []byte) error {
+	o.Set = true
+	return json.Unmarshal(b, &o.Value)
+}
+
+// text is a PATCH text field; null is empty.
+func (o optional[T]) text() *T {
+	if !o.Set {
+		return nil
+	}
+	if o.Value == nil {
+		return new(T)
+	}
+	return o.Value
+}
+
+type editRequest struct {
+	Name         optional[string] `json:"name"`
+	Job          optional[string] `json:"job"`
+	Title        optional[string] `json:"title"`
+	Icon         optional[string] `json:"icon"`
+	Capabilities optional[string] `json:"capabilities"`
+	// ReportsTo null (or 0) reports to no one.
+	ReportsTo optional[uint64] `json:"reports_to"`
+}
+
+// answer answers the Agent after a change, or the change's error.
+func (c *Controller) answer(ctx contractshttp.Context, a domain.Agent, err error) contractshttp.Response {
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out, err := c.oneAgent(ctx, a)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"agent": out})
+}
+
+// EditAgent changes any of the Agent's name, job, title, icon,
+// capabilities and reports_to.
+func (c *Controller) EditAgent(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req editRequest
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	a, err := c.service.Edit(ctx.Context(), c.Guild(ctx), c.actor(ctx), id, domain.Patch{
+		Name: req.Name.text(), Job: req.Job.text(), Title: req.Title.text(), Icon: req.Icon.text(),
+		Capabilities: req.Capabilities.text(), ManagerID: req.ReportsTo.text(),
+	})
+	return c.answer(ctx, a, err)
+}
+
+type change func(ctx context.Context, guildID uint64, actor app.Actor, id uint64) (domain.Agent, error)
+
+func (c *Controller) move(ctx contractshttp.Context, f change) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	a, err := f(ctx.Context(), c.Guild(ctx), c.actor(ctx), id)
+	return c.answer(ctx, a, err)
+}
+
+func (c *Controller) PauseAgent(ctx contractshttp.Context) contractshttp.Response {
+	return c.move(ctx, c.service.Pause)
+}
+
+func (c *Controller) ResumeAgent(ctx contractshttp.Context) contractshttp.Response {
+	return c.move(ctx, c.service.Resume)
+}
+
+func (c *Controller) TerminateAgent(ctx contractshttp.Context) contractshttp.Response {
+	return c.move(ctx, c.service.Terminate)
+}
+
+func (c *Controller) reRole(ctx contractshttp.Context, f func(ctx context.Context, guildID uint64, actor app.Actor, id, roleID uint64) (domain.Agent, error)) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	roleID, err := strconv.ParseUint(ctx.Request().Route("role_id"), 10, 64)
+	if err != nil {
+		return notFound(ctx)
+	}
+	a, err := f(ctx.Context(), c.Guild(ctx), c.actor(ctx), id, roleID)
+	return c.answer(ctx, a, err)
+}
+
+// AddAgentRole gives the Agent the Role {role_id}.
+func (c *Controller) AddAgentRole(ctx contractshttp.Context) contractshttp.Response {
+	return c.reRole(ctx, c.service.AddRole)
+}
+
+// RemoveAgentRole takes the Role {role_id} from the Agent.
+func (c *Controller) RemoveAgentRole(ctx contractshttp.Context) contractshttp.Response {
+	return c.reRole(ctx, c.service.RemoveRole)
 }

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/jevido/bakery/services/api/contexts/agents/domain"
@@ -39,6 +40,8 @@ type fakeGuilds struct {
 	joined map[uint64][]uint64
 	refuse error
 	leaves int
+	// rank is each Member's rank; higher ranks above.
+	rank map[uint64]int
 }
 
 func (f *fakeGuilds) JoinAgent(_ context.Context, _, _, agentID uint64, _ []string, roleIDs []uint64) error {
@@ -53,7 +56,29 @@ func (f *fakeGuilds) LeaveAgent(_ context.Context, _, agentID uint64) error {
 	delete(f.joined, agentID)
 	return nil
 }
-func (f *fakeGuilds) AgentRoles(context.Context, uint64, uint64) ([]Role, error) { return nil, nil }
+func (f *fakeGuilds) AgentRoles(_ context.Context, _, agentID uint64) ([]Role, error) {
+	var out []Role
+	for _, id := range f.joined[agentID] {
+		out = append(out, Role{ID: id})
+	}
+	return out, nil
+}
+func (f *fakeGuilds) AssignAgentRole(_ context.Context, _ uint64, _ Actor, agentID, roleID uint64) error {
+	if f.refuse != nil {
+		return f.refuse
+	}
+	if !slices.Contains(f.joined[agentID], roleID) {
+		f.joined[agentID] = append(f.joined[agentID], roleID)
+	}
+	return nil
+}
+func (f *fakeGuilds) RemoveAgentRole(_ context.Context, _ uint64, _ Actor, agentID, roleID uint64) error {
+	f.joined[agentID] = slices.DeleteFunc(f.joined[agentID], func(id uint64) bool { return id == roleID })
+	return nil
+}
+func (f *fakeGuilds) RankAbove(_ context.Context, _, actorID, memberID uint64) (bool, error) {
+	return f.rank[actorID] > f.rank[memberID], nil
+}
 func (f *fakeGuilds) RoleNames(_ context.Context, _ uint64, ids []uint64) ([]string, error) {
 	out := make([]string, len(ids))
 	for i := range ids {
@@ -63,9 +88,16 @@ func (f *fakeGuilds) RoleNames(_ context.Context, _ uint64, ids []uint64) ([]str
 }
 
 type fakeWork struct {
-	fail     error
-	requests []HireRequest
-	actions  []string
+	fail      error
+	requests  []HireRequest
+	actions   []string
+	cancelled []uint64
+	last      Activity
+}
+
+func (f *fakeWork) CancelApproval(_ context.Context, _, _, approvalID uint64) error {
+	f.cancelled = append(f.cancelled, approvalID)
+	return nil
 }
 
 func (f *fakeWork) RequestHireApproval(_ context.Context, _, _ uint64, r HireRequest) (uint64, error) {
@@ -77,11 +109,12 @@ func (f *fakeWork) RequestHireApproval(_ context.Context, _, _ uint64, r HireReq
 }
 func (f *fakeWork) RecordActivity(_ context.Context, e Activity) error {
 	f.actions = append(f.actions, e.Action)
+	f.last = e
 	return nil
 }
 
 func newTest() (*Service, *fakeAgents, *fakeGuilds, *fakeWork) {
-	a, g, w := &fakeAgents{rows: map[uint64]domain.Agent{}}, &fakeGuilds{joined: map[uint64][]uint64{}}, &fakeWork{}
+	a, g, w := &fakeAgents{rows: map[uint64]domain.Agent{}}, &fakeGuilds{joined: map[uint64][]uint64{}, rank: map[uint64]int{}}, &fakeWork{}
 	return NewService(a, g, w), a, g, w
 }
 

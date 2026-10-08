@@ -70,10 +70,21 @@ admin always may (with `hire_agents`, which they always hold).
   Agent; a Role added must be below the Hirer's highest Role and one the
   asking person may assign (422 otherwise).
 - When the Hirer leaves the Guild or is removed from it, guilds tells
-  agents and every Agent they hired there is terminated.
+  agents and every Agent they hired there is terminated, with whoever
+  removed them as the Actor (removal is the only way to leave today).
+  Deleting the Hirer's account does not pass through guilds: the foreign
+  keys on `agents.hirer_member_id` and `memberships.hirer_member_id`
+  cascade, so their Agents and Agent memberships go with the account, and
+  the Activity keeps naming those Agents (`exists: false`).
 
-Making the same change again (pausing a `paused` Agent, adding a Role it
-holds) answers the Agent unchanged and records nothing.
+"Manage" is `hire_agents` plus being the Agent's Hirer, the Instance
+admin, or ranking above the Hirer (the Guild Master ranks above everyone);
+403 otherwise. The Agent JSON's `can_manage` answers it for the asker.
+
+A status move the Agent's status does not allow (pausing a `paused` Agent,
+resuming an `idle` one, terminating a `terminated` one) is 422 naming the
+status. Adding a Role the Agent holds, removing one it does not, or an edit
+that changes nothing answers the Agent unchanged and records nothing.
 
 ### Domain events
 

@@ -120,3 +120,34 @@ func TestOrg(t *testing.T) {
 		t.Fatalf("depth: %+v", org[0].Reports[1])
 	}
 }
+
+func TestStatusMovesAndEdit(t *testing.T) {
+	at := time.Now()
+	a, _ := Hire(1, 7, Profile{Name: "Ada"}, 0, at)
+	name := "Bea"
+	if _, err := a.Edit(Patch{Name: &name}, at); err == nil {
+		t.Error("a pending agent was edited")
+	}
+	if err := a.Pause(at); err == nil {
+		t.Error("a pending agent was paused")
+	}
+	a.Approve(at)
+	bad := "nope"
+	if _, err := a.Edit(Patch{Job: &bad}, at); err == nil || a.Job != DefaultJob {
+		t.Errorf("unknown job: %v, %s", err, a.Job)
+	}
+	var m uint64 = 3
+	ch, err := a.Edit(Patch{Name: &name, ManagerID: &m}, at)
+	if err != nil || len(ch) != 2 || ch["name"] != (Change{"Ada", "Bea"}) || ch["reports_to"] != (Change{uint64(0), uint64(3)}) {
+		t.Errorf("edit: %v %v", ch, err)
+	}
+	if err := a.Resume(at); err == nil {
+		t.Error("an idle agent was resumed")
+	}
+	if a.Pause(at) != nil || a.Resume(at) != nil || a.Terminate(at) != nil {
+		t.Fatal("pause, resume, terminate")
+	}
+	if a.Terminate(at) == nil || a.Resume(at) == nil || a.Rolable() == nil {
+		t.Error("a terminated agent moved")
+	}
+}

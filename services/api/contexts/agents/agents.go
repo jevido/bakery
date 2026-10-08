@@ -1,7 +1,7 @@
 // Package agents is what the router may use from the agents context: its
-// routes (the Current guild's Agents, hiring one, its Org chart). It hears
-// work's Decisions on hire_agent Approvals and keeps a Guild with Agents
-// from being deleted. Nothing else in contexts/agents is for outside use.
+// routes (the Current guild's Agents, hiring and managing one, its Org
+// chart). It hears work's Decisions on hire_agent Approvals and Members
+// leaving a Guild, and keeps a Guild with Agents from being deleted. Nothing else in contexts/agents is for outside use.
 package agents
 
 import (
@@ -34,6 +34,7 @@ func svc() *app.Service {
 		})
 		work.OnAgentNames(service.Names)
 		guilds.OnGuildDeleting("agents", service.HasAgents)
+		guilds.OnMemberLeaving(service.HirerLeft)
 	})
 	return service
 }
@@ -48,6 +49,26 @@ func (guildsOfAgents) JoinAgent(ctx context.Context, guildID, hirerID, agentID u
 		return &domain.FieldError{Field: "role_ids", Message: err.Error()}
 	}
 	return err
+}
+
+// refused turns guilds refusing a Role into a 422 on role_id.
+func refused(err error) error {
+	if guilds.AgentRoleRefused(err) {
+		return &domain.FieldError{Field: "role_id", Message: err.Error()}
+	}
+	return err
+}
+
+func (guildsOfAgents) AssignAgentRole(ctx context.Context, guildID uint64, actor app.Actor, agentID, roleID uint64) error {
+	return refused(guilds.AssignAgentRole(ctx, guildID, actor.ID, actor.Permissions, agentID, roleID))
+}
+
+func (guildsOfAgents) RemoveAgentRole(ctx context.Context, guildID uint64, actor app.Actor, agentID, roleID uint64) error {
+	return refused(guilds.RemoveAgentRole(ctx, guildID, actor.ID, actor.Permissions, agentID, roleID))
+}
+
+func (guildsOfAgents) RankAbove(ctx context.Context, guildID, actorID, memberID uint64) (bool, error) {
+	return guilds.RankAbove(ctx, guildID, actorID, memberID)
 }
 
 func (guildsOfAgents) LeaveAgent(ctx context.Context, guildID, agentID uint64) error {
@@ -88,6 +109,10 @@ func (workOfAgents) RecordActivity(ctx context.Context, e app.Activity) error {
 	})
 }
 
+func (workOfAgents) CancelApproval(ctx context.Context, guildID, actorID, approvalID uint64) error {
+	return work.CancelApproval(ctx, guildID, actorID, approvalID)
+}
+
 func memberNames(ctx context.Context, ids []uint64) ([]agentshttp.Named, error) {
 	ms, err := identity.Members(ctx, ids)
 	if err != nil {
@@ -107,11 +132,14 @@ var agentInGuild = guilds.Owns("agent", func(ctx context.Context, id, guildID ui
 })
 
 // Routes registers the Current guild's Agents API: reading needs
-// view_resources, hiring hire_agents. Registering them also subscribes
-// agents to work's hire_agent Decisions and to Guild deletions.
+// view_resources, hiring hire_agents, managing an Agent hire_agents and
+// being its Hirer or ranking above them. Registering them also subscribes
+// agents to work's hire_agent Decisions, Members leaving and Guild
+// deletions.
 func Routes(r route.Router) {
 	c := agentshttp.NewController(svc())
 	c.Guild, c.Member, c.Permissions, c.Members = guilds.Current, guilds.MemberID, guilds.Permissions, memberNames
+	c.InstanceAdmin = guilds.InstanceAdmin
 	view := guilds.Can("view_resources")
 	r.Middleware(guilds.Auth, view).Group(func(r route.Router) {
 		r.Get("/api/agents", c.ListAgents)
@@ -119,4 +147,12 @@ func Routes(r route.Router) {
 	})
 	r.Middleware(guilds.Auth, guilds.Can("hire_agents")).Post("/api/agents", c.HireAgent)
 	r.Middleware(guilds.Auth, agentInGuild, view).Get("/api/agents/{id}", c.ShowAgent)
+	r.Middleware(guilds.Auth, agentInGuild, guilds.Can("hire_agents")).Group(func(r route.Router) {
+		r.Patch("/api/agents/{id}", c.EditAgent)
+		r.Post("/api/agents/{id}/pause", c.PauseAgent)
+		r.Post("/api/agents/{id}/resume", c.ResumeAgent)
+		r.Post("/api/agents/{id}/terminate", c.TerminateAgent)
+		r.Put("/api/agents/{id}/roles/{role_id}", c.AddAgentRole)
+		r.Delete("/api/agents/{id}/roles/{role_id}", c.RemoveAgentRole)
+	})
 }

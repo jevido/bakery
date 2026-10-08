@@ -116,7 +116,7 @@ type Service struct {
 	Now func() time.Time
 
 	onDeleting []deletingCheck
-	onLeaving  []func(ctx context.Context, guildID, memberID uint64) error
+	onLeaving  []func(ctx context.Context, guildID, memberID, actorID uint64) error
 }
 
 type deletingCheck struct {

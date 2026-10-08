@@ -315,9 +315,9 @@ func RankAbove(ctx context.Context, guildID, actorID, memberID uint64) (bool, er
 }
 
 // OnMemberLeaving registers f, called once a Member has been removed from
-// a Guild (the only way a person leaves one today), so the agents context
-// can terminate the Agents they hired there.
-func OnMemberLeaving(f func(ctx context.Context, guildID, memberID uint64) error) {
+// a Guild by actorID (the only way a person leaves one today), so the
+// agents context can terminate the Agents they hired there.
+func OnMemberLeaving(f func(ctx context.Context, guildID, memberID, actorID uint64) error) {
 	service.OnMemberLeaving(f)
 }
 

@@ -1,5 +1,6 @@
 // Package app holds the agents use cases: hire an Agent, follow its
-// hire_agent Approval, and read the Guild's Agents and Org chart.
+// hire_agent Approval, manage it (edit, pause, resume, terminate, its
+// Roles), and read the Guild's Agents and Org chart.
 package app
 
 import (
@@ -15,6 +16,10 @@ import (
 
 // ErrNotFound is an Agent that does not exist in the Guild.
 var ErrNotFound = errors.New("not found")
+
+// ErrMayNotManage is an actor who may not manage the Agent: they lack
+// hire_agents, or are neither its Hirer nor rank above them.
+var ErrMayNotManage = errors.New("only the agent's hirer, or someone ranking above them, with the Hire agents permission may manage it")
 
 // Agents keeps Agents.
 type Agents interface {
@@ -44,6 +49,20 @@ type Guilds interface {
 	LeaveAgent(ctx context.Context, guildID, agentID uint64) error
 	AgentRoles(ctx context.Context, guildID, agentID uint64) ([]Role, error)
 	RoleNames(ctx context.Context, guildID uint64, ids []uint64) ([]string, error)
+	// AssignAgentRole and RemoveAgentRole change the Agent's Roles by the
+	// actor, below their highest Role and the Hirer's.
+	AssignAgentRole(ctx context.Context, guildID uint64, actor Actor, agentID, roleID uint64) error
+	RemoveAgentRole(ctx context.Context, guildID uint64, actor Actor, agentID, roleID uint64) error
+	// RankAbove reports whether actorID ranks above memberID in the Guild.
+	RankAbove(ctx context.Context, guildID, actorID, memberID uint64) (bool, error)
+}
+
+// Actor is the person asking to change an Agent: their Permissions in the
+// Guild and whether they are the Instance admin.
+type Actor struct {
+	ID            uint64
+	Permissions   []string
+	InstanceAdmin bool
 }
 
 // HireRequest is the payload of a hire_agent Approval.
@@ -66,6 +85,9 @@ type Activity struct {
 type Work interface {
 	RequestHireApproval(ctx context.Context, guildID, hirerID uint64, r HireRequest) (uint64, error)
 	RecordActivity(ctx context.Context, e Activity) error
+	// CancelApproval cancels a hire_agent Approval still waiting for a
+	// Decision, by the actor.
+	CancelApproval(ctx context.Context, guildID, actorID, approvalID uint64) error
 }
 
 type Service struct {
@@ -154,6 +176,26 @@ func (s *Service) record(ctx context.Context, e any) {
 	case domain.AgentHired:
 		act = activityOf(e.Agent, e.ActorID, "agent.hired")
 		act.Details["job"], act.Details["approval_id"] = string(e.Agent.Job), e.Agent.HireApprovalID
+	case domain.AgentUpdated:
+		act = activityOf(e.Agent, e.ActorID, "agent.updated")
+		changes := make(map[string]any, len(e.Changes))
+		for field, c := range e.Changes {
+			changes[field] = map[string]any{"from": c.From, "to": c.To}
+		}
+		if _, ok := changes["capabilities"]; ok {
+			changes["capabilities"] = true
+		}
+		act.Details["changes"] = changes
+	case domain.AgentPaused:
+		act = activityOf(e.Agent, e.ActorID, "agent.paused")
+	case domain.AgentResumed:
+		act = activityOf(e.Agent, e.ActorID, "agent.resumed")
+	case domain.AgentRoleAdded:
+		act = activityOf(e.Agent, e.ActorID, "agent.role_added")
+		act.Details["role"] = e.Role
+	case domain.AgentRoleRemoved:
+		act = activityOf(e.Agent, e.ActorID, "agent.role_removed")
+		act.Details["role"] = e.Role
 	case domain.AgentTerminated:
 		act = activityOf(e.Agent, e.ActorID, "agent.terminated")
 	default:

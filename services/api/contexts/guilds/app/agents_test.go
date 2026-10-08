@@ -129,14 +129,14 @@ func TestRemovingTheHirerTellsOnMemberLeaving(t *testing.T) {
 		t.Fatal(err)
 	}
 	var left []uint64
-	s.OnMemberLeaving(func(_ context.Context, guildID, memberID uint64) error {
-		left = append(left, guildID, memberID)
+	s.OnMemberLeaving(func(_ context.Context, guildID, memberID, actorID uint64) error {
+		left = append(left, guildID, memberID, actorID)
 		return nil
 	})
 	if err := s.RemoveMembership(ctx, 2, 6, domain.AllPermissions, 7); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(left, []uint64{2, 7}) {
+	if !slices.Equal(left, []uint64{2, 7, 6}) {
 		t.Errorf("told: %v", left)
 	}
 	if rs, _ := s.AgentRoles(ctx, 2, 50); len(rs) != 0 {

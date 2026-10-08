@@ -244,6 +244,93 @@ func (a *Agent) Reject(at time.Time) (changed bool, err error) {
 	return false, &StatusError{Status: a.Status, Action: "rejected"}
 }
 
+// Patch changes an Agent's Profile and Manager: a nil field stays as it
+// is, a ManagerID of 0 reports to no one.
+type Patch struct {
+	Name, Job, Title, Icon, Capabilities *string
+	ManagerID                            *uint64
+}
+
+// Change is one field's change, as the Activity records it.
+type Change struct {
+	From, To any
+}
+
+// Edit applies the Patch to an idle or paused Agent and answers what
+// changed, keyed by the API's field names (reports_to for the Manager,
+// by id). The new Manager is checked with CheckManager first.
+func (a *Agent) Edit(p Patch, at time.Time) (map[string]Change, error) {
+	if a.Status != Idle && a.Status != Paused {
+		return nil, &StatusError{Status: a.Status, Action: "edited"}
+	}
+	in := Profile{Name: a.Name, Job: string(a.Job), Title: a.Title, Icon: string(a.Icon), Capabilities: a.Capabilities}
+	for _, f := range []struct{ to, from *string }{{&in.Name, p.Name}, {&in.Job, p.Job}, {&in.Title, p.Title}, {&in.Icon, p.Icon}, {&in.Capabilities, p.Capabilities}} {
+		if f.from != nil {
+			*f.to = *f.from
+		}
+	}
+	name, job, title, icon, caps, err := in.validated()
+	if err != nil {
+		return nil, err
+	}
+	manager := a.ManagerID
+	if p.ManagerID != nil {
+		manager = *p.ManagerID
+	}
+	changes := map[string]Change{}
+	note := func(field string, from, to any) {
+		if from != to {
+			changes[field] = Change{From: from, To: to}
+		}
+	}
+	note("name", a.Name, name)
+	note("job", string(a.Job), string(job))
+	note("title", a.Title, title)
+	note("icon", string(a.Icon), string(icon))
+	note("capabilities", a.Capabilities, caps)
+	note("reports_to", a.ManagerID, manager)
+	if len(changes) > 0 {
+		a.Name, a.Job, a.Title, a.Icon, a.Capabilities, a.ManagerID, a.UpdatedAt = name, job, title, icon, caps, manager, at
+	}
+	return changes, nil
+}
+
+// Pause makes an idle Agent paused.
+func (a *Agent) Pause(at time.Time) error {
+	if a.Status != Idle {
+		return &StatusError{Status: a.Status, Action: "paused"}
+	}
+	a.Status, a.PausedAt, a.UpdatedAt = Paused, &at, at
+	return nil
+}
+
+// Resume makes a paused Agent idle again.
+func (a *Agent) Resume(at time.Time) error {
+	if a.Status != Paused {
+		return &StatusError{Status: a.Status, Action: "resumed"}
+	}
+	a.Status, a.PausedAt, a.UpdatedAt = Idle, nil, at
+	return nil
+}
+
+// Terminate ends an Agent in any status but terminated, for good.
+func (a *Agent) Terminate(at time.Time) error {
+	if a.Status == Terminated {
+		return &StatusError{Status: a.Status, Action: "terminated"}
+	}
+	a.Status, a.TerminatedAt, a.UpdatedAt = Terminated, &at, at
+	return nil
+}
+
+// Rolable reports whether the Agent may be given or lose Roles: only an
+// idle or paused one, so a pending hire's Approval shows what it gets.
+func (a Agent) Rolable() error {
+	if a.Status != Idle && a.Status != Paused {
+		return &StatusError{Status: a.Status, Action: "given roles"}
+	}
+	return nil
+}
+
 // Node is an Agent in the Org chart with its direct reports.
 type Node struct {
 	Agent   Agent
@@ -300,8 +387,42 @@ type AgentHired struct {
 	ActorID uint64
 }
 
+// AgentUpdated is published when a Member has edited an Agent.
+type AgentUpdated struct {
+	Agent   Agent
+	ActorID uint64
+	Changes map[string]Change
+}
+
+// AgentPaused is published when a Member has paused an Agent.
+type AgentPaused struct {
+	Agent   Agent
+	ActorID uint64
+}
+
+// AgentResumed is published when a Member has resumed an Agent.
+type AgentResumed struct {
+	Agent   Agent
+	ActorID uint64
+}
+
+// AgentRoleAdded is published when a Member has given an Agent a Role.
+type AgentRoleAdded struct {
+	Agent   Agent
+	ActorID uint64
+	Role    string
+}
+
+// AgentRoleRemoved is published when a Member has taken a Role from an
+// Agent.
+type AgentRoleRemoved struct {
+	Agent   Agent
+	ActorID uint64
+	Role    string
+}
+
 // AgentTerminated is published when an Agent became terminated: by a
-// person, or by its rejected hire_agent Approval.
+// person, by its rejected hire_agent Approval, or by its Hirer leaving.
 type AgentTerminated struct {
 	Agent   Agent
 	ActorID uint64
