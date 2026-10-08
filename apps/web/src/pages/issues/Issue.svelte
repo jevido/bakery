@@ -16,8 +16,9 @@
   // Assignee, "Run" queues a Run of it (for whoever may manage it), the
   // newest queued or running Run shows live under the description as
   // Paperclip's LiveRunWidget, and every Run of the Issue is listed below
-  // the tabs as its IssueRunLedger. Left out until the Issue has them:
-  // checkout, attachments and work products.
+  // the tabs as its IssueRunLedger. The Work products (its Pull request and
+  // Preview) follow the Documents as Paperclip's artifact cards. Left out
+  // until the Issue has them: checkout and attachments.
   import { Activity, ChevronRight, Ellipsis, MessageSquare, Play, Plus, ShieldCheck, Trash2 } from '@lucide/svelte'
   import { runIsFinal } from '@bakery/ui/runStatus'
   import * as AlertDialog from '@bakery/ui/components/ui/alert-dialog'
@@ -36,6 +37,7 @@
   import IssueActivity from '../../lib/IssueActivity.svelte'
   import InlineEditor from '../../lib/InlineEditor.svelte'
   import IssueDocuments from '../../lib/IssueDocuments.svelte'
+  import IssueWorkProducts from '../../lib/IssueWorkProducts.svelte'
   import IssueBlockedNotice from '../../lib/IssueBlockedNotice.svelte'
   import IssueProperties from '../../lib/IssueProperties.svelte'
   import LiveRun from '../../lib/LiveRun.svelte'
@@ -347,6 +349,8 @@
       {/if}
 
       <IssueDocuments issue={i.id} {editable} onchange={refresh} />
+
+      <IssueWorkProducts products={i.work_products ?? []} canViewApplication={session.can('view_resources')} />
 
       <section class="space-y-3" aria-label="Sub-issues">
         <div class="flex items-center justify-between gap-2">

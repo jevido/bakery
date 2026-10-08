@@ -126,11 +126,18 @@
 //           Comment is in the thread under the Agent's name and the Activity
 //           names it; the Transcript shows both tool calls; once the Run is
 //           final the Checkout row is gone
+//   work-products  a scratch Issue's page has no Work products section;
+//           with a Pull request (open, opened by the owner) and its Preview
+//           (deploying) written straight into the dev Postgres, the page
+//           shows both cards with their pills, the Pull request's number,
+//           title, git host and link opening in a new tab, the Preview's
+//           link and its Preview deployments link; merged and ready, a
+//           reload shows Merged and Ready
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
 // The same environment as e2e/walk.ts overrides what it uses.
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -301,6 +308,17 @@ async function denyView(page: Page, project: number, role: 'Member' | 'Viewer'):
     await page.getByRole('button', { name: 'Remove', exact: true }).click()
     await page.getByRole('button', { name: 'Remove override' }).waitFor({ state: 'detached' })
   }
+}
+
+/**
+ * Runs SQL in the dev Postgres, for state no API path reaches without a git
+ * host (Work products come only from Forgejo and the Previews).
+ */
+function sql(query: string): string {
+  const container = process.env.BAKERY_POSTGRES_CONTAINER ?? 'bakery-dev-postgres-1'
+  const r = spawnSync('podman', ['exec', '-i', container, 'psql', '-U', 'bakery', '-d', 'bakery', '-tAq', '-v', 'ON_ERROR_STOP=1', '-c', query])
+  if (r.status !== 0) throw new Error(`psql: ${r.stderr.toString()}`)
+  return r.stdout.toString().trim()
 }
 
 const sections: Record<string, () => Promise<void>> = {
@@ -1453,6 +1471,48 @@ const sections: Record<string, () => Promise<void>> = {
       await desktop.stop()
       await page.request.delete(`${WEB}/api/issues/${issue.id}`)
       await page.request.post(`${WEB}/api/agents/${hire.agent.id}/terminate`)
+      await page.close()
+    }
+  },
+
+  'work-products': async () => {
+    const page = await signedIn()
+    const title = 'Work products e2e'
+    for (const i of (await issues(page)).filter((i) => i.title === title)) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title, status: 'backlog' } })).json()) as { issue: Issue & { created_by: { id: number; name: string } } }
+    try {
+      await page.goto(`${WEB}/#/issues/${issue.identifier}`)
+      await page.getByTestId('issue-detail-header').waitFor()
+      expect('no Work products section without any', (await page.getByRole('region', { name: 'Work products' }).count()) === 0)
+
+      const pr = 'https://git.example.test/guild/web/pulls/7'
+      const preview = 'https://pr-7.web.example.test'
+      sql(`INSERT INTO issue_work_products (guild_id, issue_id, application_id, type, provider, external_id, title, url, status, created_by_member_id, created_at, updated_at)
+        SELECT guild_id, id, 4242, 'pull_request', 'forgejo', '7', 'Wire the guild rail', '${pr}', 'open', ${issue.created_by.id}, now(), now() FROM issues WHERE id = ${issue.id};
+        INSERT INTO issue_work_products (guild_id, issue_id, application_id, type, provider, external_id, title, url, status, created_at, updated_at)
+        SELECT guild_id, id, 4242, 'preview_url', 'forgejo', '7', 'Preview of #7', '${preview}', 'deploying', now(), now() FROM issues WHERE id = ${issue.id}`)
+      await page.reload()
+      const region = page.getByRole('region', { name: 'Work products' })
+      const card = region.locator('[data-work-product="pull_request"]')
+      const previewCard = region.locator('[data-work-product="preview_url"]')
+      await card.waitFor()
+      const text = await card.innerText()
+      expect('the Pull request card shows its number, title and git host', text.includes('#7 Wire the guild rail') && text.includes('Forgejo'), text)
+      expect('its pill says Open', (await card.locator('[data-pill]').innerText()).trim() === 'Open', await card.locator('[data-pill]').innerText())
+      expect('it names who opened it', text.includes(issue.created_by.name), text)
+      const open = card.getByRole('link', { name: 'Open pull request' })
+      expect('"Open pull request" opens the git host in a new tab', (await open.getAttribute('href')) === pr && (await open.getAttribute('target')) === '_blank')
+      expect('the Preview card shows Deploying', (await previewCard.locator('[data-pill]').innerText()).trim() === 'Deploying', await previewCard.innerText())
+      expect("the Preview card links the Preview's address", (await previewCard.locator('[data-preview-link]').getAttribute('href')) === preview)
+      expect("and the Application's Preview Deployments", (await previewCard.getByRole('link', { name: 'Preview deployments' }).getAttribute('href')) === '#/applications/4242/preview-deployments')
+
+      sql(`UPDATE issue_work_products SET status = CASE type WHEN 'pull_request' THEN 'merged' ELSE 'ready' END WHERE issue_id = ${issue.id}`)
+      await page.reload()
+      await card.locator('[data-pill]', { hasText: 'Merged' }).waitFor()
+      expect('after the merge the pill says Merged', true)
+      expect('and the Preview Ready', (await previewCard.locator('[data-pill]').innerText()).trim() === 'Ready', await previewCard.innerText())
+    } finally {
+      await page.request.delete(`${WEB}/api/issues/${issue.id}`)
       await page.close()
     }
   },

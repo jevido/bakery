@@ -116,8 +116,31 @@ export type Issue = {
   last_touched_at?: string | null
 }
 
-/** One Issue as its page shows it: with its Sub-issues and Blockers both ways. */
-export type IssueDetail = Issue & { description: string; children: Issue[]; blocked_by: Blocker[]; blocking: Blocker[] }
+/**
+ * Something an Issue produced outside The Bakery's own records: its Pull
+ * request (open, merged or closed) or the link of that Pull request's
+ * Preview (deploying, ready, failed or removed). external_id is the Pull
+ * request's number for both; url is empty while a Preview has no link yet.
+ */
+export type WorkProduct = {
+  id: number
+  type: 'pull_request' | 'preview_url'
+  application_id: number
+  /** The git host's key: github, gitlab, gitea or forgejo. */
+  provider: string
+  external_id: string
+  title: string
+  url: string
+  status: 'open' | 'merged' | 'closed' | 'deploying' | 'ready' | 'failed' | 'removed'
+  created_by_run_id: number | null
+  created_by: WorkMember | null
+  created_by_agent: WorkAgent | null
+  created_at: string
+  updated_at: string
+}
+
+/** One Issue as its page shows it: with its Sub-issues, Blockers both ways and Work products. */
+export type IssueDetail = Issue & { description: string; children: Issue[]; blocked_by: Blocker[]; blocking: Blocker[]; work_products: WorkProduct[] }
 
 /** What creating or changing an Issue sends; null clears a reference. */
 export type IssueInput = Partial<{

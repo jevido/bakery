@@ -185,6 +185,12 @@
   --status-task-icon-done: #16a34a;
   --status-task-icon-blocked: #dc2626;
   --status-task-icon-cancelled: #52585d;
+  /* Paperclip's status chip hues (ui/src/index.css), one per status for both
+     modes; .status-chip mixes them per mode. */
+  --status-task-in_progress: #2563eb;
+  --status-task-in_review: #7c3aed;
+  --status-task-blocked: #dc2626;
+  --status-task-cancelled: #a8aeb2;
 }
 
 .dark {
@@ -237,6 +243,19 @@
 }
 
 /* Paperclip's sidebar surface (the row action fade reads it). */
+/* Paperclip's bordered status chip (ui/src/index.css): set --sc to a status
+   hue and the fill, text and border follow it in either mode. */
+.status-chip {
+  background-color: color-mix(in srgb, var(--sc) 15%, white);
+  color: color-mix(in srgb, var(--sc) 82%, black);
+  border-color: var(--sc);
+}
+.dark .status-chip {
+  background-color: color-mix(in srgb, var(--sc) 22%, transparent);
+  color: color-mix(in srgb, var(--sc) 80%, white);
+  border-color: color-mix(in srgb, var(--sc) 48%, transparent);
+}
+
 .primary-sidebar-surface {
   --sidebar-action-rest-surface: color-mix(in srgb, var(--border) 50%, var(--background));
   background-color: var(--sidebar-action-rest-surface);

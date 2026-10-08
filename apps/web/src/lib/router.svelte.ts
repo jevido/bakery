@@ -1,7 +1,7 @@
 import { api } from './api'
 import type { Application, Database, Project, Service } from './types'
 
-// Hash router, with Coolify's paths for Projects, Environments, Resources and Servers: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/permissions, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id} (old links, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/guild[/{page}] (its pages are guildPages; #/guild/roles/{id} opens one Role; #/members opens Members in place), #/guild/new, #/notifications/{kind} (its pages are notificationPages; #/notifications opens Email in place), #/security/{page} (its pages are securityPages, API Tokens and Desktops; #/security and #/api-tokens open API Tokens in place), #/issues[?status=…&priority=…&assignee=…&project=…&q=…&group=…] (the filters live in the query, so a reload keeps them), #/issues/{identifier} (or an Issue's id), #/goals, #/goals/{id}, #/agents/{all|active|paused|terminated}[?view=org] (#/agents opens All in place; the query keeps the Org chart view), #/agents/{id}, #/activity[?entity=…&actor=…] (the Guild's Activity, its filters in the query), #/inbox/{tab} (its tabs are inboxTabs; #/inbox opens the last tab used in place, else Mine), #/approvals/{pending|all} (#/approvals opens Pending in place), #/approvals/{id}[?resolved=approved] (one Approval; the query shows its "Approval confirmed" banner), #/profile (#/account opens it too), #/invite/{token}, #/desktop-sign-in/{id}?token=… (the Desktop app's sign-in, approved outside the guild shell), #/login, and #/dev/components in dev builds.
+// Hash router, with Coolify's paths for Projects, Environments, Resources and Servers: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/permissions, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id}[/{page}] (old links and links that know only its id, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/guild[/{page}] (its pages are guildPages; #/guild/roles/{id} opens one Role; #/members opens Members in place), #/guild/new, #/notifications/{kind} (its pages are notificationPages; #/notifications opens Email in place), #/security/{page} (its pages are securityPages, API Tokens and Desktops; #/security and #/api-tokens open API Tokens in place), #/issues[?status=…&priority=…&assignee=…&project=…&q=…&group=…] (the filters live in the query, so a reload keeps them), #/issues/{identifier} (or an Issue's id), #/goals, #/goals/{id}, #/agents/{all|active|paused|terminated}[?view=org] (#/agents opens All in place; the query keeps the Org chart view), #/agents/{id}, #/activity[?entity=…&actor=…] (the Guild's Activity, its filters in the query), #/inbox/{tab} (its tabs are inboxTabs; #/inbox opens the last tab used in place, else Mine), #/approvals/{pending|all} (#/approvals opens Pending in place), #/approvals/{id}[?resolved=approved] (one Approval; the query shows its "Approval confirmed" banner), #/profile (#/account opens it too), #/invite/{token}, #/desktop-sign-in/{id}?token=… (the Desktop app's sign-in, approved outside the guild shell), #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
@@ -18,7 +18,7 @@ export type Route =
   | { name: 'project-first-environment-new'; id: number }
   // page is the sub-page slug of Coolify's routes/web.php, '' for General.
   | { name: 'application'; projectId: number; environmentId: number; id: number; page: ApplicationPage; deploymentId: number | null }
-  | { name: 'application-legacy'; id: number }
+  | { name: 'application-legacy'; id: number; page: ApplicationPage }
   | {
       name: 'database'
       projectId: number
@@ -328,9 +328,10 @@ function parse(hash: string): Route {
       }
     }
   }
-  if (parts[0] === 'applications' && parts.length === 2) {
+  if (parts[0] === 'applications' && (parts.length === 2 || parts.length === 3)) {
     const id = Number(parts[1])
-    if (Number.isInteger(id)) return { name: 'application-legacy', id }
+    const page = parts[2] ?? ''
+    if (Number.isInteger(id) && isApplicationPage(page)) return { name: 'application-legacy', id, page }
   }
   if (parts[0] === 'databases' && parts.length === 2) {
     const id = Number(parts[1])
@@ -376,7 +377,7 @@ class Router {
     if (route.name === 'application-legacy') {
       api<{ application: Application }>('GET', `/applications/${route.id}`)
         .then(({ application }) => {
-          if (this.route === route) this.route = redirect(applicationPath(application))
+          if (this.route === route) this.route = redirect(applicationPath(application, route.page))
         })
         .catch(() => {
           if (this.route === route) this.route = { name: 'notfound' }
