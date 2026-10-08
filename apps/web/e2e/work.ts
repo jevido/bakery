@@ -1679,7 +1679,28 @@ const sections: Record<string, () => Promise<void>> = {
       const assigned = await page.request.patch(`${WEB}/api/issues/${issue.id}`, { data: { assignee_agent_id: hire.agent.id } })
       expect('assigning the Issue to the Agent answers 200', assigned.ok(), assigned.status())
 
+      // The page reloaded every half second from the assignment on, so the
+      // Preview's short Deploying is seen too; it ends once the Preview is
+      // Ready, which it can only be after the Run opened the Pull request.
+      const region = page.getByRole('region', { name: 'Work products' })
+      const card = region.locator('[data-work-product="pull_request"]')
+      const previewCard = region.locator('[data-work-product="preview_url"]')
+      const pill = (c: typeof card) => c.locator('[data-pill]').innerText().then((t) => t.trim(), () => '')
+      const seen = new Set<string>()
+      let prPill = ''
+      const until = Date.now() + 300_000
       await page.goto(`${WEB}/#/issues/${issue.identifier}`)
+      for (;;) {
+        await page.reload()
+        await page.getByTestId('issue-detail-header').waitFor()
+        if (!prPill && (await card.count())) prPill = await pill(card)
+        const p = (await previewCard.count()) ? await pill(previewCard) : ''
+        if (p) seen.add(p)
+        if (p === 'Failed') throw new Error('the Preview failed')
+        if (p === 'Ready') break
+        if (Date.now() > until) throw new Error(`timed out waiting for the Preview card to say Ready (saw ${[...seen]})`)
+        await new Promise((r) => setTimeout(r, 500))
+      }
       const ledger = page.getByTestId('run-ledger')
       await ledger.locator('[data-run]').first().locator('[data-run-status="succeeded"], [data-run-status="failed"]').waitFor({ timeout: 180_000 })
       const ended = await ledger.locator('[data-run]').first().locator('[data-run-status]').getAttribute('data-run-status')
@@ -1689,25 +1710,8 @@ const sections: Record<string, () => Promise<void>> = {
       const pulls = (await forgejo.api('GET', `/repos/${forgejo.user}/${repo}/pulls?state=open`)) as { number: number; head: { ref: string } }[]
       const pull = pulls.find((p) => p.head.ref === branch)
       expect(`Forgejo has the Pull request from ${branch}`, !!pull, pulls)
-      const region = page.getByRole('region', { name: 'Work products' })
-      const card = region.locator('[data-work-product="pull_request"]')
-      const previewCard = region.locator('[data-work-product="preview_url"]')
-      const pill = (c: typeof card) => c.locator('[data-pill]').innerText().then((t) => t.trim(), () => '')
-      await page.reload()
-      await card.waitFor({ timeout: 20_000 })
-      expect('the Pull request card says Open with its number', (await pill(card)) === 'Open' && (await card.innerText()).includes(`#${pull?.number}`), await card.innerText())
-
-      // The Preview, seen on the page as it goes Deploying, then Ready.
-      const seen = new Set<string>()
-      await waitFor(300, 'the Preview card to say Ready', async () => {
-        await page.reload()
-        await page.getByTestId('issue-detail-header').waitFor()
-        if ((await previewCard.count()) === 0) return false
-        const p = await pill(previewCard)
-        seen.add(p)
-        if (p === 'Failed') throw new Error('the Preview failed')
-        return p === 'Ready'
-      })
+      expect('the Pull request card said Open from the start', prPill === 'Open', prPill)
+      expect('it shows the number', (await card.innerText()).includes(`#${pull?.number}`), await card.innerText())
       expect('the Preview card went Deploying, then Ready', seen.has('Deploying') && seen.has('Ready'), [...seen])
       const address = (await previewCard.locator('[data-preview-link]').getAttribute('href')) ?? ''
       const host = new URL(address).hostname

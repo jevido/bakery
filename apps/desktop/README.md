@@ -108,6 +108,10 @@ claude --print - --output-format stream-json --verbose --permission-mode acceptE
   --add-dir <run dir>/.bakery --allowedTools mcp__bakery
 ```
 
+(`--allowedTools mcp__bakery,Bash(git:*)` for a Run with a Workspace,
+below, so the Agent can commit and push; `--print` has nobody to ask, so
+any other Bash call is refused)
+
 in the scratch directory `$BAKERY_DESKTOP_HOME/runs/<run id>` (0700), with
 the Run's prompt on stdin, in its own process group. Its environment holds
 `BAKERY_API_URL` (the Bakery's address), `BAKERY_API_KEY` (the Run key from

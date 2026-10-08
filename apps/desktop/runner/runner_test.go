@@ -79,6 +79,10 @@ func TestPrepareWritesTheSkillAndTheMCPConfig(t *testing.T) {
 	if got, want := strings.Join(args[len(claudeArgs):], " "), "--mcp-config "+config+" --strict-mcp-config --add-dir "+root+" --allowedTools mcp__bakery"; got != want {
 		t.Fatalf("args %q, want %q", got, want)
 	}
+	run.Workspace = &bakery.RunWorkspace{Repository: "https://git.test/guild/web.git", BaseBranch: "main", Branch: "bakery/def-12"}
+	if args, _, err := r.prepare(t.TempDir(), "https://bakery.test", run); err != nil || args[len(args)-1] != "mcp__bakery,Bash(git:*)" {
+		t.Fatalf("a Workspace Run's allowed tools %q: %v", args[len(args)-1], err)
+	}
 	if b, err := os.ReadFile(filepath.Join(root, ".claude", "skills", "bakery", "SKILL.md")); err != nil || !strings.HasPrefix(string(b), "---\nname: bakery\n") {
 		t.Fatalf("skill %q: %v", b, err)
 	}

@@ -74,10 +74,16 @@ var skill []byte
 // MCP servers stay out of an Agent's Run), the skill under addDir (claude
 // loads skills from .claude/skills in a directory added with --add-dir,
 // as Paperclip's claude adapter relies on), and the server's tools allowed
-// without asking.
-func runArgs(mcpConfig, addDir string) []string {
+// without asking. A Run with a Workspace may also run git without asking,
+// and nothing else through Bash: it commits and pushes in its Worktree, and
+// --print has nobody to ask, so a git call would only be refused.
+func runArgs(mcpConfig, addDir string, workspace bool) []string {
+	tools := "mcp__bakery"
+	if workspace {
+		tools += ",Bash(git:*)"
+	}
 	return append(append([]string{}, claudeArgs...),
-		"--mcp-config", mcpConfig, "--strict-mcp-config", "--add-dir", addDir, "--allowedTools", "mcp__bakery")
+		"--mcp-config", mcpConfig, "--strict-mcp-config", "--add-dir", addDir, "--allowedTools", tools)
 }
 
 // mcpEnv is what the Bakery's MCP server needs to act for run on the
@@ -165,7 +171,7 @@ func (r *Runner) prepare(dir, address string, run bakery.DesktopRun) ([]string, 
 	if err := os.WriteFile(mcpConfig, config, 0o600); err != nil {
 		return nil, root, err
 	}
-	return runArgs(mcpConfig, root), root, nil
+	return runArgs(mcpConfig, root, run.Workspace != nil), root, nil
 }
 
 // self is the binary that serves `mcp`: Self, else this executable.

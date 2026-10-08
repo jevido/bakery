@@ -72,8 +72,9 @@ Issue's Application, on its Agent branch `BAKERY_BRANCH`, made from
 `BAKERY_BASE_BRANCH`. When it is not set, the Issue has no code for you to
 change.
 
-1. Make the change in the worktree. Run the repository's own checks (its
-   tests, linter, build) if it has them, and fix what they find.
+1. Make the change in the worktree with your editing tools. `git` is the
+   only command you may run; the Preview deployment builds and shows the
+   change, so say in your Comment what a person should look at there.
 2. Commit with a message that names the Issue identifier, for example
    `DEF-12: say hello on the home page`.
 3. Push the branch: `git push -u origin HEAD`.
