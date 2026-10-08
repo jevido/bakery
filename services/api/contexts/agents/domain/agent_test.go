@@ -193,3 +193,30 @@ func TestEditHeartbeatWhileRunning(t *testing.T) {
 		t.Errorf("title while running: %v", err)
 	}
 }
+
+func TestHeartbeatDue(t *testing.T) {
+	at := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	last := at.Add(time.Minute)
+	a := Agent{Status: Idle, CreatedAt: at, Heartbeat: HeartbeatPolicy{Enabled: true, IntervalSec: 60}}
+	for _, c := range []struct {
+		name string
+		edit func(*Agent)
+		now  time.Duration
+		want bool
+	}{
+		{"before the first interval", func(*Agent) {}, 59 * time.Second, false},
+		{"one interval after hire", func(*Agent) {}, time.Minute, true},
+		{"timer off", func(a *Agent) { a.Heartbeat.Enabled = false }, time.Hour, false},
+		{"running", func(a *Agent) { a.Status = Running }, time.Hour, true},
+		{"error", func(a *Agent) { a.Status = Error }, time.Hour, true},
+		{"paused", func(a *Agent) { a.Status = Paused }, time.Hour, false},
+		{"since the last heartbeat", func(a *Agent) { a.LastHeartbeatAt = &last }, 119 * time.Second, false},
+		{"an interval after the last", func(a *Agent) { a.LastHeartbeatAt = &last }, 2 * time.Minute, true},
+	} {
+		b := a
+		c.edit(&b)
+		if got := b.HeartbeatDue(at.Add(c.now)); got != c.want {
+			t.Errorf("%s: %v", c.name, got)
+		}
+	}
+}

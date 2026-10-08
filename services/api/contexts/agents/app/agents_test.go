@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/agents/domain"
 )
@@ -41,6 +42,26 @@ func (f *fakeAgents) SaveHeartbeat(_ context.Context, a domain.Agent) error {
 	r.Heartbeat, r.UpdatedAt = a.Heartbeat, a.UpdatedAt
 	f.rows[a.ID] = r
 	return nil
+}
+func (f *fakeAgents) DueHeartbeats(_ context.Context, now time.Time) ([]domain.Agent, error) {
+	var out []domain.Agent
+	for id := uint64(1); id <= f.next; id++ {
+		if a, ok := f.rows[id]; ok && a.HeartbeatDue(now) {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+// ClaimHeartbeat honours the conditional write, as the database does.
+func (f *fakeAgents) ClaimHeartbeat(_ context.Context, id uint64, seen *time.Time, at time.Time) (bool, error) {
+	a, ok := f.rows[id]
+	if !ok || (a.LastHeartbeatAt == nil) != (seen == nil) || (seen != nil && !a.LastHeartbeatAt.Equal(*seen)) {
+		return false, nil
+	}
+	a.LastHeartbeatAt = &at
+	f.rows[id] = a
+	return true, nil
 }
 func (f *fakeAgents) DeleteAgent(_ context.Context, id uint64) error { delete(f.rows, id); return nil }
 

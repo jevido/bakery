@@ -38,6 +38,13 @@ type Agents interface {
 	// SaveHeartbeat stores the Agent's Heartbeat policy alone, so it
 	// cannot undo a Run's change of the Agent status made meanwhile.
 	SaveHeartbeat(ctx context.Context, a domain.Agent) error
+	// DueHeartbeats lists, across Guilds, the Agents whose Heartbeat is
+	// due at now (domain.Agent.HeartbeatDue).
+	DueHeartbeats(ctx context.Context, now time.Time) ([]domain.Agent, error)
+	// ClaimHeartbeat sets the Agent's LastHeartbeatAt to at only while it
+	// is still seen (nil for never); claimed is false when another process
+	// claimed it first.
+	ClaimHeartbeat(ctx context.Context, id uint64, seen *time.Time, at time.Time) (claimed bool, err error)
 	// DeleteAgent removes an Agent whose hire did not go through.
 	DeleteAgent(ctx context.Context, id uint64) error
 }

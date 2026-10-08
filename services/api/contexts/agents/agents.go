@@ -267,11 +267,13 @@ func StreamRoutes(r route.Router) {
 	r.Middleware(guilds.Auth, runInGuild, guilds.Can("view_resources")).Get("/api/runs/{id}/stream", controller().RunStream)
 }
 
-// sweepEvery is how often Runs whose Lease ran out are looked for.
+// sweepEvery is how often Runs whose Lease ran out and due Heartbeats
+// are looked for.
 const sweepEvery = 30 * time.Second
 
 // Start ends, every 30 seconds until ctx ends, the running Runs whose
-// Desktop stopped reporting as lost, queueing each again.
+// Desktop stopped reporting as lost, queueing each again, and then starts
+// the Heartbeats that are due.
 func Start(ctx context.Context) {
 	go func() {
 		<-ctx.Done()
@@ -287,6 +289,9 @@ func Start(ctx context.Context) {
 			case <-t.C:
 				if err := svc().SweepLostRuns(ctx); err != nil {
 					facades.Log().Errorf("agents: sweeping lost runs: %v", err)
+				}
+				if _, err := svc().TickHeartbeats(ctx); err != nil {
+					facades.Log().Errorf("agents: ticking heartbeats: %v", err)
 				}
 			}
 		}

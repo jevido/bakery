@@ -147,6 +147,31 @@ func (s Agents) SaveHeartbeat(ctx context.Context, a domain.Agent) error {
 	return err
 }
 
+func (s Agents) DueHeartbeats(ctx context.Context, now time.Time) ([]domain.Agent, error) {
+	var recs []agentRecord
+	err := s.query(ctx).Raw(`SELECT * FROM agents WHERE heartbeat_enabled AND status IN ('idle', 'running', 'error')
+		AND COALESCE(last_heartbeat_at, created_at) + make_interval(secs => heartbeat_interval_sec) <= ? ORDER BY id`, now).Scan(&recs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Agent, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+	}
+	return out, nil
+}
+
+// ClaimHeartbeat is Paperclip's claimDueTimerHeartbeat: the write only hits
+// a row whose last_heartbeat_at is still the one read, so of two API
+// processes ticking at once only one queues the timer Run.
+func (s Agents) ClaimHeartbeat(ctx context.Context, id uint64, seen *time.Time, at time.Time) (bool, error) {
+	res, err := s.query(ctx).Exec(`UPDATE agents SET last_heartbeat_at = ? WHERE id = ? AND last_heartbeat_at IS NOT DISTINCT FROM ?`, at, id, seen)
+	if err != nil {
+		return false, err
+	}
+	return res.RowsAffected == 1, nil
+}
+
 func (s Agents) DeleteAgent(ctx context.Context, id uint64) error {
 	_, err := s.query(ctx).Exec(`DELETE FROM agents WHERE id = ?`, id)
 	return err

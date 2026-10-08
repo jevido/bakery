@@ -401,6 +401,21 @@ func (a *Agent) StartRunning(at time.Time) error {
 	return nil
 }
 
+// HeartbeatDue reports whether the timer owes the Agent a Heartbeat at
+// now: its policy has the timer on, it is idle, running or in error, and
+// a whole interval has passed since its last timer Run was claimed (or
+// since it was hired, before the first).
+func (a Agent) HeartbeatDue(now time.Time) bool {
+	if !a.Heartbeat.Enabled || (a.Status != Idle && a.Status != Running && a.Status != Error) {
+		return false
+	}
+	last := a.CreatedAt
+	if a.LastHeartbeatAt != nil {
+		last = *a.LastHeartbeatAt
+	}
+	return !now.Before(last.Add(time.Duration(a.Heartbeat.IntervalSec) * time.Second))
+}
+
 // RunEnded follows the end of the running Run of a running Agent: idle
 // after it succeeded or was cancelled, error after it failed or was lost.
 // An Agent no longer running (paused or terminated meanwhile) stays as it
