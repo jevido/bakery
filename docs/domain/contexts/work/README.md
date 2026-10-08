@@ -12,10 +12,12 @@ the Comments people write on an Issue, which Issues block which (Blockers),
 the Issue documents (plans, specs, notes) kept on an Issue with their
 Revisions, and the Activity: who did what to the Guild's Goals and Issues,
 and when. It also holds each Member's Inbox: their Read marks and Inbox
-archives on the Guild's Issues. Every Goal and Issue belongs to exactly one
-Guild, and an Issue in a Project follows that Project's Permission overrides.
+archives on the Guild's Issues, and the Approvals: decisions a Member asks
+the Board to make, with their Linked issues and Approval comments. Every
+Goal, Issue and Approval belongs to exactly one Guild, and an Issue in a
+Project follows that Project's Permission overrides.
 
-It is **not** responsible (yet) for checkout, document locks or Approvals: later phases of the guilds goal add them. Agents and their Runs
+It is **not** responsible (yet) for checkout or document locks: later phases of the guilds goal add them. Agents and their Runs
 are not work's at all; they get a context of their own.
 It does not own Members, Guilds or Projects either; it stores their ids and asks guilds and projects about them.
 
@@ -25,7 +27,9 @@ Shared terms (Board, Goal, Goal level, Goal status, Issue, Issue status,
 Priority, Assignee, Issue prefix, Issue identifier, Comment, Blocker, Issue
 document, Document key, Revision, Base revision, Restore, Activity, Activity event,
 Action, Actor, Inbox, Inbox tab, Touched, Last touch, Unread, Read mark,
-Inbox archive, Resurface) are in
+Inbox archive, Resurface, Approval, Approval type, Approval status,
+Actionable, Requester, Decision, Decision note, Request revision, Resubmit,
+Approval comment, Linked issue) are in
 [`glossary.md`](../../glossary.md).
 
 | Term | Meaning |
@@ -48,7 +52,8 @@ Inbox archive, Resurface) are in
 | Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild, its Project is in the Guild and its Goal is in the Guild. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. |
 | Comment | Belongs to one Issue and is written by one Member. Body 1–20000 characters. Only its author edits or deletes it. A deleted Comment keeps its place in the thread, its body gone, shown as "deleted". |
 | Issue document | Belongs to one Issue and its Guild. Its Document key is unique per Issue and never changes. Title at most 200 characters (may be empty), body at most 524288 characters, Markdown only. Its Revisions are numbered 1, 2, … without gaps; each save and each Restore adds exactly one Revision, and Revisions are never changed. A save needs the newest Revision as its Base revision (none for the first save), or it is refused. Restoring the newest Revision is refused, since it would change nothing. Deleting the Issue document removes its Revisions. |
-| Activity event | Append-only. Belongs to one Guild and has one Actor (or none once that Member's account is gone) and one Action from the glossary's list, about exactly one Goal or Issue. It keeps the Issue's number and title, or the Goal's title, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
+| Activity event | Append-only. Belongs to one Guild and has one Actor (or none once that Member's account is gone) and one Action from the glossary's list, about exactly one Goal, Issue or Approval. It keeps the Issue's number and title, the Goal's title, or the Approval's type and payload title, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
+| Approval | Belongs to one Guild. Approval type and Approval status from their lists; it starts `pending`. A `request_board_approval` payload has a `title` of 1–200 characters and optional `summary`, `recommended_action` and `next_action_on_approval` (each at most 20000 characters) and `risks` (at most 20 strings of at most 500 characters), and nothing else. Approve and reject only from `pending` or `revision_requested` (Actionable); Request revision only from `pending`; Resubmit only from `revision_requested`, which clears the decider, the decision time and the Decision note. A Decision records its decider, time and optional Decision note (at most 20000 characters). Making the same Decision again on an Approval that already has it answers the Approval unchanged and records nothing, as Paperclip's `applied: false`; any other move from a status that does not allow it is refused (422). Its Linked issues are Issues of the same Guild, set when it is requested. Its Approval comments each have one author and a body of 1–20000 characters, and are never edited or deleted. The Approval, its links and its Approval comments go with their Guild; a Linked issue's link goes with the Issue. |
 | Read mark and Inbox archive | Per Member per Issue, at most one of each. Belongs to an Issue and its Guild, and goes with the Issue and with the Member's Membership. Only that Member sets or removes it. Neither is part of the Issue aggregate: they change nothing about the Issue, belong to one person, and many people write them at once, so each is its own small record keyed by (Issue, Member). |
 
 ### Commands
@@ -90,6 +95,21 @@ in that Project after its Permission overrides, and is otherwise hidden
   view; for the asking Member only]: set or remove that Member's Read mark
   or Inbox archive on the Issue. They publish no domain events and add no
   Activity events.
+- `RequestApproval(type, payload, issue ids)` [`manage_work`]: the asking
+  Member is the Requester; every Issue id must be the Guild's (422
+  otherwise).
+- `Approve(note)`, `Reject(note)` [`approve`]: a Decision on an Actionable
+  Approval.
+- `RequestRevision(note)` [`approve`]: on a `pending` Approval.
+- `Resubmit(payload)` [`manage_work`, and only the Requester; anyone else
+  is refused (403)]: on a `revision_requested` Approval, replacing the
+  payload when one is given.
+- `CommentOnApproval(body)` [`manage_work`].
+
+Reading Approvals, their Linked issues and Approval comments needs
+`view_resources`. An Approval has no Project, so everyone who may read the
+Guild's work sees it; a Linked issue in a Project the person may not view
+is left out of what they read.
 
 Reading an Issue's Blockers, Issue documents and Revisions needs what
 reading the Issue needs.
@@ -117,9 +137,16 @@ Comment publishes nothing (Paperclip records none).
 | `CommentDeleted` | `DeleteComment` | `issue.comment_deleted` | the Comment |
 | `DocumentSaved` | `SaveDocument`, `RestoreRevision` | `issue.document_created` on the first save, else `issue.document_updated` | Document key, title, Revision number, and the restored Revision's number for a Restore |
 | `DocumentDeleted` | `DeleteDocument` | `issue.document_deleted` | Document key, title |
+| `ApprovalRequested` | `RequestApproval` | `approval.created` | Approval type, the payload's title, the Linked issues |
+| `ApprovalApproved` | `Approve`, when it changed something | `approval.approved` | Approval type, the payload's title, Decision note |
+| `ApprovalRejected` | `Reject`, when it changed something | `approval.rejected` | Approval type, the payload's title, Decision note |
+| `RevisionRequested` | `RequestRevision` | `approval.revision_requested` | Approval type, the payload's title, Decision note |
+| `ApprovalResubmitted` | `Resubmit` | `approval.resubmitted` | Approval type, the payload's title |
+| `ApprovalCommentWritten` | `CommentOnApproval` | `approval.comment_added` | the Approval comment and its first 140 characters |
 
 Every Issue event also carries the Issue's number, title and Project; every
-Goal event the Goal's title.
+Goal event the Goal's title, and every Approval event the Approval's
+type and the payload's title.
 
 ## Integration
 
@@ -148,11 +175,20 @@ Goal event the Goal's title.
   | `DELETE /api/issues/{issue}/documents/{key}` | 204 |
   | `GET /api/issues/{issue}/documents/{key}/revisions` | `{"revisions": [Revision]}`, newest first |
   | `POST /api/issues/{issue}/documents/{key}/revisions/{revision}/restore` | `{"document": Issue document}`; 409 for the newest Revision |
-  | `GET /api/activity` | `{"activity": [Activity event]}`, newest first; filters `entity` (`issue` or `goal`), `actor` (a Member id), `before` (an Activity event id, for the next page) and `limit` (default 50, 1 to 200); anything else in them is 422. A page is never short while older events the person may see are left |
+  | `GET /api/activity` | `{"activity": [Activity event]}`, newest first; filters `entity` (`issue`, `goal` or `approval`), `actor` (a Member id), `before` (an Activity event id, for the next page) and `limit` (default 50, 1 to 200); anything else in them is 422. A page is never short while older events the person may see are left |
   | `GET /api/issues/{issue}/activity` | `{"activity": [Activity event]}`, oldest first, as Paperclip's issue activity |
   | `POST /api/issues/{issue}/read`, `DELETE /api/issues/{issue}/read` | Sets or removes the asking Member's Read mark, with `view_resources` only |
   | `POST /api/issues/{issue}/inbox-archive`, `DELETE /api/issues/{issue}/inbox-archive` | Sets or removes the asking Member's Inbox archive, with `view_resources` only |
-  | `GET /api/sidebar-badges` | `{"inbox": n}`: how many Issues in the asking Member's Mine tab are Unread |
+  | `GET /api/sidebar-badges` | `{"inbox": n, "approvals": n}`: how many Issues in the asking Member's Mine tab are Unread, and how many of the Guild's Approvals are Actionable (counted in `inbox` too for someone with `approve`) |
+  | `GET /api/approvals` | `{"approvals": [Approval]}`, newest first; filter `status`, a comma list of Approval statuses (anything else is 422) |
+  | `POST /api/approvals` | 201 `{"approval": Approval}`; body `{type, payload, issue_ids}`; 422 for an unknown type, a payload that breaks the rules or an Issue id that is not the Guild's |
+  | `GET /api/approvals/{id}` | `{"approval": Approval}` |
+  | `GET /api/approvals/{id}/issues` | `{"issues": [Issue]}`, the Linked issues the person may see, as in Issue lists |
+  | `POST /api/approvals/{id}/approve`, `.../reject`, `.../request-revision` | `{"approval": Approval}`; body `{decision_note}`, optional; 422 when the Approval's status does not allow it |
+  | `POST /api/approvals/{id}/resubmit` | `{"approval": Approval}`; body `{payload}`, optional; 403 for anyone but the Requester, 422 unless `revision_requested` |
+  | `GET /api/approvals/{id}/comments` | `{"comments": [Approval comment]}`, oldest first |
+  | `POST /api/approvals/{id}/comments` | 201 `{"comment": Approval comment}`; body `{body}` |
+  | `GET /api/issues/{issue}/approvals` | `{"approvals": [Approval]}`, the Approvals linked to the Issue, newest first |
 
   `GET /api/issues` also takes `touched`, `unread` and `inbox`, each only
   `me` (anything else is 422): `touched=me` keeps the Issues the asking
@@ -186,9 +222,15 @@ Goal event the Goal's title.
   `baseRevisionId`. A Revision is `{id, number, title, body,
   change_summary, created_by, created_at}`; a Restore's change summary is
   "Restored from revision N". An Activity event is `{id, action, actor:
-  {id, name} | null, entity: {type: "issue" | "goal", id, identifier?,
+  {id, name} | null, entity: {type: "issue" | "goal" | "approval", id, identifier?,
   title, exists}, details, created_at}`, `exists` false once the Goal or
-  Issue is deleted. Its `details` by Action:
+  Issue is deleted. An Approval is `{id, type, status, payload, requester:
+  {id, name} | null, decided_by: {id, name} | null, decision_note,
+  decided_at, created_at, updated_at}`, the payload in snake_case (`title`,
+  `summary`, `recommended_action`, `next_action_on_approval`, `risks`). An
+  Approval comment is `{id, body, author: {id, name} | null, created_at}`.
+  An Activity event about an Approval has `entity: {type: "approval", id,
+  title, exists}`, the payload's title. Its `details` by Action:
 
   | Action | `details` |
   | ------ | --------- |
@@ -202,6 +244,10 @@ Goal event the Goal's title.
   | `issue.comment_deleted` | `issue_number`, `issue_title`, `comment_id` |
   | `issue.document_created`, `issue.document_updated` | `issue_number`, `issue_title`, `key`, `title`, `revision_number`, and `restored_from` for a Restore |
   | `issue.document_deleted` | `issue_number`, `issue_title`, `key`, `title` |
+  | `approval.created` | `type`, `title`, `issue_ids` |
+  | `approval.approved`, `approval.rejected`, `approval.revision_requested` | `type`, `title`, `decision_note` |
+  | `approval.resubmitted` | `type`, `title` |
+  | `approval.comment_added` | `type`, `title`, `comment_id`, `snippet` |
 
   References are stored as ids and answered with their names as they are
   when read, null for none. One that no longer exists, or an Issue or
@@ -332,3 +378,32 @@ Goal event the Goal's title.
 - **No Blocked or All tab yet.** In Paperclip those tabs are filled by
   agents' failed Runs, Approvals and join requests, which come with agents
   and Approvals.
+- **Approvals live in work, not a context of their own.** They are the
+  Board's decisions on its work and link to its Issues. The agents context
+  (Order step 5) will ask work for a `hire_agent` Approval through work's
+  published contract rather than own a second kind of decision.
+- **A Member can request an Approval from an Issue's page.** Paperclip's UI
+  has no form for it; only agents create Approvals there. Without agents
+  the feature would be unreachable, so the Issue page has a "Request
+  approval" dialog.
+- **The payload is snake_case on the wire** (`recommended_action`), like
+  the rest of The Bakery's API, where Paperclip's keys are camelCase.
+- **Issues are linked when the Approval is requested** (`issue_ids`).
+  Paperclip's separate link and unlink routes wait until something needs
+  them.
+- **The Requester may decide their own Approval** if they hold `approve`,
+  as in Paperclip. A Guild that wants four eyes gives its Requesters no
+  `approve`.
+- **Resubmit is the Requester's alone.** Paperclip lets any board user mark
+  an Approval resubmitted, because there the Requester is an agent that
+  cannot press the button. Here the Requester is a Member who can.
+- **Approvals go with their Guild.** Approvals, their links and their
+  Approval comments are removed with their Guild (cascade), like Activity
+  events, and never block deleting it.
+- **Approvals have no Project.** Everyone with `view_resources` sees every
+  Approval and its comments; only Linked issues in Projects someone may not
+  view are left out for them.
+- **No `cancelled`, no hire or budget Approvals, no waking the Requester.**
+  Paperclip cancels an Approval when its requesting agent goes away, and
+  wakes that agent after a Decision. Both, with `hire_agent` and the budget
+  types, come with agents.
