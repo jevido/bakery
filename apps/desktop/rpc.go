@@ -59,6 +59,36 @@ func (d *Desktop) methods() map[string]method {
 			}
 			return nil, d.CancelConnect(id)
 		},
+		"Me": func(args []json.RawMessage) (any, error) {
+			var address string
+			if err := decodeArgs(args, &address); err != nil {
+				return nil, err
+			}
+			return d.Me(address)
+		},
+		"Guilds": func(args []json.RawMessage) (any, error) {
+			var address string
+			if err := decodeArgs(args, &address); err != nil {
+				return nil, err
+			}
+			return d.Guilds(address)
+		},
+		"Agents": func(args []json.RawMessage) (any, error) {
+			var address, status string
+			var guildID uint64
+			if err := decodeArgs(args, &address, &guildID, &status); err != nil {
+				return nil, err
+			}
+			return d.Agents(address, guildID, status)
+		},
+		"Agent": func(args []json.RawMessage) (any, error) {
+			var address string
+			var guildID, id uint64
+			if err := decodeArgs(args, &address, &guildID, &id); err != nil {
+				return nil, err
+			}
+			return d.Agent(address, guildID, id)
+		},
 		"Disconnect": func(args []json.RawMessage) (any, error) {
 			var address string
 			if err := decodeArgs(args, &address); err != nil {

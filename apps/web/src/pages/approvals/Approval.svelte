@@ -41,7 +41,7 @@
   import RequestApprovalDialog from '../../lib/RequestApprovalDialog.svelte'
   import { go, href } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import type { Issue } from '../../lib/work'
   import NotFound from '../NotFound.svelte'
 

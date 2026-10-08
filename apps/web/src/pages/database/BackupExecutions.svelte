@@ -25,7 +25,7 @@
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import { executionStatus } from './backupStatus'
 

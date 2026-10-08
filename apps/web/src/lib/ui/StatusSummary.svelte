@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { StatusType } from '../statusColors'
+  import type { StatusType } from '@bakery/ui/statusColors'
 
   export type Summary = {
     label: string
@@ -56,7 +56,7 @@
   // and its healthcheck, in Paperclip's popover.
   import * as Popover from '@bakery/ui/components/ui/popover'
   import Icon from '../Icon.svelte'
-  import { statusBadgeClasses, statusDotClasses } from '../statusColors'
+  import { statusBadgeClasses, statusDotClasses } from '@bakery/ui/statusColors'
   import Helper from './Helper.svelte'
 
   let {

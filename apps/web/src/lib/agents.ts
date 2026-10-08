@@ -2,7 +2,6 @@
 // chart and their hire. Every call answers in the Current guild. Jobs and
 // their labels are Paperclip's (packages/shared; MIT, see NOTICE).
 import { api } from "./api";
-import type { StatusType } from "./statusColors";
 
 export { jobLabel, jobLabels } from "./approvals";
 
@@ -14,21 +13,12 @@ export const jobs = [
 
 export { agentIconNames, type AgentIconName } from "@bakery/ui/agentIcons";
 
-/** How an Agent status reads: "Pending approval". */
-export const agentStatusLabel = (s: AgentStatus) =>
-  s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ");
-
-/** An Agent status; running and error come with Runs. */
-export type AgentStatus = "pending_approval" | "idle" | "paused" | "terminated";
-
-/** Paperclip's agent status hues: idle grey, paused amber; a waiting hire
- * is amber too and a terminated Agent red. */
-export const agentStatusTones: Record<AgentStatus, StatusType> = {
-  idle: "neutral",
-  paused: "warning",
-  pending_approval: "warning",
-  terminated: "error",
-};
+export {
+  agentStatusLabel,
+  agentStatusTones,
+  type AgentStatus,
+} from "@bakery/ui/agentStatus";
+import type { AgentStatus } from "@bakery/ui/agentStatus";
 
 /** The Agents list's tabs: all leaves out the terminated ones. */
 export type AgentFilter =

@@ -21,7 +21,7 @@
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import CollectionToolbar from '../lib/CollectionToolbar.svelte'
-  import EntityRow from '../lib/EntityRow.svelte'
+  import EntityRow from '@bakery/ui/EntityRow.svelte'
   import Icon from '../lib/Icon.svelte'
   import DockerCompose from '../lib/new/DockerCompose.svelte'
   import DockerImage from '../lib/new/DockerImage.svelte'
@@ -38,7 +38,7 @@
   import Callout from '../lib/ui/Callout.svelte'
   import Empty from '../lib/ui/Empty.svelte'
   import Spinner from '../lib/ui/Spinner.svelte'
-  import StatusBadge from '../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { toast } from '../lib/ui/toast.svelte'
 
   let {

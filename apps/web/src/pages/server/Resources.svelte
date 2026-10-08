@@ -13,7 +13,7 @@
   import ClientPagination from '../../lib/ui/ClientPagination.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { serverResources, type Row } from './resources'
 
   let { server }: { server: Server } = $props()

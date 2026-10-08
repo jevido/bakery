@@ -16,7 +16,7 @@
   import { Card } from '@bakery/ui/components/ui/card'
   import * as DropdownMenu from '@bakery/ui/components/ui/dropdown-menu'
   import { api, ApiError } from '../../lib/api'
-  import EntityRow from '../../lib/EntityRow.svelte'
+  import EntityRow from '@bakery/ui/EntityRow.svelte'
   import Icon from '../../lib/Icon.svelte'
   import { applicationPath, href } from '../../lib/router.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
@@ -26,7 +26,7 @@
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
   import Input from '../../lib/ui/Input.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import { deploymentStatus } from './DeploymentHistory.svelte'
 

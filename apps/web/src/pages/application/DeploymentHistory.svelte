@@ -1,6 +1,6 @@
 <script lang="ts" module>
   import type { Deployment } from '../../lib/types'
-  import { statusType, type StatusType } from '../../lib/statusColors'
+  import { statusType, type StatusType } from '@bakery/ui/statusColors'
 
   const deploymentLabels: Partial<Record<Deployment['status'], string>> = {
     finished: 'Success',
@@ -36,7 +36,7 @@
   import { Card } from '@bakery/ui/components/ui/card'
   import { api } from '../../lib/api'
   import CollectionToolbar from '../../lib/CollectionToolbar.svelte'
-  import EntityRow from '../../lib/EntityRow.svelte'
+  import EntityRow from '@bakery/ui/EntityRow.svelte'
   import FilterPopover from '../../lib/FilterPopover.svelte'
   import { ago, duration } from '../../lib/format'
   import Icon from '../../lib/Icon.svelte'
@@ -46,7 +46,7 @@
   import type { Application } from '../../lib/types'
   import Empty from '../../lib/ui/Empty.svelte'
   import PageSizeSelect from '../../lib/ui/PageSizeSelect.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
 
   let {
     application,

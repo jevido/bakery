@@ -16,7 +16,7 @@
   import { ago } from '../../lib/format'
   import SearchField from '../../lib/SearchField.svelte'
   import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
-  import { statusBadgeClasses } from '../../lib/statusColors'
+  import { statusBadgeClasses } from '@bakery/ui/statusColors'
   import type { ApiToken, Permission } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import Checkbox from '../../lib/ui/Checkbox.svelte'
@@ -27,7 +27,7 @@
   import Input from '../../lib/ui/Input.svelte'
   import Select from '../../lib/ui/Select.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
 
   const expirations = [

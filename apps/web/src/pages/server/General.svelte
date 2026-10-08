@@ -20,7 +20,7 @@
   import Modal from '../../lib/ui/Modal.svelte'
   import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
     import Spinner from '../../lib/ui/Spinner.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import UnsavedBar from '../../lib/ui/UnsavedBar.svelte'
   import { isFunctional } from './status'

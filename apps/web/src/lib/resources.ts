@@ -1,7 +1,7 @@
 // What an Environment's Resources page shows of each Application, Database
 // and Service, with the helpers from the Alpine script in Coolify's
 // project/resource/index.blade.php (Apache-2.0, see NOTICE).
-import { statusType, type StatusType } from './statusColors'
+import { statusType, type StatusType } from '@bakery/ui/statusColors'
 
 export type ResourceType = 'application' | 'database' | 'service'
 

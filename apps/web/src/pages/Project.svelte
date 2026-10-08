@@ -15,7 +15,7 @@
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import CollectionToolbar from '../lib/CollectionToolbar.svelte'
-  import EntityRow from '../lib/EntityRow.svelte'
+  import EntityRow from '@bakery/ui/EntityRow.svelte'
   import Icon from '../lib/Icon.svelte'
   import NewIssueDialog from '../lib/NewIssueDialog.svelte'
   import PageHeader from '../lib/PageHeader.svelte'

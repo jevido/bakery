@@ -9,7 +9,7 @@
   // add/edit form as a SettingsGroup below it.
   import { Card } from '@bakery/ui/components/ui/card'
   import { api, ApiError } from './api'
-  import EntityRow from './EntityRow.svelte'
+  import EntityRow from '@bakery/ui/EntityRow.svelte'
   import Icon from './Icon.svelte'
   import PageSkeleton from './PageSkeleton.svelte'
   import ProjectTile from './ProjectTile.svelte'

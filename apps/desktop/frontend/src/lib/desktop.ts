@@ -52,6 +52,40 @@ export type ConnectStatus = 'pending' | 'approved' | 'expired' | 'cancelled' | '
 /** Where a connect stands; also the `connect` event's data. */
 export type ConnectState = { id: number; address: string; status: ConnectStatus; error?: string }
 
+/** The person a Desktop key acts as. */
+export type Member = { id: number; name: string; email: string }
+
+/** A Guild the person is in. */
+export type Guild = { id: number; name: string; issue_prefix: string }
+
+import type { AgentStatus } from '@bakery/ui/agentStatus'
+
+/** The Agents list's tabs, as GET /api/agents?status= filters them; all leaves out the terminated ones. */
+export type AgentsTab = 'all' | 'active' | 'paused' | 'terminated'
+
+/** An Agent as the Bakery shows it (contexts/agents/http/agents.go), less what only the dashboard uses to manage it. */
+export type Agent = {
+  id: number
+  name: string
+  job: string
+  job_label: string
+  title: string
+  icon: string
+  capabilities: string
+  status: AgentStatus
+  reports_to: { id: number; name: string } | null
+  hirer: { id: number; name: string } | null
+  roles: { id: number; name: string; color: string; position: number }[] | null
+  created_at: string
+  terminated_at: string | null
+}
+
+/** The `guilds` event: the Guilds of the Bakery at address, sent when a refresh changed them. */
+export type GuildsEvent = { address: string; guilds: Guild[] | null }
+
+/** The `agents` event: one Guild's Agents on one tab, sent when a refresh changed them. */
+export type AgentsEvent = { address: string; guild_id: number; status: AgentsTab; agents: Agent[] | null }
+
 // The bindings' generated models carry the same JSON fields as these types.
 type Methods = {
   Bakeries(): Promise<Bakery[]>
@@ -60,6 +94,10 @@ type Methods = {
   ConnectStatus(id: number): Promise<ConnectState>
   CancelConnect(id: number): Promise<void>
   Disconnect(address: string): Promise<void>
+  Me(address: string): Promise<Member>
+  Guilds(address: string): Promise<Guild[] | null>
+  Agents(address: string, guildID: number, status: AgentsTab): Promise<Agent[] | null>
+  Agent(address: string, guildID: number, id: number): Promise<Agent>
 }
 
 async function call<K extends keyof Methods>(method: K, ...args: Parameters<Methods[K]>): Promise<Awaited<ReturnType<Methods[K]>>> {
@@ -82,6 +120,25 @@ export const connectStatus = (id: number) => call('ConnectStatus', id)
 export const cancelConnect = (id: number) => call('CancelConnect', id)
 /** Signs this desktop out of the Bakery at address and forgets its key. */
 export const disconnect = (address: string) => call('Disconnect', address)
+
+/** The person this desktop acts as on the Bakery at address. */
+export const me = (address: string) => call('Me', address)
+/** The person's Guilds on the Bakery at address; kept current with `guilds` events while shown. */
+export const guilds = (address: string) => call('Guilds', address).then((g) => g ?? [])
+/** A Guild's Agents on a tab; kept current with `agents` events while shown. */
+export const agents = (address: string, guildID: number, status: AgentsTab) => call('Agents', address, guildID, status).then((a) => a ?? [])
+/** One Agent of a Guild. */
+export const agent = (address: string, guildID: number, id: number) => call('Agent', address, guildID, id)
+
+/** Opens url in the system browser: through Wails in the window, a new tab in the browser. */
+export async function openInBrowser(url: string) {
+  if (inWindow) {
+    const { Browser } = await import('@wailsio/runtime')
+    await Browser.OpenURL(url)
+    return
+  }
+  window.open(url, '_blank', 'noopener')
+}
 
 /** Calls handler with each `name` event's data until the returned function is called. */
 export function onEvent<T>(name: string, handler: (data: T) => void): () => void {

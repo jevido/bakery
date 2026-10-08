@@ -48,6 +48,17 @@ in the OS's config directory, e.g. `~/.config/the-bakery`), mode 0600. An
 address without a scheme means `https://`. `bakery/` is the thin API client
 (a 401 to the key marks that Bakery signed out), `store/` the file.
 
+## Guilds and Agents
+
+The guild rail shows the shown Bakery's Guilds; picking one lists its Agents
+(read-only, as the dashboard's Agents page shows them), the ones the person
+hired marked "Runs on this desktop". `guilds.go` asks the Bakery with the
+key and the Guild in `Bakery-Guild`, keeps the answers in memory, and reads
+what the window shows again every 15 seconds, sending a `guilds` or `agents`
+event when it changed. The frontend's own hash router
+(`frontend/src/lib/router.svelte.ts`) names the Bakery by its place in the
+list: `#/b/{bakery}/g/{guild}/agents[/{tab}]` and `…/agents/{id}`.
+
 `frontend/src/lib/desktop.ts` is the frontend's only way to the Go side: one
 typed function per `Desktop` method, choosing the bindings in the window and
 `/rpc` in a browser. A new method goes in `desktop.go`, in the list in

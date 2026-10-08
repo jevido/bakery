@@ -23,8 +23,8 @@
   import { canIn, session } from '../lib/session.svelte'
   import type { Project, Server } from '../lib/types'
   import Empty from '../lib/ui/Empty.svelte'
-  import StatusBadge from '../lib/ui/StatusBadge.svelte'
-  import { statusType, type StatusType } from '../lib/statusColors'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
+  import { statusType, type StatusType } from '@bakery/ui/statusColors'
 
   const itemLimit = 8
   const byName = (a: { name: string }, b: { name: string }) =>

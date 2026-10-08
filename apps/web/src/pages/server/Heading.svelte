@@ -15,7 +15,7 @@
   import { api } from '../../lib/api'
   import PageHeader from '../../lib/PageHeader.svelte'
   import { href, serverPath, type ServerPage } from '../../lib/router.svelte'
-  import { statusDotClasses } from '../../lib/statusColors'
+  import { statusDotClasses } from '@bakery/ui/statusColors'
   import type { Server } from '../../lib/types'
   import { isFunctional } from './status'
   import StatusSummary from './StatusSummary.svelte'

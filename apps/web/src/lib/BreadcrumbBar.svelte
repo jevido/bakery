@@ -9,7 +9,7 @@
   import { Button } from '@bakery/ui/components/ui/button'
   import { breadcrumb, type Crumb } from './breadcrumb.svelte'
   import { sidebar } from './sidebar.svelte'
-  import StatusBadge from './ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import StatusSummary from './ui/StatusSummary.svelte'
   import { cn } from '@bakery/ui/utils'
 

@@ -1,6 +1,6 @@
 import { api } from './api'
 import type { Project } from './types'
-import type { StatusType } from './ui/StatusBadge.svelte'
+import type { StatusType } from '@bakery/ui/StatusBadge.svelte'
 
 /**
  * One step of the top bar's breadcrumb; the last one is the page itself and

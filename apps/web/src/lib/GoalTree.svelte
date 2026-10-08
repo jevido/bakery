@@ -5,7 +5,7 @@
   // is not among `goals` is a root, so a Goal's page can pass its Sub-goals.
   import { ChevronRight } from '@lucide/svelte'
   import { href } from './router.svelte'
-  import StatusBadge from './ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import type { Goal } from './work'
 
   let { goals }: { goals: Goal[] } = $props()

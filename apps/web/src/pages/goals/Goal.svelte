@@ -24,7 +24,7 @@
   import { session, type Member } from '../../lib/session.svelte'
   import Button from '../../lib/ui/Button.svelte'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import NotFound from '../NotFound.svelte'
   import {

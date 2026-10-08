@@ -15,6 +15,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as bakery$0 from "./bakery/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -22,6 +26,22 @@ import * as $models from "./models.js";
  */
 export function Activate(address: string): $CancellablePromise<void> {
     return $Call.ByID(3058243509, address);
+}
+
+/**
+ * Agent reads one Agent of the Guild guildID on the Bakery at address.
+ */
+export function Agent(address: string, guildID: number, id: number): $CancellablePromise<bakery$0.Agent> {
+    return $Call.ByID(4187668381, address, guildID, id);
+}
+
+/**
+ * Agents lists the Agents of the Guild guildID on the Bakery at address on
+ * the tab status, and keeps them current with `agents` events while the
+ * window shows them.
+ */
+export function Agents(address: string, guildID: number, status: string): $CancellablePromise<bakery$0.Agent[] | null> {
+    return $Call.ByID(3701220266, address, guildID, status);
 }
 
 /**
@@ -62,6 +82,21 @@ export function ConnectStatus(id: number): $CancellablePromise<$models.ConnectSt
  */
 export function Disconnect(address: string): $CancellablePromise<void> {
     return $Call.ByID(938215710, address);
+}
+
+/**
+ * Guilds lists the person's Guilds on the Bakery at address, and keeps
+ * them current with `guilds` events while the window shows them.
+ */
+export function Guilds(address: string): $CancellablePromise<bakery$0.Guild[] | null> {
+    return $Call.ByID(28945796, address);
+}
+
+/**
+ * Me is the person the Desktop key acts as on the Bakery at address.
+ */
+export function Me(address: string): $CancellablePromise<bakery$0.Member> {
+    return $Call.ByID(2040295850, address);
 }
 
 /**

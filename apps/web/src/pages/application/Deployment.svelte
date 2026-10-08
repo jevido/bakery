@@ -14,7 +14,7 @@
   import type { Application, Deployment, LogLine } from '../../lib/types'
   import Button from '../../lib/ui/Button.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import DeploymentHistory, { deploymentStatus } from './DeploymentHistory.svelte'
   import LogButton from './LogButton.svelte'

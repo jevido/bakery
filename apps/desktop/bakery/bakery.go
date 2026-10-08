@@ -251,3 +251,77 @@ func (c *Client) DesktopID(ctx context.Context) (uint64, error) {
 func (c *Client) SignOut(ctx context.Context) error {
 	return c.do(ctx, http.MethodPost, "/api/desktops/current/sign-out", 0, nil, nil)
 }
+
+// Guild is one Guild the person is in.
+type Guild struct {
+	ID          uint64 `json:"id"`
+	Name        string `json:"name"`
+	IssuePrefix string `json:"issue_prefix"`
+}
+
+// Guilds lists the Guilds the person is in.
+func (c *Client) Guilds(ctx context.Context) ([]Guild, error) {
+	var out struct {
+		Guilds []Guild `json:"guilds"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/api/guilds", 0, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Guilds, nil
+}
+
+// Named is a Member or Agent the Bakery names by id.
+type Named struct {
+	ID   uint64 `json:"id"`
+	Name string `json:"name"`
+}
+
+// Role is a Role an Agent holds.
+type Role struct {
+	ID       uint64 `json:"id"`
+	Name     string `json:"name"`
+	Color    string `json:"color"`
+	Position int    `json:"position"`
+}
+
+// Agent is an Agent as the Bakery's agents context shows it
+// (services/api contexts/agents/http/agents.go), less what only the
+// dashboard uses to manage it.
+type Agent struct {
+	ID           uint64     `json:"id"`
+	Name         string     `json:"name"`
+	Job          string     `json:"job"`
+	JobLabel     string     `json:"job_label"`
+	Title        string     `json:"title"`
+	Icon         string     `json:"icon"`
+	Capabilities string     `json:"capabilities"`
+	Status       string     `json:"status"`
+	ReportsTo    *Named     `json:"reports_to"`
+	Hirer        *Named     `json:"hirer"`
+	Roles        []Role     `json:"roles"`
+	CreatedAt    time.Time  `json:"created_at"`
+	TerminatedAt *time.Time `json:"terminated_at"`
+}
+
+// Agents lists the Agents of the Guild guildID, filtered by status as the
+// Agents page's tabs do: all, active, paused, pending or terminated.
+func (c *Client) Agents(ctx context.Context, guildID uint64, status string) ([]Agent, error) {
+	var out struct {
+		Agents []Agent `json:"agents"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/api/agents?status="+url.QueryEscape(status), guildID, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Agents, nil
+}
+
+// Agent reads one Agent of the Guild guildID.
+func (c *Client) Agent(ctx context.Context, guildID, id uint64) (Agent, error) {
+	var out struct {
+		Agent Agent `json:"agent"`
+	}
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/api/agents/%d", id), guildID, nil, &out); err != nil {
+		return Agent{}, err
+	}
+	return out.Agent, nil
+}

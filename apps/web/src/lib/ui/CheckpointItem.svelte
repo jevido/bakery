@@ -9,7 +9,7 @@
   // that failed without being required.
   import type { Snippet } from 'svelte'
   import Icon from '../Icon.svelte'
-  import { statusBadgeClasses } from '../statusColors'
+  import { statusBadgeClasses } from '@bakery/ui/statusColors'
 
   let {
     title,

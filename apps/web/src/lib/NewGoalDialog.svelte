@@ -10,7 +10,7 @@
   import OptionPopover from './OptionPopover.svelte'
   import Button from './ui/Button.svelte'
   import Modal from './ui/Modal.svelte'
-  import StatusBadge from './ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { toast } from './ui/toast.svelte'
   import { createGoal, goalLevelLabels, goalLevels, goalStatuses, listGoals, type Goal, type GoalLevel, type GoalStatus } from './work'
 

@@ -17,7 +17,7 @@
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import { canEditRole, canManage } from '../lib/hierarchy'
-  import EntityRow from '../lib/EntityRow.svelte'
+  import EntityRow from '@bakery/ui/EntityRow.svelte'
   import PageSkeleton from '../lib/PageSkeleton.svelte'
   import { projectAccess } from '../lib/projectAccess.svelte'
   import { href } from '../lib/router.svelte'

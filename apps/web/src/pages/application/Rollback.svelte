@@ -12,7 +12,7 @@
   import { buttonVariants } from '@bakery/ui/components/ui/button'
   import { Card } from '@bakery/ui/components/ui/card'
   import { api, ApiError } from '../../lib/api'
-  import EntityRow from '../../lib/EntityRow.svelte'
+  import EntityRow from '@bakery/ui/EntityRow.svelte'
   import { ago } from '../../lib/format'
   import Icon from '../../lib/Icon.svelte'
   import { applicationPath, go } from '../../lib/router.svelte'
@@ -21,7 +21,7 @@
   import type { Application, Deployment } from '../../lib/types'
   import Empty from '../../lib/ui/Empty.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
 
   let { application }: { application: Application } = $props()

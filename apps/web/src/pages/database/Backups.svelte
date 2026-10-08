@@ -14,7 +14,7 @@
   import { Card } from '@bakery/ui/components/ui/card'
   import { api, ApiError } from '../../lib/api'
   import CollectionToolbar from '../../lib/CollectionToolbar.svelte'
-  import EntityRow from '../../lib/EntityRow.svelte'
+  import EntityRow from '@bakery/ui/EntityRow.svelte'
   import { databasePath, go, href } from '../../lib/router.svelte'
   import { projectAccess } from '../../lib/projectAccess.svelte'
   import SearchField from '../../lib/SearchField.svelte'
@@ -25,7 +25,7 @@
   import Input from '../../lib/ui/Input.svelte'
   import Modal from '../../lib/ui/Modal.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { executionStatus } from './backupStatus'
 
   let { database }: { database: Database } = $props()

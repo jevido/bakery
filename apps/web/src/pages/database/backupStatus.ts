@@ -1,4 +1,4 @@
-import { statusType, type StatusType } from '../../lib/statusColors'
+import { statusType, type StatusType } from '@bakery/ui/statusColors'
 import type { ExecutionStatus } from '../../lib/types'
 
 const labels: Record<ExecutionStatus, string> = { succeeded: 'Success', running: 'In progress', failed: 'Failed' }

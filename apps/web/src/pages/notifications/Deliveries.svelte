@@ -7,8 +7,8 @@
   import type { Delivery, EventKind } from '../../lib/types'
   import Empty from '../../lib/ui/Empty.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
-  import { statusType } from '../../lib/statusColors'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
+  import { statusType } from '@bakery/ui/statusColors'
 
   let { channelId, eventKinds, version }: { channelId: number; eventKinds: EventKind[]; version: number } = $props()
 

@@ -11,7 +11,7 @@
   import type { Server } from '../../lib/types'
   import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import Spinner from '../../lib/ui/Spinner.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import StatusSummary from '../../lib/ui/StatusSummary.svelte'
 
   let { server, status }: { server: Server | null; status: string | null } = $props()

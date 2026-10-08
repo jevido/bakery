@@ -24,12 +24,15 @@ type Desktop struct {
 	mu          sync.Mutex
 	connects    map[uint64]*connecting
 	lastConnect uint64
+	shown       shown
+	cache       map[string]cached
+	refreshing  sync.Once
 }
 
 // NewDesktop returns the Desktop service, keeping the connected Bakeries in
 // bakeries and sending its live updates to events.
 func NewDesktop(events *Events, bakeries *store.Store, openURL func(string) error) *Desktop {
-	return &Desktop{events: events, store: bakeries, openURL: openURL, connects: map[uint64]*connecting{}}
+	return &Desktop{events: events, store: bakeries, openURL: openURL, connects: map[uint64]*connecting{}, cache: map[string]cached{}}
 }
 
 // Version answers the Desktop app's version.

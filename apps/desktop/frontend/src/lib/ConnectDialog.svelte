@@ -11,6 +11,7 @@
   import { untrack } from 'svelte'
   import { CircleCheck, CircleX, ExternalLink, LoaderCircle } from '@lucide/svelte'
   import { connected, connectDialog } from './bakeries.svelte'
+  import { go } from './router.svelte'
   import { cancelConnect, connect, connectStatus, onEvent, type ConnectStart, type ConnectState } from './desktop'
 
   let address = $state('')
@@ -47,7 +48,8 @@
   })
 
   $effect(() => {
-    if (progress?.status === 'approved') void connected.load()
+    // The Bakery just connected is the active one: show it.
+    if (progress?.status === 'approved') void connected.load().then(() => go('/'))
   })
 
   function reset() {

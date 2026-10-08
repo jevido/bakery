@@ -13,7 +13,7 @@
   import type { Server } from '../../lib/types'
   import ConfirmationModal from '../../lib/ui/ConfirmationModal.svelte'
   import Empty from '../../lib/ui/Empty.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
 
   let { server, onchange }: { server: Server; onchange: (s: Server) => void } = $props()

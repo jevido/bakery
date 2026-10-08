@@ -13,8 +13,7 @@
   import { Bot, List, Network, Plus } from '@lucide/svelte'
   import { Button as UiButton } from '@bakery/ui/components/ui/button'
   import * as Tabs from '@bakery/ui/components/ui/tabs'
-  import AgentIcon from '@bakery/ui/AgentIcon.svelte'
-  import { agentStatusLabel, agentStatusTones, getOrg, listAgents, type Agent, type AgentStatus, type OrgNode } from '../../lib/agents'
+  import { getOrg, listAgents, type Agent, type AgentStatus, type OrgNode } from '../../lib/agents'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import HireAgentDialog from '../../lib/HireAgentDialog.svelte'
   import OrgChart from '../../lib/OrgChart.svelte'
@@ -23,8 +22,7 @@
   import { agentsTabs, go, href, type AgentsTab } from '../../lib/router.svelte'
   import { session } from '../../lib/session.svelte'
   import Button from '../../lib/ui/Button.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
-  import EntityRow from '../../lib/EntityRow.svelte'
+  import AgentRow from '@bakery/ui/AgentRow.svelte'
 
   let { tab }: { tab: AgentsTab } = $props()
 
@@ -121,24 +119,7 @@
   {:else if agents}
     <div class="rounded-md border border-border" aria-label="Agents">
       {#each agents as agent (agent.id)}
-        <EntityRow
-          title={agent.name}
-          subtitle={`${agent.job_label}${agent.title ? ` - ${agent.title}` : ''}`}
-          href={href(`/agents/${agent.id}`)}
-          class={['group py-3', agent.status === 'paused' && tab !== 'paused' && 'opacity-50'].filter(Boolean).join(' ')}
-          data-testid="agent-row"
-        >
-          {#snippet leading()}
-            <span class="flex size-8 items-center justify-center rounded-full bg-accent"><AgentIcon icon={agent.icon} class="size-4" /></span>
-          {/snippet}
-          {#snippet trailing()}
-            <div class="hidden items-center gap-3 text-xs text-muted-foreground lg:flex">
-              <span class="w-36 truncate" title="Reports to">{agent.reports_to ? `Reports to ${agent.reports_to.name}` : ''}</span>
-              <span class="w-36 truncate" title="Hirer">{agent.hirer ? `Hired by ${agent.hirer.name}` : ''}</span>
-            </div>
-            <span class="flex w-32 justify-end"><StatusBadge type={agentStatusTones[agent.status]} label={agentStatusLabel(agent.status)} /></span>
-          {/snippet}
-        </EntityRow>
+        <AgentRow {agent} href={href(`/agents/${agent.id}`)} dimmed={agent.status === 'paused' && tab !== 'paused'} />
       {/each}
     </div>
   {/if}

@@ -14,6 +14,10 @@ compile the `.svelte` and `.ts` files with their own Vite.
   `@bakery/ui/ThemeToggle.svelte`, its icon toggle.
 - `@bakery/ui/BakeryLockup.svelte`, `GuildIcon.svelte`, `AgentIcon.svelte`
   and `@bakery/ui/agentIcons` (the Agent icon names).
+- `@bakery/ui/StatusBadge.svelte` with `@bakery/ui/statusColors` (the one
+  status palette), `EntityRow.svelte` (a row of a bordered list), and
+  `AgentRow.svelte` with `@bakery/ui/agentStatus` (an Agent in the Agents
+  list, its status words and hues).
 
 Only presentational code lives here: nothing that calls the API, routes or
 knows the session. Inside the package, imports are relative (no `$lib`), so it

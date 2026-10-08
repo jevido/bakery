@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { StatusType } from '../statusColors'
+  import type { StatusType } from './statusColors'
   export type { StatusType }
 
   function headline(s: string): string {
@@ -35,7 +35,7 @@
   // tone comes from `status` itself (`failed`, `running:healthy`). `href`
   // renders a link, `onclick` a button.
   import type { Snippet } from 'svelte'
-  import { statusBadgeClasses, statusType } from '../statusColors'
+  import { statusBadgeClasses, statusType } from './statusColors'
 
   let {
     label,

@@ -12,7 +12,7 @@
   import SettingsGroup from '../../lib/settings/SettingsGroup.svelte'
   import type { ContainerMetrics, Metrics, Server } from '../../lib/types'
   import Empty from '../../lib/ui/Empty.svelte'
-  import StatusBadge from '../../lib/ui/StatusBadge.svelte'
+  import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import UsageChart, { type Sample } from './UsageChart.svelte'
 
   let { server }: { server: Server } = $props()

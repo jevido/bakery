@@ -5,7 +5,7 @@
   // is one proxy for every Server here, and there is no Sentinel.
   import { ChevronDown } from '@lucide/svelte'
   import * as Popover from '@bakery/ui/components/ui/popover'
-  import { statusBadgeClasses, statusDotClasses } from '../../lib/statusColors'
+  import { statusBadgeClasses, statusDotClasses } from '@bakery/ui/statusColors'
   import type { Server } from '../../lib/types'
   import { isFunctional } from './status'
 
