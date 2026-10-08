@@ -78,6 +78,7 @@
     'storages': HardDrive,
     'goals': Target,
     'issues': CircleDot,
+    'activity': History,
     'notifications': Bell,
     'keys': KeyRound,
     'settings': Settings,

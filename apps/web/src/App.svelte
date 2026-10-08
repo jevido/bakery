@@ -11,6 +11,7 @@
   import Guild from './pages/guild/Guild.svelte'
   import NewGuild from './pages/guild/New.svelte'
   import Profile from './pages/Profile.svelte'
+  import Activity from './pages/Activity.svelte'
   import Goal from './pages/goals/Goal.svelte'
   import Goals from './pages/goals/Goals.svelte'
   import Issue from './pages/issues/Issue.svelte'
@@ -158,6 +159,8 @@
       {#key router.route.id}
         <Goal id={router.route.id} />
       {/key}
+    {:else if router.route.name === 'activity'}
+      <Activity />
     {:else if router.route.name === 'profile'}
       <Profile />
     {:else if router.route.name === 'dev-components' && devComponents}

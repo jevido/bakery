@@ -46,6 +46,10 @@
 //           save shows the conflict notice and Reload shows rev 4; Download
 //           gives plan.md; a Viewer sees the document and History without
 //           Edit or Delete; Delete removes it
+//   activity  the sidebar shows Guild → Activity; after a scratch Issue is
+//           created and commented on, #/activity lists "<you> commented on
+//           <title> DEF-n" first; the Goals filter hides it and a reload
+//           keeps entity=goal; clicking the Issue's row opens the Issue
 //
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
@@ -644,6 +648,42 @@ const sections: Record<string, () => Promise<void>> = {
     await m.leave()
     await page.request.delete(`${WEB}/api/issues/${issue.id}`)
     await page.request.delete(`${WEB}/api/projects/${project.id}`)
+    await page.close()
+  },
+  activity: async () => {
+    const page = await signedIn()
+    const title = 'Activity e2e scratch'
+    for (const i of (await issues(page)).filter((i) => i.title === title)) await page.request.delete(`${WEB}/api/issues/${i.id}`)
+    const { member } = (await (await page.request.get(`${WEB}/api/me`)).json()) as { member: { name: string } }
+    const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title } })).json()) as { issue: Issue }
+    await page.request.post(`${WEB}/api/issues/${issue.id}/comments`, { data: { body: 'Seen in the feed' } })
+
+    await page.goto(`${WEB}/#/`)
+    const nav = page.getByRole('navigation', { name: 'Main' })
+    await nav.getByRole('link', { name: 'Activity' }).waitFor()
+    expect('the sidebar has Activity', (await nav.getByText('Guild', { exact: true }).count()) === 1)
+    await nav.getByRole('link', { name: 'Activity' }).click()
+    const rows = page.getByRole('list', { name: 'Activity' }).getByRole('listitem')
+    await rows.first().waitFor()
+    const first = (await rows.first().innerText()).replace(/\s+/g, ' ')
+    expect('the newest row is the comment', first.includes(`${member.name} commented on ${title}`) && first.includes(issue.identifier), first)
+
+    await page.getByRole('button', { name: 'Entity', exact: true }).click()
+    await page.getByRole('option', { name: 'Goals', exact: true }).click()
+    await page.waitForFunction(() => location.hash === '#/activity?entity=goal')
+    await page.waitForFunction((t) => !document.querySelector('ul[aria-label="Activity"]')?.textContent?.includes(t), title)
+    expect('the Goals filter hides it', true)
+    await page.reload()
+    await page.getByRole('button', { name: 'Entity', exact: true }).waitFor()
+    expect('a reload keeps entity=goal', (await page.getByRole('button', { name: 'Entity', exact: true }).innerText()).trim() === 'Goals')
+
+    await page.goto(`${WEB}/#/activity?entity=issue`)
+    await rows.first().waitFor()
+    await page.locator('[data-activity="issue.comment_added"]').first().getByRole('link').click()
+    await page.waitForFunction((id) => location.hash === `#/issues/${id}`, issue.identifier)
+    expect('the row opens the Issue', true)
+
+    await page.request.delete(`${WEB}/api/issues/${issue.id}`)
     await page.close()
   },
 }

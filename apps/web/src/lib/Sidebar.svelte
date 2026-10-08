@@ -2,9 +2,11 @@
   // Paperclip's Sidebar in its streamlined mode (ui/src/components/Sidebar.tsx
   // and primary-sidebar-styles.ts; MIT, see NOTICE): the Guild menu in a 60px
   // header, then The Bakery's nav. The Work section holds Projects,
-  // Issues and Goals; Agents and Inbox get their places here as they arrive; the Guild, Notifications, Keys & Tokens and
+  // Issues and Goals; the Guild section holds Activity, as Paperclip's
+  // Organization section does. Agents and Inbox get their places here as
+  // they arrive; the Guild's settings, Notifications, Keys & Tokens and
   // Settings open under the settings sidebar instead.
-  import { CircleDot, FolderOpen, HardDrive, LayoutDashboard, Server, Target } from '@lucide/svelte'
+  import { CircleDot, FolderOpen, HardDrive, History, LayoutDashboard, Server, Target } from '@lucide/svelte'
   import type { Component } from 'svelte'
   import GuildMenu from './GuildMenu.svelte'
   import { href, router } from './router.svelte'
@@ -40,6 +42,7 @@
           session.can('manage_servers') && { label: 'S3 Storage', path: '/storages', icon: HardDrive, routes: ['storages'] },
         ),
       },
+      { label: 'Guild', items: [{ label: 'Activity', path: '/activity', icon: History, routes: ['activity'] }] },
     ]
   })
 </script>

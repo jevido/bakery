@@ -200,3 +200,48 @@ export const listDocumentRevisions = (issue: number | string, key: string) =>
   api<{ revisions: DocumentRevision[] }>('GET', `/issues/${issue}/documents/${key}/revisions`).then((r) => r.revisions)
 export const restoreDocumentRevision = (issue: number | string, key: string, revision: number) =>
   api<{ document: IssueDocument }>('POST', `/issues/${issue}/documents/${key}/revisions/${revision}/restore`).then((r) => r.document)
+
+/**
+ * An Activity event: one Action to a Goal or an Issue by its Actor (null
+ * once their account is gone). entity.exists is false once the Goal or
+ * Issue is deleted; details hold what changed, by the Action.
+ */
+export type ActivityEvent = {
+  id: number
+  action: string
+  actor: WorkMember | null
+  entity: { type: 'issue' | 'goal'; id: number; identifier?: string; title: string; exists: boolean }
+  details: Record<string, unknown>
+  created_at: string
+}
+
+/** The Guild-wide feed's filters: entity kind, Actor, and before an event id for the next page. */
+export type ActivityFilter = Partial<{ entity: 'issue' | 'goal'; actor: number; before: number; limit: number }>
+
+export function listActivity(filter: ActivityFilter = {}) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(filter)) if (value !== undefined) query.set(key, String(value))
+  const qs = query.toString()
+  return api<{ activity: ActivityEvent[] }>('GET', `/activity${qs ? `?${qs}` : ''}`).then((r) => r.activity)
+}
+/** Every event about one Issue, oldest first. */
+export const listIssueActivity = (issue: number | string) =>
+  api<{ activity: ActivityEvent[] }>('GET', `/issues/${issue}/activity`).then((r) => r.activity)
+
+// Paperclip's ACTIVITY_ROW_VERBS (ui/src/lib/activity-format.ts; MIT, see
+// NOTICE) for the Actions work records.
+const activityVerbs: Record<string, string> = {
+  'issue.created': 'created',
+  'issue.updated': 'updated',
+  'issue.deleted': 'deleted',
+  'issue.comment_added': 'commented on',
+  'issue.comment_deleted': 'deleted a comment on',
+  'issue.document_created': 'created document for',
+  'issue.document_updated': 'updated document on',
+  'issue.document_deleted': 'deleted document from',
+  'goal.created': 'created',
+  'goal.updated': 'updated',
+  'goal.deleted': 'deleted',
+}
+/** The verb of an Activity row: "commented on" for issue.comment_added. */
+export const activityVerb = (action: string) => activityVerbs[action] ?? action.replace(/[._]/g, ' ')
