@@ -69,7 +69,7 @@ admin always may (with `hire_agents`, which they always hold).
   Decision on the `hire_agent` Approval, through `work.OnApprovalDecided`):
   the Agent becomes `idle` or `terminated`.
 - `Edit(name, job, title, icon, manager, capabilities)` [manage]: only an
-  `idle` or `paused` Agent.
+  `idle`, `error` or `paused` Agent.
 - `Pause` [manage]: only an `idle`, `running` or `error` Agent; cancels
   its `queued` and `running` Runs. `Resume` [manage]: only a `paused` Agent
   (resuming a terminated one is 422).
@@ -78,19 +78,23 @@ admin always may (with `hire_agents`, which they always hold).
   Approval when it was `pending_approval` and its `queued` and `running`
   Runs, and asks work to clear it as the Agent assignee of its open
   Issues.
-- `AddRole(role)`, `RemoveRole(role)` [manage]: only an `idle` or `paused`
-  Agent; a Role added must be below the Hirer's highest Role and the
+- `AddRole(role)`, `RemoveRole(role)` [manage]: only an `idle`, `error`
+  or `paused` Agent; a Role added must be below the Hirer's highest Role and the
   asking person's, and grant only Permissions the asking person holds, as
   at the hire, since managing an Agent does not need `manage_roles`; a
   Role removed must be below the asking person's highest (422 otherwise).
 - `StartRun(agent, issue)` [manage]: only an `idle`, `running` or
   `error` Agent (a `paused`, `pending_approval` or `terminated` one is
   422), only on an Issue of its Guild whose Agent assignee is that Agent
-  (422 otherwise; work answers it through a published call). Creates a
-  `queued` Run with Invocation source `on_demand`; it waits behind the
+  (422 on `issue_id` otherwise, as for an Issue of another Guild or in a
+  Project the person may not view; work answers it through a published
+  call). Creates a `queued` Run with Invocation source `on_demand` and its
+  prompt: `{identifier}: {title}`, a blank line, the description, and one
+  line naming the Agent's Job, Title and Capabilities. It waits behind the
   Agent's running Run, if any.
 - `CancelRun(run)` [manage the Run's Agent]: only a `queued` or `running`
-  Run; it becomes `cancelled`. The Desktop running it sees that on its next
+  Run (422 otherwise); it becomes `cancelled`, and a running one's Agent
+  `idle`. The Desktop running it sees that on its next
   report (409 there) and on its Run stream, and stops `claude`.
 - `ClaimRun(run)` [a Desktop key of the Agent's Hirer only]: the oldest
   `queued` Run of an Agent that has no `running` Run becomes `running`,
@@ -163,7 +167,7 @@ records nothing more.
 
   | Route | Permission | Body | Answers |
   | ----- | ---------- | ---- | ------- |
-  | `GET /api/agents` | `view_resources` | | `{"agents": [Agent]}`, by name; filter `status`: `all` (every Agent but the terminated ones, the default, as Paperclip's All tab), `active` (idle), `paused`, `pending` (pending approval) or `terminated` |
+  | `GET /api/agents` | `view_resources` | | `{"agents": [Agent]}`, by name; filter `status`: `all` (every Agent but the terminated ones, the default, as Paperclip's All tab), `active` (idle or running), `paused`, `error`, `pending` (pending approval) or `terminated` |
   | `POST /api/agents` | `hire_agents` | `{name, job, title, icon, reports_to, capabilities, role_ids}` | 201 `{"agent": Agent, "approval_id": id}` |
   | `GET /api/agents/{id}` | `view_resources` | | `{"agent": Agent}` |
   | `PATCH /api/agents/{id}` | manage | any of `{name, job, title, icon, reports_to, capabilities}` | `{"agent": Agent}` |
@@ -172,10 +176,10 @@ records nothing more.
   | `DELETE /api/agents/{id}/roles/{role_id}` | manage | | `{"agent": Agent}` |
   | `GET /api/org` | `view_resources` | | `{"org": [Org node]}`, the roots of the Org chart |
   | `POST /api/agents/{id}/runs` | manage | `{issue_id}` | 201 `{"run": Run}` |
-  | `GET /api/runs` | `view_resources` | | `{"runs": [Run]}`, newest first; filters `agent`, `issue`, `status` |
+  | `GET /api/runs` | `view_resources` | | `{"runs": [Run]}`, newest first; filters `agent` and `issue` (ids), `status`, `limit` (≤ 200, 50 by default) |
   | `GET /api/runs/{id}` | `view_resources` | | `{"run": Run}` |
   | `POST /api/runs/{id}/cancel` | manage | | `{"run": Run}` |
-  | `GET /api/runs/{id}/events?after=` | `view_resources` | | `{"events": [Run event]}`, by `seq`, after the given one |
+  | `GET /api/runs/{id}/events?after=` | `view_resources` | | `{"events": [Run event]}`, by `seq`, after the given one; `limit` ≤ 1000, 500 by default |
   | `GET /api/runs/{id}/stream` | `view_resources` | | server-sent events: the Run events after `Last-Event-ID` (or `after`), then each new one and each Run status change, until the Run is final |
 
   For a Desktop key, across every Guild of its person (no Current guild
@@ -185,20 +189,26 @@ records nothing more.
   | ----- | ---- | ------- |
   | `GET /api/desktop/runs/stream` | | server-sent events: each `queued` Run of the person's Agents, now and as they come, and each cancel of a Run the Desktop holds |
   | `POST /api/runs/{id}/claim` | | `{"run": Run, "prompt": text}`; 409 when already claimed or no longer `queued` |
-  | `POST /api/runs/{id}/events` | `{"events": [{seq, type, stream, message, payload}]}` | `{"run": Run}`; 409 when not `running` |
+  | `POST /api/runs/{id}/events` | `{"events": [{seq, kind, payload}]}` | `{"run": Run}`; 409 when not `running` |
   | `POST /api/runs/{id}/lease` | | `{"run": Run}`; 409 when not `running` |
   | `POST /api/runs/{id}/finish` | `{status, usage, error}` | `{"run": Run}`; 409 when not `running` |
 
-  A Run is `{id, agent: {id, name}, issue: {id, number, title} | null,
-  status, invocation_source, retry_of_run_id, error, usage: {input_tokens,
-  output_tokens, cached_input_tokens, turns, duration_ms, cost_usd} | null,
-  hirer: {id, name}, created_at, started_at, finished_at}`. A Run event is
-  `{seq, type, stream, message, payload, created_at}`. Tasks that build
-  these routes keep this table in step with what they ship.
+  A Run is `{id, agent: {id, name, icon}, issue: {id, identifier, title}
+  | null, invocation_source, status, requested_by: {id, name} | null,
+  desktop: {id, name} | null, retry_of_run_id, usage: {input_tokens,
+  cached_input_tokens, output_tokens, turns, cost_equivalent_usd,
+  duration_ms}, exit_code, error, created_at, started_at, finished_at,
+  can_cancel}`; its `issue` is null when the Issue is gone or in a Project
+  the person may not view, and `can_cancel` says whether they may cancel
+  it now. A Run event is `{seq, kind, payload, created_at}`, its `kind` one
+  of `init`, `assistant`, `thinking`, `tool_call`, `tool_result`,
+  `result`, `stderr` and `system`, and its `payload` the JSON the Desktop
+  sent. Tasks that build these routes keep this table in step with what
+  they ship.
 
   An Agent is `{id, name, job, job_label, title, icon, capabilities, status,
   reports_to: {id, name} | null, hirer: {id, name} | null, roles: [{id,
-  name, color, position}], approval_id, can_manage, created_at,
+  name, color, position}], approval_id, current_run_id, can_manage, created_at,
   updated_at, paused_at, terminated_at}`. An Org node is `{id, name, job,
   job_label, title, icon, status, reports: [Org node]}`; an Agent whose
   Manager is terminated is a root, each level ordered by name. A hire
@@ -226,7 +236,8 @@ records nothing more.
     hook by which work asks whether an Agent may be an Assignee (in the
     Guild, not terminated).
   - from identity: the Desktop key principal (its person, across Guilds)
-    for the Desktop routes.
+    for the Desktop routes, and `identity.DesktopNames(ctx, ids)` to name
+    the Desktop a Run ran on.
   - from identity: `identity.Members(ctx, ids)` for Hirers' names.
 
 ## Why it's shaped this way
@@ -275,8 +286,10 @@ records nothing more.
   process ids, log stores, watchdogs, runtime modes, session resumes and
   liveness classifier are left out. The Desktop reports every Run event,
   the usage and the outcome; the server stores and relays them. A Run
-  event is a trimmed `heartbeat_run_events` row: `seq`, `type`, `stream`,
-  `message` and `payload`, with no source instance, color or level.
+  event is a trimmed `heartbeat_run_events` row: `seq`, a `kind` from a
+  fixed list in place of its `eventType`, `stream` and `message`, and the
+  `payload`, with no source instance, color or level; the Transcript is
+  rendered from the kinds and payloads alone.
 - **Only the Hirer's Desktops may claim a Run**, because the Run spends the
   Hirer's Claude subscription. Another person's Desktop gets 404 so it
   learns nothing about Agents it cannot run.

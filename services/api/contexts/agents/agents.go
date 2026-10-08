@@ -1,6 +1,6 @@
 // Package agents is what the router may use from the agents context: its
 // routes (the Current guild's Agents, hiring and managing one, its Org
-// chart). It hears work's Decisions on hire_agent Approvals and Members
+// chart, their Runs). It hears work's Decisions on hire_agent Approvals and Members
 // leaving a Guild, names Agents as Issue Assignees for work, and keeps a Guild with Agents from being deleted. Nothing else in contexts/agents is for outside use.
 package agents
 
@@ -28,7 +28,7 @@ var (
 
 func svc() *app.Service {
 	once.Do(func() {
-		service = app.NewService(infra.Agents{}, guildsOfAgents{}, workOfAgents{})
+		service = app.NewService(infra.Agents{}, infra.Runs{}, guildsOfAgents{}, workOfAgents{})
 		service.Logf = facades.Log().Errorf
 		work.OnApprovalDecided("hire_agent", func(ctx context.Context, d work.ApprovalDecided) error {
 			return service.Decided(ctx, app.Decision{GuildID: d.GuildID, AgentID: d.AgentID, DeciderID: d.DeciderID, Approved: d.Approved})
@@ -132,6 +132,11 @@ func (workOfAgents) UnassignAgent(ctx context.Context, guildID, agentID, actorID
 	return work.UnassignAgent(ctx, guildID, agentID, actorID)
 }
 
+func (workOfAgents) IssueForRun(ctx context.Context, guildID, issueID uint64) (app.IssueBrief, bool, error) {
+	i, ok, err := work.IssueForRun(ctx, guildID, issueID)
+	return app.IssueBrief(i), ok, err
+}
+
 func memberNames(ctx context.Context, ids []uint64) ([]agentshttp.Named, error) {
 	ms, err := identity.Members(ctx, ids)
 	if err != nil {
@@ -144,6 +149,11 @@ func memberNames(ctx context.Context, ids []uint64) ([]agentshttp.Named, error) 
 	return out, nil
 }
 
+// runInGuild answers 404 for a route whose {id} Run is another Guild's.
+var runInGuild = guilds.Owns("run", func(ctx context.Context, id, guildID uint64) (bool, error) {
+	return svc().RunInGuild(ctx, id, guildID)
+})
+
 // agentInGuild answers 404 for a route whose {id} Agent is another
 // Guild's.
 var agentInGuild = guilds.Owns("agent", func(ctx context.Context, id, guildID uint64) (bool, error) {
@@ -151,19 +161,26 @@ var agentInGuild = guilds.Owns("agent", func(ctx context.Context, id, guildID ui
 })
 
 // Routes registers the Current guild's Agents API: reading needs
-// view_resources, hiring hire_agents, managing an Agent hire_agents and
-// being its Hirer or ranking above them. Registering them also subscribes
+// view_resources, hiring hire_agents, managing an Agent (and starting or
+// cancelling its Runs) hire_agents and being its Hirer or ranking above
+// them. Registering them also subscribes
 // agents to work's hire_agent Decisions, Members leaving and Guild
 // deletions.
 func Routes(r route.Router) {
 	c := agentshttp.NewController(svc())
 	c.Guild, c.Member, c.Permissions, c.Members = guilds.Current, guilds.MemberID, guilds.Permissions, memberNames
-	c.InstanceAdmin = guilds.InstanceAdmin
+	c.InstanceAdmin, c.Visible, c.Desktops = guilds.InstanceAdmin, guilds.VisibleProjects, identity.DesktopNames
 	view := guilds.Can("view_resources")
 	r.Middleware(guilds.Auth, view).Group(func(r route.Router) {
 		r.Get("/api/agents", c.ListAgents)
 		r.Get("/api/org", c.ShowOrg)
+		r.Get("/api/runs", c.ListRuns)
 	})
+	r.Middleware(guilds.Auth, runInGuild, view).Group(func(r route.Router) {
+		r.Get("/api/runs/{id}", c.ShowRun)
+		r.Get("/api/runs/{id}/events", c.ListRunEvents)
+	})
+	r.Middleware(guilds.Auth, runInGuild, guilds.Can("hire_agents")).Post("/api/runs/{id}/cancel", c.CancelRun)
 	r.Middleware(guilds.Auth, guilds.Can("hire_agents")).Post("/api/agents", c.HireAgent)
 	r.Middleware(guilds.Auth, agentInGuild, view).Get("/api/agents/{id}", c.ShowAgent)
 	r.Middleware(guilds.Auth, agentInGuild, guilds.Can("hire_agents")).Group(func(r route.Router) {
@@ -173,5 +190,6 @@ func Routes(r route.Router) {
 		r.Post("/api/agents/{id}/terminate", c.TerminateAgent)
 		r.Put("/api/agents/{id}/roles/{role_id}", c.AddAgentRole)
 		r.Delete("/api/agents/{id}/roles/{role_id}", c.RemoveAgentRole)
+		r.Post("/api/agents/{id}/runs", c.StartRun)
 	})
 }

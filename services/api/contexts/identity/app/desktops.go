@@ -38,6 +38,8 @@ type DesktopSignIns interface {
 	// DesktopsOf lists the Member's Desktops, newest first, signed out ones
 	// included.
 	DesktopsOf(ctx context.Context, memberID uint64) ([]domain.Desktop, error)
+	// DesktopNames names the Desktops among ids, signed out ones included.
+	DesktopNames(ctx context.Context, ids []uint64) (map[uint64]string, error)
 	// TouchDesktop records that the Desktop was used at.
 	TouchDesktop(ctx context.Context, id uint64, at time.Time) error
 	// SignOutDesktop signs the Member's Desktop out at; false when the
@@ -162,6 +164,14 @@ func (s *Service) AuthenticateDesktop(ctx context.Context, key string) (domain.M
 		d.LastSeenAt = &now
 	}
 	return m, d, nil
+}
+
+// DesktopNames names the Desktops among ids, signed out ones included.
+func (s *Service) DesktopNames(ctx context.Context, ids []uint64) (map[uint64]string, error) {
+	if len(ids) == 0 {
+		return map[uint64]string{}, nil
+	}
+	return s.desktopSignIns.DesktopNames(ctx, ids)
 }
 
 // Desktops lists the Member's Desktops that are still signed in, newest

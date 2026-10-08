@@ -87,7 +87,7 @@
 
   $effect(() => breadcrumb.set({ label: 'Agents', href: href('/agents/all') }, { label: agent?.name ?? 'Agent' }))
 
-  const live = $derived(agent !== null && (agent.status === 'idle' || agent.status === 'paused'))
+  const live = $derived(agent !== null && (agent.status === 'idle' || agent.status === 'error' || agent.status === 'paused'))
   const editable = $derived(!!agent?.can_manage && live)
   const reports = $derived(others.filter((a) => a.reports_to?.id === id))
   // Reports to cannot be the Agent itself; a deeper cycle is the server's to refuse.

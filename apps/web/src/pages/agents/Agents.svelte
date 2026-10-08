@@ -26,15 +26,16 @@
 
   let { tab }: { tab: AgentsTab } = $props()
 
-  const tabLabels: Record<AgentsTab, string> = { all: 'All', active: 'Active', paused: 'Paused', terminated: 'Terminated' }
+  const tabLabels: Record<AgentsTab, string> = { all: 'All', active: 'Active', paused: 'Paused', error: 'Error', terminated: 'Terminated' }
 
   let agents = $state.raw<Agent[] | null>(null)
   let loadError = $state('')
   // The statuses each tab shows, as GET /api/agents?status= filters them.
   const tabStatuses: Record<AgentsTab, AgentStatus[]> = {
-    all: ['pending_approval', 'idle', 'paused'],
-    active: ['idle'],
+    all: ['pending_approval', 'idle', 'running', 'error', 'paused'],
+    active: ['idle', 'running'],
     paused: ['paused'],
+    error: ['error'],
     terminated: ['terminated'],
   }
 

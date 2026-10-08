@@ -37,7 +37,7 @@ func (s *Service) managed(ctx context.Context, guildID uint64, actor Actor, id u
 	return a, nil
 }
 
-// Edit changes an idle or paused Agent's profile and Manager. A Patch
+// Edit changes an idle, error or paused Agent's profile and Manager. A Patch
 // that changes nothing records nothing.
 func (s *Service) Edit(ctx context.Context, guildID uint64, actor Actor, id uint64, p domain.Patch) (domain.Agent, error) {
 	a, err := s.managed(ctx, guildID, actor, id)
@@ -83,7 +83,8 @@ func (s *Service) Edit(ctx context.Context, guildID uint64, actor Actor, id uint
 	return a, nil
 }
 
-// Pause pauses an idle Agent.
+// Pause pauses an idle, running or error Agent and cancels its queued and
+// running Runs.
 func (s *Service) Pause(ctx context.Context, guildID uint64, actor Actor, id uint64) (domain.Agent, error) {
 	a, err := s.managed(ctx, guildID, actor, id)
 	if err != nil {
@@ -93,6 +94,9 @@ func (s *Service) Pause(ctx context.Context, guildID uint64, actor Actor, id uin
 		return domain.Agent{}, err
 	}
 	if err := s.agents.SaveAgent(ctx, a); err != nil {
+		return domain.Agent{}, err
+	}
+	if err := s.cancelRuns(ctx, a, actor.ID); err != nil {
 		return domain.Agent{}, err
 	}
 	s.record(ctx, domain.AgentPaused{Agent: a, ActorID: actor.ID})
@@ -125,8 +129,8 @@ func (s *Service) Terminate(ctx context.Context, guildID uint64, actor Actor, id
 }
 
 // terminate ends the Agent: its direct reports report to its Manager, its
-// Agent membership ends, it leaves the Issues still open, and a hire_agent Approval still waiting is
-// cancelled.
+// Agent membership ends, it leaves the Issues still open, its queued and
+// running Runs and a hire_agent Approval still waiting are cancelled.
 func (s *Service) terminate(ctx context.Context, a domain.Agent, actorID uint64) (domain.Agent, error) {
 	pending := a.Status == domain.PendingApproval
 	at := s.now()
@@ -155,6 +159,9 @@ func (s *Service) terminate(ctx context.Context, a domain.Agent, actorID uint64)
 		if err := s.work.CancelApproval(ctx, a.GuildID, actorID, a.HireApprovalID); err != nil {
 			return domain.Agent{}, err
 		}
+	}
+	if err := s.cancelRuns(ctx, a, actorID); err != nil {
+		return domain.Agent{}, err
 	}
 	if err := s.work.UnassignAgent(ctx, a.GuildID, a.ID, actorID); err != nil {
 		return domain.Agent{}, err
@@ -187,13 +194,13 @@ func (s *Service) HirerLeft(ctx context.Context, guildID, memberID, actorID uint
 	return nil
 }
 
-// AddRole gives an idle or paused Agent a Role; one it holds already
+// AddRole gives an idle, error or paused Agent a Role; one it holds already
 // changes and records nothing.
 func (s *Service) AddRole(ctx context.Context, guildID uint64, actor Actor, id, roleID uint64) (domain.Agent, error) {
 	return s.reRole(ctx, guildID, actor, id, roleID, true)
 }
 
-// RemoveRole takes a Role from an idle or paused Agent; one it does not
+// RemoveRole takes a Role from an idle, error or paused Agent; one it does not
 // hold changes and records nothing.
 func (s *Service) RemoveRole(ctx context.Context, guildID uint64, actor Actor, id, roleID uint64) (domain.Agent, error) {
 	return s.reRole(ctx, guildID, actor, id, roleID, false)

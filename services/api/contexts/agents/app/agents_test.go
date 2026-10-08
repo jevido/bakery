@@ -95,6 +95,12 @@ type fakeWork struct {
 	last      Activity
 	// unassigned are the Agents taken off Issues.
 	unassigned []uint64
+	issues     map[uint64]IssueBrief
+}
+
+func (f *fakeWork) IssueForRun(_ context.Context, _, issueID uint64) (IssueBrief, bool, error) {
+	i, ok := f.issues[issueID]
+	return i, ok, nil
 }
 
 func (f *fakeWork) UnassignAgent(_ context.Context, _, agentID, _ uint64) error {
@@ -122,7 +128,7 @@ func (f *fakeWork) RecordActivity(_ context.Context, e Activity) error {
 
 func newTest() (*Service, *fakeAgents, *fakeGuilds, *fakeWork) {
 	a, g, w := &fakeAgents{rows: map[uint64]domain.Agent{}}, &fakeGuilds{joined: map[uint64][]uint64{}, rank: map[uint64]int{}}, &fakeWork{}
-	return NewService(a, g, w), a, g, w
+	return NewService(a, &fakeRuns{rows: map[uint64]domain.Run{}}, g, w), a, g, w
 }
 
 func TestHireAndDecide(t *testing.T) {

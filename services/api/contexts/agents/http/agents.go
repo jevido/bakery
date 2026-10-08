@@ -1,5 +1,5 @@
 // Package http is the agents JSON API: the Current guild's Agents, hiring
-// and managing one, and its Org chart.
+// and managing one, its Org chart, and the Agents' Runs.
 package http
 
 import (
@@ -35,6 +35,11 @@ type Controller struct {
 	// InstanceAdmin reports whether the request comes from the Instance
 	// admin.
 	InstanceAdmin func(ctx contractshttp.Context) bool
+	// Visible keeps the Projects among ids that the request may view
+	// (guilds.VisibleProjects).
+	Visible func(ctx contractshttp.Context, ids []uint64) ([]uint64, error)
+	// Desktops names the Desktops among ids (identity.DesktopNames).
+	Desktops func(ctx context.Context, ids []uint64) (map[uint64]string, error)
 }
 
 func (c *Controller) actor(ctx contractshttp.Context) app.Actor {
@@ -65,6 +70,7 @@ type agentJSON struct {
 	Hirer        *Named     `json:"hirer"`
 	Roles        []roleJSON `json:"roles"`
 	ApprovalID   *uint64    `json:"approval_id"`
+	CurrentRunID *uint64    `json:"current_run_id"`
 	CanManage    bool       `json:"can_manage"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
@@ -93,6 +99,10 @@ func (c *Controller) agentsJSON(ctx context.Context, actor app.Actor, as []domai
 		for _, m := range ms {
 			hirers[m.ID] = m
 		}
+	}
+	current, err := c.currentRuns(ctx, as)
+	if err != nil {
+		return nil, err
 	}
 	// Whether the actor may manage an Agent depends only on its Hirer.
 	manages := map[uint64]bool{}
@@ -127,6 +137,9 @@ func (c *Controller) agentsJSON(ctx context.Context, actor app.Actor, as []domai
 		if a.HireApprovalID != 0 {
 			id := a.HireApprovalID
 			j.ApprovalID = &id
+		}
+		if id, ok := current[a.ID]; ok {
+			j.CurrentRunID = &id
 		}
 		out[i] = j
 	}

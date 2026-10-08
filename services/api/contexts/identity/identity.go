@@ -117,6 +117,12 @@ type Member struct {
 	InstanceAdmin bool
 }
 
+// DesktopNames names the Desktops among ids, signed out ones included, for
+// the Runs they ran.
+func DesktopNames(ctx context.Context, ids []uint64) (map[uint64]string, error) {
+	return service.DesktopNames(ctx, ids)
+}
+
 // Members lists the Members with these ids, the Instance admin first, then
 // by name; ids of removed Members are left out.
 func Members(ctx context.Context, ids []uint64) ([]Member, error) {

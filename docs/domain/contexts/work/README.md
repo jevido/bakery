@@ -153,9 +153,11 @@ Comment publishes nothing (Paperclip records none).
 
 The agents context's own events (`AgentHired`, `AgentUpdated`,
 `AgentPaused`, `AgentResumed`, `AgentTerminated`, `AgentRoleAdded`,
-`AgentRoleRemoved`) reach the Activity through `work.RecordActivity` as
-`agent.hired`, `agent.updated`, `agent.paused`, `agent.resumed`,
-`agent.terminated`, `agent.role_added` and `agent.role_removed`.
+`AgentRoleRemoved`, `RunStarted`, `RunFinished`) reach the Activity through
+`work.RecordActivity` as `agent.hired`, `agent.updated`, `agent.paused`,
+`agent.resumed`, `agent.terminated`, `agent.role_added`,
+`agent.role_removed`, `run.started` and `run.finished`, each about the
+Agent.
 
 Every Issue event also carries the Issue's number, title and Project; every
 Goal event the Goal's title, and every Approval event the Approval's
@@ -274,6 +276,8 @@ type and the payload's title.
   | `agent.updated` | `name`, `changes`: field → `{from, to}` for `name`, `job`, `title`, `icon` and `reports_to` (`{id, name}`), and `capabilities: true` when they changed |
   | `agent.paused`, `agent.resumed`, `agent.terminated` | `name` |
   | `agent.role_added`, `agent.role_removed` | `name`, `role` (the Role's name when it was added or removed) |
+  | `run.started` | `name`, `run_id`, `agent` (`{id, name}`), `issue` (`{id, identifier}`) when the Run has one |
+  | `run.finished` | as `run.started`, and `status` (the Run status it ended in) |
 
   References are stored as ids and answered with their names as they are
   when read, null for none. One that no longer exists, or an Issue or
@@ -314,8 +318,9 @@ type and the payload's title.
   terminated ones included so a done Issue still shows its Agent; an
   Agent may be an Assignee when it is the Guild's and not terminated, and
   until it registers, no Agent may), `work.IssueForRun(ctx, guild, issue)` (an
-  Issue's number, identifier, title, description and Agent assignee, for
-  a Run's check and its prompt) and `work.UnassignAgent(ctx, guild,
+  Issue's identifier, title, description, Issue status, Project and Agent
+  assignee, for a Run's check and its prompt; it does not check who may
+  view it, so agents asks guilds for that) and `work.UnassignAgent(ctx, guild,
   agent, actor)` (a terminated Agent stops being the Assignee of the open
   Issues, each recorded as `issue.updated` with the terminating person as
   Actor). Work never imports the contexts that call them.

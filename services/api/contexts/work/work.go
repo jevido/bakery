@@ -2,7 +2,7 @@
 // work context: its routes (Goals, Issues, Comments, Issue documents, the
 // Activity, the Inbox and Approvals), and for the agents context
 // RequestApproval, CancelApproval, OnApprovalDecided, RecordActivity,
-// OnAgentNames, OnAgentAssignees and UnassignAgent. Nothing else in
+// OnAgentNames, OnAgentAssignees, UnassignAgent and IssueForRun. Nothing else in
 // contexts/work is for outside use.
 package work
 
@@ -140,6 +140,32 @@ func UnassignAgent(ctx context.Context, guildID, agentID, actorID uint64) error 
 	return svc().UnassignAgent(ctx, guildID, agentID, actorID)
 }
 
+// IssueBrief is an Issue as the agents context needs it for a Run: its
+// Issue identifier, title, description and status, its Project (0 for
+// none) and its Agent assignee (0 for none).
+type IssueBrief struct {
+	ID              uint64
+	ProjectID       uint64
+	Identifier      string
+	Title           string
+	Description     string
+	Status          string
+	AgentAssigneeID uint64
+}
+
+// IssueForRun tells the Guild's Issue; found is false when it is
+// another Guild's or there is none. It does not check who may view it.
+func IssueForRun(ctx context.Context, guildID, issueID uint64) (IssueBrief, bool, error) {
+	i, prefix, found, err := svc().IssueOfGuild(ctx, guildID, issueID)
+	if err != nil || !found {
+		return IssueBrief{}, false, err
+	}
+	return IssueBrief{
+		ID: i.ID, ProjectID: i.ProjectID, Identifier: domain.Identifier(prefix, i.Number), Title: i.Title,
+		Description: i.Description, Status: string(i.Status), AgentAssigneeID: i.AssigneeAgentID,
+	}, true, nil
+}
+
 // OnApprovalDecided registers f to hear every approve or reject of an
 // Approval of the type. Making the same Decision again calls f again, so
 // a failed f is healed by deciding again; its error answers the Decision
@@ -165,7 +191,7 @@ func approvalDecided(ctx context.Context, a domain.Approval) error {
 }
 
 // AgentActivity is an Activity event about an Agent: its Actor, one of
-// the glossary's agent.* Actions, the Agent's name (kept, so the event
+// the glossary's agent.* and run.* Actions, the Agent's name (kept, so the event
 // still reads after a rename) and the details its Action carries.
 type AgentActivity struct {
 	GuildID   uint64
@@ -177,7 +203,7 @@ type AgentActivity struct {
 }
 
 // RecordActivity adds the event to the Guild's Activity. Anything but an
-// agent.* Action is refused.
+// agent.* or run.* Action is refused.
 func RecordActivity(ctx context.Context, e AgentActivity) error {
 	return svc().RecordAgentActivity(ctx, domain.AgentEvent{
 		Happened: domain.Happened{ActorID: e.ActorID}, GuildID: e.GuildID, AgentID: e.AgentID,

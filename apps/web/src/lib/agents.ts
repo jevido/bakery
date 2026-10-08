@@ -22,7 +22,7 @@ import type { AgentStatus } from "@bakery/ui/agentStatus";
 
 /** The Agents list's tabs: all leaves out the terminated ones. */
 export type AgentFilter =
-  "all" | "active" | "paused" | "pending" | "terminated";
+  "all" | "active" | "paused" | "error" | "pending" | "terminated";
 
 export type AgentRole = {
   id: number;
@@ -44,6 +44,7 @@ export type Agent = {
   hirer: { id: number; name: string } | null;
   roles: AgentRole[];
   approval_id: number | null;
+  current_run_id: number | null;
   /** Whether the asker may edit, pause, resume, terminate and re-role it. */
   can_manage: boolean;
   created_at: string;

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -66,6 +67,18 @@ func (m *memDesktopSignIns) DesktopByKeyHash(_ context.Context, keyHash string) 
 		}
 	}
 	return domain.Desktop{}, false, nil
+}
+
+func (m *memDesktopSignIns) DesktopNames(_ context.Context, ids []uint64) (map[uint64]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := map[uint64]string{}
+	for _, d := range m.desktops {
+		if slices.Contains(ids, d.ID) {
+			out[d.ID] = d.Name
+		}
+	}
+	return out, nil
 }
 
 func (m *memDesktopSignIns) DesktopsOf(_ context.Context, memberID uint64) ([]domain.Desktop, error) {

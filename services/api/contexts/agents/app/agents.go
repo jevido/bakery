@@ -1,6 +1,7 @@
 // Package app holds the agents use cases: hire an Agent, follow its
 // hire_agent Approval, manage it (edit, pause, resume, terminate, its
-// Roles), and read the Guild's Agents and Org chart.
+// Roles), start and cancel its Runs, and read the Guild's Agents, Org
+// chart and Runs.
 package app
 
 import (
@@ -95,10 +96,14 @@ type Work interface {
 	// UnassignAgent takes the Agent off the Guild's Issues that are not done
 	// or cancelled, by the actor.
 	UnassignAgent(ctx context.Context, guildID, agentID, actorID uint64) error
+	// IssueForRun tells the Guild's Issue; found is false for another
+	// Guild's or none.
+	IssueForRun(ctx context.Context, guildID, issueID uint64) (i IssueBrief, found bool, err error)
 }
 
 type Service struct {
 	agents Agents
+	runs   Runs
 	guilds Guilds
 	work   Work
 	now    func() time.Time
@@ -107,8 +112,8 @@ type Service struct {
 	Logf func(format string, args ...any)
 }
 
-func NewService(agents Agents, guilds Guilds, work Work) *Service {
-	return &Service{agents: agents, guilds: guilds, work: work, now: time.Now, Logf: log.Printf}
+func NewService(agents Agents, runs Runs, guilds Guilds, work Work) *Service {
+	return &Service{agents: agents, runs: runs, guilds: guilds, work: work, now: time.Now, Logf: log.Printf}
 }
 
 // HireInput is a new Agent as typed: ManagerID 0 reports to no one,
@@ -258,18 +263,19 @@ func (s *Service) Decided(ctx context.Context, d Decision) error {
 }
 
 // Filters of the Agents list: all is every Agent but the terminated ones,
-// as Paperclip's All tab; active is idle.
+// as Paperclip's All tab; active is idle or running.
 var filters = map[string][]domain.Status{
-	"all":        {domain.PendingApproval, domain.Idle, domain.Paused},
-	"active":     {domain.Idle},
+	"all":        {domain.PendingApproval, domain.Idle, domain.Running, domain.Error, domain.Paused},
+	"active":     {domain.Idle, domain.Running},
 	"paused":     {domain.Paused},
+	"error":      {domain.Error},
 	"pending":    {domain.PendingApproval},
 	"terminated": {domain.Terminated},
 }
 
 // ErrUnknownFilter is a status filter that is none of all, active,
-// paused, pending or terminated.
-var ErrUnknownFilter error = &domain.FieldError{Field: "status", Message: "must be one of all, active, paused, pending, terminated"}
+// paused, error, pending or terminated.
+var ErrUnknownFilter error = &domain.FieldError{Field: "status", Message: "must be one of all, active, paused, error, pending, terminated"}
 
 // Agents lists the Guild's Agents in the filter ("" is all), by name.
 func (s *Service) Agents(ctx context.Context, guildID uint64, filter string) ([]domain.Agent, error) {

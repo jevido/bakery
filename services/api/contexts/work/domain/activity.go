@@ -33,10 +33,12 @@ const (
 	AgentTerminatedAction      = "agent.terminated"
 	AgentRoleAddedAction       = "agent.role_added"
 	AgentRoleRemovedAction     = "agent.role_removed"
+	RunStartedAction           = "run.started"
+	RunFinishedAction          = "run.finished"
 )
 
 // AgentActions lists the Actions the agents context records through work.
-var AgentActions = []string{AgentHiredAction, AgentUpdatedAction, AgentPausedAction, AgentResumedAction, AgentTerminatedAction, AgentRoleAddedAction, AgentRoleRemovedAction}
+var AgentActions = []string{AgentHiredAction, AgentUpdatedAction, AgentPausedAction, AgentResumedAction, AgentTerminatedAction, AgentRoleAddedAction, AgentRoleRemovedAction, RunStartedAction, RunFinishedAction}
 
 // The kinds of thing an Activity event is about.
 const (

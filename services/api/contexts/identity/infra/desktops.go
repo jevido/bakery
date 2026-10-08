@@ -141,6 +141,22 @@ func (DesktopSignIns) DesktopsOf(ctx context.Context, memberID uint64) ([]domain
 	return out, nil
 }
 
+func (DesktopSignIns) DesktopNames(ctx context.Context, ids []uint64) (map[uint64]string, error) {
+	in := make([]any, len(ids))
+	for i, id := range ids {
+		in[i] = id
+	}
+	var recs []desktopRecord
+	if err := facades.Orm().WithContext(ctx).Query().Select("id", "name").WhereIn("id", in).Find(&recs); err != nil {
+		return nil, err
+	}
+	out := make(map[uint64]string, len(recs))
+	for _, r := range recs {
+		out[r.ID] = r.Name
+	}
+	return out, nil
+}
+
 func (DesktopSignIns) TouchDesktop(ctx context.Context, id uint64, at time.Time) error {
 	_, err := facades.Orm().WithContext(ctx).Query().Model(&desktopRecord{}).Where("id", id).Update(map[string]any{"last_seen_at": at, "updated_at": at})
 	return err

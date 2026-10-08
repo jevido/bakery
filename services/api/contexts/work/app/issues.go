@@ -297,6 +297,20 @@ func (s *Service) Issue(ctx context.Context, guildID uint64, ref string, visible
 	return i, nil
 }
 
+// IssueOfGuild is the Guild's Issue by id with the Guild's Issue prefix,
+// whoever may view it, for another context; found is false when it is
+// another Guild's.
+func (s *Service) IssueOfGuild(ctx context.Context, guildID, id uint64) (i domain.Issue, prefix string, found bool, err error) {
+	i, found, err = s.issues.Issue(ctx, id)
+	if err != nil || !found || i.GuildID != guildID {
+		return domain.Issue{}, "", false, err
+	}
+	if prefix, err = s.guilds.IssuePrefix(ctx, guildID); err != nil {
+		return domain.Issue{}, "", false, err
+	}
+	return i, prefix, true, nil
+}
+
 // VisibleIssues returns the Issues with these ids that the person may see,
 // for the parents an Issue names.
 func (s *Service) VisibleIssues(ctx context.Context, ids []uint64, visible Visible) ([]domain.Issue, error) {

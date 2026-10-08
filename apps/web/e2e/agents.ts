@@ -16,7 +16,9 @@
 //           a reload; the Paused tab hides both; clicking Bob opens his page.
 //   agent   Agent Ada's page (Agent Bob reporting to her) shows her
 //           properties; renaming her in place survives a reload; Reports
-//           to Bob shows the cycle error; Pause shows Paused and Resume
+//           to Bob shows the cycle error; a Run on an Issue assigned to
+//           her shows as "started a run of" her in the Activity; Pause
+//           shows Paused and cancels that Run, and Resume
 //           Idle; Add role "Deployer" shows the chip and × removes it;
 //           Terminate after confirming shows Terminated and no actions, and
 //           Bob moves up to no Manager; #/agents/999999 shows not-found.
@@ -287,8 +289,23 @@ const sections: Record<string, () => Promise<void>> = {
     await page.getByTestId('reports-to-error').waitFor()
     expect('Reports to Bob shows the cycle error', ((await page.getByTestId('reports-to-error').textContent()) ?? '').length > 0)
 
+    // A Run started on an Issue assigned to her is in the Activity, and
+    // Pause cancels it.
+    const issue = (await (await page.request.post(`${WEB}/api/issues`, { data: { title: 'Agent run issue', assignee_agent_id: ada.id } })).json()) as { issue: { id: number } }
+    const started = await page.request.post(`${WEB}/api/agents/${ada.id}/runs`, { data: { issue_id: issue.issue.id } })
+    expect('a Run on her Issue is queued', started.status() === 201, started.status())
+    const { run: queued } = (await started.json()) as { run: { id: number; status: string } }
+    await page.goto(`${WEB}/#/activity`)
+    const startedRow = page.locator('[data-activity="run.started"]').first()
+    await startedRow.waitFor()
+    expect('the Activity shows "started a run of" her', ((await startedRow.textContent()) ?? '').includes('started a run of Agent Ava'), await startedRow.textContent())
+    await page.goto(`${WEB}/#/agents/${ada.id}`)
+    await page.getByRole('heading', { name: 'Identity' }).waitFor()
+
     await page.getByRole('button', { name: 'Pause' }).click()
     await page.getByRole('button', { name: 'Resume' }).waitFor()
+    const cancelled = ((await (await page.request.get(`${WEB}/api/runs/${queued.id}`)).json()) as { run: { status: string } }).run
+    expect('Pause cancels her queued Run', cancelled.status === 'cancelled', cancelled)
     expect('Pause shows Paused', (await page.getByRole('region', { name: 'Identity' }).textContent())?.includes('Paused') === true)
     await page.getByRole('button', { name: 'Resume' }).click()
     await page.getByRole('button', { name: 'Pause' }).waitFor()

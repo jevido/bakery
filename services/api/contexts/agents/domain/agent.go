@@ -105,6 +105,8 @@ type Status string
 const (
 	PendingApproval Status = "pending_approval"
 	Idle            Status = "idle"
+	Running         Status = "running"
+	Error           Status = "error"
 	Paused          Status = "paused"
 	Terminated      Status = "terminated"
 )
@@ -224,7 +226,7 @@ func (a *Agent) Approve(at time.Time) (changed bool, err error) {
 	case PendingApproval:
 		a.Status, a.UpdatedAt = Idle, at
 		return true, nil
-	case Idle, Paused:
+	case Idle, Running, Error, Paused:
 		return false, nil
 	}
 	return false, &StatusError{Status: a.Status, Action: "approved"}
@@ -256,11 +258,11 @@ type Change struct {
 	From, To any
 }
 
-// Edit applies the Patch to an idle or paused Agent and answers what
+// Edit applies the Patch to an idle, error or paused Agent and answers what
 // changed, keyed by the API's field names (reports_to for the Manager,
 // by id). The new Manager is checked with CheckManager first.
 func (a *Agent) Edit(p Patch, at time.Time) (map[string]Change, error) {
-	if a.Status != Idle && a.Status != Paused {
+	if a.Status != Idle && a.Status != Error && a.Status != Paused {
 		return nil, &StatusError{Status: a.Status, Action: "edited"}
 	}
 	in := Profile{Name: a.Name, Job: string(a.Job), Title: a.Title, Icon: string(a.Icon), Capabilities: a.Capabilities}
@@ -295,9 +297,10 @@ func (a *Agent) Edit(p Patch, at time.Time) (map[string]Change, error) {
 	return changes, nil
 }
 
-// Pause makes an idle Agent paused.
+// Pause makes an idle, running or error Agent paused; its Runs are
+// cancelled with it.
 func (a *Agent) Pause(at time.Time) error {
-	if a.Status != Idle {
+	if a.Status != Idle && a.Status != Running && a.Status != Error {
 		return &StatusError{Status: a.Status, Action: "paused"}
 	}
 	a.Status, a.PausedAt, a.UpdatedAt = Paused, &at, at
@@ -322,10 +325,36 @@ func (a *Agent) Terminate(at time.Time) error {
 	return nil
 }
 
+// StartRunning makes an idle or error Agent running, as a Run of it is
+// claimed.
+func (a *Agent) StartRunning(at time.Time) error {
+	if a.Status != Idle && a.Status != Error {
+		return &StatusError{Status: a.Status, Action: "running"}
+	}
+	a.Status, a.UpdatedAt = Running, at
+	return nil
+}
+
+// RunEnded follows the end of the running Run of a running Agent: idle
+// after it succeeded or was cancelled, error after it failed or was lost.
+// An Agent no longer running (paused or terminated meanwhile) stays as it
+// is.
+func (a *Agent) RunEnded(s RunStatus, at time.Time) (changed bool) {
+	if a.Status != Running {
+		return false
+	}
+	a.Status, a.UpdatedAt = Idle, at
+	if s == RunFailed || s == RunLost {
+		a.Status = Error
+	}
+	return true
+}
+
 // Rolable reports whether the Agent may be given or lose Roles: only an
-// idle or paused one, so a pending hire's Approval shows what it gets.
+// idle, error or paused one, so a pending hire's Approval shows what it
+// gets.
 func (a Agent) Rolable() error {
-	if a.Status != Idle && a.Status != Paused {
+	if a.Status != Idle && a.Status != Error && a.Status != Paused {
 		return &StatusError{Status: a.Status, Action: "given roles"}
 	}
 	return nil

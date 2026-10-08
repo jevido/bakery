@@ -30,6 +30,8 @@
   // Paperclip's status dot hues; a hire waiting for its Approval is grey.
   const dotColors: Record<AgentStatus, string> = {
     idle: '#facc15',
+    running: '#60a5fa',
+    error: '#f87171',
     paused: '#facc15',
     pending_approval: '#a3a3a3',
     terminated: '#a3a3a3',
