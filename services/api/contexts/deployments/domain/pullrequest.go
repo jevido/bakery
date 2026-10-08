@@ -3,8 +3,6 @@ package domain
 import (
 	"encoding/json"
 	"errors"
-	"net/url"
-	"strconv"
 	"strings"
 )
 
@@ -140,12 +138,7 @@ func parseGitea(body []byte) (PullRequest, error) {
 	if baseRepo == 0 && pr.Base.Repo != nil {
 		baseRepo = pr.Base.Repo.ID
 	}
-	api := ""
-	if u, err := url.Parse(e.Repository.HTMLURL); err == nil && u.Host != "" {
-		// html_url is <root>/<owner>/<repo>; the root may have a path.
-		root := strings.TrimSuffix(strings.TrimSuffix(u.Path, "/"), "/"+e.Repository.FullName)
-		api = u.Scheme + "://" + u.Host + root + "/api/v1/repos/" + e.Repository.FullName
-	}
+	api := giteaAPI(e.Repository.HTMLURL, e.Repository.FullName)
 	return PullRequest{
 		Number: e.Number, Action: map[string]PullRequestAction{"opened": PullRequestOpened, "reopened": PullRequestOpened, "synchronized": PullRequestPushed, "closed": PullRequestClosed}[e.Action],
 		Branch: pr.Head.Ref, Base: pr.Base.Ref, Title: pr.Title, URL: pr.HTMLURL, Merged: pr.Merged,
@@ -191,10 +184,7 @@ func parseGitLab(body []byte) (PullRequest, error) {
 	case "close", "merge":
 		action = PullRequestClosed
 	}
-	api := ""
-	if u, err := url.Parse(e.Project.WebURL); err == nil && u.Host != "" {
-		api = u.Scheme + "://" + u.Host + "/api/v4/projects/" + strconv.FormatInt(e.Project.ID, 10)
-	}
+	api := gitlabAPI(e.Project.WebURL, e.Project.ID)
 	return PullRequest{
 		Number: a.IID, Action: action, Merged: a.Action == "merge", Branch: a.SourceBranch, Base: a.TargetBranch, Title: a.Title, URL: a.URL,
 		SameRepo: a.SourceProjectID != 0 && a.SourceProjectID == a.TargetProjectID, API: api,

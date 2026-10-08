@@ -24,9 +24,9 @@ func (m memWebhooks) Save(_ context.Context, w domain.Webhook) error {
 	m[w.ApplicationID] = w
 	return nil
 }
-func (m memWebhooks) RememberProvider(_ context.Context, id uint64, p domain.Provider) error {
+func (m memWebhooks) RememberRepository(_ context.Context, id uint64, p domain.Provider, api string) error {
 	w := m[id]
-	w.Provider = p
+	w.Provider, w.RepositoryAPI = p, api
 	m[id] = w
 	return nil
 }

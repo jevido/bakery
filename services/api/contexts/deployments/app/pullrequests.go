@@ -55,7 +55,7 @@ func (w *Webhooks) OpenPullRequest(ctx context.Context, applicationID uint64, he
 	if !found || hook.GitHostToken == "" {
 		return OpenedPullRequest{}, ErrNoGitHostToken
 	}
-	repo, err := domain.RepositoryOf(hook.Provider, a.GitURL)
+	repo, err := hook.Repository(a.GitURL)
 	if err != nil {
 		return OpenedPullRequest{}, err
 	}

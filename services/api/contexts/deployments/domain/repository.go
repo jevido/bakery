@@ -1,8 +1,10 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -114,4 +116,62 @@ func hostOf(base string) string {
 		h = h[:i]
 	}
 	return h
+}
+
+// RepositoryAPI reads the repository's REST base from any verified call of
+// the Provider (push, Pull request, ping), or "" when the body names none.
+// Unlike the git URL it is where the git host says its web UI is, so it
+// holds for repositories cloned over SSH from a host whose web UI is not
+// on 443.
+func RepositoryAPI(p Provider, body []byte) string {
+	var e struct {
+		Repository struct {
+			FullName string `json:"full_name"`
+			HTMLURL  string `json:"html_url"`
+			URL      string `json:"url"`
+			PullsURL string `json:"pulls_url"`
+		} `json:"repository"`
+		Project struct {
+			ID     int64  `json:"id"`
+			WebURL string `json:"web_url"`
+		} `json:"project"`
+	}
+	if json.Unmarshal(body, &e) != nil {
+		return ""
+	}
+	switch p {
+	case GitHub:
+		// pulls_url is in push and Pull request events alike;
+		// repository.url is the web URL in push events and the API in
+		// Pull request events.
+		if i := strings.Index(e.Repository.PullsURL, "/pulls{"); i > 0 {
+			return e.Repository.PullsURL[:i]
+		}
+		return ""
+	case Gitea, Forgejo:
+		return giteaAPI(e.Repository.HTMLURL, e.Repository.FullName)
+	case GitLab:
+		return gitlabAPI(e.Project.WebURL, e.Project.ID)
+	}
+	return ""
+}
+
+// giteaAPI is the REST base of a Gitea or Forgejo repository from its
+// html_url, <root>/<owner>/<repo>, where the root may have a path.
+func giteaAPI(htmlURL, fullName string) string {
+	u, err := url.Parse(htmlURL)
+	if err != nil || u.Host == "" || fullName == "" {
+		return ""
+	}
+	root := strings.TrimSuffix(strings.TrimSuffix(u.Path, "/"), "/"+fullName)
+	return u.Scheme + "://" + u.Host + root + "/api/v1/repos/" + fullName
+}
+
+// gitlabAPI is the REST base of a GitLab project from its web_url and id.
+func gitlabAPI(webURL string, id int64) string {
+	u, err := url.Parse(webURL)
+	if err != nil || u.Host == "" || id == 0 {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host + "/api/v4/projects/" + strconv.FormatInt(id, 10)
 }

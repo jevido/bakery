@@ -35,3 +35,36 @@ func TestRepositoryOf(t *testing.T) {
 		}
 	}
 }
+
+func TestRepositoryAPI(t *testing.T) {
+	cases := []struct {
+		p    Provider
+		body string
+		want string
+	}{
+		{GitHub, `{"ref":"refs/heads/main","repository":{"url":"https://github.com/acme/shop","pulls_url":"https://api.github.com/repos/acme/shop/pulls{/number}"}}`, "https://api.github.com/repos/acme/shop"},
+		{GitHub, `{"repository":{"pulls_url":"https://ghe.example.com/api/v3/repos/acme/shop/pulls{/number}"}}`, "https://ghe.example.com/api/v3/repos/acme/shop"},
+		{GitHub, `{"zen":"ping"}`, ""},
+		{Forgejo, `{"ref":"refs/heads/main","repository":{"full_name":"e2e/shop","html_url":"http://127.0.0.1:4950/e2e/shop"}}`, "http://127.0.0.1:4950/api/v1/repos/e2e/shop"},
+		{Gitea, `{"repository":{"full_name":"acme/shop","html_url":"https://example.com/git/acme/shop/"}}`, "https://example.com/git/api/v1/repos/acme/shop"},
+		{GitLab, `{"object_kind":"push","project":{"id":42,"web_url":"https://code.example.com/acme/shop"}}`, "https://code.example.com/api/v4/projects/42"},
+		{GitLab, `not json`, ""},
+	}
+	for _, c := range cases {
+		if got := RepositoryAPI(c.p, []byte(c.body)); got != c.want {
+			t.Errorf("RepositoryAPI(%s, %s) = %q; want %q", c.p, c.body, got, c.want)
+		}
+	}
+}
+
+func TestWebhookRepository(t *testing.T) {
+	hook := Webhook{Provider: Forgejo, RepositoryAPI: "http://127.0.0.1:4950/api/v1/repos/e2e/shop"}
+	got, err := hook.Repository("ssh://git@127.0.0.1:4952/e2e/shop.git")
+	if err != nil || got != (Repository{Forgejo, "http://127.0.0.1:4950/api/v1/repos/e2e/shop", "e2e"}) {
+		t.Fatalf("remembered: %+v %v", got, err)
+	}
+	hook.RepositoryAPI = ""
+	if got, _ := hook.Repository("ssh://git@127.0.0.1:4952/e2e/shop.git"); got.API != "https://127.0.0.1/api/v1/repos/e2e/shop" {
+		t.Fatalf("derived: %+v", got)
+	}
+}

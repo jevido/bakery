@@ -19,9 +19,10 @@ type WebhookStore interface {
 	// Save creates or replaces the Application's Webhook.
 	Save(ctx context.Context, w domain.Webhook) error
 	DeleteForApplication(ctx context.Context, applicationID uint64) error
-	// RememberProvider stores the Provider of the Webhook's last verified
-	// call; Save leaves it as it is.
-	RememberProvider(ctx context.Context, applicationID uint64, p domain.Provider) error
+	// RememberRepository stores the Provider of the Webhook's last verified
+	// call and the repository's REST base it named; Save leaves both as
+	// they are.
+	RememberRepository(ctx context.Context, applicationID uint64, p domain.Provider, api string) error
 }
 
 // Webhooks are the use cases around an Application's Webhook.
@@ -136,11 +137,15 @@ func (w *Webhooks) ReceivePush(ctx context.Context, applicationID uint64, header
 	if provider == "" || !hook.Verify(provider, header, body) {
 		return PushOutcome{}, ErrBadSignature
 	}
-	if hook.Provider != provider {
-		if err := w.store.RememberProvider(ctx, applicationID, provider); err != nil {
+	api := domain.RepositoryAPI(provider, body)
+	if api == "" && hook.Provider == provider {
+		api = hook.RepositoryAPI
+	}
+	if hook.Provider != provider || hook.RepositoryAPI != api {
+		if err := w.store.RememberRepository(ctx, applicationID, provider, api); err != nil {
 			return PushOutcome{}, err
 		}
-		hook.Provider = provider
+		hook.Provider, hook.RepositoryAPI = provider, api
 	}
 	if domain.IsPullRequest(provider, event) {
 		return w.receivePullRequest(ctx, hook, app, provider, body)

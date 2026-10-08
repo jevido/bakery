@@ -23,6 +23,20 @@ type Webhook struct {
 	// Provider is the git host that last called with a verified call;
 	// empty until one did.
 	Provider Provider
+	// RepositoryAPI is the repository's REST base as that call named it;
+	// empty until one did.
+	RepositoryAPI string
+}
+
+// Repository is the Application's repository behind gitURL, at the REST
+// base the git host last named when there is one: an SSH git URL does not
+// tell where the web UI and its API are.
+func (w Webhook) Repository(gitURL string) (Repository, error) {
+	r, err := RepositoryOf(w.Provider, gitURL)
+	if err == nil && w.RepositoryAPI != "" {
+		r.API = w.RepositoryAPI
+	}
+	return r, err
 }
 
 // Provider is the git host that called a Webhook, recognised by its event

@@ -18,6 +18,7 @@ type webhookRecord struct {
 	// GitHostTokenEncrypted is empty when there is no Git host token.
 	GitHostTokenEncrypted string
 	Provider              *string
+	RepositoryAPI         *string
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
 }
@@ -49,6 +50,9 @@ func (Webhooks) ByApplication(ctx context.Context, applicationID uint64) (domain
 	if recs[0].Provider != nil {
 		hook.Provider = domain.Provider(*recs[0].Provider)
 	}
+	if recs[0].RepositoryAPI != nil {
+		hook.RepositoryAPI = *recs[0].RepositoryAPI
+	}
 	return hook, true, nil
 }
 
@@ -73,8 +77,12 @@ func (Webhooks) Save(ctx context.Context, w domain.Webhook) error {
 	return err
 }
 
-func (Webhooks) RememberProvider(ctx context.Context, applicationID uint64, p domain.Provider) error {
-	_, err := facades.Orm().WithContext(ctx).Query().Exec(`UPDATE webhooks SET provider = ?, updated_at = now() WHERE application_id = ?`, string(p), applicationID)
+func (Webhooks) RememberRepository(ctx context.Context, applicationID uint64, p domain.Provider, api string) error {
+	var a *string
+	if api != "" {
+		a = &api
+	}
+	_, err := facades.Orm().WithContext(ctx).Query().Exec(`UPDATE webhooks SET provider = ?, repository_api = ?, updated_at = now() WHERE application_id = ?`, string(p), a, applicationID)
 	return err
 }
 

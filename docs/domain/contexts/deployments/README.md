@@ -31,7 +31,7 @@ Application is (projects) or for the Caddy configuration (routing).
 | Restart | A Deployment that starts the Image of the Application's newest finished Deployment again, skipping clone and build. |
 | Stop | The Application's Route out of its Proxy, its own Containers stopped and removed. |
 | Application status | `running:healthy`, `running:unhealthy`, `running:unknown`, `restarting`, `degraded:unhealthy` or `exited`, from its own Containers. |
-| Webhook | The URL and secret a git host calls on push and on Pull request events, with Previews on or off, the Git host token and the Provider of its last verified call. |
+| Webhook | The URL and secret a git host calls on push and on Pull request events, with Previews on or off, the Git host token and the Provider and repository API of its last verified call. |
 | Pull request | A git host's request to merge a branch into the Application's branch (a GitLab merge request too), as its Webhook calls describe it, or as The Bakery opened it for an Agent branch. |
 | Preview | A copy of the Application built from one open Pull request's head branch, with its own Containers (`bakery-app-<id>-pr<n>-<deployment>`, labelled `bakery.preview=<n>`), Volumes (`bakery-app-<id>-pr<n>-<storage>`) and Preview route on the Preview domain `pr-<n>.<primary Domain>`. |
 | Preview Deployment | A Deployment that belongs to a Preview. The history shows it next to the Application's own, marked with its Preview number. |
@@ -49,7 +49,7 @@ Application is (projects) or for the Caddy configuration (routing).
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Deployment | Belongs to the Application itself or to one of its Previews. Status only moves forward: `queued` → `cloning` → `building` → `starting` → `finished` (a `dockerimage` Deployment moves from `cloning` straight on to `building` without cloning), and any active status → `failed` (with an error) or `cancelled`. A Rollback moves from `queued` straight to `starting`; it names its source Deployment, which is `finished`, of the same Application, and whose Image still exists. An Application has at most one queued Deployment of its own and one per Preview, and at most one running Deployment in all; a queued one is only picked up once the Application has no running one, and a new Deploy while one is already queued (for the same Preview) is refused. A Preview Deployment cannot be rolled back to: a Preview always builds its head. Its log is append-only and ordered. |
-| Webhook | One per Application, with a secret and Auto-deploy on or off. A call is accepted only with a valid signature for that secret (HMAC-SHA256 of the body for GitHub, Gitea and Forgejo; the token for GitLab). Only a push to the Application's branch, with Auto-deploy on, queues a Deployment. Only a Pull request event, with Previews on, whose head is a branch of the same repository and whose base is the Application's branch, opens, deploys or closes a Preview. Its Provider is the one its last verified call came from, and changes only with a verified call. |
+| Webhook | One per Application, with a secret and Auto-deploy on or off. A call is accepted only with a valid signature for that secret (HMAC-SHA256 of the body for GitHub, Gitea and Forgejo; the token for GitLab). Only a push to the Application's branch, with Auto-deploy on, queues a Deployment. Only a Pull request event, with Previews on, whose head is a branch of the same repository and whose base is the Application's branch, opens, deploys or closes a Preview. Its Provider is the one its last verified call came from, and its repository API the REST base that call named; both change only with a verified call. |
 | Preview | One per Application and Preview number. `open` → `closed`, and back to `open` when the Pull request is reopened. Only an open Preview is deployed. Closing it removes its Containers, Volumes, Images and Preview route on its Server; a closed Preview has nothing left running. Never for a `dockerimage` Application. |
 | Known host | One per Guild and host (and port). The first clone from a host in a Guild records its keys; every later clone of that Guild's Applications must see the same ones, or the Deployment fails. Only an admin of the Guild can list or forget it. |
 
@@ -429,3 +429,10 @@ Application is (projects) or for the Caddy configuration (routing).
   GitLab. Until the Webhook has received one call, only `github.com` and
   hosts named `gitlab…` are known, and opening a Pull request elsewhere
   says so.
+- **The repository's REST base is remembered from that call too**
+  (`repository.pulls_url` for GitHub, `repository.html_url` for Gitea and
+  Forgejo, `project.web_url` and `project.id` for GitLab), because an SSH
+  git URL (`ssh://git@git.example.com:2222/acme/shop.git`) does not say
+  where the web UI and its API are: a self-hosted Forgejo on `:3000` with
+  SSH on `:2222` is common. Without a call yet, the base is derived from
+  the git URL, which for SSH means `https://host` on 443.

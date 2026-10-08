@@ -41,7 +41,8 @@ func (f *fakeHosts) CreatePullRequest(_ context.Context, r domain.Repository, to
 func TestOpenPullRequest(t *testing.T) {
 	ctx := context.Background()
 	s := newSetup(t, fakeCloner{})
-	s.app = func(a *Application) { a.GitURL = "http://git.example.com/u/r.git" }
+	// Cloned over SSH: the REST base comes from the Webhook's last call.
+	s.app = func(a *Application) { a.GitURL = "ssh://git@git.example.com:2222/u/r.git" }
 	store := memWebhooks{}
 	hooks := NewWebhooks(s.service, store)
 	hosts := &fakeHosts{open: map[string]OpenedPullRequest{}, pushed: map[string]bool{"bakery/def-12": true}}
@@ -60,13 +61,14 @@ func TestOpenPullRequest(t *testing.T) {
 		t.Fatalf("before a call: %v", err)
 	}
 
-	// A verified call remembers its Provider; Save keeps it.
+	// A verified call remembers its Provider and the repository's REST
+	// base; Save keeps both.
 	h, body := forgejoPullRequest(hook.Secret, "edited", 1, "feature", "main", 5)
 	if _, err := hooks.ReceivePush(ctx, 1, h, body); err != nil {
 		t.Fatal(err)
 	}
 	hooks.SetAutoDeploy(ctx, 1, false)
-	if got, _ := hooks.Webhook(ctx, 1); got.Provider != domain.Forgejo {
+	if got, _ := hooks.Webhook(ctx, 1); got.Provider != domain.Forgejo || got.RepositoryAPI != "http://git/api/v1/repos/u/r" {
 		t.Fatalf("provider: %+v", got)
 	}
 
@@ -74,7 +76,7 @@ func TestOpenPullRequest(t *testing.T) {
 		t.Fatalf("unpushed: %v", err)
 	}
 	pr, err := hooks.OpenPullRequest(ctx, 1, "bakery/def-12", "DEF-12 Fix", "")
-	if err != nil || !pr.Created || pr.Number != 4 || hosts.repo.API != "http://git.example.com/api/v1/repos/u/r" {
+	if err != nil || !pr.Created || pr.Number != 4 || hosts.repo.API != "http://git/api/v1/repos/u/r" || hosts.repo.Owner != "u" {
 		t.Fatalf("open: %+v %v %+v", pr, err, hosts.repo)
 	}
 	pr, err = hooks.OpenPullRequest(ctx, 1, "bakery/def-12", "DEF-12 Fix", "")
