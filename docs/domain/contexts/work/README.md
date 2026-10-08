@@ -58,7 +58,7 @@ Approval comment, Linked issue, Issue's Application, Work product) are in
 | Comment | Belongs to one Issue and is written by one Member or one Agent actor (`author_agent`). Body 1–20000 characters. Only its author edits or deletes it. A deleted Comment keeps its place in the thread, its body gone, shown as "deleted". |
 | Issue document | Belongs to one Issue and its Guild. Its Document key is unique per Issue and never changes. Title at most 200 characters (may be empty), body at most 524288 characters, Markdown only. Its Revisions are numbered 1, 2, … without gaps; each save and each Restore adds exactly one Revision, and Revisions are never changed. A save needs the newest Revision as its Base revision (none for the first save), or it is refused. Restoring the newest Revision is refused, since it would change nothing. A Revision's author is a Member or an Agent actor. Deleting the Issue document removes its Revisions. |
 | Activity event | Append-only. Belongs to one Guild and has one Actor, a Member or an Agent actor (none once that Member's account is gone, and none for what The Bakery recorded on its own: a Pull request or Preview changing on the git host) and one Action from the glossary's list, about exactly one Goal, Issue, Approval or Agent. It keeps the Issue's number and title, the Goal's title, the Approval's type and payload title, or the Agent's name, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
-| Approval | Belongs to one Guild. Approval type and Approval status from their lists; it starts `pending`. A `request_board_approval` payload has a `title` of 1–200 characters and optional `summary`, `recommended_action` and `next_action_on_approval` (each at most 20000 characters) and `risks` (at most 20 strings of at most 500 characters), and nothing else. A `hire_agent` payload is `agent_id`, `name`, `job`, `title`, `icon`, `reports_to` (`{id, name}` or null), `capabilities` and `roles` (Role names), as the agents context sends it; its title is "Hire Agent: <name>". A `hire_agent` Approval is created only through `work.RequestApproval`, never gets Request revision (its Agent cannot change while it waits, so there is nothing to revise), and becomes `cancelled` when its Agent is terminated before a Decision; `cancelled` is not Actionable and never changes again. Approve and reject only from `pending` or `revision_requested` (Actionable); Request revision only from `pending`; Resubmit only from `revision_requested`, which clears the decider, the decision time and the Decision note. A Decision records its decider, time and optional Decision note (at most 20000 characters). Making the same Decision again on an Approval that already has it answers the Approval unchanged and records nothing, as Paperclip's `applied: false`; any other move from a status that does not allow it is refused (422). Its Linked issues are Issues of the same Guild, set when it is requested. Its Approval comments each have one author and a body of 1–20000 characters, and are never edited or deleted. The Approval, its links and its Approval comments go with their Guild; a Linked issue's link goes with the Issue. |
+| Approval | Belongs to one Guild. Approval type and Approval status from their lists; it starts `pending`. A `request_board_approval` payload has a `title` of 1–200 characters and optional `summary`, `recommended_action` and `next_action_on_approval` (each at most 20000 characters) and `risks` (at most 20 strings of at most 500 characters), and nothing else. A `hire_agent` payload is `agent_id`, `name`, `job`, `title`, `icon`, `reports_to` (`{id, name}` or null), `capabilities` and `roles` (Role names), as the agents context sends it; its title is "Hire Agent: <name>". A `hire_agent` Approval is created only through `work.RequestApproval`, never gets Request revision (its Agent cannot change while it waits, so there is nothing to revise), and becomes `cancelled` when its Agent is terminated before a Decision; `cancelled` is not Actionable and never changes again. A `budget_override_required` payload is `scope_type`, `scope_id`, `scope_name`, `metric`, `window`, `threshold`, `amount`, `observed`, `warn_percent`, `window_start`, `window_end`, `budget_id` and `guidance`, as the agents context sends it; its title is "Budget override: <scope name>". It is created only through `work.RequestApproval`, has no Requester, and is decided only through `work.DecideBudgetOverride` when the agents context resolves its Budget incident: Approve, Reject, Request revision and Resubmit refuse it (422 `resolve the budget incident on the Costs page`), as Paperclip does. Approve and reject only from `pending` or `revision_requested` (Actionable); Request revision only from `pending`; Resubmit only from `revision_requested`, which clears the decider, the decision time and the Decision note. A Decision records its decider, time and optional Decision note (at most 20000 characters). Making the same Decision again on an Approval that already has it answers the Approval unchanged and records nothing, as Paperclip's `applied: false`; any other move from a status that does not allow it is refused (422). Its Linked issues are Issues of the same Guild, set when it is requested. Its Approval comments each have one author and a body of 1–20000 characters, and are never edited or deleted. The Approval, its links and its Approval comments go with their Guild; a Linked issue's link goes with the Issue. |
 | Work product | Belongs to one Issue and its Guild, and goes with the Issue. Its type is `pull_request` or `preview_url`, and it names the Issue's Application it came from and the Pull request's number (`external_id`); at most one of each type per Issue and number. A `pull_request` has a Provider, a URL, a title and status `open`, `merged` or `closed`: `open` → `merged` or `closed`, `closed` → `open` when reopened, and `merged` never changes again. A `preview_url` has state `deploying`, `ready` (with the Preview's link), `failed` or `removed`: any state may follow `deploying`, `ready` or `failed`, and `removed` comes back to `deploying` only with a new Preview Deployment. It records who made it: the Run and its Agent, or the Member, or nobody when The Bakery recorded a Pull request someone opened by hand. |
 | Read mark and Inbox archive | Per Member per Issue, at most one of each. Belongs to an Issue and its Guild, and goes with the Issue and with the Member's Membership. Only that Member sets or removes it. Neither is part of the Issue aggregate: they change nothing about the Issue, belong to one person, and many people write them at once, so each is its own small record keyed by (Issue, Member). |
 
@@ -134,19 +134,26 @@ in that Project after its Permission overrides, and is otherwise hidden
 - `RequestApproval(type, payload, issue ids)` [`manage_work`]: the asking
   Member is the Requester; every Issue id must be the Guild's (422
   otherwise). Only `request_board_approval` through the API; `hire_agent`
-  comes only from the agents context (below).
+  and `budget_override_required` come only from the agents context
+  (below).
 - `Approve(note)`, `Reject(note)` [`approve`]: a Decision on an Actionable
-  Approval.
-- `RequestRevision(note)` [`approve`]: on a `pending` Approval.
+  Approval; never on a `budget_override_required` one (422).
+- `RequestRevision(note)` [`approve`]: on a `pending` Approval, never a
+  `hire_agent` or `budget_override_required` one.
 - `Resubmit(payload)` [`manage_work`, and only the Requester; anyone else
   is refused (403)]: on a `revision_requested` Approval, replacing the
   payload when one is given.
 - `CommentOnApproval(body)` [`manage_work`].
 - For other contexts, without a route of their own: `work.RequestApproval`
   (a `hire_agent` Approval, its Requester the Hirer, checked by the
-  calling context), `work.CancelApproval` (an Actionable `hire_agent`
-  Approval whose Agent was terminated) and `work.RecordActivity` (one
-  Activity event about an Agent, with its Actor, Action and details).
+  calling context; or a `budget_override_required` one with no
+  Requester), `work.CancelApproval` (an Actionable `hire_agent`
+  Approval whose Agent was terminated), `work.DecideBudgetOverride` (a
+  Decision on an Actionable `budget_override_required` Approval, approved
+  or rejected, by the person who resolved its Budget incident, with their
+  Decision note; recorded as `approval.approved` or `approval.rejected`)
+  and `work.RecordActivity` (one Activity event about an Agent, a Budget
+  or a Budget incident, with its Actor, Action and details).
 
 Reading Approvals, their Linked issues and Approval comments needs
 `view_resources`. An Approval has no Project, so everyone who may read the
@@ -198,7 +205,11 @@ The agents context's own events (`AgentHired`, `AgentUpdated`,
 `work.RecordActivity` as `agent.hired`, `agent.updated`, `agent.paused`,
 `agent.resumed`, `agent.terminated`, `agent.role_added`,
 `agent.role_removed`, `run.started` and `run.finished`, each about the
-Agent.
+Agent. Its Budget events reach it as `budget.updated` (about the Budget,
+the person as Actor), `budget.soft_threshold_crossed` and
+`budget.hard_threshold_crossed` (about the Budget incident, with no Actor,
+since nobody did it) and `budget.incident_resolved` (about the Budget
+incident, the person as Actor).
 
 Every Issue event also carries the Issue's number, title and Project; every
 Goal event the Goal's title, and every Approval event the Approval's
@@ -283,7 +294,7 @@ type and the payload's title.
   `baseRevisionId`. A Revision is `{id, number, title, body,
   change_summary, created_by, created_at}`; a Restore's change summary is
   "Restored from revision N". An Activity event is `{id, action, actor:
-  {id, name} | null, entity: {type: "issue" | "goal" | "approval" | "agent", id, identifier?,
+  {id, name} | null, entity: {type: "issue" | "goal" | "approval" | "agent" | "budget" | "budget_incident", id, identifier?,
   title, exists}, details, created_at}`, `exists` false once the Goal or
   Issue is deleted. An Approval is `{id, type, status, payload, requester:
   {id, name} | null, decided_by: {id, name} | null, decision_note,
@@ -294,7 +305,9 @@ type and the payload's title.
   Approval comment is `{id, body, author: {id, name} | null, created_at}`.
   An Activity event about an Approval has `entity: {type: "approval", id,
   title, exists}`, the payload's title; one about an Agent has `entity:
-  {type: "agent", id, title, exists}`, the Agent's name. Its `details` by
+  {type: "agent", id, title, exists}`, the Agent's name; one about a Budget
+  or a Budget incident has `entity: {type: "budget" | "budget_incident",
+  id, title, exists: true}`, the Budget scope's name. Its `details` by
   Action:
 
   | Action | `details` |
@@ -317,10 +330,13 @@ type and the payload's title.
   | `approval.cancelled` | `type`, `title` |
   | `agent.hired` | `name`, `job`, `approval_id` |
   | `agent.updated` | `name`, `changes`: field → `{from, to}` for `name`, `job`, `title`, `icon`, `reports_to` (`{id, name}`), `heartbeat.enabled`, `heartbeat.interval_sec` and `heartbeat.wake_on_demand`, and `capabilities: true` when they changed |
-  | `agent.paused`, `agent.resumed`, `agent.terminated` | `name` |
+  | `agent.paused`, `agent.resumed`, `agent.terminated` | `name`; `agent.paused` also `pause_reason` (`manual` or `budget`) |
   | `agent.role_added`, `agent.role_removed` | `name`, `role` (the Role's name when it was added or removed) |
   | `run.started` | `name`, `run_id`, `agent` (`{id, name}`), `issue` (`{id, identifier}`) when the Run has one |
   | `run.finished` | as `run.started`, and `status` (the Run status it ended in) |
+  | `budget.updated` | `name` (the scope's), `scope_type`, `scope_id`, `metric`, `window`, `amount`, `warn_percent`, `hard_stop`, `notify` |
+  | `budget.soft_threshold_crossed`, `budget.hard_threshold_crossed` | `name`, `budget_id`, `scope_type`, `scope_id`, `metric`, `amount`, `observed`; the hard one also `approval_id` |
+  | `budget.incident_resolved` | `name`, `action` (`raise_budget_and_resume` or `keep_paused`), `amount` (the new one, or null), `scope_type`, `scope_id` |
 
   References are stored as ids and answered with their names as they are
   when read, null for none. One that no longer exists, or an Issue or
@@ -396,8 +412,10 @@ type and the payload's title.
   Decision made again calls it again, so a failed `f` is healed by deciding
   again, and its error answers the Decision 500; the agents context
   registers for `hire_agent`), `work.RecordActivity(ctx, AgentActivity)`
-  (one Activity event about an Agent, with its name kept in the details;
-  only the `agent.*` Actions) and `work.OnAgentNames(f)` (the agents
+  (one Activity event about an Agent, a Budget or a Budget incident, with
+  its name kept in the details; only the `agent.*`, `run.*` and `budget.*`
+  Actions), `work.DecideBudgetOverride(ctx, guild, actor, id, approved,
+  note)` and `work.OnAgentNames(f)` (the agents
   context names the Guild's Agents that still exist, so the Activity can
   tell `exists`; until it registers, every Agent counts as existing),
   `work.OnAgentAssignees(f)` (the agents context names the Guild's Agents
@@ -599,12 +617,17 @@ type and the payload's title.
 - **Approvals have no Project.** Everyone with `view_resources` sees every
   Approval and its comments; only Linked issues in Projects someone may not
   view are left out for them.
-- **`cancelled` only for a hire; no budget Approvals; no waking the
-  Requester.** Paperclip cancels a `hire_agent` Approval when its Agent is
+- **`cancelled` only for a hire; no waking the Requester.** Paperclip cancels a `hire_agent` Approval when its Agent is
   terminated first, and so does The Bakery. It also cancels Approvals when
   their requesting agent goes away and wakes that agent after a Decision;
-  here only people request Approvals, so neither applies yet. The budget
-  types come with budgets.
+  here only people request Approvals, so neither applies yet.
+- **A Budget override is decided on the Costs page only.** Its Decision
+  changes a Budget and resumes a scope, which agents owns; deciding it
+  through the generic Approve would approve without raising anything, so
+  Approve, Reject, Request revision and Resubmit refuse it, as Paperclip's
+  routes do, and agents decides it through `work.DecideBudgetOverride`
+  when the incident is resolved. It has no Requester: The Bakery itself
+  asked.
 - **No Request revision for a hire.** A `pending_approval` Agent cannot be
   edited, so its Approval's payload is always what the Board sees, and
   there is nothing a revision could change. The Board approves or rejects;

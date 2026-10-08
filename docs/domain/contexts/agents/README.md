@@ -17,9 +17,13 @@ The Bakery's MCP server and The Bakery skill the Desktop app gives `claude`.
 An Agent holds
 Roles through its Agent membership in guilds, so it can only do what those
 Roles allow, and it is never placed above its Hirer. Hiring always goes
-through a `hire_agent` Approval the Board decides in work.
+through a `hire_agent` Approval the Board decides in work. It also
+reads a Guild's Costs from its Runs' Run usage and keeps its Budgets: caps
+on the tokens, Runs or run time of the Guild, an Agent or a Project, which
+open Budget incidents at their Warning and Hard stop and refuse new Runs
+in a stopped scope.
 
-It is **not** responsible (yet) for git, budgets, instructions or a
+It is **not** responsible (yet) for instructions or a
 Guild's skills: later phases of the guilds goal add them. It never executes
 anything: the Runner in the Desktop app does, and reports back. Who an Issue
 is assigned to belongs to work; agents only answers whether an Agent may be
@@ -33,7 +37,9 @@ The terms (Agent, Hirer, Job, Title, Agent icon, Capabilities, Agent status,
 Manager, Org chart, Hire, Pause, Resume, Terminate, Agent membership, Run,
 Run status, Run event, Transcript, Invocation source, Run usage, Runner,
 Lease, Heartbeat, Heartbeat policy, Wake, Wake reason, Workspace, Worktree,
-Agent branch) are in
+Agent branch, Run's Project, Costs, Budget, Budget metric, Budget window,
+Budget scope, Observed amount, Budget status, Warning, Hard stop, Budget
+incident, Pause reason) are in
 [`glossary.md`](../../glossary.md).
 
 | Term | Meaning |
@@ -43,6 +49,8 @@ Agent branch) are in
 | Wake count | How many Wakes a Run stands for: 1 when queued, +1 for each Wake that joined it while it was `queued`. |
 | Wake context | What the Wakes that joined a Run add to its prompt: the ids of the Comments they were made for. |
 | Run policy | The Agent page's card that edits its Heartbeat policy (Paperclip's AgentConfigForm "Run Policy"). |
+| Stopped scope | A Budget scope one of whose Budgets has Budget status `hard_stop`. A Run is in a stopped scope when its Guild, its Agent or its Run's Project (for a Run not yet claimed: its Issue's current Project) is one. |
+| Budget overview | The Guild's Budgets, each with its Observed amount, Budget status and current window, its open Budget incidents, and the stopped scopes (Paperclip's budget overview). |
 
 ## Model
 
@@ -50,8 +58,10 @@ Agent branch) are in
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Agent | Belongs to one Guild, and has one Hirer, a person with a Membership in that Guild when it is hired. Name 1–100 characters after trimming, unique (case-insensitive) among the Guild's Agents that are not terminated, as Paperclip's shortname uniqueness. Job from the glossary's list (`general` when none is given). Title at most 200 characters, Capabilities at most 20000, both optional. Agent icon from the glossary's list, or none. The Manager is an Agent of the same Guild that is not terminated, never the Agent itself and never one of its reports: setting it walks the new Manager's Chain of command up at most 50 levels, as Paperclip's `getChainOfCommand`, and refuses a cycle (422). Agent status moves only `pending_approval → idle` (its Approval approved), `pending_approval → terminated` (rejected, or terminated by a person), `idle`, `running` or `error` → `paused`, `paused → idle`, `idle` or `error` → `running` (a Run of it is claimed), `running → idle` (its Run `succeeded` or was `cancelled`), `running → error` (its Run `failed` or was `lost`), and any of `idle`, `running`, `error` or `paused` → `terminated`; nothing leaves `terminated`. A `pending_approval` Agent cannot be edited, paused or given Roles, so its Approval's payload is what the Board sees; it can only be terminated, which cancels its Approval. A terminated Agent cannot be edited. Only the Run moves set `running` and `error`; a person never does. When an Agent is terminated, its direct reports report to its Manager, or become roots when it had none. Its Heartbeat policy has `interval_sec` 60–86400 (300 by default), `enabled` off and `wake_on_demand` on by default; `last_heartbeat_at` is when its timer last woke it, set only by the timer's claim. |
-| Run | Belongs to one Guild and one Agent of it, and optionally one Issue of that Guild. Starts `queued`. Run status moves only `queued → running` (claimed by a Desktop of the Agent's Hirer), `queued → cancelled`, and `running → succeeded`, `failed`, `cancelled` or `lost`; a final status never changes. At most one `running` Run per Agent; further ones wait `queued` and are claimed in order of creation. Its Run events have `seq` 1, 2, 3… per Run without a gap, and appending a `seq` it already has is a no-op. Run events are appended only while it is `running`. A `running` Run whose Lease runs out becomes `lost`, and a new `queued` Run with the same Agent, Issue and Invocation source takes its place, its `retry_of_run_id` pointing at the lost one (Paperclip's `retryOfRunId`), at most 3 times along one chain; after that the last one stays `lost`. Run usage is set once, when it finishes. It has a Wake reason and a wake count: 1 when queued, +1 for each Wake that joins it, and only while it is `queued`; its wake context keeps the ids of the Comments that joined it, for its prompt. A Wake that joins keeps the Run's first Invocation source and Wake reason. A lost Run's replacement keeps its Invocation source, Wake reason and wake context. Its Run key hash is set once, by ClaimRun, and the Run key itself is never stored or shown again; a Run that is not `running` has no valid Run key. |
+| Agent | Belongs to one Guild, and has one Hirer, a person with a Membership in that Guild when it is hired. Name 1–100 characters after trimming, unique (case-insensitive) among the Guild's Agents that are not terminated, as Paperclip's shortname uniqueness. Job from the glossary's list (`general` when none is given). Title at most 200 characters, Capabilities at most 20000, both optional. Agent icon from the glossary's list, or none. The Manager is an Agent of the same Guild that is not terminated, never the Agent itself and never one of its reports: setting it walks the new Manager's Chain of command up at most 50 levels, as Paperclip's `getChainOfCommand`, and refuses a cycle (422). Agent status moves only `pending_approval → idle` (its Approval approved), `pending_approval → terminated` (rejected, or terminated by a person), `idle`, `running` or `error` → `paused`, `paused → idle`, `idle` or `error` → `running` (a Run of it is claimed), `running → idle` (its Run `succeeded` or was `cancelled`), `running → error` (its Run `failed` or was `lost`), and any of `idle`, `running`, `error` or `paused` → `terminated`; nothing leaves `terminated`. A `pending_approval` Agent cannot be edited, paused or given Roles, so its Approval's payload is what the Board sees; it can only be terminated, which cancels its Approval. A terminated Agent cannot be edited. Only the Run moves set `running` and `error`; a person never does. When an Agent is terminated, its direct reports report to its Manager, or become roots when it had none. Its Heartbeat policy has `interval_sec` 60–86400 (300 by default), `enabled` off and `wake_on_demand` on by default; `last_heartbeat_at` is when its timer last woke it, set only by the timer's claim. A `paused` Agent has a Pause reason, `manual` or `budget`, and any other status has none; `budget` is set only by a Hard stop on a Budget scoped to that Agent. |
+| Run | Belongs to one Guild and one Agent of it, and optionally one Issue of that Guild. Starts `queued`. Run status moves only `queued → running` (claimed by a Desktop of the Agent's Hirer), `queued → cancelled`, and `running → succeeded`, `failed`, `cancelled` or `lost`; a final status never changes. At most one `running` Run per Agent; further ones wait `queued` and are claimed in order of creation. Its Run events have `seq` 1, 2, 3… per Run without a gap, and appending a `seq` it already has is a no-op. Run events are appended only while it is `running`. A `running` Run whose Lease runs out becomes `lost`, and a new `queued` Run with the same Agent, Issue and Invocation source takes its place, its `retry_of_run_id` pointing at the lost one (Paperclip's `retryOfRunId`), at most 3 times along one chain; after that the last one stays `lost`. Run usage is set once, when it finishes. It has a Wake reason and a wake count: 1 when queued, +1 for each Wake that joins it, and only while it is `queued`; its wake context keeps the ids of the Comments that joined it, for its prompt. A Wake that joins keeps the Run's first Invocation source and Wake reason. A lost Run's replacement keeps its Invocation source, Wake reason and wake context. Its Run key hash is set once, by ClaimRun, and the Run key itself is never stored or shown again; a Run that is not `running` has no valid Run key. Its Run's Project is set once, by ClaimRun, from its Issue's Project at that moment, and never changes; a Run without an Issue, or whose Issue has no Project, has none. |
+| Budget | Belongs to one Guild. At most one per Guild, Budget scope (type and id), Budget metric and Budget window. Scope type `guild`, `agent` or `project`, metric `tokens`, `runs` or `run_time`, window `calendar_month_utc` or `lifetime` (422 otherwise); its scope is that Guild itself, an Agent of it or a Project of it (422 otherwise). Amount a whole number ≥ 0, 0 meaning no cap (never `warning` nor `hard_stop`); Warning percent 1–99 (80 by default); Hard stop and notify on by default. Its Observed amount is never stored: it is computed from the Runs in its current window, so a calendar month starts at zero without a job. A Budget goes when its Agent is terminated or its Project deleted. |
+| Budget incident | Belongs to one Budget and records one threshold (`soft` or `hard`) crossed in one window, with the window's start and end, the amount and the Observed amount when it opened. At most one not `dismissed` per Budget, window start and threshold. Status moves only `open → resolved` or `open → dismissed`, and only a `hard` one is resolved through ResolveBudgetIncident; an `open` `soft` one is resolved when its Budget is raised above its Observed amount. A `hard` one has the id of its `budget_override_required` Approval. |
 
 The Agent's Roles are not part of the Agent aggregate: they are its Agent
 membership's in guilds, which keeps the rule that each is below the
@@ -82,8 +92,10 @@ admin always may (with `hire_agents`, which they always hold).
   Heartbeat policy alone may also change while it is `running`. An
   `interval_sec` under 60 or over 86400 is 422 on `heartbeat.interval_sec`.
 - `Pause` [manage]: only an `idle`, `running` or `error` Agent; cancels
-  its `queued` and `running` Runs. `Resume` [manage]: only a `paused` Agent
-  (resuming a terminated one is 422).
+  its `queued` and `running` Runs; its Pause reason is `manual`. `Resume`
+  [manage]: only a `paused` Agent (resuming a terminated one is 422), and
+  not one paused by `budget` whose own Budget is still at its Hard stop
+  (422 `budget still exceeded`); it clears the Pause reason.
 - `Terminate` [manage]: from any status but `terminated`; ends its Agent
   membership, moves its direct reports up to its Manager, cancels its
   Approval when it was `pending_approval` and its `queued` and `running`
@@ -104,6 +116,9 @@ admin always may (with `hire_agents`, which they always hold).
   Invocation source and Wake reason, which waits behind the Agent's
   running Run, if any. A Wake that is not accepted is dropped, not an
   error, when a hook or the timer made it; the routes answer 422 for it.
+- Every Wake in a stopped scope is refused (dropped when a hook or the
+  timer made it, 422 naming the Budget scope through the routes), so
+  StartRun, RunHeartbeat and work's hooks start nothing there.
 - `StartRun(agent, issue)` [manage]: a Wake `on_demand` / `manual`. Only
   an `idle`, `running` or `error` Agent (a `paused`, `pending_approval` or
   `terminated` one is 422), only on an Issue of its Guild whose Agent
@@ -154,6 +169,8 @@ admin always may (with `hire_agents`, which they always hold).
   the Run exists). The answer also carries the Run's Workspace when its
   Issue names an Issue's Application with a git source: the Desktop makes
   or reuses the Issue's Worktree there and starts `claude` inside it.
+  ClaimRun sets the Run's Project. A queued Run in a stopped scope is not
+  claimed (409, and it is cancelled).
 - `AppendRunEvents(run, events)` [the claiming Desktop's person]: appends
   Run events by `seq`, renews the Lease; on a Run that is no longer
   `running`, 409 with its status.
@@ -161,7 +178,35 @@ admin always may (with `hire_agents`, which they always hold).
   `claude` is quiet.
 - `FinishRun(run, status, usage, error)` [the claiming Desktop's person]:
   `succeeded`, `failed` or `cancelled`, with its Run usage and an error
-  message when it failed.
+  message when it failed. Then every Budget the Run counts toward is
+  evaluated (below).
+- `ReadCosts(from, to)` [`view_resources`]: the Costs of the Guild's Runs
+  that started in the date range (`from` inclusive, `to` exclusive; this
+  calendar month in UTC by default): a summary (input, output and cached
+  input tokens, Runs, run time, cost equivalent), then the same per Agent
+  and per Run's Project, biggest first. Runs that never started count
+  nowhere; Runs without a Project are left out of the per Project list.
+- `SetBudget(scope, metric, window, amount, warn percent, hard stop,
+  notify)` [`manage_budgets`]: creates or changes the one Budget for that
+  scope, metric and window, then evaluates it.
+- Evaluating a Budget (after FinishRun and SetBudget; no Permission): with
+  its Observed amount at or past its Warning and no soft incident in this
+  window, it opens one; at or past its amount with Hard stop on and no hard
+  incident in this window, it opens one, asks work for a
+  `budget_override_required` Approval with no Requester, pauses an
+  agent-scoped Agent that is `idle`, `running` or `error` with Pause
+  reason `budget` (letting its `running` Run finish), and cancels the
+  `queued` Runs in the scope. Raised above its Observed amount, its `open`
+  incidents of this window are resolved.
+- `ResolveBudgetIncident(incident, action, amount, note)`
+  [`manage_budgets`]: only an `open` `hard` incident (422 otherwise).
+  `raise_budget_and_resume` needs an amount above the current Observed
+  amount (422 `new budget must exceed the observed amount`); it raises the
+  Budget, resumes a budget-paused Agent of an agent scope, resolves the
+  Budget's open incidents and approves the Approval through work.
+  `keep_paused` dismisses the incident and rejects the Approval; the scope
+  stays stopped until the Budget is raised or its window ends.
+- Read the Budget overview [`view_resources`].
 - `Me()` [an Agent principal only]: the Agent of the Run key, with its
   Guild, its Roles, its Permissions there, its Run (with the Run's Issue
   when the Agent may view its Project) and its Chain of command, its own
@@ -215,12 +260,22 @@ did it as Actor.
 | `AgentRoleRemoved` | `RemoveRole` | `agent.role_removed` |
 | `RunStarted` | a Wake that queued a Run, except a `timer` one | `run.started` |
 | `RunClaimed` | `ClaimRun` | none |
-| `RunFinished` (with its Run status) | `FinishRun`, `CancelRun`, `LoseRun`, Pause, Terminate | `run.finished` |
+| `RunFinished` (with its Run status) | `FinishRun`, `CancelRun`, `LoseRun`, Pause, Terminate, a Hard stop | `run.finished` |
+| `AgentPaused` (Pause reason `budget`) | a Hard stop on an agent scope | `agent.paused` |
+| `BudgetUpdated` | `SetBudget`, `ResolveBudgetIncident` raising it | `budget.updated` |
+| `BudgetSoftThresholdCrossed` | evaluating a Budget | `budget.soft_threshold_crossed` |
+| `BudgetHardThresholdCrossed` | evaluating a Budget | `budget.hard_threshold_crossed` |
+| `BudgetIncidentResolved` | `ResolveBudgetIncident` | `budget.incident_resolved` |
 
 `run.started` has as Actor the person who caused the Wake: who pressed
 Run or Run heartbeat, who assigned the Issue, who wrote the Comment. A
 `timer` Run records nothing (one per interval would drown the Activity),
 nor does a Wake that joined a queued Run.
+
+What a Budget does by itself (crossing a threshold, pausing an Agent,
+cancelling its queued Runs) is recorded with no Actor, as work allows for
+system events; `budget.updated` and `budget.incident_resolved` have the
+person as Actor.
 
 The Run events themselves are never Activity: one Run writes hundreds of
 them, and the Activity would drown. `RunClaimed` only moves the Agent to
@@ -255,6 +310,23 @@ records nothing more.
   | `POST /api/runs/{id}/cancel` | manage | | `{"run": Run}` |
   | `GET /api/runs/{id}/events?after=` | `view_resources` | | `{"events": [Run event]}`, by `seq`, after the given one; `limit` ≤ 1000, 500 by default |
   | `GET /api/runs/{id}/stream` | `view_resources` | | server-sent events: the Run events after `Last-Event-ID` (or `after`), then each new one and each Run status change, until the Run is final |
+  | `GET /api/costs/summary?from=&to=` | `view_resources` | | `{"summary": Costs}` |
+  | `GET /api/costs/by-agent?from=&to=` | `view_resources` | | `{"agents": [Costs + {agent: {id, name, icon, status}}]}` |
+  | `GET /api/costs/by-project?from=&to=` | `view_resources` | | `{"projects": [Costs + {project: {id, name}}]}` |
+  | `GET /api/budgets/overview` | `view_resources` | | `{"budgets": [Budget], "incidents": [Budget incident], "paused_agents": n, "stopped_projects": n}` |
+  | `PUT /api/budgets` | `manage_budgets` | `{scope_type, scope_id, metric, window, amount, warn_percent, hard_stop, notify}` | `{"budget": Budget}`; 422 for an unknown metric, window or scope type, or a scope outside the Guild |
+  | `POST /api/budget-incidents/{id}/resolve` | `manage_budgets` | `{action: raise_budget_and_resume \| keep_paused, amount, decision_note}` | `{"incident": Budget incident}` |
+
+  Costs are `{input_tokens, cached_input_tokens, output_tokens, runs,
+  run_time_seconds, cost_equivalent_usd}`, `from` and `to` as dates
+  (`YYYY-MM-DD`, UTC). A Budget is `{id, scope: {type, id, name}, metric,
+  window, amount, warn_percent, hard_stop, notify, observed, status,
+  window_start, window_end, updated_at}`; a Budget incident `{id,
+  budget_id, scope: {type, id, name}, metric, window, threshold, amount,
+  observed, status, approval_id, window_start, window_end, created_at,
+  resolved_at}`. A refused Wake answers 422 `budget hard stop reached` with
+  the scope. Tasks that build these routes keep this table in step with
+  what they ship.
 
   For a Desktop key, across every Guild of its person (no Current guild
   needed; a Run of someone else's Agent is 404):
@@ -317,6 +389,7 @@ records nothing more.
   reports_to: {id, name} | null, hirer: {id, name} | null, roles: [{id,
   name, color, position}], heartbeat: {enabled, interval_sec,
   wake_on_demand, last_heartbeat_at}, approval_id, current_run_id,
+  pause_reason,
   can_manage, created_at,
   updated_at, paused_at, terminated_at}`. An Org node is `{id, name, job,
   job_label, title, icon, status, reports: [Org node]}`; an Agent whose
@@ -339,10 +412,13 @@ records nothing more.
     Guild with Agents that are not terminated is not deleted.
   - from work: `work.RequestApproval` and `work.CancelApproval` for the
     `hire_agent` Approval, `work.OnApprovalDecided` (registered for
-    `hire_agent`), `work.RecordActivity` for every event above, and
+    `hire_agent`), `work.RequestApproval` for the
+    `budget_override_required` Approval and `work.DecideBudgetOverride`
+    to approve or reject it when its incident is resolved, `work.RecordActivity` for every event above, and
     `work.OnAgentNames` (registered, so the Activity knows which Agents
     still exist), the Issue call that answers an Issue's Agent assignee,
-    number, title and description (for a Run's check and its prompt), and
+    number, title, description and Project (for a Run's check, its prompt
+    and its Run's Project), and
     the call that clears a terminated Agent as Assignee, `work.OnIssueAssigned`
     and `work.OnIssueCommented` (registered, to wake the Agent assignee),
     `work.OpenIssuesOfAgent` for the timer's check and the Heartbeat
@@ -358,7 +434,10 @@ records nothing more.
   - from identity: `identity.Members(ctx, ids)` for Hirers' names.
   - from projects: `projects.ApplicationRepository(ctx, guild,
     application)` (the Application's name, git repository URL and branch,
-    or none for an Application without a git source) for the Workspace.
+    or none for an Application without a git source) for the Workspace;
+    `projects.ProjectNames` to check a project-scoped Budget's Project is in
+    the Guild and to name it in Costs and Budgets; `projects.OnProjectDeleted`
+    (registered, so a deleted Project's Budgets go).
 
 ## Why it's shaped this way
 
@@ -392,7 +471,7 @@ records nothing more.
 - **Terminating moves the reports up.** Paperclip leaves a terminated
   agent's reports pointing at it and shows them as roots; moving them to
   the terminated Agent's Manager keeps the tree whole.
-- **No adapter, model, environment, instructions, Guild skills, budget
+- **No adapter, model, environment, instructions, Guild skills
   or appearance yet.** `claude` on the Hirer's desktop is the only runtime
   and comes with the desktop app; avatars are the Agent icon only.
 - **No hard delete.** Paperclip's `DELETE /agents/:id` is left out: a
@@ -486,3 +565,31 @@ records nothing more.
   `GIT_AUTHOR_EMAIL` to `agent-<id>@<the Bakery's host>`, and leaves the
   committer to the person's git config, so the history says which Agent
   wrote a change and on whose behalf it was pushed, as a bot's commits do.
+- **Costs are read from Runs, not a `cost_events` table.** Every Run
+  already carries its Run usage, and the server records nothing else that
+  costs, so a second table would only copy it.
+- **Budgets count tokens, Runs and run time, not cents.** A subscription
+  has no bill; Paperclip records subscription Runs at 0 cents, so its
+  budgets never trip on them. The CLI's cost equivalent is shown in Costs,
+  never budgeted.
+- **Budgets live in agents.** Runs live here and the block sits on Wake and
+  claim; a context of its own would have to read agents' tables.
+- **A Hard stop lets running Runs finish.** Paperclip cancels running work
+  too. Here a Run's usage is only known when it finishes, a finishing Run's
+  work is not thrown away, and at most one Run per Agent runs anyway, so
+  only the `queued` Runs in the scope are cancelled.
+- **Project and Guild scopes have no pause flag.** Whether a scope is
+  stopped is computed from its Budgets, so projects and guilds (other
+  contexts) are not changed; only an agent-scoped Hard stop pauses the
+  Agent, which agents owns.
+- **Keep paused dismisses the incident**, as Paperclip's `keep_paused`
+  does; the scope stays stopped because the Budget still says so. Only a
+  Run that was already running can still finish in that window, and it may
+  open a new hard incident, as in Paperclip.
+- **Refusals are 422**, like every other Wake refusal here (Paperclip
+  answers 409).
+- **Left out of Costs and Budgets:** finance events, billers, billing
+  types, providers and the Providers, Billers and Finance tabs (one
+  runtime, nothing billed); the issue cost summary; Paperclip's heartbeat
+  daily caps; and the legacy `budgetMonthlyCents` and `spentMonthlyCents`
+  columns.
