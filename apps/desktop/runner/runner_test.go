@@ -55,7 +55,7 @@ func TestMain(m *testing.M) {
 func TestRunEnvGivesTheRunAndNoAPIKey(t *testing.T) {
 	run := bakery.DesktopRun{ID: 41, Guild: bakery.Named{ID: 1}, Agent: bakery.RunAgent{ID: 3}, RunKey: "bky_run_x",
 		Issue: &bakery.RunIssue{ID: 12}, WakeReason: "issue_assigned"}
-	got := strings.Join(runEnv([]string{"PATH=/bin", "ANTHROPIC_API_KEY=sk-x", "BAKERY_API_KEY=old"}, "https://bakery.test", run), ",")
+	got := strings.Join(runEnv([]string{"PATH=/bin", "ANTHROPIC_API_KEY=sk-x", "BAKERY_API_KEY=old"}, "https://bakery.test", run, ""), ",")
 	want := "PATH=/bin,BAKERY_API_KEY=old,BAKERY_AGENT_ID=3,BAKERY_API_KEY=bky_run_x,BAKERY_API_URL=https://bakery.test," +
 		"BAKERY_GUILD_ID=1,BAKERY_ISSUE_ID=12,BAKERY_RUN_ID=41,BAKERY_WAKE_REASON=issue_assigned"
 	if got != want {
@@ -663,5 +663,51 @@ func TestRunnerGivesClaudeTheBakerysTools(t *testing.T) {
 	}
 	if got := strings.Join(tools, " "); got != "mcp__bakery__bakeryCheckoutIssue mcp__bakery__bakeryAddComment" {
 		t.Fatalf("tool calls %q", got)
+	}
+}
+
+func TestRunnerStartsClaudeInTheIssuesWorktree(t *testing.T) {
+	_, url := originRepo(t)
+	f := newFakeBakery(t, "Where are you [env]")
+	f.run.Workspace = &bakery.RunWorkspace{Application: bakery.Named{ID: 5, Name: "web"}, Repository: url, BaseBranch: "main", Branch: "bakery/def-12"}
+	home := t.TempDir()
+	updates := startRunnerIn(t, f, home)
+	u := until(t, updates, "succeeded", "failed", "stopped")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if u.Status != "succeeded" {
+		t.Fatalf("update %+v; finish %+v", u, f.finished)
+	}
+	worktree := filepath.Join(home, "worktrees", shortHash(f.srv.URL, 8), "12")
+	host := strings.Split(strings.TrimPrefix(f.srv.URL, "http://"), ":")[0]
+	var said string
+	for _, e := range f.events {
+		if e.Kind == "assistant" {
+			said += string(e.Payload)
+		}
+	}
+	for _, want := range []string{
+		"cwd=" + worktree, "GIT_AUTHOR_NAME=Ada", "GIT_AUTHOR_EMAIL=agent-3@" + host,
+		"BAKERY_WORKTREE=" + worktree, "BAKERY_BRANCH=bakery/def-12", "BAKERY_BASE_BRANCH=main",
+	} {
+		if !strings.Contains(said, want) {
+			t.Fatalf("claude did not say %q:\n%s", want, said)
+		}
+	}
+	if got := gitIn(t, worktree, "branch", "--show-current"); got != "bakery/def-12" {
+		t.Fatalf("the Worktree is on %q", got)
+	}
+}
+
+func TestRunnerFailsARunWhoseRepositoryIsUnreachable(t *testing.T) {
+	isolateGit(t)
+	f := newFakeBakery(t, "Fix it")
+	f.run.Workspace = &bakery.RunWorkspace{Repository: "file://" + filepath.Join(t.TempDir(), "missing.git"), BaseBranch: "main", Branch: "bakery/def-12"}
+	updates := startRunner(t, f)
+	u := until(t, updates, "succeeded", "failed", "stopped")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if u.Status != "failed" || !strings.HasPrefix(f.finished.Error, "preparing the worktree: git clone: ") {
+		t.Fatalf("update %+v; finish %+v", u, f.finished)
 	}
 }

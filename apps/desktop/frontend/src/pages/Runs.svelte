@@ -2,7 +2,7 @@
   // "Runs on this desktop": every Run the Runner executes right now, across
   // every connected Bakery, each with its Transcript growing live. Read
   // straight from the Runner (localRuns): no round trip to a Bakery.
-  import { ListChecks } from '@lucide/svelte'
+  import { GitBranch, ListChecks } from '@lucide/svelte'
   import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import RunSource from '@bakery/ui/RunSource.svelte'
   import RunStatus from '@bakery/ui/RunStatus.svelte'
@@ -44,6 +44,11 @@
             <span class="text-xs text-muted-foreground">{r.guild.name}</span>
             {#if r.issue}
               <span class="min-w-0 truncate text-xs text-muted-foreground"><span class="font-mono">{r.issue.identifier}</span> {r.issue.title}</span>
+            {/if}
+            {#if r.branch}
+              <span class="inline-flex min-w-0 items-center gap-1 text-xs text-muted-foreground" title="Agent branch" data-testid="run-branch">
+                <GitBranch class="size-3 shrink-0" /><span class="truncate font-mono">{r.branch}</span>
+              </span>
             {/if}
           </div>
           <RunTranscript events={r.events ?? []} live class="max-h-96 pr-1" />

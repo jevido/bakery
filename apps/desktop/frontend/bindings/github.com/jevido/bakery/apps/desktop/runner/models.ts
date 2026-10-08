@@ -32,6 +32,11 @@ export interface LocalRun {
     "invocation_source": string;
     "wake_reason": string;
     "wake_count": number;
+
+    /**
+     * Branch is the Agent branch the Run works on, "" without a Workspace.
+     */
+    "branch": string;
     "status": string;
     "started_at": string;
     "events": LocalEvent[] | null;

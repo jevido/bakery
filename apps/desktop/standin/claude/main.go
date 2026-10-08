@@ -9,6 +9,10 @@
 //	[fail]   an error_during_execution result, exit 1
 //	[crash]  two lines, something on stderr, exit 1 with no result
 //	[limit]  the CLI's usage-limit message, exit 1
+//	[env]    says its working directory and its git and Worktree variables
+//	         (GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, BAKERY_WORKTREE,
+//	         BAKERY_BRANCH, BAKERY_BASE_BRANCH) in one text line, then a
+//	         short successful Run
 //	[mcp <tool> <json arguments>]
 //	         calls tool on the bakery MCP server --mcp-config names, printing
 //	         the tool_use and tool_result lines the CLI would (several are
@@ -277,6 +281,16 @@ func (s *session) answer(prompt string, stderr io.Writer) int {
 		s.assistant(text(limitMessage))
 		s.result("success", true, limitMessage)
 		return 1
+	case strings.Contains(prompt, "[env]"):
+		s.init()
+		cwd, _ := os.Getwd()
+		said := []string{"cwd=" + cwd}
+		for _, name := range []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "BAKERY_WORKTREE", "BAKERY_BRANCH", "BAKERY_BASE_BRANCH"} {
+			said = append(said, name+"="+os.Getenv(name))
+		}
+		s.assistant(text(strings.Join(said, "\n")))
+		s.result("success", false, "Said where I am.")
+		return 0
 	case strings.Contains(prompt, "[fail]"):
 		s.init()
 		s.assistant(text("Starting on " + first + "."))

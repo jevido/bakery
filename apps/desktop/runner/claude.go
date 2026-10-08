@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -93,8 +94,10 @@ func mcpEnv(address string, run bakery.DesktopRun) map[string]string {
 
 // runEnv is claude's environment for run: env without API keys, plus the
 // Run's Bakery, key, Guild, Agent and Run, and why it was woken (Paperclip's
-// PAPERCLIP_* wake variables), so the skill's curl fallback works too.
-func runEnv(env []string, address string, run bakery.DesktopRun) []string {
+// PAPERCLIP_* wake variables), so the skill's curl fallback works too. A Run
+// with a Workspace also gets its Worktree and branches, and the Agent as
+// git's author; the committer stays the person's own git config.
+func runEnv(env []string, address string, run bakery.DesktopRun, worktree string) []string {
 	out := claudeEnv(env)
 	vars := mcpEnv(address, run)
 	if run.Issue != nil {
@@ -102,6 +105,16 @@ func runEnv(env []string, address string, run bakery.DesktopRun) []string {
 	}
 	if run.WakeReason != "" {
 		vars["BAKERY_WAKE_REASON"] = run.WakeReason
+	}
+	if ws := run.Workspace; ws != nil && worktree != "" {
+		vars["BAKERY_WORKTREE"] = worktree
+		vars["BAKERY_BRANCH"] = ws.Branch
+		vars["BAKERY_BASE_BRANCH"] = ws.BaseBranch
+		vars["GIT_AUTHOR_NAME"] = run.Agent.Name
+		vars["GIT_AUTHOR_EMAIL"] = "agent-" + strconv.FormatUint(run.Agent.ID, 10) + "@" + hostOf(address)
+		// A push without credentials fails instead of waiting on a prompt
+		// nobody sees.
+		vars["GIT_TERMINAL_PROMPT"] = "0"
 	}
 	names := make([]string, 0, len(vars))
 	for name := range vars {
@@ -114,6 +127,14 @@ func runEnv(env []string, address string, run bakery.DesktopRun) []string {
 		out = append(out, name+"="+vars[name])
 	}
 	return out
+}
+
+// hostOf is address's host without its port: the Agent's git email domain.
+func hostOf(address string) string {
+	if u, err := url.Parse(address); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return "bakery.invalid"
 }
 
 // prepare writes what claude needs for run under dir/.bakery: the skill at
@@ -217,9 +238,22 @@ func (r *Runner) execute(ctx context.Context, c *bakery.Client, run bakery.Deskt
 		fail("preparing the run's directory: " + err.Error())
 		return
 	}
+	// claude works in the Issue's Worktree when the Run has a Workspace;
+	// the scratch .bakery stays in the Run's own directory either way.
+	work := dir
+	if ws := run.Workspace; ws != nil && run.Issue != nil {
+		if work, err = r.trees().prepare(ctx, c.Address, run.Issue.ID, *ws); err != nil {
+			fail("preparing the worktree: " + err.Error())
+			return
+		}
+	}
 	cmd := exec.Command(bin, args...)
-	cmd.Dir = dir
-	cmd.Env = runEnv(os.Environ(), c.Address, run)
+	cmd.Dir = work
+	worktree := ""
+	if work != dir {
+		worktree = work
+	}
+	cmd.Env = runEnv(os.Environ(), c.Address, run, worktree)
 	cmd.Stdin = strings.NewReader(run.Prompt)
 	ownGroup(cmd)
 	stdout, err := cmd.StdoutPipe()

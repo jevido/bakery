@@ -22,6 +22,10 @@
 //               lists it no more and its key answers 401; a Desktop signed
 //               out on the Desktops page shows "Signed out" and "Connect
 //               again" in the desktop, which connects it again.
+//   worktree    a Run of an Issue whose Application has a git repository
+//               (served over git's dumb HTTP from a temporary bare repository)
+//               shows its Agent branch on "Runs on this desktop", and the
+//               Runner made the Issue's Worktree on that branch.
 //
 //   bun e2e/desktop.ts [section ...]   (task desktop:e2e; needs task dev)
 //
@@ -32,8 +36,10 @@
 // running instead (then bakeries.json is not checked), BAKERY_WEB at another
 // dev Bakery, CHROMIUM at another browser. The owner comes from
 // BAKERY_OWNER_EMAIL and BAKERY_OWNER_PASSWORD or infra/dev/state/owner.env.
-import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium, type APIRequestContext, type Page } from 'playwright-core'
@@ -404,6 +410,82 @@ const sections: Record<string, () => Promise<void>> = {
       expect('no page errors', errors.length === 0, errors)
       await web.context().close()
       await p.context().close()
+    }
+  },
+
+  async worktree() {
+    // A bare repository on main, served read-only over git's dumb HTTP: the
+    // Bakery takes http:// git URLs, and no Forgejo is needed to clone.
+    const root = mkdtempSync(join(tmpdir(), 'bakery-desktop-repo-'))
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync('git', args, { cwd, env: { ...process.env, GIT_AUTHOR_NAME: 'e2e', GIT_AUTHOR_EMAIL: 'e2e@example.test', GIT_COMMITTER_NAME: 'e2e', GIT_COMMITTER_EMAIL: 'e2e@example.test' } })
+    git(root, 'init', '-q', '--bare', '-b', 'main', 'app.git')
+    git(root, 'init', '-q', '-b', 'main', 'seed')
+    writeFileSync(join(root, 'seed', 'README.md'), '# Worktree e2e\n')
+    git(join(root, 'seed'), 'add', 'README.md')
+    git(join(root, 'seed'), 'commit', '-q', '-m', 'first')
+    git(join(root, 'seed'), 'push', '-q', join(root, 'app.git'), 'main')
+    git(join(root, 'app.git'), 'update-server-info')
+    const repo = createServer((req, res) => {
+      const path = join(root, decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname))
+      if (!path.startsWith(join(root, 'app.git')) || !existsSync(path) || statSync(path).isDirectory()) {
+        res.writeHead(404).end('not found')
+        return
+      }
+      res.writeHead(200).end(readFileSync(path))
+    })
+    await new Promise<void>((resolve) => repo.listen(0, '127.0.0.1', resolve))
+    const port = (repo.address() as AddressInfo).port
+
+    const { p, errors } = await desktop()
+    const { browserPage: web } = await connectTo(p)
+    const { def } = await defaultGuild(web)
+    await p.getByTestId('guild-rail').getByRole('link', { name: def.name, exact: true }).click()
+    await p.getByTestId('guild-name').filter({ hasText: def.name }).waitFor()
+
+    const name = `Worktree e2e agent ${Date.now()}`
+    const hire = (await (await web.request.post(`${WEB}/api/agents`, { data: { name, job: 'engineer', icon: 'bot' } })).json()) as {
+      agent: { id: number; approval_id: number }
+    }
+    await web.request.post(`${WEB}/api/approvals/${hire.agent.approval_id}/approve`, { data: {} })
+    const { project } = (await (await web.request.post(`${WEB}/api/projects`, { data: { name: `Worktree e2e ${Date.now()}` } })).json()) as { project: { id: number } }
+    const env = ((await (await web.request.get(`${WEB}/api/projects/${project.id}`)).json()) as { project: { environments: { id: number }[] } }).project.environments[0]
+    const app = (await (
+      await web.request.post(`${WEB}/api/environments/${env.id}/applications`, {
+        data: { name: 'worktree-web', build_pack: 'dockerfile', git_url: `http://127.0.0.1:${port}/app.git`, git_branch: 'main', port: 80 },
+      })
+    ).json()) as { application: { id: number } }
+    const { issue } = (await (
+      await web.request.post(`${WEB}/api/issues`, {
+        data: { title: 'Worktree e2e: [slow] count', project_id: project.id, application_id: app.application.id, assignee_agent_id: hire.agent.id },
+      })
+    ).json()) as { issue: { id: number; identifier: string } }
+    const branch = `bakery/${issue.identifier.toLowerCase()}`
+
+    try {
+      const badge = p.getByTestId('sidebar').getByTestId('runs-on-this-desktop')
+      await web.request.post(`${WEB}/api/agents/${hire.agent.id}/runs`, { data: { issue_id: issue.id } })
+      await badge.locator('span').filter({ hasText: '1' }).waitFor({ timeout: 30_000 })
+      await badge.click()
+      const shown = (await p.getByTestId('local-runs').getByTestId('run-branch').textContent({ timeout: 15_000 }))?.trim()
+      expect('the Run shows its Agent branch', shown === branch, shown)
+      if (HOME) {
+        const base = join(HOME, 'worktrees')
+        const dirs = existsSync(base) ? readdirSync(base).map((d) => join(base, d, String(issue.id))).filter((d) => existsSync(d)) : []
+        const on = dirs.length ? execFileSync('git', ['branch', '--show-current'], { cwd: dirs[0] }).toString().trim() : ''
+        expect("the Runner made the Issue's Worktree on it", on === branch && existsSync(join(dirs[0], 'README.md')), { dirs, on })
+      }
+    } finally {
+      await web.request.post(`${WEB}/api/agents/${hire.agent.id}/terminate`)
+      await web.request.delete(`${WEB}/api/issues/${issue.id}`)
+      await web.request.delete(`${WEB}/api/applications/${app.application.id}`)
+      await web.request.delete(`${WEB}/api/projects/${project.id}`)
+      await disconnectFrom(p)
+      expect('no page errors', errors.length === 0, errors)
+      await web.context().close()
+      await p.context().close()
+      repo.close()
+      rmSync(root, { recursive: true, force: true })
     }
   },
 }

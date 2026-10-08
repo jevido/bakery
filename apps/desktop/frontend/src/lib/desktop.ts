@@ -133,6 +133,8 @@ export type LocalRun = {
   invocation_source: InvocationSource
   wake_reason: WakeReason
   wake_count: number
+  /** The Agent branch the Run works on in its Worktree; "" without a Workspace. */
+  branch: string
   status: RunStatus
   started_at: string
   events: RunEvent[] | null

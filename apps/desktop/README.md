@@ -131,8 +131,25 @@ line), `[limit]` (the CLI's usage-limit message) and `[mcp <tool> <json>]`
 (calls that tool of the MCP server it was given and prints the call and
 its result as `tool_use`/`tool_result`; with `[slow]` too, the slow lines
 follow the calls, so a check sees what the tools changed while the Run is
-still live).
+still live), and `[env]` (says its working directory and its git and
+Worktree variables).
 `BAKERY_STANDIN_DELAY` sets its pause between lines (300 ms by default).
+
+When the claim's answer carries a Workspace (the Run's Issue names an
+Application with a git repository), `claude` runs in a git Worktree
+instead of the scratch directory (`runner/worktree.go`). The Runner keeps one
+bare clone per repository in `$BAKERY_DESKTOP_HOME/repos/<sha256(repository)[:16]>.git`,
+fetched before every Run, and one Worktree per Bakery and Issue in
+`$BAKERY_DESKTOP_HOME/worktrees/<sha256(address)[:8]>/<issue id>`, made on the
+Agent branch from origin's Agent branch when it exists there, else from the
+base branch. The Issue's later Runs reuse it as it is, uncommitted changes
+included; Worktrees no Run touched for 14 days are removed when the Runner
+starts and once a day. `claude` then also gets `BAKERY_WORKTREE`,
+`BAKERY_BRANCH`, `BAKERY_BASE_BRANCH`, the Agent as git author
+(`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL=agent-<agent id>@<Bakery host>`; the
+committer stays the person's own git config) and `GIT_TERMINAL_PROMPT=0`.
+git uses the person's own credentials (ssh agent, credential helper); no key
+ever comes from the Bakery. A git failure fails the Run with git's message.
 
 `runner/transcript.go` turns each line `claude` prints into Run events:
 `system/init` into `init`, each block of an `assistant` message into

@@ -51,6 +51,8 @@ type Runner struct {
 	// Logf logs one line per claim and finish; nil means the log package.
 	Logf func(format string, args ...any)
 
+	worktrees *worktrees
+
 	mu      sync.Mutex
 	running map[runKey]*execution
 	watched map[string]watch
@@ -89,9 +91,11 @@ type LocalRun struct {
 	InvocationSource string           `json:"invocation_source"`
 	WakeReason       string           `json:"wake_reason"`
 	WakeCount        int              `json:"wake_count"`
-	Status           string           `json:"status"`
-	StartedAt        time.Time        `json:"started_at"`
-	Events           []LocalEvent     `json:"events"`
+	// Branch is the Agent branch the Run works on, "" without a Workspace.
+	Branch    string       `json:"branch"`
+	Status    string       `json:"status"`
+	StartedAt time.Time    `json:"started_at"`
+	Events    []LocalEvent `json:"events"`
 }
 
 type runKey struct {
@@ -120,6 +124,9 @@ func (e *execution) start(address string, run bakery.DesktopRun) {
 		Address: address, Guild: run.Guild, Agent: run.Agent, RunID: run.ID, Issue: run.Issue,
 		InvocationSource: run.InvocationSource, WakeReason: run.WakeReason, WakeCount: run.WakeCount,
 		Status: "running", StartedAt: time.Now(),
+	}
+	if run.Workspace != nil {
+		e.local.Branch = run.Workspace.Branch
 	}
 }
 
@@ -156,6 +163,21 @@ func (r *Runner) Start(ctx context.Context) {
 	r.mu.Lock()
 	r.running, r.watched = map[runKey]*execution{}, map[string]watch{}
 	r.mu.Unlock()
+	// Worktrees no Run touched for worktreeIdle go now and once a day.
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		for {
+			for _, err := range r.trees().prune(ctx, time.Now(), worktreeIdle) {
+				r.logf("runner: pruning worktrees: %v", err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(worktreeSweep):
+			}
+		}
+	}()
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
@@ -168,6 +190,16 @@ func (r *Runner) Start(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// trees is the Runner's Worktrees under Home.
+func (r *Runner) trees() *worktrees {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.worktrees == nil {
+		r.worktrees = &worktrees{home: r.home()}
+	}
+	return r.worktrees
 }
 
 // Wait returns once Start's ctx ended and every Run it held stopped.
