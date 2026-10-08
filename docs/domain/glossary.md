@@ -152,7 +152,7 @@ document; list them here when people outside the context use them too.
 | Inbox | work | A Member's own list, in one Guild, of the Issues they are Touched by, showing which are Unread. Paperclip's Inbox. | notifications, Notification channel |
 | Inbox tab | work | `mine` (Touched Issues the Member has not archived, Resurfaced ones included), `recent` (every Touched Issue, archived ones included) or `unread` (Touched Issues that are Unread). Paperclip's Blocked and All tabs are left out until agents and Approvals exist. | Issue status |
 | Touched | work | Said of an Issue a Member created, is the Assignee of, wrote a Comment on, or is the Actor of an Activity event about. | Assignee, Board |
-| Last touch | work | The latest of a Member's last Comment on an Issue, their Read mark on it, the Issue's creation if they created it, and the Issue's last update if they are its Assignee. | Read mark |
+| Last touch | work | The latest of a Member's last Comment on an Issue, their Read mark on it, the Issue's creation if they created it, and the Issue's last change (a Comment is not one) if they are its Assignee. | Read mark |
 | Unread | work | Said of a Touched Issue with a Comment, not deleted, by another Member written after the Member's Last touch. | new, unseen |
 | Read mark | work | When a Member last read an Issue: set when they open it or mark it read, removed when they mark it unread. | Activity event, seen |
 | Inbox archive | work | A Member taking a Touched Issue out of their Mine tab; it stays in Recent. Paperclip's "archive" in the Inbox. | deleting or cancelling the Issue |

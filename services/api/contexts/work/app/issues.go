@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
 )
@@ -34,6 +35,11 @@ type Issues interface {
 	// FindIssues lists the Guild's Issues that q keeps, most recently
 	// updated first.
 	FindIssues(ctx context.Context, guildID uint64, q IssueQuery) ([]domain.Issue, error)
+	// CountIssues counts the Guild's Issues that q keeps, ignoring its
+	// Limit and Offset.
+	CountIssues(ctx context.Context, guildID uint64, q IssueQuery) (int64, error)
+	// InboxStates is where each Issue stands in the Member's Inbox.
+	InboxStates(ctx context.Context, memberID uint64, issueIDs []uint64) (map[uint64]InboxState, error)
 	// IssueProjects lists the Projects the Guild's Issues are in.
 	IssueProjects(ctx context.Context, guildID uint64) ([]uint64, error)
 	// LeaveProject takes every Issue, and every Activity event, out of the
@@ -65,6 +71,12 @@ type IssueFilter struct {
 	ProjectID  *uint64
 	GoalID     *uint64
 	ParentID   *uint64
+	// TouchedBy keeps the Issues the Member is Touched by, UnreadFor the
+	// Touched ones that are Unread to them, and InboxFor the Touched ones
+	// in their Mine tab: not in their Inbox archive, or Resurfaced since.
+	TouchedBy *uint64
+	UnreadFor *uint64
+	InboxFor  *uint64
 	// Search matches the title, the description and the Issue identifier,
 	// ignoring case.
 	Search string
@@ -84,11 +96,34 @@ type IssueQuery struct {
 	ProjectID  *uint64
 	GoalID     *uint64
 	ParentID   *uint64
+	TouchedBy  *uint64
+	UnreadFor  *uint64
+	InboxFor   *uint64
 	Search     string
 	Limit      int
 	Offset     int
 	Visible    []uint64
 	Prefix     string
+}
+
+// InboxMember is the Member whose Inbox the filter asks about, or 0 when
+// it asks about none.
+func (f IssueFilter) InboxMember() uint64 {
+	for _, m := range []*uint64{f.InboxFor, f.UnreadFor, f.TouchedBy} {
+		if m != nil {
+			return *m
+		}
+	}
+	return 0
+}
+
+// InboxState is where an Issue stands in a Member's Inbox. LastTouchedAt
+// is nil when the Member never touched it; Archived means it is in their
+// Inbox archive and has not Resurfaced.
+type InboxState struct {
+	Unread        bool
+	LastTouchedAt *time.Time
+	Archived      bool
 }
 
 // IssueInput is a new Issue as typed. Empty Status and Priority take their
@@ -130,6 +165,7 @@ func (s *Service) IssuePrefix(ctx context.Context, guildID uint64) (string, erro
 func (s *Service) Issues(ctx context.Context, guildID uint64, f IssueFilter, visible Visible) ([]domain.Issue, error) {
 	q := IssueQuery{
 		AssigneeID: f.AssigneeID, ProjectID: f.ProjectID, GoalID: f.GoalID, ParentID: f.ParentID,
+		TouchedBy: f.TouchedBy, UnreadFor: f.UnreadFor, InboxFor: f.InboxFor,
 		Search: strings.TrimSpace(f.Search), Limit: f.Limit, Offset: max(f.Offset, 0),
 	}
 	for _, st := range f.Statuses {
@@ -153,19 +189,48 @@ func (s *Service) Issues(ctx context.Context, guildID uint64, f IssueFilter, vis
 }
 
 func (s *Service) findIssues(ctx context.Context, guildID uint64, q IssueQuery, visible Visible) ([]domain.Issue, error) {
-	in, err := s.issues.IssueProjects(ctx, guildID)
-	if err != nil {
-		return nil, err
-	}
-	if len(in) > 0 {
-		if q.Visible, err = visible(in); err != nil {
-			return nil, err
-		}
-	}
-	if q.Prefix, err = s.guilds.IssuePrefix(ctx, guildID); err != nil {
+	if err := s.scope(ctx, guildID, &q, visible); err != nil {
 		return nil, err
 	}
 	return s.issues.FindIssues(ctx, guildID, q)
+}
+
+// scope gives q the Projects the person may view and the Guild's Issue
+// prefix.
+func (s *Service) scope(ctx context.Context, guildID uint64, q *IssueQuery, visible Visible) error {
+	in, err := s.issues.IssueProjects(ctx, guildID)
+	if err != nil {
+		return err
+	}
+	if len(in) > 0 {
+		if q.Visible, err = visible(in); err != nil {
+			return err
+		}
+	}
+	q.Prefix, err = s.guilds.IssuePrefix(ctx, guildID)
+	return err
+}
+
+// InboxCount counts the Unread Issues in the Member's Mine tab that the
+// person may see: the sidebar's Inbox badge.
+func (s *Service) InboxCount(ctx context.Context, guildID, memberID uint64, visible Visible) (int64, error) {
+	q := IssueQuery{InboxFor: &memberID, UnreadFor: &memberID}
+	if err := s.scope(ctx, guildID, &q, visible); err != nil {
+		return 0, err
+	}
+	return s.issues.CountIssues(ctx, guildID, q)
+}
+
+// InboxStates is where each Issue stands in the Member's Inbox.
+func (s *Service) InboxStates(ctx context.Context, memberID uint64, is []domain.Issue) (map[uint64]InboxState, error) {
+	if len(is) == 0 {
+		return map[uint64]InboxState{}, nil
+	}
+	ids := make([]uint64, len(is))
+	for n, i := range is {
+		ids[n] = i.ID
+	}
+	return s.issues.InboxStates(ctx, memberID, ids)
 }
 
 // SubIssues lists the Issue's Sub-issues the person may see, unpaged.

@@ -157,10 +157,12 @@ Goal event the Goal's title.
   `GET /api/issues` also takes `touched`, `unread` and `inbox`, each only
   `me` (anything else is 422): `touched=me` keeps the Issues the asking
   Member is Touched by (the Recent tab), `unread=me` the Unread ones (the
-  Unread tab), and `inbox=me` leaves out the ones they archived and have
-  not Resurfaced (with `touched=me`, the Mine tab). With any of them, each
-  Issue also answers `unread` and `last_touched_at` for that Member, and
-  the list is sorted by the Issue's latest Comment or update, newest first.
+  Unread tab), and `inbox=me` the Touched ones they have not archived, or
+  that Resurfaced since (the Mine tab). They combine with each other and
+  with the other filters. With any of them, each Issue also answers
+  `unread`, `last_touched_at` and `archived` (in their Inbox archive and
+  not Resurfaced) for that Member. The list stays sorted by the Issue's
+  latest Comment or update, newest first: a Comment moves `updated_at`.
 
   A Goal is `{id, title, description, level, status, parent_id, owner:
   {id, name} | null, created_at, updated_at}`; it is written with `title`,
@@ -321,6 +323,12 @@ Goal event the Goal's title.
 - **Touched through Activity counts only what was recorded.** The Activity
   table started empty and was not backfilled, so Issues older than it are
   Touched only through creation, assignment and Comments.
+- **An Assignee's Last touch is the Issue's last change, not its
+  `updated_at`.** Paperclip takes the Issue's `updatedAt` for an
+  Assignee. Here a Comment moves `updated_at` too, so every Comment
+  would count as the Assignee's own touch and their Issues would never
+  be Unread. The Issue's last change is its latest `issue.created` or
+  `issue.updated` Activity event instead.
 - **No Blocked or All tab yet.** In Paperclip those tabs are filled by
   agents' failed Runs, Approvals and join requests, which come with agents
   and Approvals.

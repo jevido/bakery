@@ -106,6 +106,7 @@ func Routes(r route.Router) {
 		r.Delete("/api/issues/{id}/read", c.MarkUnread)
 		r.Post("/api/issues/{id}/inbox-archive", c.ArchiveFromInbox)
 		r.Delete("/api/issues/{id}/inbox-archive", c.UnarchiveFromInbox)
+		r.Get("/api/sidebar-badges", c.SidebarBadges)
 	})
 	r.Middleware(guilds.Auth, view).Get("/api/issues/{id}/comments", c.ListComments)
 	r.Middleware(guilds.Auth, manage).Group(func(r route.Router) {

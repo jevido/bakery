@@ -51,6 +51,12 @@ type issueJSON struct {
 	// UnresolvedBlockers counts the Blockers the person can see that are
 	// not done; list rows only.
 	UnresolvedBlockers *int `json:"unresolved_blockers,omitempty"`
+	// Unread, LastTouchedAt and Archived are where the Issue stands in the
+	// asking Member's Inbox; only when the list was asked with touched,
+	// unread or inbox.
+	Unread        *bool      `json:"unread,omitempty"`
+	LastTouchedAt *time.Time `json:"last_touched_at,omitempty"`
+	Archived      *bool      `json:"archived,omitempty"`
 }
 
 // blockerJSON is an Issue in another Issue's blocked_by or blocking.
@@ -240,6 +246,19 @@ func (c *Controller) filter(ctx contractshttp.Context) (app.IssueFilter, contrac
 		}
 		*idf.into = id
 	}
+	for _, mf := range []struct {
+		field string
+		into  **uint64
+	}{{"touched", &f.TouchedBy}, {"unread", &f.UnreadFor}, {"inbox", &f.InboxFor}} {
+		switch strings.TrimSpace(r.Query(mf.field)) {
+		case "":
+		case "me":
+			m := c.Member(ctx)
+			*mf.into = &m
+		default:
+			return f, respond.Invalid(ctx, mf.field, mf.field+" must be me")
+		}
+	}
 	for _, n := range []struct {
 		field string
 		into  *int
@@ -261,8 +280,10 @@ func (c *Controller) filter(ctx contractshttp.Context) (app.IssueFilter, contrac
 // ListIssues answers the Current guild's Issues that the filters keep and
 // the request may see, most recently updated first: status and priority
 // (comma lists), assignee (an id, me or none), project, goal and parent
-// (an id or none), q (title, description, identifier), limit (at most
-// 200, the default) and offset.
+// (an id or none), touched, unread and inbox (only me: the asking
+// Member's Inbox tabs), q (title, description, identifier), limit (at
+// most 200, the default) and offset. With touched, unread or inbox each
+// Issue also answers unread, last_touched_at and archived for the Member.
 func (c *Controller) ListIssues(ctx contractshttp.Context) contractshttp.Response {
 	f, bad := c.filter(ctx)
 	if bad != nil {
@@ -288,6 +309,16 @@ func (c *Controller) ListIssues(ctx contractshttp.Context) contractshttp.Respons
 			}
 		}
 		out[n].UnresolvedBlockers = &unresolved
+	}
+	if m := f.InboxMember(); m != 0 {
+		states, err := c.service.InboxStates(ctx.Context(), m, is)
+		if err != nil {
+			return fail(ctx, err)
+		}
+		for n, i := range is {
+			st := states[i.ID]
+			out[n].Unread, out[n].LastTouchedAt, out[n].Archived = &st.Unread, st.LastTouchedAt, &st.Archived
+		}
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"issues": out})
 }

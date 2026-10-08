@@ -225,8 +225,9 @@ func none(q contractsorm.Query, column string, id *uint64) contractsorm.Query {
 
 var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
-func (s Issues) FindIssues(ctx context.Context, guildID uint64, f app.IssueQuery) ([]domain.Issue, error) {
-	q := s.query(ctx).Where("guild_id", guildID)
+// where narrows a query on issues to what f keeps.
+func where(q contractsorm.Query, guildID uint64, f app.IssueQuery) contractsorm.Query {
+	q = q.Where("guild_id", guildID)
 	if len(f.Statuses) > 0 {
 		q = q.Where("status IN ?", f.Statuses)
 	}
@@ -237,6 +238,15 @@ func (s Issues) FindIssues(ctx context.Context, guildID uint64, f app.IssueQuery
 	q = none(q, "project_id", f.ProjectID)
 	q = none(q, "goal_id", f.GoalID)
 	q = none(q, "parent_id", f.ParentID)
+	for _, c := range []struct {
+		member *uint64
+		cond   func(uint64) sqlFragment
+	}{{f.TouchedBy, touched}, {f.UnreadFor, unread}, {f.InboxFor, inMine}} {
+		if c.member != nil {
+			fr := c.cond(*c.member)
+			q = q.Where(fr.sql, fr.args...)
+		}
+	}
 	if len(f.Visible) > 0 {
 		q = q.Where("(project_id IS NULL OR project_id IN ?)", f.Visible)
 	} else {
@@ -246,7 +256,11 @@ func (s Issues) FindIssues(ctx context.Context, guildID uint64, f app.IssueQuery
 		like := "%" + likeEscaper.Replace(f.Search) + "%"
 		q = q.Where("(title ILIKE ? OR description ILIKE ? OR ? || '-' || number::text ILIKE ?)", like, like, f.Prefix, like)
 	}
-	q = q.Order("updated_at desc").Order("id desc")
+	return q
+}
+
+func (s Issues) FindIssues(ctx context.Context, guildID uint64, f app.IssueQuery) ([]domain.Issue, error) {
+	q := where(s.query(ctx), guildID, f).Order("updated_at desc").Order("id desc")
 	if f.Limit > 0 {
 		q = q.Limit(f.Limit)
 	}
@@ -258,6 +272,40 @@ func (s Issues) FindIssues(ctx context.Context, guildID uint64, f app.IssueQuery
 		return nil, err
 	}
 	return issuesOf(recs), nil
+}
+
+func (s Issues) CountIssues(ctx context.Context, guildID uint64, f app.IssueQuery) (int64, error) {
+	return where(s.query(ctx).Model(&issueRecord{}), guildID, f).Count()
+}
+
+func (s Issues) InboxStates(ctx context.Context, memberID uint64, issueIDs []uint64) (map[uint64]app.InboxState, error) {
+	u, t, a := unread(memberID), lastTouch(memberID), inMine(memberID)
+	var rows []struct {
+		ID            uint64
+		Unread        bool
+		Touched       bool
+		LastTouchedAt time.Time
+		InMine        bool
+	}
+	tc := touched(memberID)
+	args := append(append(append(append([]any{}, u.args...), tc.args...), t.args...), a.args...)
+	args = append(args, issueIDs)
+	err := s.query(ctx).Raw(`SELECT issues.id, `+u.sql+` AS unread, `+tc.sql+` AS touched, `+t.sql+` AS last_touched_at, `+a.sql+` AS in_mine
+		FROM issues WHERE issues.id IN ?`, args...).Scan(&rows)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uint64]app.InboxState, len(rows))
+	for _, r := range rows {
+		st := app.InboxState{Unread: r.Unread}
+		if r.Touched {
+			at := r.LastTouchedAt.UTC()
+			st.LastTouchedAt = &at
+			st.Archived = !r.InMine
+		}
+		out[r.ID] = st
+	}
+	return out, nil
 }
 
 func (s Issues) IssueProjects(ctx context.Context, guildID uint64) ([]uint64, error) {
