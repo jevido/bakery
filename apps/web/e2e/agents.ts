@@ -3,10 +3,12 @@
 // wait for the guilds goal's final sweep):
 //   hire    the sidebar's Guild section shows Agents; #/agents opens All,
 //           which shows the empty state or the list; Hire agent hires "Ada"
-//           (CTO, rocket icon) and says "Agent submitted for approval"; the
-//           list shows Ada as Pending approval; after Approve on her card
-//           on #/approvals/pending, All and Active show Ada as Idle. A run
-//           before is cleaned up by terminating its Ada first.
+//           (CTO, a Title, rocket icon, Deployer) and says "Agent submitted
+//           for approval"; the list shows Ada as Pending approval; her
+//           Approval's page shows the Job, Title and Roles and links her
+//           Name; after Approve on her card on #/approvals/pending, All and
+//           Active show Ada as Idle. "Rex", hired and rejected on his
+//           Approval's page, shows only under Terminated.
 //   org     with Org Ada (CTO) and Org Bob reporting to her, hired and
 //           approved through the API, the Org chart view shows Bob's card
 //           below Ada's joined by a line; dragging moves the chart; zoom in
@@ -16,10 +18,15 @@
 //           properties; renaming her in place survives a reload; Reports
 //           to Bob shows the cycle error; Pause shows Paused and Resume
 //           Idle; Add role "Deployer" shows the chip and × removes it;
-//           Terminate after confirming shows Terminated and no actions;
-//           #/agents/999999 shows not-found.
-//   viewer  a Viewer, invited for the run and removed again, sees an
-//           Agent's page without actions, editors or Add role.
+//           Terminate after confirming shows Terminated and no actions, and
+//           Bob moves up to no Manager; #/agents/999999 shows not-found.
+//   viewer  a Viewer, invited for the run and removed again, sees the
+//           Agents without Hire agent and an Agent's page without actions,
+//           editors or Add role; the API answers 403 to their hire.
+//   hierarchy  a Member given a scratch Role with hire_agents (below
+//           Admin) hires their own Agent, with Admin not offered; giving it
+//           Admin answers 422 and pausing the owner's Agent 403; removing
+//           them from the Guild terminates their Agent.
 //
 //   bun e2e/agents.ts [section ...]   (task web:agents; needs task dev)
 //
@@ -99,20 +106,21 @@ async function role(page: Page, name: string): Promise<number> {
   return ((await r.json()) as { role: { id: number } }).role.id
 }
 
-/** A Viewer invited for the run, signed in in a context of their own; leave removes them. */
-async function viewer(owner: Page): Promise<{ page: Page; leave: () => Promise<void> }> {
+/** A person invited as role for the run, signed in in a context of their own; leave removes them. */
+async function invited(owner: Page, role: 'viewer' | 'member'): Promise<{ page: Page; id: number; leave: () => Promise<void> }> {
   const { members } = (await (await owner.request.get(`${WEB}/api/members`)).json()) as { members: { id: number; email: string }[] }
-  for (const m of members.filter((m) => m.email.startsWith('agents-viewer-'))) await owner.request.delete(`${WEB}/api/members/${m.id}`)
-  const inv = await owner.request.post(`${WEB}/api/invitations`, { data: { email: `agents-viewer-${Date.now()}@example.test`, role: 'viewer' } })
+  for (const m of members.filter((m) => m.email.startsWith(`agents-${role}-`))) await owner.request.delete(`${WEB}/api/members/${m.id}`)
+  const inv = await owner.request.post(`${WEB}/api/invitations`, { data: { email: `agents-${role}-${Date.now()}@example.test`, role } })
   if (!inv.ok()) throw new Error(`invite: ${inv.status()}`)
   const token = ((await inv.json()) as { path: string }).path.split('/').pop()
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
   await ctx.addInitScript(() => localStorage.setItem('theme', 'dark'))
-  const accept = await ctx.request.post(`${WEB}/api/invitations/by-token/${token}/accept`, { data: { name: 'Agents viewer', password: 'a long enough password' } })
+  const accept = await ctx.request.post(`${WEB}/api/invitations/by-token/${token}/accept`, { data: { name: `Agents ${role}`, password: 'a long enough password' } })
   if (!accept.ok()) throw new Error(`accept: ${accept.status()} ${await accept.text()}`)
   const { member } = (await accept.json()) as { member: { id: number } }
   return {
     page: await ctx.newPage(),
+    id: member.id,
     leave: async () => {
       await ctx.close()
       await owner.request.delete(`${WEB}/api/members/${member.id}`)
@@ -120,12 +128,17 @@ async function viewer(owner: Page): Promise<{ page: Page; leave: () => Promise<v
   }
 }
 
+// Scratch Agents stay as terminated records, so each run names its own.
+const run = Date.now() % 1000000
+
 const row = (page: Page, name: string) => page.getByTestId('agent-row').filter({ hasText: name })
 
 const sections: Record<string, () => Promise<void>> = {
   async hire() {
     const page = await signedIn()
-    await terminate(page, ['Ada'])
+    const ada = `Ada ${run}`
+    const rex = `Rex ${run}`
+    await role(page, 'Deployer')
 
     await page.goto(`${WEB}/#/agents`)
     const empty = page.getByText('No agents yet.', { exact: false })
@@ -140,32 +153,54 @@ const sections: Record<string, () => Promise<void>> = {
     await page.getByRole('button', { name: 'Hire agent' }).first().click()
     const dialog = page.getByRole('dialog', { name: 'Hire agent' })
     await dialog.getByText('Meet your next agent').waitFor()
-    await dialog.getByLabel('Agent name').fill('Ada')
+    await dialog.getByLabel('Agent name').fill(ada)
     await dialog.getByLabel('Job').selectOption('cto')
+    await dialog.getByLabel('Title', { exact: true }).fill('Head of ovens')
     await dialog.getByRole('button', { name: 'Agent icon' }).click()
     await page.getByRole('option', { name: 'rocket' }).click()
+    await dialog.getByLabel('Deployer', { exact: true }).check()
     await dialog.getByRole('button', { name: 'Hire', exact: true }).click()
     await dialog.getByText('Agent submitted for approval').waitFor()
     expect('the hire says "Agent submitted for approval"', true)
     expect('it links to the Approval', (await dialog.getByRole('link', { name: 'View approval' }).getAttribute('href'))!.startsWith('#/approvals/'))
     await dialog.getByRole('button', { name: 'Done' }).click()
 
-    await row(page, 'Ada').waitFor()
-    expect('the list shows Ada as Pending approval', (await row(page, 'Ada').textContent())!.includes('Pending approval'), await row(page, 'Ada').textContent())
-    expect('her row shows the Job', (await row(page, 'Ada').textContent())!.includes('CTO'))
-    const ada = (await agents(page)).find((a) => a.name === 'Ada')!
+    await row(page, ada).waitFor()
+    expect('the list shows Ada as Pending approval', (await row(page, ada).textContent())!.includes('Pending approval'), await row(page, ada).textContent())
+    expect('her row shows the Job', (await row(page, ada).textContent())!.includes('CTO'))
+    const hiredAda = (await agents(page)).find((a) => a.name === ada)!
+
+    await page.goto(`${WEB}/#/approvals/${hiredAda.approval_id}`)
+    const payload = page.locator('[data-slot="approval-payload"][data-type="hire_agent"]').first()
+    await payload.waitFor()
+    const text = (await payload.textContent()) ?? ''
+    expect('the Approval page shows the Job, Title and Roles', text.includes('CTO') && text.includes('Head of ovens') && text.includes('Deployer'), text)
+    expect('its Name links to the Agent', (await payload.getByTestId('hire-agent-link').getAttribute('href')) === `#/agents/${hiredAda.id}`)
 
     await page.goto(`${WEB}/#/approvals/pending`)
-    const card = page.locator(`[data-slot="card"][data-approval="${ada.approval_id}"]`)
+    const card = page.locator(`[data-slot="card"][data-approval="${hiredAda.approval_id}"]`)
     await card.waitFor()
     await card.getByRole('button', { name: 'Approve' }).click()
     await page.waitForURL(/#\/approvals\/\d+\?resolved=approved/)
 
     for (const tab of ['all', 'active']) {
       await page.goto(`${WEB}/#/agents/${tab}`)
-      await row(page, 'Ada').waitFor()
-      expect(`${tab} shows Ada as Idle`, (await row(page, 'Ada').textContent())!.includes('Idle'), await row(page, 'Ada').textContent())
+      await row(page, ada).waitFor()
+      expect(`${tab} shows Ada as Idle`, (await row(page, ada).textContent())!.includes('Idle'), await row(page, ada).textContent())
     }
+
+    const r = await page.request.post(`${WEB}/api/agents`, { data: { name: rex, job: 'engineer', title: '', icon: 'bot', capabilities: '', role_ids: [], reports_to: null } })
+    const { approval_id } = (await r.json()) as { approval_id: number }
+    await page.goto(`${WEB}/#/approvals/${approval_id}`)
+    await page.getByRole('button', { name: 'Reject' }).click()
+    await page.waitForResponse((r) => r.url().endsWith(`/api/approvals/${approval_id}/reject`))
+    await page.goto(`${WEB}/#/agents/terminated`)
+    await row(page, rex).waitFor()
+    expect('a rejected hire ends Terminated', (await row(page, rex).textContent())!.includes('Terminated'), await row(page, rex).textContent())
+    await page.goto(`${WEB}/#/agents/all`)
+    await row(page, ada).waitFor()
+    expect('and shows only under Terminated', (await row(page, rex).count()) === 0)
+    await terminate(page, [ada])
     await page.context().close()
   },
 
@@ -228,7 +263,7 @@ const sections: Record<string, () => Promise<void>> = {
     const page = await signedIn()
     await terminate(page, ['Agent Ada', 'Agent Ava', 'Agent Bob'])
     const ada = await hired(page, { name: 'Agent Ada', job: 'cto' })
-    await hired(page, { name: 'Agent Bob', job: 'engineer', reports_to: ada.id })
+    const bob = await hired(page, { name: 'Agent Bob', job: 'engineer', reports_to: ada.id })
     await role(page, 'Deployer')
     const prop = (label: string) => page.locator(`[data-property-row="${label}"]`)
 
@@ -278,6 +313,9 @@ const sections: Record<string, () => Promise<void>> = {
       (await page.getByRole('button', { name: /^(Pause|Resume)$/ }).count()) === 0 && (await page.getByRole('button', { name: /Open actions/ }).count()) === 0,
     )
 
+    const after = ((await (await page.request.get(`${WEB}/api/agents/${bob.id}`)).json()) as { agent: { reports_to: unknown } }).agent
+    expect('her report Bob moves up to no Manager', after.reports_to === null, after.reports_to)
+
     await page.goto(`${WEB}/#/agents/999999`)
     await page.getByText('Agent not found').waitFor()
     expect('#/agents/999999 shows not-found', true)
@@ -289,7 +327,11 @@ const sections: Record<string, () => Promise<void>> = {
     const page = await signedIn()
     await terminate(page, ['Viewer Ada'])
     const ada = await hired(page, { name: 'Viewer Ada', job: 'cto' })
-    const v = await viewer(page)
+    const v = await invited(page, 'viewer')
+    await v.page.goto(`${WEB}/#/agents/all`)
+    await row(v.page, 'Viewer Ada').waitFor()
+    expect('the Viewer sees the Agents', true)
+    expect('without Hire agent', (await v.page.getByRole('button', { name: 'Hire agent' }).count()) === 0)
     await v.page.goto(`${WEB}/#/agents/${ada.id}`)
     await v.page.getByRole('heading', { name: 'Identity' }).waitFor()
     expect('the Viewer sees her page', (await v.page.getByText('Viewer Ada').count()) > 0)
@@ -299,8 +341,53 @@ const sections: Record<string, () => Promise<void>> = {
     await v.page.getByRole('button', { name: 'Open actions for Viewer Ada' }).click()
     await v.page.getByRole('button', { name: 'Copy Agent ID' }).waitFor()
     expect('the menu has no Terminate', (await v.page.getByRole('button', { name: 'Terminate' }).count()) === 0)
+    const hire = await v.page.request.post(`${WEB}/api/agents`, { data: { name: 'Viewer hire', job: 'engineer', role_ids: [] } })
+    expect('the API answers 403 to their hire', hire.status() === 403, hire.status())
     await v.leave()
     await terminate(page, ['Viewer Ada'])
+    await page.context().close()
+  },
+
+  async hierarchy() {
+    const page = await signedIn()
+    const mine = `Owner's ${run}`
+    const theirs = `Hirer's ${run}`
+    const r = await page.request.post(`${WEB}/api/roles`, { data: { name: `Hirers ${run}`, color: '#22c55e', permissions: ['view_resources', 'hire_agents'] } })
+    if (!r.ok()) throw new Error(`role: ${r.status()} ${await r.text()}`)
+    const scratch = ((await r.json()) as { role: { id: number } }).role.id
+    const { roles } = (await (await page.request.get(`${WEB}/api/roles`)).json()) as { roles: { id: number; name: string; position: number }[] }
+    const admin = roles.find((x) => x.name === 'Admin')!
+    expect('the scratch Role is below Admin', roles.find((x) => x.id === scratch)!.position < admin.position)
+    const owners = await hired(page, { name: mine, job: 'cto' })
+    const m = await invited(page, 'member')
+    const give = await page.request.put(`${WEB}/api/members/${m.id}/roles/${scratch}`)
+    if (!give.ok()) throw new Error(`assign: ${give.status()} ${await give.text()}`)
+
+    await m.page.goto(`${WEB}/#/agents/all`)
+    await m.page.getByRole('button', { name: 'Hire agent' }).first().click()
+    const dialog = m.page.getByRole('dialog', { name: 'Hire agent' })
+    await dialog.getByText('Meet your next agent').waitFor()
+    await dialog.getByLabel('Agent name').fill(theirs)
+    await dialog.getByLabel('Viewer', { exact: true }).waitFor()
+    expect('Viewer, below their highest, is offered to them', true)
+    expect('Admin is not offered to them', (await dialog.getByLabel('Admin', { exact: true }).count()) === 0)
+    await dialog.getByRole('button', { name: 'Hire', exact: true }).click()
+    await dialog.getByText('Agent submitted for approval').waitFor()
+    expect('they hire their own Agent', true)
+    const agent = (await agents(page)).find((a) => a.name === theirs)!
+    const ok = await page.request.post(`${WEB}/api/approvals/${agent.approval_id}/approve`, { data: {} })
+    if (!ok.ok()) throw new Error(`approve: ${ok.status()}`)
+
+    const up = await m.page.request.put(`${WEB}/api/agents/${agent.id}/roles/${admin.id}`)
+    expect('giving it Admin answers 422', up.status() === 422, up.status())
+    const pause = await m.page.request.post(`${WEB}/api/agents/${owners.id}/pause`)
+    expect("pausing the owner's Agent answers 403", pause.status() === 403, pause.status())
+
+    await m.leave()
+    const left = ((await (await page.request.get(`${WEB}/api/agents/${agent.id}`)).json()) as { agent: { status: string } }).agent
+    expect('removing them from the Guild terminates their Agent', left.status === 'terminated', left.status)
+    await terminate(page, [mine])
+    await page.request.delete(`${WEB}/api/roles/${scratch}`)
     await page.context().close()
   },
 }

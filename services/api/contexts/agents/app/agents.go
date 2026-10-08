@@ -21,6 +21,10 @@ var ErrNotFound = errors.New("not found")
 // hire_agents, or are neither its Hirer nor rank above them.
 var ErrMayNotManage = errors.New("only the agent's hirer, or someone ranking above them, with the Hire agents permission may manage it")
 
+// ErrHirerNotMember refuses a hire by someone without a Membership in the
+// Guild (the Instance admin acting in it): an Agent's Hirer is a Member.
+var ErrHirerNotMember = errors.New("only a member of the guild can hire an agent")
+
 // Agents keeps Agents.
 type Agents interface {
 	// Agents lists every Agent of the Guild, terminated ones included.

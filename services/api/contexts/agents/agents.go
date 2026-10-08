@@ -6,6 +6,7 @@ package agents
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/goravel/framework/contracts/route"
@@ -47,6 +48,9 @@ func (guildsOfAgents) JoinAgent(ctx context.Context, guildID, hirerID, agentID u
 	err := guilds.JoinAgent(ctx, guildID, hirerID, agentID, hirerPerms, roleIDs)
 	if guilds.AgentRoleRefused(err) {
 		return &domain.FieldError{Field: "role_ids", Message: err.Error()}
+	}
+	if errors.Is(err, guilds.ErrNotAMember) {
+		return app.ErrHirerNotMember
 	}
 	return err
 }

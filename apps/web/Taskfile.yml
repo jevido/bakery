@@ -44,7 +44,7 @@ tasks:
       - bun e2e/work.ts
 
   agents:
-    desc: Check the Agents pages (the list, Hire agent and its Approval, the Org chart) in headless Chromium (needs task dev)
+    desc: Check the Agents pages (the list, Hire agent and its Approval, the Org chart, the Agent page, a Viewer, the Hirer hierarchy) in headless Chromium (needs task dev)
     deps: [install]
     cmds:
       - bun e2e/agents.ts

@@ -180,11 +180,11 @@ export function securityPath(page: SecurityPage): string {
   return `/security/${page}`
 }
 
-/** The Inbox's tabs, by their slug in Paperclip's URLs; Blocked and All wait for agents. */
 /** The Agents page's tabs, in Paperclip's order. */
 export const agentsTabs = ['all', 'active', 'paused', 'terminated'] as const
 export type AgentsTab = (typeof agentsTabs)[number]
 
+/** The Inbox's tabs, by their slug in Paperclip's URLs; Blocked and All wait for agents. */
 export const inboxTabs = ['mine', 'recent', 'unread'] as const
 export type InboxTab = (typeof inboxTabs)[number]
 

@@ -269,7 +269,7 @@ type and the payload's title.
   | `agent.hired` | `name`, `job`, `approval_id` |
   | `agent.updated` | `name`, `changes`: field → `{from, to}` for `name`, `job`, `title`, `icon` and `reports_to` (`{id, name}`), and `capabilities: true` when they changed |
   | `agent.paused`, `agent.resumed`, `agent.terminated` | `name` |
-  | `agent.role_added`, `agent.role_removed` | `name`, `role` (`{id, name}`) |
+  | `agent.role_added`, `agent.role_removed` | `name`, `role` (the Role's name when it was added or removed) |
 
   References are stored as ids and answered with their names as they are
   when read, null for none. One that no longer exists, or an Issue or

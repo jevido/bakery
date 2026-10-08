@@ -50,9 +50,11 @@ admin always may (with `hire_agents`, which they always hold).
 
 - Read the Guild's Agents, one Agent and the Org chart [`view_resources`].
 - `Hire(name, job, title, icon, manager, capabilities, roles)`
-  [`hire_agents`]: the asking Member is the Hirer. Each requested Role must
-  be below the Hirer's highest Role and one they may assign (guilds'
-  `CanAssign`); otherwise 422. Creates the Agent `pending_approval` with
+  [`hire_agents`]: the asking Member is the Hirer; the Instance admin
+  acting in a Guild they have no Membership in cannot hire (403). Each
+  requested Role must be below the Hirer's highest Role and grant only
+  Permissions the Hirer holds (administrator only when they hold it);
+  otherwise 422. Creates the Agent `pending_approval` with
   its Agent membership and Roles, and asks work for a `hire_agent`
   Approval with the Hirer as Requester, in that order; if asking fails the
   Agent and its Agent membership are removed again.
@@ -67,15 +69,18 @@ admin always may (with `hire_agents`, which they always hold).
   membership, moves its direct reports up to its Manager, and cancels its
   Approval when it was `pending_approval`.
 - `AddRole(role)`, `RemoveRole(role)` [manage]: only an `idle` or `paused`
-  Agent; a Role added must be below the Hirer's highest Role and one the
-  asking person may assign (422 otherwise).
+  Agent; a Role added must be below the Hirer's highest Role and the
+  asking person's, and grant only Permissions the asking person holds, as
+  at the hire, since managing an Agent does not need `manage_roles`; a
+  Role removed must be below the asking person's highest (422 otherwise).
 - When the Hirer leaves the Guild or is removed from it, guilds tells
   agents and every Agent they hired there is terminated, with whoever
   removed them as the Actor (removal is the only way to leave today).
-  Deleting the Hirer's account does not pass through guilds: the foreign
-  keys on `agents.hirer_member_id` and `memberships.hirer_member_id`
-  cascade, so their Agents and Agent memberships go with the account, and
-  the Activity keeps naming those Agents (`exists: false`).
+  There is no account deletion yet. Should one come, it would not pass
+  through guilds: the foreign keys on `agents.hirer_member_id` and
+  `memberships.hirer_member_id` cascade, so the Hirer's Agents and Agent
+  memberships would go with the account, and the Activity would keep
+  naming those Agents (`exists: false`).
 
 "Manage" is `hire_agents` plus being the Agent's Hirer, the Instance
 admin, or ranking above the Hirer (the Guild Master ranks above everyone);
@@ -133,11 +138,15 @@ records nothing more.
   `name`.
 - **Consumes:**
   - from guilds: `guilds.Auth`, `guilds.Can(permission)`,
-    `guilds.Current(ctx)`, `guilds.MemberID(ctx)` (the Hirer), the Agent
-    membership calls (create with Roles, add or remove a Role, end, read
-    its Roles), `CanAssign` and the hierarchy (who ranks above a Hirer,
-    which Roles are below the Hirer's highest), and the hook for a Member
-    leaving or being removed. It registers `guilds.OnGuildDeleting`, so a
+    `guilds.Owns` (an `{id}` outside the Current guild is 404),
+    `guilds.Current(ctx)`, `guilds.MemberID(ctx)` (the Hirer),
+    `guilds.Permissions(ctx)` and `guilds.InstanceAdmin(ctx)` (who is
+    asking, for manage), the Agent membership calls (`JoinAgent`,
+    `AssignAgentRole`, `RemoveAgentRole`, `LeaveAgent`, `AgentRoles`, with
+    `AgentRoleRefused` telling a refused Role from a failure),
+    `guilds.RoleNames` for the hire's payload, `guilds.RankAbove` (who
+    ranks above a Hirer), and the hook for a Member leaving or being
+    removed. It registers `guilds.OnGuildDeleting`, so a
     Guild with Agents that are not terminated is not deleted.
   - from work: `work.RequestApproval` and `work.CancelApproval` for the
     `hire_agent` Approval, `work.OnApprovalDecided` (registered for

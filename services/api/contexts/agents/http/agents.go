@@ -185,7 +185,7 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 		return respond.Error(ctx, contractshttp.StatusUnprocessableEntity, err.Error())
 	case errors.Is(err, app.ErrNotFound):
 		return notFound(ctx)
-	case errors.Is(err, app.ErrMayNotManage):
+	case errors.Is(err, app.ErrMayNotManage), errors.Is(err, app.ErrHirerNotMember):
 		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
 	}
 	return respond.ServerError(ctx, err)
@@ -203,6 +203,9 @@ func (c *Controller) ListAgents(ctx contractshttp.Context) contractshttp.Respons
 	if err != nil {
 		return fail(ctx, err)
 	}
+	// A terminated Agent's Manager may be terminated too, so look among
+	// the listed ones as well.
+	all = append(all, as...)
 	out, err := c.agentsJSON(ctx.Context(), c.actor(ctx), as, all)
 	if err != nil {
 		return fail(ctx, err)

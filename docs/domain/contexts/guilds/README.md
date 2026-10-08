@@ -222,10 +222,15 @@ other changes with `write`, `administrator` only with `root`.
     of its Roles; the caller has already checked that the actor may manage
     the Agent, so `manage_roles` is not asked), `guilds.LeaveAgent` (end
     it), `guilds.AgentRoles` and `guilds.AgentPermissions` (the union of
-    its Roles, as for any Membership), `guilds.RoleNames` (Role names for
+    its Roles, as for any Membership), `guilds.AgentCanIn` (whether the
+    Agent may use a Permission in one of the Guild's Projects, its Roles'
+    Permission overrides there counted as InProject counts a person's;
+    nothing calls it until the API has an Agent principal, which comes with
+    the desktop app), `guilds.RoleNames` (Role names for
     a payload) and `guilds.RankAbove` (whether one person ranks above
     another). Giving a Role at or above the Hirer's highest is refused
-    (`guilds.ErrAboveHirer`, 422). The Roles an Agent loses because its
+    (`guilds.ErrAboveHirer`, 422), and so is a Role with a Permission the
+    Hirer (at the hire) or the asking person (later) does not hold. The Roles an Agent loses because its
     Hirer dropped are taken silently, with no Activity event. agents
     registers `guilds.OnMemberLeaving`, called once a Member is removed
     from a Guild (there is no other way to leave one yet, and no account

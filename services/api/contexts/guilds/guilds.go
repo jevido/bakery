@@ -3,9 +3,10 @@
 // middlewares, Current, Allows, Permissions and VisibleProjects, a
 // Project's Permission override routes and ForgetProject, IsGuildMaster,
 // IssuePrefix and IsMember, Agent memberships (JoinAgent, AssignAgentRole,
-// RemoveAgentRole, LeaveAgent, AgentRoles, AgentPermissions, RoleNames,
-// RankAbove, OnMemberLeaving), the routes, the InvitationCreated event, the
-// OnGuildDeleting check, and Boot. Nothing else in contexts/guilds is for outside use.
+// RemoveAgentRole, LeaveAgent, AgentRoles, AgentPermissions, AgentCanIn,
+// RoleNames, RankAbove, OnMemberLeaving), the routes, the InvitationCreated
+// event, the OnGuildDeleting check, and Boot. Nothing else in
+// contexts/guilds is for outside use.
 package guilds
 
 import (
@@ -227,6 +228,10 @@ func AgentRoleRefused(err error) bool {
 		errors.Is(err, app.ErrRoleNotFound) || errors.As(err, new(domain.ErrMissing))
 }
 
+// ErrNotAMember refuses a hire by someone without a Membership in the
+// Guild: the Instance admin acting in a Guild they are not in.
+var ErrNotAMember = app.ErrMembershipNotFound
+
 // ErrAgentNotFound is the answer for an Agent without an Agent membership
 // in the Guild.
 var ErrAgentNotFound = app.ErrAgentNotFound
@@ -294,6 +299,14 @@ func AgentRoles(ctx context.Context, guildID, agentID uint64) ([]Role, error) {
 func AgentPermissions(ctx context.Context, guildID, agentID uint64) ([]string, error) {
 	p, err := service.AgentPermissions(ctx, guildID, agentID)
 	return p.Expand().Keys(), err
+}
+
+// AgentCanIn reports whether the Agent may do permission (a wire key) in
+// one of the Guild's Projects, its Roles' Permission overrides there
+// counted, as InProject counts them for a person.
+func AgentCanIn(ctx context.Context, guildID, agentID, projectID uint64, permission string) (bool, error) {
+	p, err := service.AgentInProject(ctx, guildID, agentID, projectID)
+	return p.Expand().Has(mustPermission(permission)), err
 }
 
 // RoleNames are the names of the Guild's Roles among ids, top first, for an

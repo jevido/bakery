@@ -50,8 +50,9 @@ func (s *Service) JoinAgent(ctx context.Context, guildID, hirerID, agentID uint6
 }
 
 // AssignAgentRole gives an Agent of the Guild a Role below the actor's
-// highest and below its Hirer's. The agents context has already checked
-// that the actor may manage this Agent, so manage_roles is not needed.
+// highest and below its Hirer's, with Permissions the actor holds. The
+// agents context has already checked that the actor may manage this
+// Agent, so manage_roles is not needed.
 func (s *Service) AssignAgentRole(ctx context.Context, guildID, actorID uint64, perms domain.Permissions, agentID, roleID uint64) (domain.Membership, error) {
 	return s.reRoleAgent(ctx, guildID, actorID, perms, agentID, roleID, func(h Hierarchy, a domain.Actor, agent domain.Membership, r domain.Role) ([]uint64, error) {
 		hirer, err := s.hirerRank(ctx, h, agent)
@@ -59,6 +60,11 @@ func (s *Service) AssignAgentRole(ctx context.Context, guildID, actorID uint64, 
 			return nil, err
 		}
 		if err := domain.CanAssignToAgent(a.Rank, int(hirer), r); err != nil {
+			return nil, err
+		}
+		// As at the hire: the actor may lack manage_roles, so a Role
+		// below them must not hand the Agent a Permission they lack.
+		if err := domain.CanGrant(a.Permissions, 0, r.Permissions); err != nil {
 			return nil, err
 		}
 		if slices.Contains(agent.RoleIDs, r.ID) {
@@ -131,6 +137,31 @@ func (s *Service) AgentPermissions(ctx context.Context, guildID, agentID uint64)
 		return 0, err
 	}
 	return domain.PermissionsOf(roles, m), nil
+}
+
+// AgentInProject is what the Agent may do in one of the Guild's Projects:
+// its Permissions with the Project's Overrides of the Roles it holds
+// applied. A person's own override never names an Agent.
+func (s *Service) AgentInProject(ctx context.Context, guildID, agentID, projectID uint64) (domain.Permissions, error) {
+	m, ok, err := s.memberships.OfAgent(ctx, guildID, agentID)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, ErrAgentNotFound
+	}
+	roles, err := s.roles.ForGuild(ctx, guildID)
+	if err != nil {
+		return 0, err
+	}
+	p := Place{Guild: domain.Guild{ID: guildID}, Permissions: domain.PermissionsOf(roles, m)}
+	for _, r := range roles {
+		if r.Base {
+			p.BaseRoleID = r.ID
+			p.Held = append([]uint64{r.ID}, m.RoleIDs...)
+		}
+	}
+	return s.InProject(ctx, p, projectID)
 }
 
 // AgentRoles lists the Roles the Agent holds in the Guild besides the Base

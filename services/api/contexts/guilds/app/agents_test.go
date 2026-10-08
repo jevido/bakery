@@ -169,3 +169,66 @@ func TestATransferLowersTheOldGuildMastersAgents(t *testing.T) {
 		t.Error("Ann ranks above the new Guild Master")
 	}
 }
+
+// TestADeployerAgent is the goal's: Al (Admin) hires an Agent with only
+// "Deployer" (deploy), below Admin. It holds the Base role's Permissions
+// and deploy, never Admin, and a Project override denying Deployer deploy
+// takes deploy from it on that Project only.
+func TestADeployerAgent(t *testing.T) {
+	ctx := context.Background()
+	s, m, _ := twoGuilds(t)
+	m.add(2, 6, "admin") // Al
+	al, _, err := s.PermissionsIn(ctx, 2, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deployer, err := s.CreateRole(ctx, 2, 6, al, "Deployer", "", domain.Of(domain.PermissionDeploy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := m.seeded(2, "admin")
+	if _, err := s.JoinAgent(ctx, 2, 6, 60, al, []uint64{deployer.ID}); err != nil {
+		t.Fatal(err)
+	}
+
+	roles, _ := s.RolesIn(ctx, 2)
+	want := roles[0].Permissions.Union(domain.Of(domain.PermissionDeploy))
+	if p, err := s.AgentPermissions(ctx, 2, 60); err != nil || p != want {
+		t.Errorf("the Agent's Permissions: %v, want %v (%v)", p.Keys(), want.Keys(), err)
+	}
+	if _, err := s.AssignAgentRole(ctx, 2, 6, al, 60, admin); err == nil {
+		t.Error("the Agent was given Admin, its Hirer's highest")
+	}
+
+	// Mo (Member) manages their own Agent without manage_roles: a Role
+	// below them with a Permission they lack is refused, as at the hire.
+	m.add(2, 7, "member")
+	mo, _, _ := s.PermissionsIn(ctx, 2, 7)
+	root, err := s.CreateRole(ctx, 2, 6, al, "Root", "", domain.Of(domain.PermissionAdministrator))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.JoinAgent(ctx, 2, 7, 62, mo, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AssignAgentRole(ctx, 2, 7, mo, 62, root.ID); !errors.Is(err, domain.ErrNotHeld) {
+		t.Errorf("Mo gives their Agent administrator: %v", err)
+	}
+
+	if _, err := s.SetOverride(ctx, 2, 6, al, 10, deployer.ID, 0, 0, domain.Of(domain.PermissionDeploy)); err != nil {
+		t.Fatal(err)
+	}
+	in := func(project uint64) bool {
+		p, err := s.AgentInProject(ctx, 2, 60, project)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p.Has(domain.PermissionDeploy)
+	}
+	if in(10) || !in(11) {
+		t.Errorf("the Agent deploys in 10: %v, in 11: %v", in(10), in(11))
+	}
+	if _, err := s.AgentInProject(ctx, 2, 61, 10); !errors.Is(err, ErrAgentNotFound) {
+		t.Errorf("an Agent without a membership: %v", err)
+	}
+}
