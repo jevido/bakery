@@ -19,6 +19,8 @@
 //	         (GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, BAKERY_WORKTREE,
 //	         BAKERY_BRANCH, BAKERY_BASE_BRANCH) in one text line, then a
 //	         short successful Run
+//	[prompt] says the whole prompt it was given in one text line, then a
+//	         short successful Run (so a check can read what the Run saw)
 //	[skills] says the skills it found: the directory names under
 //	         .claude/skills of every --add-dir, one text line
 //	         ("skills: bakery, release-notes"), then a short successful Run
@@ -368,6 +370,11 @@ func (s *session) answer(prompt string, stderr io.Writer) int {
 		s.assistant(text(msg))
 		s.result("success", true, msg)
 		return 1
+	case strings.Contains(prompt, "[prompt]"):
+		s.init()
+		s.assistant(text(prompt))
+		s.result("success", false, "Read the prompt.")
+		return 0
 	case strings.Contains(prompt, "[env]"):
 		s.init()
 		cwd, _ := os.Getwd()

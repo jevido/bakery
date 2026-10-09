@@ -1,6 +1,6 @@
-// The owner's Desktop for the e2e files that need one (agents.ts, costs.ts,
-// work.ts): `login` of apps/desktop connected to the dev Bakery, its approve
-// link approved through the API with the signed-in page.
+// The owner's Desktop for the e2e files that need one (agents.ts, chat.ts,
+// costs.ts, work.ts): `login` of apps/desktop connected to the dev Bakery,
+// its approve link approved through the API with the signed-in page.
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

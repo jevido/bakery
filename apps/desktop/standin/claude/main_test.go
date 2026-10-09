@@ -308,3 +308,14 @@ func TestSkillsSaysWhatItFound(t *testing.T) {
 		t.Fatalf("output %s", out.String())
 	}
 }
+
+func TestPromptSaysThePrompt(t *testing.T) {
+	withoutAPIKey(t)
+	var out, errOut bytes.Buffer
+	if code := run(append(append([]string{}, baseArgs...), "Chat with Bob\n\nOwner wrote:\nhello [prompt]"), nil, &out, &errOut); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), `Owner wrote:\nhello [prompt]`) || !strings.Contains(out.String(), `"result":"Read the prompt."`) {
+		t.Fatalf("output %s", out.String())
+	}
+}

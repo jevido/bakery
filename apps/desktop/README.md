@@ -146,7 +146,8 @@ each shown as a `Bash` tool call and run in prompt order with the
 `[mcp …]` calls (a failing one fails the Run), and `[env]` (says its
 working directory and its git and Worktree variables), and `[skills]`
 (says the skill directories it found under `.claude/skills` of every
-`--add-dir`, as `skills: bakery, release-notes`).
+`--add-dir`, as `skills: bakery, release-notes`), and `[prompt]` (says the
+whole prompt it was given, so a check reads what a Run saw).
 `BAKERY_STANDIN_DELAY` sets its pause between lines (300 ms by default).
 `[limit]` prints the CLI's `rate_limit_event` with `status: "rejected"`
 and a `resetsAt` `BAKERY_STANDIN_LIMIT_RESET` ahead (a Go duration, 30 s

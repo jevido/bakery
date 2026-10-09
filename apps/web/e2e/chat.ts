@@ -10,6 +10,7 @@
 // The same environment as e2e/walk.ts overrides what it uses.
 import { readFileSync } from 'node:fs'
 import { chromium, type Page } from 'playwright-core'
+import { desktopRunner } from './runner.ts'
 
 const WEB = (process.env.BAKERY_WEB ?? 'http://127.0.0.1:4930').replace(/\/$/, '')
 const CHROMIUM = process.env.CHROMIUM ?? '/usr/bin/chromium'
@@ -81,6 +82,34 @@ async function terminate(page: Page, agent: Agent) {
   if (!r.ok()) throw new Error(`terminate ${agent.name}: ${r.status()} ${await r.text()}`)
 }
 
+type Run = { id: number; status: string }
+
+/** The Agent's Runs, newest first. */
+async function runsOf(page: Page, agent: Agent): Promise<Run[]> {
+  const { runs } = (await (await page.request.get(`${WEB}/api/runs?agent=${agent.id}`)).json()) as { runs: Run[] }
+  return runs.sort((a, b) => b.id - a.id)
+}
+
+/**
+ * Sends text with Enter and waits for the Agent's reply that holds answer,
+ * answering the Run that wrote it (the Live run's, read while it shows).
+ */
+async function converse(page: Page, agent: Agent, text: string, answer: string): Promise<number> {
+  const box = page.getByRole('textbox', { name: `Message ${agent.name}` })
+  await box.fill(text)
+  await box.press('Enter')
+  const live = page.getByTestId('live-run')
+  await live.waitFor({ timeout: 15_000 })
+  const run = Number(await live.getAttribute('data-run'))
+  await page.locator('[data-testid="chat-message"][data-from="agent"]').filter({ hasText: answer }).last().waitFor({ timeout: 90_000 })
+  return run
+}
+
+/** What the claude stand-in said the Run's prompt was ([prompt]). */
+async function promptOf(page: Page, run: number): Promise<string> {
+  return await (await page.request.get(`${WEB}/api/runs/${run}/events`)).text()
+}
+
 const sections: Record<string, () => Promise<void>> = {
   async start() {
     const page = await signedIn()
@@ -115,6 +144,73 @@ const sections: Record<string, () => Promise<void>> = {
       const after = (await (await page.request.get(`${WEB}/api/chats/${agent.id}`)).json()) as { issue: { conversation: { state: string } } | null }
       expect('the first message opened the Conversation, Active', after.issue?.conversation.state === 'active', after)
     } finally {
+      await terminate(page, agent)
+      await page.context().close()
+    }
+  },
+
+  async reply() {
+    const page = await signedIn()
+    const agent = await hired(page, `Replier ${Date.now()}`)
+    let desktop: Awaited<ReturnType<typeof desktopRunner>> | undefined
+    try {
+      await page.goto(`${WEB}/#/chats/${agent.id}`)
+      await page.getByTestId('chat-empty').waitFor()
+      const box = page.getByRole('textbox', { name: `Message ${agent.name}` })
+      await box.fill('What changed?')
+      await box.press('Enter')
+      await page.getByTestId('run-waiting').waitFor({ timeout: 15_000 })
+      expect('the Live run is queued until a Desktop claims it', true)
+
+      desktop = await desktopRunner(page)
+      await page.getByTestId('run-waiting').waitFor({ state: 'detached', timeout: 90_000 })
+      expect('the Desktop claims it', true)
+      await page.getByTestId('live-run').waitFor({ state: 'detached', timeout: 90_000 })
+      expect('the Live run goes when it ends', true)
+      const reply = page.locator('[data-testid="chat-message"][data-from="agent"]').filter({ hasText: 'Done with' })
+      await reply.waitFor()
+      expect('the reply is left-aligned', (await reply.getAttribute('class'))?.includes('justify-start') ?? false)
+      expect("the reply carries the Agent's name", (await reply.innerText()).includes(agent.name), await reply.innerText())
+      const [first] = await runsOf(page, agent)
+      expect('the Run succeeded', first?.status === 'succeeded', first)
+      const state = async () => ((await (await page.request.get(`${WEB}/api/chats/${agent.id}`)).json()) as { issue: { conversation: { state: string } } }).issue.conversation.state
+      expect('the Conversation is Waiting', (await state()) === 'waiting', await state())
+
+      const second = await converse(page, agent, 'And since then? [prompt]', 'Read the prompt.')
+      expect('a second message gets a second reply', (await page.locator('[data-testid="chat-message"][data-from="agent"]').count()) === 2)
+      expect('a second Run answered it', second !== first.id, second)
+      expect("the second Run's prompt holds the first message", (await promptOf(page, second)).includes('What changed?'))
+    } finally {
+      await desktop?.stop()
+      await terminate(page, agent)
+      await page.context().close()
+    }
+  },
+
+  async ['new-session']() {
+    const page = await signedIn()
+    const agent = await hired(page, `Sessions ${Date.now()}`)
+    const desktop = await desktopRunner(page)
+    try {
+      await page.goto(`${WEB}/#/chats/${agent.id}`)
+      await page.getByTestId('chat-empty').waitFor()
+      await converse(page, agent, 'Before the break', 'Done with')
+      const runs = (await runsOf(page, agent)).length
+
+      const box = page.getByRole('textbox', { name: `Message ${agent.name}` })
+      await box.fill('/new')
+      await box.press('Enter')
+      await page.getByTestId('chat-new-session').waitFor()
+      expect('/new shows the New session divider', true)
+      await page.waitForTimeout(1_500)
+      expect('/new queues no Run', (await runsOf(page, agent)).length === runs, await runsOf(page, agent))
+
+      const run = await converse(page, agent, 'After the break [prompt]', 'Read the prompt.')
+      const prompt = await promptOf(page, run)
+      expect('the next Run sees the new message', prompt.includes('After the break'))
+      expect('it does not see what came before the divider', !prompt.includes('Before the break'))
+    } finally {
+      await desktop.stop()
       await terminate(page, agent)
       await page.context().close()
     }

@@ -99,7 +99,7 @@ the Inbox, Approvals, Runs and Agents (the file's header lists them all);
 `pull-request` starts the Forgejo stand-in and follows an Agent's Run from
 the Issue's Application to its Pull request and Preview on the Issue page.
 Each runs once in the dark theme at 1440×900. The sections that need a
-Desktop (here, in `e2e/agents.ts` and in `e2e/costs.ts`) get it from
+Desktop (here, in `e2e/agents.ts`, `e2e/chat.ts` and `e2e/costs.ts`) get it from
 `e2e/runner.ts`: the desktop app's `login`, approved through the API, and
 its headless `runner` with the `claude` stand-in.
 
@@ -123,6 +123,15 @@ pages, one section per flow (`bun e2e/skills.ts viewer` runs one):
 `templates/notes.md`, deleting the Skill) and `viewer` (a Member without
 `manage_skills` reads but gets no New skill, Edit or Delete). Each runs
 once in the dark theme at 1440×900.
+
+`e2e/chat.ts` (`task web:chat`, needs `task dev`) checks Chat, one section
+per flow (`bun e2e/chat.ts reply` runs one): `start` (#/chats, picking an
+Agent, the first message opening the Conversation), `reply` (the queued
+Live run claimed by the owner's Desktop from `e2e/runner.ts`, the
+stand-in's reply on the left, a second Run's prompt holding the first
+message), `new-session` (`/new`'s divider, which queues nothing and cuts
+the history) and `sidebar` (Chats in the sidebar, starring, the picker, the
+Agent page's Chat button). Each runs once in the dark theme at 1440×900.
 
 `e2e/servers.ts` (`task web:servers`, needs `task dev`) checks the Servers
 pages and S3 Storage, one section per flow (`bun e2e/servers.ts remote`
