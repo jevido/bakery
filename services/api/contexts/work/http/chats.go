@@ -7,9 +7,12 @@ import (
 )
 
 // conversationJSON is what makes an Issue a Conversation, on the wire.
+// The Board chat has no member and its agent is the Guild's CEO, null
+// when it has none.
 type conversationJSON struct {
-	Agent             Agent   `json:"agent"`
-	MemberID          uint64  `json:"member_id"`
+	Board             bool    `json:"board"`
+	Agent             *Agent  `json:"agent"`
+	MemberID          *uint64 `json:"member_id"`
 	State             string  `json:"state"`
 	BoundaryCommentID *uint64 `json:"boundary_comment_id"`
 }

@@ -20,6 +20,9 @@ const (
 	// IssueConversationOpenedAction is a Member's Conversation with an
 	// Agent, opened.
 	IssueConversationOpenedAction = "issue.conversation_opened"
+	// IssueBoardChatOpenedAction is the Guild's Board chat, opened the
+	// first time.
+	IssueBoardChatOpenedAction = "issue.board_chat_opened"
 	// IssueApplicationChangedAction is not Paperclip's: its Issues name
 	// no Application.
 	IssueApplicationChangedAction = "issue.application_changed"
@@ -331,6 +334,16 @@ type ConversationOpened struct {
 
 func (e ConversationOpened) Activity() ActivityEvent {
 	return e.issue(e.Issue, IssueConversationOpenedAction, map[string]any{"agent_id": e.Issue.Conversation.AgentID, "agent_name": e.AgentName})
+}
+
+// BoardChatOpened is the Guild's Board chat, created.
+type BoardChatOpened struct {
+	Happened
+	Issue Issue
+}
+
+func (e BoardChatOpened) Activity() ActivityEvent {
+	return e.issue(e.Issue, IssueBoardChatOpenedAction, map[string]any{})
 }
 
 // IssueApplicationChanged is the Issue's Application named, changed or

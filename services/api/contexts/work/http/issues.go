@@ -147,6 +147,18 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 	if err != nil {
 		return nil, err
 	}
+	// The Board chat's Agent is the Guild's CEO when it is read.
+	var ceo *app.CEO
+	for _, i := range is {
+		if i.IsBoardChat() {
+			if found, ok, err := c.service.CEOOf(cx, guildID); err != nil {
+				return nil, err
+			} else if ok {
+				ceo = &found
+			}
+			break
+		}
+	}
 	projects, err := c.service.ProjectNames(cx, guildID, projectIDs)
 	if err != nil {
 		return nil, err
@@ -218,9 +230,15 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 			out[n].Parent = &p
 		}
 		if cv := i.Conversation; cv != nil {
-			a := agents[cv.AgentID]
-			out[n].Conversation = &conversationJSON{
-				Agent: Agent{ID: cv.AgentID, Name: a.Name, Icon: a.Icon}, MemberID: cv.MemberID, State: string(cv.State),
+			out[n].Conversation = &conversationJSON{Board: cv.Board, State: string(cv.State)}
+			if cv.Board {
+				if ceo != nil {
+					out[n].Conversation.Agent = &Agent{ID: ceo.ID, Name: ceo.Name, Icon: ceo.Icon}
+				}
+			} else {
+				a := agents[cv.AgentID]
+				out[n].Conversation.Agent = &Agent{ID: cv.AgentID, Name: a.Name, Icon: a.Icon}
+				out[n].Conversation.MemberID = &cv.MemberID
 			}
 			if cv.BoundaryCommentID != 0 {
 				out[n].Conversation.BoundaryCommentID = &cv.BoundaryCommentID

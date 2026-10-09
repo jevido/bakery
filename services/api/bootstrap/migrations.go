@@ -125,5 +125,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000110CreateRoutineRevisionsTable{},
 		&migrations.M20260930000111CreateSkillsTables{},
 		&migrations.M20260930000112AddIssueConversations{},
+		&migrations.M20260930000113AddIssueBoardChat{},
 	}
 }

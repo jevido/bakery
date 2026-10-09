@@ -126,7 +126,18 @@ export type Issue = {
  * message waits for an answer, waiting once the Agent replied) and the
  * Comment that is its Session boundary, the newest /new.
  */
-export type Conversation = { agent: WorkAgent; member_id: number; state: 'active' | 'waiting'; boundary_comment_id: number | null }
+/**
+ * What makes an Issue a Conversation: a Member's chat with one Agent, or
+ * (board true) the Guild's Board chat, which has no member and whose agent
+ * is the Guild's CEO, null while it has none.
+ */
+export type Conversation = {
+  board: boolean
+  agent: WorkAgent | null
+  member_id: number | null
+  state: 'active' | 'waiting'
+  boundary_comment_id: number | null
+}
 
 /**
  * Something an Issue produced outside The Bakery's own records: its Pull
@@ -327,6 +338,7 @@ const activityVerbs: Record<string, string> = {
   'issue.checked_out': 'checked out',
   'issue.released': 'released',
   'issue.conversation_opened': 'opened',
+  'issue.board_chat_opened': 'opened',
   'issue.application_changed': 'changed the application of',
   'issue.pull_request_opened': 'opened a pull request for',
   'issue.pull_request_merged': 'merged the pull request of',

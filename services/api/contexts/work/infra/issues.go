@@ -38,7 +38,10 @@ type issueRecord struct {
 	CancelledAt        *time.Time
 	OriginRoutineID    *uint64
 	OriginRoutineRunID *uint64
-	// The Conversation columns are all null, or the first three all set.
+	// The Conversation columns are all null and board false (an ordinary
+	// Issue), or agent, member and state set (a Member's Conversation), or
+	// board true with only state set (the Board chat).
+	ConversationBoard             bool
 	ConversationAgentID           *uint64
 	ConversationMemberID          *uint64
 	ConversationState             *string
@@ -66,9 +69,9 @@ func (r issueRecord) toDomain() domain.Issue {
 		StartedAt: utc(r.StartedAt), CompletedAt: utc(r.CompletedAt), CancelledAt: utc(r.CancelledAt),
 		OriginRoutineID: deref(r.OriginRoutineID), OriginRoutineRunID: deref(r.OriginRoutineRunID),
 	}
-	if r.ConversationAgentID != nil && r.ConversationMemberID != nil && r.ConversationState != nil {
+	if r.ConversationState != nil && (r.ConversationBoard || r.ConversationAgentID != nil && r.ConversationMemberID != nil) {
 		i.Conversation = &domain.Conversation{
-			AgentID: *r.ConversationAgentID, MemberID: *r.ConversationMemberID,
+			Board: r.ConversationBoard, AgentID: deref(r.ConversationAgentID), MemberID: deref(r.ConversationMemberID),
 			State: domain.ConversationState(*r.ConversationState), BoundaryCommentID: deref(r.ConversationBoundaryCommentID),
 		}
 	}
@@ -104,7 +107,10 @@ func (Issues) CreateIssue(ctx context.Context, i domain.Issue) (domain.Issue, er
 	}
 	if c := i.Conversation; c != nil {
 		state := string(c.State)
-		rec.ConversationAgentID, rec.ConversationMemberID, rec.ConversationState = &c.AgentID, &c.MemberID, &state
+		rec.ConversationBoard, rec.ConversationState = c.Board, &state
+		if !c.Board {
+			rec.ConversationAgentID, rec.ConversationMemberID = &c.AgentID, &c.MemberID
+		}
 		rec.ConversationBoundaryCommentID = nullable(c.BoundaryCommentID)
 	}
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
@@ -162,6 +168,10 @@ func (s Issues) OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) 
 
 func (s Issues) ConversationOf(ctx context.Context, guildID, memberID, agentID uint64) (domain.Issue, bool, error) {
 	return s.first(s.query(ctx).Where("guild_id", guildID).Where("conversation_member_id", memberID).Where("conversation_agent_id", agentID))
+}
+
+func (s Issues) BoardChat(ctx context.Context, guildID uint64) (domain.Issue, bool, error) {
+	return s.first(s.query(ctx).Where("guild_id", guildID).Where("conversation_board"))
 }
 
 func (s Issues) Conversations(ctx context.Context, guildID, memberID uint64) ([]domain.Issue, error) {
@@ -306,7 +316,9 @@ var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
 // where narrows a query on issues to what f keeps.
 func where(q contractsorm.Query, guildID uint64, f app.IssueQuery) contractsorm.Query {
-	q = q.Where("guild_id", guildID)
+	// The Board chat is nobody's own chat: no list of Issues, search
+	// included, ever shows it.
+	q = q.Where("guild_id", guildID).Where("NOT conversation_board")
 	if !f.WithConversations {
 		q = q.Where("conversation_agent_id IS NULL")
 	}

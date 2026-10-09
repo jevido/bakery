@@ -68,9 +68,14 @@ type Service struct {
 	// on: assigned to it while open and out of the backlog, or moved out
 	// of the backlog while it is the Assignee. nil hears nothing.
 	Assigned func(ctx context.Context, i domain.Issue, actorID uint64) error
+	// GuildCEO names the Guild's CEO (agents, through work.OnGuildCEO);
+	// nil knows none, so nobody answers the Board chat.
+	GuildCEO func(ctx context.Context, guildID uint64) (CEO, bool, error)
 	// Commented hears a Comment, once stored, on an Issue an Agent is the
-	// Assignee of and that is not done or cancelled. nil hears nothing.
-	Commented func(ctx context.Context, i domain.Issue, c domain.Comment) error
+	// Assignee of and that is not done or cancelled, or a Member's in the
+	// Board chat, whose Agent is the Guild's CEO ceoID (0 for any other
+	// Issue). nil hears nothing.
+	Commented func(ctx context.Context, i domain.Issue, c domain.Comment, ceoID uint64) error
 	// RunsLive tells which of the Runs are running (agents, through
 	// work.OnRunLive); nil counts none as running, so every Checkout is
 	// Stale.

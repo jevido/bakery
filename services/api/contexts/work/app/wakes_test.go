@@ -106,7 +106,7 @@ func (memberGuild) IsMember(_ context.Context, _, memberID uint64) (bool, error)
 func (memberGuild) IssuePrefix(context.Context, uint64) (string, error) { return "BAK", nil }
 
 // woken is what the hooks heard: an Issue id and, for a Comment, its id.
-type woken struct{ issue, comment uint64 }
+type woken struct{ issue, comment, agent uint64 }
 
 func wakeService(t *testing.T) (*Service, *[]woken) {
 	t.Helper()
@@ -123,7 +123,7 @@ func wakeService(t *testing.T) (*Service, *[]woken) {
 		heard = append(heard, woken{issue: i.ID})
 		return nil
 	}
-	s.Commented = func(_ context.Context, i domain.Issue, c domain.Comment) error {
+	s.Commented = func(_ context.Context, i domain.Issue, c domain.Comment, _ uint64) error {
 		heard = append(heard, woken{issue: i.ID, comment: c.ID})
 		return nil
 	}
@@ -204,7 +204,7 @@ func TestIssueCommentedHook(t *testing.T) {
 		t.Fatalf("another agent's comment: %v %v", err, *heard)
 	}
 	*heard = (*heard)[:1]
-	s.Commented = func(context.Context, domain.Issue, domain.Comment) error { return errors.New("agents down") }
+	s.Commented = func(context.Context, domain.Issue, domain.Comment, uint64) error { return errors.New("agents down") }
 	if _, err := s.WriteComment(ctx, 1, domain.ByMember(7), "1", "Anyway.", all); err != nil {
 		t.Fatalf("hook error failed the comment: %v", err)
 	}

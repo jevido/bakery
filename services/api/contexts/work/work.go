@@ -5,7 +5,8 @@
 // RequestApproval, CancelApproval, OnApprovalDecided, RecordActivity,
 // OnAgentNames, OnAgentAssignees, UnassignAgent, IssueForRun,
 // OpenIssuesOfAgent, InboxOfAgent, CommentsForRun, ConversationHistory,
-// ReplyInConversation, OnIssueAssigned, OnIssueCommented, OnRunLive and OnIssuesWithLiveRuns.
+// ReplyInConversation, OnIssueAssigned, OnIssueCommented, OnGuildCEO,
+// OnRunLive and OnIssuesWithLiveRuns.
 // Nothing else in contexts/work is for outside use.
 package work
 
@@ -43,6 +44,7 @@ func svc() *app.Service {
 		service.Agents = assigneeAgents
 		service.Assigned = issueAssigned
 		service.Commented = issueCommented
+		service.GuildCEO = guildCEO
 		service.RunsLive = runsLive
 		service.IssuesLive = issuesLive
 		service.WorkProducts = infra.WorkProducts{}
@@ -218,6 +220,35 @@ func assigneeAgents(ctx context.Context, guildID uint64, ids []uint64) (map[uint
 	return out, nil
 }
 
+// GuildCEO is the Guild's CEO as the Board chat names it.
+type GuildCEO struct {
+	ID   uint64
+	Name string
+	Icon string
+}
+
+var onCEO func(ctx context.Context, guildID uint64) (GuildCEO, bool, error)
+
+// OnGuildCEO registers f to name the Guild's CEO, the Agent that answers
+// its Board chat. Until it is registered, no Guild has one, and the Board
+// chat wakes nobody.
+func OnGuildCEO(f func(ctx context.Context, guildID uint64) (GuildCEO, bool, error)) {
+	agentsMu.Lock()
+	defer agentsMu.Unlock()
+	onCEO = f
+}
+
+func guildCEO(ctx context.Context, guildID uint64) (app.CEO, bool, error) {
+	agentsMu.RLock()
+	f := onCEO
+	agentsMu.RUnlock()
+	if f == nil {
+		return app.CEO{}, false, nil
+	}
+	ceo, found, err := f(ctx, guildID)
+	return app.CEO(ceo), found, err
+}
+
 var (
 	liveMu sync.RWMutex
 	onLive func(ctx context.Context, runIDs []uint64) (map[uint64]bool, error)
@@ -293,9 +324,11 @@ type IssueBrief struct {
 	Conversation *ConversationBrief
 }
 
-// ConversationBrief is a Conversation as a Run needs it: its owner and
-// its Session boundary (0 for none).
+// ConversationBrief is a Conversation as a Run needs it: whether it is
+// the Board chat, its owner (0 for the Board chat) and its Session
+// boundary (0 for none).
 type ConversationBrief struct {
+	Board             bool
 	MemberID          uint64
 	BoundaryCommentID uint64
 }
@@ -313,7 +346,7 @@ func IssueForRun(ctx context.Context, guildID, issueID uint64) (IssueBrief, bool
 		AgentBranch: domain.AgentBranch(domain.Identifier(prefix, i.Number)),
 	}
 	if c := i.Conversation; c != nil {
-		b.Conversation = &ConversationBrief{MemberID: c.MemberID, BoundaryCommentID: c.BoundaryCommentID}
+		b.Conversation = &ConversationBrief{Board: c.Board, MemberID: c.MemberID, BoundaryCommentID: c.BoundaryCommentID}
 	}
 	return b, true, nil
 }
@@ -468,9 +501,12 @@ type IssueAssigned struct {
 
 // IssueCommented is a Comment, once stored, on an Issue an Agent is the
 // Assignee of and that is not done or cancelled, written by anyone but
-// that Agent. ActorID is its author when a Member wrote it, else 0.
-// Conversation tells that the Issue is a Conversation, and NewSession
-// that the Comment is its owner's New session, which wakes nobody.
+// that Agent, or a Member's in the Board chat while the Guild has a CEO.
+// AgentID is that Agent: the Guild's CEO for the Board chat. ActorID is
+// its author when a Member wrote it, else 0. Conversation tells that the
+// Issue is a Conversation, Board that it is the Board chat, and
+// NewSession that the Comment is its owner's (any Member's in the Board
+// chat) New session, which wakes nobody.
 type IssueCommented struct {
 	GuildID      uint64
 	IssueID      uint64
@@ -478,6 +514,7 @@ type IssueCommented struct {
 	CommentID    uint64
 	ActorID      uint64
 	Conversation bool
+	Board        bool
 	NewSession   bool
 }
 
@@ -513,7 +550,7 @@ func issueAssigned(ctx context.Context, i domain.Issue, actorID uint64) error {
 	return f(ctx, IssueAssigned{GuildID: i.GuildID, IssueID: i.ID, AgentID: i.AssigneeAgentID, ActorID: actorID})
 }
 
-func issueCommented(ctx context.Context, i domain.Issue, c domain.Comment) error {
+func issueCommented(ctx context.Context, i domain.Issue, c domain.Comment, ceoID uint64) error {
 	hooksMu.RLock()
 	f := onCommented
 	hooksMu.RUnlock()
@@ -522,8 +559,12 @@ func issueCommented(ctx context.Context, i domain.Issue, c domain.Comment) error
 	}
 	e := IssueCommented{GuildID: i.GuildID, IssueID: i.ID, AgentID: i.AssigneeAgentID, CommentID: c.ID, ActorID: c.Author.MemberID}
 	if conv := i.Conversation; conv != nil {
-		e.Conversation = true
-		e.NewSession = c.Author.MemberID == conv.MemberID && domain.IsNewSession(c.Body)
+		e.Conversation, e.Board = true, conv.Board
+		owner := c.Author.MemberID == conv.MemberID
+		if conv.Board {
+			e.AgentID, owner = ceoID, c.Author.MemberID != 0 && c.Author.AgentID == 0
+		}
+		e.NewSession = owner && domain.IsNewSession(c.Body)
 	}
 	return f(ctx, e)
 }
@@ -752,8 +793,10 @@ func Routes(r route.Router) {
 	r.Middleware(guilds.AuthAgents, view).Group(func(r route.Router) {
 		r.Get("/api/chats", c.ListChats)
 		r.Get("/api/chats/{agent_id}", c.ShowChat)
+		r.Get("/api/board-chat", c.ShowBoardChat)
 	})
 	r.Middleware(guilds.AuthAgents, manage).Post("/api/chats/{agent_id}", c.OpenChat)
+	r.Middleware(guilds.AuthAgents, manage).Post("/api/board-chat", c.OpenBoardChat)
 	r.Middleware(guilds.AuthAgents, manage).Group(func(r route.Router) {
 		r.Post("/api/issues", c.CreateIssue)
 		r.Patch("/api/issues/{id}", c.UpdateIssue)

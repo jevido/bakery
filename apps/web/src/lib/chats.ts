@@ -13,3 +13,9 @@ export const getChat = (agentId: number) => api<{ issue: IssueDetail | null }>('
 
 /** Opens the asking Member's Conversation with the Agent, or answers the one they have. */
 export const openChat = (agentId: number) => api<{ issue: IssueDetail }>('POST', `/chats/${agentId}`).then((r) => r.issue)
+
+/** The Guild's Board chat, or null while nobody opened it. */
+export const getBoardChat = () => api<{ issue: IssueDetail | null }>('GET', '/board-chat').then((r) => r.issue)
+
+/** Opens the Guild's Board chat, or answers the one it has. */
+export const openBoardChat = () => api<{ issue: IssueDetail }>('POST', '/board-chat').then((r) => r.issue)

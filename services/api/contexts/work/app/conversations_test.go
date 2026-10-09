@@ -20,6 +20,15 @@ func (m *memIssues) ConversationOf(_ context.Context, guildID, memberID, agentID
 	return domain.Issue{}, false, nil
 }
 
+func (m *memIssues) BoardChat(_ context.Context, guildID uint64) (domain.Issue, bool, error) {
+	for _, i := range m.byID {
+		if i.GuildID == guildID && i.IsBoardChat() {
+			return i, true, nil
+		}
+	}
+	return domain.Issue{}, false, nil
+}
+
 func (m *memIssues) Conversations(_ context.Context, guildID, memberID uint64) ([]domain.Issue, error) {
 	var out []domain.Issue
 	for _, i := range m.byID {
@@ -37,7 +46,7 @@ func (m *memIssues) FindIssues(_ context.Context, guildID uint64, q IssueQuery) 
 	for id := uint64(1); id <= uint64(len(m.byID)); id++ {
 		i, ok := m.byID[id]
 		switch {
-		case !ok, i.GuildID != guildID, i.Conversation != nil && !q.WithConversations,
+		case !ok, i.GuildID != guildID, i.Conversation != nil && !q.WithConversations, i.IsBoardChat(),
 			q.Search != "" && !strings.Contains(i.Title, q.Search),
 			q.AssigneeAgentID != nil && i.AssigneeAgentID != *q.AssigneeAgentID:
 			continue
@@ -96,11 +105,134 @@ func chatService(t *testing.T) (*Service, *memActivity, *[]woken) {
 		return out, nil
 	}
 	var heard []woken
-	s.Commented = func(_ context.Context, i domain.Issue, c domain.Comment) error {
-		heard = append(heard, woken{issue: i.ID, comment: c.ID})
+	s.Commented = func(_ context.Context, i domain.Issue, c domain.Comment, ceoID uint64) error {
+		heard = append(heard, woken{issue: i.ID, comment: c.ID, agent: ceoID})
 		return nil
 	}
 	return s, act, &heard
+}
+
+// withCEO makes Agent id (0 for none) the Guild's CEO.
+func withCEO(s *Service, id uint64) {
+	s.GuildCEO = func(context.Context, uint64) (CEO, bool, error) {
+		return CEO{ID: id, Name: "Ada"}, id != 0, nil
+	}
+}
+
+func TestOpenBoardChat(t *testing.T) {
+	ctx := context.Background()
+	s, act, _ := chatService(t)
+	if _, found, err := s.BoardChat(ctx, 1); err != nil || found {
+		t.Fatalf("before: %v %v", err, found)
+	}
+	b, err := s.OpenBoardChat(ctx, 1, domain.ByMember(7))
+	if err != nil || !b.IsBoardChat() || b.Title != "Board Operations" || b.Status != domain.InReview || b.AssigneeAgentID != 0 {
+		t.Fatalf("open: %v %+v", err, b)
+	}
+	again, err := s.OpenBoardChat(ctx, 1, domain.ByMember(8))
+	if err != nil || again.ID != b.ID {
+		t.Fatalf("another member: %v %d", err, again.ID)
+	}
+	if !slices.Equal(act.actions, []string{domain.IssueBoardChatOpenedAction}) {
+		t.Errorf("activity %v", act.actions)
+	}
+	if _, err := s.OpenBoardChat(ctx, 1, domain.Actor{AgentID: 3, RunID: 9}); !errors.Is(err, ErrPeopleOnly) {
+		t.Errorf("agent opened it: %v", err)
+	}
+	if found, ok, _ := s.BoardChat(ctx, 1); !ok || found.ID != b.ID {
+		t.Errorf("board chat %+v", found)
+	}
+	if other, _ := s.OpenBoardChat(ctx, 2, domain.ByMember(7)); other.ID == b.ID {
+		t.Error("another guild shares it")
+	}
+}
+
+func TestBoardChatMessages(t *testing.T) {
+	ctx := context.Background()
+	s, _, heard := chatService(t)
+	all := func([]uint64) ([]uint64, error) { return nil, nil }
+	b, _ := s.OpenBoardChat(ctx, 1, domain.ByMember(7))
+	ref := strconv.FormatUint(b.ID, 10)
+	state := func() domain.Conversation {
+		i, _ := s.Issue(ctx, 1, ref, all)
+		return *i.Conversation
+	}
+	// Without a CEO the Board still writes, and nobody is woken.
+	if _, err := s.WriteComment(ctx, 1, domain.ByMember(7), ref, "Anyone?", all); err != nil || state().State != domain.ConversationActive || len(*heard) != 0 {
+		t.Fatalf("no ceo: %v %+v %v", err, state(), *heard)
+	}
+	withCEO(s, 3)
+	for _, m := range []uint64{7, 8} {
+		if _, err := s.WriteComment(ctx, 1, domain.ByMember(m), ref, "Plan the quarter.", all); err != nil {
+			t.Fatalf("member %d: %v", m, err)
+		}
+	}
+	if len(*heard) != 2 || (*heard)[0].agent != 3 || (*heard)[1].agent != 3 {
+		t.Fatalf("heard %+v", *heard)
+	}
+	if _, err := s.WriteComment(ctx, 1, domain.Actor{AgentID: 4, RunID: 9}, ref, "Me too", all); !errors.Is(err, domain.ErrNotConversationOwner) {
+		t.Errorf("another agent wrote: %v", err)
+	}
+	if _, err := s.WriteComment(ctx, 1, domain.Actor{AgentID: 3, RunID: 9}, ref, "The plan.", all); err != nil || state().State != domain.ConversationWaiting || len(*heard) != 2 {
+		t.Fatalf("ceo's reply: %v %+v %v", err, state(), *heard)
+	}
+	fresh, err := s.WriteComment(ctx, 1, domain.ByMember(8), ref, "/new", all)
+	if err != nil || state().BoundaryCommentID != fresh.ID || state().State != domain.ConversationWaiting {
+		t.Fatalf("new session: %v %+v", err, state())
+	}
+	for name, p := range map[string]IssuePatch{
+		"agent":   {AssigneeAgentID: ptr(uint64(3))},
+		"member":  {AssigneeID: ptr(uint64(8))},
+		"project": {ProjectID: ptr(uint64(5))},
+		"parent":  {ParentID: ptr(uint64(99))},
+		"done":    {Status: ptr("done")},
+	} {
+		if _, err := s.ChangeIssue(ctx, 1, domain.ByMember(7), ref, p, all); err == nil {
+			t.Errorf("%s: changed", name)
+		}
+	}
+}
+
+func TestBoardChatIsNoWork(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := chatService(t)
+	all := func([]uint64) ([]uint64, error) { return nil, nil }
+	s.OpenBoardChat(ctx, 1, domain.ByMember(7))
+	for _, f := range []IssueFilter{{}, {Search: "Board"}} {
+		if is, _ := s.Issues(ctx, 1, f, all); len(is) != 0 {
+			t.Errorf("issues %+v: %+v", f, is)
+		}
+	}
+	if is, _ := s.Conversations(ctx, 1, 7); len(is) != 0 {
+		t.Errorf("chats %+v", is)
+	}
+	if n, _ := s.InboxCount(ctx, 1, 7, all); n != 0 {
+		t.Errorf("inbox count %d", n)
+	}
+}
+
+func TestReplyInBoardChat(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := chatService(t)
+	all := func([]uint64) ([]uint64, error) { return nil, nil }
+	b, _ := s.OpenBoardChat(ctx, 1, domain.ByMember(7))
+	ref := strconv.FormatUint(b.ID, 10)
+	count := func() int {
+		cs, _ := s.Comments(ctx, 1, ref, all)
+		return len(cs)
+	}
+	// No CEO, or not the CEO: nothing.
+	s.ReplyInConversation(ctx, 1, b.ID, 3, 9, "Hi.")
+	withCEO(s, 3)
+	s.ReplyInConversation(ctx, 1, b.ID, 4, 9, "Hi.")
+	if count() != 0 {
+		t.Fatalf("replied %d", count())
+	}
+	s.ReplyInConversation(ctx, 1, b.ID, 3, 9, "Hi.")
+	s.ReplyInConversation(ctx, 1, b.ID, 3, 9, "Hi again.")
+	if count() != 1 {
+		t.Errorf("replies %d", count())
+	}
 }
 
 func TestOpenConversation(t *testing.T) {

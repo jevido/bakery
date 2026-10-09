@@ -17,9 +17,12 @@ const (
 
 // Conversation is what makes an Issue a Conversation: one Member's (its
 // Conversation owner's) chat with one Agent of the Guild (its
-// Conversation agent). BoundaryCommentID is its Session boundary, 0 for
-// none: the Agent sees only the Comments after it.
+// Conversation agent), or, with Board set, the Guild's Board chat, which
+// has neither: every Member writes in it and the Guild's CEO answers.
+// BoundaryCommentID is its Session boundary, 0 for none: the Agent sees
+// only the Comments after it.
 type Conversation struct {
+	Board             bool
 	AgentID           uint64
 	MemberID          uint64
 	State             ConversationState
@@ -59,6 +62,25 @@ func NewConversation(guildID, agentID, memberID uint64, agentName string) (Issue
 	return i, nil
 }
 
+// BoardChatTitle is the Board chat's title, Paperclip's.
+const BoardChatTitle = "Board Operations"
+
+// NewBoardChat is the Guild's Board chat, opened by the Member: an Issue
+// titled "Board Operations", in review, with no Assignee, waiting for the
+// Board's first message. Its number is given when it is stored.
+func NewBoardChat(guildID, memberID uint64) (Issue, error) {
+	i, err := NewIssue(guildID, ByMember(memberID), BoardChatTitle, "")
+	if err != nil {
+		return Issue{}, err
+	}
+	i.Status = InReview
+	i.Conversation = &Conversation{Board: true, State: ConversationWaiting}
+	return i, nil
+}
+
+// IsBoardChat tells whether the Issue is the Guild's Board chat.
+func (i Issue) IsBoardChat() bool { return i.Conversation != nil && i.Conversation.Board }
+
 // IsNewSession tells whether a Comment's body starts a New session.
 func IsNewSession(body string) bool { return strings.TrimSpace(body) == NewSessionCommand }
 
@@ -73,18 +95,25 @@ type ConversationMove struct {
 // Converse is what a Comment by the actor with the body does to the
 // Conversation: its owner's message makes it active, its owner's "/new"
 // starts a New session and leaves the state, and its Agent's message
-// makes it waiting. Anyone else is ErrNotConversationOwner.
-func (i Issue) Converse(by Actor, body string) (ConversationMove, error) {
+// makes it waiting. In the Board chat every Member is an owner and the
+// Guild's CEO, ceoID (0 for none), its Agent; ceoID is ignored for any
+// other Conversation. Anyone else is ErrNotConversationOwner.
+func (i Issue) Converse(by Actor, body string, ceoID uint64) (ConversationMove, error) {
 	c := i.Conversation
-	switch {
-	case c == nil:
+	if c == nil {
 		return ConversationMove{}, errors.New("issue is not a conversation")
-	case by.AgentID == 0 && by.MemberID != 0 && by.MemberID == c.MemberID:
+	}
+	owner, agent := by.MemberID == c.MemberID, c.AgentID
+	if c.Board {
+		owner, agent = true, ceoID
+	}
+	switch {
+	case by.AgentID == 0 && by.MemberID != 0 && owner:
 		if IsNewSession(body) {
 			return ConversationMove{State: c.State, NewSession: true}, nil
 		}
 		return ConversationMove{State: ConversationActive}, nil
-	case by.AgentID != 0 && by.AgentID == c.AgentID:
+	case by.AgentID != 0 && by.AgentID == agent:
 		return ConversationMove{State: ConversationWaiting}, nil
 	}
 	return ConversationMove{}, ErrNotConversationOwner

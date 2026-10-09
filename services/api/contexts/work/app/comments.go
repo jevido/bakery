@@ -33,8 +33,10 @@ func (s *Service) Comments(ctx context.Context, guildID uint64, ref string, visi
 
 // WriteComment adds the Member's or Agent's Comment to the Issue. A Comment
 // by the Issue's own Agent assignee does not wake it again. In a
-// Conversation only its owner and its Agent write, and the Comment moves
-// its Conversation state or Session boundary with it.
+// Conversation only its owner and its Agent write, in the Board chat
+// every Member and the Guild's CEO, and the Comment moves its
+// Conversation state or Session boundary with it. A Member's Comment in
+// the Board chat wakes the Guild's CEO.
 func (s *Service) WriteComment(ctx context.Context, guildID uint64, by domain.Actor, ref, body string, visible Visible) (domain.Comment, error) {
 	i, err := s.Issue(ctx, guildID, ref, visible)
 	if err != nil {
@@ -47,8 +49,18 @@ func (s *Service) WriteComment(ctx context.Context, guildID uint64, by domain.Ac
 	if err != nil {
 		return domain.Comment{}, err
 	}
+	var ceoID uint64
+	if i.IsBoardChat() {
+		ceo, found, err := s.CEOOf(ctx, guildID)
+		if err != nil {
+			return domain.Comment{}, err
+		}
+		if found {
+			ceoID = ceo.ID
+		}
+	}
 	if i.Conversation != nil {
-		move, err := i.Converse(by, body)
+		move, err := i.Converse(by, body, ceoID)
 		if err != nil {
 			return domain.Comment{}, err
 		}
@@ -60,8 +72,12 @@ func (s *Service) WriteComment(ctx context.Context, guildID uint64, by domain.Ac
 		return domain.Comment{}, err
 	}
 	s.publish(ctx, domain.CommentWritten{Happened: s.happened(by), Issue: i, Comment: c})
-	if s.Commented != nil && i.AssigneeAgentID != 0 && by.AgentID != i.AssigneeAgentID && i.Status != domain.Done && i.Status != domain.IssueCancelled {
-		if err := s.Commented(ctx, i, c); err != nil {
+	wakes := i.AssigneeAgentID != 0 && by.AgentID != i.AssigneeAgentID && i.Status != domain.Done && i.Status != domain.IssueCancelled
+	if i.IsBoardChat() {
+		wakes = ceoID != 0 && by.AgentID != ceoID
+	}
+	if s.Commented != nil && wakes {
+		if err := s.Commented(ctx, i, c, ceoID); err != nil {
 			s.Logf("work: after comment %d on issue %d: %v", c.ID, i.ID, err)
 		}
 	}

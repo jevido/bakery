@@ -107,7 +107,8 @@
   function load() {
     getIssue(key)
       .then((i) => {
-        if (i.conversation && i.conversation.member_id === session.member?.id) return replace(`/chats/${i.conversation.agent.id}`)
+        if (i.conversation?.board && session.member) return replace('/board-chat')
+        if (i.conversation?.agent && i.conversation.member_id === session.member?.id) return replace(`/chats/${i.conversation.agent.id}`)
         issue = i
         if (marked) return
         marked = true
@@ -285,11 +286,12 @@
 {:else if issue === null}
   <PageSkeleton />
 {:else if issue.conversation}
+  {@const agent = issue.conversation.agent ?? { id: 0, name: 'the CEO', icon: '' }}
   <div class="mx-auto flex max-w-3xl flex-col gap-6">
     <p class="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground" data-testid="conversation-notice">
-      This is {owner}'s chat with {issue.conversation.agent.name}.
+      {#if issue.conversation.board}This is the Board's chat with {agent.name}.{:else}This is {owner}'s chat with {agent.name}.{/if}
     </p>
-    <ChatThread comments={chat} agent={issue.conversation.agent} boundary={issue.conversation.boundary_comment_id} />
+    <ChatThread comments={chat} {agent} boundary={issue.conversation.boundary_comment_id} />
   </div>
 {:else}
   {@const i = issue}

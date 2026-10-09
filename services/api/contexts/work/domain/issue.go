@@ -194,6 +194,7 @@ func (i *Issue) Assign(memberID uint64) error {
 // Conversation's Agent assignee is its Conversation agent, always.
 func (i *Issue) AssignAgent(agentID uint64) error {
 	if i.Conversation != nil && agentID != i.Conversation.AgentID {
+		// The Board chat's Conversation agent is 0: it has no Assignee.
 		return fixedForConversation("assignee_agent_id")
 	}
 	i.assignAgent(agentID)
@@ -251,6 +252,9 @@ func (i Issue) HeldByOther(runID uint64, live func(runID uint64) bool) bool {
 // held by a live Run is a HeldError.
 func (i *Issue) Checkout(agentID, runID uint64, expected []IssueStatus, live func(runID uint64) bool, now time.Time) (changed bool, err error) {
 	switch {
+	case i.IsBoardChat():
+		// Nobody is assigned the Board chat, so nobody takes it.
+		return false, ErrNotAssignee
 	case i.AssigneeAgentID == agentID:
 	case i.AssigneeAgentID == 0 && i.AssigneeID == 0:
 	default:

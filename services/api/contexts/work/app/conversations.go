@@ -48,6 +48,37 @@ func (s *Service) OpenConversation(ctx context.Context, guildID uint64, by domai
 	return created, nil
 }
 
+// OpenBoardChat answers the Guild's Board chat, creating it under the
+// Guild's Issue counter the first time a Member opens it. Two requests at
+// once answer the same Board chat, as OpenConversation's do.
+func (s *Service) OpenBoardChat(ctx context.Context, guildID uint64, by domain.Actor) (domain.Issue, error) {
+	if by.AgentID != 0 || by.MemberID == 0 {
+		return domain.Issue{}, ErrPeopleOnly
+	}
+	if i, found, err := s.issues.BoardChat(ctx, guildID); err != nil || found {
+		return i, err
+	}
+	i, err := domain.NewBoardChat(guildID, by.MemberID)
+	if err != nil {
+		return domain.Issue{}, err
+	}
+	created, err := s.issues.CreateIssue(ctx, i)
+	if err != nil {
+		if again, found, ferr := s.issues.BoardChat(ctx, guildID); ferr == nil && found {
+			return again, nil
+		}
+		return domain.Issue{}, err
+	}
+	s.publish(ctx, domain.BoardChatOpened{Happened: s.happened(by), Issue: created})
+	return created, nil
+}
+
+// BoardChat finds the Guild's Board chat; found is false before anyone
+// opened it.
+func (s *Service) BoardChat(ctx context.Context, guildID uint64) (domain.Issue, bool, error) {
+	return s.issues.BoardChat(ctx, guildID)
+}
+
 // Conversations lists the Member's Conversations in the Guild, most
 // recently updated first.
 func (s *Service) Conversations(ctx context.Context, guildID, memberID uint64) ([]domain.Issue, error) {
@@ -90,15 +121,24 @@ func (s *Service) ConversationHistory(ctx context.Context, guildID, issueID uint
 }
 
 // ReplyInConversation writes the Completion reply: the body as the
-// Conversation agent's Comment in its Run, through WriteComment, cut to
-// domain.MaxComment characters. It does
-// nothing when the Agent already wrote a Comment in that Run that is not
-// deleted, so a Run answers once, and nothing for an Issue that is no
-// Conversation of that Agent.
+// Conversation agent's Comment in its Run (the Guild's CEO's in the Board
+// chat), through WriteComment, cut to domain.MaxComment characters. It
+// does nothing when the Agent already wrote a Comment in that Run that is
+// not deleted, so a Run answers once, and nothing for an Issue that is no
+// Conversation of that Agent, nor the Board chat with that Agent as the
+// Guild's CEO.
 func (s *Service) ReplyInConversation(ctx context.Context, guildID, issueID, agentID, runID uint64, body string) error {
 	i, found, err := s.issues.Issue(ctx, issueID)
-	if err != nil || !found || i.GuildID != guildID || i.Conversation == nil || i.Conversation.AgentID != agentID {
+	if err != nil || !found || i.GuildID != guildID || i.Conversation == nil {
 		return err
+	}
+	if i.IsBoardChat() {
+		ceo, found, err := s.CEOOf(ctx, guildID)
+		if err != nil || !found || ceo.ID != agentID {
+			return err
+		}
+	} else if i.Conversation.AgentID != agentID {
+		return nil
 	}
 	cs, err := s.comments.Comments(ctx, i.ID)
 	if err != nil {

@@ -62,6 +62,8 @@ type Issues interface {
 	// ConversationOf finds the Member's Conversation with the Agent in the
 	// Guild.
 	ConversationOf(ctx context.Context, guildID, memberID, agentID uint64) (domain.Issue, bool, error)
+	// BoardChat finds the Guild's Board chat.
+	BoardChat(ctx context.Context, guildID uint64) (domain.Issue, bool, error)
 	// Conversations lists the Member's Conversations in the Guild, most
 	// recently updated first.
 	Conversations(ctx context.Context, guildID, memberID uint64) ([]domain.Issue, error)
@@ -72,6 +74,21 @@ type AssigneeAgent struct {
 	Name       string
 	Icon       string
 	Terminated bool
+}
+
+// CEO is the Guild's CEO as the Board chat shows it.
+type CEO struct {
+	ID   uint64
+	Name string
+	Icon string
+}
+
+// CEOOf names the Guild's CEO; found is false when it has none.
+func (s *Service) CEOOf(ctx context.Context, guildID uint64) (CEO, bool, error) {
+	if s.GuildCEO == nil {
+		return CEO{}, false, nil
+	}
+	return s.GuildCEO(ctx, guildID)
 }
 
 // Projects names the Guild's Projects among ids (projects.ProjectNames) and
