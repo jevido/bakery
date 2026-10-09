@@ -728,6 +728,7 @@ func Routes(r route.Router) {
 	r.Middleware(guilds.AuthAgents, triggerInRoutine, manage).Group(func(r route.Router) {
 		r.Patch("/api/routine-triggers/{id}", c.UpdateTrigger)
 		r.Delete("/api/routine-triggers/{id}", c.DeleteTrigger)
+		r.Post("/api/routine-triggers/{id}/rotate-secret", c.RotateTriggerSecret)
 	})
 }
 

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -77,6 +78,15 @@ func (m *memRoutines) Triggers(_ context.Context, routineIDs []uint64) ([]domain
 func (m *memRoutines) Trigger(_ context.Context, id uint64) (domain.RoutineTrigger, bool, error) {
 	for _, t := range m.triggers {
 		if t.ID == id {
+			return t, true, nil
+		}
+	}
+	return domain.RoutineTrigger{}, false, nil
+}
+
+func (m *memRoutines) TriggerByPublicID(_ context.Context, publicID string) (domain.RoutineTrigger, bool, error) {
+	for _, t := range m.triggers {
+		if t.PublicID != "" && t.PublicID == publicID {
 			return t, true, nil
 		}
 	}
@@ -398,5 +408,66 @@ func TestRoutineTriggersFollowTheRoutine(t *testing.T) {
 	want := []string{domain.RoutineTriggerCreatedAction, domain.RoutineTriggerCreatedAction, domain.RoutineTriggerUpdatedAction, domain.RoutineTriggerUpdatedAction, domain.RoutineTriggerDeletedAction}
 	if !slices.Equal(got, want) {
 		t.Fatalf("recorded %v, want %v", got, want)
+	}
+}
+
+func TestWebhookTriggerSecret(t *testing.T) {
+	ctx := context.Background()
+	s, rs, act := routineService(t)
+	now := time.Date(2025, 3, 25, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	all := func(ids []uint64) ([]uint64, error) { return ids, nil }
+	r, err := s.CreateRoutine(ctx, 1, domain.ByMember(7), RoutineInput{Title: "Triage", AssigneeAgentID: 3}, all)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hex := regexp.MustCompile(`^[0-9a-f]+$`)
+	wh, err := s.AddTrigger(ctx, 1, domain.ByMember(7), r.ID, TriggerInput{Kind: "webhook", SigningMode: "hmac_sha256"}, all)
+	if err != nil || len(wh.Secret) != 48 || !hex.MatchString(wh.Secret) || len(wh.PublicID) != 24 || !hex.MatchString(wh.PublicID) {
+		t.Fatalf("AddTrigger = %+v, %v", wh, err)
+	}
+	if wh.SigningMode != domain.HMACSHA256Signing || wh.ReplayWindowSec != domain.DefaultReplayWindow || wh.NextRunAt != nil {
+		t.Fatalf("a webhook trigger = %+v", wh)
+	}
+	if found, ok, _ := rs.TriggerByPublicID(ctx, wh.PublicID); !ok || found.ID != wh.ID {
+		t.Fatalf("by Public id = %+v, %v", found, ok)
+	}
+	other, err := s.AddTrigger(ctx, 1, domain.ByMember(7), r.ID, TriggerInput{Kind: "webhook"}, all)
+	if err != nil || other.SigningMode != domain.BearerSigning || other.Secret == wh.Secret || other.PublicID == wh.PublicID {
+		t.Fatalf("a second webhook trigger = %+v, %v", other, err)
+	}
+	var fe *domain.FieldError
+	for _, in := range []TriggerInput{
+		{Kind: "webhook", SigningMode: "md5"},
+		{Kind: "api", SigningMode: "bearer"},
+	} {
+		if _, err := s.AddTrigger(ctx, 1, domain.ByMember(7), r.ID, in, all); !errors.As(err, &fe) || fe.Field != "trigger.signing_mode" {
+			t.Fatalf("AddTrigger(%+v): %v", in, err)
+		}
+	}
+	if _, err := s.AddTrigger(ctx, 1, domain.ByMember(7), r.ID, TriggerInput{Kind: "webhook", ReplayWindowSec: 10}, all); !errors.As(err, &fe) || fe.Field != "trigger.replay_window_sec" {
+		t.Fatalf("a Replay window of 10: %v", err)
+	}
+
+	now = now.Add(time.Hour)
+	rotated, err := s.RotateTriggerSecret(ctx, 1, domain.ByMember(7), wh.ID, all)
+	if err != nil || rotated.Secret == wh.Secret || len(rotated.Secret) != 48 || rotated.PublicID != wh.PublicID || rotated.LastRotatedAt == nil || !rotated.LastRotatedAt.Equal(now) {
+		t.Fatalf("RotateTriggerSecret = %+v, %v", rotated, err)
+	}
+	if kept, _, _ := rs.Trigger(ctx, wh.ID); kept.Secret != rotated.Secret {
+		t.Fatalf("kept secret %q, want %q", kept.Secret, rotated.Secret)
+	}
+	sched, err := s.AddTrigger(ctx, 1, domain.ByMember(7), r.ID, TriggerInput{Kind: "schedule", CronExpression: "daily"}, all)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RotateTriggerSecret(ctx, 1, domain.ByMember(7), sched.ID, all); !errors.As(err, &fe) || fe.Field != "trigger.kind" {
+		t.Fatalf("rotating a schedule trigger: %v", err)
+	}
+	if _, err := s.RotateTriggerSecret(ctx, 1, domain.ByAgent(5), wh.ID, all); !errors.Is(err, ErrNotOwnRoutine) {
+		t.Fatalf("an Agent rotating another's: %v", err)
+	}
+	if !slices.Contains(act.actions, domain.RoutineTriggerSecretRotatedAction) {
+		t.Fatalf("recorded %v", act.actions)
 	}
 }

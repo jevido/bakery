@@ -346,6 +346,7 @@ const activityVerbs: Record<string, string> = {
   'routine.trigger_created': 'added a trigger to',
   'routine.trigger_updated': 'changed a trigger of',
   'routine.trigger_deleted': 'deleted a trigger of',
+  'routine.trigger_secret_rotated': 'rotated the webhook secret of',
   'routine.run_triggered': 'ran',
 }
 /** The verb of an Activity row: "commented on" for issue.comment_added. */

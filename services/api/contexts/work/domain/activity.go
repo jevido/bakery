@@ -21,43 +21,44 @@ const (
 	IssueApplicationChangedAction = "issue.application_changed"
 	// The pull request and preview Actions are not Paperclip's: its Work
 	// products record no Activity.
-	PullRequestOpenedAction     = "issue.pull_request_opened"
-	PullRequestMergedAction     = "issue.pull_request_merged"
-	PullRequestClosedAction     = "issue.pull_request_closed"
-	PreviewReadyAction          = "issue.preview_ready"
-	PreviewFailedAction         = "issue.preview_failed"
-	CommentAddedAction          = "issue.comment_added"
-	CommentDeletedAction        = "issue.comment_deleted"
-	DocumentCreatedAction       = "issue.document_created"
-	DocumentUpdatedAction       = "issue.document_updated"
-	DocumentDeletedAction       = "issue.document_deleted"
-	ApprovalCreatedAction       = "approval.created"
-	ApprovalApprovedAction      = "approval.approved"
-	ApprovalRejectedAction      = "approval.rejected"
-	RevisionRequestedAction     = "approval.revision_requested"
-	ApprovalResubmittedAction   = "approval.resubmitted"
-	ApprovalCommentAddedAction  = "approval.comment_added"
-	ApprovalCancelledAction     = "approval.cancelled"
-	AgentHiredAction            = "agent.hired"
-	AgentUpdatedAction          = "agent.updated"
-	AgentPausedAction           = "agent.paused"
-	AgentResumedAction          = "agent.resumed"
-	AgentTerminatedAction       = "agent.terminated"
-	AgentRoleAddedAction        = "agent.role_added"
-	AgentRoleRemovedAction      = "agent.role_removed"
-	RunStartedAction            = "run.started"
-	RunFinishedAction           = "run.finished"
-	BudgetUpdatedAction         = "budget.updated"
-	BudgetSoftCrossedAction     = "budget.soft_threshold_crossed"
-	BudgetHardCrossedAction     = "budget.hard_threshold_crossed"
-	BudgetIncidentResolved      = "budget.incident_resolved"
-	RoutineCreatedAction        = "routine.created"
-	RoutineUpdatedAction        = "routine.updated"
-	RoutineArchivedAction       = "routine.archived"
-	RoutineTriggerCreatedAction = "routine.trigger_created"
-	RoutineTriggerUpdatedAction = "routine.trigger_updated"
-	RoutineTriggerDeletedAction = "routine.trigger_deleted"
-	RoutineRunTriggeredAction   = "routine.run_triggered"
+	PullRequestOpenedAction           = "issue.pull_request_opened"
+	PullRequestMergedAction           = "issue.pull_request_merged"
+	PullRequestClosedAction           = "issue.pull_request_closed"
+	PreviewReadyAction                = "issue.preview_ready"
+	PreviewFailedAction               = "issue.preview_failed"
+	CommentAddedAction                = "issue.comment_added"
+	CommentDeletedAction              = "issue.comment_deleted"
+	DocumentCreatedAction             = "issue.document_created"
+	DocumentUpdatedAction             = "issue.document_updated"
+	DocumentDeletedAction             = "issue.document_deleted"
+	ApprovalCreatedAction             = "approval.created"
+	ApprovalApprovedAction            = "approval.approved"
+	ApprovalRejectedAction            = "approval.rejected"
+	RevisionRequestedAction           = "approval.revision_requested"
+	ApprovalResubmittedAction         = "approval.resubmitted"
+	ApprovalCommentAddedAction        = "approval.comment_added"
+	ApprovalCancelledAction           = "approval.cancelled"
+	AgentHiredAction                  = "agent.hired"
+	AgentUpdatedAction                = "agent.updated"
+	AgentPausedAction                 = "agent.paused"
+	AgentResumedAction                = "agent.resumed"
+	AgentTerminatedAction             = "agent.terminated"
+	AgentRoleAddedAction              = "agent.role_added"
+	AgentRoleRemovedAction            = "agent.role_removed"
+	RunStartedAction                  = "run.started"
+	RunFinishedAction                 = "run.finished"
+	BudgetUpdatedAction               = "budget.updated"
+	BudgetSoftCrossedAction           = "budget.soft_threshold_crossed"
+	BudgetHardCrossedAction           = "budget.hard_threshold_crossed"
+	BudgetIncidentResolved            = "budget.incident_resolved"
+	RoutineCreatedAction              = "routine.created"
+	RoutineUpdatedAction              = "routine.updated"
+	RoutineArchivedAction             = "routine.archived"
+	RoutineTriggerCreatedAction       = "routine.trigger_created"
+	RoutineTriggerUpdatedAction       = "routine.trigger_updated"
+	RoutineTriggerDeletedAction       = "routine.trigger_deleted"
+	RoutineTriggerSecretRotatedAction = "routine.trigger_secret_rotated"
+	RoutineRunTriggeredAction         = "routine.run_triggered"
 )
 
 // AgentActions lists the Actions the agents context records through work.
@@ -658,6 +659,9 @@ func (e RoutineTriggerAdded) Activity() ActivityEvent {
 	if e.Trigger.Kind == ScheduleTrigger {
 		d["cron_expression"], d["timezone"] = e.Trigger.CronExpression, e.Trigger.Timezone
 	}
+	if e.Trigger.Kind == WebhookTrigger {
+		d["signing_mode"], d["replay_window_sec"] = e.Trigger.SigningMode, e.Trigger.ReplayWindowSec
+	}
 	return e.routine(e.Routine, RoutineTriggerCreatedAction, d)
 }
 
@@ -682,6 +686,8 @@ func (e RoutineTriggerChanged) Changes() map[string]any {
 		{"cron_expression", b.CronExpression, a.CronExpression, b.CronExpression != a.CronExpression},
 		{"timezone", b.Timezone, a.Timezone, b.Timezone != a.Timezone},
 		{"enabled", b.Enabled, a.Enabled, b.Enabled != a.Enabled},
+		{"signing_mode", b.SigningMode, a.SigningMode, b.SigningMode != a.SigningMode},
+		{"replay_window_sec", b.ReplayWindowSec, a.ReplayWindowSec, b.ReplayWindowSec != a.ReplayWindowSec},
 	} {
 		if f.differ {
 			out[f.name] = change(f.from, f.to)
@@ -704,6 +710,18 @@ type RoutineTriggerDeleted struct {
 
 func (e RoutineTriggerDeleted) Activity() ActivityEvent {
 	return e.routine(e.Routine, RoutineTriggerDeletedAction, triggerDetails(e.Trigger))
+}
+
+// RoutineTriggerSecretRotated is a Webhook trigger given a new secret; the
+// secret itself is never recorded.
+type RoutineTriggerSecretRotated struct {
+	Happened
+	Routine Routine
+	Trigger RoutineTrigger
+}
+
+func (e RoutineTriggerSecretRotated) Activity() ActivityEvent {
+	return e.routine(e.Routine, RoutineTriggerSecretRotatedAction, triggerDetails(e.Trigger))
 }
 
 // RoutineRunTriggered is a Routine run its Schedule or the API made, once

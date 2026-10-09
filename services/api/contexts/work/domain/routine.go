@@ -194,24 +194,69 @@ func (r *Routine) MoveUnder(parent *Issue) error {
 	return nil
 }
 
-// TriggerKind is what makes a Routine trigger fire: its Schedule, or a call
-// to Run naming it.
+// TriggerKind is what makes a Routine trigger fire: its Schedule, a call
+// to Run naming it, or a delivery to its webhook URL.
 type TriggerKind string
 
 const (
 	ScheduleTrigger TriggerKind = "schedule"
 	APITrigger      TriggerKind = "api"
+	WebhookTrigger  TriggerKind = "webhook"
 )
 
 // TriggerKinds lists every kind of Routine trigger.
-var TriggerKinds = []TriggerKind{ScheduleTrigger, APITrigger}
+var TriggerKinds = []TriggerKind{ScheduleTrigger, APITrigger, WebhookTrigger}
 
 // ParseTriggerKind reads a kind of Routine trigger by its wire key.
 func ParseTriggerKind(s string) (TriggerKind, error) {
 	if k := TriggerKind(s); slices.Contains(TriggerKinds, k) {
 		return k, nil
 	}
-	return "", invalid("trigger.kind", "kind must be schedule or api")
+	return "", invalid("trigger.kind", "kind must be schedule, api or webhook")
+}
+
+// SigningMode is how a Webhook delivery proves it comes from the sender.
+type SigningMode string
+
+const (
+	BearerSigning     SigningMode = "bearer"
+	HMACSHA256Signing SigningMode = "hmac_sha256"
+	GitHubHMACSigning SigningMode = "github_hmac"
+	NoSigning         SigningMode = "none"
+)
+
+// SigningModes lists every Signing mode, the default first.
+var SigningModes = []SigningMode{BearerSigning, HMACSHA256Signing, GitHubHMACSigning, NoSigning}
+
+// ParseSigningMode reads a Signing mode by its wire key.
+func ParseSigningMode(s string) (SigningMode, error) {
+	if m := SigningMode(s); slices.Contains(SigningModes, m) {
+		return m, nil
+	}
+	return "", invalid("trigger.signing_mode", "signing mode must be bearer, hmac_sha256, github_hmac or none")
+}
+
+// The Replay window of a Webhook trigger, in seconds.
+const (
+	MinReplayWindow     = 30
+	MaxReplayWindow     = 86400
+	DefaultReplayWindow = 300
+)
+
+// DeliveryStatus is how a Webhook trigger answered its last Webhook
+// delivery.
+type DeliveryStatus string
+
+const (
+	AcceptedDelivery DeliveryStatus = "accepted"
+	RejectedDelivery DeliveryStatus = "rejected"
+)
+
+// WebhookDelivery is the last Webhook delivery a Webhook trigger
+// received: whether it was accepted, and when.
+type WebhookDelivery struct {
+	Status     DeliveryStatus
+	ReceivedAt time.Time
 }
 
 // MaxTriggerLabel is the longest label of a Routine trigger, in
@@ -223,33 +268,45 @@ const MaxTriggerLabel = 100
 var ErrArchivedRoutineTriggers = errors.New("an archived routine's triggers cannot be changed")
 
 // RoutineTrigger is part of its Routine: what makes it run by itself
-// (kind schedule) or through the API (kind api). CronExpression and
-// Timezone are empty for an api one. NextRunAt is nil while it does not
-// fire: off, an api one, or its Routine paused, archived or a Draft.
+// (kind schedule), through the API (kind api) or from outside (kind
+// webhook). CronExpression and Timezone are empty for an api or webhook
+// one. NextRunAt is nil while it does not fire by itself: off, not a
+// schedule one, or its Routine paused, archived or a Draft. PublicID,
+// Secret, SigningMode and ReplayWindowSec are a webhook one's only; Secret
+// is plain here and encrypted where it is kept, and is shown only when it
+// is made or rotated. LastDelivery is nil until a Webhook delivery comes.
 type RoutineTrigger struct {
-	ID             uint64
-	GuildID        uint64
-	RoutineID      uint64
-	Kind           TriggerKind
-	Label          string
-	Enabled        bool
-	CronExpression string
-	Timezone       string
-	NextRunAt      *time.Time
-	LastFiredAt    *time.Time
-	LastResult     string
-	CreatedBy      Actor
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID              uint64
+	GuildID         uint64
+	RoutineID       uint64
+	Kind            TriggerKind
+	Label           string
+	Enabled         bool
+	CronExpression  string
+	Timezone        string
+	NextRunAt       *time.Time
+	LastFiredAt     *time.Time
+	LastResult      string
+	PublicID        string
+	Secret          string
+	SigningMode     SigningMode
+	ReplayWindowSec int
+	LastRotatedAt   *time.Time
+	LastDelivery    *WebhookDelivery
+	CreatedBy       Actor
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // TriggerSettings changes the fields of a Routine trigger that are not
-// nil.
+// nil. SigningMode and ReplayWindowSec are a webhook one's only.
 type TriggerSettings struct {
-	Label          *string
-	CronExpression *string
-	Timezone       *string
-	Enabled        *bool
+	Label           *string
+	CronExpression  *string
+	Timezone        *string
+	Enabled         *bool
+	SigningMode     *SigningMode
+	ReplayWindowSec *int
 }
 
 // NewScheduleTrigger is a schedule Routine trigger of r, its Next run
@@ -263,6 +320,36 @@ func NewScheduleTrigger(r Routine, by Actor, label, cronExpression, timezone str
 func NewAPITrigger(r Routine, by Actor, label string, enabled bool) (RoutineTrigger, error) {
 	t := RoutineTrigger{GuildID: r.GuildID, RoutineID: r.ID, Kind: APITrigger, Enabled: enabled, CreatedBy: by}
 	return t, t.Change(r, TriggerSettings{Label: &label}, time.Time{})
+}
+
+// NewWebhookTrigger is a webhook Routine trigger of r with the Public id
+// and secret given, made at random by the caller; a Replay window of 0 is
+// the default one.
+func NewWebhookTrigger(r Routine, by Actor, label, publicID, secret string, mode SigningMode, replayWindowSec int, enabled bool, now time.Time) (RoutineTrigger, error) {
+	if replayWindowSec == 0 {
+		replayWindowSec = DefaultReplayWindow
+	}
+	t := RoutineTrigger{
+		GuildID: r.GuildID, RoutineID: r.ID, Kind: WebhookTrigger, Enabled: enabled, CreatedBy: by,
+		PublicID: publicID, Secret: secret, SigningMode: BearerSigning,
+	}
+	if mode != "" {
+		t.SigningMode = mode
+	}
+	return t, t.Change(r, TriggerSettings{Label: &label, ReplayWindowSec: &replayWindowSec}, now)
+}
+
+// RotateSecret replaces a webhook trigger's secret, so the old one stops
+// working, and forgets its last Webhook delivery.
+func (t *RoutineTrigger) RotateSecret(r Routine, secret string, at time.Time) error {
+	if r.Archived() {
+		return ErrArchivedRoutineTriggers
+	}
+	if t.Kind != WebhookTrigger {
+		return invalid("trigger.kind", "only a webhook trigger has a secret")
+	}
+	t.Secret, t.LastRotatedAt, t.LastDelivery = secret, &at, nil
+	return nil
 }
 
 // Change sets what s names, each checked, and counts the Next run again
@@ -282,12 +369,29 @@ func (t *RoutineTrigger) Change(r Routine, s TriggerSettings, now time.Time) err
 	if s.Enabled != nil {
 		next.Enabled = *s.Enabled
 	}
-	if next.Kind == APITrigger {
+	if next.Kind != WebhookTrigger {
+		if s.SigningMode != nil {
+			return invalid("trigger.signing_mode", "only a webhook trigger has a signing mode")
+		}
+		if s.ReplayWindowSec != nil {
+			return invalid("trigger.replay_window_sec", "only a webhook trigger has a replay window")
+		}
+	}
+	if next.Kind == APITrigger || next.Kind == WebhookTrigger {
 		if s.CronExpression != nil && strings.TrimSpace(*s.CronExpression) != "" {
-			return invalid("trigger.cron_expression", "an api trigger has no cron expression")
+			return invalid("trigger.cron_expression", "only a schedule trigger has a cron expression")
 		}
 		if s.Timezone != nil && strings.TrimSpace(*s.Timezone) != "" {
-			return invalid("trigger.timezone", "an api trigger has no time zone")
+			return invalid("trigger.timezone", "only a schedule trigger has a time zone")
+		}
+		if s.SigningMode != nil {
+			next.SigningMode = *s.SigningMode
+		}
+		if s.ReplayWindowSec != nil {
+			if *s.ReplayWindowSec < MinReplayWindow || *s.ReplayWindowSec > MaxReplayWindow {
+				return invalid("trigger.replay_window_sec", "replay window is %d to %d seconds", MinReplayWindow, MaxReplayWindow)
+			}
+			next.ReplayWindowSec = *s.ReplayWindowSec
 		}
 		next.NextRunAt = nil
 		*t = next

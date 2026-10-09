@@ -285,18 +285,35 @@ func (c *Controller) UpdateRoutine(ctx contractshttp.Context) contractshttp.Resp
 }
 
 type triggerJSON struct {
-	ID             uint64     `json:"id"`
-	Kind           string     `json:"kind"`
-	Label          string     `json:"label"`
-	Enabled        bool       `json:"enabled"`
-	CronExpression *string    `json:"cron_expression"`
-	Timezone       *string    `json:"timezone"`
-	NextRunAt      *time.Time `json:"next_run_at"`
-	LastFiredAt    *time.Time `json:"last_fired_at"`
-	LastResult     *string    `json:"last_result"`
+	ID              uint64        `json:"id"`
+	Kind            string        `json:"kind"`
+	Label           string        `json:"label"`
+	Enabled         bool          `json:"enabled"`
+	CronExpression  *string       `json:"cron_expression"`
+	Timezone        *string       `json:"timezone"`
+	NextRunAt       *time.Time    `json:"next_run_at"`
+	LastFiredAt     *time.Time    `json:"last_fired_at"`
+	LastResult      *string       `json:"last_result"`
+	SigningMode     *string       `json:"signing_mode"`
+	ReplayWindowSec *int          `json:"replay_window_sec"`
+	WebhookPath     *string       `json:"webhook_path"`
+	LastRotatedAt   *time.Time    `json:"last_rotated_at"`
+	LastDelivery    *deliveryJSON `json:"last_delivery"`
+}
+
+type deliveryJSON struct {
+	Status     string    `json:"status"`
+	ReceivedAt time.Time `json:"received_at"`
+}
+
+// webhookPath is where a Webhook trigger is fired from outside.
+func webhookPath(t domain.RoutineTrigger) string {
+	return "/api/routine-triggers/public/" + t.PublicID + "/fire"
 }
 
 // toTriggerJSON shows a Routine trigger; what it does not have is null.
+// A Webhook trigger's secret is never in it: it is answered only beside
+// it, as secret_material, when it is made or rotated.
 func toTriggerJSON(t domain.RoutineTrigger) triggerJSON {
 	orNull := func(v string) *string {
 		if v == "" {
@@ -304,19 +321,40 @@ func toTriggerJSON(t domain.RoutineTrigger) triggerJSON {
 		}
 		return &v
 	}
-	return triggerJSON{
+	out := triggerJSON{
 		ID: t.ID, Kind: string(t.Kind), Label: t.Label, Enabled: t.Enabled,
 		CronExpression: orNull(t.CronExpression), Timezone: orNull(t.Timezone),
 		NextRunAt: t.NextRunAt, LastFiredAt: t.LastFiredAt, LastResult: orNull(t.LastResult),
 	}
+	if t.Kind == domain.WebhookTrigger {
+		window, path := t.ReplayWindowSec, webhookPath(t)
+		out.SigningMode, out.ReplayWindowSec, out.WebhookPath = orNull(string(t.SigningMode)), &window, &path
+		out.LastRotatedAt = utcOf(t.LastRotatedAt)
+		if d := t.LastDelivery; d != nil {
+			out.LastDelivery = &deliveryJSON{Status: string(d.Status), ReceivedAt: d.ReceivedAt.UTC()}
+		}
+	}
+	return out
+}
+
+// withSecret answers a Webhook trigger with its secret, the only time the
+// secret is shown: when the trigger is made or its secret rotated.
+func withSecret(t domain.RoutineTrigger) contractshttp.Json {
+	out := contractshttp.Json{"trigger": toTriggerJSON(t)}
+	if t.Kind == domain.WebhookTrigger {
+		out["secret_material"] = contractshttp.Json{"webhook_path": webhookPath(t), "webhook_secret": t.Secret}
+	}
+	return out
 }
 
 type triggerRequest struct {
-	Kind           optional[string] `json:"kind"`
-	Label          optional[string] `json:"label"`
-	CronExpression optional[string] `json:"cron_expression"`
-	Timezone       optional[string] `json:"timezone"`
-	Enabled        optional[bool]   `json:"enabled"`
+	Kind            optional[string] `json:"kind"`
+	Label           optional[string] `json:"label"`
+	CronExpression  optional[string] `json:"cron_expression"`
+	Timezone        optional[string] `json:"timezone"`
+	Enabled         optional[bool]   `json:"enabled"`
+	SigningMode     optional[string] `json:"signing_mode"`
+	ReplayWindowSec optional[int]    `json:"replay_window_sec"`
 }
 
 // orEmpty reads an optional string where null is empty: a label taken
@@ -341,11 +379,12 @@ func (c *Controller) AddTrigger(ctx contractshttp.Context) contractshttp.Respons
 	t, err := c.service.AddTrigger(ctx.Context(), c.guild(ctx), c.actor(ctx), id, app.TriggerInput{
 		Kind: value(req.Kind.ptr()), Label: value(req.Label.ptr()), CronExpression: value(req.CronExpression.ptr()),
 		Timezone: value(req.Timezone.ptr()), Enabled: req.Enabled.ptr(),
+		SigningMode: value(req.SigningMode.ptr()), ReplayWindowSec: value(req.ReplayWindowSec.ptr()),
 	}, c.visible(ctx))
 	if err != nil {
 		return fail(ctx, err)
 	}
-	return ctx.Response().Json(contractshttp.StatusCreated, contractshttp.Json{"trigger": toTriggerJSON(t)})
+	return ctx.Response().Json(contractshttp.StatusCreated, withSecret(t))
 }
 
 // UpdateTrigger changes the {id} Routine trigger.
@@ -361,13 +400,36 @@ func (c *Controller) UpdateTrigger(ctx contractshttp.Context) contractshttp.Resp
 	if req.Kind.Set {
 		return respond.Invalid(ctx, "trigger.kind", "a trigger's kind cannot be changed")
 	}
-	t, err := c.service.ChangeTrigger(ctx.Context(), c.guild(ctx), c.actor(ctx), id, domain.TriggerSettings{
+	set := domain.TriggerSettings{
 		Label: orEmpty(req.Label), CronExpression: req.CronExpression.ptr(), Timezone: orEmpty(req.Timezone), Enabled: req.Enabled.ptr(),
-	}, c.visible(ctx))
+		ReplayWindowSec: req.ReplayWindowSec.ptr(),
+	}
+	if req.SigningMode.Set {
+		mode, err := domain.ParseSigningMode(value(req.SigningMode.ptr()))
+		if err != nil {
+			return fail(ctx, err)
+		}
+		set.SigningMode = &mode
+	}
+	t, err := c.service.ChangeTrigger(ctx.Context(), c.guild(ctx), c.actor(ctx), id, set, c.visible(ctx))
 	if err != nil {
 		return fail(ctx, err)
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"trigger": toTriggerJSON(t)})
+}
+
+// RotateTriggerSecret gives the {id} Webhook trigger a new secret and
+// answers it, once.
+func (c *Controller) RotateTriggerSecret(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	t, err := c.service.RotateTriggerSecret(ctx.Context(), c.guild(ctx), c.actor(ctx), id, c.visible(ctx))
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(withSecret(t))
 }
 
 // DeleteTrigger deletes the {id} Routine trigger.

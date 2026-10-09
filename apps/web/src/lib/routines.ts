@@ -191,6 +191,7 @@ const routineActionLabels: Record<string, string> = {
   "routine.trigger_created": "Trigger added",
   "routine.trigger_updated": "Trigger updated",
   "routine.trigger_deleted": "Trigger removed",
+  "routine.trigger_secret_rotated": "Webhook secret rotated",
   "routine.run_triggered": "Routine started",
 };
 export const routineActionLabel = (action: string) =>

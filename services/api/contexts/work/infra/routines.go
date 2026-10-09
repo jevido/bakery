@@ -127,32 +127,81 @@ func (s Routines) DeleteRoutinesOfProject(ctx context.Context, projectID uint64)
 }
 
 type routineTriggerRecord struct {
-	ID                uint64 `gorm:"primaryKey"`
-	GuildID           uint64
-	RoutineID         uint64
-	Kind              string
-	Label             string
-	Enabled           bool
-	CronExpression    string
-	Timezone          string
-	NextRunAt         *time.Time
-	LastFiredAt       *time.Time
-	LastResult        string
-	CreatedByMemberID *uint64
-	CreatedByAgentID  *uint64
+	ID                 uint64 `gorm:"primaryKey"`
+	GuildID            uint64
+	RoutineID          uint64
+	Kind               string
+	Label              string
+	Enabled            bool
+	CronExpression     string
+	Timezone           string
+	NextRunAt          *time.Time
+	LastFiredAt        *time.Time
+	LastResult         string
+	PublicID           *string
+	SecretEncrypted    *string
+	SigningMode        *string
+	ReplayWindowSec    *int
+	LastRotatedAt      *time.Time
+	LastDeliveryStatus *string
+	LastDeliveryAt     *time.Time
+	CreatedByMemberID  *uint64
+	CreatedByAgentID   *uint64
 	orm.Timestamps
 }
 
 func (routineTriggerRecord) TableName() string { return "routine_triggers" }
 
-func (r routineTriggerRecord) toDomain() domain.RoutineTrigger {
+func (r routineTriggerRecord) toDomain() (domain.RoutineTrigger, error) {
 	out := domain.RoutineTrigger{
 		ID: r.ID, GuildID: r.GuildID, RoutineID: r.RoutineID, Kind: domain.TriggerKind(r.Kind), Label: r.Label, Enabled: r.Enabled,
 		CronExpression: r.CronExpression, Timezone: r.Timezone, NextRunAt: utc(r.NextRunAt), LastFiredAt: utc(r.LastFiredAt),
-		LastResult: r.LastResult, CreatedBy: actor(r.CreatedByMemberID, r.CreatedByAgentID),
+		LastResult: r.LastResult, PublicID: orZero(r.PublicID), SigningMode: domain.SigningMode(orZero(r.SigningMode)),
+		ReplayWindowSec: orZero(r.ReplayWindowSec), LastRotatedAt: utc(r.LastRotatedAt),
+		CreatedBy: actor(r.CreatedByMemberID, r.CreatedByAgentID),
+	}
+	if r.SecretEncrypted != nil {
+		secret, err := facades.Crypt().DecryptString(*r.SecretEncrypted)
+		if err != nil {
+			return domain.RoutineTrigger{}, err
+		}
+		out.Secret = secret
+	}
+	if r.LastDeliveryStatus != nil && r.LastDeliveryAt != nil {
+		out.LastDelivery = &domain.WebhookDelivery{Status: domain.DeliveryStatus(*r.LastDeliveryStatus), ReceivedAt: r.LastDeliveryAt.UTC()}
 	}
 	out.CreatedAt, out.UpdatedAt = stamp(&r.Timestamps)
-	return out
+	return out, nil
+}
+
+func triggersOf(recs []routineTriggerRecord) ([]domain.RoutineTrigger, error) {
+	out := make([]domain.RoutineTrigger, len(recs))
+	for i, r := range recs {
+		t, err := r.toDomain()
+		if err != nil {
+			return nil, err
+		}
+		out[i] = t
+	}
+	return out, nil
+}
+
+// webhookColumns is what a Webhook trigger keeps beyond any Routine
+// trigger, its secret encrypted; all null on another kind.
+func webhookColumns(t domain.RoutineTrigger) (publicID, secret, mode *string, window *int, deliveryStatus *string, deliveryAt *time.Time, err error) {
+	if t.Kind != domain.WebhookTrigger {
+		return nil, nil, nil, nil, nil, nil, nil
+	}
+	enc, err := facades.Crypt().EncryptString(t.Secret)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, err
+	}
+	m := string(t.SigningMode)
+	if t.LastDelivery != nil {
+		st, at := string(t.LastDelivery.Status), t.LastDelivery.ReceivedAt
+		deliveryStatus, deliveryAt = &st, &at
+	}
+	return &t.PublicID, &enc, &m, &t.ReplayWindowSec, deliveryStatus, deliveryAt, nil
 }
 
 // Triggers lists the Routine triggers of the Routines, in the order they
@@ -165,41 +214,60 @@ func (s Routines) Triggers(ctx context.Context, routineIDs []uint64) ([]domain.R
 	if err := s.query(ctx).Where("routine_id IN ?", routineIDs).Order("id").Find(&recs); err != nil {
 		return nil, err
 	}
-	out := make([]domain.RoutineTrigger, len(recs))
-	for i, r := range recs {
-		out[i] = r.toDomain()
-	}
-	return out, nil
+	return triggersOf(recs)
 }
 
 // Trigger returns the Routine trigger; found is false when there is none.
 func (s Routines) Trigger(ctx context.Context, id uint64) (domain.RoutineTrigger, bool, error) {
+	return s.triggerWhere(ctx, "id", id)
+}
+
+// TriggerByPublicID returns the Webhook trigger with the Public id; found
+// is false when there is none.
+func (s Routines) TriggerByPublicID(ctx context.Context, publicID string) (domain.RoutineTrigger, bool, error) {
+	return s.triggerWhere(ctx, "public_id", publicID)
+}
+
+func (s Routines) triggerWhere(ctx context.Context, column string, v any) (domain.RoutineTrigger, bool, error) {
 	var rec routineTriggerRecord
-	if err := s.query(ctx).Where("id", id).FirstOrFail(&rec); err != nil {
+	if err := s.query(ctx).Where(column, v).FirstOrFail(&rec); err != nil {
 		if errors.Is(err, frameworkerrors.OrmRecordNotFound) {
 			return domain.RoutineTrigger{}, false, nil
 		}
 		return domain.RoutineTrigger{}, false, err
 	}
-	return rec.toDomain(), true, nil
+	t, err := rec.toDomain()
+	return t, err == nil, err
 }
 
 func (s Routines) CreateTrigger(ctx context.Context, t domain.RoutineTrigger) (domain.RoutineTrigger, error) {
+	publicID, secret, mode, window, deliveryStatus, deliveryAt, err := webhookColumns(t)
+	if err != nil {
+		return domain.RoutineTrigger{}, err
+	}
 	rec := routineTriggerRecord{
 		GuildID: t.GuildID, RoutineID: t.RoutineID, Kind: string(t.Kind), Label: t.Label, Enabled: t.Enabled,
 		CronExpression: t.CronExpression, Timezone: t.Timezone, NextRunAt: t.NextRunAt,
+		PublicID: publicID, SecretEncrypted: secret, SigningMode: mode, ReplayWindowSec: window,
+		LastRotatedAt: t.LastRotatedAt, LastDeliveryStatus: deliveryStatus, LastDeliveryAt: deliveryAt,
 		CreatedByMemberID: nullable(t.CreatedBy.MemberID), CreatedByAgentID: nullable(t.CreatedBy.AgentID),
 	}
 	if err := s.query(ctx).Create(&rec); err != nil {
 		return domain.RoutineTrigger{}, err
 	}
-	return rec.toDomain(), nil
+	return rec.toDomain()
 }
 
 func (s Routines) SaveTrigger(ctx context.Context, t domain.RoutineTrigger) error {
-	_, err := s.query(ctx).Exec(`UPDATE routine_triggers SET label = ?, enabled = ?, cron_expression = ?, timezone = ?, next_run_at = ?,
-		last_fired_at = ?, last_result = ?, updated_at = now() WHERE id = ?`,
-		t.Label, t.Enabled, t.CronExpression, t.Timezone, t.NextRunAt, t.LastFiredAt, t.LastResult, t.ID)
+	publicID, secret, mode, window, deliveryStatus, deliveryAt, err := webhookColumns(t)
+	if err != nil {
+		return err
+	}
+	_, err = s.query(ctx).Exec(`UPDATE routine_triggers SET label = ?, enabled = ?, cron_expression = ?, timezone = ?, next_run_at = ?,
+		last_fired_at = ?, last_result = ?, public_id = ?, secret_encrypted = ?, signing_mode = ?, replay_window_sec = ?,
+		last_rotated_at = ?, last_delivery_status = ?, last_delivery_at = ?, updated_at = now() WHERE id = ?`,
+		t.Label, t.Enabled, t.CronExpression, t.Timezone, t.NextRunAt, t.LastFiredAt, t.LastResult,
+		publicID, secret, mode, window, t.LastRotatedAt, deliveryStatus, deliveryAt, t.ID)
 	return err
 }
 
@@ -216,11 +284,7 @@ func (s Routines) DueTriggers(ctx context.Context, now time.Time) ([]domain.Rout
 		ORDER BY t.next_run_at, t.created_at, t.id`, now).Scan(&recs); err != nil {
 		return nil, err
 	}
-	out := make([]domain.RoutineTrigger, len(recs))
-	for i, r := range recs {
-		out[i] = r.toDomain()
-	}
-	return out, nil
+	return triggersOf(recs)
 }
 
 // ClaimTrigger is Paperclip's claim in tickScheduledTriggers: the write
@@ -369,4 +433,13 @@ func (s Routines) LastRoutineRuns(ctx context.Context, routineIDs []uint64) (map
 		out[rr.RoutineID] = rr
 	}
 	return out, nil
+}
+
+// orZero reads a nullable column; null is the zero value.
+func orZero[T any](p *T) T {
+	var zero T
+	if p == nil {
+		return zero
+	}
+	return *p
 }

@@ -120,5 +120,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000105CreateRoutineTriggersTable{},
 		&migrations.M20260930000106CreateRoutineRunsTable{},
 		&migrations.M20260930000107AddIssueRoutineOrigin{},
+		&migrations.M20260930000108AddRoutineWebhookTriggers{},
 	}
 }

@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -27,6 +29,8 @@ type Routines interface {
 	// they were added.
 	Triggers(ctx context.Context, routineIDs []uint64) ([]domain.RoutineTrigger, error)
 	Trigger(ctx context.Context, id uint64) (domain.RoutineTrigger, bool, error)
+	// TriggerByPublicID returns the Webhook trigger with the Public id.
+	TriggerByPublicID(ctx context.Context, publicID string) (domain.RoutineTrigger, bool, error)
 	CreateTrigger(ctx context.Context, t domain.RoutineTrigger) (domain.RoutineTrigger, error)
 	SaveTrigger(ctx context.Context, t domain.RoutineTrigger) error
 	DeleteTrigger(ctx context.Context, id uint64) error
@@ -422,13 +426,24 @@ func (s *Service) TriggerProject(ctx context.Context, id uint64) (projectID, gui
 	return s.RoutineProject(ctx, t.RoutineID)
 }
 
-// TriggerInput is a new Routine trigger as typed. Enabled nil is on.
+// TriggerInput is a new Routine trigger as typed. Enabled nil is on; an
+// empty Signing mode is bearer and a Replay window of 0 the default.
 type TriggerInput struct {
-	Kind           string
-	Label          string
-	CronExpression string
-	Timezone       string
-	Enabled        *bool
+	Kind            string
+	Label           string
+	CronExpression  string
+	Timezone        string
+	Enabled         *bool
+	SigningMode     string
+	ReplayWindowSec int
+}
+
+// randomHex is n random bytes as hex: a Webhook trigger's Public id or
+// secret.
+func randomHex(n int) string {
+	b := make([]byte, n)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // ownRoutine returns the Guild's Routine the person may view, which an
@@ -455,6 +470,14 @@ func (s *Service) AddTrigger(ctx context.Context, guildID uint64, by domain.Acto
 		return domain.RoutineTrigger{}, err
 	}
 	enabled := in.Enabled == nil || *in.Enabled
+	if kind != domain.WebhookTrigger {
+		if in.SigningMode != "" {
+			return domain.RoutineTrigger{}, &domain.FieldError{Field: "trigger.signing_mode", Message: "only a webhook trigger has a signing mode"}
+		}
+		if in.ReplayWindowSec != 0 {
+			return domain.RoutineTrigger{}, &domain.FieldError{Field: "trigger.replay_window_sec", Message: "only a webhook trigger has a replay window"}
+		}
+	}
 	var t domain.RoutineTrigger
 	switch kind {
 	case domain.ScheduleTrigger:
@@ -463,6 +486,17 @@ func (s *Service) AddTrigger(ctx context.Context, guildID uint64, by domain.Acto
 		t, err = domain.NewAPITrigger(r, by, in.Label, enabled)
 		if err == nil {
 			// An api trigger refuses a cron expression or time zone.
+			err = t.Change(r, domain.TriggerSettings{CronExpression: &in.CronExpression, Timezone: &in.Timezone}, s.now())
+		}
+	case domain.WebhookTrigger:
+		mode := domain.BearerSigning
+		if in.SigningMode != "" {
+			if mode, err = domain.ParseSigningMode(in.SigningMode); err != nil {
+				return domain.RoutineTrigger{}, err
+			}
+		}
+		t, err = domain.NewWebhookTrigger(r, by, in.Label, randomHex(12), randomHex(24), mode, in.ReplayWindowSec, enabled, s.now())
+		if err == nil {
 			err = t.Change(r, domain.TriggerSettings{CronExpression: &in.CronExpression, Timezone: &in.Timezone}, s.now())
 		}
 	}
@@ -506,6 +540,23 @@ func (s *Service) ChangeTrigger(ctx context.Context, guildID uint64, by domain.A
 	if e := (domain.RoutineTriggerChanged{Happened: s.happened(by), Routine: r, Before: before, After: t}); len(e.Changes()) > 0 {
 		s.publish(ctx, e)
 	}
+	return t, nil
+}
+
+// RotateTriggerSecret gives the Webhook trigger a new secret by the
+// Member or Agent; the old one stops working at once.
+func (s *Service) RotateTriggerSecret(ctx context.Context, guildID uint64, by domain.Actor, id uint64, visible Visible) (domain.RoutineTrigger, error) {
+	t, r, err := s.trigger(ctx, guildID, by, id, visible)
+	if err != nil {
+		return domain.RoutineTrigger{}, err
+	}
+	if err := t.RotateSecret(r, randomHex(24), s.now()); err != nil {
+		return domain.RoutineTrigger{}, err
+	}
+	if err := s.routines.SaveTrigger(ctx, t); err != nil {
+		return domain.RoutineTrigger{}, err
+	}
+	s.publish(ctx, domain.RoutineTriggerSecretRotated{Happened: s.happened(by), Routine: r, Trigger: t})
 	return t, nil
 }
 

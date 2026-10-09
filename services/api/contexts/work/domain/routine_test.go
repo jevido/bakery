@@ -183,3 +183,91 @@ func TestRoutineTrigger(t *testing.T) {
 }
 
 func ptrTo[T any](v T) *T { return &v }
+
+func TestWebhookTrigger(t *testing.T) {
+	now := time.Date(2025, 3, 25, 12, 0, 0, 0, time.UTC)
+	r := Routine{ID: 1, GuildID: 1, Status: ActiveRoutine, AssigneeAgentID: 3}
+	for _, tc := range []struct {
+		name   string
+		mode   SigningMode
+		window int
+		field  string
+		want   int
+	}{
+		{"default window", HMACSHA256Signing, 0, "", DefaultReplayWindow},
+		{"shortest window", HMACSHA256Signing, MinReplayWindow, "", MinReplayWindow},
+		{"longest window", BearerSigning, MaxReplayWindow, "", MaxReplayWindow},
+		{"too short", HMACSHA256Signing, MinReplayWindow - 1, "trigger.replay_window_sec", 0},
+		{"too long", HMACSHA256Signing, MaxReplayWindow + 1, "trigger.replay_window_sec", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tr, err := NewWebhookTrigger(r, ByMember(7), "Alerts", "pub", "secret", tc.mode, tc.window, true, now)
+			var fe *FieldError
+			if tc.field != "" {
+				if !errors.As(err, &fe) || fe.Field != tc.field {
+					t.Fatalf("err = %v, want %s", err, tc.field)
+				}
+				return
+			}
+			if err != nil || tr.ReplayWindowSec != tc.want || tr.SigningMode != tc.mode || tr.NextRunAt != nil || tr.Fires(r) {
+				t.Fatalf("NewWebhookTrigger = %+v, %v", tr, err)
+			}
+		})
+	}
+	if tr, err := NewWebhookTrigger(r, ByMember(7), "", "pub", "secret", "", 0, true, now); err != nil || tr.SigningMode != BearerSigning {
+		t.Fatalf("no Signing mode = %+v, %v", tr, err)
+	}
+
+	wh, _ := NewWebhookTrigger(r, ByMember(7), "", "pub", "secret", BearerSigning, 0, true, now)
+	wh.ID = 1
+	sched, _ := NewScheduleTrigger(r, ByMember(7), "", "daily", "", true, now)
+	none, window := NoSigning, 600
+	for _, tc := range []struct {
+		name  string
+		t     RoutineTrigger
+		s     TriggerSettings
+		field string
+	}{
+		{"signing mode", wh, TriggerSettings{SigningMode: &none}, ""},
+		{"replay window", wh, TriggerSettings{ReplayWindowSec: &window}, ""},
+		{"replay window too short", wh, TriggerSettings{ReplayWindowSec: ptrTo(10)}, "trigger.replay_window_sec"},
+		{"cron on a webhook one", wh, TriggerSettings{CronExpression: ptrTo("* * * * *")}, "trigger.cron_expression"},
+		{"time zone on a webhook one", wh, TriggerSettings{Timezone: ptrTo("UTC")}, "trigger.timezone"},
+		{"signing mode on a schedule one", sched, TriggerSettings{SigningMode: &none}, "trigger.signing_mode"},
+		{"replay window on a schedule one", sched, TriggerSettings{ReplayWindowSec: &window}, "trigger.replay_window_sec"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tr := tc.t
+			err := tr.Change(r, tc.s, now)
+			var fe *FieldError
+			if tc.field != "" {
+				if !errors.As(err, &fe) || fe.Field != tc.field {
+					t.Fatalf("err = %v, want %s", err, tc.field)
+				}
+				return
+			}
+			if err != nil || (tc.s.SigningMode != nil && tr.SigningMode != *tc.s.SigningMode) || (tc.s.ReplayWindowSec != nil && tr.ReplayWindowSec != *tc.s.ReplayWindowSec) {
+				t.Fatalf("Change = %+v, %v", tr, err)
+			}
+		})
+	}
+}
+
+func TestRotateSecret(t *testing.T) {
+	now := time.Date(2025, 3, 25, 12, 0, 0, 0, time.UTC)
+	r := Routine{ID: 1, GuildID: 1, Status: ActiveRoutine}
+	wh, _ := NewWebhookTrigger(r, ByMember(7), "", "pub", "old", BearerSigning, 0, true, now)
+	wh.LastDelivery = &WebhookDelivery{Status: RejectedDelivery, ReceivedAt: now}
+	if err := wh.RotateSecret(r, "new", now.Add(time.Minute)); err != nil || wh.Secret != "new" || wh.LastDelivery != nil || !wh.LastRotatedAt.Equal(now.Add(time.Minute)) {
+		t.Fatalf("RotateSecret = %+v, %v", wh, err)
+	}
+	api, _ := NewAPITrigger(r, ByMember(7), "", true)
+	var fe *FieldError
+	if err := api.RotateSecret(r, "new", now); !errors.As(err, &fe) || fe.Field != "trigger.kind" {
+		t.Fatalf("an api trigger: %v", err)
+	}
+	r.Status = ArchivedRoutine
+	if err := wh.RotateSecret(r, "newer", now); !errors.Is(err, ErrArchivedRoutineTriggers) {
+		t.Fatalf("an archived Routine: %v", err)
+	}
+}
