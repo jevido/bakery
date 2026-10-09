@@ -14,7 +14,7 @@ Revisions, and the Activity: who did what to the Guild's Goals, Issues,
 Approvals and (recorded for the agents context) Agents, and when. It also holds each Member's Inbox: their Read marks and Inbox
 archives on the Guild's Issues, and the Approvals: decisions a Member asks
 the Board to make, with their Linked issues and Approval comments, and the
-Guild's Routines: recurring work that, on a schedule or when someone
+Guild's Routines: recurring work that, on a schedule, on a signed webhook from outside or when someone
 presses Run, creates an Execution Issue for an Agent. Every
 Goal, Issue, Approval and Routine belongs to exactly one Guild, and an Issue in a
 Project follows that Project's Permission overrides.
@@ -38,7 +38,9 @@ Inbox archive, Resurface, Approval, Approval type, Approval status,
 Actionable, Requester, Decision, Decision note, Request revision, Resubmit,
 Approval comment, Linked issue, Issue's Application, Work product, Routine,
 Routine status, Routine trigger, Next run, Routine run, Routine run status,
-Concurrency policy, Catch-up policy, Execution Issue, Live execution Issue) are in
+Concurrency policy, Catch-up policy, Execution Issue, Live execution Issue,
+Webhook trigger, Public id, Webhook secret, Signing mode, Replay window,
+Webhook delivery, Idempotency key, Routine variable, Built-in variable) are in
 [`glossary.md`](../../glossary.md).
 
 | Term | Meaning |
@@ -66,8 +68,8 @@ Concurrency policy, Catch-up policy, Execution Issue, Live execution Issue) are 
 | Activity event | Append-only. Belongs to one Guild and has one Actor, a Member or an Agent actor (none once that Member's account is gone, and none for what The Bakery recorded on its own: a Pull request or Preview changing on the git host) and one Action from the glossary's list, about exactly one Goal, Issue, Approval, Agent or Routine. It keeps the Issue's number and title, the Goal's title, the Approval's type and payload title, or the Agent's name, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
 | Approval | Belongs to one Guild. Approval type and Approval status from their lists; it starts `pending`. A `request_board_approval` payload has a `title` of 1–200 characters and optional `summary`, `recommended_action` and `next_action_on_approval` (each at most 20000 characters) and `risks` (at most 20 strings of at most 500 characters), and nothing else. A `hire_agent` payload is `agent_id`, `name`, `job`, `title`, `icon`, `reports_to` (`{id, name}` or null), `capabilities` and `roles` (Role names), as the agents context sends it; its title is "Hire Agent: <name>". A `hire_agent` Approval is created only through `work.RequestApproval`, never gets Request revision (its Agent cannot change while it waits, so there is nothing to revise), and becomes `cancelled` when its Agent is terminated before a Decision; `cancelled` is not Actionable and never changes again. A `budget_override_required` payload is `scope_type`, `scope_id`, `scope_name`, `metric`, `window`, `threshold`, `amount`, `observed`, `warn_percent`, `window_start`, `window_end`, `budget_id` and `guidance`, as the agents context sends it; its title is "Budget override: <scope name>". It is created only through `work.RequestBudgetOverride`, has no Requester, becomes `cancelled` when its Budget goes with its Agent or Project before a Decision, and is decided only through `work.DecideBudgetOverride` when the agents context resolves its Budget incident: Approve, Reject, Request revision and Resubmit refuse it (422 `resolve the budget incident on the Costs page`), as Paperclip does. Approve and reject only from `pending` or `revision_requested` (Actionable); Request revision only from `pending`; Resubmit only from `revision_requested`, which clears the decider, the decision time and the Decision note. A Decision records its decider, time and optional Decision note (at most 20000 characters). Making the same Decision again on an Approval that already has it answers the Approval unchanged and records nothing, as Paperclip's `applied: false`; any other move from a status that does not allow it is refused (422). Its Linked issues are Issues of the same Guild, set when it is requested. Its Approval comments each have one author and a body of 1–20000 characters, and are never edited or deleted. The Approval, its links and its Approval comments go with their Guild; a Linked issue's link goes with the Issue. |
 | Work product | Belongs to one Issue and its Guild, and goes with the Issue. Its type is `pull_request` or `preview_url`, and it names the Issue's Application it came from and the Pull request's number (`external_id`); at most one of each type per Issue and number. A `pull_request` has a Provider, a URL, a title and status `open`, `merged` or `closed`: `open` → `merged` or `closed`, `closed` → `open` when reopened, and `merged` never changes again. A `preview_url` has state `deploying`, `ready` (with the Preview's link), `failed` or `removed`: any state may follow `deploying`, `ready` or `failed`, and `removed` comes back to `deploying` only with a new Preview Deployment. It records who made it: the Run and its Agent, or the Member, or nobody when The Bakery recorded a Pull request someone opened by hand. |
-| Routine | Belongs to one Guild. Title 1–200 characters; description at most 20000 characters, Markdown. Priority, Routine status, Concurrency policy and Catch-up policy from their lists. Its Agent assignee, if any, is an Agent of the Guild that is not terminated, asked of agents as for an Issue; terminating that Agent clears it, making the Routine a Draft, as terminating clears an open Issue's Agent assignee. Its Project, Goal and parent Issue, if any, are the Guild's. Its Routine status moves `active` ↔ `paused`, and either → `archived`; nothing leaves `archived`, and an archived Routine is not changed again. Deleting its Project deletes it, with its Routine triggers and Routine runs, as Paperclip's cascade. Its Routine triggers are part of it: a `schedule` one has a cron expression of five fields or one of the shortcuts a Scheduled backup takes, and a time zone that `time.LoadLocation` loads; an empty time zone is `UTC`; its `next_run_at` is the next tick after now, recomputed whenever its cron expression, time zone or `enabled` changes, or its Routine's status or Agent assignee does, and none while it is off or its Routine is paused, archived or a Draft (resuming counts from then, so ticks missed while paused never fire); an `api` one has neither. A label is at most 100 characters. An archived Routine's triggers are not added, changed or deleted (409). It records `last_triggered_at`, the last time it ran. |
-| Routine run | Belongs to one Routine and its Guild, and goes with the Routine. Append-only except its Routine run status: it starts `received` and moves once to `issue_created`, `coalesced`, `skipped` or `failed`; `issue_created` moves to `completed` when its Execution Issue becomes `done`, or `failed` when it becomes `cancelled` or `blocked`; `failed` goes back to `issue_created` when that Issue is reopened, as Paperclip's. `coalesced` and `skipped` name the Live execution Issue they were linked to and never change again. Its source is `schedule` (with its Schedule trigger), `manual` (with the Member who pressed Run) or `api` (with its `api` Routine trigger, if one was named). |
+| Routine | Belongs to one Guild. Title 1–200 characters; description at most 20000 characters, Markdown. Priority, Routine status, Concurrency policy and Catch-up policy from their lists. Its Agent assignee, if any, is an Agent of the Guild that is not terminated, asked of agents as for an Issue; terminating that Agent clears it, making the Routine a Draft, as terminating clears an open Issue's Agent assignee. Its Project, Goal and parent Issue, if any, are the Guild's. Its Routine status moves `active` ↔ `paused`, and either → `archived`; nothing leaves `archived`, and an archived Routine is not changed again. Deleting its Project deletes it, with its Routine triggers and Routine runs, as Paperclip's cascade. Its Routine triggers are part of it: a `schedule` one has a cron expression of five fields or one of the shortcuts a Scheduled backup takes, and a time zone that `time.LoadLocation` loads; an empty time zone is `UTC`; its `next_run_at` is the next tick after now, recomputed whenever its cron expression, time zone or `enabled` changes, or its Routine's status or Agent assignee does, and none while it is off or its Routine is paused, archived or a Draft (resuming counts from then, so ticks missed while paused never fire); an `api` one has neither. A `webhook` one has no cron and no `next_run_at`, but a Public id, a Webhook secret (stored encrypted with `facades.Crypt()`), a Signing mode and a Replay window (30 to 86400 seconds, 300 by default); its Signing mode and Replay window can change, its Public id never; rotating its secret replaces it at once, so the old one stops working, and clears its last Webhook delivery. A label is at most 100 characters. An archived Routine's triggers are not added, changed or deleted (409). It records `last_triggered_at`, the last time it ran. Its Routine variables are part of it: names unique, kept in step with the `{{name}}` placeholders in its title and description (Built-in variables aside) whenever either changes, a default must have its variable's type, and a `select` has at least one option and a default among them. A Schedule trigger can only be added or enabled while every required variable has a default, else 422 `trigger` naming them; a change to the Routine or its variables that leaves an enabled Schedule trigger's required variable without a default is 422 as well. |
+| Routine run | Belongs to one Routine and its Guild, and goes with the Routine. Append-only except its Routine run status: it starts `received` and moves once to `issue_created`, `coalesced`, `skipped` or `failed`; `issue_created` moves to `completed` when its Execution Issue becomes `done`, or `failed` when it becomes `cancelled` or `blocked`; `failed` goes back to `issue_created` when that Issue is reopened, as Paperclip's. `coalesced` and `skipped` name the Live execution Issue they were linked to and never change again. Its source is `schedule` (with its Schedule trigger), `manual` (with the Member who pressed Run), `api` (with its `api` Routine trigger, if one was named) or `webhook` (with its Webhook trigger and its Idempotency key, if the delivery had one; unique per Webhook trigger). It keeps the values of the Routine variables it ran with. |
 | Read mark and Inbox archive | Per Member per Issue, at most one of each. Belongs to an Issue and its Guild, and goes with the Issue and with the Member's Membership. Only that Member sets or removes it. Neither is part of the Issue aggregate: they change nothing about the Issue, belong to one person, and many people write them at once, so each is its own small record keyed by (Issue, Member). |
 
 ### Commands
@@ -175,10 +177,24 @@ reading the Issue needs.
 - `CreateRoutine(title, description, assignee, project, goal, parent,
   priority, status, concurrency policy, catch-up policy)`,
   `ChangeRoutine(...)` (pausing, resuming and archiving included) [`manage_work`].
-- `AddTrigger(kind, cron, time zone, enabled, label)`,
-  `ChangeTrigger(...)` (never its kind), `DeleteTrigger()` [`manage_work`; an
-  Agent only on a Routine assigned to itself].
-- `RunRoutine(source, trigger)` [`manage_work` for `manual` and `api`; the
+- `AddTrigger(kind, cron, time zone, enabled, label, signing mode, replay
+  window)`, `ChangeTrigger(...)` (never its kind or Public id),
+  `DeleteTrigger()` [`manage_work`; an Agent only on a Routine assigned to
+  itself]. Adding a `webhook` one answers its Webhook secret, once.
+- `RotateTriggerSecret()` [`manage_work`; an Agent only on a Routine
+  assigned to itself]: a `webhook` Routine trigger only (422 otherwise);
+  answers the new Webhook secret, once.
+- `FireWebhookTrigger(public id, headers, body)` [no Session; the Signing
+  mode is the authentication]: an unknown Public id, or a trigger of an
+  archived Routine, is 404; a paused Routine or a disabled trigger is 409;
+  a body that is not JSON is 415, a JSON value that is not an object 400,
+  one over 1 MB 413. Bad credentials, or a `hmac_sha256` timestamp outside
+  the Replay window, are 401 and record the rejected Webhook delivery.
+  Every signature is compared in constant time. A delivery whose
+  Idempotency key this trigger has seen answers that Routine run and makes
+  none. Otherwise it records the accepted Webhook delivery and runs as
+  `RunRoutine` with source `webhook` and Actor nobody.
+- `RunRoutine(source, trigger, variables)` [`manage_work` for `manual` and `api`; the
   scheduler for `schedule`]: refused for an archived Routine (409) and a
   Draft (422 `default agent required`), and for a `schedule` firing of a
   paused Routine (409); `manual` and `api` work while paused. A named
@@ -194,7 +210,14 @@ reading the Issue needs.
   as any assignment does. An Issue that cannot be created (its Agent was
   terminated meanwhile) fails the Routine run with the reason. It sets the
   Routine's `last_triggered_at` and the trigger's `last_fired_at` and
-  `last_result` (the Routine run status). Two Routine runs of one Routine
+  `last_result` (the Routine run status). Its Routine variables' values
+  come from `variables` (for `manual` and `api`), from a Webhook
+  delivery's payload (its top-level fields, then its `variables` object,
+  as Paperclip's `collectProvidedRoutineVariables`) or from their defaults
+  (always, for `schedule`); a missing required variable or a value of the
+  wrong type is 422 `variables.<name>` and records nothing. The Execution
+  Issue's title and description have every placeholder replaced by its
+  value and the Built-in variables by theirs. Two Routine runs of one Routine
   take turns on a Postgres advisory lock, so both cannot miss each other's
   Execution Issue. The Routine run follows its Execution Issue's status
   from then on (see the Routine run's invariants); deleting that Issue
@@ -259,7 +282,9 @@ Comment publishes nothing (Paperclip records none).
 | `RoutineTriggerAdded` | `AddTrigger` | `routine.trigger_created` | kind, label, cron expression and time zone |
 | `RoutineTriggerChanged` | `ChangeTrigger`, when something changed | `routine.trigger_updated` | each changed field, from → to |
 | `RoutineTriggerDeleted` | `DeleteTrigger` | `routine.trigger_deleted` | kind, label |
-| `RoutineRunTriggered` | `RunRoutine` | `routine.run_triggered` | source, Routine run status, the Execution Issue; Actor nobody for a `schedule` or `api` firing |
+| `RoutineRunTriggered` | `RunRoutine` | `routine.run_triggered` | source, Routine run status, the Execution Issue; Actor nobody for a `schedule`, `api` or `webhook` firing |
+| `RoutineTriggerSecretRotated` | `RotateTriggerSecret` | `routine.trigger_secret_rotated` | the trigger's label |
+| `WebhookDeliveryRejected` | `FireWebhookTrigger`, refused for bad credentials or outside the Replay window | `routine.webhook_rejected` | the trigger's label and the reason; Actor nobody |
 
 The agents context's own events (`AgentHired`, `AgentUpdated`,
 `AgentPaused`, `AgentResumed`, `AgentTerminated`, `AgentRoleAdded`,
@@ -303,9 +328,11 @@ title and Project.
   | `GET /api/routines`, `POST /api/routines` | `{"routines": [Routine]}`, each with its `last_run`; 201 `{"routine": Routine}`. A Routine run is `{id, routine: {id, title}, source, status, triggered_at, completed_at, failure_reason, trigger: {id, kind, label} or null, issue: {id, identifier, title, status} or null}`, and an Issue names the Routine it came from in `routine: {id, title}` or null |
   | `GET /api/routines/{id}`, `PATCH /api/routines/{id}` | `{"routine": Routine + "triggers": [Routine trigger] + "recent_runs": [Routine run]}` |
   | `GET /api/routines/{id}/runs`, `GET /api/routine-runs` | `{"routine_runs": [Routine run]}`, newest first, of the Routine or of every Routine the person may view (Paperclip's Recent Runs); `limit` 1 to 200, 50 by default |
-  | `POST /api/routines/{id}/triggers` | 201 `{"trigger": Routine trigger}` |
+  | `POST /api/routines/{id}/triggers` | 201 `{"trigger": Routine trigger}`; for a `webhook` one also `"secret_material": {webhook_path, webhook_secret}`, the only time the secret is shown. A Routine trigger carries, for a `webhook` one, `signing_mode`, `replay_window_sec`, `webhook_path` (`/api/routine-triggers/public/{public_id}/fire`; the dashboard adds its own origin), `last_rotated_at` and `last_delivery: {status, received_at}` or null, and never the secret |
   | `PATCH /api/routine-triggers/{id}`, `DELETE /api/routine-triggers/{id}` | `{"trigger": Routine trigger}`, 204 |
-  | `POST /api/routines/{id}/run` | 202 `{"routine_run": Routine run}`; body optional: `{"trigger_id"}` names an `api` Routine trigger and makes it an `api` Routine run, else it is `manual` |
+  | `POST /api/routine-triggers/{id}/rotate-secret` | `{"trigger": Routine trigger, "secret_material": {webhook_path, webhook_secret}}` |
+  | `POST /api/routine-triggers/public/{public_id}/fire` | no Session. 202 `{"routine_run": Routine run}` (the first one again for a repeated Idempotency key); 400 for a JSON value that is not an object, 401 for bad credentials, 404 for an unknown Public id, 409 for a paused Routine or a disabled trigger, 413 for a body over 1 MB, 415 for a body that is not JSON, 422 `variables.<name>` for a missing or wrong variable |
+  | `POST /api/routines/{id}/run` | 202 `{"routine_run": Routine run}`; body optional: `{"trigger_id"}` names an `api` Routine trigger and makes it an `api` Routine run, else it is `manual`; `{"variables": {name: value}}` fills the Routine variables. A Routine carries `variables: [{name, label, type, default_value, required, options}]`, and a Routine run its `variables: {name: value}` |
   | `GET /api/issues/{issue}/documents/{key}` | `{"document": Issue document}`; 404 for an unknown key, 422 for a malformed one |
   | `PUT /api/issues/{issue}/documents/{key}` | 201 `{"document": Issue document}` on the first save, 200 after; 409 for a missing or stale `base_revision_id` (with `current_revision_id` and `current_revision_number`) or a `base_revision_id` on a new key |
   | `DELETE /api/issues/{issue}/documents/{key}` | 204 |
@@ -743,12 +770,29 @@ title and Project.
   terminated Agent on the Routine and lets each dispatch refuse it. The
   Bakery clears it, as it clears an open Issue's Agent assignee, so the
   Routine page says "draft" instead of failing every scheduled firing.
-- **Routines left out for now.** Webhook triggers and their signing modes,
-  Routine variables, Routine Revisions and Restore, folders, the activity
-  gate, the secrets, environment and delivery sections, built-in and
-  plugin-managed Routines, and Paperclip's split of `received` and its
-  dispatch across processes. Webhook triggers, variables and Revisions are
-  the next slice of the guilds goal's Paperclip step; the rest is not in it.
+- **Routines left out for now.** Paperclip's `app_webhook` and
+  `fireflies_hmac` Signing modes (they serve Paperclip's own apps and one
+  vendor), setup-pending Webhook triggers and their test receipts, Routine
+  Revisions and Restore, folders, the activity gate, the secrets,
+  environment and delivery sections, built-in and plugin-managed Routines,
+  and Paperclip's split of `received` and its dispatch across processes.
+  Revisions and Restore are the next slice of the guilds goal's Paperclip
+  step; the rest is not in it.
+- **The Webhook secret lives encrypted on its trigger.** Paperclip keeps it
+  in its secrets service and points at it. The Bakery has no secrets
+  context, so it is encrypted with `facades.Crypt()` in work's own table,
+  as the deployments context keeps an Application's Webhook secret. Work
+  never imports deployments' Webhook types: the two only share a word.
+- **`X-Bakery-Signature` and `X-Bakery-Timestamp`** in place of
+  Paperclip's `X-Paperclip-*` headers, so no other product's name reaches
+  a user. `X-Hub-Signature-256` stays, since git hosts send it.
+- **`webhook_path` is a path.** Paperclip answers a full URL from its
+  configured public address. The dashboard adds its own origin, as it does
+  for an Application's Webhook, so the API needs no idea of its own
+  address.
+- **No `routine.webhook_received` Action.** An accepted Webhook delivery
+  already shows as the Routine run's `routine.run_triggered` with source
+  `webhook`; only a rejected one gets its own Action.
 - **No paused Projects.** Paperclip skips a schedule while its Project is
   paused. The Bakery's Projects have no pause; a Project Budget's Hard stop
   already refuses the Wake, so the Execution Issue waits for the Budget.
