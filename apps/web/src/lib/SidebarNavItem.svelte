@@ -6,8 +6,9 @@
   // the drawer alone. A `brandIcon` is a brand mark masked from
   // /svgs/<name>.svg in place of a Lucide icon, as Coolify draws them. A
   // `badge` above 0 is a pill at the right; on the rail it is a dot on the
-  // icon, and the link's name carries the count ("Inbox, 3 unread").
-  import type { Component } from 'svelte'
+  // icon, and the link's name carries the count ("Inbox, 3 unread"). An
+  // `iconNode` draws its own icon, as an Agent's in the Chats section.
+  import type { Component, Snippet } from 'svelte'
   import { Badge } from '@bakery/ui/components/ui/badge'
   import * as Tooltip from '@bakery/ui/components/ui/tooltip'
   import { RAIL_HIDDEN_LABEL, sidebar } from './sidebar.svelte'
@@ -17,16 +18,19 @@
     href,
     label,
     icon: Icon,
+    iconNode,
     brandIcon,
     active = false,
     inline = false,
     badge,
     badgeLabel,
     testid,
+    class: className,
   }: {
     href: string
     label: string
     icon?: Component<{ class?: string }>
+    iconNode?: Snippet
     brandIcon?: string
     active?: boolean
     inline?: boolean
@@ -34,6 +38,7 @@
     /** The noun after the count on the rail, e.g. "unread". */
     badgeLabel?: string
     testid?: string
+    class?: string
   } = $props()
 
   const rail = $derived(!inline && sidebar.rail)
@@ -55,6 +60,7 @@
       // On the rail the pill fills the 40px column, centred on its icon.
       rail && 'mx-0 justify-center gap-0 px-0',
       active ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+      className,
     )}
   >
     <span data-slot="sidebar-nav-icon" class="relative shrink-0">
@@ -63,6 +69,8 @@
           class="block size-4 bg-current"
           style="mask: url('/svgs/{brandIcon}.svg') center / contain no-repeat; -webkit-mask: url('/svgs/{brandIcon}.svg') center / contain no-repeat;"
         ></span>
+      {:else if iconNode}
+        {@render iconNode()}
       {:else if Icon}
         <Icon class="size-4" />
       {/if}

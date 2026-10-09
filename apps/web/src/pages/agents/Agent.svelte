@@ -3,7 +3,8 @@
   // has meaning without Runs (MIT, see NOTICE): the header with the Agent
   // icon, name and Job · Title, and AgentActionButtons
   // (ui/src/components/AgentActionButtons.tsx: Pause / Resume and the
-  // overflow menu with Copy Agent ID and Terminate, and Run heartbeat);
+  // overflow menu with Copy Agent ID and Terminate, and Run heartbeat),
+  // after a Chat button to the asking Member's Conversation with it;
   // then AgentOverview's cards (Identity, Capabilities) with
   // AgentProperties's rows, and AgentConfigForm's Run Policy card trimmed to
   // the Heartbeat policy (Heartbeat on interval, Wake on demand). Clear
@@ -18,7 +19,7 @@
   // linking to its Issue and unfolding to its Transcript. The Skills card
   // under Roles is Paperclip's Skills tab (AgentSkills), switched by the same
   // people who may give Roles.
-  import { CircleHelp, Copy, Heart, MoreHorizontal, Pause, Play, Plus, Trash2, X } from '@lucide/svelte'
+  import { CircleHelp, Copy, Heart, MessageCircle, MoreHorizontal, Pause, Play, Plus, Trash2, X } from '@lucide/svelte'
   import * as AlertDialog from '@bakery/ui/components/ui/alert-dialog'
   import { Button as UiButton } from '@bakery/ui/components/ui/button'
   import * as Popover from '@bakery/ui/components/ui/popover'
@@ -56,7 +57,7 @@
   import BudgetPolicyCard from '../../lib/BudgetPolicyCard.svelte'
   import { budgetOverview, type Budget } from '../../lib/costs'
   import { href } from '../../lib/router.svelte'
-  import type { Member } from '../../lib/session.svelte'
+  import { session, type Member } from '../../lib/session.svelte'
   import type { GuildRole } from '../../lib/types'
   import InlineBanner from '@bakery/ui/InlineBanner.svelte'
   import StatusBadge from '@bakery/ui/StatusBadge.svelte'
@@ -248,6 +249,9 @@
       </div>
       {#if a.status !== 'terminated'}
         <div class="flex flex-wrap items-center gap-2">
+          {#if session.can('manage_work') && a.status !== 'pending_approval'}
+            <UiButton variant="outline" size="sm" href={href(`/chats/${a.id}`)}><MessageCircle class="size-3.5" />Chat</UiButton>
+          {/if}
           {#if a.can_manage}
             <Tooltip.Root>
               <Tooltip.Trigger>

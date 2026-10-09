@@ -119,6 +119,51 @@ const sections: Record<string, () => Promise<void>> = {
       await page.context().close()
     }
   },
+
+  async sidebar() {
+    const page = await signedIn()
+    // Named to sort first among starred Agents, which go by name.
+    const first = await hired(page, `AAA Sidebar ${Date.now()}`)
+    const second = await hired(page, `Picked ${Date.now()}`)
+    try {
+      await page.goto(`${WEB}/#/chats/${first.id}`)
+      await page.getByTestId('chat-empty').waitFor()
+      const row = page.locator(`[data-testid="sidebar-chats"] [data-chat-agent="${first.id}"]`)
+      await row.waitFor()
+      expect('the chatted Agent is under Chats', true)
+      expect('its row is active on its chat', (await row.getByRole('link').getAttribute('aria-current')) === 'page')
+
+      const star = row.getByRole('button', { name: `Star ${first.name}` })
+      await star.click()
+      const unstar = row.getByRole('button', { name: `Unstar ${first.name}` })
+      await unstar.waitFor()
+      expect('starring presses the star', (await unstar.getAttribute('aria-pressed')) === 'true')
+      await page.reload()
+      await row.waitFor()
+      const ids = await page.locator('[data-testid="sidebar-chats"] [data-chat-agent]').evaluateAll((els) => els.map((e) => Number(e.getAttribute('data-chat-agent'))))
+      expect('the starred Agent stays first after a reload', ids[0] === first.id, ids)
+      expect('it stays starred', (await row.getByRole('button', { name: `Unstar ${first.name}` }).getAttribute('aria-pressed')) === 'true')
+
+      await page.getByRole('button', { name: 'Chat with an agent' }).click()
+      const search = page.getByRole('textbox', { name: 'Search agents by name or role' })
+      await search.fill(second.name)
+      await page.locator(`[data-testid="chat-picker"] [data-agent="${second.id}"]`).waitFor()
+      await search.press('Enter')
+      await page.waitForURL(`**/#/chats/${second.id}`)
+      expect('the picker opens a chat with the second Agent', true)
+      await page.locator(`[data-testid="sidebar-chats"] [data-chat-agent="${second.id}"]`).waitFor()
+      expect('the second Agent joins Chats', true)
+
+      await page.goto(`${WEB}/#/agents/${first.id}`)
+      await page.locator('main').getByRole('link', { name: 'Chat', exact: true }).click()
+      await page.waitForURL(`**/#/chats/${first.id}`)
+      expect("the Agent page's Chat button lands on its chat", true)
+    } finally {
+      await terminate(page, first)
+      await terminate(page, second)
+      await page.context().close()
+    }
+  },
 }
 
 const asked = process.argv.slice(2)

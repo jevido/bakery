@@ -18,6 +18,7 @@
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import ChatThread from '../../lib/ChatThread.svelte'
   import { getChat, openChat } from '../../lib/chats'
+  import { recordChatVisit } from '../../lib/recentChats.svelte'
   import LiveRun from '../../lib/LiveRun.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
   import { href } from '../../lib/router.svelte'
@@ -41,7 +42,11 @@
   // The page is keyed by its Agent, so both load once.
   function load() {
     listAgents()
-      .then((as) => (agent = as.find((a) => a.id === agentId) ?? null))
+      .then((as) => {
+        agent = as.find((a) => a.id === agentId) ?? null
+        // The sidebar's Chats list it from now on.
+        if (agent) recordChatVisit(agent.id)
+      })
       .catch((e) => (loadError = e instanceof Error ? e.message : String(e)))
     getChat(agentId)
       .then((i) => (issue = i))
