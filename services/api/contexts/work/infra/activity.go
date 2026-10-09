@@ -81,6 +81,9 @@ func (a Activity) Activity(ctx context.Context, guildID uint64, q app.ActivityQu
 	if q.EntityType != "" {
 		query = query.Where("entity_type", q.EntityType)
 	}
+	if q.EntityID != 0 {
+		query = query.Where("entity_id", q.EntityID)
+	}
 	if q.Actor.MemberID != 0 {
 		query = query.Where("actor_member_id", q.Actor.MemberID)
 	}

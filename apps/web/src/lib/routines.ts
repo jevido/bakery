@@ -147,3 +147,72 @@ export const recentRoutineRuns = (limit = 50) =>
   api<{ routine_runs: RoutineRun[] }>("GET", `/routine-runs?limit=${limit}`).then(
     (r) => r.routine_runs,
   );
+
+/**
+ * Paperclip's summarizeRoutineSchedule (ui/src/components/RoutineOverview.tsx):
+ * the Routine's enabled Schedules in a line, the first one's cron and time
+ * zone under it, and the soonest Next run.
+ */
+export function summarizeSchedule(triggers: RoutineTrigger[]): { label: string; detail: string; nextRunAt: string | null } {
+  const schedules = triggers.filter((t) => t.kind === "schedule" && t.enabled);
+  const nextRunAt =
+    schedules
+      .map((t) => t.next_run_at)
+      .filter((at): at is string => at !== null)
+      .sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? null;
+  if (schedules.length === 0) {
+    const apis = triggers.filter((t) => t.kind === "api" && t.enabled).length;
+    return apis > 0
+      ? { label: `${apis} API trigger${apis === 1 ? "" : "s"}`, detail: "Runs when the API is called", nextRunAt: null }
+      : { label: "No active schedule", detail: "Manual runs only", nextRunAt: null };
+  }
+  const first = schedules[0];
+  return {
+    label: schedules.length === 1 ? "1 active schedule" : `${schedules.length} active schedules`,
+    detail: `${first.cron_expression ?? ""}${first.timezone ? ` · ${first.timezone}` : ""}`,
+    nextRunAt,
+  };
+}
+
+/**
+ * The Routine's state as its page shows it, Paperclip's automationLabel: a
+ * Routine without an Agent is a Draft whatever its status.
+ */
+export function routineState(r: Pick<Routine, "status" | "assignee_agent">): "archived" | "draft" | "active" | "paused" {
+  if (r.status === "archived") return "archived";
+  return r.assignee_agent ? r.status : "draft";
+}
+
+/** Paperclip's RoutineActivityRow labels for the routine.* Actions. */
+const routineActionLabels: Record<string, string> = {
+  "routine.created": "Routine created",
+  "routine.updated": "Routine updated",
+  "routine.archived": "Routine archived",
+  "routine.trigger_created": "Trigger added",
+  "routine.trigger_updated": "Trigger updated",
+  "routine.trigger_deleted": "Trigger removed",
+  "routine.run_triggered": "Routine started",
+};
+export const routineActionLabel = (action: string) =>
+  routineActionLabels[action] ?? action.replace(/^routine\./, "").replaceAll("_", " ");
+
+/** Paperclip's summarizeEvent: the one line of what a routine.* event says. */
+export function routineEventSummary(action: string, details: Record<string, unknown>): string {
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  if (action === "routine.run_triggered") {
+    const source = str(details.source);
+    return `${source ? source[0].toUpperCase() + source.slice(1) : "Run"} · ${routineRunStatusLabel(str(details.status))}`;
+  }
+  if (action.startsWith("routine.trigger_")) {
+    const name = str(details.label) || (details.kind === "api" ? "API" : "Schedule");
+    const changes = details.changes as Record<string, unknown> | undefined;
+    if (changes) return `${name} · ${Object.keys(changes).map((k) => k.replaceAll("_", " ")).join(", ")}`;
+    return details.cron_expression ? `${name} · ${details.cron_expression} · ${str(details.timezone)}` : name;
+  }
+  if (action === "routine.updated" && details.changes) {
+    return Object.keys(details.changes as Record<string, unknown>)
+      .map((k) => k.replaceAll("_", " "))
+      .join(", ");
+  }
+  return "";
+}

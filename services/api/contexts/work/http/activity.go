@@ -412,7 +412,8 @@ func activityID(ctx contractshttp.Context, field string) (uint64, bool) {
 }
 
 // ListActivity answers a page of the Current guild's Activity, newest
-// first: entity (issue, goal, approval, agent, budget, budget_incident or routine), actor (a Member id, or
+// first: entity (issue, goal, approval, agent, budget, budget_incident or routine), entity_id (one of
+// that kind, such as a Routine's events on its page), actor (a Member id, or
 // agent:<id> for an Agent), before (an Activity
 // event id, for the next page) and limit (1 to 200, 50 by default).
 func (c *Controller) ListActivity(ctx contractshttp.Context) contractshttp.Response {
@@ -420,6 +421,11 @@ func (c *Controller) ListActivity(ctx contractshttp.Context) contractshttp.Respo
 	if q.EntityType != "" && !slices.Contains([]string{domain.IssueEntity, domain.GoalEntity, domain.ApprovalEntity, domain.AgentEntity, domain.BudgetEntity, domain.IncidentEntity, domain.RoutineEntity}, q.EntityType) {
 		return respond.Invalid(ctx, "entity", "entity must be issue, goal, approval, agent, budget, budget_incident or routine")
 	}
+	entityID, ok := activityID(ctx, "entity_id")
+	if !ok || (entityID != 0 && q.EntityType == "") {
+		return respond.Invalid(ctx, "entity_id", "entity_id must be an id, with entity")
+	}
+	q.EntityID = entityID
 	if a, ok := strings.CutPrefix(ctx.Request().Query("actor"), "agent:"); ok {
 		id, err := strconv.ParseUint(a, 10, 64)
 		if err != nil || id == 0 {

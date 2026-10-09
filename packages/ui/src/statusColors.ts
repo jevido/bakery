@@ -1,7 +1,7 @@
 // The Bakery's one status palette, in the shape of Paperclip's statusBadge map
 // (ui/src/lib/status-colors.ts, MIT, see NOTICE): every state a Deployment,
 // Backup execution, Database, Service, Server, Container, notification
-// delivery or Goal can be in maps to a tone, and each tone to the tinted pill classes
+// delivery, Goal, Routine or Routine run can be in maps to a tone, and each tone to the tinted pill classes
 // built from theme.css's success, warning, error and muted tokens.
 
 export type StatusType = 'neutral' | 'success' | 'warning' | 'error'
@@ -19,6 +19,8 @@ export const statusTypes: Record<string, StatusType> = {
   achieved: 'success',
   // An Approval decided for.
   approved: 'success',
+  // A Routine run whose Execution Issue is done.
+  completed: 'success',
   // Waiting or in flight.
   queued: 'warning',
   pending: 'warning',
@@ -30,6 +32,8 @@ export const statusTypes: Record<string, StatusType> = {
   in_progress: 'warning',
   revision_requested: 'warning',
   degraded: 'warning',
+  // A Routine whose automatic triggers are off.
+  paused: 'warning',
   unvalidated: 'warning',
   // Down or broken.
   failed: 'error',

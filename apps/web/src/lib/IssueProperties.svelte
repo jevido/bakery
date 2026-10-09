@@ -3,7 +3,7 @@
   // (ui/src/components/issue-properties/IssueProperties.tsx and
   // primitives.tsx; MIT, see NOTICE): the Issue's status, priority,
   // Assignee, Project, Application, Goal and parent, each a picker, then
-  // who created it
+  // the Routine an Execution Issue came from (a link), who created it
   // and when it started, completed, was cancelled and last changed. The
   // Application row lists the Project's Applications, read once per Project,
   // and stands in for Paperclip's project workspace. While a
@@ -223,6 +223,12 @@
       {/if}
     {/snippet}
     {@render row('Parent', parent)}
+    {#if issue.routine}
+      {#snippet routine()}
+        <a href={href(`/routines/${issue.routine!.id}`)} class="truncate text-sm hover:underline">{issue.routine!.title}</a>
+      {/snippet}
+      {@render row('Routine', routine)}
+    {/if}
     {#snippet blockedBy()}
       <div class="flex min-w-0 flex-col items-start gap-1">
         {#each issue.blocked_by as b (b.id)}

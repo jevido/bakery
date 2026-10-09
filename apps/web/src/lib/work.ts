@@ -97,6 +97,8 @@ export type Issue = {
   application?: { id: number; name: string } | null
   goal: { id: number; title: string } | null
   parent: IssueRef | null
+  /** The Routine an Execution Issue came from. */
+  routine?: { id: number; title: string } | null
   created_by: WorkMember | null
   created_by_agent?: WorkAgent | null
   /** The live Run holding the Issue's Checkout and its Agent; null when none does. */
@@ -291,8 +293,8 @@ export type ActivityEvent = {
 /** What an Activity event is about. */
 export type ActivityEntity = 'issue' | 'goal' | 'approval' | 'agent' | 'budget' | 'budget_incident' | 'routine'
 
-/** The Guild-wide feed's filters: entity kind, Actor, and before an event id for the next page. */
-export type ActivityFilter = Partial<{ entity: ActivityEntity; actor: number | `agent:${number}`; before: number; limit: number }>
+/** The Guild-wide feed's filters: entity kind (and one of it by entity_id), Actor, and before an event id for the next page. */
+export type ActivityFilter = Partial<{ entity: ActivityEntity; entity_id: number; actor: number | `agent:${number}`; before: number; limit: number }>
 
 export function listActivity(filter: ActivityFilter = {}) {
   const query = new URLSearchParams()

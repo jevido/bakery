@@ -51,10 +51,12 @@ const (
 )
 
 // ActivityQuery is what a page of the Guild's Activity keeps: events about
-// EntityType ("" for both), by Actor (nobody for anyone), older than Before (0
+// EntityType ("" for every kind) and, with it, the one EntityID (0 for
+// any), by Actor (nobody for anyone), older than Before (0
 // for the newest), at most Limit of them.
 type ActivityQuery struct {
 	EntityType string
+	EntityID   uint64
 	Actor      domain.Actor
 	Before     uint64
 	Limit      int

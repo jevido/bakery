@@ -8,6 +8,12 @@
 //           now creates a Routine run that Recent Runs lists with its
 //           Execution Issue; a viewer sees the Routine but no Create
 //           routine, Run now or toggle; the scratch data is removed again
+//   detail  on a Routine page (a scratch Agent, Project and Routine): add a
+//           Schedule trigger and see its Next run, switch it off and on,
+//           edit the title and save it, press Run and follow the toast to
+//           the Execution Issue, whose properties link back to the Routine;
+//           Runs lists the run as "issue created"; Activity shows the
+//           creation and the trigger events
 //
 //   bun e2e/routines.ts [section ...]   (task web:routines; needs task dev)
 //
@@ -80,6 +86,27 @@ async function clearRoutines(page: Page, title: string) {
     const { routine_runs } = (await (await page.request.get(`${WEB}/api/routines/${r.id}/runs`)).json()) as { routine_runs: Run[] }
     for (const run of routine_runs) if (run.issue) await page.request.patch(`${WEB}/api/issues/${run.issue.id}`, { data: { status: 'cancelled' } })
     if (r.status !== 'archived') await page.request.patch(`${WEB}/api/routines/${r.id}`, { data: { status: 'archived' } })
+  }
+}
+
+/** A scratch Agent and Project named after the section, removed again by drop. */
+async function scratch(page: Page, name: string): Promise<{ agent: number; project: number; drop: () => Promise<void> }> {
+  const agentName = `${name} agent`
+  const projectName = `${name} project`
+  const { agents } = (await (await page.request.get(`${WEB}/api/agents`)).json()) as { agents: { id: number; name: string }[] }
+  for (const a of agents.filter((a) => a.name === agentName)) await page.request.post(`${WEB}/api/agents/${a.id}/terminate`)
+  const { projects } = (await (await page.request.get(`${WEB}/api/projects`)).json()) as { projects: { id: number; name: string }[] }
+  for (const p of projects.filter((p) => p.name === projectName)) await page.request.delete(`${WEB}/api/projects/${p.id}`)
+  const { project } = (await (await page.request.post(`${WEB}/api/projects`, { data: { name: projectName } })).json()) as { project: { id: number } }
+  const hired = (await (await page.request.post(`${WEB}/api/agents`, { data: { name: agentName, job: 'engineer', icon: 'bot' } })).json()) as { agent: { id: number; approval_id: number } }
+  await page.request.post(`${WEB}/api/approvals/${hired.agent.approval_id}/approve`, { data: {} })
+  return {
+    agent: hired.agent.id,
+    project: project.id,
+    drop: async () => {
+      await page.request.post(`${WEB}/api/agents/${hired.agent.id}/terminate`)
+      await page.request.delete(`${WEB}/api/projects/${project.id}`)
+    },
   }
 }
 
@@ -171,6 +198,74 @@ const sections: Record<string, () => Promise<void>> = {
       await clearRoutines(page, title)
       await page.request.post(`${WEB}/api/agents/${agent}/terminate`)
       await page.request.delete(`${WEB}/api/projects/${project.id}`)
+      await page.context().close()
+    }
+  },
+
+  async detail() {
+    const page = await signedIn()
+    const title = 'Routines e2e: routine page'
+    const renamed = 'Routines e2e: routine page, renamed'
+    await clearRoutines(page, title)
+    await clearRoutines(page, renamed)
+    const { agent, project, drop } = await scratch(page, 'Routines e2e detail')
+    const created = await page.request.post(`${WEB}/api/routines`, { data: { title, assignee_agent_id: agent, project_id: project } })
+    const id = ((await created.json()) as { routine: Routine }).routine.id
+    const routine = async () => ((await (await page.request.get(`${WEB}/api/routines/${id}`)).json()) as { routine: Routine & { triggers: (Trigger & { enabled: boolean })[] } }).routine
+
+    try {
+      await page.goto(`${WEB}/#/routines/${id}/triggers`)
+      const sub = page.getByRole('navigation', { name: 'Routine sections' })
+      await sub.getByRole('tab', { name: 'Triggers' }).waitFor()
+      expect('the sub-sidebar marks Triggers', (await sub.getByRole('tab', { name: 'Triggers' }).getAttribute('aria-current')) === 'page')
+      await page.getByRole('button', { name: 'Add schedule' }).click()
+      await page.getByRole('group', { name: 'New trigger' }).getByRole('button', { name: 'Add trigger' }).click()
+      const card = page.getByRole('group', { name: 'Trigger: Schedule' })
+      await card.getByText(/^Next: /).waitFor()
+      expect('the Schedule trigger shows its Next run', true)
+      await card.getByRole('switch', { name: 'Disable Schedule' }).click()
+      await card.getByText('Not scheduled').waitFor()
+      expect('switched off, the trigger is not scheduled', (await routine()).triggers[0]?.enabled === false)
+      await card.getByRole('switch', { name: 'Enable Schedule' }).click()
+      await card.getByText(/^Next: /).waitFor()
+      const on = (await routine()).triggers[0]
+      expect('switched on again, it has a Next run', on?.enabled === true && on.next_run_at !== null, on)
+
+      await sub.getByRole('tab', { name: 'Overview' }).click()
+      await page.getByRole('button', { name: 'Edit routine' }).click()
+      await page.getByLabel('Routine title').fill(renamed)
+      await page.getByRole('region', { name: 'Unsaved changes' }).getByRole('button', { name: /Save changes/ }).click()
+      await page.getByRole('heading', { name: renamed }).waitFor()
+      expect('the edited title is saved', (await routine()).title === renamed)
+
+      await page.getByRole('button', { name: 'Run', exact: true }).click()
+      const open = page.getByRole('link', { name: /^Open / })
+      await open.waitFor()
+      await page.waitForURL(new RegExp(`#/routines/${id}/runs$`))
+      const runRow = page.getByRole('list', { name: 'Routine runs' }).getByRole('listitem').first()
+      await runRow.waitFor()
+      const runText = (await runRow.textContent()) ?? ''
+      expect('Runs lists the run as issue created', runText.includes('issue created'), runText)
+      const identifier = ((await open.textContent()) ?? '').replace('Open ', '')
+      await open.click()
+      await page.waitForURL(new RegExp(`#/issues/${identifier}$`))
+      const back = page.locator('[data-property-row="Routine"]').getByRole('link', { name: renamed })
+      await back.waitFor()
+      expect('the Execution Issue links back to the Routine', (await back.getAttribute('href')) === `#/routines/${id}`, await back.getAttribute('href'))
+
+      await page.goto(`${WEB}/#/routines/${id}/activity`)
+      const feed = page.getByRole('list', { name: 'Routine activity' })
+      await feed.waitFor()
+      const actions = await feed.locator('[data-activity]').evaluateAll((els) => els.map((e) => e.getAttribute('data-activity')))
+      expect(
+        'Activity shows the creation and the trigger events',
+        ['routine.created', 'routine.trigger_created', 'routine.trigger_updated', 'routine.updated'].every((a) => actions.includes(a)),
+        actions,
+      )
+    } finally {
+      await clearRoutines(page, title)
+      await clearRoutines(page, renamed)
+      await drop()
       await page.context().close()
     }
   },
