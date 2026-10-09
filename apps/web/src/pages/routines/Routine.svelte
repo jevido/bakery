@@ -8,7 +8,8 @@
   // is read-only: neither has the toggle, and an archived one has no Run
   // or Edit, since archiving is final. Only a Member with manage_work gets
   // any control. Run on a Routine with variables opens the Run dialog to
-  // ask for them. Left out: History, Secrets and Delivery.
+  // ask for them. History lists the Routine revisions and restores one.
+  // Left out: Secrets and Delivery.
   import { Pencil, Play, X } from '@lucide/svelte'
   import { Badge } from '@bakery/ui/components/ui/badge'
   import { Button } from '@bakery/ui/components/ui/button'
@@ -33,6 +34,7 @@
   import { toast } from '../../lib/ui/toast.svelte'
   import RoutineActivity from './RoutineActivity.svelte'
   import RoutineEditor, { type RoutineDraft } from './RoutineEditor.svelte'
+  import RoutineHistory from './RoutineHistory.svelte'
   import RoutineOverview from './RoutineOverview.svelte'
   import RoutineRuns from './RoutineRuns.svelte'
   import RoutineSaveBar from './RoutineSaveBar.svelte'
@@ -41,7 +43,7 @@
 
   let { id, section }: { id: number; section: RoutineSection } = $props()
 
-  const titles: Record<RoutineSection, string> = { '': 'Overview', triggers: 'Triggers', runs: 'Runs', activity: 'Activity' }
+  const titles: Record<RoutineSection, string> = { '': 'Overview', triggers: 'Triggers', runs: 'Runs', activity: 'Activity', history: 'History' }
 
   let routine = $state.raw<RoutineDetail | null>(null)
   let loadError = $state('')
@@ -258,6 +260,8 @@
             <RoutineTriggers {routine} editable={canManage && !archived} onchange={load} />
           {:else if section === 'runs'}
             <RoutineRuns id={routine.id} {version} />
+          {:else if section === 'history'}
+            <RoutineHistory {routine} {version} editable={canManage && !archived} onrestored={load} />
           {:else}
             <RoutineActivity id={routine.id} {version} />
           {/if}

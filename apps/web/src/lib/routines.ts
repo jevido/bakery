@@ -375,6 +375,22 @@ export const routineRevisions = (id: number) =>
     `/routines/${id}/revisions`,
   ).then((r) => r.revisions);
 
+/** What a restore answers: the Routine as it is now and the revision it made. */
+export type RestoredRevision = {
+  routine: Routine;
+  revision: RoutineRevision;
+  restored_from_revision_id: number;
+  restored_from_revision_number: number;
+  /** One per Webhook trigger the restore recreated, its secret shown this once. */
+  secret_materials: (SecretMaterial & { trigger_id: number })[];
+};
+/** Puts the Routine back as the revision has it, as a new revision. */
+export const restoreRoutineRevision = (id: number, revisionId: number) =>
+  api<RestoredRevision>(
+    "POST",
+    `/routines/${id}/revisions/${revisionId}/restore`,
+  );
+
 export const routineRuns = (id: number, limit = 50) =>
   api<{ routine_runs: RoutineRun[] }>(
     "GET",
@@ -459,6 +475,7 @@ const routineActionLabels: Record<string, string> = {
   "routine.trigger_secret_rotated": "Webhook secret rotated",
   "routine.run_triggered": "Routine started",
   "routine.webhook_rejected": "Webhook delivery rejected",
+  "routine.revision_restored": "Revision restored",
 };
 export const routineActionLabel = (action: string) =>
   routineActionLabels[action] ??

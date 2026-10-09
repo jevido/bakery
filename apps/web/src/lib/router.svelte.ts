@@ -185,7 +185,7 @@ export function securityPath(page: SecurityPage): string {
 }
 
 /** The Routine page's sections, in Paperclip's order; Overview has no slug. */
-export const routineSections = ['', 'triggers', 'runs', 'activity'] as const
+export const routineSections = ['', 'triggers', 'runs', 'activity', 'history'] as const
 export type RoutineSection = (typeof routineSections)[number]
 
 /** The Costs page's tabs, in Paperclip's order; its Providers, Billers and Finance are left out. */

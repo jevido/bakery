@@ -372,7 +372,10 @@
 </section>
 
 {#if diff}
-  <DocumentDiff bind:open={diffOpen} documentKey={diff.key} old={diff.old} new={diff.new} />
+  {@const key = diff.key}
+  <DocumentDiff bind:open={diffOpen} old={diff.old} new={diff.new}>
+    {#snippet heading()}Diff — <span class="font-mono text-sm">{key}</span>{/snippet}
+  </DocumentDiff>
 {/if}
 
 <AlertDialog.Root open={deleting !== null} onOpenChange={(open) => !open && (deleting = null)}>

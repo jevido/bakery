@@ -4,9 +4,12 @@
   // lines red, added lines green, unchanged ones plain, each with its old and
   // new line number. Paperclip picks both sides from Select menus of the
   // Revisions; here the caller names them, because the Issue page compares
-  // one Revision with the current one, or the newest with an unsaved draft.
+  // one Revision with the current one, or the newest with an unsaved draft,
+  // and the Routine page's History one Routine revision's description with
+  // the current one, with its changed fields above the lines.
   import { Badge } from '@bakery/ui/components/ui/badge'
   import * as Dialog from '@bakery/ui/components/ui/dialog'
+  import type { Snippet } from 'svelte'
   import { buildLineDiff, type DiffRowKind } from './lineDiff'
 
   /** One side of the comparison: its label (like "rev 1") and its text. */
@@ -14,10 +17,21 @@
 
   let {
     open = $bindable(false),
-    documentKey,
+    heading,
     old: before,
     new: after,
-  }: { open?: boolean; documentKey: string; old: Side; new: Side } = $props()
+    children,
+    footer,
+  }: {
+    open?: boolean
+    /** The dialog's title. */
+    heading: Snippet
+    old: Side
+    new: Side
+    /** Shown above the lines, like the fields that changed. */
+    children?: Snippet
+    footer?: Snippet
+  } = $props()
 
   const rows = $derived(buildLineDiff(before.body, after.body))
 
@@ -33,7 +47,7 @@
   <Dialog.Content class="flex max-h-[85vh] w-full flex-col overflow-hidden sm:max-w-[90vw]" data-testid="document-diff">
     <div class="flex flex-wrap items-center justify-between gap-4 pr-8">
       <Dialog.Header class="shrink-0">
-        <Dialog.Title>Diff — <span class="font-mono text-sm">{documentKey}</span></Dialog.Title>
+        <Dialog.Title>{@render heading()}</Dialog.Title>
       </Dialog.Header>
       <div class="flex shrink-0 items-center gap-4 text-xs">
         <span class="flex items-center gap-2">
@@ -47,6 +61,7 @@
       </div>
     </div>
 
+    {@render children?.()}
     <div class="flex-1 overflow-auto rounded-md border border-border text-xs">
       <div class="font-mono text-xs leading-6">
         <div class="grid grid-cols-[3rem_3rem_2rem_1fr] border-b border-border/60 bg-muted/30 px-3 py-2 text-[11px] tracking-wide text-muted-foreground uppercase">
@@ -65,5 +80,6 @@
         {/each}
       </div>
     </div>
+    {#if footer}<Dialog.Footer>{@render footer()}</Dialog.Footer>{/if}
   </Dialog.Content>
 </Dialog.Root>

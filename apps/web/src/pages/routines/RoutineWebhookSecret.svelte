@@ -17,7 +17,7 @@
       <span class="text-xs font-medium">{field.label}</span>
       <div class="flex min-w-0 items-center gap-2 rounded-md border border-border bg-background px-3 py-2">
         <code title={field.value} class="min-w-0 flex-1 truncate text-xs" data-field={field.label}>{field.value}</code>
-        <span class="text-xs text-muted-foreground hover:text-foreground"><CopyButton text={field.value} label="Copy {field.label}" /></span>
+        <span class="chrome shrink-0 text-xs text-muted-foreground hover:text-foreground"><CopyButton text={field.value} label="Copy {field.label}" /></span>
       </div>
     </div>
   {/each}

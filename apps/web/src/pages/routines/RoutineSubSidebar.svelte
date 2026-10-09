@@ -2,9 +2,9 @@
   // Paperclip's RoutineSubSidebar (ui/src/components/RoutineSubSidebar.tsx;
   // MIT, see NOTICE): the Routine page's sections in two groups, the
   // current one marked, arrow keys moving between them. Below md the same
-  // list is a select. Left out with their sections: Variables, Secrets,
-  // Delivery and History.
-  import { Activity, Circle, Clock3, Play } from '@lucide/svelte'
+  // list is a select. Left out with their sections: Variables, Secrets
+  // and Delivery.
+  import { Activity, Circle, Clock3, History, Play } from '@lucide/svelte'
   import * as Select from '@bakery/ui/components/ui/select'
   import { go, href, type RoutineSection } from '../../lib/router.svelte'
 
@@ -24,6 +24,7 @@
       items: [
         { key: 'runs', label: 'Runs', icon: Play },
         { key: 'activity', label: 'Activity', icon: Activity },
+        { key: 'history', label: 'History', icon: History },
       ],
     },
   ]

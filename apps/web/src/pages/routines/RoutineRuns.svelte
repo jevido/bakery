@@ -2,12 +2,13 @@
   // Paperclip's RunsSection (ui/src/components/routine-sections/
   // operate-sections.tsx; MIT, see NOTICE): the Routine's runs, newest
   // first, each with its status, source, trigger and time, and the
-  // Execution Issue it made with that Issue's status, as the Recent Runs tab.
+  // Execution Issue it made with that Issue's status, as the Recent Runs tab,
+  // and the Routine revision it ran.
   import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { ago } from '../../lib/format'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
   import { href } from '../../lib/router.svelte'
-  import { routineRunStatusLabel, routineRuns, type RoutineRun } from '../../lib/routines'
+  import { routineRevisions, routineRunStatusLabel, routineRuns, type RoutineRun } from '../../lib/routines'
   import Empty from '../../lib/ui/Empty.svelte'
   import { workLabel } from '../../lib/work'
 
@@ -16,12 +17,17 @@
 
   let runs = $state.raw<RoutineRun[] | null>(null)
   let loadError = $state('')
+  /** Each Routine revision's number by its id. */
+  let numbers = $state.raw(new Map<number, number>())
 
   $effect(() => {
     void version
     routineRuns(id)
       .then((rs) => (runs = rs))
       .catch((e) => (loadError = e.message))
+    routineRevisions(id)
+      .then((rs) => (numbers = new Map(rs.map((r) => [r.id, r.revision_number]))))
+      .catch(() => {})
   })
 </script>
 
@@ -46,6 +52,7 @@
             <span class="text-muted-foreground">{run.failure_reason ?? 'No issue'}</span>
           {/if}
         </span>
+        <span class="w-12 text-xs text-muted-foreground" data-run-revision>{run.routine_revision_id && numbers.has(run.routine_revision_id) ? `rev ${numbers.get(run.routine_revision_id)}` : ''}</span>
         <span class="w-28 text-right text-xs text-muted-foreground" title={new Date(run.triggered_at).toLocaleString()}>{ago(run.triggered_at)}</span>
       </div>
     {/each}

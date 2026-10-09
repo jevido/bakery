@@ -16,9 +16,9 @@
 //           creation and the trigger events
 //   run     Run on a Routine page: the toast opens the Execution Issue,
 //           assigned to the Agent, with its Routine row; Runs shows "issue
-//           created"; Run again (the Issue's Run still queued, no Desktop
-//           runs it) coalesces into the same Issue; the Issue set done
-//           makes its Routine run "completed"
+//           created" and the revision it ran; Run again (the Issue's
+//           Run still queued, no Desktop runs it) coalesces into the same
+//           Issue; the Issue set done makes its Routine run "completed"
 //   pause   the toggle pauses the Routine (the trigger's Next run goes) and
 //           resumes it; Archive from the list's row menu takes it out of
 //           the list and leaves its page read-only
@@ -35,6 +35,13 @@
 //           saved, Run opens the Run dialog with shop picked; blog is run
 //           and Runs links an Issue "triage blog alert"; with repo's
 //           default cleared, Add schedule is refused naming repo
+//   history a Routine with a Webhook trigger, renamed and the trigger
+//           deleted: History lists revisions 4 to 1 newest first; revision
+//           2 shows "differs from current" beside Title; Compare shows the
+//           Title change and the description lines; Restore names the
+//           Webhook trigger coming back, and confirming makes revision 5
+//           (Restored) at the top, the old title in the header and the
+//           recreated trigger's new secret
 //
 //   bun e2e/routines.ts [section ...]   (task web:routines; needs task dev)
 //
@@ -312,6 +319,8 @@ const sections: Record<string, () => Promise<void>> = {
       const list = page.getByRole('list', { name: 'Routine runs' })
       await list.getByRole('listitem').filter({ hasText: 'issue created' }).waitFor()
       expect('Runs shows the run as issue created', true)
+      await list.locator('[data-run-revision]').first().getByText(/^rev \d+$/).waitFor()
+      expect('the run says which Routine revision it ran', true)
 
       await open.click()
       await page.waitForURL(new RegExp(`#/issues/${identifier}$`))
@@ -535,6 +544,66 @@ const sections: Record<string, () => Promise<void>> = {
       await page.getByRole('group', { name: 'New trigger' }).getByRole('button', { name: 'Add trigger' }).click()
       await page.getByText(/require defaults for required variables: repo/).waitFor()
       expect('Add schedule is refused naming repo', true)
+    } finally {
+      await clearRoutines(page, title)
+      await drop()
+      await page.context().close()
+    }
+  },
+
+  history: async () => {
+    const page = await signedIn()
+    const title = 'E2E history routine'
+    await clearRoutines(page, title)
+    await clearRoutines(page, `${title} renamed`)
+    const { agent, project, drop } = await scratch(page, 'E2E history')
+    try {
+      const created = (await (
+        await page.request.post(`${WEB}/api/routines`, {
+          data: { title, description: 'Check the lockfile.\nOpen an issue.', assignee_agent_id: agent, project_id: project },
+        })
+      ).json()) as { routine: { id: number } }
+      const id = created.routine.id
+      const added = (await (
+        await page.request.post(`${WEB}/api/routines/${id}/triggers`, { data: { kind: 'webhook', label: 'GitHub alerts', signing_mode: 'bearer' } })
+      ).json()) as { trigger: { id: number } }
+      await page.request.patch(`${WEB}/api/routines/${id}`, { data: { title: `${title} renamed`, description: 'Check the lockfile.\nComment on the PR.' } })
+      await page.request.delete(`${WEB}/api/routine-triggers/${added.trigger.id}`)
+
+      await page.goto(`${WEB}/#/routines/${id}`)
+      await page.getByRole('navigation', { name: 'Routine sections' }).getByRole('tab', { name: 'History' }).click()
+      const list = page.getByRole('complementary', { name: 'Routine revisions' })
+      await list.locator('[data-revision]').first().waitFor()
+      const order = await list.locator('[data-revision]').evaluateAll((els) => els.map((e) => e.getAttribute('data-revision')))
+      expect('History lists revisions 4, 3, 2, 1 newest first', order.join() === '4,3,2,1', order)
+
+      await list.locator('[data-revision="2"]').click()
+      const titleRow = page.locator('[data-revision-field="Title"]')
+      await titleRow.getByText('differs from current').waitFor()
+      expect('revision 2 shows "differs from current" beside Title', true)
+      expect('the banner says which revision is viewed', await page.getByText("You're viewing revision 2").isVisible())
+
+      await page.getByRole('button', { name: 'Compare', exact: true }).click()
+      const diff = page.getByTestId('document-diff')
+      await diff.getByTestId('revision-field-changes').getByText(`${title} renamed`).waitFor()
+      expect('Compare shows the Title change', true)
+      expect('Compare shows the description lines removed and added', (await diff.locator('[data-diff="removed"]').count()) === 1 && (await diff.locator('[data-diff="added"]').count()) === 1)
+      await diff.getByRole('button', { name: 'Close' }).first().click()
+
+      await page.getByRole('button', { name: 'Restore as new revision' }).click()
+      const dialog = page.getByRole('dialog', { name: 'Restore revision 2?' })
+      await dialog.getByText(/The webhook trigger GitHub alerts will be recreated/).waitFor()
+      expect('Restore names the Webhook trigger coming back', true)
+      await page.screenshot({ path: '/tmp/routine-history-restore.png' })
+      await dialog.getByRole('button', { name: 'Restore as revision 5' }).click()
+      await list.locator('[data-revision="5"]').waitFor()
+      expect('revision 5 is at the top, marked Restored', ((await list.locator('[data-revision]').first().textContent()) ?? '').includes('Restored'))
+      await page.getByRole('heading', { level: 1, name: title, exact: true }).waitFor()
+      expect('the header shows the old title', true)
+      const secret = (await page.locator('[data-field="Secret key"]').textContent()) ?? ''
+      expect("the recreated trigger's new secret is shown", secret.length >= 32, secret)
+      await page.waitForTimeout(1500)
+      await page.screenshot({ path: '/tmp/routine-history.png' })
     } finally {
       await clearRoutines(page, title)
       await drop()
