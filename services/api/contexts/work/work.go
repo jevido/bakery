@@ -1,6 +1,7 @@
 // Package work is what the router and other contexts may use from the
 // work context: its routes (Goals, Issues, Comments, Issue documents, Work
-// products, the Activity, the Inbox and Approvals), and for the agents context
+// products, the Activity, the Inbox, Approvals and Routines), Start for the
+// Routine scheduler, and for the agents context
 // RequestApproval, CancelApproval, OnApprovalDecided, RecordActivity,
 // OnAgentNames, OnAgentAssignees, UnassignAgent, IssueForRun,
 // OpenIssuesOfAgent, InboxOfAgent, CommentsForRun, OnIssueAssigned, OnIssueCommented,
@@ -60,6 +61,29 @@ func svc() *app.Service {
 		})
 	})
 	return service
+}
+
+// tickEvery is how often the Routine scheduler looks for due Schedule
+// triggers. A var so tests can shorten it.
+var tickEvery = 15 * time.Second
+
+// Start runs the Routine scheduler until ctx is done: every tickEvery it
+// fires the Schedule triggers that are due.
+func Start(ctx context.Context) {
+	go func() {
+		t := time.NewTicker(tickEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if _, err := svc().TickRoutines(ctx); err != nil {
+					facades.Log().Errorf("work: ticking routines: %v", err)
+				}
+			}
+		}
+	}()
 }
 
 // HireAgentRequest is the Agent a hire_agent Approval asks the Board to

@@ -30,6 +30,14 @@ type Routines interface {
 	CreateTrigger(ctx context.Context, t domain.RoutineTrigger) (domain.RoutineTrigger, error)
 	SaveTrigger(ctx context.Context, t domain.RoutineTrigger) error
 	DeleteTrigger(ctx context.Context, id uint64) error
+	// DueTriggers lists the schedule Routine triggers that are on, of an
+	// active Routine with an Agent assignee, whose Next run is at or
+	// before now, by Next run and then by when they were added.
+	DueTriggers(ctx context.Context, now time.Time) ([]domain.RoutineTrigger, error)
+	// ClaimTrigger moves the trigger's Next run from seen to next, only
+	// while it is still on and its Next run is still seen; claimed is
+	// false when another API process got there first.
+	ClaimTrigger(ctx context.Context, id uint64, seen, next time.Time) (claimed bool, err error)
 	// LockRoutine holds the Routine's lock, across API processes, until
 	// unlock is called: a Routine run of it waits while another is
 	// dispatched.
@@ -516,4 +524,51 @@ func (s *Service) DeleteTrigger(ctx context.Context, guildID uint64, by domain.A
 	}
 	s.publish(ctx, domain.RoutineTriggerDeleted{Happened: s.happened(by), Routine: r, Trigger: t})
 	return nil
+}
+
+// TickRoutines fires each due Schedule trigger once, after Paperclip's
+// tickScheduledTriggers: it claims the trigger's next Next run, as its
+// Catch-up policy says, and then dispatches its Routine runs with source
+// schedule. A trigger another API process claimed first is left to it. A
+// trigger that fails is logged and the others still tick.
+func (s *Service) TickRoutines(ctx context.Context) (fired int, err error) {
+	now := s.now()
+	due, err := s.routines.DueTriggers(ctx, now)
+	if err != nil {
+		return 0, err
+	}
+	for _, t := range due {
+		n, err := s.tickTrigger(ctx, t, now)
+		if err != nil {
+			s.Logf("work: schedule trigger %d of routine %d: %v", t.ID, t.RoutineID, err)
+		}
+		fired += n
+	}
+	return fired, nil
+}
+
+func (s *Service) tickTrigger(ctx context.Context, t domain.RoutineTrigger, now time.Time) (int, error) {
+	r, found, err := s.routines.Routine(ctx, t.RoutineID)
+	if err != nil || !found {
+		return 0, err
+	}
+	runs, next, err := t.Due(r, now)
+	if err != nil || runs == 0 {
+		return 0, err
+	}
+	claimed, err := s.routines.ClaimTrigger(ctx, t.ID, *t.NextRunAt, next)
+	if err != nil || !claimed {
+		return 0, err
+	}
+	fired := 0
+	for range runs {
+		// A Routine paused or archived since it was read refuses the run;
+		// the claim stands, so it is not fired again.
+		if _, err := s.RunRoutine(ctx, r.GuildID, r.ID, RunRequest{Source: domain.ScheduleSource, TriggerID: t.ID}); err != nil {
+			s.Logf("work: schedule trigger %d of routine %d: %v", t.ID, r.ID, err)
+			continue
+		}
+		fired++
+	}
+	return fired, nil
 }

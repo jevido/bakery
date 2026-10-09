@@ -334,3 +334,57 @@ func (t *RoutineTrigger) Reschedule(r Routine, now time.Time) {
 		t.NextRunAt = &at
 	}
 }
+
+// MaxCatchUpRuns is the most Routine runs enqueue_missed_with_cap makes up
+// for one trigger in one tick of the scheduler, as Paperclip's.
+const MaxCatchUpRuns = 25
+
+// Due works out what the scheduler fires for the trigger at now, after
+// Paperclip's tickScheduledTriggers: runs Routine runs, and next, the Next
+// run it claims. runs is 0 while the trigger does not fire or is not due.
+// skip_missed fires once and moves on to the first tick after now.
+// enqueue_missed_with_cap fires once per tick from the stored Next run up
+// to now, at most MaxCatchUpRuns, and next is the tick after the last one
+// counted, so a capped trigger makes up the rest on the following tick; a
+// cron that ticks more often than hourly fires once, as skip_missed.
+func (t RoutineTrigger) Due(r Routine, now time.Time) (runs int, next time.Time, err error) {
+	if !t.Fires(r) || t.NextRunAt == nil || t.NextRunAt.After(now) {
+		return 0, time.Time{}, nil
+	}
+	if r.CatchUpPolicy == EnqueueMissedWithCap {
+		hourly, err := t.subHourly(now)
+		if err != nil {
+			return 0, time.Time{}, err
+		}
+		if !hourly {
+			for at := *t.NextRunAt; !at.After(now) && runs < MaxCatchUpRuns; runs++ {
+				if at, err = cron.Next(t.CronExpression, t.Timezone, at); err != nil {
+					return 0, time.Time{}, err
+				}
+				next = at
+			}
+			return runs, next, nil
+		}
+	}
+	next, err = cron.Next(t.CronExpression, t.Timezone, now)
+	return 1, next, err
+}
+
+// subHourly is Paperclip's isSubHourlyCronExpression: the cron ticks more
+// than 24 times in the day after its first tick after now.
+func (t RoutineTrigger) subHourly(now time.Time) (bool, error) {
+	first, err := cron.Next(t.CronExpression, t.Timezone, now)
+	if err != nil {
+		return false, err
+	}
+	at := first
+	for range 24 {
+		if at, err = cron.Next(t.CronExpression, t.Timezone, at); err != nil {
+			return false, err
+		}
+		if !at.Before(first.Add(24 * time.Hour)) {
+			return false, nil
+		}
+	}
+	return true, nil
+}

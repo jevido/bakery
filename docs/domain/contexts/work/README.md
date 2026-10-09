@@ -206,7 +206,10 @@ reading the Issue needs.
   update that checks the old value, so two ticks (or two processes) never
   fire it twice. `skip_missed` fires once however many ticks it missed;
   `enqueue_missed_with_cap` fires once per missed tick, at most 25, and
-  once only for a cron that ticks more often than hourly.
+  once only for a cron that ticks more often than hourly (more than 24
+  ticks in the day after now, as Paperclip's `isSubHourlyCronExpression`).
+  A capped trigger's `next_run_at` stays at the first tick it did not
+  make up, so the next tick makes up the rest.
 
 Reading Routines, their Routine triggers and Routine runs needs
 `view_resources`; a Routine with a Project also needs `view_resources` in

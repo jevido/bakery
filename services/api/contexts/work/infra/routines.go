@@ -208,6 +208,32 @@ func (s Routines) DeleteTrigger(ctx context.Context, id uint64) error {
 	return err
 }
 
+func (s Routines) DueTriggers(ctx context.Context, now time.Time) ([]domain.RoutineTrigger, error) {
+	var recs []routineTriggerRecord
+	if err := s.query(ctx).Raw(`SELECT t.* FROM routine_triggers t JOIN routines r ON r.id = t.routine_id
+		WHERE t.kind = 'schedule' AND t.enabled AND t.next_run_at IS NOT NULL AND t.next_run_at <= ?
+		AND r.status = 'active' AND r.assignee_agent_id IS NOT NULL
+		ORDER BY t.next_run_at, t.created_at, t.id`, now).Scan(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]domain.RoutineTrigger, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+	}
+	return out, nil
+}
+
+// ClaimTrigger is Paperclip's claim in tickScheduledTriggers: the write
+// only hits a row whose next_run_at is still the one read, so of two API
+// processes ticking at once only one fires the trigger.
+func (s Routines) ClaimTrigger(ctx context.Context, id uint64, seen, next time.Time) (bool, error) {
+	res, err := s.query(ctx).Exec(`UPDATE routine_triggers SET next_run_at = ?, updated_at = now() WHERE id = ? AND enabled AND next_run_at = ?`, next, id, seen)
+	if err != nil {
+		return false, err
+	}
+	return res.RowsAffected == 1, nil
+}
+
 // routineLocks is the first key of the advisory locks on Routines, so they
 // never meet another use of pg_advisory_lock.
 const routineLocks = 45

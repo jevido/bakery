@@ -156,6 +156,30 @@ func (m *memRoutines) DeleteTrigger(_ context.Context, id uint64) error {
 	return nil
 }
 
+// DueTriggers is the infra query over memory: it reads the Routines too.
+func (m *memRoutines) DueTriggers(_ context.Context, now time.Time) ([]domain.RoutineTrigger, error) {
+	var out []domain.RoutineTrigger
+	for _, t := range m.triggers {
+		r := m.byID[t.RoutineID]
+		if t.Kind == domain.ScheduleTrigger && t.Enabled && r.Status == domain.ActiveRoutine && r.AssigneeAgentID != 0 &&
+			t.NextRunAt != nil && !t.NextRunAt.After(now) {
+			out = append(out, t)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b domain.RoutineTrigger) int { return a.NextRunAt.Compare(*b.NextRunAt) })
+	return out, nil
+}
+
+func (m *memRoutines) ClaimTrigger(_ context.Context, id uint64, seen, next time.Time) (bool, error) {
+	for i, t := range m.triggers {
+		if t.ID == id && t.Enabled && t.NextRunAt != nil && t.NextRunAt.Equal(seen) {
+			m.triggers[i].NextRunAt = &next
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // routineService has Agents 3 and 5, and Agent 4, which is terminated.
 func routineService(t *testing.T) (*Service, *memRoutines, *memActivity) {
 	t.Helper()
