@@ -21,10 +21,12 @@ through a `hire_agent` Approval the Board decides in work. It also
 reads a Guild's Costs from its Runs' Run usage and keeps its Budgets: caps
 on the tokens, Runs or run time of the Guild, an Agent or a Project, which
 open Budget incidents at their Warning and Hard stop and refuse new Runs
-in a stopped scope.
+in a stopped scope. It keeps a Guild's Skills too: Claude skill packages
+its people write in the dashboard and give to Agents as their Agent skills,
+which the Desktop app writes for `claude` on every Run of that Agent.
 
-It is **not** responsible (yet) for instructions or a
-Guild's skills: later phases of the guilds goal add them. It never executes
+It is **not** responsible (yet) for instructions: a later phase of the
+guilds goal adds them. It never executes
 anything: the Runner in the Desktop app does, and reports back. Who an Issue
 is assigned to belongs to work; agents only answers whether an Agent may be
 one. It does not own Members,
@@ -39,7 +41,8 @@ Run status, Run event, Transcript, Invocation source, Run usage, Runner,
 Lease, Heartbeat, Heartbeat policy, Wake, Wake reason, Workspace, Worktree,
 Agent branch, Run's Project, Costs, Budget, Budget metric, Budget window,
 Budget scope, Observed amount, Budget status, Warning, Hard stop, Budget
-incident, Pause reason, Subscription limit, Limit reset, Desktop limit)
+incident, Pause reason, Subscription limit, Limit reset, Desktop limit,
+Skill, Skill slug, Skill file, Agent skills)
 are in
 [`glossary.md`](../../glossary.md).
 
@@ -64,6 +67,11 @@ are in
 | Desktop limit | One per Desktop (keyed by `desktop_id`, as `runs.desktop_id` references identity's `desktops`), holding `resets_at` and `reported_at`. A later report replaces it only when its reset is later. It is over once `resets_at` has passed; nothing needs to delete it. |
 | Budget | Belongs to one Guild. At most one per Guild, Budget scope (type and id), Budget metric and Budget window. Scope type `guild`, `agent` or `project`, metric `tokens`, `runs` or `run_time`, window `calendar_month_utc` or `lifetime` (422 otherwise); its scope is that Guild itself, an Agent of it or a Project of it (422 otherwise). Amount a whole number ≥ 0, 0 meaning no cap (never `warning` nor `hard_stop`); Warning percent 1–99 (80 by default); Hard stop and notify on by default. Its Observed amount is never stored: it is computed from the Runs in its current window, so a calendar month starts at zero without a job. A Budget goes when its Agent is terminated or its Project deleted, with its Budget incidents, and the `budget_override_required` Approvals still waiting on them are cancelled. |
 | Budget incident | Belongs to one Budget and records one threshold (`soft` or `hard`) crossed in one window, with the window's start and end, the amount and the Observed amount when it opened. At most one not `dismissed` per Budget, window start, threshold and amount. Status moves only `open → resolved` or `open → dismissed`, and only a `hard` one is resolved through ResolveBudgetIncident; an `open` `soft` one is resolved when its Budget is raised above its Observed amount. A `hard` one has the id of its `budget_override_required` Approval. |
+| Skill | Belongs to one Guild. Its Skill slug is lowercase letters, digits and `-`, 1–64 long, unique in the Guild, never `bakery`, and fixed once created (422 otherwise). It always has a `SKILL.md`, which cannot be deleted. Each Skill file has a path that is relative, has no `..`, no `\`, no empty segment and no leading `/`, at most 512 characters, unique in the Skill; an `encoding` of `utf8` or `base64` (the content must decode) and an `executable` flag. At most 512 KiB a file, and 2 MiB and 200 files a Skill (422 otherwise). Its name and description are read from `SKILL.md`'s frontmatter each time `SKILL.md` is written: `name` (1–100 characters, the Skill slug when missing) and `description` (at most 1000, empty when missing). Deleting it is refused (422, naming them) while an Agent that is not `terminated` has it in its Agent skills. |
+
+The Agent's Agent skills belong to the Agent aggregate: only Skills of the
+Agent's Guild, each at most once; a terminated Agent's are kept but never
+used again.
 
 The Agent's Roles are not part of the Agent aggregate: they are its Agent
 membership's in guilds, which keeps the rule that each is below the
@@ -175,6 +183,8 @@ admin always may (with `hire_agents`, which they always hold).
   claimed (409, and it is cancelled). A Desktop whose Desktop limit has not
   passed is refused (409 `subscription limit until <RFC 3339>`), and the
   Run stays `queued`.
+  The answer carries the Run's Agent's Agent skills, each with every Skill
+  file, so the Desktop writes them for `claude`.
 - `AppendRunEvents(run, events)` [the claiming Desktop's person]: appends
   Run events by `seq`, renews the Lease; on a Run that is no longer
   `running`, 409 with its status.
@@ -247,6 +257,25 @@ admin always may (with `hire_agents`, which they always hold).
   its Hirer's signed-in Desktops (identity's `SignedInDesktops`) that are
   still at their limit, but only when every one of those Desktops is;
   otherwise null, and null for every other Run status.
+- Read the Guild's Skills, one Skill with its Skill files and the Agents
+  that have it, and one Skill file [`view_resources`].
+- `CreateSkill(name, slug, description, markdown)` [`manage_skills`]: the
+  Skill slug is the given one or derived from the name (lowercased, every
+  run of other characters a `-`, trimmed to 64); `SKILL.md` is the given
+  Markdown, or one generated with a frontmatter naming it and its
+  description.
+- `WriteSkillFile(skill, path, content, encoding, executable)`
+  [`manage_skills`]: creates or replaces one Skill file; writing `SKILL.md`
+  reads the name and description from it again. Writing what is already
+  there changes nothing and records nothing.
+- `DeleteSkillFile(skill, path)` [`manage_skills`]: any file but
+  `SKILL.md`.
+- `DeleteSkill(skill)` [`manage_skills`]: refused while an Agent that is
+  not `terminated` has it.
+- Read an Agent's Agent skills [`view_resources`].
+- `SyncAgentSkills(agent, skills)` [manage]: replaces the Agent's Agent
+  skills with the given Skills of its Guild (an unknown id is 422); not
+  for a `terminated` Agent. The same set again records nothing.
 - When the Hirer leaves the Guild or is removed from it, guilds tells
   agents and every Agent they hired there is terminated, with whoever
   removed them as the Actor (removal is the only way to leave today).
@@ -288,6 +317,11 @@ did it as Actor.
 | `BudgetSoftThresholdCrossed` | evaluating a Budget | `budget.soft_threshold_crossed` |
 | `BudgetHardThresholdCrossed` | evaluating a Budget | `budget.hard_threshold_crossed` |
 | `BudgetIncidentResolved` | `ResolveBudgetIncident` | `budget.incident_resolved` |
+| `SkillCreated` | `CreateSkill` | `skill.created` |
+| `SkillFileUpdated` | `WriteSkillFile`, when something changed | `skill.file_updated` |
+| `SkillFileDeleted` | `DeleteSkillFile` | `skill.file_deleted` |
+| `SkillDeleted` | `DeleteSkill` | `skill.deleted` |
+| `AgentSkillsSynced` | `SyncAgentSkills`, when the set changed | `agent.skills_synced` |
 
 `run.started` has as Actor the person who caused the Wake: who pressed
 Run or Run heartbeat, who assigned the Issue, who wrote the Comment. A
@@ -337,6 +371,15 @@ records nothing more.
   | `GET /api/costs/by-project?from=&to=` | `view_resources` | | `{"projects": [Costs + {project: {id, name} \| null}]}` |
   | `GET /api/budgets/overview` | `view_resources` | | `{"budgets": [Budget], "incidents": [Budget incident], "paused_agents": n, "stopped_projects": n}`; guild first, then Agents and Projects by name, without the Budgets of Projects the person may not view |
   | `PUT /api/budgets` | `manage_budgets` | `{scope_type, scope_id, metric, window, amount, warn_percent, hard_stop, notify}`; `scope_id` may be left out for `guild`, `window` defaults to `lifetime` for `project` and `calendar_month_utc` otherwise, `warn_percent` to 80, `hard_stop` and `notify` to true | `{"budget": Budget}`; 422 for an unknown metric, window or scope type, a missing `amount`, or a scope outside the Guild (a terminated Agent, or a Project the person may not view, counts as outside) |
+  | `GET /api/skills` | `view_resources` | | `{"skills": [Skill]}`, by name |
+  | `POST /api/skills` | `manage_skills` | `{name, slug?, description?, markdown?}` | 201 `{"skill": Skill detail}`; a Skill slug taken or `bakery` is 422 on `slug` |
+  | `GET /api/skills/{id}` | `view_resources` | | `{"skill": Skill detail}` |
+  | `GET /api/skills/{id}/file?path=` | `view_resources` | | `{"file": {path, content, encoding, executable, size}}`; 404 for a path the Skill does not have |
+  | `PUT /api/skills/{id}/files` | `manage_skills` | `{path, content, encoding?, executable?}` (`utf8` and not executable by default) | `{"skill": Skill detail}` |
+  | `DELETE /api/skills/{id}/files?path=` | `manage_skills` | | `{"skill": Skill detail}`; `SKILL.md` is 422 |
+  | `DELETE /api/skills/{id}` | `manage_skills` | | 204; 422 `{message, agents: [{id, name}]}` while in use |
+  | `GET /api/agents/{id}/skills` | `view_resources` | | `{"skills": [Skill]}` |
+  | `PUT /api/agents/{id}/skills` | manage | `{skill_ids: [id]}` | `{"skills": [Skill]}` |
   | `POST /api/budget-incidents/{id}/resolve` | `manage_budgets` | `{action: raise_budget_and_resume \| keep_paused, amount, decision_note}` | `{"incident": Budget incident}` |
 
   Costs are `{input_tokens, cached_input_tokens, output_tokens, tokens,
@@ -348,7 +391,13 @@ records nothing more.
   window_start, window_end, updated_at}`; a Budget incident `{id,
   budget_id, scope: {type, id, name}, metric, window, threshold, amount,
   observed, status, approval_id, window_start, window_end, created_at,
-  resolved_at}`. A refused Wake answers 422 `{message, scope: {type, id,
+  resolved_at}`. A Skill is `{id, slug, name, description, file_count,
+  size, agents_count, created_at, updated_at, created_by: {id, name} |
+  null}`, `size` the bytes of all its files; a Skill detail adds `files:
+  [{path, kind, size, encoding, executable}]` (`kind` is `skill` for
+  `SKILL.md`, `markdown` for another `.md` file, `script` for an executable
+  one and `other` otherwise, by path) and `agents: [{id, name, icon,
+  status}]`, the Agents that are not terminated and have it. A refused Wake answers 422 `{message, scope: {type, id,
   name}}` with the stopped scope's reason ("Guild cannot start new runs
   because its budget's hard stop is reached.", "Agent is paused because its
   budget's hard stop was reached." or "Project cannot start new runs
@@ -374,7 +423,9 @@ records nothing more.
   identifier, title} | null, invocation_source, wake_reason, wake_count,
   prompt, retry_of_run_id, session_id, workspace: {application: {id,
   name}, repository, base_branch, branch} | null,
-  next_seq, created_at, started_at, lease_expires_at}`. The stream also
+  next_seq, created_at, started_at, lease_expires_at}`; the claim's answer
+  adds `skills: [{slug, files: [{path, content, encoding, executable}]}]`,
+  the Agent's Agent skills. The stream also
   counts as the Desktop being seen, once a minute.
 
   For a Run key (the Agent principal), in the Run's Guild only, with the
@@ -507,7 +558,7 @@ records nothing more.
 - **Terminating moves the reports up.** Paperclip leaves a terminated
   agent's reports pointing at it and shows them as roots; moving them to
   the terminated Agent's Manager keeps the tree whole.
-- **No adapter, model, environment, instructions, Guild skills
+- **No adapter, model, environment, instructions
   or appearance yet.** `claude` on the Hirer's desktop is the only runtime
   and comes with the desktop app; avatars are the Agent icon only.
 - **No hard delete.** Paperclip's `DELETE /agents/:id` is left out: a
@@ -672,3 +723,30 @@ records nothing more.
   runtime, nothing billed); the issue cost summary; Paperclip's heartbeat
   daily caps; and the legacy `budgetMonthlyCents` and `spentMonthlyCents`
   columns.
+- **Skill files live in the database.** Paperclip writes a company's
+  skills to its server's disk under a managed root. The Bakery's API runs
+  in a container whose only state is Postgres, and the Desktop gets the
+  files through the claim's answer anyway, so they are rows, with limits
+  that keep a claim's answer small.
+- **A Skill's name and description come only from `SKILL.md`.** Paperclip
+  also keeps an icon, color, tagline, author, categories and a sharing
+  scope; `claude` reads only the frontmatter, so that is all a Skill has.
+- **Left out of the first Skills slice:** Skill versions and their diff,
+  import from GitHub, skills.sh or a URL, the catalog, forks, stars,
+  comments, test runs, skill sources, folders, skill policies, update
+  checks, Agents reading or writing Skills through the API, and version
+  pins on an Agent's Skills.
+- **Deleting a Skill in use is refused**, as Paperclip's is: switching it
+  off on the Agents first makes the change visible on each Agent instead
+  of a Run quietly losing it.
+- **`manage_skills` is its own Permission**, instead of Paperclip's
+  `skill_config:update` grant. No seeded Role but Admin (through
+  `administrator`) has it, as with `hire_agents`: a Skill changes what
+  every Agent that has it does. Giving an Agent Skills is managing the
+  Agent, as giving it Roles is.
+- **Actions are named `skill.*`**, not Paperclip's `company.skill_*`, as
+  every other Action is named after its subject; giving an Agent Skills is
+  `agent.skills_synced`, after the Agent.
+- **The slug `bakery` is The Bakery skill's.** The Desktop writes every
+  Skill beside it under `.claude/skills/`, so a Guild's Skill can never
+  replace the instructions every Run depends on.
