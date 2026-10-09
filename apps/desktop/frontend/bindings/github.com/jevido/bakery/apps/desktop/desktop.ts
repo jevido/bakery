@@ -107,6 +107,14 @@ export function Guilds(address: string): $CancellablePromise<bakery$0.Guild[] | 
 }
 
 /**
+ * Limit is when the Subscription limit this computer's claude login hit
+ * resets, while it holds; nil when it does not, or no Runner runs here.
+ */
+export function Limit(): $CancellablePromise<string | null> {
+    return $Call.ByID(1703823799);
+}
+
+/**
  * LocalRuns is the Runs this desktop executes right now, across every
  * connected Bakery, for the Agent page's live Transcript and "Runs on this
  * desktop" without a round trip to a Bakery: nil when this process runs no

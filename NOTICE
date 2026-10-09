@@ -30,6 +30,11 @@ The settings pages (Notifications, Keys & Tokens, Profile and Settings) port
 the frame of ui/src/pages/CompanySettings.tsx and CompanyAccess.tsx (as
 apps/web/src/lib/settings/SettingsPage and SettingsGroup) and the layout of
 ui/src/pages/ProfileSettings.tsx (as apps/web/src/pages/Profile).
+The Desktop app's Runner recognises a Subscription limit with the patterns
+and the reset-time reading of
+packages/adapters/claude-local/src/server/parse.ts (CLAUDE_PROVIDER_QUOTA_RE,
+CLAUDE_EXTRA_USAGE_RESET_RE and parseClaudeResetClockTime), ported to Go in
+apps/desktop/runner/transcript.go.
 
 The dashboard's components are built with shadcn-svelte
 (https://github.com/huntabyte/shadcn-svelte) on bits-ui

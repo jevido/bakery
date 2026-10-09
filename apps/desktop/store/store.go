@@ -39,6 +39,10 @@ type File struct {
 	Bakeries []Bakery `json:"bakeries"`
 	// Active is the address of the Bakery the window shows.
 	Active string `json:"active,omitempty"`
+	// LimitedUntil is the Limit reset of the Subscription limit this
+	// computer's claude login hit. The login spans every Bakery, so it
+	// lives here and not on a Bakery.
+	LimitedUntil *time.Time `json:"limited_until,omitempty"`
 }
 
 // Store reads and writes bakeries.json at Path. Every change rewrites the

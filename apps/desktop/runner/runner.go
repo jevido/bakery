@@ -45,8 +45,9 @@ type Runner struct {
 	// Max is how many Runs run at once; 0 means BAKERY_RUNNER_MAX, else 2.
 	Max int
 	// Events, when set, is told about each Run on this desktop: `runs`
-	// with a RunUpdate when it starts, reports and ends, and `bakeries`
-	// when a Bakery signed this desktop out.
+	// with a RunUpdate when it starts, reports and ends, `bakeries` when
+	// a Bakery signed this desktop out, and `limit` with a LimitUpdate
+	// when the Subscription limit is hit and when it resets.
 	Events func(name string, data any)
 	// Logf logs one line per claim and finish; nil means the log package.
 	Logf func(format string, args ...any)
@@ -56,7 +57,21 @@ type Runner struct {
 	mu      sync.Mutex
 	running map[runKey]*execution
 	watched map[string]watch
-	wg      sync.WaitGroup
+	// limitedUntil is the Limit reset of the Subscription limit this
+	// computer's claude login hit: nothing is claimed from any Bakery
+	// before it. limitShown says the `limit` event for it went out and
+	// its passing has not been handled yet.
+	limitedUntil time.Time
+	limitShown   bool
+	// wake cuts the follow loop's wait short when a new limit is set.
+	wake chan struct{}
+	wg   sync.WaitGroup
+}
+
+// LimitUpdate is the `limit` event: Until is the Limit reset while the
+// Subscription limit holds, nil once it reset.
+type LimitUpdate struct {
+	Until *time.Time `json:"until"`
 }
 
 // RunUpdate is the `runs` event: a Run on this desktop and where it
@@ -153,7 +168,9 @@ func (e *execution) snapshot() LocalRun {
 // watch is one Bakery's stream being followed, with the key it uses.
 type watch struct {
 	key    string
+	ctx    context.Context
 	cancel context.CancelFunc
+	client *bakery.Client
 }
 
 // Start follows every connected Bakery until ctx ends. When ctx ends,
@@ -162,7 +179,13 @@ type watch struct {
 func (r *Runner) Start(ctx context.Context) {
 	r.mu.Lock()
 	r.running, r.watched = map[runKey]*execution{}, map[string]watch{}
+	r.wake = make(chan struct{}, 1)
 	r.mu.Unlock()
+	// A limit hit before a restart still holds: the login is the
+	// computer's, so it is kept in bakeries.json.
+	if f, err := r.Store.Load(); err == nil && f.LimitedUntil != nil {
+		r.limit(*f.LimitedUntil)
+	}
 	// Worktrees no Run touched for worktreeIdle go now and once a day.
 	r.wg.Add(1)
 	go func() {
@@ -183,10 +206,16 @@ func (r *Runner) Start(ctx context.Context) {
 		defer r.wg.Done()
 		for {
 			r.follow(ctx)
+			r.limitPassed(ctx)
+			wait := storeEvery
+			if left := time.Until(r.Limit()); left > 0 && left < wait {
+				wait = left
+			}
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(storeEvery):
+			case <-time.After(wait):
+			case <-r.wake:
 			}
 		}
 	}()
@@ -235,11 +264,12 @@ func (r *Runner) follow(ctx context.Context) {
 			continue
 		}
 		wctx, cancel := context.WithCancel(ctx)
-		r.watched[address] = watch{key: b.Key, cancel: cancel}
+		c := bakery.New(b.Address, b.Key)
+		r.watched[address] = watch{key: b.Key, ctx: wctx, cancel: cancel, client: c}
 		r.wg.Add(1)
 		go func() {
 			defer r.wg.Done()
-			r.watch(wctx, bakery.New(b.Address, b.Key))
+			r.watch(wctx, c)
 		}()
 	}
 }
@@ -270,11 +300,12 @@ func (r *Runner) watch(ctx context.Context, c *bakery.Client) {
 }
 
 // offer claims each queued Run this desktop has room for: none of its
-// Agent's Runs already running here, and fewer than Max running at all.
-// A Run another Desktop of the person claimed first is skipped quietly.
+// Agent's Runs already running here, and fewer than Max running at all,
+// and nothing while the Subscription limit holds. A Run another Desktop
+// of the person claimed first is skipped quietly.
 func (r *Runner) offer(ctx context.Context, c *bakery.Client, runs []bakery.DesktopRun) {
 	for _, run := range runs {
-		if run.Status != "queued" || ctx.Err() != nil {
+		if run.Status != "queued" || ctx.Err() != nil || r.limited() {
 			continue
 		}
 		key := runKey{c.Address, run.ID}
@@ -285,6 +316,11 @@ func (r *Runner) offer(ctx context.Context, c *bakery.Client, runs []bakery.Desk
 		claimed, err := c.ClaimRun(ctx, run.ID)
 		if err != nil {
 			r.release(key)
+			var le *bakery.ErrLimited
+			if errors.As(err, &le) {
+				r.limit(le.ResetsAt)
+				continue
+			}
 			if !errors.Is(err, bakery.ErrNotFound) && !bakery.IsStatus(err, http.StatusConflict) &&
 				!bakery.IsStatus(err, http.StatusForbidden) && ctx.Err() == nil {
 				r.logf("runner: claiming run %d on %s: %v", run.ID, c.Address, err)
@@ -298,6 +334,93 @@ func (r *Runner) offer(ctx context.Context, c *bakery.Client, runs []bakery.Desk
 			defer r.wg.Done()
 			defer r.release(key)
 			r.execute(ctx, c, claimed, e)
+		}()
+	}
+}
+
+// Limit is the Limit reset while the Subscription limit holds, else the
+// zero time.
+func (r *Runner) Limit() time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if time.Now().Before(r.limitedUntil) {
+		return r.limitedUntil
+	}
+	return time.Time{}
+}
+
+func (r *Runner) limited() bool { return !r.Limit().IsZero() }
+
+// limit holds off every claim until at, when that is later than the
+// limit already held, and keeps it in bakeries.json for a restart.
+func (r *Runner) limit(at time.Time) {
+	at = at.UTC()
+	r.mu.Lock()
+	if !at.After(r.limitedUntil) || !time.Now().Before(at) {
+		r.mu.Unlock()
+		return
+	}
+	r.limitedUntil, r.limitShown = at, true
+	wake := r.wake
+	r.mu.Unlock()
+	r.logf("runner: subscription limit until %s; claiming nothing until then", at.Format(time.RFC3339))
+	if _, err := r.Store.Update(func(f *store.File) error {
+		f.LimitedUntil = &at
+		return nil
+	}); err != nil {
+		r.logf("runner: keeping the subscription limit: %v", err)
+	}
+	if r.Events != nil {
+		r.Events("limit", LimitUpdate{Until: &at})
+	}
+	if wake != nil {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// limitPassed handles a Subscription limit that reset: it forgets it, says
+// so, and offers each Bakery's queued Runs again, since no stream event
+// comes for a Run that was queued all along.
+func (r *Runner) limitPassed(ctx context.Context) {
+	r.mu.Lock()
+	if !r.limitShown || time.Now().Before(r.limitedUntil) {
+		r.mu.Unlock()
+		return
+	}
+	r.limitShown = false
+	watches := make([]watch, 0, len(r.watched))
+	for _, w := range r.watched {
+		watches = append(watches, w)
+	}
+	r.mu.Unlock()
+	r.logf("runner: subscription limit reset; claiming again")
+	if _, err := r.Store.Update(func(f *store.File) error {
+		f.LimitedUntil = nil
+		return nil
+	}); err != nil {
+		r.logf("runner: forgetting the subscription limit: %v", err)
+	}
+	if r.Events != nil {
+		r.Events("limit", LimitUpdate{})
+	}
+	for _, w := range watches {
+		if ctx.Err() != nil || w.ctx.Err() != nil {
+			continue
+		}
+		r.wg.Add(1)
+		go func() {
+			defer r.wg.Done()
+			runs, err := w.client.DesktopRuns(w.ctx)
+			if err != nil {
+				if w.ctx.Err() == nil {
+					r.logf("runner: %s: %v", w.client.Address, err)
+				}
+				return
+			}
+			r.offer(w.ctx, w.client, runs)
 		}()
 	}
 }

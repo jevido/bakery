@@ -102,6 +102,12 @@ func (d *Desktop) methods() map[string]method {
 			}
 			return d.LocalRuns(), nil
 		},
+		"Limit": func(args []json.RawMessage) (any, error) {
+			if err := decodeArgs(args); err != nil {
+				return nil, err
+			}
+			return d.Limit(), nil
+		},
 		"Runs": func(args []json.RawMessage) (any, error) {
 			var address string
 			var guildID, id uint64

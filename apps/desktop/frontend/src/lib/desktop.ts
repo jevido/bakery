@@ -161,6 +161,7 @@ type Methods = {
   Agents(address: string, guildID: number, status: AgentsTab): Promise<Agent[] | null>
   Agent(address: string, guildID: number, id: number): Promise<Agent>
   LocalRuns(): Promise<LocalRun[] | null>
+  Limit(): Promise<string | null>
   Runs(address: string, guildID: number, id: number): Promise<Run[] | null>
   RunEvents(address: string, guildID: number, id: number, after: number): Promise<RunEvent[] | null>
   FollowRun(address: string, guildID: number, id: number): Promise<void>
@@ -203,6 +204,8 @@ export const localRuns = () => call('LocalRuns').then((r) => r ?? [])
 export const runs = (address: string, guildID: number, id: number) => call('Runs', address, guildID, id).then((r) => r ?? [])
 /** A Run's stored events after seq after: a final Run's Transcript, read once. */
 export const runEvents = (address: string, guildID: number, id: number, after = 0) => call('RunEvents', address, guildID, id, after).then((e) => e ?? [])
+/** When this computer's Subscription limit resets (ISO time), or null while it does not hold. */
+export const limit = () => call('Limit')
 /** Follows a Run this desktop did not claim; its events arrive as `run-events`. */
 export const followRun = (address: string, guildID: number, id: number) => call('FollowRun', address, guildID, id)
 /** Stops a FollowRun started earlier. */

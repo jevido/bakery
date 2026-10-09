@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // withoutAPIKey runs the test as the Runner would start the stand-in: with
@@ -51,6 +52,7 @@ func TestAnswers(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.prompt, func(t *testing.T) {
 			withoutAPIKey(t)
+			t.Setenv("BAKERY_STANDIN_STATE", t.TempDir())
 			var out, errOut bytes.Buffer
 			code := run(append(append([]string{}, baseArgs...), c.prompt), strings.NewReader(""), &out, &errOut)
 			if code != c.code {
@@ -75,13 +77,43 @@ func TestAnswers(t *testing.T) {
 			if c.code == 0 && !strings.Contains(last["result"].(string), "ENG-1: hello") {
 				t.Fatalf("result does not quote the prompt's first line: %v", last["result"])
 			}
-			if strings.Contains(c.prompt, "[limit]") && last["result"] != limitMessage {
-				t.Fatalf("limit result %v", last["result"])
+			if strings.Contains(c.prompt, "[limit]") {
+				if r, _ := last["result"].(string); !strings.HasPrefix(r, "You've hit your limit · resets ") || !strings.HasSuffix(r, " (UTC)") {
+					t.Fatalf("limit result %v", last["result"])
+				}
+				info := ls[len(ls)-2]["rate_limit_info"].(map[string]any)
+				if info["status"] != "rejected" || info["resetsAt"].(float64) <= float64(time.Now().Unix()) {
+					t.Fatalf("limit rate_limit_event %v", info)
+				}
 			}
 			if strings.Contains(c.prompt, "[crash]") && errOut.Len() == 0 {
 				t.Fatal("crash printed nothing on stderr")
 			}
 		})
+	}
+}
+
+func TestLimitOncePerFirstLine(t *testing.T) {
+	withoutAPIKey(t)
+	t.Setenv("BAKERY_STANDIN_STATE", t.TempDir())
+	t.Setenv("BAKERY_STANDIN_LIMIT_RESET", "2m")
+	prompt := "ENG-9: [limit] once\n\nGo."
+	var out, errOut bytes.Buffer
+	if code := run(append(append([]string{}, baseArgs...), prompt), strings.NewReader(""), &out, &errOut); code != 1 {
+		t.Fatalf("first run exit %d, want 1", code)
+	}
+	ls := lines(t, out.String())
+	at := int64(ls[len(ls)-2]["rate_limit_info"].(map[string]any)["resetsAt"].(float64))
+	if d := time.Until(time.Unix(at, 0)); d < time.Minute || d > 2*time.Minute {
+		t.Fatalf("reset %v ahead, want about 2m", d)
+	}
+	out.Reset()
+	if code := run(append(append([]string{}, baseArgs...), prompt), strings.NewReader(""), &out, &errOut); code != 0 {
+		t.Fatalf("second run exit %d, want 0", code)
+	}
+	ls = lines(t, out.String())
+	if last := ls[len(ls)-1]; last["is_error"] != false {
+		t.Fatalf("second run %v", last)
 	}
 }
 

@@ -40,6 +40,9 @@ var ErrNotFound = errors.New("not found")
 type Error struct {
 	Status  int
 	Message string
+	// ResetsAt is a refusal's `resets_at`: a claim by a Desktop at its
+	// Subscription limit.
+	ResetsAt *time.Time
 }
 
 func (e *Error) Error() string {
@@ -165,14 +168,15 @@ func (c *Client) send(ctx context.Context, method, path string, guildID uint64, 
 // Bakery gave (its message or error field).
 func refusal(status int, data []byte) *Error {
 	var e struct {
-		Message string `json:"message"`
-		Error   string `json:"error"`
+		Message  string     `json:"message"`
+		Error    string     `json:"error"`
+		ResetsAt *time.Time `json:"resets_at"`
 	}
 	_ = json.Unmarshal(data, &e)
 	if e.Message == "" {
 		e.Message = e.Error
 	}
-	return &Error{Status: status, Message: e.Message}
+	return &Error{Status: status, Message: e.Message, ResetsAt: e.ResetsAt}
 }
 
 // SignIn is a Desktop sign-in this app started: its secret and the Desktop
@@ -489,7 +493,19 @@ type Finish struct {
 	ExitCode *int   `json:"exit_code"`
 	Error    string `json:"error"`
 	Usage    Usage  `json:"usage"`
+	// LimitResetsAt is the Limit reset of a `limited` Run.
+	LimitResetsAt *time.Time `json:"limit_resets_at,omitempty"`
 }
+
+// ErrLimited is a claim refused because this Desktop is at its
+// Subscription limit until ResetsAt. It unwraps to the 409 *Error.
+type ErrLimited struct {
+	ResetsAt time.Time
+	Err      *Error
+}
+
+func (e *ErrLimited) Error() string { return e.Err.Error() }
+func (e *ErrLimited) Unwrap() error { return e.Err }
 
 // IsStatus says whether err is the Bakery refusing with status.
 func IsStatus(err error, status int) bool {
@@ -516,6 +532,10 @@ func (c *Client) ClaimRun(ctx context.Context, id uint64) (DesktopRun, error) {
 		Run DesktopRun `json:"run"`
 	}
 	if err := c.do(ctx, http.MethodPost, fmt.Sprintf("/api/runs/%d/claim", id), 0, nil, &out); err != nil {
+		var e *Error
+		if errors.As(err, &e) && e.Status == http.StatusConflict && e.ResetsAt != nil {
+			return DesktopRun{}, &ErrLimited{ResetsAt: *e.ResetsAt, Err: e}
+		}
 		return DesktopRun{}, err
 	}
 	return out.Run, nil

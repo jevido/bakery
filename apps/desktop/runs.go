@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"github.com/jevido/bakery/apps/desktop/bakery"
 	"github.com/jevido/bakery/apps/desktop/runner"
@@ -16,6 +17,19 @@ func (d *Desktop) LocalRuns() []runner.LocalRun {
 		return nil
 	}
 	return d.runner.LocalRuns()
+}
+
+// Limit is when the Subscription limit this computer's claude login hit
+// resets, while it holds; nil when it does not, or no Runner runs here.
+func (d *Desktop) Limit() *time.Time {
+	if d.runner == nil {
+		return nil
+	}
+	at := d.runner.Limit()
+	if at.IsZero() {
+		return nil
+	}
+	return &at
 }
 
 // Runs lists the Agent id's last Runs in the Guild guildID, newest first.

@@ -8,7 +8,13 @@
 //	[slow]   20 lines, 1 s apart (for cancel checks)
 //	[fail]   an error_during_execution result, exit 1
 //	[crash]  two lines, something on stderr, exit 1 with no result
-//	[limit]  the CLI's usage-limit message, exit 1
+//	[limit]  hits the subscription limit the first time it sees the
+//	         prompt's first line: a rejected rate_limit_event resetting
+//	         BAKERY_STANDIN_LIMIT_RESET ahead (a Go duration, default 30s),
+//	         then the CLI's "You've hit your limit · resets …" result, exit
+//	         1. It keeps a marker per first line under BAKERY_STANDIN_STATE
+//	         (default <temp dir>/claude-standin), so the requeued Run of the
+//	         same Issue succeeds as a short successful Run.
 //	[env]    says its working directory and its git and Worktree variables
 //	         (GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, BAKERY_WORKTREE,
 //	         BAKERY_BRANCH, BAKERY_BASE_BRANCH) in one text line, then a
@@ -33,18 +39,54 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
 // limitMessage is the wording the real CLI prints when a subscription's
-// window runs out (Paperclip's claude-local parse tests carry the same text).
-const limitMessage = "You've hit your limit · resets 2:30am (UTC)"
+// window runs out (Paperclip's claude-local parse tests carry the same
+// text), for the reset at.
+func limitMessage(at time.Time) string {
+	return "You've hit your limit · resets " + at.UTC().Format("3:04pm") + " (UTC)"
+}
+
+// defaultLimitReset is how far ahead [limit]'s reset is when
+// BAKERY_STANDIN_LIMIT_RESET does not say.
+const defaultLimitReset = 30 * time.Second
+
+// hitLimit says whether [limit] hits the limit for the prompt's first line:
+// only the first time, remembered by a marker file under
+// BAKERY_STANDIN_STATE.
+func hitLimit(first string) bool {
+	dir := os.Getenv("BAKERY_STANDIN_STATE")
+	if dir == "" {
+		dir = filepath.Join(os.TempDir(), "claude-standin")
+	}
+	sum := sha256.Sum256([]byte(first))
+	marker := filepath.Join(dir, "limit-"+hex.EncodeToString(sum[:]))
+	if _, err := os.Stat(marker); err == nil {
+		return false
+	}
+	if err := os.MkdirAll(dir, 0o700); err == nil {
+		_ = os.WriteFile(marker, nil, 0o600)
+	}
+	return true
+}
+
+func limitReset() time.Duration {
+	if d, err := time.ParseDuration(strings.TrimSpace(os.Getenv("BAKERY_STANDIN_LIMIT_RESET"))); err == nil && d > 0 {
+		return d
+	}
+	return defaultLimitReset
+}
 
 type options struct {
 	print          bool
@@ -194,6 +236,9 @@ type session struct {
 	start time.Time
 	lines int
 	turns int
+	// limitAt, when set, is the reset of the subscription limit this
+	// session hit: its rate_limit_event is rejected.
+	limitAt time.Time
 }
 
 // emit prints one stream-json line, pausing before every line but the first
@@ -240,15 +285,16 @@ func text(t string) map[string]any { return map[string]any{"type": "text", "text
 
 func (s *session) result(subtype string, isError bool, result string) {
 	// The real CLI reports the subscription's window before its result.
-	s.emit(map[string]any{
-		"type": "rate_limit_event",
-		"rate_limit_info": map[string]any{
-			"status":        "allowed",
-			"resetsAt":      s.start.Add(5 * time.Hour).Unix(),
-			"rateLimitType": "five_hour",
-			"utilization":   0.1,
-		},
-	}, s.delay)
+	info := map[string]any{
+		"status":        "allowed",
+		"resetsAt":      s.start.Add(5 * time.Hour).Unix(),
+		"rateLimitType": "five_hour",
+		"utilization":   0.1,
+	}
+	if !s.limitAt.IsZero() {
+		info["status"], info["resetsAt"], info["utilization"] = "rejected", s.limitAt.Unix(), 1.0
+	}
+	s.emit(map[string]any{"type": "rate_limit_event", "rate_limit_info": info}, s.delay)
 	line := map[string]any{
 		"type":            "result",
 		"subtype":         subtype,
@@ -284,10 +330,12 @@ func (s *session) answer(prompt string, stderr io.Writer) int {
 		s.assistant(text("Starting on " + first + "."))
 		fmt.Fprintln(stderr, "standin: crashed on purpose ([crash] in the prompt)")
 		return 1
-	case strings.Contains(prompt, "[limit]"):
+	case strings.Contains(prompt, "[limit]") && hitLimit(first):
 		s.init()
-		s.assistant(text(limitMessage))
-		s.result("success", true, limitMessage)
+		s.limitAt = time.Now().Add(limitReset())
+		msg := limitMessage(s.limitAt)
+		s.assistant(text(msg))
+		s.result("success", true, msg)
 		return 1
 	case strings.Contains(prompt, "[env]"):
 		s.init()

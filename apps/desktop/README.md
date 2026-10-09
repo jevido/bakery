@@ -143,10 +143,12 @@ each shown as a `Bash` tool call and run in prompt order with the
 working directory and its git and Worktree variables).
 `BAKERY_STANDIN_DELAY` sets its pause between lines (300 ms by default).
 `[limit]` prints the CLI's `rate_limit_event` with `status: "rejected"`
-and a `resetsAt` `BAKERY_STANDIN_LIMIT_RESET` ahead (a Go duration, 20 s
-by default), then the "You've hit your limit" `result`, once per Issue:
-it remembers each `BAKERY_ISSUE_ID` it limited in the file
-`BAKERY_STANDIN_STATE` names, so the requeued Run of that Issue succeeds.
+and a `resetsAt` `BAKERY_STANDIN_LIMIT_RESET` ahead (a Go duration, 30 s
+by default), then the "You've hit your limit · resets <time> (UTC)"
+`result`, once per Issue: it keeps a marker per SHA-256 of the prompt's
+first line (the Issue's identifier and title) under the directory
+`BAKERY_STANDIN_STATE` names (`<temp dir>/claude-standin` by default), so
+the requeued Run of that Issue succeeds.
 
 When the claim's answer carries a Workspace (the Run's Issue names an
 Application with a git repository), `claude` runs in a git Worktree
@@ -191,13 +193,17 @@ whose `rate_limit_info.status` is `rejected` (its `resetsAt` is the Limit
 reset, in Unix seconds), or, when that line is missing, from the CLI's
 "You've hit your limit · resets 2:30am (UTC)" text, the clock time read as
 the next such time in that zone (the local one when none is given), as
-Paperclip's `extractClaudeRetryNotBefore` does. The Runner then finishes the
+Paperclip's `extractClaudeRetryNotBefore` does; wording that names a limit
+but no readable time waits an hour. The Runner then finishes the
 Run `limited` with `limit_resets_at` and its usage, and claims nothing from
 any connected Bakery until the reset: the login belongs to this computer,
-not to one Bakery. It writes the reset to `bakeries.json`
-(`subscription_limit_resets_at`), so a restarted Runner still waits. The
-Bakery queues the Run again for when the limit has reset, and refuses this
-Desktop's claims until then.
+not to one Bakery. A claim the Bakery refuses with 409 and `resets_at`
+holds off the same way. It writes the reset to `bakeries.json`
+(`limited_until`), so a restarted Runner still waits, sends a `limit`
+event `{until}` when the limit is hit and `{until: null}` when it resets,
+and then offers each Bakery's queued Runs again. The frontend reads it
+with `Limit()`. The Bakery queues the Run again for when the limit has
+reset, and refuses this Desktop's claims until then.
 
 The frontend draws an Agent's Runs from `Runs`/`RunEvents` (the dashboard's
 `GET /api/runs`/`GET /api/runs/{id}/events`, with the Desktop key and

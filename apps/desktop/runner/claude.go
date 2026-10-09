@@ -401,6 +401,9 @@ func (r *Runner) drain(ctx context.Context, rep *reporter) {
 // finish sends the last events and then the Run's end, trying again for
 // up to retryFor while the Bakery cannot be reached.
 func (r *Runner) finish(ctx context.Context, c *bakery.Client, run bakery.DesktopRun, rep *reporter, f bakery.Finish) {
+	if f.Status == "limited" && f.LimitResetsAt != nil {
+		r.limit(*f.LimitResetsAt)
+	}
 	r.drain(ctx, rep)
 	if rep.gone {
 		r.emit(c, run, "stopped", rep.next-1)

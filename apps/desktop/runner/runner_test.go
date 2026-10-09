@@ -223,6 +223,76 @@ func TestTranscriptOfFailedRuns(t *testing.T) {
 	}
 }
 
+func TestTranscriptOfALimitedRun(t *testing.T) {
+	t.Setenv("BAKERY_STANDIN_STATE", t.TempDir())
+	t.Setenv("BAKERY_STANDIN_LIMIT_RESET", "10m")
+	stdout, _, code := standinLines(t, "DEF-12: Do it [limit]")
+	tr := &Transcript{}
+	var events []Event
+	for _, l := range stdout {
+		events = append(events, tr.Stdout(l)...)
+	}
+	// The rate_limit_event shows nowhere.
+	if got := kinds(events); got != "init assistant result" {
+		t.Fatalf("kinds %q", got)
+	}
+	f := tr.Finish(code)
+	if f.Status != "limited" || f.LimitResetsAt == nil || *f.ExitCode != 1 || !strings.HasPrefix(f.Error, "You've hit your limit") || f.Usage.Turns != 1 {
+		t.Fatalf("finish %+v", f)
+	}
+	if !f.LimitResetsAt.Equal(*tr.LimitResetsAt) {
+		t.Fatalf("reset %v, the event said %v", f.LimitResetsAt, tr.LimitResetsAt)
+	}
+	if d := time.Until(*f.LimitResetsAt); d < 9*time.Minute || d > 10*time.Minute {
+		t.Fatalf("reset %v ahead, want about 10m", d)
+	}
+}
+
+func TestTranscriptReadsTheLimitFromItsWording(t *testing.T) {
+	now := time.Date(2026, 10, 9, 14, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	result := func(text string) string {
+		b, _ := json.Marshal(map[string]any{"type": "result", "subtype": "success", "is_error": true, "result": text})
+		return string(b)
+	}
+	cases := []struct {
+		name string
+		feed func(*Transcript)
+		want time.Time
+	}{
+		{"result text", func(tr *Transcript) { tr.Stdout(result("You've hit your limit · resets 2:30am (UTC)")) },
+			time.Date(2026, 10, 10, 2, 30, 0, 0, time.UTC)},
+		{"later today in a named zone", func(tr *Transcript) {
+			tr.Stdout(result("Claude usage limit reached. Your limit resets 7pm (Europe/Amsterdam)."))
+		}, time.Date(2026, 10, 9, 17, 0, 0, 0, time.UTC)},
+		{"assistant text and exit without result", func(tr *Transcript) {
+			b, _ := json.Marshal(map[string]any{"type": "assistant", "message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "You’ve hit your session limit · resets 3:15pm (UTC)"}}}})
+			tr.Stdout(string(b))
+		}, time.Date(2026, 10, 9, 15, 15, 0, 0, time.UTC)},
+		{"stderr", func(tr *Transcript) { tr.Stderr("Error: 5-hour limit reached, resets 11pm (UTC)") },
+			time.Date(2026, 10, 9, 23, 0, 0, 0, time.UTC)},
+		{"no readable time", func(tr *Transcript) { tr.Stdout(result("Claude usage limit reached.")) },
+			now.Add(time.Hour)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tr := &Transcript{now: clock}
+			c.feed(tr)
+			f := tr.Finish(1)
+			if f.Status != "limited" || f.LimitResetsAt == nil || !f.LimitResetsAt.Equal(c.want) {
+				t.Fatalf("finish %+v, reset %v, want %v", f, f.LimitResetsAt, c.want)
+			}
+		})
+	}
+	// A rate_limit_event that is not rejected is no limit.
+	tr := &Transcript{now: clock}
+	tr.Stdout(`{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1760000000,"rateLimitType":"five_hour"}}`)
+	tr.Stdout(result("Something else went wrong."))
+	if f := tr.Finish(1); f.Status != "failed" || f.LimitResetsAt != nil {
+		t.Fatalf("finish %+v", f)
+	}
+}
+
 func TestTranscriptOfOddLines(t *testing.T) {
 	tr := &Transcript{}
 	if got := kinds(tr.Stdout("not json at all")); got != "system" {
@@ -269,10 +339,17 @@ type fakeBakery struct {
 	calls []string
 	// onCall, when set, runs on each request made with the Run key.
 	onCall func()
+	// push sends the list on the stream again, as a new queued Run does.
+	push chan struct{}
+	// refuseUntil, while ahead, refuses claims as a Desktop at its
+	// Subscription limit.
+	refuseUntil time.Time
+	// claimedAt is when the last claim was taken.
+	claimedAt time.Time
 }
 
 func newFakeBakery(t *testing.T, prompt string) *fakeBakery {
-	f := &fakeBakery{t: t, cancel: make(chan struct{}),
+	f := &fakeBakery{t: t, cancel: make(chan struct{}), push: make(chan struct{}, 1),
 		run: bakery.DesktopRun{ID: 41, Status: "queued", Guild: bakery.Named{ID: 1, Name: "Bakers"}, Agent: bakery.RunAgent{ID: 3, Name: "Ada"}, Prompt: prompt, NextSeq: 1,
 			Issue: &bakery.RunIssue{ID: 12, Identifier: "DEF-12", Title: "Fix it"}, WakeReason: "issue_assigned"}}
 	mux := http.NewServeMux()
@@ -321,23 +398,38 @@ func newFakeBakery(t *testing.T, prompt string) *fakeBakery {
 		f.mu.Unlock()
 		fmt.Fprintf(w, "event: runs\ndata: %s\n\n", b)
 		w.(http.Flusher).Flush()
-		select {
-		case <-r.Context().Done():
-		case <-f.cancel:
-			fmt.Fprintf(w, "event: cancel\ndata: {\"run_id\":%d}\n\n", f.run.ID)
-			w.(http.Flusher).Flush()
-			<-r.Context().Done()
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-f.push:
+				f.mu.Lock()
+				b, _ := json.Marshal(map[string]any{"runs": list()})
+				f.mu.Unlock()
+				fmt.Fprintf(w, "event: runs\ndata: %s\n\n", b)
+				w.(http.Flusher).Flush()
+			case <-f.cancel:
+				fmt.Fprintf(w, "event: cancel\ndata: {\"run_id\":%d}\n\n", f.run.ID)
+				w.(http.Flusher).Flush()
+				<-r.Context().Done()
+				return
+			}
 		}
 	}))
 	mux.HandleFunc("POST /api/runs/41/claim", authed(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.claims++
+		if time.Now().Before(f.refuseUntil) {
+			writeJSON(w, 409, map[string]any{"message": "subscription limit until " + f.refuseUntil.UTC().Format(time.RFC3339), "resets_at": f.refuseUntil.UTC()})
+			return
+		}
 		if f.run.Status != "queued" {
 			writeJSON(w, 409, map[string]any{"message": "a running run cannot be claimed"})
 			return
 		}
 		f.run.Status = "running"
+		f.claimedAt = time.Now()
 		claimed := f.run
 		claimed.RunKey = "bky_run_test"
 		writeJSON(w, 200, map[string]any{"run": claimed})
@@ -416,23 +508,67 @@ func startRunner(t *testing.T, f *fakeBakery) <-chan RunUpdate {
 
 func startRunnerIn(t *testing.T, f *fakeBakery, home string) <-chan RunUpdate {
 	t.Helper()
+	updates, _, _ := startRunners(t, home, f)
+	return updates
+}
+
+// startRunners runs one Runner against every fake in fs, with home's
+// bakeries.json as it is plus them, and answers its `runs` and `limit`
+// updates.
+func startRunners(t *testing.T, home string, fs ...*fakeBakery) (<-chan RunUpdate, <-chan LimitUpdate, *Runner) {
+	t.Helper()
 	s := store.New(filepath.Join(home, "bakeries.json"))
-	if err := s.Put(store.Bakery{Address: f.srv.URL, DesktopID: 9, Key: "bky_desk_test"}); err != nil {
-		t.Fatal(err)
+	for _, f := range fs {
+		if err := s.Put(store.Bakery{Address: f.srv.URL, DesktopID: 9, Key: "bky_desk_test"}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// The stand-in exits 3 when it sees this: the Runner must remove it.
 	t.Setenv("ANTHROPIC_API_KEY", "sk-must-not-reach-claude")
 	t.Setenv("BAKERY_STANDIN_DELAY", "20ms")
 	updates := make(chan RunUpdate, 1000)
+	limits := make(chan LimitUpdate, 100)
 	r := &Runner{Store: s, Claude: standin, Home: home, Logf: t.Logf, Events: func(name string, data any) {
 		if u, ok := data.(RunUpdate); ok && name == "runs" {
 			updates <- u
+		}
+		if u, ok := data.(LimitUpdate); ok && name == "limit" {
+			limits <- u
 		}
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
 	r.Start(ctx)
 	t.Cleanup(func() { cancel(); r.Wait() })
-	return updates
+	return updates, limits, r
+}
+
+// queue puts the fake's Run back in the queue and says so on its stream.
+func (f *fakeBakery) queue() {
+	f.mu.Lock()
+	f.run.Status = "queued"
+	f.mu.Unlock()
+	select {
+	case f.push <- struct{}{}:
+	default:
+	}
+}
+
+func (f *fakeBakery) state() (status string, claims int, claimedAt time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.run.Status, f.claims, f.claimedAt
+}
+
+// untilFrom waits for an update from the Bakery at address with one of
+// statuses.
+func untilFrom(t *testing.T, updates <-chan RunUpdate, address string, statuses ...string) RunUpdate {
+	t.Helper()
+	for {
+		u := until(t, updates, statuses...)
+		if u.Address == address {
+			return u
+		}
+	}
 }
 
 // until waits for an update with one of statuses.
@@ -738,5 +874,98 @@ func TestRunnerFailsARunWhoseRepositoryIsUnreachable(t *testing.T) {
 	defer f.mu.Unlock()
 	if u.Status != "failed" || !strings.HasPrefix(f.finished.Error, "preparing the worktree: git clone: ") {
 		t.Fatalf("update %+v; finish %+v", u, f.finished)
+	}
+}
+
+func TestRunnerWaitsOutTheLimitOnEveryBakery(t *testing.T) {
+	t.Setenv("BAKERY_STANDIN_STATE", t.TempDir())
+	t.Setenv("BAKERY_STANDIN_LIMIT_RESET", "3s")
+	a := newFakeBakery(t, "DEF-12: Fix it [limit]")
+	b := newFakeBakery(t, "DEF-20: Other")
+	b.run.Status = "held"
+	home := t.TempDir()
+	updates, limits, r := startRunners(t, home, a, b)
+
+	untilFrom(t, updates, a.srv.URL, "limited", "failed", "stopped")
+	a.mu.Lock()
+	fin := *a.finished
+	a.mu.Unlock()
+	if fin.Status != "limited" || fin.LimitResetsAt == nil {
+		t.Fatalf("finish %+v", fin)
+	}
+	resets := *fin.LimitResetsAt
+	if l := <-limits; l.Until == nil || !l.Until.Equal(resets) {
+		t.Fatalf("limit event %+v, want %v", l, resets)
+	}
+	if !r.Limit().Equal(resets) {
+		t.Fatalf("Limit() %v, want %v", r.Limit(), resets)
+	}
+	if f, _ := store.New(filepath.Join(home, "bakeries.json")).Load(); f.LimitedUntil == nil || !f.LimitedUntil.Equal(resets) {
+		t.Fatalf("bakeries.json limited_until %v", f.LimitedUntil)
+	}
+
+	// Both Bakeries have a queued Run now; neither is claimed before the reset.
+	a.queue()
+	b.queue()
+	time.Sleep(500 * time.Millisecond)
+	if _, n, _ := a.state(); n != 1 {
+		t.Fatalf("%d claims on the limited Bakery before the reset", n)
+	}
+	if _, n, _ := b.state(); n != 0 {
+		t.Fatalf("%d claims on the other Bakery before the reset", n)
+	}
+
+	untilFrom(t, updates, a.srv.URL, "succeeded")
+	untilFrom(t, updates, b.srv.URL, "succeeded")
+	for _, f := range []*fakeBakery{a, b} {
+		if _, _, at := f.state(); at.Before(resets) {
+			t.Fatalf("claimed at %v, before the reset %v", at, resets)
+		}
+	}
+	if l := <-limits; l.Until != nil {
+		t.Fatalf("reset event %+v", l)
+	}
+	if f, _ := store.New(filepath.Join(home, "bakeries.json")).Load(); f.LimitedUntil != nil {
+		t.Fatalf("bakeries.json still limited until %v", f.LimitedUntil)
+	}
+}
+
+func TestRunnerRemembersTheLimitAcrossARestart(t *testing.T) {
+	home := t.TempDir()
+	resets := time.Now().Add(1500 * time.Millisecond).UTC()
+	if _, err := store.New(filepath.Join(home, "bakeries.json")).Update(func(f *store.File) error {
+		f.LimitedUntil = &resets
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeBakery(t, "DEF-12: Fix it")
+	updates, _, _ := startRunners(t, home, f)
+	time.Sleep(500 * time.Millisecond)
+	if _, n, _ := f.state(); n != 0 {
+		t.Fatalf("%d claims before the reset", n)
+	}
+	until(t, updates, "succeeded")
+	if _, _, at := f.state(); at.Before(resets) {
+		t.Fatalf("claimed at %v, before the reset %v", at, resets)
+	}
+}
+
+func TestRunnerHoldsOffWhenTheBakeryRefusesAtTheLimit(t *testing.T) {
+	f := newFakeBakery(t, "DEF-12: Fix it")
+	resets := time.Now().Add(1500 * time.Millisecond).Truncate(time.Second).Add(time.Second)
+	f.refuseUntil = resets
+	updates, limits, _ := startRunners(t, t.TempDir(), f)
+	if l := <-limits; l.Until == nil || !l.Until.Equal(resets) {
+		t.Fatalf("limit event %+v, want %v", l, resets)
+	}
+	f.queue()
+	time.Sleep(300 * time.Millisecond)
+	if _, n, _ := f.state(); n != 1 {
+		t.Fatalf("%d claims before the reset, want the one refused", n)
+	}
+	until(t, updates, "succeeded")
+	if _, n, at := f.state(); n != 2 || at.Before(resets) {
+		t.Fatalf("%d claims, the last at %v (reset %v)", n, at, resets)
 	}
 }
