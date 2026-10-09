@@ -11,6 +11,8 @@
   // request dialog prefilled, so the request can change with it. A hire
   // offers "Open hired agent" after Approve and never Request revision; its
   // rejected Agent is terminated, so there is no "Delete disapproved agent".
+  // A budget_override_required has no decision buttons and points to the
+  // budget controls on Costs instead (Paperclip's ApprovalDetail.tsx).
   // Deciding needs approve, commenting manage_work.
   import { ChevronRight, CircleCheck, Sparkles } from '@lucide/svelte'
   import { refreshBadges } from '../../lib/inbox.svelte'
@@ -25,6 +27,7 @@
     getApproval,
     hirePayload,
     isActionable,
+    isBudgetOverride,
     listApprovalComments,
     listApprovalIssues,
     writeApprovalComment,
@@ -84,6 +87,7 @@
   const isRequester = $derived(!!approval?.requester && approval.requester.id === session.member?.id)
   const TypeIcon = $derived(approvalTypeIcon(approval?.type ?? ''))
   const hire = $derived(approval ? hirePayload(approval) : null)
+  const budget = $derived(!!approval && isBudgetOverride(approval))
   const cta = $derived(
     issues.length > 0
       ? { label: issues.length > 1 ? 'Review linked issues' : 'Review linked issue', to: `/issues/${issues[0].identifier}` }
@@ -203,19 +207,24 @@
           </div>
         </div>
       {/if}
-      {#if canDecide && isActionable(approval)}
+      {#if canDecide && isActionable(approval) && !budget}
         <Textarea bind:value={note} rows={2} placeholder="Decision note (optional)" aria-label="Decision note" class="text-sm" />
       {/if}
       <div class="flex flex-wrap items-center gap-2">
-        {#if canDecide && isActionable(approval)}
+        {#if canDecide && isActionable(approval) && !budget}
           <Button size="sm" class="bg-green-700 text-white hover:bg-green-600" disabled={!!busy} onclick={() => run('approve')}>Approve</Button>
           <Button variant="destructive" size="sm" disabled={!!busy} onclick={() => run('reject')}>Reject</Button>
         {/if}
-        {#if canDecide && approval.status === 'pending' && !hire}
+        {#if canDecide && approval.status === 'pending' && !hire && !budget}
           <Button size="sm" variant="outline" disabled={!!busy} onclick={() => run('request-revision')}>Request revision</Button>
         {/if}
         {#if isRequester && approval.status === 'revision_requested' && !hire}
           <Button size="sm" variant="outline" disabled={!!busy} onclick={() => (resubmitting = true)}>Resubmit</Button>
+        {/if}
+        {#if budget && approval.status === 'pending'}
+          <p class="text-sm text-muted-foreground" data-slot="budget-resolve-hint">
+            Resolve this budget stop from the budget controls on <a href={href('/costs/budgets')} class="underline underline-offset-2">Costs</a>.
+          </p>
         {/if}
       </div>
     </div>

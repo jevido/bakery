@@ -6,26 +6,37 @@
   // time) and show the CLI's reported cost only as an equivalent, never
   // billed. The range lives in the hash query (?range=7d, or
   // ?range=custom&from=2026-10-01&to=2026-10-09), so a reload and a tab
-  // switch keep it. Left out: the Providers, Billers and Finance tabs, the
+  // switch keep it. Budgets lists every Budget by scope with Paperclip's
+  // policy and incident cards, and also sets one for the guild or any Agent
+  // or Project from a picker, where Paperclip sets agent and project Budgets
+  // only from their pages. Left out: the Providers, Billers and Finance tabs, the
   // per-model breakdown under an Agent and the Inference ledger, which count
   // what an API key is billed (see the agents document).
   import { untrack } from 'svelte'
-  import { Clock, Coins, DollarSign, Hash, Play } from '@lucide/svelte'
+  import { ArrowUpRight, Coins, DollarSign, Hash, PauseCircle, Play, ReceiptText } from '@lucide/svelte'
   import type { Component } from 'svelte'
   import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { Button } from '@bakery/ui/components/ui/button'
   import * as Card from '@bakery/ui/components/ui/card'
+  import * as Select from '@bakery/ui/components/ui/select'
   import * as Tabs from '@bakery/ui/components/ui/tabs'
+  import { listAgents, type Agent } from '../lib/agents'
+  import { api } from '../lib/api'
+  import BudgetIncidentCard from '../lib/BudgetIncidentCard.svelte'
+  import BudgetPolicyCard from '../lib/BudgetPolicyCard.svelte'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import {
+    budgetAmount,
     budgetOverview,
+    budgetUtilisation,
     costsByAgent,
     costsByProject,
     costSummary,
     type AgentCosts,
     type Budget,
     type BudgetOverview,
+    type BudgetScope,
     type CostRange,
     type Figures,
     type ProjectCosts,
@@ -33,6 +44,7 @@
   import { runTime, tokens, usd } from '../lib/format'
   import PageSkeleton from '../lib/PageSkeleton.svelte'
   import { go, href, type CostsTab } from '../lib/router.svelte'
+  import { session } from '../lib/session.svelte'
 
   let { tab }: { tab: CostsTab } = $props()
 
@@ -119,9 +131,16 @@
   let loading = $state(false)
   let loadError = $state('')
   let overview = $state.raw<BudgetOverview | null>(null)
-  budgetOverview()
-    .then((o) => (overview = o))
-    .catch(() => {})
+  let overviewError = $state('')
+  function loadOverview() {
+    budgetOverview()
+      .then((o) => {
+        overview = o
+        overviewError = ''
+      })
+      .catch((e) => (overviewError = e.message))
+  }
+  loadOverview()
 
   // Each change of the range asks again; a late answer for a range already
   // left behind is dropped.
@@ -151,14 +170,8 @@
   })
 
   const exact = (n: number) => n.toLocaleString('en-US')
-
-  /** An amount of a Budget metric for people: tokens compact, run time (seconds) as a duration. */
-  function amountOf(b: Pick<Budget, 'metric'>, n: number): string {
-    if (b.metric === 'tokens') return `${tokens(n)} tokens`
-    if (b.metric === 'runs') return `${exact(n)} runs`
-    return `${runTime(n * 1000)} run time`
-  }
-  const utilisation = (b: Budget) => (b.amount > 0 ? (b.observed / b.amount) * 100 : 0)
+  const amountOf = (b: Pick<Budget, 'metric'>, n: number) => budgetAmount(b.metric, n)
+  const utilisation = budgetUtilisation
 
   // The Budget tile: the open Budget incidents when there are any, else the
   // Guild Budget closest to its amount.
@@ -176,6 +189,35 @@
         ? { value: `${Math.round(utilisation(guildBudget))}%`, subtitle: `${amountOf(guildBudget, guildBudget.observed)} of ${amountOf(guildBudget, guildBudget.amount)}` }
         : { value: 'Open', subtitle: 'No guild budget' },
   )
+
+  // The hard incidents are the ones the Board resolves; a soft one shows
+  // only in the count.
+  const hardIncidents = $derived((overview?.incidents ?? []).filter((i) => i.threshold === 'hard' && i.status === 'open'))
+  const pendingApprovals = $derived(hardIncidents.filter((i) => i.approval_id).length)
+  const sections = [
+    { type: 'guild', title: 'Guild budget', description: "The guild's monthly cap on what all its agents use." },
+    { type: 'agent', title: 'Agent budgets', description: 'Monthly caps for individual agents.' },
+    { type: 'project', title: 'Project budgets', description: 'Lifetime caps on the runs of issues in a project.' },
+  ] as const
+
+  // Setting a Budget for any scope: the guild, an Agent or a Project.
+  let agents = $state.raw<Agent[]>([])
+  let projects = $state.raw<{ id: number; name: string }[]>([])
+  if (session.can('manage_budgets')) {
+    listAgents()
+      .then((a) => (agents = a))
+      .catch(() => {})
+    api<{ projects: { id: number; name: string }[] }>('GET', '/projects')
+      .then((r) => (projects = r.projects))
+      .catch(() => {})
+  }
+  const scopes = $derived<BudgetScope[]>([
+    ...(session.guild ? [{ type: 'guild' as const, id: session.guild.id, name: session.guild.name }] : []),
+    ...agents.filter((a) => a.status !== 'pending_approval').map((a) => ({ type: 'agent' as const, id: a.id, name: a.name })),
+    ...projects.map((p) => ({ type: 'project' as const, id: p.id, name: p.name })),
+  ])
+  let newScope = $state('')
+  const picked = $derived(scopes.find((s) => `${s.type}:${s.id}` === newScope) ?? null)
 
   $effect(() => breadcrumb.set({ label: 'Costs' }))
 </script>
@@ -262,6 +304,13 @@
       {:else if loadError}
         <p class="text-sm text-destructive">{loadError}</p>
       {:else}
+        {#if hardIncidents.length > 0}
+          <div class="grid gap-4 xl:grid-cols-2">
+            {#each hardIncidents.slice(0, 2) as incident (incident.id)}
+              <BudgetIncidentCard {incident} onresolved={loadOverview} />
+            {/each}
+          </div>
+        {/if}
         <div class="grid gap-4 xl:grid-cols-[1.25fr_0.95fr]">
           <Card.Root>
             <Card.Header class="px-5 pt-5 pb-2">
@@ -316,16 +365,98 @@
       {/if}
     </div>
   {:else}
-    <div class="space-y-2" aria-label="Budgets">
-      {#if overview && overview.budgets.length === 0}
-        <p class="text-sm text-muted-foreground">No budgets yet.</p>
-      {:else if overview}
-        {#each overview.budgets as b (b.id)}
-          <div class="flex items-center justify-between gap-3 border border-border px-3 py-2 text-sm" data-budget={b.id}>
-            <span class="truncate">{b.scope.name}</span>
-            <span class="text-muted-foreground tabular-nums">{amountOf(b, b.observed)} of {amountOf(b, b.amount)}</span>
-          </div>
+    <div class="space-y-4" aria-label="Budgets">
+      {#if overviewError}
+        <p class="text-sm text-destructive">{overviewError}</p>
+      {:else if !overview}
+        <PageSkeleton />
+      {:else}
+        <Card.Root class="gap-0 border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] py-0">
+          <Card.Header class="px-5 pt-5 pb-3">
+            <Card.Title class="text-base">Budget control</Card.Title>
+            <Card.Description>
+              Hard stops on tokens, runs and run time for the guild, agents and projects. Your Claude subscription's own limits are separate.
+            </Card.Description>
+          </Card.Header>
+          <Card.Content class="grid gap-3 px-5 pt-0 pb-5 md:grid-cols-4">
+            {@render tile('Active incidents', String(overview.incidents.length), 'Open warnings and hard stops', ReceiptText)}
+            {@render tile('Pending approvals', String(pendingApprovals), 'Budget overrides waiting for the board', ArrowUpRight)}
+            {@render tile('Paused agents', String(overview.paused_agents), 'Agent runs blocked by budget', PauseCircle)}
+            {@render tile('Paused projects', String(overview.stopped_projects), 'Project runs blocked by budget', DollarSign)}
+          </Card.Content>
+        </Card.Root>
+
+        {#if hardIncidents.length > 0}
+          <section class="space-y-3" aria-label="Active incidents">
+            <div>
+              <h2 class="text-lg font-semibold">Active incidents</h2>
+              <p class="text-sm text-muted-foreground">Resolve hard stops here by raising the budget or keeping the scope paused.</p>
+            </div>
+            <div class="grid gap-4 xl:grid-cols-2">
+              {#each hardIncidents as incident (incident.id)}
+                <BudgetIncidentCard {incident} onresolved={loadOverview} />
+              {/each}
+            </div>
+          </section>
+        {/if}
+
+        {#each sections as section (section.type)}
+          {@const rows = overview.budgets.filter((b) => b.scope.type === section.type)}
+          {#if rows.length > 0}
+            <section class="space-y-3" aria-label={section.title}>
+              <div>
+                <h2 class="text-lg font-semibold">{section.title}</h2>
+                <p class="text-sm text-muted-foreground">{section.description}</p>
+              </div>
+              <div class="grid gap-4 xl:grid-cols-2">
+                {#each rows as b (b.id)}
+                  <BudgetPolicyCard budget={b} scope={b.scope} onsaved={loadOverview} />
+                {/each}
+              </div>
+            </section>
+          {/if}
         {/each}
+
+        {#if overview.budgets.length === 0}
+          <Card.Root>
+            <Card.Content class="px-5 py-8 text-sm text-muted-foreground">
+              No budgets yet. Set one for the guild, an agent or a project here, or from the agent's or project's page.
+            </Card.Content>
+          </Card.Root>
+        {/if}
+
+        {#if session.can('manage_budgets')}
+          <section class="space-y-3" aria-label="Add a budget">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 class="text-lg font-semibold">Add a budget</h2>
+                <p class="text-sm text-muted-foreground">Cap the guild, any agent or any project.</p>
+              </div>
+              <Select.Root type="single" bind:value={newScope}>
+                <Select.Trigger class="w-64" aria-label="Budget scope">{picked ? `${picked.type}: ${picked.name}` : 'Choose a scope'}</Select.Trigger>
+                <Select.Content>
+                  {#each scopes as s (`${s.type}:${s.id}`)}
+                    <Select.Item value="{s.type}:{s.id}" label="{s.type}: {s.name}" />
+                  {/each}
+                </Select.Content>
+              </Select.Root>
+            </div>
+            {#if picked}
+              {#key newScope}
+                <div class="grid gap-4 xl:grid-cols-2">
+                  <BudgetPolicyCard
+                    budget={null}
+                    scope={picked}
+                    onsaved={() => {
+                      newScope = ''
+                      loadOverview()
+                    }}
+                  />
+                </div>
+              {/key}
+            {/if}
+          </section>
+        {/if}
       {/if}
     </div>
   {/if}

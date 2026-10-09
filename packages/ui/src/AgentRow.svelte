@@ -7,7 +7,7 @@
   import AgentIcon from './AgentIcon.svelte'
   import EntityRow from './EntityRow.svelte'
   import StatusBadge from './StatusBadge.svelte'
-  import { agentStatusLabel, agentStatusTones, type AgentStatus } from './agentStatus'
+  import { agentStatusText, agentStatusTones, type AgentStatus, type PauseReason } from './agentStatus'
 
   let {
     agent,
@@ -21,6 +21,7 @@
       title: string
       icon: string
       status: AgentStatus
+      pause_reason?: PauseReason | null
       reports_to: { name: string } | null
       hirer: { name: string } | null
     }
@@ -46,6 +47,6 @@
       <span class="w-36 truncate" title="Hirer">{agent.hirer ? `Hired by ${agent.hirer.name}` : ''}</span>
     </div>
     {@render badges?.()}
-    <span class="flex w-32 justify-end"><StatusBadge type={agentStatusTones[agent.status]} label={agentStatusLabel(agent.status)} /></span>
+    <span class="flex w-32 justify-end"><StatusBadge type={agentStatusTones[agent.status]} label={agentStatusText(agent)} /></span>
   {/snippet}
 </EntityRow>

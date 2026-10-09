@@ -15,10 +15,11 @@ export { agentIconNames, type AgentIconName } from "@bakery/ui/agentIcons";
 
 export {
   agentStatusLabel,
+  agentStatusText,
   agentStatusTones,
   type AgentStatus,
 } from "@bakery/ui/agentStatus";
-import type { AgentStatus } from "@bakery/ui/agentStatus";
+import type { AgentStatus, PauseReason } from "@bakery/ui/agentStatus";
 
 /** The Agents list's tabs: all leaves out the terminated ones. */
 export type AgentFilter =
@@ -49,6 +50,8 @@ export type Agent = {
   icon: string;
   capabilities: string;
   status: AgentStatus;
+  /** Why it is paused: manual, or budget when its Budget's Hard stop paused it. */
+  pause_reason: PauseReason | null;
   reports_to: { id: number; name: string } | null;
   hirer: { id: number; name: string } | null;
   roles: AgentRole[];

@@ -34,6 +34,15 @@
 //           the Project's rows show their two Runs; Last 7 Days is kept in
 //           the query through a reload; Custom without dates asks for them;
 //           the scratch data is removed again
+//   budgets  an agent Budget of 2 Runs warning at 50% set on the Agent
+//           page's Budget card; one Run shows Warning, a second the Hard
+//           stop: the Agent "Paused by budget" with Resume disabled, the
+//           incident on Costs → Budgets and Overview, the Budget Override
+//           Approval without Approve or Reject; "Raise budget & resume" to
+//           3 makes the Agent idle and the Approval approved; a project
+//           Budget set on the Project page's card shows under Budgets; a
+//           viewer sees the cards but no editor; the scratch data is
+//           removed again
 //
 //   bun e2e/costs.ts [section ...]   (task web:costs; needs task dev)
 //
@@ -483,6 +492,103 @@ sections.overview = async () => {
     expect('Custom without dates asks for them', await page.getByText('Select a start and end date to load data.').isVisible())
   } finally {
     await desktop.stop()
+    if (issue) await page.request.delete(`${WEB}/api/issues/${issue}`)
+    await page.request.post(`${WEB}/api/agents/${agent}/terminate`)
+    await page.request.delete(`${WEB}/api/projects/${project.id}`)
+    await page.close()
+  }
+}
+
+sections.budgets = async () => {
+  const page = await signedIn()
+  const name = 'Budgets e2e agent'
+  const projectName = 'Budgets e2e project'
+  const { agents } = (await (await page.request.get(`${WEB}/api/agents`)).json()) as { agents: { id: number; name: string }[] }
+  for (const a of agents.filter((a) => a.name === name)) await page.request.post(`${WEB}/api/agents/${a.id}/terminate`)
+  const { projects } = (await (await page.request.get(`${WEB}/api/projects`)).json()) as { projects: { id: number; name: string }[] }
+  for (const p of projects.filter((p) => p.name === projectName)) await page.request.delete(`${WEB}/api/projects/${p.id}`)
+
+  const { project } = (await (await page.request.post(`${WEB}/api/projects`, { data: { name: projectName } })).json()) as { project: { id: number } }
+  const agent = await hire(page, name)
+  let issue: number | undefined
+  let desktop: { stop: () => Promise<void> } | undefined
+  let viewer: { page: Page; leave: () => Promise<void> } | undefined
+  try {
+    // Set on the Agent page's empty Budget card: Runs, monthly, 2, warning at 50%.
+    await page.goto(`${WEB}/#/agents/${agent}`)
+    const agentCard = page.getByTestId('agent-budget').locator('[data-budget-card]')
+    await agentCard.waitFor()
+    expect('the Agent page has an empty Budget card', (await agentCard.getAttribute('data-budget-card')) === 'new')
+    await agentCard.getByLabel('Budget amount').fill('2')
+    await agentCard.getByLabel('Warning percent').fill('50')
+    await agentCard.getByRole('button', { name: 'Set budget' }).click()
+    await page.locator('[data-testid="agent-budget"] [data-budget-card][data-status="Healthy"]').waitFor()
+    expect('the card shows the Budget', (await agentCard.locator('[data-slot="amount"]').textContent()) === '2 runs')
+
+    issue = await issueFor(page, 'Budgets e2e: say hello', project.id, agent)
+    desktop = await desktopRunner(page)
+    await settled(page, agent)
+    await page.reload()
+    await page.locator('[data-testid="agent-budget"] [data-budget-card][data-status="Warning"]').waitFor()
+    expect('one Run shows Warning', (await agentCard.locator('[data-slot="observed"]').textContent()) === '1 run')
+
+    const started = await page.request.post(`${WEB}/api/agents/${agent}/runs`, { data: { issue_id: issue } })
+    if (!started.ok()) throw new Error(`start a run: ${started.status()} ${await started.text()}`)
+    await settled(page, agent)
+    await page.reload()
+    await page.locator('[data-testid="agent-budget"] [data-budget-card][data-status="Paused"]').waitFor()
+    expect('the second Run reaches the Hard stop', (await agentCard.locator('[data-slot="budget-status"]').textContent())?.trim() === 'Paused')
+    expect('the Agent is "Paused by budget"', await page.getByText('Paused by budget', { exact: true }).first().isVisible())
+    const resume = page.getByRole('button', { name: 'Resume' })
+    expect('Resume is disabled with the reason', (await resume.isDisabled()) && (await resume.getAttribute('title'))?.includes('hard stop') === true)
+    await page.screenshot({ path: '/tmp/bakery-agent-budget.png', fullPage: true })
+
+    const hard = (await incidents(page, { type: 'agent', id: agent })).find((i) => i.threshold === 'hard')
+    expect('a hard incident is open', !!hard && hard.status === 'open' && !!hard.approval_id, hard)
+
+    await page.goto(`${WEB}/#/costs/budgets`)
+    const incidentCard = page.locator(`[data-incident="${hard!.id}"]`)
+    await incidentCard.waitFor()
+    expect('the incident is on Budgets, pending approval', (await incidentCard.textContent())!.includes('Pending approval'), await incidentCard.textContent())
+    expect('the Agent Budget is under Agent budgets', await page.getByRole('region', { name: 'Agent budgets' }).getByText(name).isVisible())
+    await page.getByRole('tab', { name: 'Overview' }).click()
+    expect('the incident is on Overview too', await page.locator(`[data-incident="${hard!.id}"]`).isVisible())
+
+    await page.goto(`${WEB}/#/approvals/${hard!.approval_id}`)
+    await page.getByText('Budget Override').first().waitFor()
+    expect('the Budget Override has no Approve or Reject', (await page.getByRole('button', { name: /^(Approve|Reject)$/ }).count()) === 0)
+    expect('it points to Costs', await page.locator('[data-slot="budget-resolve-hint"]').isVisible())
+
+    await page.goto(`${WEB}/#/costs/budgets`)
+    await incidentCard.waitFor()
+    await incidentCard.getByLabel('New budget (runs)').fill('3')
+    await incidentCard.getByRole('button', { name: 'Raise budget & resume' }).click()
+    await incidentCard.waitFor({ state: 'detached' })
+    const resumed = await agentOf(page, agent)
+    expect('raising to 3 makes the Agent idle', resumed.status === 'idle' && resumed.pause_reason === null, resumed)
+    expect('and approves the Approval', (await approval(page, hard!.approval_id!)).status === 'approved')
+
+    // A project Budget from the Project page's card shows under Budgets.
+    await page.goto(`${WEB}/#/project/${project.id}`)
+    const projectCard = page.getByTestId('project-budget').locator('[data-budget-card]')
+    await projectCard.waitFor()
+    await projectCard.getByLabel('Budget amount').fill('5')
+    await projectCard.getByRole('button', { name: 'Set budget' }).click()
+    await page.locator('[data-testid="project-budget"] [data-budget-card][data-status="Healthy"]').waitFor()
+    await page.goto(`${WEB}/#/costs/budgets`)
+    const projects = page.getByRole('region', { name: 'Project budgets' })
+    await projects.waitFor()
+    expect('the project Budget shows under Budgets', await projects.getByText(projectName).isVisible())
+    await page.screenshot({ path: '/tmp/bakery-costs-budgets.png', fullPage: true })
+
+    viewer = await invited(page, 'viewer')
+    await viewer.page.goto(`${WEB}/#/costs/budgets`)
+    await viewer.page.getByRole('region', { name: 'Agent budgets' }).waitFor()
+    expect('a viewer sees the cards', (await viewer.page.locator('[data-budget-card]').count()) > 0)
+    expect('but no editor', (await viewer.page.locator('[data-slot="budget-editor"]').count()) === 0)
+  } finally {
+    await desktop?.stop()
+    await viewer?.leave()
     if (issue) await page.request.delete(`${WEB}/api/issues/${issue}`)
     await page.request.post(`${WEB}/api/agents/${agent}/terminate`)
     await page.request.delete(`${WEB}/api/projects/${project.id}`)

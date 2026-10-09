@@ -27,7 +27,7 @@
   import AgentIconPicker from '../../lib/AgentIconPicker.svelte'
   import {
     addAgentRole,
-    agentStatusLabel,
+    agentStatusText,
     agentStatusTones,
     editAgent,
     getAgent,
@@ -50,6 +50,8 @@
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
   import RunLedger from '../../lib/RunLedger.svelte'
   import { listRuns, runHeartbeat, type Run } from '../../lib/runs'
+  import BudgetPolicyCard from '../../lib/BudgetPolicyCard.svelte'
+  import { budgetOverview, type Budget } from '../../lib/costs'
   import { href } from '../../lib/router.svelte'
   import type { Member } from '../../lib/session.svelte'
   import type { GuildRole } from '../../lib/types'
@@ -72,12 +74,21 @@
   let terminating = $state(false)
   let reportsToError = $state('')
   let runs = $state.raw<Run[]>([])
+  let budgets = $state.raw<Budget[]>([])
   // The interval as typed, committed on blur or Enter; null shows the Agent's.
   let intervalDraft = $state<number | null>(null)
   let intervalError = $state('')
 
   // The page is keyed by id, so loading once is enough.
+  // The Agent's own Budgets, from the Guild's Budget overview.
+  function loadBudgets() {
+    budgetOverview()
+      .then((o) => (budgets = o.budgets.filter((b) => b.scope.type === 'agent' && b.scope.id === id)))
+      .catch(() => {})
+  }
+
   function load() {
+    loadBudgets()
     getAgent(id)
       .then((a) => (agent = a))
       .catch((e) => {
@@ -104,6 +115,8 @@
 
   const live = $derived(agent !== null && (agent.status === 'idle' || agent.status === 'error' || agent.status === 'paused'))
   const editable = $derived(!!agent?.can_manage && live)
+  // Resume of an Agent paused by its Budget waits until no Budget of its own is at its Hard stop.
+  const budgetHeld = $derived(agent?.pause_reason === 'budget' && budgets.some((b) => b.status === 'hard_stop' && b.hard_stop))
   const reports = $derived(others.filter((a) => a.reports_to?.id === id))
   // Reports to cannot be the Agent itself; a deeper cycle is the server's to refuse.
   const managerOptions = $derived([
@@ -251,7 +264,13 @@
               {/if}
             </Tooltip.Root>
             {#if a.status === 'paused'}
-              <UiButton variant="outline" size="sm" disabled={busy} onclick={() => act(() => resumeAgent(id))}><Play class="size-3.5" />Resume</UiButton>
+              <UiButton
+                variant="outline"
+                size="sm"
+                disabled={busy || budgetHeld}
+                title={budgetHeld ? "Agent is paused because its budget's hard stop was reached." : undefined}
+                onclick={() => act(() => resumeAgent(id))}><Play class="size-3.5" />Resume</UiButton
+              >
             {:else}
               <UiButton variant="outline" size="sm" disabled={busy || a.status === 'pending_approval'} onclick={() => act(() => pauseAgent(id))}><Pause class="size-3.5" />Pause</UiButton>
             {/if}
@@ -299,7 +318,7 @@
       <section class="rounded-lg border border-border p-4" aria-labelledby="agent-identity-heading">
         <div class="mb-4 flex items-center justify-between gap-3">
           <h3 id="agent-identity-heading" class="text-sm font-medium">Identity</h3>
-          <StatusBadge type={agentStatusTones[a.status]} label={agentStatusLabel(a.status)} />
+          <StatusBadge type={agentStatusTones[a.status]} label={agentStatusText(a)} />
         </div>
         <div class="space-y-1">
           {#snippet job()}
@@ -426,6 +445,19 @@
           </div>
         </div>
       </section>
+
+      {#if a.status !== 'terminated' && a.status !== 'pending_approval'}
+      <section class="space-y-3 md:col-span-2" aria-label="Budget" data-testid="agent-budget">
+        <h3 class="text-sm font-medium">Budget</h3>
+        <div class="grid gap-4 xl:grid-cols-2">
+          {#each budgets as b (b.id)}
+            <BudgetPolicyCard budget={b} scope={b.scope} onsaved={load} />
+          {:else}
+            <BudgetPolicyCard budget={null} scope={{ type: 'agent', id, name: a.name }} onsaved={load} />
+          {/each}
+        </div>
+      </section>
+      {/if}
 
       <section class="rounded-lg border border-border p-4 md:col-span-2" aria-labelledby="agent-roles-heading">
         <div class="mb-3 flex items-center justify-between gap-3">

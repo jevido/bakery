@@ -18,3 +18,10 @@ export const agentStatusTones: Record<AgentStatus, StatusType> = {
   pending_approval: 'warning',
   terminated: 'error',
 }
+
+/** Why a paused Agent is paused; any other status has none. */
+export type PauseReason = 'manual' | 'budget'
+
+/** How an Agent's status reads, "Paused by budget" when its Budget's Hard stop paused it. */
+export const agentStatusText = (a: { status: AgentStatus; pause_reason?: PauseReason | null }) =>
+  a.status === 'paused' && a.pause_reason === 'budget' ? 'Paused by budget' : agentStatusLabel(a.status)

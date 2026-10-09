@@ -1,6 +1,7 @@
 // Costs and Budgets of the Guild's Agents' Runs: what the API answers at
 // /api/costs/* and /api/budgets/overview, read from the Runs' Run usage.
 import { api } from './api'
+import { runTime, tokens } from './format'
 
 /** What a set of Runs used; tokens is input plus output, as the tokens Budget metric counts them. */
 export type Figures = {
@@ -80,4 +81,53 @@ export async function costsByProject(r: CostRange): Promise<ProjectCosts[]> {
 
 export function budgetOverview(): Promise<BudgetOverview> {
   return api<BudgetOverview>('GET', '/budgets/overview')
+}
+
+/** An amount of a Budget metric for people: tokens compact, run time (seconds on the wire) as a duration. */
+export function budgetAmount(metric: string, n: number): string {
+  if (metric === 'tokens') return `${tokens(n)} tokens`
+  if (metric === 'runs') return `${n.toLocaleString('en-US')} ${n === 1 ? 'run' : 'runs'}`
+  return `${runTime(n * 1000)} run time`
+}
+
+export const budgetMetricLabels: Record<BudgetMetric, string> = { tokens: 'Tokens', runs: 'Runs', run_time: 'Run time' }
+export const budgetWindowLabels: Record<BudgetWindow, string> = {
+  calendar_month_utc: 'Monthly UTC budget',
+  lifetime: 'Lifetime budget',
+}
+
+/** The Observed amount as a whole percent of the amount, 0 without a cap. */
+export const budgetUtilisation = (b: Pick<Budget, 'amount' | 'observed'>) =>
+  b.amount > 0 ? Math.round((b.observed / b.amount) * 100) : 0
+
+export type BudgetInput = {
+  scope_type: BudgetScope['type']
+  scope_id?: number
+  metric: BudgetMetric
+  window: BudgetWindow
+  amount: number
+  warn_percent?: number
+}
+
+export async function setBudget(input: BudgetInput): Promise<Budget> {
+  return (await api<{ budget: Budget }>('PUT', '/budgets', input)).budget
+}
+
+export async function resolveBudgetIncident(
+  id: number,
+  action: 'raise_budget_and_resume' | 'keep_paused',
+  amount?: number,
+): Promise<BudgetIncident> {
+  return (await api<{ incident: BudgetIncident }>('POST', `/budget-incidents/${id}/resolve`, { action, amount })).incident
+}
+
+/** The unit a Budget metric's amount is typed in: run time in minutes on screen, seconds on the wire. */
+export const budgetInputUnit = (metric: BudgetMetric) => (metric === 'run_time' ? 'minutes' : metric)
+export const toBudgetInput = (metric: BudgetMetric, n: number) => (metric === 'run_time' ? Math.ceil(n / 60) : n)
+/** A typed amount on the wire, or null when it is not a whole number ≥ 0 (minutes may be fractional). */
+export function fromBudgetInput(metric: BudgetMetric, raw: string): number | null {
+  const v = Number(raw.trim() || '0')
+  if (!Number.isFinite(v) || v < 0) return null
+  if (metric === 'run_time') return Math.round(v * 60)
+  return Number.isInteger(v) ? v : null
 }

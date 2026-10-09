@@ -2,7 +2,7 @@
 // with the approve Permission approve, reject or ask for a revision. Every
 // call answers in the Current guild. The labels and icons are Paperclip's
 // (ui/src/components/ApprovalPayload.tsx; MIT, see NOTICE).
-import { ShieldCheck, UserPlus } from "@lucide/svelte";
+import { ShieldAlert, ShieldCheck, UserPlus } from "@lucide/svelte";
 import { api } from "./api";
 import type { Issue, WorkAgent, WorkMember } from "./work";
 
@@ -34,6 +34,21 @@ export type HirePayload = {
   roles: string[];
 };
 
+/** What a budget_override_required asks: the Budget at its Hard stop, Paperclip's BudgetOverridePayload. */
+export type BudgetOverridePayload = {
+  budget_id: number;
+  scope_type: string;
+  scope_id: number;
+  scope_name: string;
+  metric: string;
+  window: string;
+  threshold: string;
+  amount: number;
+  observed: number;
+  warn_percent: number;
+  guidance: string;
+};
+
 export type Approval = {
   id: number;
   type: string;
@@ -57,15 +72,26 @@ export type ApprovalComment = {
   created_at: string;
 };
 
-/** Budgets add theirs. */
 export const approvalTypeLabels: Record<string, string> = {
   hire_agent: "Hire Agent",
   request_board_approval: "Board Approval",
+  budget_override_required: "Budget Override",
 };
 export const approvalTypeLabel = (type: string) =>
   approvalTypeLabels[type] ?? type;
 export const approvalTypeIcon = (type: string) =>
-  type === "hire_agent" ? UserPlus : ShieldCheck;
+  type === "hire_agent"
+    ? UserPlus
+    : type === "budget_override_required"
+      ? ShieldAlert
+      : ShieldCheck;
+
+/**
+ * Whether the Approval is a Budget's Hard stop, decided only by resolving
+ * its Budget incident on Costs, never by Approve or Reject.
+ */
+export const isBudgetOverride = (a: Pick<Approval, "type">) =>
+  a.type === "budget_override_required";
 
 /** The payload of a hire_agent Approval, else null. */
 export const hirePayload = (a: Pick<Approval, "type" | "payload">) =>
@@ -101,16 +127,18 @@ const firstText = (...values: unknown[]) => {
  */
 export const approvalSubject = (
   type: string,
-  payload: Partial<ApprovalPayload & HirePayload> | null,
+  payload: Partial<ApprovalPayload & HirePayload & BudgetOverridePayload> | null,
 ) =>
   type === "hire_agent"
     ? firstText(payload?.name)
-    : firstText(payload?.title, payload?.summary, payload?.recommended_action);
+    : type === "budget_override_required"
+      ? firstText(payload?.scope_name)
+      : firstText(payload?.title, payload?.summary, payload?.recommended_action);
 
 /** "Board Approval: <title>", "Hire Agent: <name>", as Paperclip's approvalLabel. */
 export function approvalLabel(
   type: string,
-  payload: Partial<ApprovalPayload & HirePayload> | null,
+  payload: Partial<ApprovalPayload & HirePayload & BudgetOverridePayload> | null,
 ): string {
   const subject = approvalSubject(type, payload);
   return subject

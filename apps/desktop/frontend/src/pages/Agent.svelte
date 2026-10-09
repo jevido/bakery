@@ -8,7 +8,7 @@
   import { Button } from '@bakery/ui/components/ui/button'
   import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import StatusBadge from '@bakery/ui/StatusBadge.svelte'
-  import { agentStatusLabel, agentStatusTones } from '@bakery/ui/agentStatus'
+  import { agentStatusText, agentStatusTones } from '@bakery/ui/agentStatus'
   import { agent as getAgent, onEvent, openInBrowser, runs as listRuns, type Agent, type Run, type RunsEvent } from '../lib/desktop'
   import { shownGuilds } from '../lib/guilds.svelte'
   import RunLedger from '../lib/RunLedger.svelte'
@@ -92,7 +92,7 @@
                 Runs on this desktop
               </span>
             {/if}
-            <StatusBadge type={agentStatusTones[a.status]} label={agentStatusLabel(a.status)} />
+            <StatusBadge type={agentStatusTones[a.status]} label={agentStatusText(a)} />
           </div>
         </div>
         <div class="space-y-1">

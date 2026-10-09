@@ -6,9 +6,12 @@
   // hire_agent shows Paperclip's HireAgentPayload instead: Name (linking the
   // Agent), Job, Title, Reports to, Capabilities and the Roles it would get
   // as chips, in place of Paperclip's adapter and skills, which Agents here
-  // do not have. Left out until budgets bring it: the budget payload.
-  import type { ApprovalPayload, HirePayload } from './approvals'
+  // do not have. A budget_override_required shows Paperclip's
+  // BudgetOverridePayload: Scope, Window, Metric, the limit and Observed
+  // amount in the Budget metric's unit, and the guidance.
+  import type { ApprovalPayload, BudgetOverridePayload, HirePayload } from './approvals'
   import { jobLabel } from './approvals'
+  import { budgetAmount, budgetMetricLabels, budgetWindowLabels, type BudgetMetric, type BudgetWindow } from './costs'
   import Markdown from '@bakery/ui/Markdown.svelte'
   import { href } from './router.svelte'
 
@@ -16,7 +19,7 @@
     type = 'request_board_approval',
     payload,
     hideTitle = false,
-  }: { type?: string; payload: Partial<ApprovalPayload & HirePayload>; hideTitle?: boolean } = $props()
+  }: { type?: string; payload: Partial<ApprovalPayload & HirePayload & BudgetOverridePayload>; hideTitle?: boolean } = $props()
 
   const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
   // Risks render in a bullet row of their own, so one leading list marker goes.
@@ -74,6 +77,23 @@
           {/each}
         </div>
       </div>
+    {/if}
+  </div>
+{:else if type === 'budget_override_required'}
+  {@const metric = payload.metric ?? ''}
+  <div class="mt-3 space-y-1.5 text-sm" data-slot="approval-payload" data-type="budget_override_required">
+    {@render field('Scope', payload.scope_name || payload.scope_type)}
+    {@render field('Window', budgetWindowLabels[payload.window as BudgetWindow] ?? payload.window)}
+    {@render field('Metric', budgetMetricLabels[metric as BudgetMetric] ?? metric)}
+    {#if typeof payload.amount === 'number' || typeof payload.observed === 'number'}
+      <div class="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        Limit {typeof payload.amount === 'number' ? budgetAmount(metric, payload.amount) : '—'} · Observed {typeof payload.observed === 'number'
+          ? budgetAmount(metric, payload.observed)
+          : '—'}
+      </div>
+    {/if}
+    {#if text(payload.guidance)}
+      <p class="text-muted-foreground">{text(payload.guidance)}</p>
     {/if}
   </div>
 {:else}

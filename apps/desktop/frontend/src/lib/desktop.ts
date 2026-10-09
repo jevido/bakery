@@ -58,7 +58,7 @@ export type Member = { id: number; name: string; email: string }
 /** A Guild the person is in. */
 export type Guild = { id: number; name: string; issue_prefix: string }
 
-import type { AgentStatus } from '@bakery/ui/agentStatus'
+import type { AgentStatus, PauseReason } from '@bakery/ui/agentStatus'
 
 /** The Agents list's tabs, as GET /api/agents?status= filters them; all leaves out the terminated ones. */
 export type AgentsTab = 'all' | 'active' | 'paused' | 'terminated'
@@ -73,6 +73,7 @@ export type Agent = {
   icon: string
   capabilities: string
   status: AgentStatus
+  pause_reason: PauseReason | null
   reports_to: { id: number; name: string } | null
   hirer: { id: number; name: string } | null
   roles: { id: number; name: string; color: string; position: number }[] | null

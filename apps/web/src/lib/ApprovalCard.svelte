@@ -18,15 +18,18 @@
   // NOTICE): the type icon in a circle, the kind badge, who asked (a Member
   // here; only agents ask in Paperclip), the subject as heading, when it was
   // asked, the status pill, the request, the Decision note, and Approve and
-  // Reject while the Approval is Actionable and the Member may approve.
+  // Reject while the Approval is Actionable and the Member may approve. A
+  // budget_override_required has neither: it is resolved from the budget
+  // controls on Costs, as Paperclip's ApprovalDetail says.
   import { CircleCheck, CircleX, Clock } from '@lucide/svelte'
   import { Badge } from '@bakery/ui/components/ui/badge'
   import { Button, buttonVariants } from '@bakery/ui/components/ui/button'
   import { Card } from '@bakery/ui/components/ui/card'
-  import { approvalSubject, approvalTypeIcon, approvalTypeLabel, isActionable, type Approval } from './approvals'
+  import { approvalSubject, approvalTypeIcon, approvalTypeLabel, isActionable, isBudgetOverride, type Approval } from './approvals'
   import ApprovalPayload from './ApprovalPayload.svelte'
   import { ago } from './format'
   import Actor from './Actor.svelte'
+  import { href } from './router.svelte'
 
   let {
     approval,
@@ -49,7 +52,9 @@
   const Icon = $derived(approvalTypeIcon(approval.type))
   const kind = $derived(approvalTypeLabel(approval.type))
   const subject = $derived(approvalSubject(approval.type, approval.payload))
-  const decidable = $derived(canDecide && !!onapprove && !!onreject && isActionable(approval))
+  const budget = $derived(isBudgetOverride(approval))
+  const decidable = $derived(canDecide && !!onapprove && !!onreject && isActionable(approval) && !budget)
+  const budgetStop = $derived(budget && approval.status === 'pending')
 </script>
 
 <Card class="block gap-0 border-border/70 p-4" data-approval={approval.id} data-status={approval.status}>
@@ -95,6 +100,12 @@
       <span class="font-medium text-foreground">Decision note.</span>
       {approval.decision_note}
     </div>
+  {/if}
+
+  {#if budgetStop}
+    <p class="mt-4 border-t border-border/60 pt-4 text-sm text-muted-foreground" data-slot="budget-resolve-hint">
+      Resolve this budget stop from the budget controls on <a href={href('/costs/budgets')} class="underline underline-offset-2">Costs</a>.
+    </p>
   {/if}
 
   {#if decidable || detailLink}

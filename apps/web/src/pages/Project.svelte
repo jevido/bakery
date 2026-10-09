@@ -9,13 +9,17 @@
   // MIT): its header with the tile, name and actions, then the Environments
   // as on the Projects page, EntityRows in one card or cards in the grid.
   // Its Issues tab is a link to the Issues list filtered to the Project, and
-  // New issue opens the dialog with the Project preset.
+  // New issue opens the dialog with the Project preset. Its Budget sits in a
+  // card under the Environments, where Paperclip gives it a tab, with the
+  // "Paused by budget hard stop" pill in the header.
   import { buttonVariants } from '@bakery/ui/components/ui/button'
   import { Card } from '@bakery/ui/components/ui/card'
   import { api, ApiError } from '../lib/api'
   import { breadcrumb } from '../lib/breadcrumb.svelte'
   import CollectionToolbar from '../lib/CollectionToolbar.svelte'
   import EntityRow from '@bakery/ui/EntityRow.svelte'
+  import BudgetPolicyCard from '../lib/BudgetPolicyCard.svelte'
+  import { budgetOverview, type Budget } from '../lib/costs'
   import Icon from '../lib/Icon.svelte'
   import NewIssueDialog from '../lib/NewIssueDialog.svelte'
   import PageHeader from '../lib/PageHeader.svelte'
@@ -72,6 +76,19 @@
       .then((r) => (resources = r))
       .catch((e) => (loadError = e.message))
   })
+
+  // The Project's own Budgets, from the Guild's Budget overview.
+  let budgets = $state.raw<Budget[]>([])
+  function loadBudgets() {
+    budgetOverview()
+      .then((o) => (budgets = o.budgets.filter((b) => b.scope.type === 'project' && b.scope.id === id)))
+      .catch(() => {})
+  }
+  $effect(() => {
+    void id
+    loadBudgets()
+  })
+  const stopped = $derived(budgets.some((b) => b.status === 'hard_stop' && b.hard_stop))
 
   const project = $derived(resources?.project)
   const environments = $derived(project?.environments ?? [])
@@ -161,7 +178,18 @@
   <div class="chrome w-full space-y-4">
     <PageHeader title={project.name} description={project.description || undefined}>
       {#snippet leading()}<ProjectTile size="lg" />{/snippet}
-      {#snippet meta()}<span>{plural(environments.length, 'environment')} in this project</span>{/snippet}
+      {#snippet meta()}
+        <span>{plural(environments.length, 'environment')} in this project</span>
+        {#if stopped}
+          <span
+            class="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-(length:--text-micro) font-medium tracking-(--tracking-caps) text-red-800 uppercase dark:text-red-200"
+            data-testid="project-budget-paused"
+          >
+            <span class="size-2 rounded-full bg-red-400"></span>
+            Paused by budget hard stop
+          </span>
+        {/if}
+      {/snippet}
       {#snippet actions()}
         {#if session.can('manage_roles')}
           <a
@@ -280,6 +308,17 @@
         </Card>
       {/if}
     {/if}
+
+    <section class="space-y-3 pt-4" aria-label="Budget" data-testid="project-budget">
+      <h2 class="text-sm font-medium">Budget</h2>
+      <div class="grid gap-4 xl:grid-cols-2">
+        {#each budgets as b (b.id)}
+          <BudgetPolicyCard budget={b} scope={b.scope} onsaved={loadBudgets} />
+        {:else}
+          <BudgetPolicyCard budget={null} scope={{ type: 'project', id, name: project.name }} onsaved={loadBudgets} />
+        {/each}
+      </div>
+    </section>
   </div>
 {/if}
 

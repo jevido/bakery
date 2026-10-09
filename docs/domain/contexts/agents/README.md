@@ -610,6 +610,17 @@ records nothing more.
   open a new hard incident, as in Paperclip.
 - **Refusals are 422**, like every other Wake refusal here (Paperclip
   answers 409).
+- **Every Budget is set from one place too.** Paperclip sets agent and
+  project Budgets only from their detail pages. The Costs page's Budgets
+  tab here also adds one for the guild, any Agent or any Project from a
+  picker, so one page shows and sets every Budget; the Agent and Project
+  pages keep their own Budget card. A Project's Budget is a card under its
+  Environments, not a tab, since the Project page has no tabs.
+- **A Budget card reads "Paused" when its Hard stop stops Runs**, as
+  Paperclip's reads "Paused" for a paused scope: projects and guilds have
+  no pause flag here (see above), so the card derives it from the Budget
+  being at its Hard stop with Hard stop on. "Hard stop" is left for one
+  that only notifies.
 - **Left out of Costs and Budgets:** finance events, billers, billing
   types, providers and the Providers, Billers and Finance tabs (one
   runtime, nothing billed); the issue cost summary; Paperclip's heartbeat
