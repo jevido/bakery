@@ -14,6 +14,15 @@
 //           the Execution Issue, whose properties link back to the Routine;
 //           Runs lists the run as "issue created"; Activity shows the
 //           creation and the trigger events
+//   run     Run on a Routine page: the toast opens the Execution Issue,
+//           assigned to the Agent, with its Routine row; Runs shows "issue
+//           created"; Run again (the Issue's Run still queued, no Desktop
+//           runs it) coalesces into the same Issue; the Issue set done
+//           makes its Routine run "completed"
+//   pause   the toggle pauses the Routine (the trigger's Next run goes) and
+//           resumes it; Archive from the list's row menu takes it out of
+//           the list and leaves its page read-only
+//   schedule  a "* * * * *" trigger fires by itself within 90 s (slow)
 //
 //   bun e2e/routines.ts [section ...]   (task web:routines; needs task dev)
 //
@@ -265,6 +274,133 @@ const sections: Record<string, () => Promise<void>> = {
     } finally {
       await clearRoutines(page, title)
       await clearRoutines(page, renamed)
+      await drop()
+      await page.context().close()
+    }
+  },
+
+  async run() {
+    const page = await signedIn()
+    const title = 'Routines e2e: run and coalesce'
+    await clearRoutines(page, title)
+    const { agent, project, drop } = await scratch(page, 'Routines e2e run')
+    const created = await page.request.post(`${WEB}/api/routines`, { data: { title, assignee_agent_id: agent, project_id: project } })
+    const id = ((await created.json()) as { routine: Routine }).routine.id
+    const runs = async () => ((await (await page.request.get(`${WEB}/api/routines/${id}/runs`)).json()) as { routine_runs: Run[] }).routine_runs
+
+    try {
+      await page.goto(`${WEB}/#/routines/${id}`)
+      await page.getByRole('heading', { name: title }).waitFor()
+      await page.getByRole('button', { name: 'Run', exact: true }).click()
+      const open = page.getByRole('link', { name: /^Open / })
+      await open.waitFor()
+      const identifier = ((await open.textContent()) ?? '').replace('Open ', '')
+      await page.waitForURL(new RegExp(`#/routines/${id}/runs$`))
+      const list = page.getByRole('list', { name: 'Routine runs' })
+      await list.getByRole('listitem').filter({ hasText: 'issue created' }).waitFor()
+      expect('Runs shows the run as issue created', true)
+
+      await open.click()
+      await page.waitForURL(new RegExp(`#/issues/${identifier}$`))
+      const assignee = page.locator('[data-property-row="Assignee"]')
+      await assignee.waitFor()
+      expect('the Execution Issue is assigned to the Agent', ((await assignee.textContent()) ?? '').includes('Routines e2e run agent'), await assignee.textContent())
+      expect('the Execution Issue has its Routine row', (await page.locator('[data-property-row="Routine"]').getByRole('link', { name: title }).count()) === 1)
+
+      // No Desktop runs the Agent, so its Run stays queued and the Issue live.
+      await page.goto(`${WEB}/#/routines/${id}`)
+      await page.getByRole('heading', { name: title }).waitFor()
+      await page.getByRole('button', { name: 'Run', exact: true }).click()
+      await page.getByText(`Coalesced into ${identifier}`).waitFor()
+      await page.waitForURL(new RegExp(`#/routines/${id}/runs$`))
+      const coalesced = list.getByRole('listitem').filter({ hasText: 'coalesced' })
+      await coalesced.waitFor()
+      expect('Run again coalesces into the same Issue', ((await coalesced.textContent()) ?? '').includes(identifier), await coalesced.textContent())
+      const [second, first] = await runs()
+      expect('the API holds both runs on one Issue', second?.status === 'coalesced' && first?.issue?.id === second.issue?.id, [second, first])
+
+      const done = await page.request.patch(`${WEB}/api/issues/${first.issue!.id}`, { data: { status: 'done' } })
+      expect('the Execution Issue is set done', done.ok(), done.status())
+      await page.reload()
+      await list.getByRole('listitem').filter({ hasText: 'completed' }).waitFor()
+      expect('its Routine run shows Completed', (await runs()).find((r) => r.issue?.id === first.issue!.id && r.status === 'completed') !== undefined)
+    } finally {
+      await clearRoutines(page, title)
+      await drop()
+      await page.context().close()
+    }
+  },
+
+  async pause() {
+    const page = await signedIn()
+    const title = 'Routines e2e: pause and archive'
+    await clearRoutines(page, title)
+    const { agent, project, drop } = await scratch(page, 'Routines e2e pause')
+    const created = await page.request.post(`${WEB}/api/routines`, { data: { title, assignee_agent_id: agent, project_id: project } })
+    const id = ((await created.json()) as { routine: Routine }).routine.id
+    await page.request.post(`${WEB}/api/routines/${id}/triggers`, { data: { kind: 'schedule', cron_expression: '0 9 * * 1', timezone: 'Europe/Amsterdam' } })
+    const routine = async () => ((await (await page.request.get(`${WEB}/api/routines/${id}`)).json()) as { routine: Routine }).routine
+
+    try {
+      await page.goto(`${WEB}/#/routines/${id}/triggers`)
+      const card = page.getByRole('group', { name: 'Trigger: Schedule' })
+      await card.getByText(/^Next: /).waitFor()
+      await page.getByRole('switch', { name: 'Pause automatic triggers' }).click()
+      await card.getByText('Not scheduled').waitFor()
+      const paused = await routine()
+      expect('the toggle pauses the Routine and clears the Next run', paused.status === 'paused' && paused.triggers[0]?.next_run_at === null, paused)
+      await page.getByRole('switch', { name: 'Enable automatic triggers' }).click()
+      await card.getByText(/^Next: /).waitFor()
+      const resumed = await routine()
+      expect('the toggle resumes it with a Next run', resumed.status === 'active' && resumed.triggers[0]?.next_run_at !== null, resumed)
+
+      await page.goto(`${WEB}/#/routines`)
+      const row = page.getByRole('list', { name: 'Routines' }).getByRole('listitem').filter({ hasText: title })
+      await row.waitFor()
+      await row.getByRole('button', { name: `More actions for ${title}` }).click()
+      await page.getByRole('menuitem', { name: 'Archive' }).click()
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Archive' }).click()
+      await row.waitFor({ state: 'detached' })
+      expect('Archive takes the Routine out of the list', (await routine()).status === 'archived')
+
+      await page.goto(`${WEB}/#/routines/${id}`)
+      await page.getByRole('heading', { name: title }).waitFor()
+      await page.getByText('Archived', { exact: true }).first().waitFor()
+      expect(
+        'an archived Routine is read-only: no Run, Edit or toggle',
+        (await page.getByRole('button', { name: 'Run', exact: true }).count()) === 0 &&
+          (await page.getByRole('button', { name: 'Edit routine' }).count()) === 0 &&
+          (await page.getByRole('switch', { name: /automatic triggers/ }).count()) === 0,
+      )
+    } finally {
+      await clearRoutines(page, title)
+      await drop()
+      await page.context().close()
+    }
+  },
+
+  async schedule() {
+    const page = await signedIn()
+    const title = 'Routines e2e: every minute'
+    await clearRoutines(page, title)
+    const { agent, project, drop } = await scratch(page, 'Routines e2e schedule')
+    const created = await page.request.post(`${WEB}/api/routines`, { data: { title, assignee_agent_id: agent, project_id: project } })
+    const id = ((await created.json()) as { routine: Routine }).routine.id
+    await page.request.post(`${WEB}/api/routines/${id}/triggers`, { data: { kind: 'schedule', cron_expression: '* * * * *', timezone: 'UTC' } })
+
+    try {
+      // The minute's tick plus the scheduler's 15 s ticker: within 90 s.
+      await page.goto(`${WEB}/#/routines/runs`)
+      const row = page.getByRole('list', { name: 'Recent Runs' }).getByRole('listitem').filter({ hasText: title }).first()
+      const until = Date.now() + 90_000
+      while (Date.now() < until && !(await row.isVisible())) {
+        await page.waitForTimeout(5_000)
+        await page.reload()
+      }
+      const text = (await row.textContent().catch(() => '')) ?? ''
+      expect('the every-minute trigger fired by itself: Recent Runs shows a schedule run', text.includes('Schedule') || text.includes('schedule'), text)
+    } finally {
+      await clearRoutines(page, title)
       await drop()
       await page.context().close()
     }

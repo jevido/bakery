@@ -103,6 +103,15 @@ Desktop (here, in `e2e/agents.ts` and in `e2e/costs.ts`) get it from
 `e2e/runner.ts`: the desktop app's `login`, approved through the API, and
 its headless `runner` with the `claude` stand-in.
 
+`e2e/routines.ts` (`task web:routines`, needs `task dev`) checks the
+Routines pages, one section per flow (`bun e2e/routines.ts run` runs one):
+`page` (Create routine with a Weekly schedule, Run now, Recent Runs, a
+Viewer), `detail` (the Routine page: triggers, editing, Run, Activity),
+`run` (the Execution Issue, coalescing a second run, completing it),
+`pause` (the toggle, Archive from the row menu) and `schedule` (an
+every-minute trigger firing by itself within 90 s; slow). Each runs once in
+the dark theme at 1440×900.
+
 `e2e/servers.ts` (`task web:servers`, needs `task dev`) checks the Servers
 pages and S3 Storage, one section per flow (`bun e2e/servers.ts remote`
 runs one): the list, the Server frame, Resources, Metrics, Cleanup, the

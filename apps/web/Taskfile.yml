@@ -55,7 +55,7 @@ tasks:
       - bun e2e/costs.ts
 
   routines:
-    desc: Check the Routines pages (Create routine with a schedule, Run now, Recent Runs, a viewer) in headless Chromium (needs task dev)
+    desc: Check the Routines pages (Create routine with a schedule, Run now, Recent Runs, a viewer, the Routine page, coalescing and completing, pause and archive, a schedule firing) in headless Chromium (needs task dev)
     deps: [install]
     cmds:
       - bun e2e/routines.ts
