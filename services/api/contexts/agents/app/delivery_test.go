@@ -431,3 +431,31 @@ func TestCompletionReply(t *testing.T) {
 		t.Errorf("replies after a plain issue's run %+v", w.replies)
 	}
 }
+
+func TestBoardChatCompletionReply(t *testing.T) {
+	ctx := context.Background()
+	s, _, _, w := newTest()
+	runs := s.runs.(*fakeRuns)
+	_, r := queuedRun(t, s, w)
+	chat := w.issues[30]
+	chat.AgentAssigneeID = 0
+	chat.Conversation = &ConversationBrief{Board: true}
+	w.issues[30] = chat
+	w.history = map[uint64][]RunComment{30: {{ID: 1, AuthorName: "Ada", Body: "A hiring plan, please."}}}
+	laptop := Desktop{ID: 3, MemberID: 7}
+	if _, err := s.ClaimRun(ctx, laptop, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AppendRunEvents(ctx, laptop, r.ID, []domain.RunEvent{{Seq: 1, Kind: "result", Payload: []byte(`{"result":"Here is the plan."}`)}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.FinishRun(ctx, laptop, r.ID, Finish{Status: "succeeded"}); err != nil {
+		t.Fatal(err)
+	}
+	if w.replies[r.ID] != "Here is the plan." || len(w.replies) != 1 {
+		t.Errorf("replies %+v", w.replies)
+	}
+	if !strings.Contains(runs.rows[r.ID].Prompt, "<turn author=\"Ada\" role=\"board\">\nA hiring plan, please.\n</turn>") {
+		t.Errorf("prompt %q", runs.rows[r.ID].Prompt)
+	}
+}

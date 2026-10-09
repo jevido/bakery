@@ -65,7 +65,10 @@ const (
 	IssueCommented   WakeReason = "issue_commented"
 	// ConversationMessage is a Conversation owner's message to its Agent.
 	ConversationMessage WakeReason = "conversation_message"
-	HeartbeatTimer      WakeReason = "heartbeat_timer"
+	// BoardMessage is a Board member's message in the Board chat to the
+	// Guild's CEO.
+	BoardMessage   WakeReason = "board_message"
+	HeartbeatTimer WakeReason = "heartbeat_timer"
 )
 
 // WakeContext is what the Wakes of a Run carry for its prompt: the

@@ -378,6 +378,29 @@ func (s *Service) Agent(ctx context.Context, guildID, id uint64) (domain.Agent, 
 	return a, nil
 }
 
+// GuildCEO is the Guild's CEO, the Agent that answers its Board chat: its
+// oldest Agent with Job ceo that is neither pending approval nor
+// terminated. found is false when it has none.
+func (s *Service) GuildCEO(ctx context.Context, guildID uint64) (domain.Agent, bool, error) {
+	as, err := s.agents.Agents(ctx, guildID)
+	if err != nil {
+		return domain.Agent{}, false, err
+	}
+	var (
+		ceo   domain.Agent
+		found bool
+	)
+	for _, a := range as {
+		if a.Job != "ceo" || a.Status == domain.PendingApproval || a.Status == domain.Terminated {
+			continue
+		}
+		if !found || a.ID < ceo.ID {
+			ceo, found = a, true
+		}
+	}
+	return ceo, found, nil
+}
+
 // AgentInGuild reports whether the Agent belongs to the Guild.
 func (s *Service) AgentInGuild(ctx context.Context, id, guildID uint64) (bool, error) {
 	a, ok, err := s.agents.Agent(ctx, id)

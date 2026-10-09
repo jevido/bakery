@@ -134,8 +134,14 @@ func (s *Service) ReplyInConversation(ctx context.Context, guildID, issueID, age
 	}
 	if i.IsBoardChat() {
 		ceo, found, err := s.CEOOf(ctx, guildID)
-		if err != nil || !found || ceo.ID != agentID {
+		if err != nil {
 			return err
+		}
+		if !found || ceo.ID != agentID {
+			// The CEO changed while the Run ran: its reply is no longer
+			// the Board chat's answer.
+			s.Logf("work: dropped the reply of agent %d's run %d in the board chat of guild %d: it is no longer the CEO", agentID, runID, guildID)
+			return nil
 		}
 	} else if i.Conversation.AgentID != agentID {
 		return nil

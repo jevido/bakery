@@ -424,7 +424,9 @@ func InboxOfAgent(ctx context.Context, guildID, agentID uint64) ([]InboxIssue, e
 type RunComment struct {
 	ID         uint64
 	AuthorName string
-	Body       string
+	// AuthorAgentID is the Agent that wrote it, 0 for a person.
+	AuthorAgentID uint64
+	Body          string
 }
 
 // CommentsForRun tells the Guild's Comments with these ids, in that order;
@@ -480,7 +482,7 @@ func runComments(ctx context.Context, guildID uint64, cs []domain.Comment) ([]Ru
 	}
 	out := make([]RunComment, len(cs))
 	for n, c := range cs {
-		out[n] = RunComment{ID: c.ID, AuthorName: names[c.Author.MemberID], Body: c.Body}
+		out[n] = RunComment{ID: c.ID, AuthorName: names[c.Author.MemberID], AuthorAgentID: c.Author.AgentID, Body: c.Body}
 		if c.Author.AgentID != 0 {
 			out[n].AuthorName = as[c.Author.AgentID].Name
 		}

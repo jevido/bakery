@@ -32,7 +32,7 @@ export const runStatusTones: Record<RunStatus, StatusType> = {
 export type InvocationSource = 'timer' | 'assignment' | 'on_demand' | 'automation'
 
 /** Why a Run was woken, as the agents document names them. */
-export type WakeReason = 'manual' | 'heartbeat_invoked' | 'issue_assigned' | 'issue_commented' | 'heartbeat_timer'
+export type WakeReason = 'manual' | 'heartbeat_invoked' | 'issue_assigned' | 'issue_commented' | 'conversation_message' | 'board_message' | 'heartbeat_timer'
 
 /** Paperclip's labels for the Invocation sources (AgentDetail's sourceLabels). */
 export const invocationSourceLabels: Record<InvocationSource, string> = {
@@ -48,5 +48,7 @@ export const wakeReasonLabels: Record<WakeReason, string> = {
   heartbeat_invoked: 'Run heartbeat',
   issue_assigned: 'Assigned',
   issue_commented: 'New comment',
+  conversation_message: 'Chat message',
+  board_message: 'Board message',
   heartbeat_timer: 'Interval',
 }

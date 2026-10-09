@@ -44,7 +44,7 @@ func svc() *app.Service {
 			return service.IssueAssigned(ctx, e.GuildID, e.IssueID, e.AgentID, e.ActorID)
 		})
 		work.OnIssueCommented(func(ctx context.Context, e work.IssueCommented) error {
-			return service.IssueCommented(ctx, e.GuildID, e.IssueID, e.AgentID, e.CommentID, e.ActorID, e.Conversation, e.NewSession)
+			return service.IssueCommented(ctx, e.GuildID, e.IssueID, e.AgentID, e.CommentID, e.ActorID, e.Conversation, e.Board, e.NewSession)
 		})
 		work.OnAgentAssignees(func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]work.AssigneeAgent, error) {
 			as, err := service.Assignees(ctx, guildID, ids)
@@ -56,6 +56,13 @@ func svc() *app.Service {
 				out[id] = work.AssigneeAgent{Name: a.Name, Icon: string(a.Icon), Terminated: a.Status == domain.Terminated}
 			}
 			return out, nil
+		})
+		work.OnGuildCEO(func(ctx context.Context, guildID uint64) (work.GuildCEO, bool, error) {
+			a, found, err := service.GuildCEO(ctx, guildID)
+			if err != nil || !found {
+				return work.GuildCEO{}, false, err
+			}
+			return work.GuildCEO{ID: a.ID, Name: a.Name, Icon: string(a.Icon)}, true, nil
 		})
 		work.OnRunLive(service.LiveRuns)
 		work.OnIssuesWithLiveRuns(service.IssuesWithLiveRuns)
@@ -200,7 +207,7 @@ func issueBrief(i work.IssueBrief) app.IssueBrief {
 		Status: i.Status, AgentAssigneeID: i.AgentAssigneeID, ApplicationID: i.ApplicationID, AgentBranch: i.AgentBranch,
 	}
 	if c := i.Conversation; c != nil {
-		b.Conversation = &app.ConversationBrief{MemberID: c.MemberID, BoundaryCommentID: c.BoundaryCommentID}
+		b.Conversation = &app.ConversationBrief{Board: c.Board, MemberID: c.MemberID, BoundaryCommentID: c.BoundaryCommentID}
 	}
 	return b
 }
