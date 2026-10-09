@@ -28,7 +28,24 @@ export const policyHelp: Record<ConcurrencyPolicy | CatchUpPolicy, string> = {
     "Catch up missed schedule windows after recovery; sub-hourly schedules are combined into one catch-up run, slower schedules replay each missed window up to a cap.",
 };
 
-export type RoutineTriggerKind = "schedule" | "api";
+export type RoutineTriggerKind = "schedule" | "api" | "webhook";
+
+export const signingModes = ["bearer", "hmac_sha256", "github_hmac", "none"] as const;
+export type SigningMode = (typeof signingModes)[number];
+
+/** How a Webhook trigger's sender proves a delivery, in a word and a line. */
+export const signingModeHelp: Record<SigningMode, { label: string; help: string }> = {
+  bearer: { label: "Bearer", help: "The sender puts the secret in an Authorization: Bearer header." },
+  hmac_sha256: {
+    label: "HMAC-SHA256",
+    help: "The sender signs the timestamp, a period and the exact body, and sends X-Bakery-Timestamp and X-Bakery-Signature.",
+  },
+  github_hmac: { label: "GitHub", help: "GitHub signs the body with the secret in X-Hub-Signature-256; paste the secret into its Secret field." },
+  none: { label: "None", help: "No check: anyone who knows the URL can fire it, so the URL is the secret." },
+};
+
+/** The Replay window of a new hmac_sha256 Webhook trigger, and its bounds. */
+export const replayWindow = { default: 300, min: 30, max: 86400 } as const;
 
 export type RoutineTrigger = {
   id: number;
@@ -40,7 +57,15 @@ export type RoutineTrigger = {
   next_run_at: string | null;
   last_fired_at: string | null;
   last_result: string | null;
+  signing_mode: SigningMode | null;
+  replay_window_sec: number | null;
+  webhook_path: string | null;
+  last_rotated_at: string | null;
+  last_delivery: { status: "accepted" | "rejected"; received_at: string } | null;
 };
+
+/** A Webhook trigger's path and secret, answered only when it is made or rotated. */
+export type SecretMaterial = { webhook_path: string; webhook_secret: string };
 
 export type RoutineRunSource = "schedule" | "manual" | "api" | "webhook";
 export type RoutineRunStatus =
@@ -105,6 +130,8 @@ export type TriggerInput = {
   cron_expression: string;
   timezone: string;
   enabled: boolean;
+  signing_mode: SigningMode;
+  replay_window_sec: number;
 };
 
 /** Paperclip's formatRoutineRunStatus: "issue_created" reads "issue created". */
@@ -116,6 +143,7 @@ export const nextRoutineStatus = (status: RoutineStatus, enabled: boolean): Rout
 
 const routineOf = (r: { routine: RoutineDetail }) => r.routine;
 const triggerOf = (r: { trigger: RoutineTrigger }) => r.trigger;
+type WithSecret = { trigger: RoutineTrigger; secret_material?: SecretMaterial };
 
 export const listRoutines = () =>
   api<{ routines: Routine[] }>("GET", "/routines").then((r) => r.routines);
@@ -132,10 +160,14 @@ export const runRoutine = (id: number, triggerId?: number) =>
     `/routines/${id}/run`,
     triggerId ? { trigger_id: triggerId } : undefined,
   ).then((r) => r.routine_run);
+/** Adds a trigger; a Webhook trigger comes with its secret, shown this once. */
 export const addTrigger = (routineId: number, input: Partial<TriggerInput> & { kind: RoutineTriggerKind }) =>
-  api<{ trigger: RoutineTrigger }>("POST", `/routines/${routineId}/triggers`, input).then(triggerOf);
+  api<WithSecret>("POST", `/routines/${routineId}/triggers`, input);
 export const updateTrigger = (id: number, patch: Partial<Omit<TriggerInput, "kind">>) =>
   api<{ trigger: RoutineTrigger }>("PATCH", `/routine-triggers/${id}`, patch).then(triggerOf);
+/** A new secret for a Webhook trigger; the old one stops working at once. */
+export const rotateTriggerSecret = (id: number) =>
+  api<Required<WithSecret>>("POST", `/routine-triggers/${id}/rotate-secret`);
 export const deleteTrigger = (id: number) =>
   api<void>("DELETE", `/routine-triggers/${id}`);
 export const routineRuns = (id: number, limit = 50) =>
@@ -162,9 +194,10 @@ export function summarizeSchedule(triggers: RoutineTrigger[]): { label: string; 
       .sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? null;
   if (schedules.length === 0) {
     const apis = triggers.filter((t) => t.kind === "api" && t.enabled).length;
-    return apis > 0
-      ? { label: `${apis} API trigger${apis === 1 ? "" : "s"}`, detail: "Runs when the API is called", nextRunAt: null }
-      : { label: "No active schedule", detail: "Manual runs only", nextRunAt: null };
+    const webhooks = triggers.filter((t) => t.kind === "webhook" && t.enabled).length;
+    if (apis > 0) return { label: `${apis} API trigger${apis === 1 ? "" : "s"}`, detail: "Runs when the API is called", nextRunAt: null };
+    if (webhooks > 0) return { label: `${webhooks} webhook${webhooks === 1 ? "" : "s"}`, detail: "Runs when a webhook arrives", nextRunAt: null };
+    return { label: "No active schedule", detail: "Manual runs only", nextRunAt: null };
   }
   const first = schedules[0];
   return {

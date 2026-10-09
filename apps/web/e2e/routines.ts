@@ -23,10 +23,16 @@
 //           resumes it; Archive from the list's row menu takes it out of
 //           the list and leaves its page read-only
 //   schedule  a "* * * * *" trigger fires by itself within 90 s (slow)
+//   webhook a GitHub Webhook trigger added on the Triggers tab shows its URL
+//           and 48-hex secret once; after a reload the card has the URL and
+//           no secret; a delivery signed with the secret is "accepted" and
+//           Runs lists a Webhook run with its Issue; after Rotate secret the
+//           old secret is 401 and the card says "rejected"
 //
 //   bun e2e/routines.ts [section ...]   (task web:routines; needs task dev)
 //
 // The same environment as e2e/walk.ts overrides what it uses.
+import { createHmac } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { chromium, type Page } from 'playwright-core'
 
@@ -399,6 +405,73 @@ const sections: Record<string, () => Promise<void>> = {
       }
       const text = (await row.textContent().catch(() => '')) ?? ''
       expect('the every-minute trigger fired by itself: Recent Runs shows a schedule run', text.includes('Schedule') || text.includes('schedule'), text)
+    } finally {
+      await clearRoutines(page, title)
+      await drop()
+      await page.context().close()
+    }
+  },
+
+  async webhook() {
+    const page = await signedIn()
+    const title = 'Routines e2e: webhook'
+    await clearRoutines(page, title)
+    const { agent, project, drop } = await scratch(page, 'Routines e2e webhook')
+    const created = await page.request.post(`${WEB}/api/routines`, { data: { title, assignee_agent_id: agent, project_id: project, concurrency_policy: 'always_enqueue' } })
+    const id = ((await created.json()) as { routine: Routine }).routine.id
+    const deliver = (url: string, secret: string, delivery: string) => {
+      const body = JSON.stringify({ action: 'opened' })
+      const sig = createHmac('sha256', secret).update(body).digest('hex')
+      return page.request.post(url, {
+        headers: { 'Content-Type': 'application/json', 'X-Hub-Signature-256': `sha256=${sig}`, 'X-GitHub-Delivery': delivery },
+        data: body,
+      })
+    }
+
+    try {
+      await page.goto(`${WEB}/#/routines/${id}/triggers`)
+      await page.getByRole('button', { name: 'Add webhook' }).click()
+      const form = page.getByRole('group', { name: 'New trigger' })
+      await form.getByLabel('Signing mode').click()
+      await page.getByRole('option', { name: 'GitHub' }).click()
+      await form.getByRole('button', { name: 'Add trigger' }).click()
+      const reveal = page.getByRole('region', { name: 'Webhook secret' })
+      await reveal.waitFor()
+      const url = (await reveal.locator('[data-field="Webhook URL"]').textContent()) ?? ''
+      const secret = (await reveal.locator('[data-field="Secret key"]').textContent()) ?? ''
+      expect('the reveal shows the URL and a 48-hex secret', /\/api\/routine-triggers\/public\/[^/]+\/fire$/.test(url) && /^[0-9a-f]{48}$/.test(secret), { url, secret })
+      expect('both have copy buttons', (await reveal.getByRole('button', { name: /^Copy / }).count()) === 2)
+      await reveal.getByRole('button', { name: 'Done' }).click()
+      await reveal.waitFor({ state: 'detached' })
+
+      await page.reload()
+      const card = page.getByRole('group', { name: 'Trigger: Webhook' })
+      await card.waitFor()
+      const cardText = (await card.textContent()) ?? ''
+      expect('after a reload the card has the URL and no secret', cardText.includes(url) && !cardText.includes(secret) && cardText.includes('No deliveries yet'), cardText)
+
+      const ok = await deliver(url, secret, `e2e-${Date.now()}`)
+      expect('a signed delivery is accepted', ok.status() === 202, ok.status())
+      await page.reload()
+      await card.getByText(/^Last delivery: accepted/).waitFor()
+      expect('the card says the last delivery was accepted', true)
+      await page.getByRole('navigation', { name: 'Routine sections' }).getByRole('tab', { name: 'Runs' }).click()
+      const runRow = page.getByRole('list', { name: 'Routine runs' }).getByRole('listitem').first()
+      await runRow.waitFor()
+      const runText = (await runRow.textContent()) ?? ''
+      expect('Runs lists a Webhook run with its Issue', runText.includes('Webhook') && runText.includes('issue created') && runText.includes(title), runText)
+
+      await page.getByRole('navigation', { name: 'Routine sections' }).getByRole('tab', { name: 'Triggers' }).click()
+      await card.getByRole('button', { name: 'Rotate secret' }).click()
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Rotate secret' }).click()
+      await reveal.waitFor()
+      const rotated = (await reveal.locator('[data-field="Secret key"]').textContent()) ?? ''
+      expect('rotating shows a new secret', /^[0-9a-f]{48}$/.test(rotated) && rotated !== secret, rotated)
+      const old = await deliver(url, secret, `e2e-old-${Date.now()}`)
+      expect('the old secret is 401', old.status() === 401, old.status())
+      await page.reload()
+      await card.getByText(/^Last delivery: rejected/).waitFor()
+      expect('the card says the last delivery was rejected', true)
     } finally {
       await clearRoutines(page, title)
       await drop()

@@ -200,7 +200,7 @@
       {#each runs as run (run.id)}
         <div role="listitem" class="flex flex-col gap-1 border-b px-3 py-2.5 text-sm last:border-b-0 sm:flex-row sm:items-center sm:gap-4">
           <a href={href(`/routines/${run.routine.id}`)} class="min-w-0 flex-1 truncate font-medium hover:underline">{run.routine.title}</a>
-          <span class="w-20 text-xs text-muted-foreground">{workLabel(run.source)}</span>
+          <span class="w-36 truncate text-xs text-muted-foreground">{workLabel(run.source)}{run.trigger?.label ? ` · ${run.trigger.label}` : ''}</span>
           <span class="w-28 text-xs capitalize">{routineRunStatusLabel(run.status)}</span>
           <span class="w-28 text-xs text-muted-foreground" title={new Date(run.triggered_at).toLocaleString()}>{ago(run.triggered_at)}</span>
           <span class="w-56 truncate text-xs">
