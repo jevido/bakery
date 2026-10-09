@@ -28,6 +28,63 @@ export const policyHelp: Record<ConcurrencyPolicy | CatchUpPolicy, string> = {
     "Catch up missed schedule windows after recovery; sub-hourly schedules are combined into one catch-up run, slower schedules replay each missed window up to a cap.",
 };
 
+export const variableTypes = ["text", "textarea", "number", "boolean", "select", "date"] as const;
+export type VariableType = (typeof variableTypes)[number];
+
+/** A placeholder `{{name}}` in a Routine's title or description, with its definition. */
+export type RoutineVariable = {
+  name: string;
+  label: string | null;
+  type: VariableType;
+  default_value: string | number | boolean | null;
+  required: boolean;
+  options: string[];
+};
+
+/** The placeholders every Routine run fills in by itself, with an example of each. */
+export const builtinVariables = [
+  { name: "date", example: "2026-04-28", help: "The date the Routine runs, as YYYY-MM-DD (UTC)." },
+  { name: "timestamp", example: "April 28, 2026 at 12:17 PM UTC", help: "The date and time the Routine runs, in words (UTC)." },
+] as const;
+
+// The API's matcher (domain.variableMatcher): a letter, then letters,
+// digits or _, which Markdown may have written as \_.
+const placeholder = /\{\{\s*([A-Za-z](?:\\_|[A-Za-z0-9_])*)\s*\}\}/g;
+
+/** The placeholder names in the templates, in the order first seen. */
+export function variableNames(...templates: string[]): string[] {
+  const names: string[] = [];
+  for (const t of templates) {
+    for (const m of t.matchAll(placeholder)) {
+      const name = m[1].replaceAll("\\_", "_");
+      if (!names.includes(name)) names.push(name);
+    }
+  }
+  return names;
+}
+
+/**
+ * Paperclip's syncRoutineVariablesWithTemplate, as the API keeps them: one
+ * definition per placeholder that is not built in, the existing one of that
+ * name, else a required text one (date when the name ends in Date).
+ */
+export function syncVariables(title: string, description: string, existing: RoutineVariable[]): RoutineVariable[] {
+  const builtin: readonly string[] = builtinVariables.map((b) => b.name);
+  return variableNames(title, description)
+    .filter((name) => !builtin.includes(name))
+    .map(
+      (name) =>
+        existing.find((v) => v.name === name) ?? {
+          name,
+          label: null,
+          type: name.length > 4 && name.endsWith("Date") ? "date" : "text",
+          default_value: null,
+          required: true,
+          options: [],
+        },
+    );
+}
+
 export type RoutineTriggerKind = "schedule" | "api" | "webhook";
 
 export const signingModes = ["bearer", "hmac_sha256", "github_hmac", "none"] as const;
@@ -86,6 +143,7 @@ export type RoutineRun = {
   failure_reason: string | null;
   trigger: { id: number; kind: RoutineTriggerKind; label: string } | null;
   issue: { id: number; identifier: string; title: string; status: string } | null;
+  variables: Record<string, unknown> | null;
 };
 
 export type Routine = {
@@ -100,6 +158,7 @@ export type Routine = {
   status: RoutineStatus;
   concurrency_policy: ConcurrencyPolicy;
   catch_up_policy: CatchUpPolicy;
+  variables: RoutineVariable[];
   last_triggered_at: string | null;
   created_at: string;
   updated_at: string;
@@ -122,6 +181,7 @@ export type RoutineInput = {
   goal_id: number | null;
   parent_issue_id: number | null;
   assignee_agent_id: number | null;
+  variables: RoutineVariable[];
 };
 
 export type TriggerInput = {
@@ -153,12 +213,15 @@ export const createRoutine = (input: Partial<RoutineInput> & { title: string }) 
   api<{ routine: RoutineDetail }>("POST", "/routines", input).then(routineOf);
 export const updateRoutine = (id: number, patch: Partial<RoutineInput>) =>
   api<{ routine: RoutineDetail }>("PATCH", `/routines/${id}`, patch).then(routineOf);
-/** Runs it now: manual, or api when it names one of its api triggers. */
-export const runRoutine = (id: number, triggerId?: number) =>
+/**
+ * Runs it now: manual, or api when it names one of its api triggers, with
+ * the values of its Routine variables; a variable left out takes its default.
+ */
+export const runRoutine = (id: number, triggerId?: number, variables?: Record<string, string | number | boolean>) =>
   api<{ routine_run: RoutineRun }>(
     "POST",
     `/routines/${id}/run`,
-    triggerId ? { trigger_id: triggerId } : undefined,
+    triggerId || variables ? { ...(triggerId ? { trigger_id: triggerId } : {}), ...(variables ? { variables } : {}) } : undefined,
   ).then((r) => r.routine_run);
 /** Adds a trigger; a Webhook trigger comes with its secret, shown this once. */
 export const addTrigger = (routineId: number, input: Partial<TriggerInput> & { kind: RoutineTriggerKind }) =>

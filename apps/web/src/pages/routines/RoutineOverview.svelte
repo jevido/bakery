@@ -5,7 +5,7 @@
   // then the five latest Routine runs with their Execution Issues. The
   // Bakery adds the facts Paperclip keeps in its edit form: Project, Goal,
   // parent Issue, Priority and the two policies, each Schedule as a line
-  // in words.
+  // in words, and the Routine variables in a compact list.
   import { CalendarClock, Clock3, Play, Repeat } from '@lucide/svelte'
   import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import Markdown from '@bakery/ui/Markdown.svelte'
@@ -109,6 +109,23 @@
       {@render property(t.label || 'Schedule', line)}
     {/each}
   </section>
+
+  {#if routine.variables.length > 0}
+    <section class="flex flex-col gap-2" aria-labelledby="routine-variables-heading">
+      <h2 id="routine-variables-heading" class="text-sm font-semibold">Variables</h2>
+      <ul class="flex flex-col gap-1 text-sm">
+        {#each routine.variables as v (v.name)}
+          <li class="flex min-w-0 items-center gap-2" data-routine-variable={v.name}>
+            <code class="shrink-0 rounded bg-muted px-1 py-0.5 font-mono text-xs">{`{{${v.name}}}`}</code>
+            <span class="min-w-0 truncate">{v.label || v.name}</span>
+            <span class="shrink-0 text-xs text-muted-foreground">
+              {v.type}{v.type === 'select' ? ` (${v.options.join(', ')})` : ''}{v.default_value != null ? ` · default ${v.default_value}` : ''}{v.required ? ' · required' : ''}
+            </span>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
 
   <section class="flex flex-col gap-2" aria-labelledby="routine-recent-runs-heading">
     <div class="flex items-center justify-between gap-3">

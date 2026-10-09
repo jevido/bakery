@@ -7,8 +7,8 @@
   // under it. A Routine without an Agent is a Draft and an archived one
   // is read-only: neither has the toggle, and an archived one has no Run
   // or Edit, since archiving is final. Only a Member with manage_work gets
-  // any control. Left out: History, Variables, Secrets and Delivery, and
-  // Run's variables dialog, since a Routine has none.
+  // any control. Run on a Routine with variables opens the Run dialog to
+  // ask for them. Left out: History, Secrets and Delivery.
   import { Pencil, Play, X } from '@lucide/svelte'
   import { Badge } from '@bakery/ui/components/ui/badge'
   import { Button } from '@bakery/ui/components/ui/button'
@@ -18,7 +18,17 @@
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
   import { go, href, type RoutineSection } from '../../lib/router.svelte'
-  import { getRoutine, nextRoutineStatus, routineState, runRoutine, updateRoutine, type RoutineDetail } from '../../lib/routines'
+  import RunRoutineDialog from '../../lib/RunRoutineDialog.svelte'
+  import {
+    getRoutine,
+    nextRoutineStatus,
+    routineState,
+    runRoutine,
+    syncVariables,
+    updateRoutine,
+    type RoutineDetail,
+    type RoutineRun,
+  } from '../../lib/routines'
   import { session } from '../../lib/session.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import RoutineActivity from './RoutineActivity.svelte'
@@ -42,6 +52,8 @@
   let draft = $state<RoutineDraft | null>(null)
   let saving = $state(false)
   let running = $state(false)
+  let asking = $state(false)
+  let errors = $state<Record<string, string>>({})
   let toggling = $state(false)
 
   const message = (e: unknown) => (e instanceof ApiError ? (Object.values(e.errors)[0] ?? e.message) : String(e))
@@ -74,7 +86,11 @@
     goal_id: r.goal?.id ?? null,
     parent_issue_id: r.parent_issue?.id ?? null,
     assignee_agent_id: r.assignee_agent?.id ?? null,
+    variables: r.variables,
   })
+
+  /** The draft's variables as they will be saved: one per placeholder. */
+  const variables = $derived(draft ? syncVariables(title, draft.description, draft.variables) : [])
 
   /** The fields the form changed, by the name the save bar shows. */
   const dirty = $derived.by(() => {
@@ -92,10 +108,12 @@
       goal_id: 'goal',
       parent_issue_id: 'parent issue',
       assignee_agent_id: 'default agent',
+      variables: 'variables',
     }
     for (const key of Object.keys(names) as (keyof RoutineDraft)[]) {
-      if (key !== 'title' && draft[key] !== was[key]) out.push(names[key])
+      if (key !== 'title' && key !== 'variables' && draft[key] !== was[key]) out.push(names[key])
     }
+    if (JSON.stringify(variables) !== JSON.stringify(was.variables)) out.push(names.variables)
     return out
   })
 
@@ -103,6 +121,7 @@
     if (!routine) return
     title = routine.title
     draft = draftOf(routine)
+    errors = {}
     editing = true
   }
 
@@ -114,34 +133,47 @@
   async function save() {
     if (!routine || !draft || !title.trim() || saving) return
     saving = true
+    errors = {}
     try {
-      routine = { ...routine, ...(await updateRoutine(routine.id, { ...draft, title: title.trim() })) }
+      routine = { ...routine, ...(await updateRoutine(routine.id, { ...draft, variables, title: title.trim() })) }
       version++
       toast.success('Routine saved', routine.title)
       stopEditing()
     } catch (e) {
+      if (e instanceof ApiError) errors = e.errors
       toast.error('Routine not saved', message(e))
     } finally {
       saving = false
     }
   }
 
-  async function run() {
+  /** Run asks for the Routine variables first, when it has any. */
+  function run() {
+    if (!routine) return
+    if (routine.variables.length > 0) asking = true
+    else runNow()
+  }
+
+  async function runNow() {
     if (!routine) return
     running = true
     try {
-      const r = await runRoutine(routine.id)
-      const open = r.issue ? { label: `Open ${r.issue.identifier}`, href: href(`/issues/${r.issue.identifier}`) } : undefined
-      if (r.status === 'coalesced' && r.issue) toast.show(`Coalesced into ${r.issue.identifier}`, r.issue.title, open)
-      else if (r.status === 'skipped') toast.show('Routine run skipped', r.failure_reason ?? 'A run is already active.', open)
-      else toast.success('Routine run started', r.issue ? `${r.issue.identifier} ${r.issue.title}` : routine.title, open)
-      await load()
-      go(`/routines/${routine.id}/runs`)
+      await ran(await runRoutine(routine.id))
     } catch (e) {
       toast.error('Routine not run', message(e))
     } finally {
       running = false
     }
+  }
+
+  async function ran(r: RoutineRun) {
+    if (!routine) return
+    const open = r.issue ? { label: `Open ${r.issue.identifier}`, href: href(`/issues/${r.issue.identifier}`) } : undefined
+    if (r.status === 'coalesced' && r.issue) toast.show(`Coalesced into ${r.issue.identifier}`, r.issue.title, open)
+    else if (r.status === 'skipped') toast.show('Routine run skipped', r.failure_reason ?? 'A run is already active.', open)
+    else toast.success('Routine run started', r.issue ? `${r.issue.identifier} ${r.issue.title}` : routine.title, open)
+    await load()
+    go(`/routines/${routine.id}/runs`)
   }
 
   async function toggle(on: boolean) {
@@ -217,7 +249,7 @@
           <h2 id="routine-section-title" class="mb-4 text-lg font-semibold">{titles[section]}</h2>
           {#if section === ''}
             {#if editing && draft}
-              <RoutineEditor bind:draft />
+              <RoutineEditor bind:draft {title} {errors} />
               <RoutineSaveBar {dirty} {saving} disabled={!title.trim()} onsave={save} ondiscard={stopEditing} />
             {:else}
               <RoutineOverview {routine} />
@@ -233,4 +265,8 @@
       </main>
     </div>
   </div>
+{/if}
+
+{#if routine}
+  <RunRoutineDialog bind:open={asking} {routine} onrun={ran} />
 {/if}

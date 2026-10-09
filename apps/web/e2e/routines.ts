@@ -28,6 +28,11 @@
 //           no secret; a delivery signed with the secret is "accepted" and
 //           Runs lists a Webhook run with its Issue; after Rotate secret the
 //           old secret is 401 and the card says "rejected"
+//   variables  "Triage {{repo}} alert" being edited shows repo in the
+//           Variables editor; made a Select (shop, blog, default shop) and
+//           saved, Run opens the Run dialog with shop picked; blog is run
+//           and Runs links an Issue "triage blog alert"; with repo's
+//           default cleared, Add schedule is refused naming repo
 //
 //   bun e2e/routines.ts [section ...]   (task web:routines; needs task dev)
 //
@@ -472,6 +477,56 @@ const sections: Record<string, () => Promise<void>> = {
       await page.reload()
       await card.getByText(/^Last delivery: rejected/).waitFor()
       expect('the card says the last delivery was rejected', true)
+    } finally {
+      await clearRoutines(page, title)
+      await drop()
+      await page.context().close()
+    }
+  },
+
+  async variables() {
+    const page = await signedIn()
+    const title = 'Routines e2e: triage {{repo}} alert'
+    await clearRoutines(page, title)
+    const { agent, project, drop } = await scratch(page, 'Routines e2e variables')
+    const created = await page.request.post(`${WEB}/api/routines`, { data: { title, assignee_agent_id: agent, project_id: project, concurrency_policy: 'always_enqueue' } })
+    const id = ((await created.json()) as { routine: Routine }).routine.id
+
+    try {
+      await page.goto(`${WEB}/#/routines/${id}`)
+      await page.getByRole('button', { name: 'Edit routine' }).click()
+      const row = page.locator('[data-routine-variables] [data-routine-variable="repo"]')
+      await row.waitFor()
+      expect('the editor shows repo', true)
+      await row.getByLabel('Type of repo').click()
+      await page.getByRole('option', { name: 'select', exact: true }).click()
+      await row.getByLabel('Options').fill('shop, blog')
+      await row.getByLabel('Options').press('Tab')
+      await row.getByLabel('Default of repo').click()
+      await page.getByRole('option', { name: 'shop', exact: true }).click()
+      await page.getByRole('button', { name: /^Save changes/ }).click()
+      await page.locator('[data-routine-overview-mode="read"]').waitFor()
+      const saved = ((await (await page.request.get(`${WEB}/api/routines/${id}`)).json()) as { routine: { variables: { name: string; type: string; options: string[]; default_value: unknown }[] } }).routine.variables
+      expect('repo is saved as a Select of shop and blog, default shop', saved.length === 1 && saved[0].type === 'select' && saved[0].options.join() === 'shop,blog' && saved[0].default_value === 'shop', saved)
+
+      await page.getByRole('button', { name: 'Run', exact: true }).click()
+      const dialog = page.getByRole('dialog', { name: 'Run routine' })
+      const field = dialog.getByLabel('repo', { exact: true })
+      await field.waitFor()
+      expect('the Run dialog has shop picked', ((await field.textContent()) ?? '').trim() === 'shop', await field.textContent())
+      await field.click()
+      await page.getByRole('option', { name: 'blog', exact: true }).click()
+      await dialog.getByRole('button', { name: 'Run routine' }).click()
+      const runRow = page.getByRole('list', { name: 'Routine runs' }).getByRole('listitem').first()
+      await runRow.getByText(/triage blog alert/).waitFor()
+      expect('Runs links an Issue "triage blog alert"', true)
+
+      await page.request.patch(`${WEB}/api/routines/${id}`, { data: { variables: [{ ...saved[0], default_value: null }] } })
+      await page.getByRole('navigation', { name: 'Routine sections' }).getByRole('tab', { name: 'Triggers' }).click()
+      await page.getByRole('button', { name: 'Add schedule' }).click()
+      await page.getByRole('group', { name: 'New trigger' }).getByRole('button', { name: 'Add trigger' }).click()
+      await page.getByText(/require defaults for required variables: repo/).waitFor()
+      expect('Add schedule is refused naming repo', true)
     } finally {
       await clearRoutines(page, title)
       await drop()

@@ -10,7 +10,8 @@
   // editable-sections.tsx; MIT, see NOTICE), the Overview being edited:
   // the Markdown description, chips for the default Agent, Project, Goal,
   // parent Issue and Priority, and the two policies with their help, as
-  // the Create routine dialog has them. Its save bar is the page's.
+  // the Create routine dialog has them, and the Routine variables under the
+  // description. Its save bar is the page's.
   import { Bot, CornerLeftUp, FolderOpen, Target } from '@lucide/svelte'
   import * as Select from '@bakery/ui/components/ui/select'
   import { listAgents, type Agent } from '../../lib/agents'
@@ -18,10 +19,15 @@
   import MarkdownField from '../../lib/MarkdownField.svelte'
   import OptionPopover from '../../lib/OptionPopover.svelte'
   import PriorityIcon from '../../lib/PriorityIcon.svelte'
+  import RoutineVariables from './RoutineVariables.svelte'
   import { catchUpPolicies, concurrencyPolicies, policyHelp, type CatchUpPolicy, type ConcurrencyPolicy } from '../../lib/routines'
   import { listGoals, listIssues, priorities, workLabel, type Goal, type Issue } from '../../lib/work'
 
-  let { draft = $bindable() }: { draft: RoutineDraft } = $props()
+  let {
+    draft = $bindable(),
+    title,
+    errors = {},
+  }: { draft: RoutineDraft; title: string; errors?: Record<string, string> } = $props()
 
   let agents = $state.raw<Agent[]>([])
   let projects = $state.raw<{ id: number; name: string }[]>([])
@@ -41,6 +47,7 @@
 
 <div class="space-y-4" data-routine-overview-mode="edit">
   <MarkdownField bind:value={draft.description} label="Description" placeholder="Add instructions..." />
+  <RoutineVariables {title} description={draft.description} bind:variables={draft.variables} {errors} />
   <div class="flex flex-wrap items-center gap-1.5 border-t pt-3">
     <OptionPopover
       chip

@@ -19,6 +19,7 @@
   import { ago } from '../../lib/format'
   import NewRoutineDialog from '../../lib/NewRoutineDialog.svelte'
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
+  import RunRoutineDialog from '../../lib/RunRoutineDialog.svelte'
   import { go, href } from '../../lib/router.svelte'
   import {
     listRoutines,
@@ -67,16 +68,29 @@
   // Archived Routines stay out of the list, as Paperclip's default view.
   const visible = $derived(routines?.filter((r) => r.status !== 'archived') ?? null)
 
+  /** Run now asks for the Routine variables first, when it has any. */
+  let asking = $state<Routine | null>(null)
+  let askingOpen = $state(false)
+
+  function runOrAsk(r: Routine) {
+    if (r.variables.length === 0) return runNow(r)
+    asking = r
+    askingOpen = true
+  }
+
+  async function ran(r: Routine, run: RoutineRun) {
+    toast.success(
+      `Routine run ${routineRunStatusLabel(run.status)}`,
+      run.issue ? `${run.issue.identifier} ${run.issue.title}` : r.title,
+      run.issue ? { label: `Open ${run.issue.identifier}`, href: href(`/issues/${run.issue.identifier}`) } : undefined,
+    )
+    await loadRoutines()
+  }
+
   async function runNow(r: Routine) {
     running = r.id
     try {
-      const run = await runRoutine(r.id)
-      toast.success(
-        `Routine run ${routineRunStatusLabel(run.status)}`,
-        run.issue ? `${run.issue.identifier} ${run.issue.title}` : r.title,
-        run.issue ? { label: `Open ${run.issue.identifier}`, href: href(`/issues/${run.issue.identifier}`) } : undefined,
-      )
-      await loadRoutines()
+      await ran(r, await runRoutine(r.id))
     } catch (e) {
       toast.error('Routine not run', message(e))
     } finally {
@@ -154,7 +168,7 @@
             </div>
             {#if canManage}
               <div class="relative flex items-center gap-3">
-                <Button variant="outline" size="sm" disabled={running === r.id} onclick={() => runNow(r)}>
+                <Button variant="outline" size="sm" disabled={running === r.id} onclick={() => runOrAsk(r)}>
                   <Play class="size-3.5" />
                   {running === r.id ? 'Running...' : 'Run now'}
                 </Button>
@@ -175,7 +189,7 @@
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Content align="end">
                     <DropdownMenu.Item onSelect={() => go(`/routines/${r.id}`)}>Edit</DropdownMenu.Item>
-                    <DropdownMenu.Item disabled={running === r.id} onSelect={() => runNow(r)}>Run now</DropdownMenu.Item>
+                    <DropdownMenu.Item disabled={running === r.id} onSelect={() => runOrAsk(r)}>Run now</DropdownMenu.Item>
                     <DropdownMenu.Separator />
                     <DropdownMenu.Item disabled={changing === r.id} onSelect={() => setStatus(r, nextRoutineStatus(r.status, !enabled))}>
                       {enabled ? 'Pause' : 'Enable'}
@@ -217,6 +231,10 @@
 </div>
 
 <NewRoutineDialog bind:open={creating} />
+{#if asking}
+  {@const r = asking}
+  <RunRoutineDialog bind:open={askingOpen} routine={r} onrun={(run) => ran(r, run)} />
+{/if}
 
 <AlertDialog.Root open={archiving !== null} onOpenChange={(o) => !o && (archiving = null)}>
   <AlertDialog.Content>
