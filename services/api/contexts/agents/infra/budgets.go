@@ -161,14 +161,14 @@ func (s Budgets) OpenIncidentsOf(ctx context.Context, scope domain.BudgetScope, 
 }
 
 // OpenIncident inserts the incident unless one not dismissed already
-// holds its Budget, window and threshold: the unique index settles two
+// holds its Budget, window, threshold and amount: the unique index settles two
 // Runs finishing at once.
 func (s Budgets) OpenIncident(ctx context.Context, i domain.BudgetIncident) (domain.BudgetIncident, bool, error) {
 	var recs []incidentRecord
 	err := s.query(ctx).Raw(`INSERT INTO budget_incidents (guild_id, budget_id, scope_type, scope_id, metric, window_kind, window_start,
 			window_end, threshold, amount_limit, amount_observed, status, approval_id, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (budget_id, window_start, threshold) WHERE status <> 'dismissed' DO NOTHING
+		ON CONFLICT (budget_id, window_start, threshold, amount_limit) WHERE status <> 'dismissed' DO NOTHING
 		RETURNING *`,
 		i.GuildID, i.BudgetID, string(i.Scope), i.ScopeID, string(i.Metric), string(i.Window), bound(i.WindowStart),
 		bound(i.WindowEnd), string(i.Threshold), i.Amount, i.Observed, string(i.Status), nullable(i.ApprovalID), i.CreatedAt, i.UpdatedAt).Scan(&recs)

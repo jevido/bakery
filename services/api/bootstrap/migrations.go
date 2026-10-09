@@ -114,5 +114,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000099AddRunProject{},
 		&migrations.M20260930000100CreateBudgetsTable{},
 		&migrations.M20260930000101CreateBudgetIncidentsTable{},
+		&migrations.M20260930000102KeyBudgetIncidentsByAmount{},
 	}
 }

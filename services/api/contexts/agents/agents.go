@@ -293,7 +293,10 @@ func Routes(r route.Router) {
 		r.Get("/api/runs/{id}", c.ShowRun)
 		r.Get("/api/runs/{id}/events", c.ListRunEvents)
 	})
-	r.Middleware(guilds.Auth, guilds.Can("manage_budgets")).Put("/api/budgets", c.SetBudget)
+	r.Middleware(guilds.Auth, guilds.Can("manage_budgets")).Group(func(r route.Router) {
+		r.Put("/api/budgets", c.SetBudget)
+		r.Post("/api/budget-incidents/{id}/resolve", c.ResolveBudgetIncident)
+	})
 	r.Middleware(guilds.Auth, runInGuild, guilds.Can("hire_agents")).Post("/api/runs/{id}/cancel", c.CancelRun)
 	r.Middleware(guilds.Auth, guilds.Can("hire_agents")).Post("/api/agents", c.HireAgent)
 	r.Middleware(guilds.AuthAgents, agentInGuild, view).Get("/api/agents/{id}", c.ShowAgent)

@@ -165,3 +165,38 @@ func (c *Controller) SetBudget(ctx contractshttp.Context) contractshttp.Response
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"budget": budgetOf(b)})
 }
+
+type resolveIncidentRequest struct {
+	Action       string `json:"action"`
+	Amount       *int64 `json:"amount"`
+	DecisionNote string `json:"decision_note"`
+}
+
+// ResolveBudgetIncident raises the Budget of one of the Current guild's
+// open hard Budget incidents and resumes its scope, or keeps it paused.
+func (c *Controller) ResolveBudgetIncident(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req resolveIncidentRequest
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	action, err := app.ParseIncidentAction(req.Action)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	var amount int64
+	if action == app.RaiseBudgetAndResume {
+		if req.Amount == nil {
+			return respond.Invalid(ctx, "amount", "is required")
+		}
+		amount = *req.Amount
+	}
+	i, err := c.service.ResolveBudgetIncident(ctx.Context(), c.Guild(ctx), c.Member(ctx), id, action, amount, req.DecisionNote, c.visible(ctx))
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"incident": incidentOf(i)})
+}

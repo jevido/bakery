@@ -19,6 +19,14 @@
 //           Project's; raising the agent Budget resumes the Agent, approves
 //           the Approval and lets a Run start; deleting the stopped Project
 //           cancels its Approval; the scratch data is removed again
+//   resolve  an agent Budget of 1 Run reached by its assignment's Run: a
+//           member without manage_budgets gets 403; raising to the Observed
+//           amount, an unknown action and a raise without an amount are
+//           422; raising to 2 resolves the incident, resumes the Agent,
+//           approves the Approval and lets a Run start, whose finish opens
+//           a new hard incident; keeping it paused dismisses that one,
+//           rejects its Approval and leaves the Agent paused; resolving it
+//           again is 422; the scratch data is removed again
 //
 //   bun e2e/costs.ts [section ...]   (task web:costs; needs task dev)
 //
@@ -171,6 +179,26 @@ async function agentOf(page: Page, id: number): Promise<Agent> {
   return ((await (await page.request.get(`${WEB}/api/agents/${id}`)).json()) as { agent: Agent }).agent
 }
 
+/** A person invited as role for the run, signed in in a context of their own; leave removes them. */
+async function invited(owner: Page, role: 'viewer' | 'member'): Promise<{ page: Page; leave: () => Promise<void> }> {
+  const { members } = (await (await owner.request.get(`${WEB}/api/members`)).json()) as { members: { id: number; email: string }[] }
+  for (const m of members.filter((m) => m.email.startsWith(`costs-${role}-`))) await owner.request.delete(`${WEB}/api/members/${m.id}`)
+  const inv = await owner.request.post(`${WEB}/api/invitations`, { data: { email: `costs-${role}-${Date.now()}@example.test`, role } })
+  if (!inv.ok()) throw new Error(`invite: ${inv.status()}`)
+  const token = ((await inv.json()) as { path: string }).path.split('/').pop()
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+  const accept = await ctx.request.post(`${WEB}/api/invitations/by-token/${token}/accept`, { data: { name: `Costs ${role}`, password: 'a long enough password' } })
+  if (!accept.ok()) throw new Error(`accept: ${accept.status()} ${await accept.text()}`)
+  const { member } = (await accept.json()) as { member: { id: number } }
+  return {
+    page: await ctx.newPage(),
+    leave: async () => {
+      await ctx.close()
+      await owner.request.delete(`${WEB}/api/members/${member.id}`)
+    },
+  }
+}
+
 const sections: Record<string, () => Promise<void>> = {
   async api() {
     const page = await signedIn()
@@ -181,6 +209,9 @@ const sections: Record<string, () => Promise<void>> = {
     const { projects } = (await (await page.request.get(`${WEB}/api/projects`)).json()) as { projects: { id: number; name: string }[] }
     for (const p of projects.filter((p) => p.name === projectName)) await page.request.delete(`${WEB}/api/projects/${p.id}`)
 
+    // The range reaches a second back: let a Run another section just
+    // finished fall out of it.
+    await new Promise((r) => setTimeout(r, 2000))
     // Whole seconds, so the range starts before the first Run finishes.
     const from = new Date(Math.floor(Date.now() / 1000) * 1000 - 1000).toISOString()
     const { project } = (await (await page.request.post(`${WEB}/api/projects`, { data: { name: projectName } })).json()) as { project: { id: number } }
@@ -328,6 +359,70 @@ sections['hard-stop'] = async () => {
     for (const i of issues) await page.request.delete(`${WEB}/api/issues/${i}`)
     for (const a of [ada, bob]) await page.request.post(`${WEB}/api/agents/${a}/terminate`)
     for (const p of projects) await page.request.delete(`${WEB}/api/projects/${p}`)
+    await page.close()
+  }
+}
+
+sections.resolve = async () => {
+  const page = await signedIn()
+  const name = 'Resolve e2e agent'
+  const projectName = 'Resolve e2e project'
+  const { agents } = (await (await page.request.get(`${WEB}/api/agents`)).json()) as { agents: { id: number; name: string }[] }
+  for (const a of agents.filter((a) => a.name === name)) await page.request.post(`${WEB}/api/agents/${a.id}/terminate`)
+  const listed = (await (await page.request.get(`${WEB}/api/projects`)).json()) as { projects: { id: number; name: string }[] }
+  for (const p of listed.projects.filter((p) => p.name === projectName)) await page.request.delete(`${WEB}/api/projects/${p.id}`)
+
+  const project = ((await (await page.request.post(`${WEB}/api/projects`, { data: { name: projectName } })).json()) as { project: { id: number } }).project.id
+  const ada = await hire(page, name)
+  const scope = { type: 'agent', id: ada }
+  const resolve = (id: number, data: Record<string, unknown>, as: Page = page) =>
+    as.request.post(`${WEB}/api/budget-incidents/${id}/resolve`, { data })
+  let issue = 0
+  let desktop: { stop: () => Promise<void> } | undefined
+  let member: { page: Page; leave: () => Promise<void> } | undefined
+  try {
+    const set = await page.request.put(`${WEB}/api/budgets`, { data: { scope_type: 'agent', scope_id: ada, metric: 'runs', amount: 1 } })
+    expect('the agent Budget is set', set.ok(), await set.text())
+    issue = await issueFor(page, 'Resolve e2e: say hello', project, ada)
+    desktop = await desktopRunner(page)
+    await settled(page, ada)
+    let hard = (await incidents(page, scope)).find((i) => i.threshold === 'hard')
+    expect('the first Run reaches the Hard stop', !!hard && hard.status === 'open', hard)
+
+    member = await invited(page, 'member')
+    expect('a member without manage_budgets gets 403', (await resolve(hard!.id, { action: 'keep_paused' }, member.page)).status() === 403)
+    const equal = await resolve(hard!.id, { action: 'raise_budget_and_resume', amount: 1 })
+    expect('raising to the Observed amount is 422', equal.status() === 422 && (await equal.text()).includes('must exceed the observed amount'))
+    expect('an unknown action is 422', (await resolve(hard!.id, { action: 'shrug' })).status() === 422)
+    expect('a raise without an amount is 422', (await resolve(hard!.id, { action: 'raise_budget_and_resume' })).status() === 422)
+
+    const raised = await resolve(hard!.id, { action: 'raise_budget_and_resume', amount: 2, decision_note: 'one more' })
+    const resolved = ((await raised.json()) as { incident: Incident }).incident
+    expect('raising answers the resolved incident', raised.ok() && resolved.id === hard!.id && resolved.status === 'resolved', resolved)
+    const resumed = await agentOf(page, ada)
+    expect('the Agent is idle', resumed.status === 'idle' && resumed.pause_reason === null, resumed)
+    expect('the Approval is approved', (await approval(page, hard!.approval_id!)).status === 'approved')
+    const again = await page.request.post(`${WEB}/api/agents/${ada}/runs`, { data: { issue_id: issue } })
+    expect('a new Run starts', again.status() === 201, await again.text())
+    await settled(page, ada)
+
+    const second = (await incidents(page, scope)).find((i) => i.threshold === 'hard')
+    expect('reaching the raised Budget opens a new hard incident', !!second && second.id !== hard!.id && second.approval_id !== hard!.approval_id, second)
+    hard = second!
+    const kept = await resolve(hard.id, { action: 'keep_paused', decision_note: 'enough for now' })
+    const dismissed = ((await kept.json()) as { incident: Incident }).incident
+    expect('keeping it paused dismisses the incident', kept.ok() && dismissed.status === 'dismissed', dismissed)
+    expect('the Approval is rejected', (await approval(page, hard.approval_id!)).status === 'rejected')
+    const paused = await agentOf(page, ada)
+    expect('the Agent stays paused by budget', paused.status === 'paused' && paused.pause_reason === 'budget', paused)
+    expect('Run is still 422', (await page.request.post(`${WEB}/api/agents/${ada}/runs`, { data: { issue_id: issue } })).status() === 422)
+    expect('resolving it again is 422', (await resolve(hard.id, { action: 'keep_paused' })).status() === 422)
+  } finally {
+    await desktop?.stop()
+    await member?.leave()
+    if (issue) await page.request.delete(`${WEB}/api/issues/${issue}`)
+    await page.request.post(`${WEB}/api/agents/${ada}/terminate`)
+    await page.request.delete(`${WEB}/api/projects/${project}`)
     await page.close()
   }
 }

@@ -29,7 +29,7 @@ func (f *fakeBudgets) BudgetIncidents(_ context.Context, guildID, budgetID uint6
 
 func (f *fakeBudgets) OpenIncident(_ context.Context, i domain.BudgetIncident) (domain.BudgetIncident, bool, error) {
 	for _, o := range f.incidents {
-		if o.BudgetID == i.BudgetID && o.WindowStart.Equal(i.WindowStart) && o.Threshold == i.Threshold && o.Status != domain.IncidentDismissed {
+		if o.BudgetID == i.BudgetID && o.WindowStart.Equal(i.WindowStart) && o.Threshold == i.Threshold && o.Amount == i.Amount && o.Status != domain.IncidentDismissed {
 			return domain.BudgetIncident{}, false, nil
 		}
 	}
@@ -338,5 +338,97 @@ func TestHardStop(t *testing.T) {
 	}
 	if r := runs.rows[late.ID]; r.Status != domain.RunCancelled || r.Error != blockReasons[domain.GuildScope] {
 		t.Fatalf("the late run: %+v", r)
+	}
+}
+
+func TestResolveBudgetIncident(t *testing.T) {
+	ctx := context.Background()
+	s, store, _, w := newTest()
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	ada := hired(t, s, "Ada", 0)
+	runs := s.runs.(*fakeRuns)
+	budgets := s.budgets.(*fakeBudgets)
+	finish := func() {
+		runs.next++
+		r := domain.Run{ID: runs.next, GuildID: 1, AgentID: ada.ID, Status: domain.RunSucceeded, StartedAt: &now, FinishedAt: &now}
+		runs.rows[r.ID] = r
+		s.evaluateRun(ctx, r)
+	}
+	hardStop := func(amount int64) domain.BudgetIncident {
+		t.Helper()
+		in := BudgetInput{Scope: domain.AgentScope, ScopeID: ada.ID, Metric: domain.RunsMetric,
+			BudgetTerms: domain.BudgetTerms{Amount: amount, WarnPercent: 80, HardStop: true, Notify: true}}
+		if _, err := s.SetBudget(ctx, 1, 7, in, nil); err != nil {
+			t.Fatal(err)
+		}
+		for range amount - int64(len(runs.rows)) {
+			finish()
+		}
+		i := budgets.incidents[len(budgets.incidents)-1]
+		if i.Threshold != domain.HardThreshold || i.Status != domain.IncidentOpen || store.rows[ada.ID].PauseReason != domain.PausedByBudget {
+			t.Fatalf("no hard stop at %d: %+v %+v", amount, i, store.rows[ada.ID])
+		}
+		return i
+	}
+	hard := hardStop(2)
+
+	// Refusals: another Guild's, an amount not above the Observed amount,
+	// a soft incident.
+	if _, err := s.ResolveBudgetIncident(ctx, 2, 7, hard.ID, RaiseBudgetAndResume, 5, "", nil); !errors.Is(err, ErrNotFound) {
+		t.Errorf("another guild's: %v", err)
+	}
+	var fe *domain.FieldError
+	if _, err := s.ResolveBudgetIncident(ctx, 1, 7, hard.ID, RaiseBudgetAndResume, 2, "", nil); !errors.As(err, &fe) || fe.Field != "amount" {
+		t.Errorf("amount equal to observed: %v", err)
+	}
+	soft := hard
+	soft.ID, soft.Threshold, soft.ApprovalID = 99, domain.SoftThreshold, 0
+	budgets.incidents = append(budgets.incidents, soft)
+	if _, err := s.ResolveBudgetIncident(ctx, 1, 7, soft.ID, KeepPaused, 0, "", nil); !errors.Is(err, ErrSoftIncident) {
+		t.Errorf("soft: %v", err)
+	}
+	budgets.incidents = budgets.incidents[:len(budgets.incidents)-1]
+
+	// Raising resolves it, approves its Approval with the note and resumes
+	// the Agent.
+	got, err := s.ResolveBudgetIncident(ctx, 1, 8, hard.ID, RaiseBudgetAndResume, 4, "one more week", nil)
+	if err != nil || got.Status != domain.IncidentResolved || got.ScopeName != "Ada" {
+		t.Fatalf("raise: %+v %v", got, err)
+	}
+	if a := store.rows[ada.ID]; a.Status != domain.Idle || a.PauseReason != "" {
+		t.Fatalf("ada after the raise: %+v", a)
+	}
+	if !w.decisions[hard.ApprovalID] || budgets.rows[0].Amount != 4 {
+		t.Fatalf("after the raise: %v %+v", w.decisions, budgets.rows[0])
+	}
+	if w.last.Action != "budget.incident_resolved" || w.last.ActorID != 8 || w.last.Details["amount"] != int64(4) {
+		t.Errorf("activity %+v", w.last)
+	}
+	if _, err := s.ResolveBudgetIncident(ctx, 1, 8, hard.ID, KeepPaused, 0, "", nil); err == nil {
+		t.Error("a resolved incident was resolved again")
+	}
+
+	// Keeping paused dismisses it and rejects its Approval; the Agent stays
+	// paused and cannot be resumed.
+	for range 2 {
+		finish()
+	}
+	hard = budgets.incidents[len(budgets.incidents)-1]
+	if hard.Threshold != domain.HardThreshold || hard.Status != domain.IncidentOpen {
+		t.Fatalf("second hard stop: %+v", budgets.incidents)
+	}
+	got, err = s.ResolveBudgetIncident(ctx, 1, 8, hard.ID, KeepPaused, 0, "", nil)
+	if err != nil || got.Status != domain.IncidentDismissed {
+		t.Fatalf("keep paused: %+v %v", got, err)
+	}
+	if approved, ok := w.decisions[hard.ApprovalID]; !ok || approved {
+		t.Errorf("approval after keep paused: %v", w.decisions)
+	}
+	if a := store.rows[ada.ID]; a.Status != domain.Paused || a.PauseReason != domain.PausedByBudget {
+		t.Fatalf("ada after keep paused: %+v", a)
+	}
+	if w.last.Details["amount"] != nil || w.last.Details["action"] != "keep_paused" {
+		t.Errorf("activity %+v", w.last)
 	}
 }

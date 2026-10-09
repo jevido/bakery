@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jevido/bakery/services/api/contexts/agents/domain"
 )
@@ -23,7 +25,7 @@ type Budgets interface {
 	// for any) in the statuses (any for none), oldest first.
 	BudgetIncidents(ctx context.Context, guildID, budgetID uint64, statuses []domain.IncidentStatus) ([]domain.BudgetIncident, error)
 	// OpenIncident stores the new incident; opened is false when one not
-	// dismissed already holds its Budget, window and threshold.
+	// dismissed already holds its Budget, window, threshold and amount.
 	OpenIncident(ctx context.Context, i domain.BudgetIncident) (stored domain.BudgetIncident, opened bool, err error)
 	// OpenIncidentsOf lists the open Budget incidents of the scope, in
 	// every Guild.
@@ -204,7 +206,11 @@ func (s *Service) evaluate(ctx context.Context, b BudgetSummary, memberID uint64
 		if !i.InWindow(at) {
 			continue
 		}
-		held[i.Threshold] = true
+		// One a raise resolved does not hold the new amount; an open one
+		// still asks the Board, whatever its amount.
+		if i.Amount == b.Amount || i.Status == domain.IncidentOpen {
+			held[i.Threshold] = true
+		}
 		if i.Status == domain.IncidentOpen {
 			open = append(open, i)
 		}
@@ -596,4 +602,157 @@ func (s *Service) forgetBudgets(ctx context.Context, scope domain.BudgetScope, s
 		}
 	}
 	return s.budgets.DeleteBudgetsOf(ctx, scope, scopeID)
+}
+
+// IncidentAction is what the Board does with a hard Budget incident.
+type IncidentAction string
+
+const (
+	RaiseBudgetAndResume IncidentAction = "raise_budget_and_resume"
+	KeepPaused           IncidentAction = "keep_paused"
+)
+
+// ParseIncidentAction is the IncidentAction on the wire, or a FieldError
+// on action.
+func ParseIncidentAction(s string) (IncidentAction, error) {
+	switch a := IncidentAction(s); a {
+	case RaiseBudgetAndResume, KeepPaused:
+		return a, nil
+	}
+	return "", &domain.FieldError{Field: "action", Message: "must be raise_budget_and_resume or keep_paused"}
+}
+
+// ResolveBudgetIncident is the person's answer to one of the Guild's open
+// hard Budget incidents, as Paperclip's resolveIncident. Raising sets the
+// Budget's amount, which must exceed its Observed amount now, resolves its
+// open incidents, approves their Approvals and resumes an Agent it paused;
+// keeping paused dismisses the incident and rejects its Approval, and the
+// scope stays stopped. An incident of a Project the person may not view
+// (visible) is not found.
+func (s *Service) ResolveBudgetIncident(ctx context.Context, guildID, memberID, incidentID uint64, action IncidentAction, amount int64, note string, visible Visible) (IncidentSummary, error) {
+	// work keeps a Decision note to this length; checked here, as its
+	// Decision follows the incident's change.
+	if utf8.RuneCountInString(strings.TrimSpace(note)) > MaxDecisionNote {
+		return IncidentSummary{}, &domain.FieldError{Field: "decision_note", Message: "is at most 20000 characters"}
+	}
+	all, err := s.budgets.BudgetIncidents(ctx, guildID, 0, nil)
+	if err != nil {
+		return IncidentSummary{}, err
+	}
+	at := slices.IndexFunc(all, func(i domain.BudgetIncident) bool { return i.ID == incidentID })
+	if at < 0 {
+		return IncidentSummary{}, ErrNotFound
+	}
+	i := all[at]
+	name, err := s.scopeName(ctx, guildID, i.Scope, i.ScopeID, visible)
+	if err != nil {
+		var fe *domain.FieldError
+		if errors.As(err, &fe) {
+			return IncidentSummary{}, ErrNotFound
+		}
+		return IncidentSummary{}, err
+	}
+	if i.Status != domain.IncidentOpen {
+		return IncidentSummary{}, &domain.IncidentStatusError{Status: i.Status, Action: "resolved"}
+	}
+	if i.Threshold != domain.HardThreshold {
+		return IncidentSummary{}, ErrSoftIncident
+	}
+	details := map[string]any{"action": string(action), "amount": nil, "scope_type": string(i.Scope), "scope_id": i.ScopeID}
+	switch action {
+	case RaiseBudgetAndResume:
+		if err := s.raiseBudget(ctx, &i, memberID, amount, name, note); err != nil {
+			return IncidentSummary{}, err
+		}
+		details["amount"] = amount
+	case KeepPaused:
+		if err := s.closeIncident(ctx, &i, memberID, false, note); err != nil {
+			return IncidentSummary{}, err
+		}
+	default:
+		return IncidentSummary{}, &domain.FieldError{Field: "action", Message: "must be raise_budget_and_resume or keep_paused"}
+	}
+	act := Activity{GuildID: guildID, ActorID: memberID, Entity: "budget_incident", EntityID: i.ID, Action: "budget.incident_resolved", AgentName: name, Details: details}
+	if err := s.work.RecordActivity(ctx, act); err != nil {
+		s.Logf("agents: recording budget.incident_resolved of budget incident %d: %v", i.ID, err)
+	}
+	return IncidentSummary{BudgetIncident: i, ScopeName: name}, nil
+}
+
+// MaxDecisionNote is the longest note a person may give with a
+// resolution, in characters: work's longest Decision note.
+const MaxDecisionNote = 20000
+
+// ErrSoftIncident refuses to resolve a soft Budget incident by hand: it is
+// resolved when its Budget changes.
+var ErrSoftIncident = errors.New("only a hard budget incident can be resolved")
+
+// raiseBudget sets the incident's Budget to the amount, which must exceed
+// its Observed amount now, resolves the incident with the note and then
+// evaluates the Budget, which resolves its other open incidents and
+// resumes an Agent it paused.
+func (s *Service) raiseBudget(ctx context.Context, i *domain.BudgetIncident, memberID uint64, amount int64, name, note string) error {
+	all, err := s.budgets.Budgets(ctx, i.GuildID)
+	if err != nil {
+		return err
+	}
+	at := slices.IndexFunc(all, func(b domain.Budget) bool { return b.ID == i.BudgetID })
+	if at < 0 {
+		return ErrNotFound
+	}
+	b := all[at]
+	now := s.now()
+	sum, err := s.summarize(ctx, b, name, map[domain.BudgetWindow][]RunTotal{}, now)
+	if err != nil {
+		return err
+	}
+	if amount <= sum.Observed {
+		return &domain.FieldError{Field: "amount", Message: "new budget must exceed the observed amount"}
+	}
+	terms := domain.BudgetTerms{Amount: amount, WarnPercent: b.WarnPercent, HardStop: b.HardStop, Notify: b.Notify}
+	if err := b.Set(terms, memberID, now); err != nil {
+		return err
+	}
+	if b, err = s.budgets.SaveBudget(ctx, b); err != nil {
+		return err
+	}
+	act := Activity{GuildID: b.GuildID, ActorID: memberID, Entity: "budget", EntityID: b.ID, Action: "budget.updated", AgentName: name, Details: map[string]any{
+		"scope_type": string(b.Scope), "scope_id": b.ScopeID, "metric": string(b.Metric), "window": string(b.Window),
+		"amount": b.Amount, "warn_percent": b.WarnPercent, "hard_stop": b.HardStop, "notify": b.Notify,
+	}}
+	if err := s.work.RecordActivity(ctx, act); err != nil {
+		s.Logf("agents: recording budget.updated of budget %d: %v", b.ID, err)
+	}
+	if err := s.closeIncident(ctx, i, memberID, true, note); err != nil {
+		return err
+	}
+	sum.Budget = b
+	sum.Status = b.Status(sum.Observed)
+	return s.evaluate(ctx, sum, memberID)
+}
+
+// closeIncident resolves (approved) or dismisses the open incident and
+// decides its Approval by the person with the note. Another request that
+// closed it first refuses it.
+func (s *Service) closeIncident(ctx context.Context, i *domain.BudgetIncident, memberID uint64, approved bool, note string) error {
+	close := i.Dismiss
+	if approved {
+		close = i.Resolve
+	}
+	if err := close(s.now()); err != nil {
+		return err
+	}
+	saved, err := s.budgets.SaveIncident(ctx, *i)
+	if err != nil {
+		return err
+	}
+	if !saved {
+		return &domain.IncidentStatusError{Status: domain.IncidentResolved, Action: "resolved again"}
+	}
+	if i.ApprovalID != 0 {
+		if err := s.work.DecideBudgetOverride(ctx, i.GuildID, memberID, i.ApprovalID, approved, note); err != nil {
+			s.Logf("agents: deciding the budget override %d: %v", i.ApprovalID, err)
+		}
+	}
+	return nil
 }

@@ -231,6 +231,7 @@ func notFound(ctx contractshttp.Context) contractshttp.Response {
 func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 	var fe *domain.FieldError
 	var se *domain.StatusError
+	var ie *domain.IncidentStatusError
 	switch {
 	case errors.As(err, &fe):
 		return respond.Invalid(ctx, fe.Field, fe.Message)
@@ -238,7 +239,9 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 		return respond.Error(ctx, contractshttp.StatusUnprocessableEntity, err.Error())
 	case errors.Is(err, app.ErrNotFound):
 		return notFound(ctx)
-	case errors.Is(err, app.ErrBudgetStillExceeded):
+	case errors.As(err, &ie):
+		return respond.Error(ctx, contractshttp.StatusUnprocessableEntity, err.Error())
+	case errors.Is(err, app.ErrBudgetStillExceeded), errors.Is(err, app.ErrSoftIncident):
 		return respond.Error(ctx, contractshttp.StatusUnprocessableEntity, err.Error())
 	case errors.Is(err, app.ErrMayNotManage), errors.Is(err, app.ErrHirerNotMember):
 		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
