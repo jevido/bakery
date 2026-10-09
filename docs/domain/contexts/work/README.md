@@ -662,10 +662,14 @@ title and Project.
   so the Board chat is answered by the Guild's CEO, a real Agent with its
   own Roles, on its Hirer's Desktop, and its reply is that Agent's Comment.
   It is shared by the whole Board, as Paperclip's one standing "Board
-  Operations" issue is, so every Member's bubble carries their name.
+  Operations" issue is, so a bubble carries its Member's name for everyone
+  but its author.
   Feedback votes, the `%%ACTIONS%%` signals and Paperclip's history button
   (it does nothing there) are left out; its "new chat" button becomes a New
-  session. Unlike a Member's Conversation it stays out of search too, since
+  session, and the welcome's suggestion chips come back with each New
+  session, where Paperclip offers them once per room. Its welcome reveal
+  timer and streamed reply text are left out: the welcome shows at once,
+  and the reply lands as the CEO's Comment when its Run ends. Unlike a Member's Conversation it stays out of search too, since
   it is nobody's own chat and has its own page.
 - **Any Member with `manage_work` may chat** with any Agent of the Guild,
   as they may already comment on its Issues and so wake it. The Hirer

@@ -3,7 +3,8 @@
   // and primary-sidebar-styles.ts; MIT, see NOTICE): the Guild menu in a 60px
   // header, then The Bakery's nav. The first section holds Dashboard, the
   // Inbox with its count of Unread Issues and Actionable Approvals
-  // ("unread", as Paperclip labels it) and Chat; the Work section holds Projects,
+  // ("unread", as Paperclip labels it), Chat and the Conference Room (the
+  // Board chat, which Paperclip's streamlined Sidebar lists there too); the Work section holds Projects,
   // Issues, Goals and Routines; the Guild section holds Agents, Skills, Activity and Costs, as
   // Paperclip's streamlined Sidebar puts Agents beside Audit and Costs in its
   // Org section, which is what The Bakery's Guild section is. Approvals have no
@@ -12,7 +13,7 @@
   // settings, Notifications, Keys & Tokens and Settings open under the
   // settings sidebar instead. Under the sections, the Chats section
   // (SidebarChats.svelte) lists the Agents the Member chats with.
-  import { Boxes, CircleDot, DollarSign, FolderOpen, HardDrive, History, Inbox, LayoutDashboard, MessageCircle, Repeat, Server, Target, Users } from '@lucide/svelte'
+  import { Boxes, CircleDot, DollarSign, FolderOpen, HardDrive, History, Inbox, LayoutDashboard, MessageCircle, MessagesSquare, Repeat, Server, Target, Users } from '@lucide/svelte'
   import type { Component } from 'svelte'
   import GuildMenu from './GuildMenu.svelte'
   import { badges, pollBadges, refreshBadges } from './inbox.svelte'
@@ -34,6 +35,7 @@
           { label: 'Dashboard', path: '/', icon: LayoutDashboard, routes: ['dashboard'] },
           { label: 'Inbox', path: '/inbox', icon: Inbox, routes: ['inbox'], badge: badges.inbox, badgeLabel: 'unread' },
           { label: 'Chat', path: '/chats', icon: MessageCircle, routes: ['chats', 'chat'] },
+          { label: 'Conference Room', path: '/board-chat', icon: MessagesSquare, routes: ['board-chat'] },
         ],
       },
       {

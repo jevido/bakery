@@ -7,7 +7,12 @@
   // boundary: it shows as a "New session" divider, and what came before the
   // newest one is dimmed, since the Agent no longer sees it. Left out with
   // what a Conversation does not have: queued and pending messages, feedback
-  // votes, confirmation cards and attachments.
+  // votes, confirmation cards and attachments. As the Board chat (board),
+  // it takes the bubbles of Paperclip's BoardChat (ui/src/pages/BoardChat.tsx)
+  // instead: every Member's message on the right in a blue bubble, named when
+  // someone else wrote it, since the whole Board writes there; the Agent's on
+  // the left under its icon and name. Its empty state is the welcome bubble,
+  // which the page renders.
   import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import Markdown from '@bakery/ui/Markdown.svelte'
   import { ago, formatDate } from './format'
@@ -17,12 +22,18 @@
     comments,
     agent,
     boundary = null,
+    board = false,
+    viewer = null,
   }: {
     /** The Conversation's Comments, oldest first. */
     comments: Comment[]
     agent: WorkAgent
     /** The newest /new Comment's id: what precedes it is dimmed. */
     boundary?: number | null
+    /** Whether this is the Board chat, with its bubbles. */
+    board?: boolean
+    /** In the Board chat: the looking Member's id, whose own bubbles go unnamed. */
+    viewer?: number | null
   } = $props()
 
   const isNew = (c: Comment) => !c.deleted && !c.author_agent && c.body.trim() === '/new'
@@ -36,7 +47,7 @@
 </script>
 
 <div class="flex flex-col gap-4" data-testid="chat-thread">
-  {#if comments.length === 0}
+  {#if comments.length === 0 && !board}
     <div class="flex flex-col items-center gap-3 py-16 text-center" data-testid="chat-empty">
       <span class="flex size-12 items-center justify-center rounded-full bg-muted"><AgentIcon icon={agent.icon} class="size-6" /></span>
       <p class="text-sm text-muted-foreground">Say hello to {agent.name}.</p>
@@ -48,6 +59,40 @@
         <span class="h-px flex-1 bg-border"></span>
         <span title={formatDate(c.created_at)}>New session</span>
         <span class="h-px flex-1 bg-border"></span>
+      </div>
+    {:else if board}
+      {@const member = !c.author_agent}
+      <div
+        id="comment-{c.id}"
+        class={['flex flex-col', member ? 'items-end' : 'items-start', before.has(c.id) && 'opacity-50']}
+        data-testid="chat-message"
+        data-comment={c.id}
+        data-from={member ? 'member' : 'agent'}
+      >
+        {#if !member}
+          <div class="mb-1 flex items-center gap-1.5 pl-1">
+            <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted"><AgentIcon icon={c.author_agent?.icon ?? agent.icon} class="size-3.5" /></span>
+            <span class="text-sm font-medium text-foreground">{c.author_agent?.name ?? agent.name}</span>
+          </div>
+        {:else if c.author && c.author.id !== viewer}
+          <span class="mb-1 pr-1 text-xs text-muted-foreground" data-testid="chat-author">{c.author.name}</span>
+        {/if}
+        <div
+          title={formatDate(c.created_at)}
+          class={[
+            'max-w-[85%] min-w-0 overflow-x-auto px-3 py-2 text-sm break-words',
+            member ? 'bg-blue-600 whitespace-pre-wrap text-white [border-radius:14px_14px_4px_14px]' : 'border border-border bg-card text-foreground [border-radius:14px_14px_14px_4px]',
+            c.deleted && 'opacity-60',
+          ]}
+        >
+          {#if c.deleted}
+            <span class="italic">Message deleted</span>
+          {:else if member}
+            {c.body}
+          {:else}
+            <Markdown source={c.body} class="text-sm [&>*:first-child]:mt-0 [&>*:last-child]:mb-0" />
+          {/if}
+        </div>
       </div>
     {:else}
       {@const mine = !c.author_agent}

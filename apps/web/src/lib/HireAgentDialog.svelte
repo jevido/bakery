@@ -8,7 +8,8 @@
   // the Agent gets. The Job starts at CEO for a Guild's first Agent, else
   // General, and Reports to at the CEO, as NewAgentSetup.tsx does. A hire
   // waits for its Approval, so success shows Paperclip's "Agent submitted
-  // for approval" with a link to it.
+  // for approval" with a link to it. A page can preselect the Job instead
+  // (the Conference Room's "Hire a CEO" opens it at CEO).
   import { Check } from '@lucide/svelte'
   import { Input } from '@bakery/ui/components/ui/input'
   import { Textarea } from '@bakery/ui/components/ui/textarea'
@@ -26,7 +27,11 @@
   import Modal from './ui/Modal.svelte'
   import Select from './ui/Select.svelte'
 
-  let { open = $bindable(false), onhired }: { open?: boolean; onhired?: (agent: Agent) => void } = $props()
+  let {
+    open = $bindable(false),
+    onhired,
+    initialJob = 'general',
+  }: { open?: boolean; onhired?: (agent: Agent) => void; /** The Job each opening starts at. */ initialJob?: string } = $props()
 
   let name = $state('')
   let job = $state('general')
@@ -55,7 +60,7 @@
     error = ''
     errors = {}
     hired = null
-    job = 'general'
+    job = initialJob
     reportsTo = null
     Promise.all([listAgents('all'), api<{ roles: GuildRole[] }>('GET', '/roles')])
       .then(([as, r]) => {

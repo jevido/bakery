@@ -25,6 +25,7 @@
   import Routines from './pages/routines/Routines.svelte'
   import Skill from './pages/skills/Skill.svelte'
   import Skills from './pages/skills/Skills.svelte'
+  import BoardChat from './pages/chat/BoardChat.svelte'
   import Chat from './pages/chat/Chat.svelte'
   import Chats from './pages/chat/Chats.svelte'
   import Issue from './pages/issues/Issue.svelte'
@@ -196,6 +197,8 @@
       {/key}
     {:else if router.route.name === 'chats'}
       <Chats />
+    {:else if router.route.name === 'board-chat'}
+      <BoardChat />
     {:else if router.route.name === 'chat'}
       {#key router.route.agentId}
         <Chat agentId={router.route.agentId} />

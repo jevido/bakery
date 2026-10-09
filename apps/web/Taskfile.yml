@@ -72,6 +72,12 @@ tasks:
     cmds:
       - bun e2e/chat.ts
 
+  board:
+    desc: Check the Conference Room (welcome, chips, the CEO's reply through the Desktop's runner) in headless Chromium (needs task dev)
+    deps: [install]
+    cmds:
+      - bun e2e/board.ts {{.CLI_ARGS}}
+
   desktop:
     desc: Check the Desktop app's sign-in (approve, cancel, expired) and the Desktops page in headless Chromium (needs task dev)
     deps: [install]
