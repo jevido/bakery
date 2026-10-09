@@ -1,7 +1,7 @@
 import { api } from './api'
 import type { Application, Database, Project, Service } from './types'
 
-// Hash router, with Coolify's paths for Projects, Environments, Resources and Servers: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/permissions, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id}[/{page}] (old links and links that know only its id, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/guild[/{page}] (its pages are guildPages; #/guild/roles/{id} opens one Role; #/members opens Members in place), #/guild/new, #/notifications/{kind} (its pages are notificationPages; #/notifications opens Email in place), #/security/{page} (its pages are securityPages, API Tokens and Desktops; #/security and #/api-tokens open API Tokens in place), #/issues[?status=…&priority=…&assignee=…&project=…&q=…&group=…] (the filters live in the query, so a reload keeps them), #/issues/{identifier} (or an Issue's id), #/goals, #/goals/{id}, #/routines (Routines) and #/routines/runs (Recent Runs), #/routines/{id}[/{section}] (its sections are routineSections), #/skills, #/skills/{id}[?tab=…&path=…] (one Skill; its tabs are skillTabs, the path the file open on Files), #/agents/{all|active|paused|terminated}[?view=org] (#/agents opens All in place; the query keeps the Org chart view), #/agents/{id}, #/activity[?entity=…&actor=…] (the Guild's Activity, its filters in the query), #/costs/{overview|budgets}[?range=…&from=…&to=…] (#/costs opens Overview in place, keeping the query; the query keeps the date range), #/inbox/{tab} (its tabs are inboxTabs; #/inbox opens the last tab used in place, else Mine), #/approvals/{pending|all} (#/approvals opens Pending in place), #/approvals/{id}[?resolved=approved] (one Approval; the query shows its "Approval confirmed" banner), #/profile (#/account opens it too), #/invite/{token}, #/desktop-sign-in/{id}?token=… (the Desktop app's sign-in, approved outside the guild shell), #/login, and #/dev/components in dev builds.
+// Hash router, with Coolify's paths for Projects, Environments, Resources and Servers: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/permissions, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id}[/{page}] (old links and links that know only its id, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/guild[/{page}] (its pages are guildPages; #/guild/roles/{id} opens one Role; #/members opens Members in place), #/guild/new, #/notifications/{kind} (its pages are notificationPages; #/notifications opens Email in place), #/security/{page} (its pages are securityPages, API Tokens and Desktops; #/security and #/api-tokens open API Tokens in place), #/issues[?status=…&priority=…&assignee=…&project=…&q=…&group=…] (the filters live in the query, so a reload keeps them), #/issues/{identifier} (or an Issue's id), #/goals, #/goals/{id}, #/routines (Routines) and #/routines/runs (Recent Runs), #/routines/{id}[/{section}] (its sections are routineSections), #/skills, #/skills/{id}[?tab=…&path=…] (one Skill; its tabs are skillTabs, the path the file open on Files), #/chats (Chat: pick an Agent to talk to), #/chats/{agentId} (the asking Member's Conversation with that Agent), #/agents/{all|active|paused|terminated}[?view=org] (#/agents opens All in place; the query keeps the Org chart view), #/agents/{id}, #/activity[?entity=…&actor=…] (the Guild's Activity, its filters in the query), #/costs/{overview|budgets}[?range=…&from=…&to=…] (#/costs opens Overview in place, keeping the query; the query keeps the date range), #/inbox/{tab} (its tabs are inboxTabs; #/inbox opens the last tab used in place, else Mine), #/approvals/{pending|all} (#/approvals opens Pending in place), #/approvals/{id}[?resolved=approved] (one Approval; the query shows its "Approval confirmed" banner), #/profile (#/account opens it too), #/invite/{token}, #/desktop-sign-in/{id}?token=… (the Desktop app's sign-in, approved outside the guild shell), #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
@@ -49,6 +49,8 @@ export type Route =
   | { name: 'routine'; id: number; section: RoutineSection }
   | { name: 'skills' }
   | { name: 'skill'; id: number; tab: SkillTab; path: string | null }
+  | { name: 'chats' }
+  | { name: 'chat'; agentId: number }
   | { name: 'agents'; tab: AgentsTab }
   | { name: 'agent'; id: number }
   | { name: 'activity' }
@@ -286,6 +288,10 @@ function parse(hash: string): Route {
       return { name: 'skill', id: Number(parts[1]), tab: (skillTabs as readonly string[]).includes(tab) ? (tab as SkillTab) : 'overview', path: flags.get('path') || null }
     }
   }
+  if (parts[0] === 'chats') {
+    if (parts.length === 1) return { name: 'chats' }
+    if (parts.length === 2 && /^\d+$/.test(parts[1])) return { name: 'chat', agentId: Number(parts[1]) }
+  }
   if (parts[0] === 'agents') {
     if (parts.length === 1) return redirect('/agents/all')
     if (parts.length === 2 && (agentsTabs as readonly string[]).includes(parts[1])) return { name: 'agents', tab: parts[1] as AgentsTab }
@@ -452,6 +458,11 @@ export const router = new Router()
 
 export function go(path: string) {
   location.hash = path
+}
+
+/** Opens path in place of the open page, so Back skips the page that moved on. */
+export function replace(path: string) {
+  location.replace('#' + path)
 }
 
 // Where Login goes after a successful sign-in, for a page that sent someone

@@ -116,7 +116,17 @@ export type Issue = {
   archived?: boolean
   /** With an Inbox filter: the asking Member's Last touch. */
   last_touched_at?: string | null
+  /** Set when the Issue is a Conversation: one Member's chat with one Agent. */
+  conversation?: Conversation | null
 }
+
+/**
+ * What makes an Issue a Conversation: its Conversation agent, its
+ * Conversation owner, its Conversation state (active while the owner's
+ * message waits for an answer, waiting once the Agent replied) and the
+ * Comment that is its Session boundary, the newest /new.
+ */
+export type Conversation = { agent: WorkAgent; member_id: number; state: 'active' | 'waiting'; boundary_comment_id: number | null }
 
 /**
  * Something an Issue produced outside The Bakery's own records: its Pull
@@ -213,6 +223,8 @@ export type Comment = {
   deleted: boolean
   author: WorkMember | null
   author_agent?: WorkAgent | null
+  /** The Run an Agent wrote it in; null for a Member's. */
+  run_id?: number | null
   created_at: string
   updated_at: string
   edited: boolean

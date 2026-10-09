@@ -18,7 +18,9 @@
   // Paperclip's LiveRunWidget, and every Run of the Issue is listed below
   // the tabs as its IssueRunLedger. The Work products (its Pull request and
   // Preview) follow the Documents as Paperclip's artifact cards. Left out
-  // until the Issue has them: checkout and attachments.
+  // until the Issue has them: checkout and attachments. A Conversation is
+  // its owner's chat: they are moved to it in place, anyone else reads its
+  // thread under a notice, as Paperclip drops the issue header for one.
   import { Activity, ChevronRight, Ellipsis, MessageSquare, Play, Plus, ShieldCheck, Trash2 } from '@lucide/svelte'
   import { runIsFinal } from '@bakery/ui/runStatus'
   import * as AlertDialog from '@bakery/ui/components/ui/alert-dialog'
@@ -31,6 +33,7 @@
   import Assignee from '../../lib/Assignee.svelte'
   import { decide, listIssueApprovals, type Approval } from '../../lib/approvals'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
+  import ChatThread from '../../lib/ChatThread.svelte'
   import CommentThread from '../../lib/CommentThread.svelte'
   import { ago } from '../../lib/format'
   import Actor from '../../lib/Actor.svelte'
@@ -47,13 +50,13 @@
   import PageSkeleton from '../../lib/PageSkeleton.svelte'
   import RequestApprovalDialog from '../../lib/RequestApprovalDialog.svelte'
   import PriorityIcon from '../../lib/PriorityIcon.svelte'
-  import { go, href } from '../../lib/router.svelte'
+  import { go, href, replace } from '../../lib/router.svelte'
   import { session, type Member } from '../../lib/session.svelte'
   import StatusIcon from '../../lib/StatusIcon.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import NotFound from '../NotFound.svelte'
   import { refreshBadges } from '../../lib/inbox.svelte'
-  import { deleteIssue, getIssue, listGoals, listIssues, markRead, updateIssue, type Goal, type Issue, type IssueDetail, type IssueInput } from '../../lib/work'
+  import { deleteIssue, getIssue, listComments, listGoals, listIssues, markRead, updateIssue, type Comment, type Goal, type Issue, type IssueDetail, type IssueInput } from '../../lib/work'
 
   /** The Issue's identifier (DEF-12) or id, as the address holds it. */
   let { key }: { key: string } = $props()
@@ -104,6 +107,7 @@
   function load() {
     getIssue(key)
       .then((i) => {
+        if (i.conversation && i.conversation.member_id === session.member?.id) return replace(`/chats/${i.conversation.agent.id}`)
         issue = i
         if (marked) return
         marked = true
@@ -201,6 +205,13 @@
     }
   }
 
+  // A Conversation's messages, for the read-only thread.
+  let chat = $state.raw<Comment[]>([])
+  $effect(() => {
+    if (issue?.conversation) listComments(issue.id).then((cs) => (chat = cs)).catch(() => {})
+  })
+  const owner = $derived(issue?.conversation ? (members.find((m) => m.id === issue!.conversation!.member_id)?.name ?? 'Someone') : '')
+
   $effect(() => breadcrumb.set({ label: 'Issues', href: href('/issues') }, { label: issue?.identifier ?? key }))
 
   // The parent chain, top first, from the Guild's Issues; the direct parent
@@ -273,6 +284,13 @@
   <p class="text-sm text-destructive">{loadError}</p>
 {:else if issue === null}
   <PageSkeleton />
+{:else if issue.conversation}
+  <div class="mx-auto flex max-w-3xl flex-col gap-6">
+    <p class="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground" data-testid="conversation-notice">
+      This is {owner}'s chat with {issue.conversation.agent.name}.
+    </p>
+    <ChatThread comments={chat} agent={issue.conversation.agent} boundary={issue.conversation.boundary_comment_id} />
+  </div>
 {:else}
   {@const i = issue}
   <div class="flex flex-col gap-6 lg:flex-row">

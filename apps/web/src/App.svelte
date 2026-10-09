@@ -25,6 +25,8 @@
   import Routines from './pages/routines/Routines.svelte'
   import Skill from './pages/skills/Skill.svelte'
   import Skills from './pages/skills/Skills.svelte'
+  import Chat from './pages/chat/Chat.svelte'
+  import Chats from './pages/chat/Chats.svelte'
   import Issue from './pages/issues/Issue.svelte'
   import Issues from './pages/issues/Issues.svelte'
   import NotFound from './pages/NotFound.svelte'
@@ -191,6 +193,12 @@
     {:else if router.route.name === 'skill'}
       {#key router.route.id}
         <Skill id={router.route.id} tab={router.route.tab} path={router.route.path} />
+      {/key}
+    {:else if router.route.name === 'chats'}
+      <Chats />
+    {:else if router.route.name === 'chat'}
+      {#key router.route.agentId}
+        <Chat agentId={router.route.agentId} />
       {/key}
     {:else if router.route.name === 'agents'}
       <Agents tab={router.route.tab} />

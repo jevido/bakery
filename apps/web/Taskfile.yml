@@ -66,6 +66,12 @@ tasks:
     cmds:
       - bun e2e/skills.ts
 
+  chat:
+    desc: Check the Chat pages (pick an Agent, send a message, its Live run) in headless Chromium (needs task dev)
+    deps: [install]
+    cmds:
+      - bun e2e/chat.ts
+
   desktop:
     desc: Check the Desktop app's sign-in (approve, cancel, expired) and the Desktops page in headless Chromium (needs task dev)
     deps: [install]
