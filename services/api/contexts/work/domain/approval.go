@@ -14,10 +14,13 @@ type ApprovalType string
 const (
 	RequestBoardApproval ApprovalType = "request_board_approval"
 	HireAgent            ApprovalType = "hire_agent"
+	// BudgetOverrideRequired asks whether to raise a Budget whose Hard
+	// stop was reached; only resolving its Budget incident decides it.
+	BudgetOverrideRequired ApprovalType = "budget_override_required"
 )
 
 // ApprovalTypes lists every Approval type.
-var ApprovalTypes = []ApprovalType{RequestBoardApproval, HireAgent}
+var ApprovalTypes = []ApprovalType{RequestBoardApproval, HireAgent, BudgetOverrideRequired}
 
 // ParseApprovalType reads an Approval type by its wire key.
 func ParseApprovalType(s string) (ApprovalType, error) {
@@ -40,7 +43,8 @@ const (
 	StatusApproved          ApprovalStatus = "approved"
 	StatusRejected          ApprovalStatus = "rejected"
 	// StatusCancelled is a hire_agent Approval whose Agent was terminated
-	// before a Decision.
+	// before a Decision, or a budget_override_required one whose Budget
+	// went.
 	StatusCancelled ApprovalStatus = "cancelled"
 )
 
@@ -212,6 +216,51 @@ func (p HireAgentPayload) Validated() (HireAgentPayload, error) {
 	return out, nil
 }
 
+// BudgetOverrideGuidance is what a budget_override_required Approval
+// tells the Board to do.
+const BudgetOverrideGuidance = "Raise the budget and resume the scope, or keep the scope paused."
+
+// BudgetOverridePayload is what a budget_override_required asks: the
+// Budget whose Hard stop was reached, as the agents context describes it.
+// The window bounds are nil for a lifetime Budget.
+type BudgetOverridePayload struct {
+	BudgetID    uint64
+	ScopeType   string
+	ScopeID     uint64
+	ScopeName   string
+	Metric      string
+	Window      string
+	Threshold   string
+	Amount      int64
+	Observed    int64
+	WarnPercent int
+	WindowStart *time.Time
+	WindowEnd   *time.Time
+	Guidance    string
+}
+
+func (BudgetOverridePayload) Type() ApprovalType { return BudgetOverrideRequired }
+
+func (p BudgetOverridePayload) Label() string { return "Budget override: " + p.ScopeName }
+
+func (p BudgetOverridePayload) validate() (ApprovalPayload, error) {
+	if p.BudgetID == 0 || p.ScopeID == 0 {
+		return nil, invalid("payload.budget_id", "budget_id and scope_id are required")
+	}
+	p.ScopeName = strings.TrimSpace(p.ScopeName)
+	if p.ScopeName == "" {
+		return nil, invalid("payload.scope_name", "scope_name is required")
+	}
+	if p.Guidance == "" {
+		p.Guidance = BudgetOverrideGuidance
+	}
+	return p, nil
+}
+
+// errResolveOnCostsPage refuses a generic Decision, Request revision or
+// Resubmit on a budget_override_required Approval.
+var errResolveOnCostsPage = &ApprovalRefusedError{"resolve the budget incident on the Costs page"}
+
 // Approval is a decision a Member or an Agent asks the Board of a Guild to
 // make, with the Issues it is about. The Requester is nobody and DeciderID
 // 0 for none (or once that account or Agent is gone); only a Member decides.
@@ -297,25 +346,46 @@ func (a *Approval) resolve(to ApprovalStatus, verb string, by uint64, note strin
 	return true, a.decide(to, by, note, at)
 }
 
-// Approve is the Board's yes, from pending or revision_requested.
+// Approve is the Board's yes, from pending or revision_requested; never
+// on a budget_override_required Approval (DecideBudgetOverride).
 func (a *Approval) Approve(by uint64, note string, at time.Time) (bool, error) {
+	if a.Type == BudgetOverrideRequired {
+		return false, errResolveOnCostsPage
+	}
 	return a.resolve(StatusApproved, "approved", by, note, at)
 }
 
-// Reject is the Board's no, from pending or revision_requested.
+// Reject is the Board's no, from pending or revision_requested; never on
+// a budget_override_required Approval (DecideBudgetOverride).
 func (a *Approval) Reject(by uint64, note string, at time.Time) (bool, error) {
+	if a.Type == BudgetOverrideRequired {
+		return false, errResolveOnCostsPage
+	}
+	return a.resolve(StatusRejected, "rejected", by, note, at)
+}
+
+// DecideBudgetOverride approves or rejects a budget_override_required
+// Approval, as its Budget incident was resolved by the Member.
+func (a *Approval) DecideBudgetOverride(approved bool, by uint64, note string, at time.Time) (bool, error) {
+	if a.Type != BudgetOverrideRequired {
+		return false, &ApprovalRefusedError{"Only budget override approvals are decided by resolving a budget incident"}
+	}
+	if approved {
+		return a.resolve(StatusApproved, "approved", by, note, at)
+	}
 	return a.resolve(StatusRejected, "rejected", by, note, at)
 }
 
 // Cancel ends an Actionable hire_agent Approval whose Agent was
-// terminated before a Decision. One already cancelled is unchanged
+// terminated before a Decision, or a budget_override_required one whose
+// Budget went with its Agent or Project. One already cancelled is unchanged
 // (changed is false).
 func (a *Approval) Cancel(at time.Time) (bool, error) {
 	if a.Status == StatusCancelled {
 		return false, nil
 	}
-	if a.Type != HireAgent {
-		return false, &ApprovalRefusedError{"Only hire agent approvals can be cancelled"}
+	if a.Type != HireAgent && a.Type != BudgetOverrideRequired {
+		return false, &ApprovalRefusedError{"Only hire agent and budget override approvals can be cancelled"}
 	}
 	if !a.Actionable() {
 		return false, &ApprovalRefusedError{"Only pending or revision requested approvals can be cancelled"}
@@ -327,6 +397,9 @@ func (a *Approval) Cancel(at time.Time) (bool, error) {
 // RequestRevision sends a pending Approval back to its Requester. A hire
 // never goes back: its Agent cannot change while it waits.
 func (a *Approval) RequestRevision(by uint64, note string, at time.Time) error {
+	if a.Type == BudgetOverrideRequired {
+		return errResolveOnCostsPage
+	}
 	if a.Type == HireAgent {
 		return &ApprovalRefusedError{"Hire agent approvals cannot be sent back for revision"}
 	}
@@ -341,6 +414,9 @@ func (a *Approval) RequestRevision(by uint64, note string, at time.Time) error {
 // decider, the Decision note and the decision time. A hire's payload
 // never changes.
 func (a *Approval) Resubmit(by Actor, p ApprovalPayload, at time.Time) error {
+	if a.Type == BudgetOverrideRequired {
+		return errResolveOnCostsPage
+	}
 	if !by.Is(a.Requester) {
 		return ErrNotRequester
 	}

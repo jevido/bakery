@@ -3,6 +3,7 @@ package app
 import (
 	"cmp"
 	"context"
+	"errors"
 	"slices"
 	"time"
 
@@ -18,6 +19,44 @@ type Budgets interface {
 	SaveBudget(ctx context.Context, b domain.Budget) (domain.Budget, error)
 	// DeleteBudgetsOf removes the Budgets of the scope, in every Guild.
 	DeleteBudgetsOf(ctx context.Context, scope domain.BudgetScope, scopeID uint64) error
+	// BudgetIncidents lists the Guild's Budget incidents of the Budget (0
+	// for any) in the statuses (any for none), oldest first.
+	BudgetIncidents(ctx context.Context, guildID, budgetID uint64, statuses []domain.IncidentStatus) ([]domain.BudgetIncident, error)
+	// OpenIncident stores the new incident; opened is false when one not
+	// dismissed already holds its Budget, window and threshold.
+	OpenIncident(ctx context.Context, i domain.BudgetIncident) (stored domain.BudgetIncident, opened bool, err error)
+	// OpenIncidentsOf lists the open Budget incidents of the scope, in
+	// every Guild.
+	OpenIncidentsOf(ctx context.Context, scope domain.BudgetScope, scopeID uint64) ([]domain.BudgetIncident, error)
+	// SaveIncident stores the incident's status, Approval and resolution
+	// only while it is still open; saved is false otherwise.
+	SaveIncident(ctx context.Context, i domain.BudgetIncident) (saved bool, err error)
+}
+
+// HardStopReason is the error of a queued Run a Hard stop cancelled.
+const HardStopReason = "Cancelled because the budget's hard stop was reached."
+
+// ErrBudgetStillExceeded refuses to Resume an Agent paused by budget while
+// its own Budget is still at its Hard stop.
+var ErrBudgetStillExceeded = errors.New("budget still exceeded")
+
+// BudgetBlock refuses a Wake or a claim in a stopped scope: the Budget
+// scope at its Hard stop, named, and why, as Paperclip's
+// getInvocationBlock.
+type BudgetBlock struct {
+	Scope     domain.BudgetScope
+	ScopeID   uint64
+	ScopeName string
+	Reason    string
+}
+
+func (b *BudgetBlock) Error() string { return b.Reason }
+
+// blockReasons are the reasons of a BudgetBlock, per scope.
+var blockReasons = map[domain.BudgetScope]string{
+	domain.GuildScope:   "Guild cannot start new runs because its budget's hard stop is reached.",
+	domain.AgentScope:   "Agent is paused because its budget's hard stop was reached.",
+	domain.ProjectScope: "Project cannot start new runs because its budget's hard stop is reached.",
 }
 
 // BudgetInput is a Budget as typed: the scope, metric and window it caps
@@ -41,10 +80,18 @@ type BudgetSummary struct {
 	WindowEnd   time.Time
 }
 
+// IncidentSummary is a Budget incident with its scope's name.
+type IncidentSummary struct {
+	domain.BudgetIncident
+	ScopeName string
+}
+
 // BudgetOverview is the Guild's Budgets the person may see, with their
-// open Budget incidents and stopped scopes.
+// open Budget incidents, the Agents paused by budget and the Projects at a
+// Hard stop.
 type BudgetOverview struct {
 	Budgets         []BudgetSummary
+	Incidents       []IncidentSummary
 	PausedAgents    int
 	StoppedProjects int
 }
@@ -91,7 +138,273 @@ func (s *Service) SetBudget(ctx context.Context, guildID, memberID uint64, in Bu
 		s.Logf("agents: recording budget.updated of budget %d: %v", b.ID, err)
 	}
 	totals := map[domain.BudgetWindow][]RunTotal{}
-	return s.summarize(ctx, b, name, totals, at)
+	sum, err := s.summarize(ctx, b, name, totals, at)
+	if err != nil {
+		return BudgetSummary{}, err
+	}
+	if err := s.evaluate(ctx, sum, memberID); err != nil {
+		s.Logf("agents: evaluating budget %d: %v", b.ID, err)
+	}
+	return sum, nil
+}
+
+// countsToward reports whether a Run of the Agent for the Project (0 for
+// none) counts toward the Budget.
+func countsToward(b domain.Budget, agentID, projectID uint64) bool {
+	switch b.Scope {
+	case domain.AgentScope:
+		return b.ScopeID == agentID
+	case domain.ProjectScope:
+		return projectID != 0 && b.ScopeID == projectID
+	}
+	return true
+}
+
+// evaluateRun evaluates every Budget the finished Run counts toward; a
+// failure is logged, as the Run is stored already.
+func (s *Service) evaluateRun(ctx context.Context, r domain.Run) {
+	all, err := s.budgets.Budgets(ctx, r.GuildID)
+	if err != nil {
+		s.Logf("agents: reading the budgets after run %d: %v", r.ID, err)
+		return
+	}
+	totals := map[domain.BudgetWindow][]RunTotal{}
+	for _, b := range all {
+		if !countsToward(b, r.AgentID, r.ProjectID) {
+			continue
+		}
+		name, err := s.scopeName(ctx, b.GuildID, b.Scope, b.ScopeID, nil)
+		if err != nil {
+			s.Logf("agents: naming the scope of budget %d: %v", b.ID, err)
+			continue
+		}
+		sum, err := s.summarize(ctx, b, name, totals, s.now())
+		if err == nil {
+			err = s.evaluate(ctx, sum, 0)
+		}
+		if err != nil {
+			s.Logf("agents: evaluating budget %d after run %d: %v", b.ID, r.ID, err)
+		}
+	}
+}
+
+// evaluate opens the Budget's incidents its Observed amount calls for in
+// its current window, stopping the scope at a Hard stop, and resolves the
+// open ones a raise lifted, deciding their Approvals approved by the
+// person (0 when a Run finished) and resuming an Agent it paused.
+func (s *Service) evaluate(ctx context.Context, b BudgetSummary, memberID uint64) error {
+	at := s.now()
+	all, err := s.budgets.BudgetIncidents(ctx, b.GuildID, b.ID, []domain.IncidentStatus{domain.IncidentOpen, domain.IncidentResolved})
+	if err != nil {
+		return err
+	}
+	held := map[domain.Threshold]bool{}
+	var open []domain.BudgetIncident
+	for _, i := range all {
+		if !i.InWindow(at) {
+			continue
+		}
+		held[i.Threshold] = true
+		if i.Status == domain.IncidentOpen {
+			open = append(open, i)
+		}
+	}
+	for _, i := range open {
+		// A hard one is lifted below the Hard stop; a soft one is replaced
+		// by a hard one, ends below the Warning, or was seen by the person
+		// who changed the Budget.
+		if i.Threshold == domain.HardThreshold && b.Status != domain.BudgetHardStop ||
+			i.Threshold == domain.SoftThreshold && (b.Status != domain.BudgetWarning || memberID != 0) {
+			if err := s.resolveIncident(ctx, i, memberID); err != nil {
+				return err
+			}
+		}
+	}
+	switch b.Status {
+	case domain.BudgetWarning:
+		if b.Notify && !held[domain.SoftThreshold] {
+			if _, err := s.openIncident(ctx, b, domain.SoftThreshold); err != nil {
+				return err
+			}
+		}
+	case domain.BudgetHardStop:
+		if held[domain.HardThreshold] {
+			return nil
+		}
+		opened, err := s.openIncident(ctx, b, domain.HardThreshold)
+		if err != nil || !opened {
+			return err
+		}
+		return s.stop(ctx, b)
+	}
+	if b.Scope == domain.AgentScope {
+		return s.resumeFromBudget(ctx, b, memberID)
+	}
+	return nil
+}
+
+// openIncident opens a Budget incident at the threshold, with its
+// budget_override_required Approval when it is hard, and records it.
+// opened is false when another request opened it first.
+func (s *Service) openIncident(ctx context.Context, b BudgetSummary, t domain.Threshold) (bool, error) {
+	i, opened, err := s.budgets.OpenIncident(ctx, domain.OpenIncident(b.Budget, t, b.Observed, s.now()))
+	if err != nil || !opened {
+		return false, err
+	}
+	details := map[string]any{
+		"budget_id": b.ID, "scope_type": string(b.Scope), "scope_id": b.ScopeID, "metric": string(b.Metric),
+		"amount": b.Amount, "observed": b.Observed,
+	}
+	action := "budget.soft_threshold_crossed"
+	if t == domain.HardThreshold {
+		action = "budget.hard_threshold_crossed"
+		if i.ApprovalID, err = s.work.RequestBudgetOverride(ctx, b, i); err != nil {
+			s.Logf("agents: asking the board about budget incident %d: %v", i.ID, err)
+		} else if _, err := s.budgets.SaveIncident(ctx, i); err != nil {
+			return true, err
+		}
+		details["approval_id"] = i.ApprovalID
+	}
+	act := Activity{GuildID: b.GuildID, Entity: "budget_incident", EntityID: i.ID, Action: action, AgentName: b.ScopeName, Details: details}
+	if err := s.work.RecordActivity(ctx, act); err != nil {
+		s.Logf("agents: recording %s of budget incident %d: %v", action, i.ID, err)
+	}
+	return true, nil
+}
+
+// resolveIncident resolves an open incident whose Budget was raised, and
+// approves its Approval by the person who raised it.
+func (s *Service) resolveIncident(ctx context.Context, i domain.BudgetIncident, memberID uint64) error {
+	if err := i.Resolve(s.now()); err != nil {
+		return err
+	}
+	saved, err := s.budgets.SaveIncident(ctx, i)
+	if err != nil || !saved {
+		return err
+	}
+	if i.ApprovalID != 0 && memberID != 0 {
+		if err := s.work.DecideBudgetOverride(ctx, i.GuildID, memberID, i.ApprovalID, true, ""); err != nil {
+			s.Logf("agents: approving the budget override %d: %v", i.ApprovalID, err)
+		}
+	}
+	return nil
+}
+
+// stop stops the Budget's scope at its Hard stop: an agent scope pauses
+// its Agent by budget, letting its running Run finish, and every scope
+// cancels its queued Runs.
+func (s *Service) stop(ctx context.Context, b BudgetSummary) error {
+	q := RunQuery{GuildID: b.GuildID, Statuses: []domain.RunStatus{domain.RunQueued}}
+	if b.Scope == domain.AgentScope {
+		q.AgentID = b.ScopeID
+		a, ok, err := s.agents.Agent(ctx, b.ScopeID)
+		if err != nil {
+			return err
+		}
+		if ok && a.PauseForBudget(s.now()) == nil {
+			if err := s.agents.SaveAgent(ctx, a); err != nil {
+				return err
+			}
+			s.record(ctx, domain.AgentPaused{Agent: a})
+		}
+	}
+	rs, err := s.runs.Runs(ctx, q)
+	if err != nil {
+		return err
+	}
+	agents := map[uint64]domain.Agent{}
+	for _, r := range rs {
+		if b.Scope == domain.ProjectScope {
+			if r.IssueID == 0 {
+				continue
+			}
+			i, ok, err := s.work.IssueForRun(ctx, r.GuildID, r.IssueID)
+			if err != nil {
+				return err
+			}
+			if !ok || i.ProjectID != b.ScopeID {
+				continue
+			}
+		}
+		a, ok := agents[r.AgentID]
+		if !ok {
+			if a, _, err = s.agents.Agent(ctx, r.AgentID); err != nil {
+				return err
+			}
+			agents[r.AgentID] = a
+		}
+		var se *domain.RunStatusError
+		if _, err := s.cancelRunBecause(ctx, a, r, 0, HardStopReason); err != nil && !errors.As(err, &se) {
+			return err
+		}
+	}
+	return nil
+}
+
+// resumeFromBudget resumes the agent scope's Agent paused by budget once
+// none of its own Budgets is at its Hard stop, by the person who raised it
+// (0 for none).
+func (s *Service) resumeFromBudget(ctx context.Context, b BudgetSummary, memberID uint64) error {
+	a, ok, err := s.agents.Agent(ctx, b.ScopeID)
+	if err != nil || !ok || a.Status != domain.Paused || a.PauseReason != domain.PausedByBudget {
+		return err
+	}
+	if block, err := s.agentBlock(ctx, a); err != nil || block != nil {
+		return err
+	}
+	if err := a.Resume(s.now()); err != nil {
+		return err
+	}
+	if err := s.agents.SaveAgent(ctx, a); err != nil {
+		return err
+	}
+	s.record(ctx, domain.AgentResumed{Agent: a, ActorID: memberID})
+	return nil
+}
+
+// agentBlock is the BudgetBlock of one of the Agent's own Budgets at its
+// Hard stop, nil for none.
+func (s *Service) agentBlock(ctx context.Context, a domain.Agent) (*BudgetBlock, error) {
+	return s.blockIn(ctx, a.GuildID, func(b domain.Budget) bool { return b.Scope == domain.AgentScope && b.ScopeID == a.ID })
+}
+
+// budgetBlock refuses a Run of the Agent for the Project (0 for none) in
+// a stopped scope, checking the Guild, then the Agent, then the Project,
+// as Paperclip's getInvocationBlock; nil when nothing stops it.
+func (s *Service) budgetBlock(ctx context.Context, guildID, agentID, projectID uint64) (*BudgetBlock, error) {
+	return s.blockIn(ctx, guildID, func(b domain.Budget) bool { return countsToward(b, agentID, projectID) })
+}
+
+func (s *Service) blockIn(ctx context.Context, guildID uint64, counts func(domain.Budget) bool) (*BudgetBlock, error) {
+	all, err := s.budgets.Budgets(ctx, guildID)
+	if err != nil {
+		return nil, err
+	}
+	order := map[domain.BudgetScope]int{domain.GuildScope: 0, domain.AgentScope: 1, domain.ProjectScope: 2}
+	slices.SortStableFunc(all, func(x, y domain.Budget) int { return cmp.Compare(order[x.Scope], order[y.Scope]) })
+	totals := map[domain.BudgetWindow][]RunTotal{}
+	at := s.now()
+	for _, b := range all {
+		if b.Amount <= 0 || !b.HardStop || !counts(b) {
+			continue
+		}
+		sum, err := s.summarize(ctx, b, "", totals, at)
+		if err != nil {
+			return nil, err
+		}
+		if sum.Status != domain.BudgetHardStop {
+			continue
+		}
+		name, err := s.scopeName(ctx, guildID, b.Scope, b.ScopeID, nil)
+		if err != nil {
+			var fe *domain.FieldError
+			if !errors.As(err, &fe) {
+				return nil, err
+			}
+		}
+		return &BudgetBlock{Scope: b.Scope, ScopeID: b.ScopeID, ScopeName: name, Reason: blockReasons[b.Scope]}, nil
+	}
+	return nil, nil
 }
 
 // scopeName names the Budget scope, or refuses one outside the Guild on
@@ -180,7 +493,7 @@ func (s *Service) BudgetOverview(ctx context.Context, guildID uint64, visible Vi
 	if err != nil {
 		return BudgetOverview{}, err
 	}
-	out := BudgetOverview{Budgets: []BudgetSummary{}}
+	out := BudgetOverview{Budgets: []BudgetSummary{}, Incidents: []IncidentSummary{}}
 	if len(all) == 0 {
 		return out, nil
 	}
@@ -208,6 +521,9 @@ func (s *Service) BudgetOverview(ctx context.Context, guildID uint64, visible Vi
 	}
 	for _, a := range agents {
 		names[domain.AgentScope][a.ID] = a.Name
+		if a.Status == domain.Paused && a.PauseReason == domain.PausedByBudget {
+			out.PausedAgents++
+		}
 	}
 	if len(projectIDs) > 0 && visible != nil {
 		if projectIDs, err = visible(projectIDs); err != nil {
@@ -237,10 +553,47 @@ func (s *Service) BudgetOverview(ctx context.Context, guildID uint64, visible Vi
 		return cmp.Or(cmp.Compare(order[x.Scope], order[y.Scope]), cmp.Compare(x.ScopeName, y.ScopeName),
 			cmp.Compare(x.Metric, y.Metric), cmp.Compare(x.Window, y.Window))
 	})
+	stopped := map[uint64]bool{}
+	for _, b := range out.Budgets {
+		if b.Scope == domain.ProjectScope && b.Status == domain.BudgetHardStop {
+			stopped[b.ScopeID] = true
+		}
+	}
+	out.StoppedProjects = len(stopped)
+	open, err := s.budgets.BudgetIncidents(ctx, guildID, 0, []domain.IncidentStatus{domain.IncidentOpen})
+	if err != nil {
+		return BudgetOverview{}, err
+	}
+	for _, i := range open {
+		// An incident of a Budget left out (a hidden Project's) is too.
+		if name, ok := names[i.Scope][i.ScopeID]; ok {
+			out.Incidents = append(out.Incidents, IncidentSummary{BudgetIncident: i, ScopeName: name})
+		}
+	}
+	slices.SortStableFunc(out.Incidents, func(x, y IncidentSummary) int { return y.CreatedAt.Compare(x.CreatedAt) })
 	return out, nil
 }
 
 // ForgetProject removes the Budgets of a deleted Project.
 func (s *Service) ForgetProject(ctx context.Context, projectID uint64) error {
-	return s.budgets.DeleteBudgetsOf(ctx, domain.ProjectScope, projectID)
+	return s.forgetBudgets(ctx, domain.ProjectScope, projectID, 0)
+}
+
+// forgetBudgets removes the scope's Budgets, with their incidents, and
+// cancels the budget_override_required Approvals still waiting on them, by
+// the person (0 for none).
+func (s *Service) forgetBudgets(ctx context.Context, scope domain.BudgetScope, scopeID, actorID uint64) error {
+	open, err := s.budgets.OpenIncidentsOf(ctx, scope, scopeID)
+	if err != nil {
+		return err
+	}
+	for _, i := range open {
+		if i.ApprovalID == 0 {
+			continue
+		}
+		if err := s.work.CancelApproval(ctx, i.GuildID, actorID, i.ApprovalID); err != nil {
+			s.Logf("agents: cancelling the budget override %d: %v", i.ApprovalID, err)
+		}
+	}
+	return s.budgets.DeleteBudgetsOf(ctx, scope, scopeID)
 }

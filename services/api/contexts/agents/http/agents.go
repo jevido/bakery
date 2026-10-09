@@ -93,6 +93,7 @@ type agentJSON struct {
 	CreatedAt    time.Time     `json:"created_at"`
 	UpdatedAt    time.Time     `json:"updated_at"`
 	PausedAt     *time.Time    `json:"paused_at"`
+	PauseReason  *string       `json:"pause_reason"`
 	TerminatedAt *time.Time    `json:"terminated_at"`
 }
 
@@ -150,6 +151,7 @@ func (c *Controller) agentsJSON(ctx context.Context, actor app.Actor, as []domai
 			ID: a.ID, Name: a.Name, Job: string(a.Job), JobLabel: domain.JobLabel(a.Job), Title: a.Title, Icon: string(a.Icon),
 			Capabilities: a.Capabilities, Status: string(a.Status), Roles: make([]roleJSON, len(roles)), CanManage: may,
 			CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt, PausedAt: a.PausedAt, TerminatedAt: a.TerminatedAt,
+			PauseReason: nullableText(string(a.PauseReason)),
 			Heartbeat: heartbeatJSON{
 				Enabled: a.Heartbeat.Enabled, IntervalSec: a.Heartbeat.IntervalSec, WakeOnDemand: a.Heartbeat.WakeOnDemand,
 				LastHeartbeatAt: a.LastHeartbeatAt,
@@ -214,6 +216,14 @@ func routeID(ctx contractshttp.Context) (uint64, bool) {
 	return v, err == nil
 }
 
+// nullableText answers "" as null.
+func nullableText(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
 func notFound(ctx contractshttp.Context) contractshttp.Response {
 	return respond.Error(ctx, contractshttp.StatusNotFound, "not found")
 }
@@ -228,6 +238,8 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 		return respond.Error(ctx, contractshttp.StatusUnprocessableEntity, err.Error())
 	case errors.Is(err, app.ErrNotFound):
 		return notFound(ctx)
+	case errors.Is(err, app.ErrBudgetStillExceeded):
+		return respond.Error(ctx, contractshttp.StatusUnprocessableEntity, err.Error())
 	case errors.Is(err, app.ErrMayNotManage), errors.Is(err, app.ErrHirerNotMember):
 		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
 	}

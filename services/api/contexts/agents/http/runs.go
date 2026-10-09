@@ -168,8 +168,13 @@ func (c *Controller) runAnswer(ctx contractshttp.Context, status int, r domain.R
 }
 
 func runFail(ctx contractshttp.Context, err error) contractshttp.Response {
-	var rse *domain.RunStatusError
+	var (
+		rse   *domain.RunStatusError
+		block *app.BudgetBlock
+	)
 	switch {
+	case errors.As(err, &block):
+		return budgetRefused(ctx, contractshttp.StatusUnprocessableEntity, block)
 	case errors.As(err, &rse), errors.As(err, &domain.WakeRefused{}):
 		return respond.Error(ctx, contractshttp.StatusUnprocessableEntity, err.Error())
 	case errors.Is(err, app.ErrRunNotFound):

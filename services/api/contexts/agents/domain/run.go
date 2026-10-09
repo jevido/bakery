@@ -241,6 +241,16 @@ func (r *Run) Cancel(at time.Time) error {
 	return nil
 }
 
+// CancelBecause cancels a queued or running Run with the reason as its
+// error, as a Budget's Hard stop does.
+func (r *Run) CancelBecause(reason string, at time.Time) error {
+	if err := r.Cancel(at); err != nil {
+		return err
+	}
+	r.Error = reason
+	return nil
+}
+
 func (r *Run) end(s RunStatus, at time.Time) {
 	r.Status, r.FinishedAt, r.LeaseExpiresAt, r.UpdatedAt = s, &at, nil, at
 }

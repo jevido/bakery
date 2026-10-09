@@ -158,15 +158,107 @@ func (b Budget) WarningAt() int64 {
 }
 
 // Status is the Budget status at the Observed amount, as Paperclip's
-// budgetStatusFromObserved: a Budget of 0 is always ok.
+// budgetStatusFromObserved: a Budget of 0 is always ok, and one without
+// Hard stop at most warns.
 func (b Budget) Status(observed int64) BudgetStatus {
 	switch {
 	case b.Amount <= 0:
 		return BudgetOK
-	case observed >= b.Amount:
+	case observed >= b.Amount && b.HardStop:
 		return BudgetHardStop
 	case observed >= b.WarningAt():
 		return BudgetWarning
 	}
 	return BudgetOK
+}
+
+// Threshold is which of a Budget's thresholds a Budget incident records:
+// its Warning or its Hard stop.
+type Threshold string
+
+const (
+	SoftThreshold Threshold = "soft"
+	HardThreshold Threshold = "hard"
+)
+
+// IncidentStatus is where a Budget incident stands.
+type IncidentStatus string
+
+const (
+	IncidentOpen      IncidentStatus = "open"
+	IncidentResolved  IncidentStatus = "resolved"
+	IncidentDismissed IncidentStatus = "dismissed"
+)
+
+// BudgetIncident records one threshold of one Budget crossed in one
+// Budget window (zero bounds for lifetime), with the amount and Observed
+// amount when it opened. A hard one has its budget_override_required
+// Approval.
+type BudgetIncident struct {
+	ID          uint64
+	GuildID     uint64
+	BudgetID    uint64
+	Scope       BudgetScope
+	ScopeID     uint64
+	Metric      BudgetMetric
+	Window      BudgetWindow
+	WindowStart time.Time
+	WindowEnd   time.Time
+	Threshold   Threshold
+	Amount      int64
+	Observed    int64
+	Status      IncidentStatus
+	ApprovalID  uint64
+	ResolvedAt  *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// OpenIncident is an open Budget incident of the Budget at the threshold,
+// observed in the window that holds at.
+func OpenIncident(b Budget, t Threshold, observed int64, at time.Time) BudgetIncident {
+	start, end := b.Window.Bounds(at)
+	return BudgetIncident{
+		GuildID: b.GuildID, BudgetID: b.ID, Scope: b.Scope, ScopeID: b.ScopeID, Metric: b.Metric, Window: b.Window,
+		WindowStart: start, WindowEnd: end, Threshold: t, Amount: b.Amount, Observed: observed, Status: IncidentOpen,
+		CreatedAt: at, UpdatedAt: at,
+	}
+}
+
+// InWindow reports whether the incident belongs to the Budget's window
+// that holds at.
+func (i BudgetIncident) InWindow(at time.Time) bool {
+	start, _ := i.Window.Bounds(at)
+	return i.WindowStart.Equal(start)
+}
+
+// IncidentStatusError refuses a change the incident's status does not
+// allow.
+type IncidentStatusError struct {
+	Status IncidentStatus
+	Action string
+}
+
+func (e *IncidentStatusError) Error() string {
+	return "a " + string(e.Status) + " budget incident cannot be " + e.Action
+}
+
+// Resolve closes an open incident: its Budget was raised above the
+// Observed amount.
+func (i *BudgetIncident) Resolve(at time.Time) error {
+	return i.close(IncidentResolved, "resolved", at)
+}
+
+// Dismiss closes an open incident while its scope stays stopped: the
+// Board kept it paused.
+func (i *BudgetIncident) Dismiss(at time.Time) error {
+	return i.close(IncidentDismissed, "dismissed", at)
+}
+
+func (i *BudgetIncident) close(to IncidentStatus, verb string, at time.Time) error {
+	if i.Status != IncidentOpen {
+		return &IncidentStatusError{Status: i.Status, Action: verb}
+	}
+	i.Status, i.ResolvedAt, i.UpdatedAt = to, &at, at
+	return nil
 }

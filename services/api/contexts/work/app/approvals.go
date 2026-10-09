@@ -64,8 +64,11 @@ func RequestableType(typ string) (domain.ApprovalType, error) {
 	if err != nil {
 		return "", err
 	}
-	if t == domain.HireAgent {
+	switch t {
+	case domain.HireAgent:
 		return "", &domain.FieldError{Field: "type", Message: "hire_agent approvals are made by hiring an agent"}
+	case domain.BudgetOverrideRequired:
+		return "", &domain.FieldError{Field: "type", Message: "budget_override_required approvals are made by a budget's hard stop"}
 	}
 	return t, nil
 }
@@ -120,8 +123,39 @@ func (s *Service) RequestHireApproval(ctx context.Context, guildID, hirerID uint
 	return s.createApproval(ctx, domain.ByMember(hirerID), a)
 }
 
+// RequestBudgetOverride asks the Board of the Guild whether to raise a
+// Budget whose Hard stop was reached. Nobody is its Requester: The Bakery
+// itself asks.
+func (s *Service) RequestBudgetOverride(ctx context.Context, guildID uint64, p domain.BudgetOverridePayload) (domain.Approval, error) {
+	a, err := domain.RequestApproval(guildID, domain.Actor{}, domain.BudgetOverrideRequired, p, nil)
+	if err != nil {
+		return domain.Approval{}, err
+	}
+	return s.createApproval(ctx, domain.Actor{}, a)
+}
+
+// DecideBudgetOverride approves or rejects one of the Guild's
+// budget_override_required Approvals, as the Member resolved its Budget
+// incident. No OnApprovalDecided hook follows it: the agents context
+// already did what the Decision means.
+func (s *Service) DecideBudgetOverride(ctx context.Context, guildID, memberID, id uint64, approved bool, note string) (domain.Approval, error) {
+	return s.moveApproval(ctx, guildID, memberID, id, move{
+		from: actionable,
+		apply: func(a *domain.Approval, at time.Time) (bool, error) {
+			return a.DecideBudgetOverride(approved, memberID, note, at)
+		},
+		event: func(h domain.Happened, a domain.Approval) domain.Event {
+			if approved {
+				return domain.ApprovalApproved{Happened: h, Approval: a}
+			}
+			return domain.ApprovalRejected{Happened: h, Approval: a}
+		},
+	})
+}
+
 // CancelApproval cancels one of the Guild's hire_agent Approvals still
-// waiting for a Decision, because the Member terminated its Agent.
+// waiting for a Decision, because the Member terminated its Agent, or a
+// budget_override_required one whose Budget went.
 func (s *Service) CancelApproval(ctx context.Context, guildID, memberID, id uint64) (domain.Approval, error) {
 	return s.moveApproval(ctx, guildID, memberID, id, move{
 		from:  actionable,

@@ -278,7 +278,7 @@ func TestCancel(t *testing.T) {
 	}
 	b := approvalIn(StatusPending)
 	_, err := b.Cancel(at)
-	refused(t, err, "Only hire agent approvals can be cancelled")
+	refused(t, err, "Only hire agent and budget override approvals can be cancelled")
 	// Nothing leaves cancelled.
 	a = hireIn(StatusCancelled)
 	_, err = a.Approve(9, "", at)
@@ -339,5 +339,38 @@ func TestAgentEvent(t *testing.T) {
 	i, err := AgentEvent{GuildID: 1, BudgetID: 6, AgentName: "Ada", Action: BudgetHardCrossedAction, Details: map[string]any{"scope_type": "agent", "scope_id": uint64(3)}}.Validated()
 	if e := i.Activity(); err != nil || e.EntityType != IncidentEntity || e.EntityID != 6 || e.ProjectID != 0 {
 		t.Errorf("incident event %+v %v", e, err)
+	}
+}
+
+func TestBudgetOverride(t *testing.T) {
+	at := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	p := BudgetOverridePayload{BudgetID: 4, ScopeType: "agent", ScopeID: 3, ScopeName: " Ada ", Metric: "runs", Window: "calendar_month_utc", Threshold: "hard", Amount: 2, Observed: 2}
+	a, err := RequestApproval(1, Actor{}, BudgetOverrideRequired, p, nil)
+	if err != nil || a.Requester != (Actor{}) || a.Payload.Label() != "Budget override: Ada" ||
+		a.Payload.(BudgetOverridePayload).Guidance != BudgetOverrideGuidance {
+		t.Fatalf("requested: %+v %v", a, err)
+	}
+	if _, err := RequestApproval(1, Actor{}, BudgetOverrideRequired, BudgetOverridePayload{BudgetID: 4, ScopeID: 3}, nil); err == nil {
+		t.Error("a payload without a scope name was accepted")
+	}
+	const costs = "resolve the budget incident on the Costs page"
+	_, err = a.Approve(9, "", at)
+	refused(t, err, costs)
+	_, err = a.Reject(9, "", at)
+	refused(t, err, costs)
+	refused(t, a.RequestRevision(9, "", at), costs)
+	refused(t, a.Resubmit(Actor{}, nil, at), costs)
+	if changed, err := a.DecideBudgetOverride(true, 9, "raised", at); !changed || err != nil || a.Status != StatusApproved || a.DeciderID != 9 {
+		t.Fatalf("decided: %v %v %+v", changed, err, a)
+	}
+	if changed, err := a.DecideBudgetOverride(true, 9, "", at); changed || err != nil {
+		t.Errorf("same decision again: %v %v", changed, err)
+	}
+	if _, err := a.DecideBudgetOverride(false, 9, "", at); err == nil {
+		t.Error("rejected an approved override")
+	}
+	h := hireIn(StatusPending)
+	if _, err := h.DecideBudgetOverride(true, 9, "", at); err == nil {
+		t.Error("a hire was decided as a budget override")
 	}
 }

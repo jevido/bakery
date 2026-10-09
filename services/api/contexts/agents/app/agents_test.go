@@ -137,6 +137,11 @@ type fakeWork struct {
 	comments   map[uint64]RunComment
 	inbox      map[uint64][]InboxIssue
 	projects   map[uint64]string
+	// overrides are the hard incidents a budget_override_required was
+	// asked for; decisions the Decisions on them, by Approval id.
+	overrides []domain.BudgetIncident
+	events    []Activity
+	decisions map[uint64]bool
 }
 
 // ProjectNames answers for projects too: the names in projects.
@@ -207,8 +212,22 @@ func (f *fakeWork) RequestHireApproval(_ context.Context, _, _ uint64, r HireReq
 	f.requests = append(f.requests, r)
 	return 90 + uint64(len(f.requests)), nil
 }
+func (f *fakeWork) RequestBudgetOverride(_ context.Context, b BudgetSummary, i domain.BudgetIncident) (uint64, error) {
+	f.overrides = append(f.overrides, i)
+	return 200 + uint64(len(f.overrides)), nil
+}
+
+func (f *fakeWork) DecideBudgetOverride(_ context.Context, _, memberID, approvalID uint64, approved bool, _ string) error {
+	if f.decisions == nil {
+		f.decisions = map[uint64]bool{}
+	}
+	f.decisions[approvalID] = approved
+	return nil
+}
+
 func (f *fakeWork) RecordActivity(_ context.Context, e Activity) error {
 	f.actions = append(f.actions, e.Action)
+	f.events = append(f.events, e)
 	f.last = e
 	return nil
 }

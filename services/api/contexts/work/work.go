@@ -88,10 +88,51 @@ func RequestApproval(ctx context.Context, guildID, hirerID uint64, r HireAgentRe
 }
 
 // CancelApproval cancels the Guild's hire_agent Approval while it waits for
-// a Decision, because the Member terminated its Agent; the Activity names
-// them as its Actor. A cancelled one stays as it is.
+// a Decision, because the Member terminated its Agent, or its
+// budget_override_required one whose Budget went with its Agent or
+// Project; the Activity names the Member (if any) as its Actor. A
+// cancelled one stays as it is.
 func CancelApproval(ctx context.Context, guildID, actorID, approvalID uint64) error {
 	_, err := svc().CancelApproval(ctx, guildID, actorID, approvalID)
+	return err
+}
+
+// BudgetOverrideRequest is the Budget a budget_override_required Approval
+// asks the Board to raise, as the agents context describes it at its Hard
+// stop. The window bounds are nil for a lifetime Budget.
+type BudgetOverrideRequest struct {
+	BudgetID    uint64
+	ScopeType   string
+	ScopeID     uint64
+	ScopeName   string
+	Metric      string
+	Window      string
+	Threshold   string
+	Amount      int64
+	Observed    int64
+	WarnPercent int
+	WindowStart *time.Time
+	WindowEnd   *time.Time
+}
+
+// RequestBudgetOverride asks the Guild's Board for a
+// budget_override_required Approval with no Requester, and answers its
+// id.
+func RequestBudgetOverride(ctx context.Context, guildID uint64, r BudgetOverrideRequest) (uint64, error) {
+	a, err := svc().RequestBudgetOverride(ctx, guildID, domain.BudgetOverridePayload{
+		BudgetID: r.BudgetID, ScopeType: r.ScopeType, ScopeID: r.ScopeID, ScopeName: r.ScopeName, Metric: r.Metric,
+		Window: r.Window, Threshold: r.Threshold, Amount: r.Amount, Observed: r.Observed, WarnPercent: r.WarnPercent,
+		WindowStart: r.WindowStart, WindowEnd: r.WindowEnd, Guidance: domain.BudgetOverrideGuidance,
+	})
+	return a.ID, err
+}
+
+// DecideBudgetOverride approves or rejects the Guild's
+// budget_override_required Approval, by the Member who resolved its Budget
+// incident, with their Decision note. The same Decision again changes
+// nothing; another one after it is refused.
+func DecideBudgetOverride(ctx context.Context, guildID, memberID, approvalID uint64, approved bool, note string) error {
+	_, err := svc().DecideBudgetOverride(ctx, guildID, memberID, approvalID, approved, note)
 	return err
 }
 

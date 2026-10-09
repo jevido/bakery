@@ -181,7 +181,8 @@ func (s *Service) claimed(ctx context.Context, d Desktop, runID uint64) (domain.
 // and writes its prompt then, so the Wakes that joined it are in it. One
 // claimed already or final is a *domain.RunStatusError, one whose Agent
 // runs another Run ErrAgentBusy, one whose Agent was paused or terminated
-// a *domain.StatusError.
+// a *domain.StatusError, and one in a stopped scope is cancelled with the
+// *BudgetBlock's reason and answered that.
 func (s *Service) ClaimRun(ctx context.Context, d Desktop, runID uint64) (QueuedRun, error) {
 	for range wakeAttempts {
 		r, a, err := s.desktopRun(ctx, d, runID)
@@ -204,6 +205,17 @@ func (s *Service) ClaimRun(ctx context.Context, d Desktop, runID uint64) (Queued
 		)
 		if prompt, ws, projectID, err = s.promptOf(ctx, a, r); err != nil {
 			return QueuedRun{}, err
+		}
+		block, err := s.budgetBlock(ctx, r.GuildID, a.ID, projectID)
+		if err != nil {
+			return QueuedRun{}, err
+		}
+		if block != nil {
+			var se *domain.RunStatusError
+			if _, err := s.cancelRunBecause(ctx, a, r, 0, block.Reason); err != nil && !errors.As(err, &se) {
+				return QueuedRun{}, err
+			}
+			return QueuedRun{}, block
 		}
 		key := newRunKey()
 		if err := r.Claim(d.ID, projectID, secret.Hash(key), s.now()); err != nil {
@@ -347,8 +359,8 @@ type Finish struct {
 	Usage    domain.Usage
 }
 
-// FinishRun ends the Run the Desktop claimed, with its Run usage, and
-// moves its Agent to idle or error. A Run cancelled meanwhile is answered
+// FinishRun ends the Run the Desktop claimed, with its Run usage, moves
+// its Agent to idle or error, and evaluates the Budgets it counts toward. A Run cancelled meanwhile is answered
 // as it is: the Runner may race a cancel.
 func (s *Service) FinishRun(ctx context.Context, d Desktop, runID uint64, f Finish) (domain.Run, error) {
 	r, _, err := s.claimed(ctx, d, runID)
@@ -384,6 +396,7 @@ func (s *Service) FinishRun(ctx context.Context, d Desktop, runID uint64, f Fini
 		return domain.Run{}, err
 	}
 	s.recordRun(ctx, domain.RunFinished{Run: r, Agent: a, ActorID: d.MemberID})
+	s.evaluateRun(ctx, r)
 	return r, nil
 }
 

@@ -41,9 +41,28 @@ type hirePayloadJSON struct {
 	Roles        []string      `json:"roles"`
 }
 
+// budgetPayloadJSON is a budget_override_required payload on the wire.
+type budgetPayloadJSON struct {
+	BudgetID    uint64     `json:"budget_id"`
+	ScopeType   string     `json:"scope_type"`
+	ScopeID     uint64     `json:"scope_id"`
+	ScopeName   string     `json:"scope_name"`
+	Metric      string     `json:"metric"`
+	Window      string     `json:"window"`
+	Threshold   string     `json:"threshold"`
+	Amount      int64      `json:"amount"`
+	Observed    int64      `json:"observed"`
+	WarnPercent int        `json:"warn_percent"`
+	WindowStart *time.Time `json:"window_start"`
+	WindowEnd   *time.Time `json:"window_end"`
+	Guidance    string     `json:"guidance"`
+}
+
 // payloadOut is the payload as its type has it on the wire.
 func payloadOut(p domain.ApprovalPayload) any {
 	switch p := p.(type) {
+	case domain.BudgetOverridePayload:
+		return budgetPayloadJSON(p)
 	case domain.HireAgentPayload:
 		out := hirePayloadJSON{AgentID: p.AgentID, Name: p.Name, Job: p.Job, Title: p.Title, Icon: p.Icon, Capabilities: p.Capabilities, Roles: p.Roles}
 		if p.ManagerID != 0 {

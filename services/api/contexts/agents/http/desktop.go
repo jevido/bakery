@@ -117,16 +117,20 @@ func desktopRunsOf(qs []app.QueuedRun) []desktopRunJSON {
 }
 
 // desktopFail answers what the Runner may meet: 404 for another person's
-// Run, 403 for one another Desktop claimed, 409 for a Run that moved on or
-// an Agent that cannot take it, 422 for a gap in the seqs.
+// Run, 403 for one another Desktop claimed, 409 for a Run that moved on,
+// an Agent that cannot take it or a stopped Budget scope, 422 for a gap in
+// the seqs.
 func desktopFail(ctx contractshttp.Context, err error) contractshttp.Response {
 	var (
 		rse *domain.RunStatusError
 		se  *domain.StatusError
 		qe  *domain.SeqError
 		fe  *domain.FieldError
+		bb  *app.BudgetBlock
 	)
 	switch {
+	case errors.As(err, &bb):
+		return budgetRefused(ctx, contractshttp.StatusConflict, bb)
 	case errors.Is(err, app.ErrRunNotFound):
 		return notFound(ctx)
 	case errors.Is(err, app.ErrOtherDesktop):

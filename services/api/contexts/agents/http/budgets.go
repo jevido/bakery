@@ -46,6 +46,48 @@ func budgetOf(b app.BudgetSummary) budgetJSON {
 	return out
 }
 
+// incidentJSON is a Budget incident on the wire; a lifetime window has no
+// start or end.
+type incidentJSON struct {
+	ID          uint64          `json:"id"`
+	BudgetID    uint64          `json:"budget_id"`
+	Scope       budgetScopeJSON `json:"scope"`
+	Metric      string          `json:"metric"`
+	Window      string          `json:"window"`
+	Threshold   string          `json:"threshold"`
+	Amount      int64           `json:"amount"`
+	Observed    int64           `json:"observed"`
+	Status      string          `json:"status"`
+	ApprovalID  *uint64         `json:"approval_id"`
+	WindowStart *time.Time      `json:"window_start"`
+	WindowEnd   *time.Time      `json:"window_end"`
+	CreatedAt   time.Time       `json:"created_at"`
+	ResolvedAt  *time.Time      `json:"resolved_at"`
+}
+
+func incidentOf(i app.IncidentSummary) incidentJSON {
+	out := incidentJSON{
+		ID: i.ID, BudgetID: i.BudgetID, Scope: budgetScopeJSON{Type: string(i.Scope), ID: i.ScopeID, Name: i.ScopeName},
+		Metric: string(i.Metric), Window: string(i.Window), Threshold: string(i.Threshold), Amount: i.Amount,
+		Observed: i.Observed, Status: string(i.Status), CreatedAt: i.CreatedAt, ResolvedAt: i.ResolvedAt,
+	}
+	if i.ApprovalID != 0 {
+		out.ApprovalID = &i.ApprovalID
+	}
+	if !i.WindowStart.IsZero() {
+		out.WindowStart, out.WindowEnd = &i.WindowStart, &i.WindowEnd
+	}
+	return out
+}
+
+// budgetRefused answers a Wake in a stopped scope: 422 (409 for a
+// Desktop's claim) with the reason and the Budget scope.
+func budgetRefused(ctx contractshttp.Context, status int, b *app.BudgetBlock) contractshttp.Response {
+	return ctx.Response().Json(status, contractshttp.Json{
+		"message": b.Reason, "scope": budgetScopeJSON{Type: string(b.Scope), ID: b.ScopeID, Name: b.ScopeName},
+	})
+}
+
 // BudgetOverview answers the Current guild's Budgets with their Observed
 // amounts, open Budget incidents and stopped scopes.
 func (c *Controller) BudgetOverview(ctx contractshttp.Context) contractshttp.Response {
@@ -57,8 +99,12 @@ func (c *Controller) BudgetOverview(ctx contractshttp.Context) contractshttp.Res
 	for i, b := range o.Budgets {
 		budgets[i] = budgetOf(b)
 	}
+	incidents := make([]incidentJSON, len(o.Incidents))
+	for i, in := range o.Incidents {
+		incidents[i] = incidentOf(in)
+	}
 	return ctx.Response().Success().Json(contractshttp.Json{
-		"budgets": budgets, "incidents": []any{}, "paused_agents": o.PausedAgents, "stopped_projects": o.StoppedProjects,
+		"budgets": budgets, "incidents": incidents, "paused_agents": o.PausedAgents, "stopped_projects": o.StoppedProjects,
 	})
 }
 

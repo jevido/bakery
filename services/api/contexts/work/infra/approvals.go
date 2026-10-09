@@ -56,8 +56,33 @@ type hireAgentPayload struct {
 	Roles        []string  `json:"roles"`
 }
 
+// budgetOverridePayload is a budget_override_required payload as stored,
+// in the snake_case it has on the wire.
+type budgetOverridePayload struct {
+	BudgetID    uint64     `json:"budget_id"`
+	ScopeType   string     `json:"scope_type"`
+	ScopeID     uint64     `json:"scope_id"`
+	ScopeName   string     `json:"scope_name"`
+	Metric      string     `json:"metric"`
+	Window      string     `json:"window"`
+	Threshold   string     `json:"threshold"`
+	Amount      int64      `json:"amount"`
+	Observed    int64      `json:"observed"`
+	WarnPercent int        `json:"warn_percent"`
+	WindowStart *time.Time `json:"window_start"`
+	WindowEnd   *time.Time `json:"window_end"`
+	Guidance    string     `json:"guidance"`
+}
+
 // payloadOf reads a stored payload by the Approval's type.
 func payloadOf(typ domain.ApprovalType, raw string) (domain.ApprovalPayload, error) {
+	if typ == domain.BudgetOverrideRequired {
+		var p budgetOverridePayload
+		if err := json.Unmarshal([]byte(raw), &p); err != nil {
+			return nil, err
+		}
+		return domain.BudgetOverridePayload(p), nil
+	}
 	if typ == domain.HireAgent {
 		var p hireAgentPayload
 		if err := json.Unmarshal([]byte(raw), &p); err != nil {
@@ -115,6 +140,8 @@ func payloadJSON(p domain.ApprovalPayload) (string, error) {
 			h.ReportsTo = &agentRef{ID: p.ManagerID, Name: p.ManagerName}
 		}
 		v = h
+	case domain.BudgetOverridePayload:
+		v = budgetOverridePayload(p)
 	case domain.BoardApprovalPayload:
 		v = boardApprovalPayload{
 			Title: p.Title, Summary: p.Summary, RecommendedAction: p.RecommendedAction,

@@ -162,6 +162,21 @@ func (workOfAgents) RecordActivity(ctx context.Context, e app.Activity) error {
 	})
 }
 
+func (workOfAgents) RequestBudgetOverride(ctx context.Context, b app.BudgetSummary, i domain.BudgetIncident) (uint64, error) {
+	r := work.BudgetOverrideRequest{
+		BudgetID: b.ID, ScopeType: string(b.Scope), ScopeID: b.ScopeID, ScopeName: b.ScopeName, Metric: string(b.Metric),
+		Window: string(b.Window), Threshold: string(i.Threshold), Amount: i.Amount, Observed: i.Observed, WarnPercent: b.WarnPercent,
+	}
+	if !i.WindowStart.IsZero() {
+		r.WindowStart, r.WindowEnd = &i.WindowStart, &i.WindowEnd
+	}
+	return work.RequestBudgetOverride(ctx, b.GuildID, r)
+}
+
+func (workOfAgents) DecideBudgetOverride(ctx context.Context, guildID, memberID, approvalID uint64, approved bool, note string) error {
+	return work.DecideBudgetOverride(ctx, guildID, memberID, approvalID, approved, note)
+}
+
 func (workOfAgents) CancelApproval(ctx context.Context, guildID, actorID, approvalID uint64) error {
 	return work.CancelApproval(ctx, guildID, actorID, approvalID)
 }

@@ -109,11 +109,21 @@ func (s *Service) Pause(ctx context.Context, guildID uint64, actor Actor, id uin
 	return a, nil
 }
 
-// Resume makes a paused Agent idle again.
+// Resume makes a paused Agent idle again; one paused by budget only once
+// its own Budget is no longer at its Hard stop.
 func (s *Service) Resume(ctx context.Context, guildID uint64, actor Actor, id uint64) (domain.Agent, error) {
 	a, err := s.managed(ctx, guildID, actor, id)
 	if err != nil {
 		return domain.Agent{}, err
+	}
+	if a.Status == domain.Paused && a.PauseReason == domain.PausedByBudget {
+		block, err := s.agentBlock(ctx, a)
+		if err != nil {
+			return domain.Agent{}, err
+		}
+		if block != nil {
+			return domain.Agent{}, ErrBudgetStillExceeded
+		}
 	}
 	if err := a.Resume(s.now()); err != nil {
 		return domain.Agent{}, err
@@ -172,7 +182,7 @@ func (s *Service) terminate(ctx context.Context, a domain.Agent, actorID uint64)
 	if err := s.work.UnassignAgent(ctx, a.GuildID, a.ID, actorID); err != nil {
 		return domain.Agent{}, err
 	}
-	if err := s.budgets.DeleteBudgetsOf(ctx, domain.AgentScope, a.ID); err != nil {
+	if err := s.forgetBudgets(ctx, domain.AgentScope, a.ID, actorID); err != nil {
 		return domain.Agent{}, err
 	}
 	s.record(ctx, domain.AgentTerminated{Agent: a, ActorID: actorID})

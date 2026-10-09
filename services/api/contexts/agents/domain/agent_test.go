@@ -144,8 +144,18 @@ func TestStatusMovesAndEdit(t *testing.T) {
 	if err := a.Resume(at); err == nil {
 		t.Error("an idle agent was resumed")
 	}
-	if a.Pause(at) != nil || a.Resume(at) != nil || a.Terminate(at) != nil {
-		t.Fatal("pause, resume, terminate")
+	if a.Pause(at) != nil || a.PauseReason != PausedManually || a.Resume(at) != nil || a.PauseReason != "" {
+		t.Fatal("pause, resume")
+	}
+	a.Status = Running
+	if a.PauseForBudget(at) != nil || a.Status != Paused || a.PauseReason != PausedByBudget {
+		t.Fatalf("paused for budget: %+v", a)
+	}
+	if a.PauseForBudget(at) == nil {
+		t.Error("a paused agent was paused for budget")
+	}
+	if a.Terminate(at) != nil || a.PauseReason != "" {
+		t.Fatal("terminate")
 	}
 	if a.Terminate(at) == nil || a.Resume(at) == nil || a.Rolable() == nil {
 		t.Error("a terminated agent moved")

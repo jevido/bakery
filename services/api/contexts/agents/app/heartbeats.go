@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/agents/domain"
@@ -45,6 +46,9 @@ func (s *Service) tickHeartbeat(ctx context.Context, a domain.Agent, now time.Ti
 		return false, err
 	}
 	if _, _, err := s.wake(ctx, a, WakeInput{Source: domain.Timer, Reason: domain.HeartbeatTimer, ActorID: a.HirerID}); err != nil {
+		if errors.As(err, new(*BudgetBlock)) {
+			return false, nil // a stopped scope drops the timer's Wake
+		}
 		return false, err
 	}
 	return true, nil

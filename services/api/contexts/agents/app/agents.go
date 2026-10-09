@@ -127,6 +127,12 @@ type Work interface {
 	InboxOfAgent(ctx context.Context, guildID, agentID uint64) ([]InboxIssue, error)
 	// CommentsForRun tells the Guild's comments with the ids, in order.
 	CommentsForRun(ctx context.Context, guildID uint64, ids []uint64) ([]RunComment, error)
+	// RequestBudgetOverride asks the Board for the budget_override_required
+	// Approval of the hard incident of the Budget, and answers its id.
+	RequestBudgetOverride(ctx context.Context, b BudgetSummary, i domain.BudgetIncident) (uint64, error)
+	// DecideBudgetOverride approves or rejects the Guild's
+	// budget_override_required Approval, by the person.
+	DecideBudgetOverride(ctx context.Context, guildID, memberID, approvalID uint64, approved bool, note string) error
 }
 
 // GitRepository is an Application's git source as projects tells it: the
@@ -250,6 +256,7 @@ func (s *Service) record(ctx context.Context, e any) {
 		act.Details["changes"] = changes
 	case domain.AgentPaused:
 		act = activityOf(e.Agent, e.ActorID, "agent.paused")
+		act.Details["pause_reason"] = string(e.Agent.PauseReason)
 	case domain.AgentResumed:
 		act = activityOf(e.Agent, e.ActorID, "agent.resumed")
 	case domain.AgentRoleAdded:

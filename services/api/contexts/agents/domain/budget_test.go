@@ -86,9 +86,39 @@ func TestBudgetStatus(t *testing.T) {
 		{1, 1, 0, BudgetOK},
 		{1, 1, 1, BudgetHardStop},
 	} {
-		b := Budget{Amount: c.amount, WarnPercent: c.warn}
+		b := Budget{Amount: c.amount, WarnPercent: c.warn, HardStop: true}
 		if got := b.Status(c.observed); got != c.want {
 			t.Errorf("%d at %d%%, observed %d: %s, want %s", c.amount, c.warn, c.observed, got, c.want)
 		}
+	}
+	// Without Hard stop a Budget past its amount only warns.
+	if got := (Budget{Amount: 100, WarnPercent: 80}).Status(150); got != BudgetWarning {
+		t.Errorf("without hard stop: %s", got)
+	}
+}
+
+func TestBudgetIncident(t *testing.T) {
+	at := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	b := Budget{ID: 3, GuildID: 1, Scope: AgentScope, ScopeID: 5, Metric: RunsMetric, Window: CalendarMonthUTC, Amount: 2, WarnPercent: 50, HardStop: true}
+	i := OpenIncident(b, HardThreshold, 2, at)
+	if i.Status != IncidentOpen || i.BudgetID != 3 || i.Amount != 2 || i.Observed != 2 ||
+		!i.WindowStart.Equal(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)) || !i.WindowEnd.Equal(time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("opened: %+v", i)
+	}
+	if !i.InWindow(at.AddDate(0, 0, 10)) || i.InWindow(at.AddDate(0, 1, 0)) {
+		t.Errorf("in window")
+	}
+	if l := OpenIncident(Budget{Window: Lifetime}, SoftThreshold, 1, at); !l.WindowStart.IsZero() || !l.InWindow(at.AddDate(5, 0, 0)) {
+		t.Errorf("lifetime: %+v", l)
+	}
+	d := i
+	if err := d.Dismiss(at); err != nil || d.Status != IncidentDismissed || d.ResolvedAt == nil {
+		t.Fatalf("dismissed: %+v %v", d, err)
+	}
+	if err := d.Resolve(at); err == nil {
+		t.Errorf("resolved a dismissed incident")
+	}
+	if err := i.Resolve(at); err != nil || i.Status != IncidentResolved {
+		t.Fatalf("resolved: %+v %v", i, err)
 	}
 }

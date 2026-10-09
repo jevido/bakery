@@ -172,6 +172,7 @@ type Agent struct {
 	Heartbeat       HeartbeatPolicy
 	LastHeartbeatAt *time.Time
 	PausedAt        *time.Time
+	PauseReason     PauseReason
 	TerminatedAt    *time.Time
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
@@ -385,22 +386,41 @@ func (a *Agent) Edit(p Patch, at time.Time) (map[string]Change, error) {
 	return changes, nil
 }
 
-// Pause makes an idle, running or error Agent paused; its Runs are
-// cancelled with it.
+// PauseReason is why an Agent is paused: by a person, or by a Hard stop
+// on its own Budget.
+type PauseReason string
+
+const (
+	PausedManually PauseReason = "manual"
+	PausedByBudget PauseReason = "budget"
+)
+
+// Pause makes an idle, running or error Agent paused by a person; its
+// Runs are cancelled with it.
 func (a *Agent) Pause(at time.Time) error {
+	return a.pause(PausedManually, at)
+}
+
+// PauseForBudget makes an idle, running or error Agent paused by a Hard
+// stop on its own Budget; its running Run may finish.
+func (a *Agent) PauseForBudget(at time.Time) error {
+	return a.pause(PausedByBudget, at)
+}
+
+func (a *Agent) pause(reason PauseReason, at time.Time) error {
 	if a.Status != Idle && a.Status != Running && a.Status != Error {
 		return &StatusError{Status: a.Status, Action: "paused"}
 	}
-	a.Status, a.PausedAt, a.UpdatedAt = Paused, &at, at
+	a.Status, a.PausedAt, a.PauseReason, a.UpdatedAt = Paused, &at, reason, at
 	return nil
 }
 
-// Resume makes a paused Agent idle again.
+// Resume makes a paused Agent idle again and clears its Pause reason.
 func (a *Agent) Resume(at time.Time) error {
 	if a.Status != Paused {
 		return &StatusError{Status: a.Status, Action: "resumed"}
 	}
-	a.Status, a.PausedAt, a.UpdatedAt = Idle, nil, at
+	a.Status, a.PausedAt, a.PauseReason, a.UpdatedAt = Idle, nil, "", at
 	return nil
 }
 
@@ -409,7 +429,7 @@ func (a *Agent) Terminate(at time.Time) error {
 	if a.Status == Terminated {
 		return &StatusError{Status: a.Status, Action: "terminated"}
 	}
-	a.Status, a.TerminatedAt, a.UpdatedAt = Terminated, &at, at
+	a.Status, a.TerminatedAt, a.PauseReason, a.UpdatedAt = Terminated, &at, "", at
 	return nil
 }
 
@@ -526,13 +546,15 @@ type AgentUpdated struct {
 	Changes map[string]Change
 }
 
-// AgentPaused is published when a Member has paused an Agent.
+// AgentPaused is published when a Member, or a Hard stop on its own
+// Budget (ActorID 0), has paused an Agent.
 type AgentPaused struct {
 	Agent   Agent
 	ActorID uint64
 }
 
-// AgentResumed is published when a Member has resumed an Agent.
+// AgentResumed is published when a Member has resumed an Agent, or a
+// Budget raised above its Hard stop resumed it.
 type AgentResumed struct {
 	Agent   Agent
 	ActorID uint64

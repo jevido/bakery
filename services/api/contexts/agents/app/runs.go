@@ -240,8 +240,11 @@ func (s *Service) IssueCommented(ctx context.Context, guildID, issueID, agentID,
 }
 
 func dropRefused(_ domain.Run, _ bool, err error) error {
-	var status *domain.StatusError
-	if errors.As(err, &status) || errors.As(err, new(domain.WakeRefused)) {
+	var (
+		status *domain.StatusError
+		block  *BudgetBlock
+	)
+	if errors.As(err, &status) || errors.As(err, new(domain.WakeRefused)) || errors.As(err, &block) {
 		return nil
 	}
 	return err
@@ -282,18 +285,29 @@ func (s *Service) wake(ctx context.Context, a domain.Agent, w WakeInput) (domain
 	if err != nil {
 		return domain.Run{}, false, err
 	}
+	var issue IssueBrief
+	if w.IssueID != 0 {
+		var ok bool
+		if issue, ok, err = s.work.IssueForRun(ctx, a.GuildID, w.IssueID); err != nil {
+			return domain.Run{}, false, err
+		}
+		if !ok {
+			issue = IssueBrief{}
+		}
+	}
+	block, err := s.budgetBlock(ctx, a.GuildID, a.ID, issue.ProjectID)
+	if err != nil {
+		return domain.Run{}, false, err
+	}
+	if block != nil {
+		return domain.Run{}, false, block
+	}
 	r, joined, err := s.queue(ctx, next)
 	if err != nil {
 		return domain.Run{}, false, err
 	}
 	if !joined && w.Source != domain.Timer {
-		e := domain.RunStarted{Run: r, Agent: a, ActorID: w.ActorID}
-		if r.IssueID != 0 {
-			if i, ok, err := s.work.IssueForRun(ctx, r.GuildID, r.IssueID); err == nil && ok {
-				e.Identifier = i.Identifier
-			}
-		}
-		s.recordRun(ctx, e)
+		s.recordRun(ctx, domain.RunStarted{Run: r, Agent: a, ActorID: w.ActorID, Identifier: issue.Identifier})
 	}
 	return r, joined, nil
 }
@@ -431,8 +445,14 @@ func (s *Service) CancelRun(ctx context.Context, guildID uint64, actor Actor, ru
 // cancelRun cancels the Run; another request that moved it first leaves
 // it as that one did, refused with its new status.
 func (s *Service) cancelRun(ctx context.Context, a domain.Agent, r domain.Run, actorID uint64) (domain.Run, error) {
+	return s.cancelRunBecause(ctx, a, r, actorID, "")
+}
+
+// cancelRunBecause cancels the Run with the reason as its error ("" for
+// none).
+func (s *Service) cancelRunBecause(ctx context.Context, a domain.Agent, r domain.Run, actorID uint64, reason string) (domain.Run, error) {
 	from := r.Status
-	if err := r.Cancel(s.now()); err != nil {
+	if err := r.CancelBecause(reason, s.now()); err != nil {
 		return domain.Run{}, err
 	}
 	moved, err := s.runs.SaveRun(ctx, r, from)
