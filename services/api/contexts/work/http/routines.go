@@ -33,23 +33,25 @@ type issueRef struct {
 }
 
 type routineJSON struct {
-	ID                uint64          `json:"id"`
-	Title             string          `json:"title"`
-	Description       string          `json:"description"`
-	Project           *namedRef       `json:"project"`
-	Goal              *titledRef      `json:"goal"`
-	ParentIssue       *issueRef       `json:"parent_issue"`
-	AssigneeAgent     *Agent          `json:"assignee_agent"`
-	Priority          string          `json:"priority"`
-	Status            string          `json:"status"`
-	ConcurrencyPolicy string          `json:"concurrency_policy"`
-	CatchUpPolicy     string          `json:"catch_up_policy"`
-	Variables         []variableJSON  `json:"variables"`
-	LastTriggeredAt   *time.Time      `json:"last_triggered_at"`
-	CreatedAt         time.Time       `json:"created_at"`
-	UpdatedAt         time.Time       `json:"updated_at"`
-	Triggers          []triggerJSON   `json:"triggers"`
-	LastRun           *routineRunJSON `json:"last_run"`
+	ID                   uint64          `json:"id"`
+	Title                string          `json:"title"`
+	Description          string          `json:"description"`
+	Project              *namedRef       `json:"project"`
+	Goal                 *titledRef      `json:"goal"`
+	ParentIssue          *issueRef       `json:"parent_issue"`
+	AssigneeAgent        *Agent          `json:"assignee_agent"`
+	Priority             string          `json:"priority"`
+	Status               string          `json:"status"`
+	ConcurrencyPolicy    string          `json:"concurrency_policy"`
+	CatchUpPolicy        string          `json:"catch_up_policy"`
+	Variables            []variableJSON  `json:"variables"`
+	LastTriggeredAt      *time.Time      `json:"last_triggered_at"`
+	LatestRevisionID     *uint64         `json:"latest_revision_id"`
+	LatestRevisionNumber int             `json:"latest_revision_number"`
+	CreatedAt            time.Time       `json:"created_at"`
+	UpdatedAt            time.Time       `json:"updated_at"`
+	Triggers             []triggerJSON   `json:"triggers"`
+	LastRun              *routineRunJSON `json:"last_run"`
 }
 
 // variableJSON is a Routine variable on the wire, as Paperclip's with its
@@ -182,7 +184,7 @@ func (c *Controller) routinesJSON(ctx contractshttp.Context, rs []domain.Routine
 			ID: r.ID, Title: r.Title, Description: r.Description, Priority: string(r.Priority), Status: string(r.Status),
 			ConcurrencyPolicy: string(r.ConcurrencyPolicy), CatchUpPolicy: string(r.CatchUpPolicy), Variables: toVariablesJSON(r.Variables),
 			LastTriggeredAt: r.LastTriggeredAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Triggers: []triggerJSON{},
-			LastRun: lastOf[r.ID],
+			LastRun: lastOf[r.ID], LatestRevisionID: idOrNull(r.LatestRevisionID), LatestRevisionNumber: r.LatestRevisionNumber,
 		}
 		for _, t := range triggers[r.ID] {
 			out[n].Triggers = append(out[n].Triggers, toTriggerJSON(t))
@@ -215,6 +217,7 @@ type routineRequest struct {
 	ParentIssueID     optional[uint64]            `json:"parent_issue_id"`
 	AssigneeAgentID   optional[uint64]            `json:"assignee_agent_id"`
 	Variables         optional[[]variableRequest] `json:"variables"`
+	BaseRevisionID    optional[uint64]            `json:"base_revision_id"`
 }
 
 func (r routineRequest) input() app.RoutineInput {
@@ -231,6 +234,10 @@ func (r routineRequest) patch() app.RoutinePatch {
 		Title: r.Title.ptr(), Description: r.Description.ptr(), Priority: r.Priority.ptr(), Status: r.Status.ptr(),
 		ConcurrencyPolicy: r.ConcurrencyPolicy.ptr(), CatchUpPolicy: r.CatchUpPolicy.ptr(),
 		ProjectID: idOf(r.ProjectID), GoalID: idOf(r.GoalID), ParentIssueID: idOf(r.ParentIssueID), AssigneeAgentID: idOf(r.AssigneeAgentID),
+	}
+	if r.BaseRevisionID.Set {
+		// A null Base revision is one from before revisions.
+		p.BaseRevisionID = idOf(r.BaseRevisionID)
 	}
 	if r.Variables.Set {
 		// Null is no definitions: every placeholder takes the default one.
@@ -534,6 +541,8 @@ type routineRunJSON struct {
 	Trigger       *triggerRef    `json:"trigger"`
 	Issue         *runIssueRef   `json:"issue"`
 	Variables     map[string]any `json:"variables"`
+	// RevisionID is the Routine revision it ran, null before revisions.
+	RevisionID *uint64 `json:"routine_revision_id"`
 }
 
 // routineRunsJSON shows Routine runs with their Routine's title, their
@@ -584,6 +593,7 @@ func (c *Controller) routineRunsJSON(ctx contractshttp.Context, rrs []domain.Rou
 		out[n] = routineRunJSON{
 			ID: rr.ID, Routine: titledRef{ID: rr.RoutineID, Title: titles[rr.RoutineID]}, Source: string(rr.Source), Status: string(rr.Status),
 			TriggeredAt: rr.TriggeredAt.UTC(), CompletedAt: utcOf(rr.CompletedAt), Variables: rr.Variables,
+			RevisionID: idOrNull(rr.RoutineRevisionID),
 		}
 		if rr.FailureReason != "" {
 			reason := rr.FailureReason
@@ -739,4 +749,74 @@ func (c *Controller) FireWebhookTrigger(ctx contractshttp.Context) contractshttp
 		ID: rr.ID, RoutineID: rr.RoutineID, TriggerID: rr.TriggerID, Source: string(rr.Source), Status: string(rr.Status),
 		TriggeredAt: rr.TriggeredAt.UTC(), IssueID: idOrNull(rr.LinkedIssueID), CoalescedIntoRunID: idOrNull(rr.CoalescedIntoRunID),
 	}})
+}
+
+// revisionAuthorJSON is who made a Routine revision: a Member or an
+// Agent, by kind.
+type revisionAuthorJSON struct {
+	Kind string `json:"kind"`
+	ID   uint64 `json:"id"`
+	Name string `json:"name"`
+	Icon string `json:"icon,omitempty"`
+}
+
+type routineRevisionJSON struct {
+	ID                     uint64                 `json:"id"`
+	RoutineID              uint64                 `json:"routine_id"`
+	RevisionNumber         int                    `json:"revision_number"`
+	Title                  string                 `json:"title"`
+	Description            string                 `json:"description"`
+	Snapshot               domain.RoutineSnapshot `json:"snapshot"`
+	ChangeSummary          *string                `json:"change_summary"`
+	RestoredFromRevisionID *uint64                `json:"restored_from_revision_id"`
+	Author                 *revisionAuthorJSON    `json:"author"`
+	CreatedAt              time.Time              `json:"created_at"`
+}
+
+// routineRevisionsJSON shows Routine revisions with their authors' names,
+// asked for in one go.
+func (c *Controller) routineRevisionsJSON(ctx contractshttp.Context, revs []domain.RoutineRevision) ([]routineRevisionJSON, error) {
+	authors := make([]domain.Actor, len(revs))
+	for n, r := range revs {
+		authors[n] = r.Author
+	}
+	ns, err := c.actorNames(ctx, authors)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]routineRevisionJSON, len(revs))
+	for n, r := range revs {
+		out[n] = routineRevisionJSON{
+			ID: r.ID, RoutineID: r.RoutineID, RevisionNumber: r.Number, Title: r.Title, Description: r.Description, Snapshot: r.Snapshot,
+			RestoredFromRevisionID: idOrNull(r.RestoredFromID), CreatedAt: r.CreatedAt,
+		}
+		if r.ChangeSummary != "" {
+			summary := r.ChangeSummary
+			out[n].ChangeSummary = &summary
+		}
+		if m := ns.member(r.Author); m != nil {
+			out[n].Author = &revisionAuthorJSON{Kind: "member", ID: m.ID, Name: m.Name}
+		} else if a := ns.agent(r.Author); a != nil {
+			out[n].Author = &revisionAuthorJSON{Kind: "agent", ID: a.ID, Name: a.Name, Icon: a.Icon}
+		}
+	}
+	return out, nil
+}
+
+// ListRoutineRevisions answers the Routine's revisions, newest first, at
+// most app.MaxRoutineRevisions.
+func (c *Controller) ListRoutineRevisions(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	revs, err := c.service.RoutineRevisions(ctx.Context(), c.guild(ctx), id, c.visible(ctx))
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out, err := c.routineRevisionsJSON(ctx, revs)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"revisions": out})
 }

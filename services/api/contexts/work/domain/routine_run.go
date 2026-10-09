@@ -69,7 +69,7 @@ func ReceiveRoutineRun(r Routine, trigger *RoutineTrigger, source RoutineRunSour
 	if (source == ScheduleSource || source == WebhookSource) && r.Status == PausedRoutine {
 		return RoutineRun{}, ErrRoutinePaused
 	}
-	rr := RoutineRun{GuildID: r.GuildID, RoutineID: r.ID, Source: source, Status: RunReceived, TriggeredAt: at, TriggeredBy: by}
+	rr := RoutineRun{GuildID: r.GuildID, RoutineID: r.ID, Source: source, Status: RunReceived, TriggeredAt: at, TriggeredBy: by, RoutineRevisionID: r.LatestRevisionID}
 	if trigger == nil {
 		if source != ManualSource {
 			return RoutineRun{}, invalid("trigger_id", "a %s run names its %s trigger", source, source)
@@ -94,7 +94,8 @@ func ReceiveRoutineRun(r Routine, trigger *RoutineTrigger, source RoutineRunSour
 // Schedule or a Webhook delivery; IdempotencyKey is the Webhook
 // delivery's, "" for none; Variables are the values its Routine
 // variables and the built-in ones took, nil when its Routine has no
-// placeholders; CompletedAt is set once it no longer follows
+// placeholders; RoutineRevisionID is the Routine revision it ran, 0 for
+// one from before revisions; CompletedAt is set once it no longer follows
 // its Execution Issue.
 type RoutineRun struct {
 	ID                 uint64
@@ -110,6 +111,7 @@ type RoutineRun struct {
 	TriggeredBy        Actor
 	IdempotencyKey     string
 	Variables          map[string]any
+	RoutineRevisionID  uint64
 	CompletedAt        *time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time

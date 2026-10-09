@@ -60,7 +60,28 @@ type Routines interface {
 	// LastRoutineRuns answers the newest Routine run of each of the
 	// Routines that has one.
 	LastRoutineRuns(ctx context.Context, routineIDs []uint64) (map[uint64]domain.RoutineRun, error)
+	// AppendRevision adds the Routine revision after the Routine's newest
+	// one, of the Routine and its triggers as kept now, and makes it the
+	// newest; two at once never get the same number.
+	AppendRevision(ctx context.Context, routineID uint64, by domain.Actor, changeSummary string, restoredFromID uint64) (domain.RoutineRevision, error)
+	// RoutineRevisions lists the Routine's revisions, newest first, at
+	// most limit.
+	RoutineRevisions(ctx context.Context, routineID uint64, limit int) ([]domain.RoutineRevision, error)
+	RoutineRevision(ctx context.Context, routineID, id uint64) (domain.RoutineRevision, bool, error)
 }
+
+// StaleRoutineRevisionError is a change to a Routine refused because
+// Current's newest Routine revision is not the Base revision it was made
+// on.
+type StaleRoutineRevisionError struct {
+	Current domain.Routine
+}
+
+func (e *StaleRoutineRevisionError) Error() string { return domain.ErrStaleRoutineRevision.Error() }
+func (e *StaleRoutineRevisionError) Unwrap() error { return domain.ErrStaleRoutineRevision }
+
+// MaxRoutineRevisions is the most Routine revisions a list answers.
+const MaxRoutineRevisions = 100
 
 // RoutineFilter is what a list of Routines keeps. Nil fields keep every
 // Routine; an id of 0 keeps the Routines without one.
@@ -94,8 +115,11 @@ type RoutineInput struct {
 
 // RoutinePatch changes the fields that are not nil. An id of 0 removes
 // the Project, Goal, parent Issue or Agent assignee. Variables replaces
-// the definitions of the Routine variables.
+// the definitions of the Routine variables. BaseRevisionID, when set, is
+// the Routine revision the change was made on; the change is refused
+// unless it is still the newest.
 type RoutinePatch struct {
+	BaseRevisionID    *uint64
 	Title             *string
 	Description       *string
 	Priority          *string
@@ -197,17 +221,50 @@ func (s *Service) CreateRoutine(ctx context.Context, guildID uint64, by domain.A
 	if r, err = s.routines.CreateRoutine(ctx, r); err != nil {
 		return domain.Routine{}, err
 	}
+	if r, err = s.reviseRoutine(ctx, r.ID, by, "Created routine"); err != nil {
+		return domain.Routine{}, err
+	}
 	s.publish(ctx, domain.RoutineCreated{Happened: s.happened(by), Routine: r})
 	return r, nil
+}
+
+// reviseRoutine appends a Routine revision of the Routine as it is kept
+// now and answers the Routine with it as its newest.
+func (s *Service) reviseRoutine(ctx context.Context, id uint64, by domain.Actor, changeSummary string) (domain.Routine, error) {
+	if _, err := s.routines.AppendRevision(ctx, id, by, changeSummary, 0); err != nil {
+		return domain.Routine{}, err
+	}
+	r, found, err := s.routines.Routine(ctx, id)
+	if err == nil && !found {
+		err = ErrNotFound
+	}
+	return r, err
 }
 
 // ChangeRoutine changes the Routine by the Member or Agent, pausing,
 // resuming and archiving it included; an Agent only one assigned to
 // itself, and never to another Agent.
 func (s *Service) ChangeRoutine(ctx context.Context, guildID uint64, by domain.Actor, id uint64, p RoutinePatch, visible Visible) (domain.Routine, error) {
+	if _, err := s.Routine(ctx, guildID, id, visible); err != nil {
+		return domain.Routine{}, err
+	}
+	// The lock keeps the save and the Routine revision after it from
+	// interleaving with another change.
+	unlock, err := s.routines.LockRoutine(ctx, id)
+	if err != nil {
+		return domain.Routine{}, err
+	}
+	defer unlock()
+	// Read again under the lock, so the Base revision is checked against
+	// the newest one.
 	r, err := s.Routine(ctx, guildID, id, visible)
 	if err != nil {
 		return domain.Routine{}, err
+	}
+	if p.BaseRevisionID != nil {
+		if err := r.CheckBaseRevision(*p.BaseRevisionID); err != nil {
+			return domain.Routine{}, &StaleRoutineRevisionError{Current: r}
+		}
 	}
 	if by.AgentID != 0 && (r.AssigneeAgentID != by.AgentID || p.AssigneeAgentID != nil && *p.AssigneeAgentID != by.AgentID) {
 		return domain.Routine{}, ErrNotOwnRoutine
@@ -247,10 +304,7 @@ func (s *Service) ChangeRoutine(ctx context.Context, guildID uint64, by domain.A
 	if err := s.routines.SaveRoutine(ctx, r); err != nil {
 		return domain.Routine{}, err
 	}
-	after, found, err := s.routines.Routine(ctx, id)
-	if err == nil && !found {
-		err = ErrNotFound
-	}
+	after, err := s.reviseRoutine(ctx, id, by, "Updated routine")
 	if err != nil {
 		return domain.Routine{}, err
 	}
@@ -408,23 +462,40 @@ func (s *Service) unassignRoutines(ctx context.Context, guildID, agentID, actorI
 		if r.Archived() {
 			continue
 		}
-		e := domain.RoutineChanged{Happened: s.happened(domain.ByMember(actorID)), Before: r}
-		r.AssignAgent(0)
-		if err := s.routines.SaveRoutine(ctx, r); err != nil {
+		if err := s.unassignRoutine(ctx, r.ID, actorID); err != nil {
 			return err
-		}
-		after, found, err := s.routines.Routine(ctx, r.ID)
-		if err != nil {
-			return err
-		}
-		if found {
-			if err := s.rescheduleTriggers(ctx, after); err != nil {
-				return err
-			}
-			e.After = after
-			s.publish(ctx, e)
 		}
 	}
+	return nil
+}
+
+// unassignRoutine makes the Routine a Draft under its lock, as
+// unassignRoutines does each.
+func (s *Service) unassignRoutine(ctx context.Context, id, actorID uint64) error {
+	unlock, err := s.routines.LockRoutine(ctx, id)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	r, found, err := s.routines.Routine(ctx, id)
+	if err != nil || !found {
+		return err
+	}
+	by := domain.ByMember(actorID)
+	e := domain.RoutineChanged{Happened: s.happened(by), Before: r}
+	r.AssignAgent(0)
+	if err := s.routines.SaveRoutine(ctx, r); err != nil {
+		return err
+	}
+	after, err := s.reviseRoutine(ctx, id, by, "Agent terminated")
+	if err != nil {
+		return err
+	}
+	if err := s.rescheduleTriggers(ctx, after); err != nil {
+		return err
+	}
+	e.After = after
+	s.publish(ctx, e)
 	return nil
 }
 
@@ -443,6 +514,16 @@ func (s *Service) rescheduleTriggers(ctx context.Context, r domain.Routine) erro
 		}
 	}
 	return nil
+}
+
+// RoutineRevisions lists the revisions of the Guild's Routine, which the
+// person must be able to view, newest first, at most
+// MaxRoutineRevisions.
+func (s *Service) RoutineRevisions(ctx context.Context, guildID, id uint64, visible Visible) ([]domain.RoutineRevision, error) {
+	if _, err := s.Routine(ctx, guildID, id, visible); err != nil {
+		return nil, err
+	}
+	return s.routines.RoutineRevisions(ctx, id, MaxRoutineRevisions)
 }
 
 // RoutineTriggers lists the Routine triggers of the Routines by Routine,
@@ -504,6 +585,14 @@ func (s *Service) ownRoutine(ctx context.Context, guildID uint64, by domain.Acto
 
 // AddTrigger adds a Routine trigger to the Routine by the Member or Agent.
 func (s *Service) AddTrigger(ctx context.Context, guildID uint64, by domain.Actor, routineID uint64, in TriggerInput, visible Visible) (domain.RoutineTrigger, error) {
+	if _, err := s.ownRoutine(ctx, guildID, by, routineID, visible); err != nil {
+		return domain.RoutineTrigger{}, err
+	}
+	unlock, err := s.routines.LockRoutine(ctx, routineID)
+	if err != nil {
+		return domain.RoutineTrigger{}, err
+	}
+	defer unlock()
 	r, err := s.ownRoutine(ctx, guildID, by, routineID, visible)
 	if err != nil {
 		return domain.RoutineTrigger{}, err
@@ -554,6 +643,9 @@ func (s *Service) AddTrigger(ctx context.Context, guildID uint64, by domain.Acto
 	if t, err = s.routines.CreateTrigger(ctx, t); err != nil {
 		return domain.RoutineTrigger{}, err
 	}
+	if _, err := s.routines.AppendRevision(ctx, r.ID, by, "Created "+string(t.Kind)+" trigger", 0); err != nil {
+		return domain.RoutineTrigger{}, err
+	}
 	s.publish(ctx, domain.RoutineTriggerAdded{Happened: s.happened(by), Routine: r, Trigger: t})
 	return t, nil
 }
@@ -572,12 +664,32 @@ func (s *Service) trigger(ctx context.Context, guildID uint64, by domain.Actor, 
 	return t, r, err
 }
 
+// lockedTrigger is trigger read again under its Routine's lock, which
+// unlock releases.
+func (s *Service) lockedTrigger(ctx context.Context, guildID uint64, by domain.Actor, id uint64, visible Visible) (domain.RoutineTrigger, domain.Routine, func(), error) {
+	t, _, err := s.trigger(ctx, guildID, by, id, visible)
+	if err != nil {
+		return domain.RoutineTrigger{}, domain.Routine{}, nil, err
+	}
+	unlock, err := s.routines.LockRoutine(ctx, t.RoutineID)
+	if err != nil {
+		return domain.RoutineTrigger{}, domain.Routine{}, nil, err
+	}
+	t, r, err := s.trigger(ctx, guildID, by, id, visible)
+	if err != nil {
+		unlock()
+		return domain.RoutineTrigger{}, domain.Routine{}, nil, err
+	}
+	return t, r, unlock, nil
+}
+
 // ChangeTrigger changes the Routine trigger by the Member or Agent.
 func (s *Service) ChangeTrigger(ctx context.Context, guildID uint64, by domain.Actor, id uint64, set domain.TriggerSettings, visible Visible) (domain.RoutineTrigger, error) {
-	t, r, err := s.trigger(ctx, guildID, by, id, visible)
+	t, r, unlock, err := s.lockedTrigger(ctx, guildID, by, id, visible)
 	if err != nil {
 		return domain.RoutineTrigger{}, err
 	}
+	defer unlock()
 	before := t
 	if err := t.Change(r, set, s.now()); err != nil {
 		return domain.RoutineTrigger{}, err
@@ -590,6 +702,9 @@ func (s *Service) ChangeTrigger(ctx context.Context, guildID uint64, by domain.A
 	if err := s.routines.SaveTrigger(ctx, t); err != nil {
 		return domain.RoutineTrigger{}, err
 	}
+	if _, err := s.routines.AppendRevision(ctx, r.ID, by, "Updated "+string(t.Kind)+" trigger", 0); err != nil {
+		return domain.RoutineTrigger{}, err
+	}
 	if e := (domain.RoutineTriggerChanged{Happened: s.happened(by), Routine: r, Before: before, After: t}); len(e.Changes()) > 0 {
 		s.publish(ctx, e)
 	}
@@ -599,14 +714,18 @@ func (s *Service) ChangeTrigger(ctx context.Context, guildID uint64, by domain.A
 // RotateTriggerSecret gives the Webhook trigger a new secret by the
 // Member or Agent; the old one stops working at once.
 func (s *Service) RotateTriggerSecret(ctx context.Context, guildID uint64, by domain.Actor, id uint64, visible Visible) (domain.RoutineTrigger, error) {
-	t, r, err := s.trigger(ctx, guildID, by, id, visible)
+	t, r, unlock, err := s.lockedTrigger(ctx, guildID, by, id, visible)
 	if err != nil {
 		return domain.RoutineTrigger{}, err
 	}
+	defer unlock()
 	if err := t.RotateSecret(r, randomHex(24), s.now()); err != nil {
 		return domain.RoutineTrigger{}, err
 	}
 	if err := s.routines.SaveTrigger(ctx, t); err != nil {
+		return domain.RoutineTrigger{}, err
+	}
+	if _, err := s.routines.AppendRevision(ctx, r.ID, by, "Rotated webhook trigger secret", 0); err != nil {
 		return domain.RoutineTrigger{}, err
 	}
 	s.publish(ctx, domain.RoutineTriggerSecretRotated{Happened: s.happened(by), Routine: r, Trigger: t})
@@ -616,14 +735,18 @@ func (s *Service) RotateTriggerSecret(ctx context.Context, guildID uint64, by do
 // DeleteTrigger deletes the Routine trigger by the Member or Agent; an
 // archived Routine keeps its triggers.
 func (s *Service) DeleteTrigger(ctx context.Context, guildID uint64, by domain.Actor, id uint64, visible Visible) error {
-	t, r, err := s.trigger(ctx, guildID, by, id, visible)
+	t, r, unlock, err := s.lockedTrigger(ctx, guildID, by, id, visible)
 	if err != nil {
 		return err
 	}
+	defer unlock()
 	if r.Archived() {
 		return domain.ErrArchivedRoutineTriggers
 	}
 	if err := s.routines.DeleteTrigger(ctx, id); err != nil {
+		return err
+	}
+	if _, err := s.routines.AppendRevision(ctx, r.ID, by, "Deleted "+string(t.Kind)+" trigger", 0); err != nil {
 		return err
 	}
 	s.publish(ctx, domain.RoutineTriggerDeleted{Happened: s.happened(by), Routine: r, Trigger: t})

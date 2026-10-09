@@ -727,6 +727,7 @@ func Routes(r route.Router) {
 	r.Middleware(guilds.AuthAgents, routineInProject, manage).Post("/api/routines/{id}/triggers", c.AddTrigger)
 	r.Middleware(guilds.AuthAgents, routineInProject, manage).Post("/api/routines/{id}/run", c.RunRoutine)
 	r.Middleware(guilds.AuthAgents, routineInProject, view).Get("/api/routines/{id}/runs", c.ListRoutineRuns)
+	r.Middleware(guilds.AuthAgents, routineInProject, view).Get("/api/routines/{id}/revisions", c.ListRoutineRevisions)
 	r.Middleware(guilds.AuthAgents, view).Get("/api/routine-runs", c.ListRoutineRuns)
 	r.Middleware(guilds.AuthAgents, triggerInRoutine, manage).Group(func(r route.Router) {
 		r.Patch("/api/routine-triggers/{id}", c.UpdateTrigger)

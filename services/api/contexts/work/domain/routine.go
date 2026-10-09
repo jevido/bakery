@@ -82,25 +82,29 @@ var ErrRoutineArchived error = &FieldError{Field: "status", Message: "an archive
 // Routine is recurring work of a Guild: each Routine run makes an
 // Execution Issue from its fields. ProjectID, GoalID, ParentIssueID and
 // AssigneeAgentID are 0 for none; without an Agent assignee it is a Draft.
-// LastTriggeredAt is nil until it first runs.
+// LastTriggeredAt is nil until it first runs. LatestRevisionID and
+// LatestRevisionNumber are its newest Routine revision, 0 before the
+// first.
 type Routine struct {
-	ID                uint64
-	GuildID           uint64
-	ProjectID         uint64
-	GoalID            uint64
-	ParentIssueID     uint64
-	AssigneeAgentID   uint64
-	Title             string
-	Description       string
-	Priority          Priority
-	Status            RoutineStatus
-	ConcurrencyPolicy ConcurrencyPolicy
-	CatchUpPolicy     CatchUpPolicy
-	Variables         []RoutineVariable
-	CreatedBy         Actor
-	LastTriggeredAt   *time.Time
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID                   uint64
+	GuildID              uint64
+	ProjectID            uint64
+	GoalID               uint64
+	ParentIssueID        uint64
+	AssigneeAgentID      uint64
+	Title                string
+	Description          string
+	Priority             Priority
+	Status               RoutineStatus
+	ConcurrencyPolicy    ConcurrencyPolicy
+	CatchUpPolicy        CatchUpPolicy
+	Variables            []RoutineVariable
+	CreatedBy            Actor
+	LastTriggeredAt      *time.Time
+	LatestRevisionID     uint64
+	LatestRevisionNumber int
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 // NewRoutine is an active Routine of the Guild with the default Priority

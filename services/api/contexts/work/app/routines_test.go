@@ -17,7 +17,41 @@ type memRoutines struct {
 	byID     map[uint64]domain.Routine
 	triggers []domain.RoutineTrigger
 	runs     []domain.RoutineRun
+	revs     []domain.RoutineRevision
 	locked   bool
+}
+
+func (m *memRoutines) AppendRevision(_ context.Context, routineID uint64, by domain.Actor, changeSummary string, restoredFromID uint64) (domain.RoutineRevision, error) {
+	r, ok := m.byID[routineID]
+	if !ok {
+		return domain.RoutineRevision{}, ErrNotFound
+	}
+	ts, _ := m.Triggers(context.Background(), []uint64{routineID})
+	rev := domain.NewRoutineRevision(r, ts, by, changeSummary, restoredFromID, time.Time{})
+	rev.ID = uint64(len(m.revs) + 1)
+	m.revs = append(m.revs, rev)
+	r.LatestRevisionID, r.LatestRevisionNumber = rev.ID, rev.Number
+	m.byID[routineID] = r
+	return rev, nil
+}
+
+func (m *memRoutines) RoutineRevisions(_ context.Context, routineID uint64, limit int) ([]domain.RoutineRevision, error) {
+	var out []domain.RoutineRevision
+	for n := len(m.revs) - 1; n >= 0 && len(out) < limit; n-- {
+		if m.revs[n].RoutineID == routineID {
+			out = append(out, m.revs[n])
+		}
+	}
+	return out, nil
+}
+
+func (m *memRoutines) RoutineRevision(_ context.Context, routineID, id uint64) (domain.RoutineRevision, bool, error) {
+	for _, rev := range m.revs {
+		if rev.ID == id && rev.RoutineID == routineID {
+			return rev, true, nil
+		}
+	}
+	return domain.RoutineRevision{}, false, nil
 }
 
 func (m *memRoutines) Routines(_ context.Context, guildID uint64) ([]domain.Routine, error) {

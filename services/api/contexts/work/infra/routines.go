@@ -12,26 +12,29 @@ import (
 	frameworkerrors "github.com/goravel/framework/errors"
 
 	"github.com/jevido/bakery/services/api/app/facades"
+	"github.com/jevido/bakery/services/api/contexts/work/app"
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
 )
 
 type routineRecord struct {
-	ID                uint64 `gorm:"primaryKey"`
-	GuildID           uint64
-	ProjectID         *uint64
-	GoalID            *uint64
-	ParentIssueID     *uint64
-	Title             string
-	Description       string
-	AssigneeAgentID   *uint64
-	Priority          string
-	Status            string
-	ConcurrencyPolicy string
-	CatchUpPolicy     string
-	Variables         string `gorm:"type:jsonb"`
-	CreatedByMemberID *uint64
-	CreatedByAgentID  *uint64
-	LastTriggeredAt   *time.Time
+	ID                   uint64 `gorm:"primaryKey"`
+	GuildID              uint64
+	ProjectID            *uint64
+	GoalID               *uint64
+	ParentIssueID        *uint64
+	Title                string
+	Description          string
+	AssigneeAgentID      *uint64
+	Priority             string
+	Status               string
+	ConcurrencyPolicy    string
+	CatchUpPolicy        string
+	Variables            string `gorm:"type:jsonb"`
+	CreatedByMemberID    *uint64
+	CreatedByAgentID     *uint64
+	LastTriggeredAt      *time.Time
+	LatestRevisionID     *uint64
+	LatestRevisionNumber int
 	orm.Timestamps
 }
 
@@ -44,6 +47,7 @@ func (r routineRecord) toDomain() domain.Routine {
 		Priority: domain.Priority(r.Priority), Status: domain.RoutineStatus(r.Status),
 		ConcurrencyPolicy: domain.ConcurrencyPolicy(r.ConcurrencyPolicy), CatchUpPolicy: domain.CatchUpPolicy(r.CatchUpPolicy),
 		CreatedBy: actor(r.CreatedByMemberID, r.CreatedByAgentID), Variables: variablesOf(r.Variables),
+		LatestRevisionID: deref(r.LatestRevisionID), LatestRevisionNumber: r.LatestRevisionNumber,
 	}
 	if r.LastTriggeredAt != nil {
 		t := r.LastTriggeredAt.UTC()
@@ -405,6 +409,7 @@ type routineRunRecord struct {
 	TriggeredByAgentID        *uint64
 	IdempotencyKey            *string
 	Variables                 *string `gorm:"type:jsonb"`
+	RoutineRevisionID         *uint64
 	CompletedAt               *time.Time
 	orm.Timestamps
 }
@@ -417,7 +422,7 @@ func (r routineRunRecord) toDomain() domain.RoutineRun {
 		Source: domain.RoutineRunSource(r.Source), Status: domain.RoutineRunStatus(r.Status), TriggeredAt: r.TriggeredAt.UTC(),
 		LinkedIssueID: deref(r.LinkedIssueID), CoalescedIntoRunID: deref(r.CoalescedIntoRoutineRunID), FailureReason: r.FailureReason,
 		TriggeredBy: actor(r.TriggeredByMemberID, r.TriggeredByAgentID), IdempotencyKey: orZero(r.IdempotencyKey), CompletedAt: utc(r.CompletedAt),
-		Variables: valuesOf(r.Variables),
+		Variables: valuesOf(r.Variables), RoutineRevisionID: deref(r.RoutineRevisionID),
 	}
 	out.CreatedAt, out.UpdatedAt = stamp(&r.Timestamps)
 	return out
@@ -436,7 +441,8 @@ func (s Routines) CreateRoutineRun(ctx context.Context, rr domain.RoutineRun) (d
 		GuildID: rr.GuildID, RoutineID: rr.RoutineID, TriggerID: nullable(rr.TriggerID), Source: string(rr.Source), Status: string(rr.Status),
 		TriggeredAt: rr.TriggeredAt, LinkedIssueID: nullable(rr.LinkedIssueID), CoalescedIntoRoutineRunID: nullable(rr.CoalescedIntoRunID),
 		FailureReason: rr.FailureReason, TriggeredByMemberID: nullable(rr.TriggeredBy.MemberID), TriggeredByAgentID: nullable(rr.TriggeredBy.AgentID),
-		IdempotencyKey: nullableString(rr.IdempotencyKey), Variables: valuesColumn(rr.Variables), CompletedAt: rr.CompletedAt,
+		IdempotencyKey: nullableString(rr.IdempotencyKey), Variables: valuesColumn(rr.Variables), RoutineRevisionID: nullable(rr.RoutineRevisionID),
+		CompletedAt: rr.CompletedAt,
 	}
 	if err := s.query(ctx).Create(&rec); err != nil {
 		return domain.RoutineRun{}, err
@@ -501,6 +507,111 @@ func (s Routines) LastRoutineRuns(ctx context.Context, routineIDs []uint64) (map
 		out[rr.RoutineID] = rr
 	}
 	return out, nil
+}
+
+type routineRevisionRecord struct {
+	ID                     uint64 `gorm:"primaryKey"`
+	GuildID                uint64
+	RoutineID              uint64
+	RevisionNumber         int
+	Title                  string
+	Description            string
+	Snapshot               string `gorm:"type:jsonb"`
+	ChangeSummary          *string
+	RestoredFromRevisionID *uint64
+	CreatedByMemberID      *uint64
+	CreatedByAgentID       *uint64
+	CreatedAt              time.Time
+}
+
+func (routineRevisionRecord) TableName() string { return "routine_revisions" }
+
+func (r routineRevisionRecord) toDomain() (domain.RoutineRevision, error) {
+	out := domain.RoutineRevision{
+		ID: r.ID, GuildID: r.GuildID, RoutineID: r.RoutineID, Number: r.RevisionNumber, Title: r.Title, Description: r.Description,
+		ChangeSummary: orZero(r.ChangeSummary), RestoredFromID: deref(r.RestoredFromRevisionID),
+		Author: actor(r.CreatedByMemberID, r.CreatedByAgentID), CreatedAt: r.CreatedAt.UTC(),
+	}
+	if err := json.Unmarshal([]byte(r.Snapshot), &out.Snapshot); err != nil {
+		return domain.RoutineRevision{}, err
+	}
+	return out, nil
+}
+
+// AppendRevision adds the Routine revision after the Routine's newest one,
+// of the Routine and its triggers as they are now. The Routine's row is
+// locked while it does, so two appends at once take turns and the numbers
+// have no gaps.
+func (s Routines) AppendRevision(ctx context.Context, routineID uint64, by domain.Actor, changeSummary string, restoredFromID uint64) (domain.RoutineRevision, error) {
+	var out domain.RoutineRevision
+	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		var recs []routineRecord
+		if err := tx.Raw(`SELECT * FROM routines WHERE id = ? FOR UPDATE`, routineID).Scan(&recs); err != nil {
+			return err
+		}
+		if len(recs) == 0 {
+			return app.ErrNotFound
+		}
+		var trecs []routineTriggerRecord
+		if err := tx.Where("routine_id", routineID).Order("id").Find(&trecs); err != nil {
+			return err
+		}
+		ts, err := triggersOf(trecs)
+		if err != nil {
+			return err
+		}
+		rev := domain.NewRoutineRevision(recs[0].toDomain(), ts, by, changeSummary, restoredFromID, time.Time{})
+		snapshot, err := json.Marshal(rev.Snapshot)
+		if err != nil {
+			return err
+		}
+		var rows []routineRevisionRecord
+		if err := tx.Raw(`INSERT INTO routine_revisions (guild_id, routine_id, revision_number, title, description, snapshot, change_summary,
+			restored_from_revision_id, created_by_member_id, created_by_agent_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, now()) RETURNING *`,
+			rev.GuildID, rev.RoutineID, rev.Number, rev.Title, rev.Description, string(snapshot), nullableString(changeSummary),
+			nullable(restoredFromID), nullable(by.MemberID), nullable(by.AgentID)).Scan(&rows); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE routines SET latest_revision_id = ?, latest_revision_number = ? WHERE id = ?`, rows[0].ID, rev.Number, routineID); err != nil {
+			return err
+		}
+		out, err = rows[0].toDomain()
+		return err
+	})
+	return out, err
+}
+
+// RoutineRevisions lists the Routine's revisions, newest first, at most
+// limit.
+func (s Routines) RoutineRevisions(ctx context.Context, routineID uint64, limit int) ([]domain.RoutineRevision, error) {
+	var recs []routineRevisionRecord
+	if err := s.query(ctx).Where("routine_id", routineID).Order("revision_number desc").Limit(limit).Find(&recs); err != nil {
+		return nil, err
+	}
+	out := make([]domain.RoutineRevision, len(recs))
+	for i, r := range recs {
+		rev, err := r.toDomain()
+		if err != nil {
+			return nil, err
+		}
+		out[i] = rev
+	}
+	return out, nil
+}
+
+// RoutineRevision returns the Routine's revision; found is false when it
+// has none by that id.
+func (s Routines) RoutineRevision(ctx context.Context, routineID, id uint64) (domain.RoutineRevision, bool, error) {
+	var rec routineRevisionRecord
+	if err := s.query(ctx).Where("id", id).Where("routine_id", routineID).FirstOrFail(&rec); err != nil {
+		if errors.Is(err, frameworkerrors.OrmRecordNotFound) {
+			return domain.RoutineRevision{}, false, nil
+		}
+		return domain.RoutineRevision{}, false, err
+	}
+	rev, err := rec.toDomain()
+	return rev, err == nil, err
 }
 
 // nullableString keeps "" as null.

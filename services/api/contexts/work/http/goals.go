@@ -170,6 +170,7 @@ func notFound(ctx contractshttp.Context) contractshttp.Response {
 func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 	var fe *domain.FieldError
 	var stale *app.StaleRevisionError
+	var staleRoutine *app.StaleRoutineRevisionError
 	var refused *domain.ApprovalRefusedError
 	var held *domain.HeldError
 	var prRefused *app.PullRequestRefusedError
@@ -193,6 +194,12 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 			"message":                 err.Error(),
 			"current_revision_id":     stale.Current.LatestRevisionID,
 			"current_revision_number": stale.Current.Latest,
+		})
+	case errors.As(err, &staleRoutine):
+		return ctx.Response().Json(contractshttp.StatusConflict, contractshttp.Json{
+			"message":                 err.Error(),
+			"current_revision_id":     staleRoutine.Current.LatestRevisionID,
+			"current_revision_number": staleRoutine.Current.LatestRevisionNumber,
 		})
 	case errors.As(err, &fe):
 		return respond.Invalid(ctx, fe.Field, fe.Message)
