@@ -1,9 +1,13 @@
 package domain
 
 import (
+	"errors"
 	"slices"
+	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/jevido/bakery/services/api/app/cron"
 )
 
 // MaxRoutineDescription is the longest Markdown description of a Routine,
@@ -188,4 +192,145 @@ func (r *Routine) MoveUnder(parent *Issue) error {
 	}
 	r.ParentIssueID = parent.ID
 	return nil
+}
+
+// TriggerKind is what makes a Routine trigger fire: its Schedule, or a call
+// to Run naming it.
+type TriggerKind string
+
+const (
+	ScheduleTrigger TriggerKind = "schedule"
+	APITrigger      TriggerKind = "api"
+)
+
+// TriggerKinds lists every kind of Routine trigger.
+var TriggerKinds = []TriggerKind{ScheduleTrigger, APITrigger}
+
+// ParseTriggerKind reads a kind of Routine trigger by its wire key.
+func ParseTriggerKind(s string) (TriggerKind, error) {
+	if k := TriggerKind(s); slices.Contains(TriggerKinds, k) {
+		return k, nil
+	}
+	return "", invalid("trigger.kind", "kind must be schedule or api")
+}
+
+// MaxTriggerLabel is the longest label of a Routine trigger, in
+// characters.
+const MaxTriggerLabel = 100
+
+// ErrArchivedRoutineTriggers is a Routine trigger added to, or changed on,
+// an archived Routine.
+var ErrArchivedRoutineTriggers = errors.New("an archived routine's triggers cannot be changed")
+
+// RoutineTrigger is part of its Routine: what makes it run by itself
+// (kind schedule) or through the API (kind api). CronExpression and
+// Timezone are empty for an api one. NextRunAt is nil while it does not
+// fire: off, an api one, or its Routine paused, archived or a Draft.
+type RoutineTrigger struct {
+	ID             uint64
+	GuildID        uint64
+	RoutineID      uint64
+	Kind           TriggerKind
+	Label          string
+	Enabled        bool
+	CronExpression string
+	Timezone       string
+	NextRunAt      *time.Time
+	LastFiredAt    *time.Time
+	LastResult     string
+	CreatedBy      Actor
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+// TriggerSettings changes the fields of a Routine trigger that are not
+// nil.
+type TriggerSettings struct {
+	Label          *string
+	CronExpression *string
+	Timezone       *string
+	Enabled        *bool
+}
+
+// NewScheduleTrigger is a schedule Routine trigger of r, its Next run
+// counted from now; an empty time zone is UTC.
+func NewScheduleTrigger(r Routine, by Actor, label, cronExpression, timezone string, enabled bool, now time.Time) (RoutineTrigger, error) {
+	t := RoutineTrigger{GuildID: r.GuildID, RoutineID: r.ID, Kind: ScheduleTrigger, Enabled: enabled, CreatedBy: by, Timezone: "UTC"}
+	return t, t.Change(r, TriggerSettings{Label: &label, CronExpression: &cronExpression, Timezone: &timezone}, now)
+}
+
+// NewAPITrigger is an api Routine trigger of r.
+func NewAPITrigger(r Routine, by Actor, label string, enabled bool) (RoutineTrigger, error) {
+	t := RoutineTrigger{GuildID: r.GuildID, RoutineID: r.ID, Kind: APITrigger, Enabled: enabled, CreatedBy: by}
+	return t, t.Change(r, TriggerSettings{Label: &label}, time.Time{})
+}
+
+// Change sets what s names, each checked, and counts the Next run again
+// from now when the cron expression, time zone or enabled changed.
+func (t *RoutineTrigger) Change(r Routine, s TriggerSettings, now time.Time) error {
+	if r.Archived() {
+		return ErrArchivedRoutineTriggers
+	}
+	next := *t
+	if s.Label != nil {
+		l := strings.TrimSpace(*s.Label)
+		if utf8.RuneCountInString(l) > MaxTriggerLabel {
+			return invalid("trigger.label", "label is at most %d characters", MaxTriggerLabel)
+		}
+		next.Label = l
+	}
+	if s.Enabled != nil {
+		next.Enabled = *s.Enabled
+	}
+	if next.Kind == APITrigger {
+		if s.CronExpression != nil && strings.TrimSpace(*s.CronExpression) != "" {
+			return invalid("trigger.cron_expression", "an api trigger has no cron expression")
+		}
+		if s.Timezone != nil && strings.TrimSpace(*s.Timezone) != "" {
+			return invalid("trigger.timezone", "an api trigger has no time zone")
+		}
+		next.NextRunAt = nil
+		*t = next
+		return nil
+	}
+	if s.CronExpression != nil {
+		next.CronExpression = strings.TrimSpace(*s.CronExpression)
+		if _, err := cron.Parse(next.CronExpression); err != nil {
+			return invalid("trigger.cron_expression", "%q is neither a five-field cron expression (minute hour day month weekday) nor every_minute, hourly, daily, weekly, monthly or yearly", next.CronExpression)
+		}
+	}
+	if s.Timezone != nil {
+		next.Timezone = strings.TrimSpace(*s.Timezone)
+		if next.Timezone == "" {
+			next.Timezone = "UTC"
+		}
+		// Local is the server's own zone, not one a person can name.
+		if _, err := cron.Location(next.Timezone); err != nil || next.Timezone == "Local" {
+			return invalid("trigger.timezone", "%q is not an IANA time zone, such as Europe/Amsterdam or UTC", next.Timezone)
+		}
+	}
+	scheduleChanged := next.CronExpression != t.CronExpression || next.Timezone != t.Timezone || next.Enabled != t.Enabled
+	*t = next
+	if scheduleChanged || t.ID == 0 {
+		t.Reschedule(r, now)
+	}
+	return nil
+}
+
+// Fires is true while the trigger fires by itself: a schedule one that is
+// on, of an active Routine with an Agent assignee.
+func (t RoutineTrigger) Fires(r Routine) bool {
+	return t.Kind == ScheduleTrigger && t.Enabled && r.Status == ActiveRoutine && !r.Draft()
+}
+
+// Reschedule counts the Next run from now, or clears it while the trigger
+// does not fire. Ticks missed while it did not fire are never made up.
+func (t *RoutineTrigger) Reschedule(r Routine, now time.Time) {
+	t.NextRunAt = nil
+	if !t.Fires(r) {
+		return
+	}
+	if at, err := cron.Next(t.CronExpression, t.Timezone, now); err == nil {
+		t.NextRunAt = &at
+	}
 }

@@ -21,39 +21,42 @@ const (
 	IssueApplicationChangedAction = "issue.application_changed"
 	// The pull request and preview Actions are not Paperclip's: its Work
 	// products record no Activity.
-	PullRequestOpenedAction    = "issue.pull_request_opened"
-	PullRequestMergedAction    = "issue.pull_request_merged"
-	PullRequestClosedAction    = "issue.pull_request_closed"
-	PreviewReadyAction         = "issue.preview_ready"
-	PreviewFailedAction        = "issue.preview_failed"
-	CommentAddedAction         = "issue.comment_added"
-	CommentDeletedAction       = "issue.comment_deleted"
-	DocumentCreatedAction      = "issue.document_created"
-	DocumentUpdatedAction      = "issue.document_updated"
-	DocumentDeletedAction      = "issue.document_deleted"
-	ApprovalCreatedAction      = "approval.created"
-	ApprovalApprovedAction     = "approval.approved"
-	ApprovalRejectedAction     = "approval.rejected"
-	RevisionRequestedAction    = "approval.revision_requested"
-	ApprovalResubmittedAction  = "approval.resubmitted"
-	ApprovalCommentAddedAction = "approval.comment_added"
-	ApprovalCancelledAction    = "approval.cancelled"
-	AgentHiredAction           = "agent.hired"
-	AgentUpdatedAction         = "agent.updated"
-	AgentPausedAction          = "agent.paused"
-	AgentResumedAction         = "agent.resumed"
-	AgentTerminatedAction      = "agent.terminated"
-	AgentRoleAddedAction       = "agent.role_added"
-	AgentRoleRemovedAction     = "agent.role_removed"
-	RunStartedAction           = "run.started"
-	RunFinishedAction          = "run.finished"
-	BudgetUpdatedAction        = "budget.updated"
-	BudgetSoftCrossedAction    = "budget.soft_threshold_crossed"
-	BudgetHardCrossedAction    = "budget.hard_threshold_crossed"
-	BudgetIncidentResolved     = "budget.incident_resolved"
-	RoutineCreatedAction       = "routine.created"
-	RoutineUpdatedAction       = "routine.updated"
-	RoutineArchivedAction      = "routine.archived"
+	PullRequestOpenedAction     = "issue.pull_request_opened"
+	PullRequestMergedAction     = "issue.pull_request_merged"
+	PullRequestClosedAction     = "issue.pull_request_closed"
+	PreviewReadyAction          = "issue.preview_ready"
+	PreviewFailedAction         = "issue.preview_failed"
+	CommentAddedAction          = "issue.comment_added"
+	CommentDeletedAction        = "issue.comment_deleted"
+	DocumentCreatedAction       = "issue.document_created"
+	DocumentUpdatedAction       = "issue.document_updated"
+	DocumentDeletedAction       = "issue.document_deleted"
+	ApprovalCreatedAction       = "approval.created"
+	ApprovalApprovedAction      = "approval.approved"
+	ApprovalRejectedAction      = "approval.rejected"
+	RevisionRequestedAction     = "approval.revision_requested"
+	ApprovalResubmittedAction   = "approval.resubmitted"
+	ApprovalCommentAddedAction  = "approval.comment_added"
+	ApprovalCancelledAction     = "approval.cancelled"
+	AgentHiredAction            = "agent.hired"
+	AgentUpdatedAction          = "agent.updated"
+	AgentPausedAction           = "agent.paused"
+	AgentResumedAction          = "agent.resumed"
+	AgentTerminatedAction       = "agent.terminated"
+	AgentRoleAddedAction        = "agent.role_added"
+	AgentRoleRemovedAction      = "agent.role_removed"
+	RunStartedAction            = "run.started"
+	RunFinishedAction           = "run.finished"
+	BudgetUpdatedAction         = "budget.updated"
+	BudgetSoftCrossedAction     = "budget.soft_threshold_crossed"
+	BudgetHardCrossedAction     = "budget.hard_threshold_crossed"
+	BudgetIncidentResolved      = "budget.incident_resolved"
+	RoutineCreatedAction        = "routine.created"
+	RoutineUpdatedAction        = "routine.updated"
+	RoutineArchivedAction       = "routine.archived"
+	RoutineTriggerCreatedAction = "routine.trigger_created"
+	RoutineTriggerUpdatedAction = "routine.trigger_updated"
+	RoutineTriggerDeletedAction = "routine.trigger_deleted"
 )
 
 // AgentActions lists the Actions the agents context records through work.
@@ -636,4 +639,68 @@ type RoutineArchived struct {
 
 func (e RoutineArchived) Activity() ActivityEvent {
 	return e.routine(e.Routine, RoutineArchivedAction, map[string]any{})
+}
+
+// triggerDetails is what every event about a Routine trigger keeps of it.
+func triggerDetails(t RoutineTrigger) map[string]any {
+	return map[string]any{"trigger_id": t.ID, "kind": t.Kind, "label": t.Label}
+}
+
+type RoutineTriggerAdded struct {
+	Happened
+	Routine Routine
+	Trigger RoutineTrigger
+}
+
+func (e RoutineTriggerAdded) Activity() ActivityEvent {
+	d := triggerDetails(e.Trigger)
+	if e.Trigger.Kind == ScheduleTrigger {
+		d["cron_expression"], d["timezone"] = e.Trigger.CronExpression, e.Trigger.Timezone
+	}
+	return e.routine(e.Routine, RoutineTriggerCreatedAction, d)
+}
+
+// RoutineTriggerChanged is a Routine trigger as it was before a change
+// and after it.
+type RoutineTriggerChanged struct {
+	Happened
+	Routine       Routine
+	Before, After RoutineTrigger
+}
+
+// Changes is every field that differs, from → to; empty when nothing did.
+func (e RoutineTriggerChanged) Changes() map[string]any {
+	b, a := e.Before, e.After
+	out := map[string]any{}
+	for _, f := range []struct {
+		name     string
+		from, to any
+		differ   bool
+	}{
+		{"label", b.Label, a.Label, b.Label != a.Label},
+		{"cron_expression", b.CronExpression, a.CronExpression, b.CronExpression != a.CronExpression},
+		{"timezone", b.Timezone, a.Timezone, b.Timezone != a.Timezone},
+		{"enabled", b.Enabled, a.Enabled, b.Enabled != a.Enabled},
+	} {
+		if f.differ {
+			out[f.name] = change(f.from, f.to)
+		}
+	}
+	return out
+}
+
+func (e RoutineTriggerChanged) Activity() ActivityEvent {
+	d := triggerDetails(e.After)
+	d["changes"] = e.Changes()
+	return e.routine(e.Routine, RoutineTriggerUpdatedAction, d)
+}
+
+type RoutineTriggerDeleted struct {
+	Happened
+	Routine Routine
+	Trigger RoutineTrigger
+}
+
+func (e RoutineTriggerDeleted) Activity() ActivityEvent {
+	return e.routine(e.Routine, RoutineTriggerDeletedAction, triggerDetails(e.Trigger))
 }

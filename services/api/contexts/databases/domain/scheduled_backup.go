@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/robfig/cron/v3"
+	"github.com/jevido/bakery/services/api/app/cron"
 )
 
 // ScheduledBackup is the aggregate root of when a Database is backed up by
@@ -39,37 +39,9 @@ type ScheduledBackupInput struct {
 // 03:00 UTC, keeping 7.
 var DefaultScheduledBackup = ScheduledBackupInput{Cron: "0 3 * * *", Retention: 7}
 
-// cronShortcuts are the words Coolify takes for a Frequency
-// (VALID_CRON_STRINGS), each with its five-field expression.
-var cronShortcuts = map[string]string{
-	"every_minute": "* * * * *",
-	"hourly":       "0 * * * *",
-	"daily":        "0 0 * * *",
-	"weekly":       "0 0 * * 0",
-	"monthly":      "0 0 1 * *",
-	"yearly":       "0 0 1 1 *",
-	"@hourly":      "0 * * * *",
-	"@daily":       "0 0 * * *",
-	"@weekly":      "0 0 * * 0",
-	"@monthly":     "0 0 1 * *",
-	"@yearly":      "0 0 1 1 *",
-}
-
-func parseCron(expr string) (cron.Schedule, error) {
-	if e, ok := cronShortcuts[expr]; ok {
-		expr = e
-	}
-	// ParseStandard also takes other descriptors and a TZ= prefix; only
-	// plain five-field expressions are allowed, so times stay UTC.
-	if len(strings.Fields(expr)) != 5 {
-		return nil, errors.New("five fields expected")
-	}
-	return cron.ParseStandard(expr)
-}
-
 // Check validates the cron expression and the Retention.
 func (in ScheduledBackupInput) Check() error {
-	if _, err := parseCron(in.Cron); err != nil {
+	if _, err := cron.Parse(in.Cron); err != nil {
 		return invalid("scheduled_backup.cron", "%q is neither a five-field cron expression (minute hour day month weekday) nor every_minute, hourly, daily, weekly, monthly or yearly", in.Cron)
 	}
 	if in.Retention < 1 || in.Retention > 100 {
@@ -112,7 +84,7 @@ func (s *ScheduledBackup) Update(in ScheduledBackupInput, now time.Time) error {
 // Next is the first scheduled time after after, in UTC; the zero time for
 // an invalid expression.
 func (s ScheduledBackup) Next(after time.Time) time.Time {
-	c, err := parseCron(s.Cron)
+	c, err := cron.Parse(s.Cron)
 	if err != nil {
 		return time.Time{}
 	}

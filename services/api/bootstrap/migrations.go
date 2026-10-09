@@ -117,5 +117,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260930000102KeyBudgetIncidentsByAmount{},
 		&migrations.M20260930000103CreateDesktopLimitsTable{},
 		&migrations.M20260930000104CreateRoutinesTable{},
+		&migrations.M20260930000105CreateRoutineTriggersTable{},
 	}
 }

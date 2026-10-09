@@ -22,6 +22,13 @@ type Routines interface {
 	// assignee of, archived ones too.
 	RoutinesOfAgent(ctx context.Context, guildID, agentID uint64) ([]domain.Routine, error)
 	DeleteRoutinesOfProject(ctx context.Context, projectID uint64) error
+	// Triggers lists the Routine triggers of the Routines, in the order
+	// they were added.
+	Triggers(ctx context.Context, routineIDs []uint64) ([]domain.RoutineTrigger, error)
+	Trigger(ctx context.Context, id uint64) (domain.RoutineTrigger, bool, error)
+	CreateTrigger(ctx context.Context, t domain.RoutineTrigger) (domain.RoutineTrigger, error)
+	SaveTrigger(ctx context.Context, t domain.RoutineTrigger) error
+	DeleteTrigger(ctx context.Context, id uint64) error
 }
 
 // RoutineFilter is what a list of Routines keeps. Nil fields keep every
@@ -195,6 +202,11 @@ func (s *Service) ChangeRoutine(ctx context.Context, guildID uint64, by domain.A
 	if err != nil {
 		return domain.Routine{}, err
 	}
+	if before.Status != after.Status || before.AssigneeAgentID != after.AssigneeAgentID {
+		if err := s.rescheduleTriggers(ctx, after); err != nil {
+			return domain.Routine{}, err
+		}
+	}
 	switch e := (domain.RoutineChanged{Happened: s.happened(by), Before: before, After: after}); {
 	case after.Archived():
 		s.publish(ctx, domain.RoutineArchived{Happened: e.Happened, Routine: after})
@@ -335,9 +347,157 @@ func (s *Service) unassignRoutines(ctx context.Context, guildID, agentID, actorI
 			return err
 		}
 		if found {
+			if err := s.rescheduleTriggers(ctx, after); err != nil {
+				return err
+			}
 			e.After = after
 			s.publish(ctx, e)
 		}
 	}
+	return nil
+}
+
+// rescheduleTriggers counts the Next run of each of the Routine's triggers
+// again from now, after its Routine status or Agent assignee changed:
+// pausing (or making it a Draft) clears it, resuming counts from now.
+func (s *Service) rescheduleTriggers(ctx context.Context, r domain.Routine) error {
+	ts, err := s.routines.Triggers(ctx, []uint64{r.ID})
+	if err != nil {
+		return err
+	}
+	for _, t := range ts {
+		t.Reschedule(r, s.now())
+		if err := s.routines.SaveTrigger(ctx, t); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RoutineTriggers lists the Routine triggers of the Routines by Routine,
+// each in the order it was added.
+func (s *Service) RoutineTriggers(ctx context.Context, routineIDs []uint64) (map[uint64][]domain.RoutineTrigger, error) {
+	ts, err := s.routines.Triggers(ctx, routineIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := map[uint64][]domain.RoutineTrigger{}
+	for _, t := range ts {
+		out[t.RoutineID] = append(out[t.RoutineID], t)
+	}
+	return out, nil
+}
+
+// TriggerProject finds the Project (0 for none) and Guild of the Routine
+// trigger's Routine; found is false when there is none.
+func (s *Service) TriggerProject(ctx context.Context, id uint64) (projectID, guildID uint64, found bool, err error) {
+	t, found, err := s.routines.Trigger(ctx, id)
+	if err != nil || !found {
+		return 0, 0, false, err
+	}
+	return s.RoutineProject(ctx, t.RoutineID)
+}
+
+// TriggerInput is a new Routine trigger as typed. Enabled nil is on.
+type TriggerInput struct {
+	Kind           string
+	Label          string
+	CronExpression string
+	Timezone       string
+	Enabled        *bool
+}
+
+// ownRoutine returns the Guild's Routine the person may view, which an
+// Agent may change only when it is assigned to itself.
+func (s *Service) ownRoutine(ctx context.Context, guildID uint64, by domain.Actor, id uint64, visible Visible) (domain.Routine, error) {
+	r, err := s.Routine(ctx, guildID, id, visible)
+	if err != nil {
+		return domain.Routine{}, err
+	}
+	if by.AgentID != 0 && r.AssigneeAgentID != by.AgentID {
+		return domain.Routine{}, ErrNotOwnRoutine
+	}
+	return r, nil
+}
+
+// AddTrigger adds a Routine trigger to the Routine by the Member or Agent.
+func (s *Service) AddTrigger(ctx context.Context, guildID uint64, by domain.Actor, routineID uint64, in TriggerInput, visible Visible) (domain.RoutineTrigger, error) {
+	r, err := s.ownRoutine(ctx, guildID, by, routineID, visible)
+	if err != nil {
+		return domain.RoutineTrigger{}, err
+	}
+	kind, err := domain.ParseTriggerKind(in.Kind)
+	if err != nil {
+		return domain.RoutineTrigger{}, err
+	}
+	enabled := in.Enabled == nil || *in.Enabled
+	var t domain.RoutineTrigger
+	switch kind {
+	case domain.ScheduleTrigger:
+		t, err = domain.NewScheduleTrigger(r, by, in.Label, in.CronExpression, in.Timezone, enabled, s.now())
+	case domain.APITrigger:
+		t, err = domain.NewAPITrigger(r, by, in.Label, enabled)
+		if err == nil {
+			// An api trigger refuses a cron expression or time zone.
+			err = t.Change(r, domain.TriggerSettings{CronExpression: &in.CronExpression, Timezone: &in.Timezone}, s.now())
+		}
+	}
+	if err != nil {
+		return domain.RoutineTrigger{}, err
+	}
+	if t, err = s.routines.CreateTrigger(ctx, t); err != nil {
+		return domain.RoutineTrigger{}, err
+	}
+	s.publish(ctx, domain.RoutineTriggerAdded{Happened: s.happened(by), Routine: r, Trigger: t})
+	return t, nil
+}
+
+// trigger returns the Guild's Routine trigger and its Routine, which the
+// person may view and, as an Agent, change.
+func (s *Service) trigger(ctx context.Context, guildID uint64, by domain.Actor, id uint64, visible Visible) (domain.RoutineTrigger, domain.Routine, error) {
+	t, found, err := s.routines.Trigger(ctx, id)
+	if err != nil {
+		return domain.RoutineTrigger{}, domain.Routine{}, err
+	}
+	if !found || t.GuildID != guildID {
+		return domain.RoutineTrigger{}, domain.Routine{}, ErrNotFound
+	}
+	r, err := s.ownRoutine(ctx, guildID, by, t.RoutineID, visible)
+	return t, r, err
+}
+
+// ChangeTrigger changes the Routine trigger by the Member or Agent.
+func (s *Service) ChangeTrigger(ctx context.Context, guildID uint64, by domain.Actor, id uint64, set domain.TriggerSettings, visible Visible) (domain.RoutineTrigger, error) {
+	t, r, err := s.trigger(ctx, guildID, by, id, visible)
+	if err != nil {
+		return domain.RoutineTrigger{}, err
+	}
+	before := t
+	if err := t.Change(r, set, s.now()); err != nil {
+		return domain.RoutineTrigger{}, err
+	}
+	if err := s.routines.SaveTrigger(ctx, t); err != nil {
+		return domain.RoutineTrigger{}, err
+	}
+	if e := (domain.RoutineTriggerChanged{Happened: s.happened(by), Routine: r, Before: before, After: t}); len(e.Changes()) > 0 {
+		s.publish(ctx, e)
+	}
+	return t, nil
+}
+
+// DeleteTrigger deletes the Routine trigger by the Member or Agent; an
+// archived Routine keeps its triggers.
+func (s *Service) DeleteTrigger(ctx context.Context, guildID uint64, by domain.Actor, id uint64, visible Visible) error {
+	t, r, err := s.trigger(ctx, guildID, by, id, visible)
+	if err != nil {
+		return err
+	}
+	if r.Archived() {
+		return domain.ErrArchivedRoutineTriggers
+	}
+	if err := s.routines.DeleteTrigger(ctx, id); err != nil {
+		return err
+	}
+	s.publish(ctx, domain.RoutineTriggerDeleted{Happened: s.happened(by), Routine: r, Trigger: t})
 	return nil
 }

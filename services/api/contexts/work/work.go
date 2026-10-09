@@ -588,6 +588,13 @@ var routineInProject = guilds.InProject("routine", func(ctx context.Context, id 
 	return svc().RoutineProject(ctx, id)
 })
 
+// triggerInRoutine answers 404 for a route whose {id} Routine trigger
+// belongs to another Guild's Routine, or one in a Project the request may
+// not view, and resolves the request's Permissions in that Project.
+var triggerInRoutine = guilds.InProject("routine-trigger", func(ctx context.Context, id uint64) (uint64, uint64, bool, error) {
+	return svc().TriggerProject(ctx, id)
+})
+
 // Routes registers the Current guild's Goals, Issues, Comments, Issue
 // documents, Activity, Inbox, Approvals and Routines API: reading (and a Member's own Read marks
 // and Inbox archives) needs view_resources, changing manage_work, deciding an
@@ -665,6 +672,11 @@ func Routes(r route.Router) {
 	r.Middleware(guilds.AuthAgents, manage).Post("/api/routines", c.CreateRoutine)
 	r.Middleware(guilds.AuthAgents, routineInProject, view).Get("/api/routines/{id}", c.ShowRoutine)
 	r.Middleware(guilds.AuthAgents, routineInProject, manage).Patch("/api/routines/{id}", c.UpdateRoutine)
+	r.Middleware(guilds.AuthAgents, routineInProject, manage).Post("/api/routines/{id}/triggers", c.AddTrigger)
+	r.Middleware(guilds.AuthAgents, triggerInRoutine, manage).Group(func(r route.Router) {
+		r.Patch("/api/routine-triggers/{id}", c.UpdateTrigger)
+		r.Delete("/api/routine-triggers/{id}", c.DeleteTrigger)
+	})
 }
 
 // followPullRequests keeps the Work products of Issues in step with what

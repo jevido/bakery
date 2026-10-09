@@ -4,13 +4,18 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
 )
 
 // memRoutines keeps Routines in memory.
-type memRoutines struct{ byID map[uint64]domain.Routine }
+type memRoutines struct {
+	byID     map[uint64]domain.Routine
+	triggers []domain.RoutineTrigger
+}
 
 func (m *memRoutines) Routines(_ context.Context, guildID uint64) ([]domain.Routine, error) {
 	var out []domain.Routine
@@ -54,6 +59,45 @@ func (m *memRoutines) DeleteRoutinesOfProject(_ context.Context, projectID uint6
 			delete(m.byID, id)
 		}
 	}
+	return nil
+}
+
+func (m *memRoutines) Triggers(_ context.Context, routineIDs []uint64) ([]domain.RoutineTrigger, error) {
+	var out []domain.RoutineTrigger
+	for _, t := range m.triggers {
+		if slices.Contains(routineIDs, t.RoutineID) {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
+func (m *memRoutines) Trigger(_ context.Context, id uint64) (domain.RoutineTrigger, bool, error) {
+	for _, t := range m.triggers {
+		if t.ID == id {
+			return t, true, nil
+		}
+	}
+	return domain.RoutineTrigger{}, false, nil
+}
+
+func (m *memRoutines) CreateTrigger(_ context.Context, t domain.RoutineTrigger) (domain.RoutineTrigger, error) {
+	t.ID = uint64(len(m.triggers) + 1)
+	m.triggers = append(m.triggers, t)
+	return t, nil
+}
+
+func (m *memRoutines) SaveTrigger(_ context.Context, t domain.RoutineTrigger) error {
+	for i := range m.triggers {
+		if m.triggers[i].ID == t.ID {
+			m.triggers[i] = t
+		}
+	}
+	return nil
+}
+
+func (m *memRoutines) DeleteTrigger(_ context.Context, id uint64) error {
+	m.triggers = slices.DeleteFunc(m.triggers, func(t domain.RoutineTrigger) bool { return t.ID == id })
 	return nil
 }
 
@@ -206,3 +250,74 @@ func TestDeletingAProjectDeletesItsRoutines(t *testing.T) {
 type leavingIssues struct{ memIssues }
 
 func (*leavingIssues) LeaveProject(context.Context, uint64) error { return nil }
+
+func TestRoutineTriggersFollowTheRoutine(t *testing.T) {
+	ctx := context.Background()
+	s, rs, act := routineService(t)
+	now := time.Date(2025, 3, 25, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	all := func(ids []uint64) ([]uint64, error) { return ids, nil }
+	r, err := s.CreateRoutine(ctx, 1, domain.ByMember(7), RoutineInput{Title: "Weekly check", AssigneeAgentID: 3}, all)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := s.AddTrigger(ctx, 1, domain.ByMember(7), r.ID, TriggerInput{Kind: "schedule", CronExpression: "0 9 * * 1", Timezone: "Europe/Amsterdam"}, all)
+	if err != nil || tr.NextRunAt == nil || !tr.NextRunAt.Equal(time.Date(2025, 3, 31, 7, 0, 0, 0, time.UTC)) {
+		t.Fatalf("AddTrigger = %+v, %v", tr, err)
+	}
+	api, err := s.AddTrigger(ctx, 1, domain.ByMember(7), r.ID, TriggerInput{Kind: "api", Label: "CI"}, all)
+	if err != nil || api.NextRunAt != nil {
+		t.Fatalf("an api trigger = %+v, %v", api, err)
+	}
+	var fe *domain.FieldError
+	if _, err := s.AddTrigger(ctx, 1, domain.ByMember(7), r.ID, TriggerInput{Kind: "api", CronExpression: "daily"}, all); !errors.As(err, &fe) || fe.Field != "trigger.cron_expression" {
+		t.Fatalf("an api trigger with a cron: %v", err)
+	}
+	next := func() *time.Time {
+		got, _, _ := rs.Trigger(ctx, tr.ID)
+		return got.NextRunAt
+	}
+
+	if _, err := s.ChangeRoutine(ctx, 1, domain.ByMember(7), r.ID, RoutinePatch{Status: ptr("paused")}, all); err != nil || next() != nil {
+		t.Fatalf("paused: next run %v, %v", next(), err)
+	}
+	// Resuming counts from now: the Monday missed while paused never fires.
+	now = time.Date(2025, 4, 2, 12, 0, 0, 0, time.UTC)
+	if _, err := s.ChangeRoutine(ctx, 1, domain.ByMember(7), r.ID, RoutinePatch{Status: ptr("active")}, all); err != nil || next() == nil || !next().Equal(time.Date(2025, 4, 7, 7, 0, 0, 0, time.UTC)) {
+		t.Fatalf("resumed: next run %v, %v", next(), err)
+	}
+	if _, err := s.ChangeTrigger(ctx, 1, domain.ByMember(7), tr.ID, domain.TriggerSettings{Enabled: ptr(false)}, all); err != nil || next() != nil {
+		t.Fatalf("off: next run %v, %v", next(), err)
+	}
+	if _, err := s.ChangeTrigger(ctx, 1, domain.ByMember(7), tr.ID, domain.TriggerSettings{Enabled: ptr(true)}, all); err != nil || next() == nil {
+		t.Fatalf("on again: next run %v, %v", next(), err)
+	}
+	if err := s.UnassignAgent(ctx, 1, 3, 7); err != nil || next() != nil {
+		t.Fatalf("a Draft: next run %v, %v", next(), err)
+	}
+	if _, err := s.AddTrigger(ctx, 1, domain.ByAgent(5), r.ID, TriggerInput{Kind: "api"}, all); !errors.Is(err, ErrNotOwnRoutine) {
+		t.Fatalf("an Agent on another's Routine: %v", err)
+	}
+	if err := s.DeleteTrigger(ctx, 1, domain.ByMember(7), api.ID, all); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ChangeRoutine(ctx, 1, domain.ByMember(7), r.ID, RoutinePatch{Status: ptr("archived")}, all); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ChangeTrigger(ctx, 1, domain.ByMember(7), tr.ID, domain.TriggerSettings{Label: ptr("x")}, all); !errors.Is(err, domain.ErrArchivedRoutineTriggers) {
+		t.Fatalf("changing an archived Routine's trigger: %v", err)
+	}
+	if err := s.DeleteTrigger(ctx, 1, domain.ByMember(7), tr.ID, all); !errors.Is(err, domain.ErrArchivedRoutineTriggers) {
+		t.Fatalf("deleting an archived Routine's trigger: %v", err)
+	}
+	var got []string
+	for _, a := range act.actions {
+		if strings.HasPrefix(a, "routine.trigger_") {
+			got = append(got, a)
+		}
+	}
+	want := []string{domain.RoutineTriggerCreatedAction, domain.RoutineTriggerCreatedAction, domain.RoutineTriggerUpdatedAction, domain.RoutineTriggerUpdatedAction, domain.RoutineTriggerDeletedAction}
+	if !slices.Equal(got, want) {
+		t.Fatalf("recorded %v, want %v", got, want)
+	}
+}

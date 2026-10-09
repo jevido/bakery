@@ -179,7 +179,7 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 		return ctx.Response().Json(contractshttp.StatusConflict, contractshttp.Json{"message": err.Error(), "run_id": held.RunID})
 	case errors.As(err, &status):
 		return ctx.Response().Json(contractshttp.StatusConflict, contractshttp.Json{"message": err.Error(), "status": string(status.Status)})
-	case errors.Is(err, domain.ErrNotHolder), errors.Is(err, domain.ErrNotAssignee), errors.Is(err, app.ErrBusy):
+	case errors.Is(err, domain.ErrNotHolder), errors.Is(err, domain.ErrNotAssignee), errors.Is(err, app.ErrBusy), errors.Is(err, domain.ErrArchivedRoutineTriggers):
 		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
 	case errors.Is(err, app.ErrAgentsOnly), errors.Is(err, app.ErrNotOwnRoutine):
 		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())

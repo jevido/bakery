@@ -6,6 +6,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	// Time zones load in the image without the OS database (Routine
+	// Schedule triggers).
+	_ "time/tzdata"
 
 	"github.com/goravel/framework/database/migration"
 

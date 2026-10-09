@@ -28,22 +28,22 @@ type issueRef struct {
 }
 
 type routineJSON struct {
-	ID                uint64     `json:"id"`
-	Title             string     `json:"title"`
-	Description       string     `json:"description"`
-	Project           *namedRef  `json:"project"`
-	Goal              *titledRef `json:"goal"`
-	ParentIssue       *issueRef  `json:"parent_issue"`
-	AssigneeAgent     *Agent     `json:"assignee_agent"`
-	Priority          string     `json:"priority"`
-	Status            string     `json:"status"`
-	ConcurrencyPolicy string     `json:"concurrency_policy"`
-	CatchUpPolicy     string     `json:"catch_up_policy"`
-	LastTriggeredAt   *time.Time `json:"last_triggered_at"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
-	Triggers          []any      `json:"triggers"`
-	LastRun           any        `json:"last_run"`
+	ID                uint64        `json:"id"`
+	Title             string        `json:"title"`
+	Description       string        `json:"description"`
+	Project           *namedRef     `json:"project"`
+	Goal              *titledRef    `json:"goal"`
+	ParentIssue       *issueRef     `json:"parent_issue"`
+	AssigneeAgent     *Agent        `json:"assignee_agent"`
+	Priority          string        `json:"priority"`
+	Status            string        `json:"status"`
+	ConcurrencyPolicy string        `json:"concurrency_policy"`
+	CatchUpPolicy     string        `json:"catch_up_policy"`
+	LastTriggeredAt   *time.Time    `json:"last_triggered_at"`
+	CreatedAt         time.Time     `json:"created_at"`
+	UpdatedAt         time.Time     `json:"updated_at"`
+	Triggers          []triggerJSON `json:"triggers"`
+	LastRun           any           `json:"last_run"`
 }
 
 // routinesJSON shows Routines with the names of their Projects, Goals,
@@ -97,11 +97,22 @@ func (c *Controller) routinesJSON(ctx contractshttp.Context, rs []domain.Routine
 	if err != nil {
 		return nil, err
 	}
+	routineIDs := make([]uint64, len(rs))
+	for n, r := range rs {
+		routineIDs[n] = r.ID
+	}
+	triggers, err := c.service.RoutineTriggers(cx, routineIDs)
+	if err != nil {
+		return nil, err
+	}
 	for n, r := range rs {
 		out[n] = routineJSON{
 			ID: r.ID, Title: r.Title, Description: r.Description, Priority: string(r.Priority), Status: string(r.Status),
 			ConcurrencyPolicy: string(r.ConcurrencyPolicy), CatchUpPolicy: string(r.CatchUpPolicy),
-			LastTriggeredAt: r.LastTriggeredAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Triggers: []any{},
+			LastTriggeredAt: r.LastTriggeredAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Triggers: []triggerJSON{},
+		}
+		for _, t := range triggers[r.ID] {
+			out[n].Triggers = append(out[n].Triggers, toTriggerJSON(t))
 		}
 		if name, ok := projects[r.ProjectID]; ok {
 			out[n].Project = &namedRef{ID: r.ProjectID, Name: name}
@@ -246,4 +257,102 @@ func (c *Controller) UpdateRoutine(ctx contractshttp.Context) contractshttp.Resp
 	}
 	r, err := c.service.ChangeRoutine(ctx.Context(), c.guild(ctx), c.actor(ctx), id, req.patch(), c.visible(ctx))
 	return c.oneRoutine(ctx, contractshttp.StatusOK, r, err)
+}
+
+type triggerJSON struct {
+	ID             uint64     `json:"id"`
+	Kind           string     `json:"kind"`
+	Label          string     `json:"label"`
+	Enabled        bool       `json:"enabled"`
+	CronExpression *string    `json:"cron_expression"`
+	Timezone       *string    `json:"timezone"`
+	NextRunAt      *time.Time `json:"next_run_at"`
+	LastFiredAt    *time.Time `json:"last_fired_at"`
+	LastResult     *string    `json:"last_result"`
+}
+
+// toTriggerJSON shows a Routine trigger; what it does not have is null.
+func toTriggerJSON(t domain.RoutineTrigger) triggerJSON {
+	orNull := func(v string) *string {
+		if v == "" {
+			return nil
+		}
+		return &v
+	}
+	return triggerJSON{
+		ID: t.ID, Kind: string(t.Kind), Label: t.Label, Enabled: t.Enabled,
+		CronExpression: orNull(t.CronExpression), Timezone: orNull(t.Timezone),
+		NextRunAt: t.NextRunAt, LastFiredAt: t.LastFiredAt, LastResult: orNull(t.LastResult),
+	}
+}
+
+type triggerRequest struct {
+	Kind           optional[string] `json:"kind"`
+	Label          optional[string] `json:"label"`
+	CronExpression optional[string] `json:"cron_expression"`
+	Timezone       optional[string] `json:"timezone"`
+	Enabled        optional[bool]   `json:"enabled"`
+}
+
+// orEmpty reads an optional string where null is empty: a label taken
+// away, a time zone back to UTC.
+func orEmpty(o optional[string]) *string {
+	if o.Set && o.Value == nil {
+		return new(string)
+	}
+	return o.ptr()
+}
+
+// AddTrigger adds a Routine trigger to the {id} Routine.
+func (c *Controller) AddTrigger(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req triggerRequest
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	t, err := c.service.AddTrigger(ctx.Context(), c.guild(ctx), c.actor(ctx), id, app.TriggerInput{
+		Kind: value(req.Kind.ptr()), Label: value(req.Label.ptr()), CronExpression: value(req.CronExpression.ptr()),
+		Timezone: value(req.Timezone.ptr()), Enabled: req.Enabled.ptr(),
+	}, c.visible(ctx))
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Json(contractshttp.StatusCreated, contractshttp.Json{"trigger": toTriggerJSON(t)})
+}
+
+// UpdateTrigger changes the {id} Routine trigger.
+func (c *Controller) UpdateTrigger(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req triggerRequest
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	if req.Kind.Set {
+		return respond.Invalid(ctx, "trigger.kind", "a trigger's kind cannot be changed")
+	}
+	t, err := c.service.ChangeTrigger(ctx.Context(), c.guild(ctx), c.actor(ctx), id, domain.TriggerSettings{
+		Label: orEmpty(req.Label), CronExpression: req.CronExpression.ptr(), Timezone: orEmpty(req.Timezone), Enabled: req.Enabled.ptr(),
+	}, c.visible(ctx))
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"trigger": toTriggerJSON(t)})
+}
+
+// DeleteTrigger deletes the {id} Routine trigger.
+func (c *Controller) DeleteTrigger(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	if err := c.service.DeleteTrigger(ctx.Context(), c.guild(ctx), c.actor(ctx), id, c.visible(ctx)); err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().NoContent()
 }
