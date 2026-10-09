@@ -400,6 +400,25 @@ type DesktopRun struct {
 	// Workspace is only in the claim's answer: the git Worktree the Run
 	// works in. Nil when its Issue names no Application with a repository.
 	Workspace *RunWorkspace `json:"workspace"`
+	// Skills is only in the claim's answer: the Agent's Agent skills, each
+	// with every Skill file, for the Runner to write where claude loads
+	// them.
+	Skills []RunSkill `json:"skills,omitempty"`
+}
+
+// RunSkill is one of a claimed Run's Agent's Skills, by its Skill slug.
+type RunSkill struct {
+	Slug  string         `json:"slug"`
+	Files []RunSkillFile `json:"files"`
+}
+
+// RunSkillFile is one Skill file: its path inside the Skill and its
+// content, as Encoding (utf8 or base64) says.
+type RunSkillFile struct {
+	Path       string `json:"path"`
+	Content    string `json:"content"`
+	Encoding   string `json:"encoding"`
+	Executable bool   `json:"executable"`
 }
 
 // RunWorkspace is where a claimed Run works: the Issue's Application, its

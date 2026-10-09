@@ -271,6 +271,9 @@ func (s *Service) record(ctx context.Context, e any) {
 		act.Details["role"] = e.Role
 	case domain.AgentTerminated:
 		act = activityOf(e.Agent, e.ActorID, "agent.terminated")
+	case domain.AgentSkillsSynced:
+		act = activityOf(e.Agent, e.ActorID, "agent.skills_synced")
+		act.Details["added"], act.Details["removed"] = e.Added, e.Removed
 	default:
 		return
 	}

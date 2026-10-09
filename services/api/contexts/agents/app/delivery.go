@@ -74,6 +74,9 @@ type QueuedRun struct {
 	// Workspace is where the Run works, filled only in ClaimRun's answer;
 	// nil when its Issue names no Application with a git repository.
 	Workspace *Workspace
+	// Skills is the Agent's Agent skills with their files, filled only in
+	// ClaimRun's answer.
+	Skills []domain.Skill
 }
 
 // Workspace is a Run's git Worktree as the Desktop makes it: the Issue's
@@ -242,6 +245,10 @@ func (s *Service) ClaimRun(ctx context.Context, d Desktop, runID uint64) (Queued
 			}
 			return QueuedRun{}, block
 		}
+		skills, err := s.runSkills(ctx, a.ID)
+		if err != nil {
+			return QueuedRun{}, err
+		}
 		key := newRunKey()
 		if err := r.Claim(d.ID, projectID, secret.Hash(key), s.now()); err != nil {
 			return QueuedRun{}, err
@@ -268,7 +275,7 @@ func (s *Service) ClaimRun(ctx context.Context, d Desktop, runID uint64) (Queued
 			return QueuedRun{}, err
 		}
 		q, err := s.queued(ctx, r, map[uint64]string{}, map[uint64]domain.Agent{a.ID: a})
-		q.RunKey, q.Workspace = key, ws
+		q.RunKey, q.Workspace, q.Skills = key, ws, skills
 		return q, err
 	}
 	return QueuedRun{}, fmt.Errorf("agents: run %d kept being joined while it was claimed", runID)

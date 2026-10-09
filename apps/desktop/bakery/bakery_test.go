@@ -295,3 +295,18 @@ func TestFollowRunStream(t *testing.T) {
 		t.Fatalf("a refused key: %v", err)
 	}
 }
+
+func TestDesktopRunSkills(t *testing.T) {
+	var r DesktopRun
+	if err := json.Unmarshal([]byte(`{"id":4,"run_key":"bky_run_x","workspace":null,"skills":[{"slug":"release-notes","files":[
+		{"path":"SKILL.md","content":"---\nname: Release notes\n---\n","encoding":"utf8","executable":false},
+		{"path":"bin/run","content":"AAE=","encoding":"base64","executable":true}]}]}`), &r); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Skills) != 1 || r.Skills[0].Slug != "release-notes" || len(r.Skills[0].Files) != 2 {
+		t.Fatalf("skills: %+v", r.Skills)
+	}
+	if f := r.Skills[0].Files[1]; f.Path != "bin/run" || f.Encoding != "base64" || f.Content != "AAE=" || !f.Executable {
+		t.Fatalf("file: %+v", f)
+	}
+}

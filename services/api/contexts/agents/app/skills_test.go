@@ -5,16 +5,19 @@ import (
 	"errors"
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/jevido/bakery/services/api/contexts/agents/domain"
 )
 
-// fakeSkills keeps Skills in memory; holders are the Agents having each.
+// fakeSkills keeps Skills in memory; holders are the Agents having each,
+// named from agents.
 type fakeSkills struct {
 	rows    map[uint64]domain.Skill
 	holders map[uint64][]SkillAgent
 	next    uint64
+	agents  *fakeAgents
 }
 
 func (f *fakeSkills) init() {
@@ -96,9 +99,37 @@ func (f *fakeSkills) SkillNames(_ context.Context, guildID uint64, ids []uint64)
 	return out, nil
 }
 
+func (f *fakeSkills) AgentSkills(_ context.Context, agentID uint64) ([]SkillSummary, error) {
+	f.init()
+	var out []SkillSummary
+	for id, hs := range f.holders {
+		if slices.ContainsFunc(hs, func(a SkillAgent) bool { return a.ID == agentID }) {
+			k := f.rows[id]
+			out = append(out, SkillSummary{Skill: k, FileCount: len(k.Files), Size: k.Size(), AgentsCount: len(hs)})
+		}
+	}
+	slices.SortFunc(out, func(a, b SkillSummary) int { return strings.Compare(a.Name, b.Name) })
+	return out, nil
+}
+
+func (f *fakeSkills) SetAgentSkills(_ context.Context, agentID uint64, ids []uint64) error {
+	f.init()
+	for id, hs := range f.holders {
+		f.holders[id] = slices.DeleteFunc(hs, func(a SkillAgent) bool { return a.ID == agentID })
+	}
+	h := SkillAgent{ID: agentID}
+	if a, ok := f.agents.rows[agentID]; ok {
+		h.Name, h.Icon, h.Status = a.Name, a.Icon, a.Status
+	}
+	for _, id := range ids {
+		f.holders[id] = append(f.holders[id], h)
+	}
+	return nil
+}
+
 func newSkillTest() (*Service, *fakeSkills, *fakeWork) {
-	s, _, _, w := newTest()
-	k := &fakeSkills{}
+	s, a, _, w := newTest()
+	k := &fakeSkills{agents: a}
 	s.skills = k
 	return s, k, w
 }
@@ -175,5 +206,85 @@ func TestDeleteSkillInUse(t *testing.T) {
 	}
 	if _, ok := store.rows[k.ID]; ok {
 		t.Fatal("the skill is left")
+	}
+}
+
+func TestSyncAgentSkills(t *testing.T) {
+	ctx := context.Background()
+	s, store, w := newSkillTest()
+	ada := hired(t, s, "Ada", 0)
+	notes, _ := s.CreateSkill(ctx, 1, 7, SkillInput{Name: "Release notes"})
+	review, _ := s.CreateSkill(ctx, 1, 7, SkillInput{Name: "Review"})
+	other, _ := s.CreateSkill(ctx, 2, 7, SkillInput{Name: "Elsewhere"})
+	by := Actor{ID: 7, Permissions: hirer}
+
+	var fe *domain.FieldError
+	if _, err := s.SyncAgentSkills(ctx, 1, by, ada.ID, []uint64{notes.ID, other.ID}); !errors.As(err, &fe) || fe.Field != "skill_ids" {
+		t.Fatalf("another guild's skill: %v", err)
+	}
+	if _, err := s.SyncAgentSkills(ctx, 1, Actor{ID: 8, Permissions: hirer}, ada.ID, []uint64{notes.ID}); !errors.Is(err, ErrMayNotManage) {
+		t.Fatalf("a person who may not manage her: %v", err)
+	}
+	got, err := s.SyncAgentSkills(ctx, 1, by, ada.ID, []uint64{review.ID, notes.ID, notes.ID})
+	if err != nil || len(got) != 2 || got[0].Slug != "release-notes" || got[1].Slug != "review" {
+		t.Fatalf("sync: %+v %v", got, err)
+	}
+	if w.last.Action != "agent.skills_synced" || w.last.AgentID != ada.ID || !slices.Equal(w.last.Details["added"].([]string), []string{"release-notes", "review"}) {
+		t.Fatalf("activity: %+v", w.last)
+	}
+	before := len(w.actions)
+	if _, err := s.SyncAgentSkills(ctx, 1, by, ada.ID, []uint64{notes.ID, review.ID}); err != nil || len(w.actions) != before {
+		t.Fatalf("the same set recorded: %v %v", err, w.actions[before:])
+	}
+	if listed, _ := s.AgentSkills(ctx, 1, ada.ID); len(listed) != 2 {
+		t.Fatalf("agent skills: %+v", listed)
+	}
+	if _, err := s.AgentSkills(ctx, 2, ada.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("another guild's agent: %v", err)
+	}
+
+	var inUse *SkillInUseError
+	if err := s.DeleteSkill(ctx, 1, 7, notes.ID); !errors.As(err, &inUse) || len(inUse.Agents) != 1 || inUse.Agents[0].Name != "Ada" {
+		t.Fatalf("delete in use: %v", err)
+	}
+	if _, err := s.SyncAgentSkills(ctx, 1, by, ada.ID, []uint64{review.ID}); err != nil || !slices.Equal(w.last.Details["removed"].([]string), []string{"release-notes"}) {
+		t.Fatalf("take it off: %v %+v", err, w.last)
+	}
+	if err := s.DeleteSkill(ctx, 1, 7, notes.ID); err != nil {
+		t.Fatalf("delete once off: %v", err)
+	}
+
+	// A terminated Agent keeps its Agent skills, cannot change them, and
+	// does not block deleting one.
+	if _, err := s.Terminate(ctx, 1, by, ada.ID); err != nil {
+		t.Fatal(err)
+	}
+	store.holders[review.ID][0].Status = domain.Terminated
+	var se *domain.StatusError
+	if _, err := s.SyncAgentSkills(ctx, 1, by, ada.ID, nil); !errors.As(err, &se) {
+		t.Fatalf("a terminated agent: %v", err)
+	}
+	if err := s.DeleteSkill(ctx, 1, 7, review.ID); err != nil {
+		t.Fatalf("delete held by a terminated agent: %v", err)
+	}
+}
+
+func TestClaimCarriesSkills(t *testing.T) {
+	ctx := context.Background()
+	s, _, w := newSkillTest()
+	ada, r := queuedRun(t, s, w)
+	k, _ := s.CreateSkill(ctx, 1, 7, SkillInput{Name: "Release notes"})
+	if _, err := s.WriteSkillFile(ctx, 1, 7, k.ID, SkillFileInput{Path: "run.sh", Content: "echo hi", Executable: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SyncAgentSkills(ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID, []uint64{k.ID}); err != nil {
+		t.Fatal(err)
+	}
+	q, err := s.ClaimRun(ctx, Desktop{ID: 3, MemberID: 7}, r.ID)
+	if err != nil || len(q.Skills) != 1 || q.Skills[0].Slug != "release-notes" || len(q.Skills[0].Files) != 2 || !q.Skills[0].Files["run.sh"].Executable {
+		t.Fatalf("claim: %+v %v", q.Skills, err)
+	}
+	if qs, _ := s.DesktopRuns(ctx, Desktop{ID: 3, MemberID: 7}); len(qs) != 1 || qs[0].Skills != nil {
+		t.Fatalf("the queue carries skills: %+v", qs)
 	}
 }

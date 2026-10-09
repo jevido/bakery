@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -247,5 +248,24 @@ func TestChainOfCommand(t *testing.T) {
 	loop := []Agent{{ID: 1, ManagerID: 2}, {ID: 2, ManagerID: 1}}
 	if chain := ChainOfCommand(loop, loop[0]); len(chain) != 1 || chain[0].ID != 2 {
 		t.Fatalf("chain through a cycle: %+v", chain)
+	}
+}
+
+func TestSyncSkills(t *testing.T) {
+	a := Agent{Status: Idle}
+	next, added, removed, err := a.SyncSkills([]uint64{2, 5}, []uint64{9, 2, 9, 3})
+	if err != nil || !slices.Equal(next, []uint64{2, 3, 9}) || !slices.Equal(added, []uint64{3, 9}) || !slices.Equal(removed, []uint64{5}) {
+		t.Fatalf("sync: %v %v %v %v", next, added, removed, err)
+	}
+	if _, added, removed, _ := a.SyncSkills([]uint64{2, 3}, []uint64{3, 2}); len(added)+len(removed) != 0 {
+		t.Fatalf("the same set changed: %v %v", added, removed)
+	}
+	if next, _, removed, _ := a.SyncSkills([]uint64{2}, nil); len(next) != 0 || !slices.Equal(removed, []uint64{2}) {
+		t.Fatalf("none: %v %v", next, removed)
+	}
+	a.Status = Terminated
+	var se *StatusError
+	if _, _, _, err := a.SyncSkills(nil, []uint64{1}); !errors.As(err, &se) {
+		t.Fatalf("a terminated agent: %v", err)
 	}
 }

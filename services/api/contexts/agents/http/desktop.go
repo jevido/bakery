@@ -3,6 +3,8 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"maps"
+	"slices"
 	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -74,6 +76,21 @@ type desktopRunJSON struct {
 	RunKey string `json:"run_key,omitempty"`
 	// Workspace is only filled in the claim's answer; null otherwise.
 	Workspace *workspaceJSON `json:"workspace"`
+	// Skills is only in the claim's answer: the Agent's Agent skills with
+	// every Skill file.
+	Skills *[]runSkillJSON `json:"skills,omitempty"`
+}
+
+type runSkillJSON struct {
+	Slug  string             `json:"slug"`
+	Files []runSkillFileJSON `json:"files"`
+}
+
+type runSkillFileJSON struct {
+	Path       string `json:"path"`
+	Content    string `json:"content"`
+	Encoding   string `json:"encoding"`
+	Executable bool   `json:"executable"`
 }
 
 type workspaceJSON struct {
@@ -100,6 +117,18 @@ func desktopRunOf(q app.QueuedRun) desktopRunJSON {
 			Application: namedJSON{ID: w.ApplicationID, Name: w.ApplicationName},
 			Repository:  w.Repository, BaseBranch: w.BaseBranch, Branch: w.Branch,
 		}
+	}
+	if q.RunKey != "" {
+		j.Skills = &[]runSkillJSON{}
+	}
+	for _, k := range q.Skills {
+		sk := runSkillJSON{Slug: k.Slug, Files: make([]runSkillFileJSON, 0, len(k.Files))}
+		for _, p := range slices.Sorted(maps.Keys(k.Files)) {
+			f := k.Files[p]
+			content, encoding := domain.EncodeSkillContent(f.Content)
+			sk.Files = append(sk.Files, runSkillFileJSON{Path: p, Content: content, Encoding: encoding, Executable: f.Executable})
+		}
+		*j.Skills = append(*j.Skills, sk)
 	}
 	if r.RetryOfRunID != 0 {
 		id := r.RetryOfRunID

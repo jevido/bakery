@@ -321,9 +321,13 @@ func Routes(r route.Router) {
 	})
 	r.Middleware(guilds.Auth, runInGuild, guilds.Can("hire_agents")).Post("/api/runs/{id}/cancel", c.CancelRun)
 	r.Middleware(guilds.Auth, guilds.Can("hire_agents")).Post("/api/agents", c.HireAgent)
-	r.Middleware(guilds.AuthAgents, agentInGuild, view).Get("/api/agents/{id}", c.ShowAgent)
+	r.Middleware(guilds.AuthAgents, agentInGuild, view).Group(func(r route.Router) {
+		r.Get("/api/agents/{id}", c.ShowAgent)
+		r.Get("/api/agents/{id}/skills", c.ListAgentSkills)
+	})
 	r.Middleware(guilds.Auth, agentInGuild, guilds.Can("hire_agents")).Group(func(r route.Router) {
 		r.Patch("/api/agents/{id}", c.EditAgent)
+		r.Put("/api/agents/{id}/skills", c.SyncAgentSkills)
 		r.Post("/api/agents/{id}/pause", c.PauseAgent)
 		r.Post("/api/agents/{id}/resume", c.ResumeAgent)
 		r.Post("/api/agents/{id}/terminate", c.TerminateAgent)

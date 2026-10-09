@@ -138,19 +138,7 @@ func (c *Controller) ListSkills(ctx contractshttp.Context) contractshttp.Respons
 	if err != nil {
 		return fail(ctx, err)
 	}
-	ks := make([]domain.Skill, len(ss))
-	for i, s := range ss {
-		ks[i] = s.Skill
-	}
-	creators, err := c.creators(ctx.Context(), ks)
-	if err != nil {
-		return fail(ctx, err)
-	}
-	out := make([]skillJSON, len(ss))
-	for i, s := range ss {
-		out[i] = skillOf(s, creators)
-	}
-	return ctx.Response().Success().Json(contractshttp.Json{"skills": out})
+	return c.skillsResponse(ctx, ss)
 }
 
 // ShowSkill answers one of the Current guild's Skills with its files and
@@ -275,4 +263,60 @@ func (c *Controller) DeleteSkill(ctx contractshttp.Context) contractshttp.Respon
 		return fail(ctx, err)
 	}
 	return ctx.Response().NoContent()
+}
+
+// skillsResponse answers Skills as the library lists them.
+func (c *Controller) skillsResponse(ctx contractshttp.Context, ss []app.SkillSummary) contractshttp.Response {
+	ks := make([]domain.Skill, len(ss))
+	for i, s := range ss {
+		ks[i] = s.Skill
+	}
+	creators, err := c.creators(ctx.Context(), ks)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out := make([]skillJSON, len(ss))
+	for i, s := range ss {
+		out[i] = skillOf(s, creators)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"skills": out})
+}
+
+// ListAgentSkills answers one of the Current guild's Agents' Agent skills,
+// by name.
+func (c *Controller) ListAgentSkills(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	ss, err := c.service.AgentSkills(ctx.Context(), c.Guild(ctx), id)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return c.skillsResponse(ctx, ss)
+}
+
+type agentSkillsRequest struct {
+	SkillIDs *[]uint64 `json:"skill_ids"`
+}
+
+// SyncAgentSkills replaces one of the Current guild's Agents' Agent
+// skills, Paperclip's skills sync.
+func (c *Controller) SyncAgentSkills(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req agentSkillsRequest
+	if err := ctx.Request().Bind(&req); err != nil {
+		return respond.BadBody(ctx)
+	}
+	if req.SkillIDs == nil {
+		return respond.Invalid(ctx, "skill_ids", "is required")
+	}
+	ss, err := c.service.SyncAgentSkills(ctx.Context(), c.Guild(ctx), c.actor(ctx), id, *req.SkillIDs)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return c.skillsResponse(ctx, ss)
 }

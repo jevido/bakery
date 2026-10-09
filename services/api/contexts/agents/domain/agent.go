@@ -484,6 +484,27 @@ func (a Agent) Rolable() error {
 	return nil
 }
 
+// SyncSkills replaces the Agent's Agent skills, current, with ids: each
+// once, sorted. A terminated Agent's are kept as they are. added and
+// removed are empty when the set stays the same.
+func (a Agent) SyncSkills(current, ids []uint64) (next, added, removed []uint64, err error) {
+	if a.Status == Terminated {
+		return nil, nil, nil, &StatusError{Status: a.Status, Action: "given skills"}
+	}
+	next = slices.Compact(slices.Sorted(slices.Values(ids)))
+	for _, id := range next {
+		if !slices.Contains(current, id) {
+			added = append(added, id)
+		}
+	}
+	for _, id := range current {
+		if !slices.Contains(next, id) {
+			removed = append(removed, id)
+		}
+	}
+	return next, added, removed, nil
+}
+
 // Node is an Agent in the Org chart with its direct reports.
 type Node struct {
 	Agent   Agent
@@ -581,4 +602,12 @@ type AgentRoleRemoved struct {
 type AgentTerminated struct {
 	Agent   Agent
 	ActorID uint64
+}
+
+// AgentSkillsSynced is published when a Member has changed an Agent's
+// Agent skills; Added and Removed name them by Skill slug.
+type AgentSkillsSynced struct {
+	Agent          Agent
+	ActorID        uint64
+	Added, Removed []string
 }

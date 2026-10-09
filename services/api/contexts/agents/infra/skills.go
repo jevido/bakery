@@ -67,13 +67,22 @@ type skillSummaryRecord struct {
 }
 
 func (s Skills) Skills(ctx context.Context, guildID uint64) ([]app.SkillSummary, error) {
+	return s.summaries(ctx, `s.guild_id = ?`, guildID)
+}
+
+func (s Skills) AgentSkills(ctx context.Context, agentID uint64) ([]app.SkillSummary, error) {
+	return s.summaries(ctx, `s.id IN (SELECT skill_id FROM agent_skills WHERE agent_id = ?)`, agentID)
+}
+
+// summaries lists the Skills where says, by name.
+func (s Skills) summaries(ctx context.Context, where string, arg uint64) ([]app.SkillSummary, error) {
 	var recs []skillSummaryRecord
 	err := s.query(ctx).Raw(`SELECT s.*,
 			(SELECT count(*) FROM skill_files f WHERE f.skill_id = s.id) AS file_count,
 			(SELECT COALESCE(sum(octet_length(f.content)), 0) FROM skill_files f WHERE f.skill_id = s.id) AS size,
 			(SELECT count(*) FROM agent_skills a JOIN agents g ON g.id = a.agent_id
 				WHERE a.skill_id = s.id AND g.status <> ?) AS agents_count
-		FROM skills s WHERE s.guild_id = ? ORDER BY lower(s.name), s.id`, string(domain.Terminated), guildID).Scan(&recs)
+		FROM skills s WHERE `+where+` ORDER BY lower(s.name), s.id`, string(domain.Terminated), arg).Scan(&recs)
 	if err != nil {
 		return nil, err
 	}
@@ -84,6 +93,22 @@ func (s Skills) Skills(ctx context.Context, guildID uint64) ([]app.SkillSummary,
 		out[i] = app.SkillSummary{Skill: k, FileCount: r.FileCount, Size: r.Size, AgentsCount: r.AgentsCount}
 	}
 	return out, nil
+}
+
+// SetAgentSkills replaces the Agent's rows in one transaction; a Skill
+// deleted meanwhile is left out instead of failing the foreign key.
+func (s Skills) SetAgentSkills(ctx context.Context, agentID uint64, ids []uint64) error {
+	return facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		if _, err := tx.Exec(`DELETE FROM agent_skills WHERE agent_id = ?`, agentID); err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if _, err := tx.Exec(`INSERT INTO agent_skills (agent_id, skill_id) SELECT ?, id FROM skills WHERE id = ?`, agentID, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (s Skills) Skill(ctx context.Context, id uint64) (domain.Skill, bool, error) {

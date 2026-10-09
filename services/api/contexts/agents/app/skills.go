@@ -50,6 +50,10 @@ type Skills interface {
 	DeleteSkill(ctx context.Context, id uint64, agentIDs []uint64) error
 	// SkillNames names the Guild's Skills among ids.
 	SkillNames(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)
+	// AgentSkills lists the Agent's Agent skills, by name.
+	AgentSkills(ctx context.Context, agentID uint64) ([]SkillSummary, error)
+	// SetAgentSkills replaces the Agent's Agent skills with the Skills ids.
+	SetAgentSkills(ctx context.Context, agentID uint64, ids []uint64) error
 }
 
 // SkillInUseError refuses deleting a Skill Agents still have.
@@ -207,6 +211,84 @@ func (s *Service) DeleteSkill(ctx context.Context, guildID, memberID, skillID ui
 	}
 	s.recordSkill(ctx, domain.SkillDeleted{Skill: k, ActorID: memberID})
 	return nil
+}
+
+// AgentSkills lists the Guild's Agent's Agent skills, by name.
+func (s *Service) AgentSkills(ctx context.Context, guildID, agentID uint64) ([]SkillSummary, error) {
+	if _, err := s.Agent(ctx, guildID, agentID); err != nil {
+		return nil, err
+	}
+	return s.skills.AgentSkills(ctx, agentID)
+}
+
+// SyncAgentSkills replaces the Agent's Agent skills with the Guild's
+// Skills skillIDs, by a person who may manage the Agent, and lists them.
+// The same set again records nothing.
+func (s *Service) SyncAgentSkills(ctx context.Context, guildID uint64, actor Actor, agentID uint64, skillIDs []uint64) ([]SkillSummary, error) {
+	a, err := s.managed(ctx, guildID, actor, agentID)
+	if err != nil {
+		return nil, err
+	}
+	library, err := s.skills.Skills(ctx, guildID)
+	if err != nil {
+		return nil, err
+	}
+	slugs := make(map[uint64]string, len(library))
+	for _, k := range library {
+		slugs[k.ID] = k.Slug
+	}
+	for _, id := range skillIDs {
+		if _, ok := slugs[id]; !ok {
+			return nil, &domain.FieldError{Field: "skill_ids", Message: fmt.Sprintf("%d is not a skill of the guild", id)}
+		}
+	}
+	held, err := s.skills.AgentSkills(ctx, a.ID)
+	if err != nil {
+		return nil, err
+	}
+	current := make([]uint64, len(held))
+	for i, k := range held {
+		current[i], slugs[k.ID] = k.ID, k.Slug
+	}
+	next, added, removed, err := a.SyncSkills(current, skillIDs)
+	if err != nil {
+		return nil, err
+	}
+	if len(added)+len(removed) == 0 {
+		return held, nil
+	}
+	if err := s.skills.SetAgentSkills(ctx, a.ID, next); err != nil {
+		return nil, err
+	}
+	named := func(ids []uint64) []string {
+		out := make([]string, len(ids))
+		for i, id := range ids {
+			out[i] = slugs[id]
+		}
+		return out
+	}
+	s.record(ctx, domain.AgentSkillsSynced{Agent: a, ActorID: actor.ID, Added: named(added), Removed: named(removed)})
+	return s.skills.AgentSkills(ctx, a.ID)
+}
+
+// runSkills is the Agent's Agent skills with every Skill file, for its
+// Run's claim.
+func (s *Service) runSkills(ctx context.Context, agentID uint64) ([]domain.Skill, error) {
+	held, err := s.skills.AgentSkills(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Skill, 0, len(held))
+	for _, h := range held {
+		k, found, err := s.skills.Skill(ctx, h.ID)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			out = append(out, k)
+		}
+	}
+	return out, nil
 }
 
 // recordSkill adds a Skill's domain event to work's Activity; a failure is
