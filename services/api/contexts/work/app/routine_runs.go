@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 
@@ -9,11 +10,14 @@ import (
 )
 
 // RunRequest is one Routine run asked for: its source, the Routine trigger
-// it names (0 for none) and who asked (nobody for a Schedule).
+// it names (0 for none), who asked (nobody for a Schedule), the values
+// given for its Routine variables, and a Webhook delivery's payload.
 type RunRequest struct {
 	Source    domain.RoutineRunSource
 	TriggerID uint64
 	Actor     domain.Actor
+	Variables map[string]any
+	Payload   map[string]any
 }
 
 // everyProject sees every Project: a Routine run creates its Execution
@@ -65,11 +69,20 @@ func (s *Service) startRoutineRun(ctx context.Context, r domain.Routine, trigger
 	if err != nil {
 		return domain.RoutineRun{}, err
 	}
+	// Values that do not fit refuse the run before it is recorded, as
+	// Paperclip's.
+	values, err := domain.ResolveVariables(r.Variables, req.Source, req.Payload, req.Variables, now)
+	if err != nil {
+		return domain.RoutineRun{}, err
+	}
+	if len(domain.VariableNames(r.Title, r.Description)) > 0 {
+		rr.Variables = values
+	}
 	rr.IdempotencyKey = idempotencyKey
 	if rr, err = s.routines.CreateRoutineRun(ctx, rr); err != nil {
 		return domain.RoutineRun{}, err
 	}
-	if err := s.dispatch(ctx, r, &rr); err != nil {
+	if err := s.dispatch(ctx, r, &rr, values); err != nil {
 		return domain.RoutineRun{}, err
 	}
 	if err := s.routines.SaveRoutineRun(ctx, rr); err != nil {
@@ -150,13 +163,17 @@ func (s *Service) FireWebhookTrigger(ctx context.Context, publicID string, h dom
 			return rr, err
 		}
 	}
-	return s.startRoutineRun(ctx, r, &t, RunRequest{Source: domain.WebhookSource, TriggerID: t.ID}, key)
+	// The delivery was checked to be a JSON object, or empty.
+	var payload map[string]any
+	_ = json.Unmarshal(body, &payload)
+	return s.startRoutineRun(ctx, r, &t, RunRequest{Source: domain.WebhookSource, TriggerID: t.ID, Payload: payload}, key)
 }
 
 // dispatch links the received Routine run to the Routine's Live execution
-// Issue, as its Concurrency policy says, or creates its Execution Issue.
-// An Issue that cannot be created fails the Routine run with the reason.
-func (s *Service) dispatch(ctx context.Context, r domain.Routine, rr *domain.RoutineRun) error {
+// Issue, as its Concurrency policy says, or creates its Execution Issue
+// with the values filled into its title and description. An Issue that
+// cannot be created fails the Routine run with the reason.
+func (s *Service) dispatch(ctx context.Context, r domain.Routine, rr *domain.RoutineRun, values map[string]any) error {
 	live, found, err := s.liveExecutionIssue(ctx, r)
 	if err != nil {
 		return err
@@ -165,7 +182,7 @@ func (s *Service) dispatch(ctx context.Context, r domain.Routine, rr *domain.Rou
 		return nil
 	}
 	i, err := s.CreateIssue(ctx, r.GuildID, rr.TriggeredBy, IssueInput{
-		Title: r.Title, Description: r.Description, Status: string(domain.Todo), Priority: string(r.Priority),
+		Title: domain.Interpolate(r.Title, values), Description: domain.Interpolate(r.Description, values), Status: string(domain.Todo), Priority: string(r.Priority),
 		AssigneeAgentID: r.AssigneeAgentID, ProjectID: r.ProjectID, GoalID: r.GoalID, ParentID: r.ParentIssueID,
 		originRoutineID: r.ID, originRoutineRunID: rr.ID,
 	}, everyProject)

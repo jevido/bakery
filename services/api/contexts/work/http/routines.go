@@ -44,11 +44,62 @@ type routineJSON struct {
 	Status            string          `json:"status"`
 	ConcurrencyPolicy string          `json:"concurrency_policy"`
 	CatchUpPolicy     string          `json:"catch_up_policy"`
+	Variables         []variableJSON  `json:"variables"`
 	LastTriggeredAt   *time.Time      `json:"last_triggered_at"`
 	CreatedAt         time.Time       `json:"created_at"`
 	UpdatedAt         time.Time       `json:"updated_at"`
 	Triggers          []triggerJSON   `json:"triggers"`
 	LastRun           *routineRunJSON `json:"last_run"`
+}
+
+// variableJSON is a Routine variable on the wire, as Paperclip's with its
+// names in snake case. Label is null for none.
+type variableJSON struct {
+	Name     string   `json:"name"`
+	Label    *string  `json:"label"`
+	Type     string   `json:"type"`
+	Default  any      `json:"default_value"`
+	Required bool     `json:"required"`
+	Options  []string `json:"options"`
+}
+
+func toVariablesJSON(vars []domain.RoutineVariable) []variableJSON {
+	out := make([]variableJSON, len(vars))
+	for n, v := range vars {
+		out[n] = variableJSON{Name: v.Name, Type: string(v.Type), Default: v.Default, Required: v.Required, Options: v.Options}
+		if v.Label != "" {
+			out[n].Label = &v.Label
+		}
+		if out[n].Options == nil {
+			out[n].Options = []string{}
+		}
+	}
+	return out
+}
+
+// variableRequest is a Routine variable's definition as typed: type text,
+// required and no options unless it says otherwise.
+type variableRequest struct {
+	Name     string   `json:"name"`
+	Label    *string  `json:"label"`
+	Type     *string  `json:"type"`
+	Default  any      `json:"default_value"`
+	Required *bool    `json:"required"`
+	Options  []string `json:"options"`
+}
+
+func variablesOf(reqs []variableRequest) []domain.RoutineVariable {
+	out := make([]domain.RoutineVariable, len(reqs))
+	for n, v := range reqs {
+		out[n] = domain.RoutineVariable{
+			Name: v.Name, Label: value(v.Label), Type: domain.TextVariable, Default: v.Default,
+			Required: v.Required == nil || *v.Required, Options: v.Options,
+		}
+		if v.Type != nil {
+			out[n].Type = domain.VariableType(*v.Type)
+		}
+	}
+	return out
 }
 
 // routinesJSON shows Routines with the names of their Projects, Goals,
@@ -129,7 +180,7 @@ func (c *Controller) routinesJSON(ctx contractshttp.Context, rs []domain.Routine
 	for n, r := range rs {
 		out[n] = routineJSON{
 			ID: r.ID, Title: r.Title, Description: r.Description, Priority: string(r.Priority), Status: string(r.Status),
-			ConcurrencyPolicy: string(r.ConcurrencyPolicy), CatchUpPolicy: string(r.CatchUpPolicy),
+			ConcurrencyPolicy: string(r.ConcurrencyPolicy), CatchUpPolicy: string(r.CatchUpPolicy), Variables: toVariablesJSON(r.Variables),
 			LastTriggeredAt: r.LastTriggeredAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Triggers: []triggerJSON{},
 			LastRun: lastOf[r.ID],
 		}
@@ -153,21 +204,23 @@ func (c *Controller) routinesJSON(ctx contractshttp.Context, rs []domain.Routine
 }
 
 type routineRequest struct {
-	Title             optional[string] `json:"title"`
-	Description       optional[string] `json:"description"`
-	Priority          optional[string] `json:"priority"`
-	Status            optional[string] `json:"status"`
-	ConcurrencyPolicy optional[string] `json:"concurrency_policy"`
-	CatchUpPolicy     optional[string] `json:"catch_up_policy"`
-	ProjectID         optional[uint64] `json:"project_id"`
-	GoalID            optional[uint64] `json:"goal_id"`
-	ParentIssueID     optional[uint64] `json:"parent_issue_id"`
-	AssigneeAgentID   optional[uint64] `json:"assignee_agent_id"`
+	Title             optional[string]            `json:"title"`
+	Description       optional[string]            `json:"description"`
+	Priority          optional[string]            `json:"priority"`
+	Status            optional[string]            `json:"status"`
+	ConcurrencyPolicy optional[string]            `json:"concurrency_policy"`
+	CatchUpPolicy     optional[string]            `json:"catch_up_policy"`
+	ProjectID         optional[uint64]            `json:"project_id"`
+	GoalID            optional[uint64]            `json:"goal_id"`
+	ParentIssueID     optional[uint64]            `json:"parent_issue_id"`
+	AssigneeAgentID   optional[uint64]            `json:"assignee_agent_id"`
+	Variables         optional[[]variableRequest] `json:"variables"`
 }
 
 func (r routineRequest) input() app.RoutineInput {
 	return app.RoutineInput{
-		Title: value(r.Title.ptr()), Description: value(r.Description.ptr()), Priority: value(r.Priority.ptr()), Status: value(r.Status.ptr()),
+		Variables: variablesOf(value(r.Variables.ptr())),
+		Title:     value(r.Title.ptr()), Description: value(r.Description.ptr()), Priority: value(r.Priority.ptr()), Status: value(r.Status.ptr()),
 		ConcurrencyPolicy: value(r.ConcurrencyPolicy.ptr()), CatchUpPolicy: value(r.CatchUpPolicy.ptr()),
 		ProjectID: value(idOf(r.ProjectID)), GoalID: value(idOf(r.GoalID)), ParentIssueID: value(idOf(r.ParentIssueID)), AssigneeAgentID: value(idOf(r.AssigneeAgentID)),
 	}
@@ -178,6 +231,11 @@ func (r routineRequest) patch() app.RoutinePatch {
 		Title: r.Title.ptr(), Description: r.Description.ptr(), Priority: r.Priority.ptr(), Status: r.Status.ptr(),
 		ConcurrencyPolicy: r.ConcurrencyPolicy.ptr(), CatchUpPolicy: r.CatchUpPolicy.ptr(),
 		ProjectID: idOf(r.ProjectID), GoalID: idOf(r.GoalID), ParentIssueID: idOf(r.ParentIssueID), AssigneeAgentID: idOf(r.AssigneeAgentID),
+	}
+	if r.Variables.Set {
+		// Null is no definitions: every placeholder takes the default one.
+		v := variablesOf(value(r.Variables.ptr()))
+		p.Variables = &v
 	}
 	if r.Description.Set && p.Description == nil {
 		// A null description is an empty one.
@@ -466,15 +524,16 @@ type runIssueRef struct {
 }
 
 type routineRunJSON struct {
-	ID            uint64       `json:"id"`
-	Routine       titledRef    `json:"routine"`
-	Source        string       `json:"source"`
-	Status        string       `json:"status"`
-	TriggeredAt   time.Time    `json:"triggered_at"`
-	CompletedAt   *time.Time   `json:"completed_at"`
-	FailureReason *string      `json:"failure_reason"`
-	Trigger       *triggerRef  `json:"trigger"`
-	Issue         *runIssueRef `json:"issue"`
+	ID            uint64         `json:"id"`
+	Routine       titledRef      `json:"routine"`
+	Source        string         `json:"source"`
+	Status        string         `json:"status"`
+	TriggeredAt   time.Time      `json:"triggered_at"`
+	CompletedAt   *time.Time     `json:"completed_at"`
+	FailureReason *string        `json:"failure_reason"`
+	Trigger       *triggerRef    `json:"trigger"`
+	Issue         *runIssueRef   `json:"issue"`
+	Variables     map[string]any `json:"variables"`
 }
 
 // routineRunsJSON shows Routine runs with their Routine's title, their
@@ -524,7 +583,7 @@ func (c *Controller) routineRunsJSON(ctx contractshttp.Context, rrs []domain.Rou
 	for n, rr := range rrs {
 		out[n] = routineRunJSON{
 			ID: rr.ID, Routine: titledRef{ID: rr.RoutineID, Title: titles[rr.RoutineID]}, Source: string(rr.Source), Status: string(rr.Status),
-			TriggeredAt: rr.TriggeredAt.UTC(), CompletedAt: utcOf(rr.CompletedAt),
+			TriggeredAt: rr.TriggeredAt.UTC(), CompletedAt: utcOf(rr.CompletedAt), Variables: rr.Variables,
 		}
 		if rr.FailureReason != "" {
 			reason := rr.FailureReason
@@ -550,6 +609,7 @@ func utcOf(t *time.Time) *time.Time {
 
 type runRequest struct {
 	TriggerID optional[uint64] `json:"trigger_id"`
+	Variables map[string]any   `json:"variables"`
 }
 
 // RunRoutine runs the {id} Routine now: manual, or api when it names one
@@ -560,13 +620,13 @@ func (c *Controller) RunRoutine(ctx contractshttp.Context) contractshttp.Respons
 		return notFound(ctx)
 	}
 	var req runRequest
-	// The body, {trigger_id}, is optional.
+	// The body, {trigger_id, variables}, is optional.
 	if ctx.Request().Origin().ContentLength != 0 {
 		if err := ctx.Request().Bind(&req); err != nil {
 			return respond.BadBody(ctx)
 		}
 	}
-	run := app.RunRequest{Source: domain.ManualSource, Actor: c.actor(ctx)}
+	run := app.RunRequest{Source: domain.ManualSource, Actor: c.actor(ctx), Variables: req.Variables}
 	if t := value(idOf(req.TriggerID)); t != 0 {
 		run.Source, run.TriggerID = domain.APISource, t
 	}

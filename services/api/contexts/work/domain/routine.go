@@ -96,6 +96,7 @@ type Routine struct {
 	Status            RoutineStatus
 	ConcurrencyPolicy ConcurrencyPolicy
 	CatchUpPolicy     CatchUpPolicy
+	Variables         []RoutineVariable
 	CreatedBy         Actor
 	LastTriggeredAt   *time.Time
 	CreatedAt         time.Time
@@ -107,7 +108,7 @@ type Routine struct {
 func NewRoutine(guildID uint64, createdBy Actor, title, description string) (Routine, error) {
 	r := Routine{
 		GuildID: guildID, CreatedBy: createdBy, Priority: Medium, Status: ActiveRoutine,
-		ConcurrencyPolicy: CoalesceIfActive, CatchUpPolicy: SkipMissed,
+		ConcurrencyPolicy: CoalesceIfActive, CatchUpPolicy: SkipMissed, Variables: []RoutineVariable{},
 	}
 	if err := r.Rename(title); err != nil {
 		return Routine{}, err
@@ -124,21 +125,26 @@ func (r Routine) Draft() bool { return r.AssigneeAgentID == 0 }
 // Archived is true once the Routine is archived; it is not changed again.
 func (r Routine) Archived() bool { return r.Status == ArchivedRoutine }
 
+// Rename sets the title and keeps the Routine variables in step with its
+// placeholders.
 func (r *Routine) Rename(title string) error {
 	t, err := Title("title", title)
 	if err != nil {
 		return err
 	}
 	r.Title = t
+	r.Variables = SyncVariables(r.Title, r.Description, r.Variables)
 	return nil
 }
 
-// Describe sets the Markdown description; empty is none.
+// Describe sets the Markdown description, empty for none, and keeps the
+// Routine variables in step with its placeholders.
 func (r *Routine) Describe(description string) error {
 	if utf8.RuneCountInString(description) > MaxRoutineDescription {
 		return invalid("description", "description is at most %d characters", MaxRoutineDescription)
 	}
 	r.Description = description
+	r.Variables = SyncVariables(r.Title, r.Description, r.Variables)
 	return nil
 }
 

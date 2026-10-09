@@ -3,6 +3,7 @@ package infra
 import (
 	"context"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -27,6 +28,7 @@ type routineRecord struct {
 	Status            string
 	ConcurrencyPolicy string
 	CatchUpPolicy     string
+	Variables         string `gorm:"type:jsonb"`
 	CreatedByMemberID *uint64
 	CreatedByAgentID  *uint64
 	LastTriggeredAt   *time.Time
@@ -41,13 +43,65 @@ func (r routineRecord) toDomain() domain.Routine {
 		AssigneeAgentID: deref(r.AssigneeAgentID), Title: r.Title, Description: r.Description,
 		Priority: domain.Priority(r.Priority), Status: domain.RoutineStatus(r.Status),
 		ConcurrencyPolicy: domain.ConcurrencyPolicy(r.ConcurrencyPolicy), CatchUpPolicy: domain.CatchUpPolicy(r.CatchUpPolicy),
-		CreatedBy: actor(r.CreatedByMemberID, r.CreatedByAgentID),
+		CreatedBy: actor(r.CreatedByMemberID, r.CreatedByAgentID), Variables: variablesOf(r.Variables),
 	}
 	if r.LastTriggeredAt != nil {
 		t := r.LastTriggeredAt.UTC()
 		out.LastTriggeredAt = &t
 	}
 	out.CreatedAt, out.UpdatedAt = stamp(&r.Timestamps)
+	return out
+}
+
+// variableRecord is a Routine variable as routines.variables keeps it.
+type variableRecord struct {
+	Name     string   `json:"name"`
+	Label    string   `json:"label,omitempty"`
+	Type     string   `json:"type"`
+	Default  any      `json:"default_value"`
+	Required bool     `json:"required"`
+	Options  []string `json:"options"`
+}
+
+func variablesOf(column string) []domain.RoutineVariable {
+	var recs []variableRecord
+	_ = json.Unmarshal([]byte(column), &recs)
+	out := make([]domain.RoutineVariable, len(recs))
+	for n, v := range recs {
+		out[n] = domain.RoutineVariable{Name: v.Name, Label: v.Label, Type: domain.VariableType(v.Type), Default: v.Default, Required: v.Required, Options: v.Options}
+		if out[n].Options == nil {
+			out[n].Options = []string{}
+		}
+	}
+	return out
+}
+
+func variablesColumn(vars []domain.RoutineVariable) string {
+	recs := make([]variableRecord, len(vars))
+	for n, v := range vars {
+		recs[n] = variableRecord{Name: v.Name, Label: v.Label, Type: string(v.Type), Default: v.Default, Required: v.Required, Options: v.Options}
+	}
+	b, _ := json.Marshal(recs)
+	return string(b)
+}
+
+// valuesColumn is a Routine run's variables' values as
+// routine_runs.variables keeps them; nil for none.
+func valuesColumn(values map[string]any) *string {
+	if values == nil {
+		return nil
+	}
+	b, _ := json.Marshal(values)
+	s := string(b)
+	return &s
+}
+
+func valuesOf(column *string) map[string]any {
+	if column == nil {
+		return nil
+	}
+	var out map[string]any
+	_ = json.Unmarshal([]byte(*column), &out)
 	return out
 }
 
@@ -88,7 +142,7 @@ func (s Routines) CreateRoutine(ctx context.Context, r domain.Routine) (domain.R
 		GuildID: r.GuildID, ProjectID: nullable(r.ProjectID), GoalID: nullable(r.GoalID), ParentIssueID: nullable(r.ParentIssueID),
 		Title: r.Title, Description: r.Description, AssigneeAgentID: nullable(r.AssigneeAgentID),
 		Priority: string(r.Priority), Status: string(r.Status),
-		ConcurrencyPolicy: string(r.ConcurrencyPolicy), CatchUpPolicy: string(r.CatchUpPolicy),
+		ConcurrencyPolicy: string(r.ConcurrencyPolicy), CatchUpPolicy: string(r.CatchUpPolicy), Variables: variablesColumn(r.Variables),
 		CreatedByMemberID: nullable(r.CreatedBy.MemberID), CreatedByAgentID: nullable(r.CreatedBy.AgentID),
 	}
 	if err := s.query(ctx).Create(&rec); err != nil {
@@ -99,9 +153,10 @@ func (s Routines) CreateRoutine(ctx context.Context, r domain.Routine) (domain.R
 
 func (s Routines) SaveRoutine(ctx context.Context, r domain.Routine) error {
 	_, err := s.query(ctx).Exec(`UPDATE routines SET project_id = ?, goal_id = ?, parent_issue_id = ?, title = ?, description = ?,
-		assignee_agent_id = ?, priority = ?, status = ?, concurrency_policy = ?, catch_up_policy = ?, updated_at = now() WHERE id = ?`,
+		assignee_agent_id = ?, priority = ?, status = ?, concurrency_policy = ?, catch_up_policy = ?, variables = ?::jsonb, updated_at = now() WHERE id = ?`,
 		nullable(r.ProjectID), nullable(r.GoalID), nullable(r.ParentIssueID), r.Title, r.Description,
-		nullable(r.AssigneeAgentID), string(r.Priority), string(r.Status), string(r.ConcurrencyPolicy), string(r.CatchUpPolicy), r.ID)
+		nullable(r.AssigneeAgentID), string(r.Priority), string(r.Status), string(r.ConcurrencyPolicy), string(r.CatchUpPolicy),
+		variablesColumn(r.Variables), r.ID)
 	return err
 }
 
@@ -349,6 +404,7 @@ type routineRunRecord struct {
 	TriggeredByMemberID       *uint64
 	TriggeredByAgentID        *uint64
 	IdempotencyKey            *string
+	Variables                 *string `gorm:"type:jsonb"`
 	CompletedAt               *time.Time
 	orm.Timestamps
 }
@@ -361,6 +417,7 @@ func (r routineRunRecord) toDomain() domain.RoutineRun {
 		Source: domain.RoutineRunSource(r.Source), Status: domain.RoutineRunStatus(r.Status), TriggeredAt: r.TriggeredAt.UTC(),
 		LinkedIssueID: deref(r.LinkedIssueID), CoalescedIntoRunID: deref(r.CoalescedIntoRoutineRunID), FailureReason: r.FailureReason,
 		TriggeredBy: actor(r.TriggeredByMemberID, r.TriggeredByAgentID), IdempotencyKey: orZero(r.IdempotencyKey), CompletedAt: utc(r.CompletedAt),
+		Variables: valuesOf(r.Variables),
 	}
 	out.CreatedAt, out.UpdatedAt = stamp(&r.Timestamps)
 	return out
@@ -379,7 +436,7 @@ func (s Routines) CreateRoutineRun(ctx context.Context, rr domain.RoutineRun) (d
 		GuildID: rr.GuildID, RoutineID: rr.RoutineID, TriggerID: nullable(rr.TriggerID), Source: string(rr.Source), Status: string(rr.Status),
 		TriggeredAt: rr.TriggeredAt, LinkedIssueID: nullable(rr.LinkedIssueID), CoalescedIntoRoutineRunID: nullable(rr.CoalescedIntoRunID),
 		FailureReason: rr.FailureReason, TriggeredByMemberID: nullable(rr.TriggeredBy.MemberID), TriggeredByAgentID: nullable(rr.TriggeredBy.AgentID),
-		IdempotencyKey: nullableString(rr.IdempotencyKey), CompletedAt: rr.CompletedAt,
+		IdempotencyKey: nullableString(rr.IdempotencyKey), Variables: valuesColumn(rr.Variables), CompletedAt: rr.CompletedAt,
 	}
 	if err := s.query(ctx).Create(&rec); err != nil {
 		return domain.RoutineRun{}, err

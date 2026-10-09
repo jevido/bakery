@@ -281,3 +281,65 @@ func TestFireWebhookTriggerRefused(t *testing.T) {
 		t.Fatalf("disabled: %v", err)
 	}
 }
+
+func TestRoutineVariables(t *testing.T) {
+	ctx := context.Background()
+	s, rs, _, r, _, _ := runService(t)
+	title := "Triage {{repo}} alert"
+	r, err := s.ChangeRoutine(ctx, 1, domain.ByMember(7), r.ID, RoutinePatch{Title: &title}, everyProject)
+	if err != nil || len(r.Variables) != 1 || r.Variables[0].Name != "repo" {
+		t.Fatalf("ChangeRoutine = %+v, %v", r.Variables, err)
+	}
+	manual := RunRequest{Source: domain.ManualSource, Actor: domain.ByMember(7)}
+	var fe *domain.FieldError
+	if _, err := s.RunRoutine(ctx, 1, r.ID, manual); !errors.As(err, &fe) || fe.Field != "variables.repo" || len(rs.runs) != 0 {
+		t.Fatalf("no value: %v; %d runs", err, len(rs.runs))
+	}
+	manual.Variables = map[string]any{"repo": "shop"}
+	rr, err := s.RunRoutine(ctx, 1, r.ID, manual)
+	if err != nil || rr.Variables["repo"] != "shop" || rr.Variables["date"] == nil {
+		t.Fatalf("RunRoutine = %+v, %v", rr, err)
+	}
+	if i, _, _ := s.issues.Issue(ctx, rr.LinkedIssueID); i.Title != "Triage shop alert" {
+		t.Fatalf("the Execution Issue is %q", i.Title)
+	}
+
+	// A Schedule trigger waits for a default.
+	if _, err := s.AddTrigger(ctx, 1, domain.ByMember(7), r.ID, TriggerInput{Kind: "schedule", CronExpression: "daily"}, everyProject); !errors.As(err, &fe) || fe.Field != "trigger" {
+		t.Fatalf("a schedule trigger without a default: %v", err)
+	}
+	off := false
+	sched, err := s.AddTrigger(ctx, 1, domain.ByMember(7), r.ID, TriggerInput{Kind: "schedule", CronExpression: "daily", Enabled: &off}, everyProject)
+	if err != nil {
+		t.Fatalf("a disabled schedule trigger: %v", err)
+	}
+	on := true
+	if _, err := s.ChangeTrigger(ctx, 1, domain.ByMember(7), sched.ID, domain.TriggerSettings{Enabled: &on}, everyProject); !errors.As(err, &fe) || fe.Field != "trigger" {
+		t.Fatalf("enabling it without a default: %v", err)
+	}
+	defs := []domain.RoutineVariable{{Name: "repo", Type: domain.SelectVariable, Options: []string{"shop", "blog"}, Default: "blog", Required: true}}
+	if r, err = s.ChangeRoutine(ctx, 1, domain.ByMember(7), r.ID, RoutinePatch{Variables: &defs}, everyProject); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ChangeTrigger(ctx, 1, domain.ByMember(7), sched.ID, domain.TriggerSettings{Enabled: &on}, everyProject); err != nil {
+		t.Fatalf("enabling it with a default: %v", err)
+	}
+	// While it is on, the default cannot go.
+	defs[0].Default = nil
+	if _, err := s.ChangeRoutine(ctx, 1, domain.ByMember(7), r.ID, RoutinePatch{Variables: &defs}, everyProject); !errors.As(err, &fe) || fe.Field != "variables" {
+		t.Fatalf("dropping the default under a schedule: %v", err)
+	}
+
+	// A webhook payload's own field fills the placeholder.
+	wh, err := s.AddTrigger(ctx, 1, domain.ByMember(7), r.ID, TriggerInput{Kind: "webhook", SigningMode: "none"}, everyProject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr, err = s.FireWebhookTrigger(ctx, wh.PublicID, domain.DeliveryHeaders{}, []byte(`{"repo": "shop"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i, _, _ := s.issues.Issue(ctx, rr.LinkedIssueID); i.Title != "Triage shop alert" {
+		t.Fatalf("the webhook's Execution Issue is %q", i.Title)
+	}
+}

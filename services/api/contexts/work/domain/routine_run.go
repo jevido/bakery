@@ -92,7 +92,9 @@ func ReceiveRoutineRun(r Routine, trigger *RoutineTrigger, source RoutineRunSour
 // RoutineRun is one firing of a Routine. TriggerID, LinkedIssueID and
 // CoalescedIntoRunID are 0 for none; TriggeredBy is nobody for a
 // Schedule or a Webhook delivery; IdempotencyKey is the Webhook
-// delivery's, "" for none; CompletedAt is set once it no longer follows
+// delivery's, "" for none; Variables are the values its Routine
+// variables and the built-in ones took, nil when its Routine has no
+// placeholders; CompletedAt is set once it no longer follows
 // its Execution Issue.
 type RoutineRun struct {
 	ID                 uint64
@@ -107,6 +109,7 @@ type RoutineRun struct {
 	FailureReason      string
 	TriggeredBy        Actor
 	IdempotencyKey     string
+	Variables          map[string]any
 	CompletedAt        *time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time

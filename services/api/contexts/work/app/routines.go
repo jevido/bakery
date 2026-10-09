@@ -89,10 +89,12 @@ type RoutineInput struct {
 	GoalID            uint64
 	ParentIssueID     uint64
 	AssigneeAgentID   uint64
+	Variables         []domain.RoutineVariable
 }
 
 // RoutinePatch changes the fields that are not nil. An id of 0 removes
-// the Project, Goal, parent Issue or Agent assignee.
+// the Project, Goal, parent Issue or Agent assignee. Variables replaces
+// the definitions of the Routine variables.
 type RoutinePatch struct {
 	Title             *string
 	Description       *string
@@ -104,6 +106,7 @@ type RoutinePatch struct {
 	GoalID            *uint64
 	ParentIssueID     *uint64
 	AssigneeAgentID   *uint64
+	Variables         *[]domain.RoutineVariable
 }
 
 // Routines lists the Guild's Routines the filter keeps, newest first,
@@ -174,6 +177,9 @@ func (s *Service) CreateRoutine(ctx context.Context, guildID uint64, by domain.A
 	if err != nil {
 		return domain.Routine{}, err
 	}
+	if err := r.SetVariables(in.Variables); err != nil {
+		return domain.Routine{}, err
+	}
 	nonEmpty := func(v string) *string {
 		if v == "" {
 			return nil
@@ -220,8 +226,23 @@ func (s *Service) ChangeRoutine(ctx context.Context, guildID uint64, by domain.A
 			return domain.Routine{}, err
 		}
 	}
+	// Synced from the definitions before the change, not from what Rename
+	// and Describe each kept, so a placeholder moved between the title and
+	// the description keeps its definition.
+	defs := before.Variables
+	if p.Variables != nil {
+		defs = *p.Variables
+	}
+	if err := r.SetVariables(defs); err != nil {
+		return domain.Routine{}, err
+	}
 	if err := s.applyRoutine(ctx, &r, p, visible); err != nil {
 		return domain.Routine{}, err
+	}
+	if !r.Archived() {
+		if err := s.checkSchedulable(ctx, r); err != nil {
+			return domain.Routine{}, err
+		}
 	}
 	if err := s.routines.SaveRoutine(ctx, r); err != nil {
 		return domain.Routine{}, err
@@ -300,6 +321,25 @@ func (s *Service) applyRoutine(ctx context.Context, r *domain.Routine, p Routine
 	}
 	if p.ParentIssueID != nil {
 		return s.routineParent(ctx, r, *p.ParentIssueID, visible)
+	}
+	return nil
+}
+
+// checkSchedulable refuses a change that leaves the Routine with an
+// enabled Schedule trigger and a required Routine variable without a
+// default, which the Schedule could not fill.
+func (s *Service) checkSchedulable(ctx context.Context, r domain.Routine) error {
+	if len(r.RequiredWithoutDefault()) == 0 {
+		return nil
+	}
+	ts, err := s.routines.Triggers(ctx, []uint64{r.ID})
+	if err != nil {
+		return err
+	}
+	for _, t := range ts {
+		if t.Kind == domain.ScheduleTrigger && t.Enabled {
+			return r.CheckSchedulable("variables")
+		}
 	}
 	return nil
 }
@@ -506,6 +546,11 @@ func (s *Service) AddTrigger(ctx context.Context, guildID uint64, by domain.Acto
 	if err != nil {
 		return domain.RoutineTrigger{}, err
 	}
+	if t.Kind == domain.ScheduleTrigger && t.Enabled {
+		if err := r.CheckSchedulable("trigger"); err != nil {
+			return domain.RoutineTrigger{}, err
+		}
+	}
 	if t, err = s.routines.CreateTrigger(ctx, t); err != nil {
 		return domain.RoutineTrigger{}, err
 	}
@@ -536,6 +581,11 @@ func (s *Service) ChangeTrigger(ctx context.Context, guildID uint64, by domain.A
 	before := t
 	if err := t.Change(r, set, s.now()); err != nil {
 		return domain.RoutineTrigger{}, err
+	}
+	if t.Kind == domain.ScheduleTrigger && t.Enabled {
+		if err := r.CheckSchedulable("trigger"); err != nil {
+			return domain.RoutineTrigger{}, err
+		}
 	}
 	if err := s.routines.SaveTrigger(ctx, t); err != nil {
 		return domain.RoutineTrigger{}, err

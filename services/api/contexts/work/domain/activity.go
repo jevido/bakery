@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"reflect"
 	"slices"
 	"time"
 )
@@ -601,6 +602,9 @@ func (e RoutineChanged) Changes() map[string]any {
 	if b.Description != a.Description {
 		out["description"] = true
 	}
+	if bv, av := variablesRef(b.Variables), variablesRef(a.Variables); !reflect.DeepEqual(b.Variables, a.Variables) {
+		out["variables"] = change(bv, av)
+	}
 	for _, f := range []struct {
 		name     string
 		from, to any
@@ -624,6 +628,16 @@ func (e RoutineChanged) Changes() map[string]any {
 
 func (e RoutineChanged) Activity() ActivityEvent {
 	return e.routine(e.After, RoutineUpdatedAction, map[string]any{"changes": e.Changes()})
+}
+
+// variablesRef is a Routine's variables as an Activity event keeps them:
+// each one's name and type.
+func variablesRef(vars []RoutineVariable) []map[string]any {
+	out := make([]map[string]any, len(vars))
+	for n, v := range vars {
+		out[n] = map[string]any{"name": v.Name, "type": string(v.Type)}
+	}
+	return out
 }
 
 // agentRef is an Agent assignee as an Activity event keeps it, as
