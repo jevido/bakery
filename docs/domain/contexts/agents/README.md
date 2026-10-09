@@ -457,7 +457,9 @@ records nothing more.
     for the comments a Run's prompt quotes, and the Issue's Application
     from that same Issue call, for the Workspace. It registers the
     hook by which work asks whether an Agent may be an Assignee (in the
-    Guild, not terminated).
+    Guild, not terminated), and `work.OnIssuesWithLiveRuns` (which of some
+    Issues have a `queued` or `running` Run, for a Routine's Live execution
+    Issue; agents publishes it to work this way, as `IssuesWithLiveRuns`).
   - from identity: the Desktop key principal (its person, across Guilds)
     for the Desktop routes, the Agent principal for the routes open to
     Agents (identity calls the Run key hook agents registers), and `identity.DesktopNames(ctx, ids)` to name

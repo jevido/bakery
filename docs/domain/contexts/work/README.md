@@ -13,8 +13,10 @@ the Issue documents (plans, specs, notes) kept on an Issue with their
 Revisions, and the Activity: who did what to the Guild's Goals, Issues,
 Approvals and (recorded for the agents context) Agents, and when. It also holds each Member's Inbox: their Read marks and Inbox
 archives on the Guild's Issues, and the Approvals: decisions a Member asks
-the Board to make, with their Linked issues and Approval comments. Every
-Goal, Issue and Approval belongs to exactly one Guild, and an Issue in a
+the Board to make, with their Linked issues and Approval comments, and the
+Guild's Routines: recurring work that, on a schedule or when someone
+presses Run, creates an Execution Issue for an Agent. Every
+Goal, Issue, Approval and Routine belongs to exactly one Guild, and an Issue in a
 Project follows that Project's Permission overrides.
 
 It also holds each Issue's Checkout: which live Run of its Agent assignee
@@ -34,7 +36,9 @@ document, Document key, Revision, Base revision, Restore, Activity, Activity eve
 Action, Actor, Inbox, Inbox tab, Touched, Last touch, Unread, Read mark,
 Inbox archive, Resurface, Approval, Approval type, Approval status,
 Actionable, Requester, Decision, Decision note, Request revision, Resubmit,
-Approval comment, Linked issue, Issue's Application, Work product) are in
+Approval comment, Linked issue, Issue's Application, Work product, Routine,
+Routine status, Routine trigger, Next run, Routine run, Routine run status,
+Concurrency policy, Catch-up policy, Execution Issue, Live execution Issue) are in
 [`glossary.md`](../../glossary.md).
 
 | Term | Meaning |
@@ -45,6 +49,8 @@ Approval comment, Linked issue, Issue's Application, Work product) are in
 | Blocked by | The Blockers of an Issue: the Issues it waits on. |
 | Blocking | The Issues that have this Issue as a Blocker. |
 | Resolved Blocker | A Blocker whose Issue status is `done`. An Issue with an unresolved Blocker is shown as waiting on it, whatever its own status. |
+| Draft (Routine) | A Routine without an Agent assignee: it cannot run and its Schedule triggers do not fire. |
+| Schedule trigger | A Routine trigger of kind `schedule`. |
 | Status times | An Issue's started, completed and cancelled times, set and cleared by its Issue status changes as the glossary says. |
 
 ## Model
@@ -57,9 +63,11 @@ Approval comment, Linked issue, Issue's Application, Work product) are in
 | Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild or an Agent of the Guild that is not terminated (its Agent assignee), never both; terminating the Agent clears it as Assignee of its open Issues. Its Project is in the Guild and its Goal is in the Guild. Its Issue's Application, if any, is an Application of its Project: an Issue without a Project has none, and moving the Issue to another Project (or out of one) clears it. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. Its Checkout (`checkout_run_id`, `checked_out_at`) names at most one Run, a Run of its Agent assignee; Checkout moves it from one of the expected statuses (`todo`, `backlog`, `blocked` by default, as Paperclip's MCP server's), or from `in_progress` when it is already the Agent's, to `in_progress`; an Issue assigned to anyone else cannot be checked out, and an Issue without Assignee takes the checking-out Agent as its Agent assignee. While that Run is `running`, an Agent's change to the Issue from any other Run is 409; once it is not, the Checkout is a Stale checkout, which the same Agent's next Run takes over. A new Assignee, set by anyone, clears the Checkout. Release clears it, moves `in_progress` back to `todo` and, on an open Issue, clears the Agent assignee. It is created by a Member or an Agent actor. |
 | Comment | Belongs to one Issue and is written by one Member or one Agent actor (`author_agent`). Body 1–20000 characters. Only its author edits or deletes it. A deleted Comment keeps its place in the thread, its body gone, shown as "deleted". |
 | Issue document | Belongs to one Issue and its Guild. Its Document key is unique per Issue and never changes. Title at most 200 characters (may be empty), body at most 524288 characters, Markdown only. Its Revisions are numbered 1, 2, … without gaps; each save and each Restore adds exactly one Revision, and Revisions are never changed. A save needs the newest Revision as its Base revision (none for the first save), or it is refused. Restoring the newest Revision is refused, since it would change nothing. A Revision's author is a Member or an Agent actor. Deleting the Issue document removes its Revisions. |
-| Activity event | Append-only. Belongs to one Guild and has one Actor, a Member or an Agent actor (none once that Member's account is gone, and none for what The Bakery recorded on its own: a Pull request or Preview changing on the git host) and one Action from the glossary's list, about exactly one Goal, Issue, Approval or Agent. It keeps the Issue's number and title, the Goal's title, the Approval's type and payload title, or the Agent's name, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
+| Activity event | Append-only. Belongs to one Guild and has one Actor, a Member or an Agent actor (none once that Member's account is gone, and none for what The Bakery recorded on its own: a Pull request or Preview changing on the git host) and one Action from the glossary's list, about exactly one Goal, Issue, Approval, Agent or Routine. It keeps the Issue's number and title, the Goal's title, the Approval's type and payload title, or the Agent's name, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
 | Approval | Belongs to one Guild. Approval type and Approval status from their lists; it starts `pending`. A `request_board_approval` payload has a `title` of 1–200 characters and optional `summary`, `recommended_action` and `next_action_on_approval` (each at most 20000 characters) and `risks` (at most 20 strings of at most 500 characters), and nothing else. A `hire_agent` payload is `agent_id`, `name`, `job`, `title`, `icon`, `reports_to` (`{id, name}` or null), `capabilities` and `roles` (Role names), as the agents context sends it; its title is "Hire Agent: <name>". A `hire_agent` Approval is created only through `work.RequestApproval`, never gets Request revision (its Agent cannot change while it waits, so there is nothing to revise), and becomes `cancelled` when its Agent is terminated before a Decision; `cancelled` is not Actionable and never changes again. A `budget_override_required` payload is `scope_type`, `scope_id`, `scope_name`, `metric`, `window`, `threshold`, `amount`, `observed`, `warn_percent`, `window_start`, `window_end`, `budget_id` and `guidance`, as the agents context sends it; its title is "Budget override: <scope name>". It is created only through `work.RequestBudgetOverride`, has no Requester, becomes `cancelled` when its Budget goes with its Agent or Project before a Decision, and is decided only through `work.DecideBudgetOverride` when the agents context resolves its Budget incident: Approve, Reject, Request revision and Resubmit refuse it (422 `resolve the budget incident on the Costs page`), as Paperclip does. Approve and reject only from `pending` or `revision_requested` (Actionable); Request revision only from `pending`; Resubmit only from `revision_requested`, which clears the decider, the decision time and the Decision note. A Decision records its decider, time and optional Decision note (at most 20000 characters). Making the same Decision again on an Approval that already has it answers the Approval unchanged and records nothing, as Paperclip's `applied: false`; any other move from a status that does not allow it is refused (422). Its Linked issues are Issues of the same Guild, set when it is requested. Its Approval comments each have one author and a body of 1–20000 characters, and are never edited or deleted. The Approval, its links and its Approval comments go with their Guild; a Linked issue's link goes with the Issue. |
 | Work product | Belongs to one Issue and its Guild, and goes with the Issue. Its type is `pull_request` or `preview_url`, and it names the Issue's Application it came from and the Pull request's number (`external_id`); at most one of each type per Issue and number. A `pull_request` has a Provider, a URL, a title and status `open`, `merged` or `closed`: `open` → `merged` or `closed`, `closed` → `open` when reopened, and `merged` never changes again. A `preview_url` has state `deploying`, `ready` (with the Preview's link), `failed` or `removed`: any state may follow `deploying`, `ready` or `failed`, and `removed` comes back to `deploying` only with a new Preview Deployment. It records who made it: the Run and its Agent, or the Member, or nobody when The Bakery recorded a Pull request someone opened by hand. |
+| Routine | Belongs to one Guild. Title 1–200 characters; description at most 20000 characters, Markdown. Priority, Routine status, Concurrency policy and Catch-up policy from their lists. Its Agent assignee, if any, is an Agent of the Guild that is not terminated, asked of agents as for an Issue; terminating that Agent clears it, making the Routine a Draft, as terminating clears an open Issue's Agent assignee. Its Project, Goal and parent Issue, if any, are the Guild's. Its Routine status moves `active` ↔ `paused`, and either → `archived`; nothing leaves `archived`, and an archived Routine is not changed again. Deleting its Project deletes it, with its Routine triggers and Routine runs, as Paperclip's cascade. Its Routine triggers are part of it: a `schedule` one has a cron expression of five fields or one of the shortcuts a Scheduled backup takes, and a time zone that `time.LoadLocation` loads; its `next_run_at` is recomputed whenever its cron expression, time zone or `enabled` changes, and is none while it is off; an `api` one has neither. It records `last_triggered_at`, the last time it ran. |
+| Routine run | Belongs to one Routine and its Guild, and goes with the Routine. Append-only except its Routine run status: it starts `received` and moves once to `issue_created`, `coalesced`, `skipped` or `failed`; `issue_created` moves to `completed` when its Execution Issue becomes `done`, or `failed` when it becomes `cancelled` or `blocked`; `failed` goes back to `issue_created` when that Issue is reopened, as Paperclip's. `coalesced` and `skipped` name the Live execution Issue they were linked to and never change again. Its source is `schedule` (with its Schedule trigger), `manual` (with the Member who pressed Run) or `api` (with its `api` Routine trigger, if one was named). |
 | Read mark and Inbox archive | Per Member per Issue, at most one of each. Belongs to an Issue and its Guild, and goes with the Issue and with the Member's Membership. Only that Member sets or removes it. Neither is part of the Issue aggregate: they change nothing about the Issue, belong to one person, and many people write them at once, so each is its own small record keyed by (Issue, Member). |
 
 ### Commands
@@ -164,6 +172,36 @@ is left out of what they read.
 Reading an Issue's Blockers, Issue documents and Revisions needs what
 reading the Issue needs.
 
+- `CreateRoutine(title, description, assignee, project, goal, parent,
+  priority, status, concurrency policy, catch-up policy)`,
+  `ChangeRoutine(...)` (pausing, resuming and archiving included) [`manage_work`].
+- `AddTrigger(kind, cron, time zone, enabled, label)`,
+  `ChangeTrigger(...)`, `DeleteTrigger()` [`manage_work`].
+- `RunRoutine(source, trigger)` [`manage_work` for `manual` and `api`; the
+  scheduler for `schedule`]: refused for an archived Routine and a Draft
+  (422 `default agent required`). It records a Routine run and, unless the
+  Concurrency policy finds a Live execution Issue, creates its Execution
+  Issue: Issue status `todo`, the Routine's title, description, Priority,
+  Project, Goal, parent and Agent assignee, created by the Member who
+  pressed Run (nobody for a `schedule` or `api` firing). Creating it
+  publishes `IssueCreated` and wakes the Agent through `OnIssueAssigned`
+  as any assignment does. The Routine run follows its Execution Issue's
+  status from then on (see the Routine run's invariants).
+- The scheduler (`work.Start`): a ticker that fires each `enabled`
+  Schedule trigger of an `active` Routine whose `next_run_at` has passed,
+  once: it claims the trigger by moving its `next_run_at` on in the same
+  update that checks the old value, so two ticks (or two processes) never
+  fire it twice. `skip_missed` fires once however many ticks it missed;
+  `enqueue_missed_with_cap` fires once per missed tick, at most 25, and
+  once only for a cron that ticks more often than hourly.
+
+Reading Routines, their Routine triggers and Routine runs needs
+`view_resources`; a Routine with a Project also needs `view_resources` in
+that Project, else it is hidden (404), as an Issue. An Agent principal may
+read every Routine the Agent may view, and create, change, add triggers to
+and run only Routines assigned to itself; it never assigns one to another
+Agent (403), as Paperclip's access rules for agents.
+
 Reading the Activity needs `view_resources`. An event about an Issue
 follows the Issue's current Project: while the person may not view that
 Project, the Issue's own Activity is 404 and its events are left out of the
@@ -199,6 +237,13 @@ Comment publishes nothing (Paperclip records none).
 | `ApprovalResubmitted` | `Resubmit` | `approval.resubmitted` | Approval type, the payload's title |
 | `ApprovalCommentWritten` | `CommentOnApproval` | `approval.comment_added` | the Approval comment and its first 140 characters |
 | `ApprovalCancelled` | `CancelApproval` | `approval.cancelled` | Approval type, the payload's title |
+| `RoutineCreated` | `CreateRoutine` | `routine.created` | title |
+| `RoutineChanged` | `ChangeRoutine`, when something changed and it is not archiving | `routine.updated` | each changed field, from → to |
+| `RoutineArchived` | `ChangeRoutine` to `archived` | `routine.archived` | title |
+| `RoutineTriggerAdded` | `AddTrigger` | `routine.trigger_created` | kind, label, cron expression and time zone |
+| `RoutineTriggerChanged` | `ChangeTrigger`, when something changed | `routine.trigger_updated` | each changed field, from → to |
+| `RoutineTriggerDeleted` | `DeleteTrigger` | `routine.trigger_deleted` | kind, label |
+| `RoutineRunTriggered` | `RunRoutine` | `routine.run_triggered` | source, Routine run status, the Execution Issue; Actor nobody for a `schedule` or `api` firing |
 
 The agents context's own events (`AgentHired`, `AgentUpdated`,
 `AgentPaused`, `AgentResumed`, `AgentTerminated`, `AgentRoleAdded`,
@@ -214,7 +259,8 @@ incident, the person as Actor).
 
 Every Issue event also carries the Issue's number, title and Project; every
 Goal event the Goal's title, and every Approval event the Approval's
-type and the payload's title.
+type and the payload's title. Every Routine event carries the Routine's
+title and Project.
 
 ## Integration
 
@@ -238,6 +284,12 @@ type and the payload's title.
   | `PATCH /api/issues/{issue}/comments/{comment}` | `{"comment": Comment}` |
   | `DELETE /api/issues/{issue}/comments/{comment}` | 204; the Comment keeps its place in the list, `deleted` and without its body |
   | `GET /api/issues/{issue}/documents` | `{"documents": [Issue document]}`, by Document key |
+  | `GET /api/routines`, `POST /api/routines` | `{"routines": [Routine]}`; 201 `{"routine": Routine}` |
+  | `GET /api/routines/{id}`, `PATCH /api/routines/{id}` | `{"routine": Routine + "triggers": [Routine trigger] + "recent_runs": [Routine run]}` |
+  | `GET /api/routines/{id}/runs` | `{"runs": [Routine run]}`, newest first |
+  | `POST /api/routines/{id}/triggers` | 201 `{"trigger": Routine trigger}` |
+  | `PATCH /api/routine-triggers/{id}`, `DELETE /api/routine-triggers/{id}` | `{"trigger": Routine trigger}`, 204 |
+  | `POST /api/routines/{id}/run` | 202 `{"run": Routine run}`; body `{"source": "manual" or "api", "trigger_id"}` |
   | `GET /api/issues/{issue}/documents/{key}` | `{"document": Issue document}`; 404 for an unknown key, 422 for a malformed one |
   | `PUT /api/issues/{issue}/documents/{key}` | 201 `{"document": Issue document}` on the first save, 200 after; 409 for a missing or stale `base_revision_id` (with `current_revision_id` and `current_revision_number`) or a `base_revision_id` on a new key |
   | `DELETE /api/issues/{issue}/documents/{key}` | 204 |
@@ -377,7 +429,14 @@ type and the payload's title.
 
 - **Consumes:**
   - from agents: the hook it registers (`work.OnRunLive`) to tell which
-    Runs are live (`running`), for Checkout and Stale checkouts.
+    Runs are live (`running`), for Checkout and Stale checkouts, and
+    `work.OnIssuesWithLiveRuns(f)`: given a Guild and some Issues, which
+    of them have a `queued` or `running` Run, for a Routine's Live
+    execution Issue. Until agents registers it, no Issue has one.
+  - Routines publish nothing new to agents: an Execution Issue wakes its
+    Agent through `work.OnIssueAssigned` like any assignment (Wake reason
+    `issue_assigned`, Invocation source `assignment`), with the Member who
+    pressed Run, or nobody for a `schedule` or `api` firing.
   - from guilds: `guilds.Auth`, `guilds.AuthAgents`, `guilds.Can(permission)`,
     `guilds.AgentID(ctx)` and `guilds.RunID(ctx)` (the Agent principal's
     Agent and Run),
@@ -659,3 +718,21 @@ type and the payload's title.
   Webhook and Preview hooks, so a Pull request merged or closed by a person
   on the git host shows on the Issue the same as one an Agent closed.
   Those changes have no Actor in the Activity.
+- **Routines are work's.** A Routine is a template for Issues: it holds
+  an Issue's fields and makes Issues, and its Routine runs follow those
+  Issues' statuses. Agents, Wakes and Runs stay the agents context's, so a
+  Routine reaches an Agent only by assigning it an Issue, through the same
+  `OnIssueAssigned` every assignment uses.
+- **Terminating an Agent makes its Routines Drafts.** Paperclip keeps the
+  terminated Agent on the Routine and lets each dispatch refuse it. The
+  Bakery clears it, as it clears an open Issue's Agent assignee, so the
+  Routine page says "draft" instead of failing every scheduled firing.
+- **Routines left out for now.** Webhook triggers and their signing modes,
+  Routine variables, Routine Revisions and Restore, folders, the activity
+  gate, the secrets, environment and delivery sections, built-in and
+  plugin-managed Routines, and Paperclip's split of `received` and its
+  dispatch across processes. Webhook triggers, variables and Revisions are
+  the next slice of the guilds goal's Paperclip step; the rest is not in it.
+- **No paused Projects.** Paperclip skips a schedule while its Project is
+  paused. The Bakery's Projects have no pause; a Project Budget's Hard stop
+  already refuses the Wake, so the Execution Issue waits for the Budget.
