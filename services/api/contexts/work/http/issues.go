@@ -47,20 +47,22 @@ type issueRefJSON struct {
 // issueJSON is an Issue as a list row shows it; Description is nil where a
 // row leaves it out (an Issue's sub-issues).
 type issueJSON struct {
-	ID             uint64        `json:"id"`
-	Number         int           `json:"number"`
-	Identifier     string        `json:"identifier"`
-	Title          string        `json:"title"`
-	Description    *string       `json:"description,omitempty"`
-	Status         string        `json:"status"`
-	Priority       string        `json:"priority"`
-	Assignee       *assigneeJSON `json:"assignee"`
-	Project        *projectJSON  `json:"project"`
-	Application    *projectJSON  `json:"application"`
-	Goal           *goalRefJSON  `json:"goal"`
-	Parent         *issueRefJSON `json:"parent"`
-	CreatedBy      *Member       `json:"created_by"`
-	CreatedByAgent *Agent        `json:"created_by_agent"`
+	ID          uint64        `json:"id"`
+	Number      int           `json:"number"`
+	Identifier  string        `json:"identifier"`
+	Title       string        `json:"title"`
+	Description *string       `json:"description,omitempty"`
+	Status      string        `json:"status"`
+	Priority    string        `json:"priority"`
+	Assignee    *assigneeJSON `json:"assignee"`
+	Project     *projectJSON  `json:"project"`
+	Application *projectJSON  `json:"application"`
+	Goal        *goalRefJSON  `json:"goal"`
+	Parent      *issueRefJSON `json:"parent"`
+	// Routine is the Routine an Execution Issue came from.
+	Routine        *titledRef `json:"routine"`
+	CreatedBy      *Member    `json:"created_by"`
+	CreatedByAgent *Agent     `json:"created_by_agent"`
 	// Checkout is nil when no live Run holds it.
 	Checkout    *checkoutJSON `json:"checkout"`
 	StartedAt   *time.Time    `json:"started_at"`
@@ -104,8 +106,11 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 	if err != nil {
 		return nil, err
 	}
-	var memberIDs, agentIDs, projectIDs, applicationIDs, parentIDs []uint64
+	var memberIDs, agentIDs, projectIDs, applicationIDs, parentIDs, routineIDs []uint64
 	for _, i := range is {
+		if i.OriginRoutineID != 0 {
+			routineIDs = append(routineIDs, i.OriginRoutineID)
+		}
 		for _, id := range []uint64{i.AssigneeAgentID, i.CreatedBy.AgentID} {
 			if id != 0 {
 				agentIDs = append(agentIDs, id)
@@ -164,6 +169,10 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 	if err != nil {
 		return nil, err
 	}
+	routines, err := c.service.RoutineTitles(cx, guildID, routineIDs)
+	if err != nil {
+		return nil, err
+	}
 	parents := make(map[uint64]issueRefJSON, len(ps))
 	for _, p := range ps {
 		parents[p.ID] = issueRefJSON{ID: p.ID, Identifier: domain.Identifier(prefix, p.Number), Title: p.Title}
@@ -193,6 +202,9 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 		}
 		if name, ok := projects[i.ProjectID]; ok {
 			out[n].Project = &projectJSON{ID: i.ProjectID, Name: name}
+		}
+		if title, ok := routines[i.OriginRoutineID]; ok {
+			out[n].Routine = &titledRef{ID: i.OriginRoutineID, Title: title}
 		}
 		if name, ok := applications[i.ApplicationID]; ok {
 			out[n].Application = &projectJSON{ID: i.ApplicationID, Name: name}

@@ -75,6 +75,10 @@ type Service struct {
 	// work.OnRunLive); nil counts none as running, so every Checkout is
 	// Stale.
 	RunsLive func(ctx context.Context, runIDs []uint64) (map[uint64]bool, error)
+	// IssuesLive tells which of the Guild's Issues have a queued or
+	// running Run (agents, through work.OnIssuesWithLiveRuns); nil counts
+	// none, so no Execution Issue is ever a Live execution Issue.
+	IssuesLive func(ctx context.Context, guildID uint64, issueIDs []uint64) (map[uint64]bool, error)
 	// WorkProducts keeps Work products; PullRequests opens Pull requests
 	// on git hosts. Both must be set to open one.
 	WorkProducts WorkProducts

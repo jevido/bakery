@@ -181,6 +181,16 @@ func (f *fakeRuns) LiveRuns(_ context.Context, ids []uint64) (map[uint64]bool, e
 	return out, nil
 }
 
+func (f *fakeRuns) IssuesWithLiveRuns(_ context.Context, guildID uint64, ids []uint64) (map[uint64]bool, error) {
+	out := map[uint64]bool{}
+	for _, r := range f.rows {
+		if r.GuildID == guildID && slices.Contains(ids, r.IssueID) && (r.Status == domain.RunQueued || r.Status == domain.RunRunning) {
+			out[r.IssueID] = true
+		}
+	}
+	return out, nil
+}
+
 func (f *fakeRuns) RunEvents(context.Context, uint64, int64, int) ([]domain.RunEvent, error) {
 	return nil, nil
 }
@@ -447,5 +457,35 @@ func TestWakesFromWork(t *testing.T) {
 	// An Agent that is not there is an error work logs.
 	if err := s.IssueAssigned(ctx, 1, 30, 999, 7); err == nil {
 		t.Error("unknown agent woke")
+	}
+}
+
+func TestIssuesWithLiveRuns(t *testing.T) {
+	ctx := context.Background()
+	s, _, _, w := newTest()
+	runs := s.runs.(*fakeRuns)
+	ada := hired(t, s, "Ada", 0)
+	w.issues = map[uint64]IssueBrief{
+		30: {ID: 30, Identifier: "BAK-3", Status: "todo", AgentAssigneeID: ada.ID},
+		31: {ID: 31, Identifier: "BAK-4", Status: "todo", AgentAssigneeID: ada.ID},
+	}
+	// A Routine's Execution Issue is assigned by nobody: the Wake has no
+	// Actor.
+	if err := s.IssueAssigned(ctx, 1, 30, ada.ID, 0); err != nil {
+		t.Fatalf("assigned by nobody: %v", err)
+	}
+	live, err := s.IssuesWithLiveRuns(ctx, 1, []uint64{30, 31})
+	if err != nil || !live[30] || live[31] {
+		t.Fatalf("queued: %v %v", live, err)
+	}
+	if live, _ := s.IssuesWithLiveRuns(ctx, 2, []uint64{30}); live[30] {
+		t.Errorf("another guild's issue is live")
+	}
+	for id, r := range runs.rows {
+		r.Status = domain.RunSucceeded
+		runs.rows[id] = r
+	}
+	if live, _ := s.IssuesWithLiveRuns(ctx, 1, []uint64{30}); live[30] {
+		t.Errorf("a finished run is live")
 	}
 }

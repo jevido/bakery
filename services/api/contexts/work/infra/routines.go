@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"time"
 
@@ -205,4 +206,141 @@ func (s Routines) SaveTrigger(ctx context.Context, t domain.RoutineTrigger) erro
 func (s Routines) DeleteTrigger(ctx context.Context, id uint64) error {
 	_, err := s.query(ctx).Exec(`DELETE FROM routine_triggers WHERE id = ?`, id)
 	return err
+}
+
+// routineLocks is the first key of the advisory locks on Routines, so they
+// never meet another use of pg_advisory_lock.
+const routineLocks = 45
+
+// LockRoutine takes a session advisory lock on the Routine on a
+// connection of its own, held until unlock, so two API processes
+// dispatching a Routine run of the same Routine take turns.
+func (s Routines) LockRoutine(ctx context.Context, id uint64) (func(), error) {
+	db, err := facades.Orm().DB()
+	if err != nil {
+		return nil, err
+	}
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1, $2::int)`, routineLocks, int32(id)); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return func() {
+		// The request may be gone already; the lock is still released.
+		if _, err := conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1, $2::int)`, routineLocks, int32(id)); err != nil {
+			// A connection that cannot unlock is closed: that ends its
+			// session, and its lock with it.
+			conn.Raw(func(any) error { return driver.ErrBadConn })
+		}
+		conn.Close()
+	}, nil
+}
+
+// RoutineTriggered sets when the Routine last ran.
+func (s Routines) RoutineTriggered(ctx context.Context, id uint64, at time.Time) error {
+	_, err := s.query(ctx).Exec(`UPDATE routines SET last_triggered_at = ? WHERE id = ?`, at, id)
+	return err
+}
+
+type routineRunRecord struct {
+	ID                        uint64 `gorm:"primaryKey"`
+	GuildID                   uint64
+	RoutineID                 uint64
+	TriggerID                 *uint64
+	Source                    string
+	Status                    string
+	TriggeredAt               time.Time
+	LinkedIssueID             *uint64
+	CoalescedIntoRoutineRunID *uint64
+	FailureReason             string
+	TriggeredByMemberID       *uint64
+	TriggeredByAgentID        *uint64
+	CompletedAt               *time.Time
+	orm.Timestamps
+}
+
+func (routineRunRecord) TableName() string { return "routine_runs" }
+
+func (r routineRunRecord) toDomain() domain.RoutineRun {
+	out := domain.RoutineRun{
+		ID: r.ID, GuildID: r.GuildID, RoutineID: r.RoutineID, TriggerID: deref(r.TriggerID),
+		Source: domain.RoutineRunSource(r.Source), Status: domain.RoutineRunStatus(r.Status), TriggeredAt: r.TriggeredAt.UTC(),
+		LinkedIssueID: deref(r.LinkedIssueID), CoalescedIntoRunID: deref(r.CoalescedIntoRoutineRunID), FailureReason: r.FailureReason,
+		TriggeredBy: actor(r.TriggeredByMemberID, r.TriggeredByAgentID), CompletedAt: utc(r.CompletedAt),
+	}
+	out.CreatedAt, out.UpdatedAt = stamp(&r.Timestamps)
+	return out
+}
+
+func routineRunsOf(recs []routineRunRecord) []domain.RoutineRun {
+	out := make([]domain.RoutineRun, len(recs))
+	for i, r := range recs {
+		out[i] = r.toDomain()
+	}
+	return out
+}
+
+func (s Routines) CreateRoutineRun(ctx context.Context, rr domain.RoutineRun) (domain.RoutineRun, error) {
+	rec := routineRunRecord{
+		GuildID: rr.GuildID, RoutineID: rr.RoutineID, TriggerID: nullable(rr.TriggerID), Source: string(rr.Source), Status: string(rr.Status),
+		TriggeredAt: rr.TriggeredAt, LinkedIssueID: nullable(rr.LinkedIssueID), CoalescedIntoRoutineRunID: nullable(rr.CoalescedIntoRunID),
+		FailureReason: rr.FailureReason, TriggeredByMemberID: nullable(rr.TriggeredBy.MemberID), TriggeredByAgentID: nullable(rr.TriggeredBy.AgentID),
+		CompletedAt: rr.CompletedAt,
+	}
+	if err := s.query(ctx).Create(&rec); err != nil {
+		return domain.RoutineRun{}, err
+	}
+	return rec.toDomain(), nil
+}
+
+func (s Routines) SaveRoutineRun(ctx context.Context, rr domain.RoutineRun) error {
+	_, err := s.query(ctx).Exec(`UPDATE routine_runs SET status = ?, linked_issue_id = ?, coalesced_into_routine_run_id = ?,
+		failure_reason = ?, completed_at = ?, updated_at = now() WHERE id = ?`,
+		string(rr.Status), nullable(rr.LinkedIssueID), nullable(rr.CoalescedIntoRunID), rr.FailureReason, rr.CompletedAt, rr.ID)
+	return err
+}
+
+// RoutineRun returns the Routine run; found is false when there is none.
+func (s Routines) RoutineRun(ctx context.Context, id uint64) (domain.RoutineRun, bool, error) {
+	var rec routineRunRecord
+	if err := s.query(ctx).Where("id", id).FirstOrFail(&rec); err != nil {
+		if errors.Is(err, frameworkerrors.OrmRecordNotFound) {
+			return domain.RoutineRun{}, false, nil
+		}
+		return domain.RoutineRun{}, false, err
+	}
+	return rec.toDomain(), true, nil
+}
+
+// RoutineRuns lists the Routine runs of the Routines, newest first, at
+// most limit.
+func (s Routines) RoutineRuns(ctx context.Context, routineIDs []uint64, limit int) ([]domain.RoutineRun, error) {
+	if len(routineIDs) == 0 {
+		return nil, nil
+	}
+	var recs []routineRunRecord
+	if err := s.query(ctx).Where("routine_id IN ?", routineIDs).Order("id desc").Limit(limit).Find(&recs); err != nil {
+		return nil, err
+	}
+	return routineRunsOf(recs), nil
+}
+
+// LastRoutineRuns answers the newest Routine run of each of the Routines
+// that has one.
+func (s Routines) LastRoutineRuns(ctx context.Context, routineIDs []uint64) (map[uint64]domain.RoutineRun, error) {
+	out := map[uint64]domain.RoutineRun{}
+	if len(routineIDs) == 0 {
+		return out, nil
+	}
+	var recs []routineRunRecord
+	if err := s.query(ctx).Raw(`SELECT DISTINCT ON (routine_id) * FROM routine_runs WHERE routine_id IN ? ORDER BY routine_id, id DESC`, routineIDs).Scan(&recs); err != nil {
+		return nil, err
+	}
+	for _, rr := range routineRunsOf(recs) {
+		out[rr.RoutineID] = rr
+	}
+	return out, nil
 }

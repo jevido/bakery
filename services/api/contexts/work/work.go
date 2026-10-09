@@ -3,8 +3,8 @@
 // products, the Activity, the Inbox and Approvals), and for the agents context
 // RequestApproval, CancelApproval, OnApprovalDecided, RecordActivity,
 // OnAgentNames, OnAgentAssignees, UnassignAgent, IssueForRun,
-// OpenIssuesOfAgent, InboxOfAgent, CommentsForRun, OnIssueAssigned, OnIssueCommented and
-// OnRunLive.
+// OpenIssuesOfAgent, InboxOfAgent, CommentsForRun, OnIssueAssigned, OnIssueCommented,
+// OnRunLive and OnIssuesWithLiveRuns.
 // Nothing else in contexts/work is for outside use.
 package work
 
@@ -43,6 +43,7 @@ func svc() *app.Service {
 		service.Assigned = issueAssigned
 		service.Commented = issueCommented
 		service.RunsLive = runsLive
+		service.IssuesLive = issuesLive
 		service.WorkProducts = infra.WorkProducts{}
 		service.PullRequests = openPullRequest
 		guilds.OnGuildDeleting("goals", func(ctx context.Context, guildID uint64) (bool, error) {
@@ -214,6 +215,30 @@ func runsLive(ctx context.Context, runIDs []uint64) (map[uint64]bool, error) {
 		return map[uint64]bool{}, nil
 	}
 	return f(ctx, runIDs)
+}
+
+var (
+	issuesLiveMu sync.RWMutex
+	onIssuesLive func(ctx context.Context, guildID uint64, issueIDs []uint64) (map[uint64]bool, error)
+)
+
+// OnIssuesWithLiveRuns registers f to tell which of the Guild's Issues
+// have a queued or running Run, so a Routine run finds its Routine's Live
+// execution Issue. Until it is registered, none has.
+func OnIssuesWithLiveRuns(f func(ctx context.Context, guildID uint64, issueIDs []uint64) (map[uint64]bool, error)) {
+	issuesLiveMu.Lock()
+	defer issuesLiveMu.Unlock()
+	onIssuesLive = f
+}
+
+func issuesLive(ctx context.Context, guildID uint64, issueIDs []uint64) (map[uint64]bool, error) {
+	issuesLiveMu.RLock()
+	f := onIssuesLive
+	issuesLiveMu.RUnlock()
+	if f == nil {
+		return map[uint64]bool{}, nil
+	}
+	return f(ctx, guildID, issueIDs)
 }
 
 // UnassignAgent takes the terminated Agent off the Guild's Issues that are
@@ -673,6 +698,9 @@ func Routes(r route.Router) {
 	r.Middleware(guilds.AuthAgents, routineInProject, view).Get("/api/routines/{id}", c.ShowRoutine)
 	r.Middleware(guilds.AuthAgents, routineInProject, manage).Patch("/api/routines/{id}", c.UpdateRoutine)
 	r.Middleware(guilds.AuthAgents, routineInProject, manage).Post("/api/routines/{id}/triggers", c.AddTrigger)
+	r.Middleware(guilds.AuthAgents, routineInProject, manage).Post("/api/routines/{id}/run", c.RunRoutine)
+	r.Middleware(guilds.AuthAgents, routineInProject, view).Get("/api/routines/{id}/runs", c.ListRoutineRuns)
+	r.Middleware(guilds.AuthAgents, view).Get("/api/routine-runs", c.ListRoutineRuns)
 	r.Middleware(guilds.AuthAgents, triggerInRoutine, manage).Group(func(r route.Router) {
 		r.Patch("/api/routine-triggers/{id}", c.UpdateTrigger)
 		r.Delete("/api/routine-triggers/{id}", c.DeleteTrigger)

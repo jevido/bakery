@@ -34,6 +34,9 @@ type Runs interface {
 	RunningRuns(ctx context.Context, agentIDs []uint64) (map[uint64]uint64, error)
 	// LiveRuns tells which of the Runs are running; a missing one is not.
 	LiveRuns(ctx context.Context, runIDs []uint64) (map[uint64]bool, error)
+	// IssuesWithLiveRuns tells which of the Guild's Issues have a queued
+	// or running Run; a missing one has none.
+	IssuesWithLiveRuns(ctx context.Context, guildID uint64, issueIDs []uint64) (map[uint64]bool, error)
 	RunEvents(ctx context.Context, runID uint64, after int64, limit int) ([]domain.RunEvent, error)
 	DeskRuns
 	CostRuns
@@ -407,6 +410,12 @@ func (s *Service) RunningRuns(ctx context.Context, agentIDs []uint64) (map[uint6
 // LiveRuns tells which of the Runs are running, for work's Checkouts.
 func (s *Service) LiveRuns(ctx context.Context, runIDs []uint64) (map[uint64]bool, error) {
 	return s.runs.LiveRuns(ctx, runIDs)
+}
+
+// IssuesWithLiveRuns tells which of the Guild's Issues have a queued or
+// running Run, for work's Live execution Issues.
+func (s *Service) IssuesWithLiveRuns(ctx context.Context, guildID uint64, issueIDs []uint64) (map[uint64]bool, error) {
+	return s.runs.IssuesWithLiveRuns(ctx, guildID, issueIDs)
 }
 
 // SubscriptionLimits tells, for the queued ones among the Runs, when the

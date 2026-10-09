@@ -57,6 +57,7 @@ const (
 	RoutineTriggerCreatedAction = "routine.trigger_created"
 	RoutineTriggerUpdatedAction = "routine.trigger_updated"
 	RoutineTriggerDeletedAction = "routine.trigger_deleted"
+	RoutineRunTriggeredAction   = "routine.run_triggered"
 )
 
 // AgentActions lists the Actions the agents context records through work.
@@ -703,4 +704,17 @@ type RoutineTriggerDeleted struct {
 
 func (e RoutineTriggerDeleted) Activity() ActivityEvent {
 	return e.routine(e.Routine, RoutineTriggerDeletedAction, triggerDetails(e.Trigger))
+}
+
+// RoutineRunTriggered is a Routine run its Schedule or the API made, once
+// it is dispatched; a manual one shows as the Issue it created instead.
+type RoutineRunTriggered struct {
+	Happened
+	Routine Routine
+	Run     RoutineRun
+}
+
+func (e RoutineRunTriggered) Activity() ActivityEvent {
+	d := map[string]any{"routine_run_id": e.Run.ID, "source": e.Run.Source, "status": e.Run.Status, "trigger_id": ref(e.Run.TriggerID), "issue": ref(e.Run.LinkedIssueID)}
+	return e.routine(e.Routine, RoutineRunTriggeredAction, d)
 }

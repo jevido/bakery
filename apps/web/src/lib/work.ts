@@ -344,6 +344,7 @@ const activityVerbs: Record<string, string> = {
   'routine.trigger_created': 'added a trigger to',
   'routine.trigger_updated': 'changed a trigger of',
   'routine.trigger_deleted': 'deleted a trigger of',
+  'routine.run_triggered': 'ran',
 }
 /** The verb of an Activity row: "commented on" for issue.comment_added. */
 export const activityVerb = (action: string) => activityVerbs[action] ?? action.replace(/[._]/g, ' ')

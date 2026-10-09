@@ -16,26 +16,28 @@ import (
 )
 
 type issueRecord struct {
-	ID                uint64 `gorm:"primaryKey"`
-	GuildID           uint64
-	Number            int
-	Title             string
-	Description       string
-	Status            string
-	Priority          string
-	AssigneeMemberID  *uint64
-	AssigneeAgentID   *uint64
-	ProjectID         *uint64
-	ApplicationID     *uint64
-	GoalID            *uint64
-	ParentID          *uint64
-	CreatedByMemberID *uint64
-	CreatedByAgentID  *uint64
-	CheckoutRunID     *uint64
-	CheckedOutAt      *time.Time
-	StartedAt         *time.Time
-	CompletedAt       *time.Time
-	CancelledAt       *time.Time
+	ID                 uint64 `gorm:"primaryKey"`
+	GuildID            uint64
+	Number             int
+	Title              string
+	Description        string
+	Status             string
+	Priority           string
+	AssigneeMemberID   *uint64
+	AssigneeAgentID    *uint64
+	ProjectID          *uint64
+	ApplicationID      *uint64
+	GoalID             *uint64
+	ParentID           *uint64
+	CreatedByMemberID  *uint64
+	CreatedByAgentID   *uint64
+	CheckoutRunID      *uint64
+	CheckedOutAt       *time.Time
+	StartedAt          *time.Time
+	CompletedAt        *time.Time
+	CancelledAt        *time.Time
+	OriginRoutineID    *uint64
+	OriginRoutineRunID *uint64
 	orm.Timestamps
 }
 
@@ -57,6 +59,7 @@ func (r issueRecord) toDomain() domain.Issue {
 		GoalID: deref(r.GoalID), ParentID: deref(r.ParentID), CreatedBy: actor(r.CreatedByMemberID, r.CreatedByAgentID),
 		CheckoutRunID: deref(r.CheckoutRunID), CheckedOutAt: utc(r.CheckedOutAt),
 		StartedAt: utc(r.StartedAt), CompletedAt: utc(r.CompletedAt), CancelledAt: utc(r.CancelledAt),
+		OriginRoutineID: deref(r.OriginRoutineID), OriginRoutineRunID: deref(r.OriginRoutineRunID),
 	}
 	i.CreatedAt, i.UpdatedAt = stamp(&r.Timestamps)
 	return i
@@ -86,6 +89,7 @@ func (Issues) CreateIssue(ctx context.Context, i domain.Issue) (domain.Issue, er
 		AssigneeMemberID: nullable(i.AssigneeID), AssigneeAgentID: nullable(i.AssigneeAgentID), ProjectID: nullable(i.ProjectID), ApplicationID: nullable(i.ApplicationID),
 		GoalID: nullable(i.GoalID), ParentID: nullable(i.ParentID), CreatedByMemberID: nullable(i.CreatedBy.MemberID), CreatedByAgentID: nullable(i.CreatedBy.AgentID),
 		StartedAt: i.StartedAt, CompletedAt: i.CompletedAt, CancelledAt: i.CancelledAt,
+		OriginRoutineID: nullable(i.OriginRoutineID), OriginRoutineRunID: nullable(i.OriginRoutineRunID),
 	}
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		if err := tx.Raw(`INSERT INTO issue_counters (guild_id, last_number) VALUES (?, 1)
@@ -135,6 +139,18 @@ func (s Issues) OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) 
 	var recs []issueRecord
 	if err := s.query(ctx).Where("guild_id", guildID).Where("assignee_agent_id", agentID).
 		Where("status NOT IN ?", []string{string(domain.Done), string(domain.IssueCancelled)}).Find(&recs); err != nil {
+		return nil, err
+	}
+	return issuesOf(recs), nil
+}
+
+// OpenExecutionIssues lists the Routine's Execution Issues that are not
+// done or cancelled, most recently updated first.
+func (s Issues) OpenExecutionIssues(ctx context.Context, routineID uint64) ([]domain.Issue, error) {
+	var recs []issueRecord
+	if err := s.query(ctx).Where("origin_routine_id", routineID).
+		Where("status NOT IN ?", []string{string(domain.Done), string(domain.IssueCancelled)}).
+		Order("updated_at desc").Order("id desc").Find(&recs); err != nil {
 		return nil, err
 	}
 	return issuesOf(recs), nil

@@ -55,6 +55,9 @@ type Issues interface {
 	// OpenIssuesOfAgent lists the Guild's Issues assigned to the Agent that
 	// are not done or cancelled, whatever Project they are in.
 	OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]domain.Issue, error)
+	// OpenExecutionIssues lists the Routine's Execution Issues that are not
+	// done or cancelled, most recently updated first.
+	OpenExecutionIssues(ctx context.Context, routineID uint64) ([]domain.Issue, error)
 }
 
 // AssigneeAgent is an Agent as an Issue's Assignee shows it.
@@ -164,6 +167,9 @@ type IssueInput struct {
 	ApplicationID uint64
 	GoalID        uint64
 	ParentID      uint64
+	// originRoutineID and originRoutineRunID make it the Execution Issue
+	// of that Routine run.
+	originRoutineID, originRoutineRunID uint64
 }
 
 // IssuePatch changes the fields that are not nil. An id of 0 removes the
@@ -381,6 +387,7 @@ func (s *Service) CreateIssue(ctx context.Context, guildID uint64, by domain.Act
 	if err := s.changeApplication(ctx, &i, in.ApplicationID); err != nil {
 		return domain.Issue{}, err
 	}
+	i.OriginRoutineID, i.OriginRoutineRunID = in.originRoutineID, in.originRoutineRunID
 	if i, err = s.issues.CreateIssue(ctx, i); err != nil {
 		return domain.Issue{}, err
 	}
@@ -496,6 +503,9 @@ func (s *Service) ChangeIssue(ctx context.Context, guildID uint64, by domain.Act
 	}
 	if len(e.Changes()) > 0 {
 		s.publish(ctx, e)
+	}
+	if e.After.Status != e.Before.Status {
+		s.followExecutionIssue(ctx, e.After, false)
 	}
 	s.applicationChanged(ctx, by, e.After, e.Before.ApplicationID)
 	if a := e.After; a.AssigneeAgentID != 0 && agentWorksOn(a.Status) &&
@@ -747,6 +757,7 @@ func (s *Service) DeleteIssue(ctx context.Context, guildID, memberID uint64, ref
 		return err
 	}
 	s.publish(ctx, domain.IssueDeleted{Happened: s.happened(domain.ByMember(memberID)), Issue: i})
+	s.followExecutionIssue(ctx, i, true)
 	return nil
 }
 

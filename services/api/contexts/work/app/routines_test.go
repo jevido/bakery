@@ -15,6 +15,8 @@ import (
 type memRoutines struct {
 	byID     map[uint64]domain.Routine
 	triggers []domain.RoutineTrigger
+	runs     []domain.RoutineRun
+	locked   bool
 }
 
 func (m *memRoutines) Routines(_ context.Context, guildID uint64) ([]domain.Routine, error) {
@@ -94,6 +96,59 @@ func (m *memRoutines) SaveTrigger(_ context.Context, t domain.RoutineTrigger) er
 		}
 	}
 	return nil
+}
+
+func (m *memRoutines) LockRoutine(context.Context, uint64) (func(), error) {
+	if m.locked {
+		return nil, errors.New("already locked")
+	}
+	m.locked = true
+	return func() { m.locked = false }, nil
+}
+
+func (m *memRoutines) RoutineTriggered(_ context.Context, id uint64, at time.Time) error {
+	r := m.byID[id]
+	r.LastTriggeredAt = &at
+	m.byID[id] = r
+	return nil
+}
+
+func (m *memRoutines) CreateRoutineRun(_ context.Context, rr domain.RoutineRun) (domain.RoutineRun, error) {
+	rr.ID = uint64(len(m.runs) + 1)
+	m.runs = append(m.runs, rr)
+	return rr, nil
+}
+
+func (m *memRoutines) SaveRoutineRun(_ context.Context, rr domain.RoutineRun) error {
+	m.runs[rr.ID-1] = rr
+	return nil
+}
+
+func (m *memRoutines) RoutineRun(_ context.Context, id uint64) (domain.RoutineRun, bool, error) {
+	if id == 0 || id > uint64(len(m.runs)) {
+		return domain.RoutineRun{}, false, nil
+	}
+	return m.runs[id-1], true, nil
+}
+
+func (m *memRoutines) RoutineRuns(_ context.Context, routineIDs []uint64, limit int) ([]domain.RoutineRun, error) {
+	var out []domain.RoutineRun
+	for n := len(m.runs) - 1; n >= 0 && len(out) < limit; n-- {
+		if slices.Contains(routineIDs, m.runs[n].RoutineID) {
+			out = append(out, m.runs[n])
+		}
+	}
+	return out, nil
+}
+
+func (m *memRoutines) LastRoutineRuns(_ context.Context, routineIDs []uint64) (map[uint64]domain.RoutineRun, error) {
+	out := map[uint64]domain.RoutineRun{}
+	for _, rr := range m.runs {
+		if slices.Contains(routineIDs, rr.RoutineID) {
+			out[rr.RoutineID] = rr
+		}
+	}
+	return out, nil
 }
 
 func (m *memRoutines) DeleteTrigger(_ context.Context, id uint64) error {

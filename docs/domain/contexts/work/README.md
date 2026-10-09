@@ -179,15 +179,27 @@ reading the Issue needs.
   `ChangeTrigger(...)` (never its kind), `DeleteTrigger()` [`manage_work`; an
   Agent only on a Routine assigned to itself].
 - `RunRoutine(source, trigger)` [`manage_work` for `manual` and `api`; the
-  scheduler for `schedule`]: refused for an archived Routine and a Draft
-  (422 `default agent required`). It records a Routine run and, unless the
-  Concurrency policy finds a Live execution Issue, creates its Execution
-  Issue: Issue status `todo`, the Routine's title, description, Priority,
-  Project, Goal, parent and Agent assignee, created by the Member who
-  pressed Run (nobody for a `schedule` or `api` firing). Creating it
+  scheduler for `schedule`]: refused for an archived Routine (409) and a
+  Draft (422 `default agent required`), and for a `schedule` firing of a
+  paused Routine (409); `manual` and `api` work while paused. A named
+  Routine trigger must be this Routine's (403), `enabled` (409) and of the
+  source's kind (422); an unknown one is 422. A refused Run records
+  nothing. Otherwise it records a Routine run and, unless the Concurrency
+  policy finds a Live execution Issue, creates its Execution Issue through
+  the same path as `CreateIssue`: Issue status `todo`, the Routine's title,
+  description, Priority, Project, Goal, parent and Agent assignee, created
+  by whoever triggered it (the Member who pressed Run or called the API,
+  or the Agent principal; nobody for a `schedule` firing). Creating it
   publishes `IssueCreated` and wakes the Agent through `OnIssueAssigned`
-  as any assignment does. The Routine run follows its Execution Issue's
-  status from then on (see the Routine run's invariants).
+  as any assignment does. An Issue that cannot be created (its Agent was
+  terminated meanwhile) fails the Routine run with the reason. It sets the
+  Routine's `last_triggered_at` and the trigger's `last_fired_at` and
+  `last_result` (the Routine run status). Two Routine runs of one Routine
+  take turns on a Postgres advisory lock, so both cannot miss each other's
+  Execution Issue. The Routine run follows its Execution Issue's status
+  from then on (see the Routine run's invariants); deleting that Issue
+  unlinks it, failing it ("Execution issue deleted") if it was still
+  `issue_created`.
 - The scheduler (`work.Start`): a ticker that fires each `enabled`
   Schedule trigger of an `active` Routine whose `next_run_at` has passed,
   once: it claims the trigger by moving its `next_run_at` on in the same
@@ -285,12 +297,12 @@ title and Project.
   | `PATCH /api/issues/{issue}/comments/{comment}` | `{"comment": Comment}` |
   | `DELETE /api/issues/{issue}/comments/{comment}` | 204; the Comment keeps its place in the list, `deleted` and without its body |
   | `GET /api/issues/{issue}/documents` | `{"documents": [Issue document]}`, by Document key |
-  | `GET /api/routines`, `POST /api/routines` | `{"routines": [Routine]}`; 201 `{"routine": Routine}` |
+  | `GET /api/routines`, `POST /api/routines` | `{"routines": [Routine]}`, each with its `last_run`; 201 `{"routine": Routine}`. A Routine run is `{id, routine: {id, title}, source, status, triggered_at, completed_at, failure_reason, trigger: {id, kind, label} or null, issue: {id, identifier, title, status} or null}`, and an Issue names the Routine it came from in `routine: {id, title}` or null |
   | `GET /api/routines/{id}`, `PATCH /api/routines/{id}` | `{"routine": Routine + "triggers": [Routine trigger] + "recent_runs": [Routine run]}` |
-  | `GET /api/routines/{id}/runs` | `{"runs": [Routine run]}`, newest first |
+  | `GET /api/routines/{id}/runs`, `GET /api/routine-runs` | `{"routine_runs": [Routine run]}`, newest first, of the Routine or of every Routine the person may view (Paperclip's Recent Runs); `limit` 1 to 200, 50 by default |
   | `POST /api/routines/{id}/triggers` | 201 `{"trigger": Routine trigger}` |
   | `PATCH /api/routine-triggers/{id}`, `DELETE /api/routine-triggers/{id}` | `{"trigger": Routine trigger}`, 204 |
-  | `POST /api/routines/{id}/run` | 202 `{"run": Routine run}`; body `{"source": "manual" or "api", "trigger_id"}` |
+  | `POST /api/routines/{id}/run` | 202 `{"routine_run": Routine run}`; body optional: `{"trigger_id"}` names an `api` Routine trigger and makes it an `api` Routine run, else it is `manual` |
   | `GET /api/issues/{issue}/documents/{key}` | `{"document": Issue document}`; 404 for an unknown key, 422 for a malformed one |
   | `PUT /api/issues/{issue}/documents/{key}` | 201 `{"document": Issue document}` on the first save, 200 after; 409 for a missing or stale `base_revision_id` (with `current_revision_id` and `current_revision_number`) or a `base_revision_id` on a new key |
   | `DELETE /api/issues/{issue}/documents/{key}` | 204 |

@@ -57,6 +57,21 @@ func (m *memIssues) OpenIssuesOfAgent(_ context.Context, guildID, agentID uint64
 	return out, nil
 }
 
+func (m *memIssues) OpenExecutionIssues(_ context.Context, routineID uint64) ([]domain.Issue, error) {
+	var out []domain.Issue
+	for id := uint64(len(m.byID)); id > 0; id-- {
+		if i, ok := m.byID[id]; ok && i.OriginRoutineID == routineID && i.Status != domain.Done && i.Status != domain.IssueCancelled {
+			out = append(out, i)
+		}
+	}
+	return out, nil
+}
+
+func (m *memIssues) DeleteIssue(_ context.Context, id uint64) error {
+	delete(m.byID, id)
+	return nil
+}
+
 // memComments keeps Comments in memory.
 type memComments struct {
 	commentsPort

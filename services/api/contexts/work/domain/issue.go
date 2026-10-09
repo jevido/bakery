@@ -97,8 +97,12 @@ type Issue struct {
 	StartedAt     *time.Time
 	CompletedAt   *time.Time
 	CancelledAt   *time.Time
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	// OriginRoutineID and OriginRoutineRunID name the Routine and Routine
+	// run that created an Execution Issue; 0 for any other Issue.
+	OriginRoutineID    uint64
+	OriginRoutineRunID uint64
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 // NewIssue is an Issue of the Guild, created by a Member or an Agent, in the Backlog

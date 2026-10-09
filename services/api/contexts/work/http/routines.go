@@ -28,22 +28,22 @@ type issueRef struct {
 }
 
 type routineJSON struct {
-	ID                uint64        `json:"id"`
-	Title             string        `json:"title"`
-	Description       string        `json:"description"`
-	Project           *namedRef     `json:"project"`
-	Goal              *titledRef    `json:"goal"`
-	ParentIssue       *issueRef     `json:"parent_issue"`
-	AssigneeAgent     *Agent        `json:"assignee_agent"`
-	Priority          string        `json:"priority"`
-	Status            string        `json:"status"`
-	ConcurrencyPolicy string        `json:"concurrency_policy"`
-	CatchUpPolicy     string        `json:"catch_up_policy"`
-	LastTriggeredAt   *time.Time    `json:"last_triggered_at"`
-	CreatedAt         time.Time     `json:"created_at"`
-	UpdatedAt         time.Time     `json:"updated_at"`
-	Triggers          []triggerJSON `json:"triggers"`
-	LastRun           any           `json:"last_run"`
+	ID                uint64          `json:"id"`
+	Title             string          `json:"title"`
+	Description       string          `json:"description"`
+	Project           *namedRef       `json:"project"`
+	Goal              *titledRef      `json:"goal"`
+	ParentIssue       *issueRef       `json:"parent_issue"`
+	AssigneeAgent     *Agent          `json:"assignee_agent"`
+	Priority          string          `json:"priority"`
+	Status            string          `json:"status"`
+	ConcurrencyPolicy string          `json:"concurrency_policy"`
+	CatchUpPolicy     string          `json:"catch_up_policy"`
+	LastTriggeredAt   *time.Time      `json:"last_triggered_at"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
+	Triggers          []triggerJSON   `json:"triggers"`
+	LastRun           *routineRunJSON `json:"last_run"`
 }
 
 // routinesJSON shows Routines with the names of their Projects, Goals,
@@ -105,11 +105,28 @@ func (c *Controller) routinesJSON(ctx contractshttp.Context, rs []domain.Routine
 	if err != nil {
 		return nil, err
 	}
+	last, err := c.service.LastRoutineRuns(cx, routineIDs)
+	if err != nil {
+		return nil, err
+	}
+	var lastRuns []domain.RoutineRun
+	for _, rr := range last {
+		lastRuns = append(lastRuns, rr)
+	}
+	lastJSON, err := c.routineRunsJSON(ctx, lastRuns)
+	if err != nil {
+		return nil, err
+	}
+	lastOf := make(map[uint64]*routineRunJSON, len(lastJSON))
+	for n := range lastJSON {
+		lastOf[lastJSON[n].Routine.ID] = &lastJSON[n]
+	}
 	for n, r := range rs {
 		out[n] = routineJSON{
 			ID: r.ID, Title: r.Title, Description: r.Description, Priority: string(r.Priority), Status: string(r.Status),
 			ConcurrencyPolicy: string(r.ConcurrencyPolicy), CatchUpPolicy: string(r.CatchUpPolicy),
 			LastTriggeredAt: r.LastTriggeredAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Triggers: []triggerJSON{},
+			LastRun: lastOf[r.ID],
 		}
 		for _, t := range triggers[r.ID] {
 			out[n].Triggers = append(out[n].Triggers, toTriggerJSON(t))
@@ -172,10 +189,18 @@ func (c *Controller) oneRoutine(ctx contractshttp.Context, status int, r domain.
 	if err != nil {
 		return fail(ctx, err)
 	}
+	runs, err := c.service.RoutineRuns(ctx.Context(), c.guild(ctx), r.ID, recentRuns, c.visible(ctx))
+	if err != nil {
+		return fail(ctx, err)
+	}
+	recent, err := c.routineRunsJSON(ctx, runs)
+	if err != nil {
+		return fail(ctx, err)
+	}
 	return ctx.Response().Json(status, contractshttp.Json{"routine": struct {
 		routineJSON
-		RecentRuns []any `json:"recent_runs"`
-	}{out[0], []any{}}})
+		RecentRuns []routineRunJSON `json:"recent_runs"`
+	}{out[0], recent}})
 }
 
 // routineFilter reads ?project_id=, ?assignee_agent_id= (each an id, or
@@ -355,4 +380,166 @@ func (c *Controller) DeleteTrigger(ctx contractshttp.Context) contractshttp.Resp
 		return fail(ctx, err)
 	}
 	return ctx.Response().NoContent()
+}
+
+// recentRuns is how many Routine runs a Routine shows with itself.
+const recentRuns = 10
+
+type triggerRef struct {
+	ID    uint64 `json:"id"`
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
+}
+
+type runIssueRef struct {
+	ID         uint64 `json:"id"`
+	Identifier string `json:"identifier"`
+	Title      string `json:"title"`
+	Status     string `json:"status"`
+}
+
+type routineRunJSON struct {
+	ID            uint64       `json:"id"`
+	Routine       titledRef    `json:"routine"`
+	Source        string       `json:"source"`
+	Status        string       `json:"status"`
+	TriggeredAt   time.Time    `json:"triggered_at"`
+	CompletedAt   *time.Time   `json:"completed_at"`
+	FailureReason *string      `json:"failure_reason"`
+	Trigger       *triggerRef  `json:"trigger"`
+	Issue         *runIssueRef `json:"issue"`
+}
+
+// routineRunsJSON shows Routine runs with their Routine's title, their
+// Routine trigger and their Execution Issue, each kind asked for in one
+// go. An Issue the person may not see is left out.
+func (c *Controller) routineRunsJSON(ctx contractshttp.Context, rrs []domain.RoutineRun) ([]routineRunJSON, error) {
+	out := make([]routineRunJSON, len(rrs))
+	if len(rrs) == 0 {
+		return out, nil
+	}
+	cx, guildID := ctx.Context(), c.guild(ctx)
+	var routineIDs, issueIDs []uint64
+	for _, rr := range rrs {
+		routineIDs = append(routineIDs, rr.RoutineID)
+		if rr.LinkedIssueID != 0 {
+			issueIDs = append(issueIDs, rr.LinkedIssueID)
+		}
+	}
+	titles, err := c.service.RoutineTitles(cx, guildID, routineIDs)
+	if err != nil {
+		return nil, err
+	}
+	ts, err := c.service.RoutineTriggers(cx, routineIDs)
+	if err != nil {
+		return nil, err
+	}
+	triggers := map[uint64]triggerRef{}
+	for _, list := range ts {
+		for _, t := range list {
+			triggers[t.ID] = triggerRef{ID: t.ID, Kind: string(t.Kind), Label: t.Label}
+		}
+	}
+	issues := map[uint64]runIssueRef{}
+	if len(issueIDs) > 0 {
+		prefix, err := c.service.IssuePrefix(cx, guildID)
+		if err != nil {
+			return nil, err
+		}
+		is, err := c.service.VisibleIssues(cx, issueIDs, c.visible(ctx))
+		if err != nil {
+			return nil, err
+		}
+		for _, i := range is {
+			issues[i.ID] = runIssueRef{ID: i.ID, Identifier: domain.Identifier(prefix, i.Number), Title: i.Title, Status: string(i.Status)}
+		}
+	}
+	for n, rr := range rrs {
+		out[n] = routineRunJSON{
+			ID: rr.ID, Routine: titledRef{ID: rr.RoutineID, Title: titles[rr.RoutineID]}, Source: string(rr.Source), Status: string(rr.Status),
+			TriggeredAt: rr.TriggeredAt.UTC(), CompletedAt: utcOf(rr.CompletedAt),
+		}
+		if rr.FailureReason != "" {
+			reason := rr.FailureReason
+			out[n].FailureReason = &reason
+		}
+		if t, ok := triggers[rr.TriggerID]; ok {
+			out[n].Trigger = &t
+		}
+		if i, ok := issues[rr.LinkedIssueID]; ok {
+			out[n].Issue = &i
+		}
+	}
+	return out, nil
+}
+
+func utcOf(t *time.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	u := t.UTC()
+	return &u
+}
+
+type runRequest struct {
+	TriggerID optional[uint64] `json:"trigger_id"`
+}
+
+// RunRoutine runs the {id} Routine now: manual, or api when it names one
+// of its api Routine triggers.
+func (c *Controller) RunRoutine(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	var req runRequest
+	// The body, {trigger_id}, is optional.
+	if ctx.Request().Origin().ContentLength != 0 {
+		if err := ctx.Request().Bind(&req); err != nil {
+			return respond.BadBody(ctx)
+		}
+	}
+	run := app.RunRequest{Source: domain.ManualSource, Actor: c.actor(ctx)}
+	if t := value(idOf(req.TriggerID)); t != 0 {
+		run.Source, run.TriggerID = domain.APISource, t
+	}
+	rr, err := c.service.RunRoutine(ctx.Context(), c.guild(ctx), id, run)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out, err := c.routineRunsJSON(ctx, []domain.RoutineRun{rr})
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Json(contractshttp.StatusAccepted, contractshttp.Json{"routine_run": out[0]})
+}
+
+// ListRoutineRuns answers the {id} Routine's Routine runs, or without an
+// {id} the Current guild's across the Routines the request may view,
+// newest first; ?limit= is at most 200, 50 by default.
+func (c *Controller) ListRoutineRuns(ctx contractshttp.Context) contractshttp.Response {
+	var id uint64
+	if ctx.Request().Route("id") != "" {
+		var ok bool
+		if id, ok = routeID(ctx); !ok {
+			return notFound(ctx)
+		}
+	}
+	limit := 50
+	if v := ctx.Request().Query("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 200 {
+			return respond.Invalid(ctx, "limit", "limit must be a number from 1 to 200")
+		}
+		limit = n
+	}
+	rrs, err := c.service.RoutineRuns(ctx.Context(), c.guild(ctx), id, limit, c.visible(ctx))
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out, err := c.routineRunsJSON(ctx, rrs)
+	if err != nil {
+		return fail(ctx, err)
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{"routine_runs": out})
 }

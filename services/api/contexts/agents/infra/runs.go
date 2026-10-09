@@ -257,6 +257,24 @@ func (s Runs) LiveRuns(ctx context.Context, runIDs []uint64) (map[uint64]bool, e
 	return out, nil
 }
 
+// IssuesWithLiveRuns tells which of the Guild's Issues have a queued or
+// running Run.
+func (s Runs) IssuesWithLiveRuns(ctx context.Context, guildID uint64, issueIDs []uint64) (map[uint64]bool, error) {
+	out := make(map[uint64]bool, len(issueIDs))
+	if len(issueIDs) == 0 {
+		return out, nil
+	}
+	var ids []uint64
+	if err := s.query(ctx).Raw(`SELECT DISTINCT issue_id FROM runs WHERE guild_id = ? AND status IN (?, ?) AND issue_id IN ?`,
+		guildID, string(domain.RunQueued), string(domain.RunRunning), issueIDs).Scan(&ids); err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, nil
+}
+
 // RunEvents lists the Run's events after the seq, at most limit, by seq.
 func (s Runs) RunEvents(ctx context.Context, runID uint64, after int64, limit int) ([]domain.RunEvent, error) {
 	var recs []runEventRecord

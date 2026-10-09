@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
 )
@@ -29,6 +30,21 @@ type Routines interface {
 	CreateTrigger(ctx context.Context, t domain.RoutineTrigger) (domain.RoutineTrigger, error)
 	SaveTrigger(ctx context.Context, t domain.RoutineTrigger) error
 	DeleteTrigger(ctx context.Context, id uint64) error
+	// LockRoutine holds the Routine's lock, across API processes, until
+	// unlock is called: a Routine run of it waits while another is
+	// dispatched.
+	LockRoutine(ctx context.Context, id uint64) (unlock func(), err error)
+	// RoutineTriggered sets when the Routine last ran.
+	RoutineTriggered(ctx context.Context, id uint64, at time.Time) error
+	CreateRoutineRun(ctx context.Context, rr domain.RoutineRun) (domain.RoutineRun, error)
+	SaveRoutineRun(ctx context.Context, rr domain.RoutineRun) error
+	RoutineRun(ctx context.Context, id uint64) (domain.RoutineRun, bool, error)
+	// RoutineRuns lists the Routine runs of the Routines, newest first, at
+	// most limit.
+	RoutineRuns(ctx context.Context, routineIDs []uint64, limit int) ([]domain.RoutineRun, error)
+	// LastRoutineRuns answers the newest Routine run of each of the
+	// Routines that has one.
+	LastRoutineRuns(ctx context.Context, routineIDs []uint64) (map[uint64]domain.RoutineRun, error)
 }
 
 // RoutineFilter is what a list of Routines keeps. Nil fields keep every
