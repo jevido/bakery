@@ -63,6 +63,7 @@ const deployment = (await get<{ deployments: { id: number }[] }>(`/applications/
 const backup = (await get<{ scheduled_backups: { id: number }[] }>(`/databases/${database.id}/scheduled-backups`)).scheduled_backups[0]
 const server = (await get<{ servers: { id: number }[] }>('/servers')).servers[0]
 const role = (await get<{ roles: { id: number }[] }>('/roles')).roles[0]
+const skill = (await get<{ skills: { id: number }[] }>('/skills')).skills[0]
 
 const routerSource = readFileSync(new URL('../src/lib/router.svelte.ts', import.meta.url), 'utf8')
 function pages(name: string): string[] {
@@ -100,6 +101,8 @@ const routes = [
   '/issues',
   '/goals',
   '/agents/all',
+  '/skills',
+  ...(skill ? pages('skillTabs').map((t) => (t === 'overview' ? `/skills/${skill.id}` : `/skills/${skill.id}?tab=${t}`)) : []),
   '/settings',
   ...pages('guildPages').map((p) => sub('/guild', p)),
   `/guild/roles/${role.id}`,

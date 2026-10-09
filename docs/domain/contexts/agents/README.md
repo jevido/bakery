@@ -735,7 +735,9 @@ records nothing more.
   import from GitHub, skills.sh or a URL, the catalog, forks, stars,
   comments, test runs, skill sources, folders, skill policies, update
   checks, Agents reading or writing Skills through the API, and version
-  pins on an Agent's Skills.
+  pins on an Agent's Skills. The next slice of Skills is versions (each
+  save kept, with their diff and a restore), import from a URL or GitHub,
+  and the catalog.
 - **Deleting a Skill in use is refused**, as Paperclip's is: switching it
   off on the Agents first makes the change visible on each Agent instead
   of a Run quietly losing it.
