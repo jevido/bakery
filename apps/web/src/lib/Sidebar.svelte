@@ -4,14 +4,14 @@
   // header, then The Bakery's nav. The first section holds Dashboard and
   // the Inbox with its count of Unread Issues and Actionable
   // Approvals ("unread", as Paperclip labels it); the Work section holds Projects,
-  // Issues and Goals; the Guild section holds Agents, Activity and Costs, as
+  // Issues, Goals and Routines; the Guild section holds Agents, Activity and Costs, as
   // Paperclip's streamlined Sidebar puts Agents beside Audit and Costs in its
   // Org section, which is what The Bakery's Guild section is. Approvals have no
   // item, as in Paperclip: they are reached through the Inbox, the
   // Dashboard's Pending Approvals card and an Issue's page. The Guild's
   // settings, Notifications, Keys & Tokens and Settings open under the
   // settings sidebar instead.
-  import { CircleDot, DollarSign, FolderOpen, HardDrive, History, Inbox, LayoutDashboard, Server, Target, Users } from '@lucide/svelte'
+  import { CircleDot, DollarSign, FolderOpen, HardDrive, History, Inbox, LayoutDashboard, Repeat, Server, Target, Users } from '@lucide/svelte'
   import type { Component } from 'svelte'
   import GuildMenu from './GuildMenu.svelte'
   import { badges, pollBadges, refreshBadges } from './inbox.svelte'
@@ -44,6 +44,7 @@
           },
           { label: 'Issues', path: '/issues', icon: CircleDot, routes: ['issues', 'issue'] },
           { label: 'Goals', path: '/goals', icon: Target, routes: ['goals', 'goal'] },
+          { label: 'Routines', path: '/routines', icon: Repeat, routes: ['routines', 'routine'] },
         ],
       },
       {

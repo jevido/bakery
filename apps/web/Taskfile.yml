@@ -54,6 +54,12 @@ tasks:
     cmds:
       - bun e2e/costs.ts
 
+  routines:
+    desc: Check the Routines pages (Create routine with a schedule, Run now, Recent Runs, a viewer) in headless Chromium (needs task dev)
+    deps: [install]
+    cmds:
+      - bun e2e/routines.ts
+
   desktop:
     desc: Check the Desktop app's sign-in (approve, cancel, expired) and the Desktops page in headless Chromium (needs task dev)
     deps: [install]
