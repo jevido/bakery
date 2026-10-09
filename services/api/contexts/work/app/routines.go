@@ -51,6 +51,9 @@ type Routines interface {
 	CreateRoutineRun(ctx context.Context, rr domain.RoutineRun) (domain.RoutineRun, error)
 	SaveRoutineRun(ctx context.Context, rr domain.RoutineRun) error
 	RoutineRun(ctx context.Context, id uint64) (domain.RoutineRun, bool, error)
+	// RoutineRunByIdempotencyKey returns the trigger's Routine run with the
+	// Idempotency key.
+	RoutineRunByIdempotencyKey(ctx context.Context, triggerID uint64, key string) (domain.RoutineRun, bool, error)
 	// RoutineRuns lists the Routine runs of the Routines, newest first, at
 	// most limit.
 	RoutineRuns(ctx context.Context, routineIDs []uint64, limit int) ([]domain.RoutineRun, error)

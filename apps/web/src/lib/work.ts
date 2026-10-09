@@ -348,6 +348,7 @@ const activityVerbs: Record<string, string> = {
   'routine.trigger_deleted': 'deleted a trigger of',
   'routine.trigger_secret_rotated': 'rotated the webhook secret of',
   'routine.run_triggered': 'ran',
+  'routine.webhook_rejected': 'rejected a webhook delivery to',
 }
 /** The verb of an Activity row: "commented on" for issue.comment_added. */
 export const activityVerb = (action: string) => activityVerbs[action] ?? action.replace(/[._]/g, ' ')

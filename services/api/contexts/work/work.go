@@ -717,6 +717,9 @@ func Routes(r route.Router) {
 		r.Post("/api/approvals/{id}/request-revision", c.RequestApprovalRevision)
 	})
 	r.Middleware(guilds.Auth, approvalInGuild, manage).Post("/api/approvals/{id}/resubmit", c.ResubmitApproval)
+	// A Webhook delivery carries no Session; its Signing mode is the
+	// authentication.
+	r.Post("/api/routine-triggers/public/{public_id}/fire", c.FireWebhookTrigger)
 	r.Middleware(guilds.AuthAgents, view).Get("/api/routines", c.ListRoutines)
 	r.Middleware(guilds.AuthAgents, manage).Post("/api/routines", c.CreateRoutine)
 	r.Middleware(guilds.AuthAgents, routineInProject, view).Get("/api/routines/{id}", c.ShowRoutine)

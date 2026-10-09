@@ -59,6 +59,7 @@ const (
 	RoutineTriggerDeletedAction       = "routine.trigger_deleted"
 	RoutineTriggerSecretRotatedAction = "routine.trigger_secret_rotated"
 	RoutineRunTriggeredAction         = "routine.run_triggered"
+	RoutineWebhookRejectedAction      = "routine.webhook_rejected"
 )
 
 // AgentActions lists the Actions the agents context records through work.
@@ -735,4 +736,19 @@ type RoutineRunTriggered struct {
 func (e RoutineRunTriggered) Activity() ActivityEvent {
 	d := map[string]any{"routine_run_id": e.Run.ID, "source": e.Run.Source, "status": e.Run.Status, "trigger_id": ref(e.Run.TriggerID), "issue": ref(e.Run.LinkedIssueID)}
 	return e.routine(e.Routine, RoutineRunTriggeredAction, d)
+}
+
+// WebhookDeliveryRejected is a Webhook delivery its Webhook trigger
+// refused, for the reason; nobody is its Actor.
+type WebhookDeliveryRejected struct {
+	Happened
+	Routine Routine
+	Trigger RoutineTrigger
+	Reason  string
+}
+
+func (e WebhookDeliveryRejected) Activity() ActivityEvent {
+	d := triggerDetails(e.Trigger)
+	d["reason"] = e.Reason
+	return e.routine(e.Routine, RoutineWebhookRejectedAction, d)
 }

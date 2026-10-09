@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
@@ -197,5 +198,86 @@ func TestRoutineRunFollowsItsExecutionIssue(t *testing.T) {
 	}
 	if got := rs.runs[again.ID-1]; got.Status != domain.RunFailed || got.LinkedIssueID != 0 || got.FailureReason != "Execution issue deleted" {
 		t.Errorf("deleted: %+v", got)
+	}
+}
+
+func webhookRoutine(t *testing.T, mode string) (*Service, *memRoutines, *memActivity, domain.Routine, domain.RoutineTrigger) {
+	t.Helper()
+	s, rs, act, r, _, _ := runService(t)
+	wh, err := s.AddTrigger(context.Background(), 1, domain.ByMember(7), r.ID, TriggerInput{Kind: "webhook", SigningMode: mode}, everyProject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	act.actions = nil
+	return s, rs, act, r, wh
+}
+
+func TestFireWebhookTrigger(t *testing.T) {
+	ctx := context.Background()
+	s, rs, act, r, wh := webhookRoutine(t, "bearer")
+	good := domain.DeliveryHeaders{Authorization: "Bearer " + wh.Secret, IdempotencyKey: "abc"}
+	rr, err := s.FireWebhookTrigger(ctx, wh.PublicID, good, []byte(`{}`))
+	if err != nil || rr.Source != domain.WebhookSource || rr.Status != domain.RunIssueCreated || rr.TriggerID != wh.ID || rr.IdempotencyKey != "abc" || rr.TriggeredBy != (domain.Actor{}) {
+		t.Fatalf("FireWebhookTrigger = %+v, %v", rr, err)
+	}
+	if !slices.Contains(act.actions, domain.RoutineRunTriggeredAction) {
+		t.Errorf("actions %v", act.actions)
+	}
+	if got := rs.triggers[wh.ID-1]; got.LastDelivery == nil || got.LastDelivery.Status != domain.AcceptedDelivery || got.LastResult != string(domain.RunIssueCreated) {
+		t.Errorf("trigger after = %+v", got)
+	}
+	// The same delivery again answers the same Routine run and makes no
+	// second Execution Issue.
+	again, err := s.FireWebhookTrigger(ctx, wh.PublicID, good, []byte(`{}`))
+	if err != nil || again.ID != rr.ID || len(rs.runs) != 1 || rs.locked {
+		t.Fatalf("again = %+v, %v; %d runs", again, err, len(rs.runs))
+	}
+	if _, err := s.FireWebhookTrigger(ctx, wh.PublicID, domain.DeliveryHeaders{Authorization: "Bearer " + wh.Secret, IdempotencyKey: "def"}, []byte(`{}`)); err != nil || len(rs.runs) != 2 {
+		t.Fatalf("another key: %v; %d runs", err, len(rs.runs))
+	}
+
+	act.actions = nil
+	if _, err := s.FireWebhookTrigger(ctx, wh.PublicID, domain.DeliveryHeaders{Authorization: "Bearer nope"}, []byte(`{}`)); !errors.Is(err, domain.ErrBadCredentials) {
+		t.Fatalf("a bad token: %v", err)
+	}
+	if got := rs.triggers[wh.ID-1]; got.LastDelivery == nil || got.LastDelivery.Status != domain.RejectedDelivery || len(rs.runs) != 2 {
+		t.Errorf("after a bad token: %+v", got)
+	}
+	if !slices.Equal(act.actions, []string{domain.RoutineWebhookRejectedAction}) {
+		t.Errorf("actions %v", act.actions)
+	}
+
+	if _, err := s.FireWebhookTrigger(ctx, "nope", good, []byte(`{}`)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("an unknown Public id: %v", err)
+	}
+	api, _ := s.AddTrigger(ctx, 1, domain.ByMember(7), r.ID, TriggerInput{Kind: "api"}, everyProject)
+	if _, err := s.FireWebhookTrigger(ctx, api.PublicID, good, []byte(`{}`)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("an api trigger: %v", err)
+	}
+}
+
+func TestFireWebhookTriggerRefused(t *testing.T) {
+	ctx := context.Background()
+	s, rs, _, r, wh := webhookRoutine(t, "bearer")
+	if _, err := s.ChangeRoutine(ctx, 1, domain.ByMember(7), r.ID, RoutinePatch{Status: ptr("paused")}, everyProject); err != nil {
+		t.Fatal(err)
+	}
+	// A paused Routine is refused before the delivery is checked, so not
+	// even a bad one is recorded.
+	if _, err := s.FireWebhookTrigger(ctx, wh.PublicID, domain.DeliveryHeaders{}, []byte(`{}`)); !errors.Is(err, domain.ErrRoutinePaused) {
+		t.Fatalf("paused: %v", err)
+	}
+	if got := rs.triggers[wh.ID-1]; got.LastDelivery != nil || len(rs.runs) != 0 {
+		t.Fatalf("paused recorded %+v, %d runs", got.LastDelivery, len(rs.runs))
+	}
+	if _, err := s.ChangeRoutine(ctx, 1, domain.ByMember(7), r.ID, RoutinePatch{Status: ptr("active")}, everyProject); err != nil {
+		t.Fatal(err)
+	}
+	off := false
+	if _, err := s.ChangeTrigger(ctx, 1, domain.ByMember(7), wh.ID, domain.TriggerSettings{Enabled: &off}, everyProject); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.FireWebhookTrigger(ctx, wh.PublicID, domain.DeliveryHeaders{Authorization: "Bearer " + wh.Secret}, []byte(`{}`)); !errors.Is(err, domain.ErrTriggerDisabled) {
+		t.Fatalf("disabled: %v", err)
 	}
 }

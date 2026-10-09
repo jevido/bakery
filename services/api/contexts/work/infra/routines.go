@@ -348,6 +348,7 @@ type routineRunRecord struct {
 	FailureReason             string
 	TriggeredByMemberID       *uint64
 	TriggeredByAgentID        *uint64
+	IdempotencyKey            *string
 	CompletedAt               *time.Time
 	orm.Timestamps
 }
@@ -359,7 +360,7 @@ func (r routineRunRecord) toDomain() domain.RoutineRun {
 		ID: r.ID, GuildID: r.GuildID, RoutineID: r.RoutineID, TriggerID: deref(r.TriggerID),
 		Source: domain.RoutineRunSource(r.Source), Status: domain.RoutineRunStatus(r.Status), TriggeredAt: r.TriggeredAt.UTC(),
 		LinkedIssueID: deref(r.LinkedIssueID), CoalescedIntoRunID: deref(r.CoalescedIntoRoutineRunID), FailureReason: r.FailureReason,
-		TriggeredBy: actor(r.TriggeredByMemberID, r.TriggeredByAgentID), CompletedAt: utc(r.CompletedAt),
+		TriggeredBy: actor(r.TriggeredByMemberID, r.TriggeredByAgentID), IdempotencyKey: orZero(r.IdempotencyKey), CompletedAt: utc(r.CompletedAt),
 	}
 	out.CreatedAt, out.UpdatedAt = stamp(&r.Timestamps)
 	return out
@@ -378,7 +379,7 @@ func (s Routines) CreateRoutineRun(ctx context.Context, rr domain.RoutineRun) (d
 		GuildID: rr.GuildID, RoutineID: rr.RoutineID, TriggerID: nullable(rr.TriggerID), Source: string(rr.Source), Status: string(rr.Status),
 		TriggeredAt: rr.TriggeredAt, LinkedIssueID: nullable(rr.LinkedIssueID), CoalescedIntoRoutineRunID: nullable(rr.CoalescedIntoRunID),
 		FailureReason: rr.FailureReason, TriggeredByMemberID: nullable(rr.TriggeredBy.MemberID), TriggeredByAgentID: nullable(rr.TriggeredBy.AgentID),
-		CompletedAt: rr.CompletedAt,
+		IdempotencyKey: nullableString(rr.IdempotencyKey), CompletedAt: rr.CompletedAt,
 	}
 	if err := s.query(ctx).Create(&rec); err != nil {
 		return domain.RoutineRun{}, err
@@ -395,8 +396,18 @@ func (s Routines) SaveRoutineRun(ctx context.Context, rr domain.RoutineRun) erro
 
 // RoutineRun returns the Routine run; found is false when there is none.
 func (s Routines) RoutineRun(ctx context.Context, id uint64) (domain.RoutineRun, bool, error) {
+	return s.routineRunWhere(ctx, "id = ?", id)
+}
+
+// RoutineRunByIdempotencyKey returns the trigger's Routine run with the
+// Idempotency key; found is false when there is none.
+func (s Routines) RoutineRunByIdempotencyKey(ctx context.Context, triggerID uint64, key string) (domain.RoutineRun, bool, error) {
+	return s.routineRunWhere(ctx, "trigger_id = ? AND idempotency_key = ?", triggerID, key)
+}
+
+func (s Routines) routineRunWhere(ctx context.Context, where string, args ...any) (domain.RoutineRun, bool, error) {
 	var rec routineRunRecord
-	if err := s.query(ctx).Where("id", id).FirstOrFail(&rec); err != nil {
+	if err := s.query(ctx).Where(where, args...).FirstOrFail(&rec); err != nil {
 		if errors.Is(err, frameworkerrors.OrmRecordNotFound) {
 			return domain.RoutineRun{}, false, nil
 		}
@@ -433,6 +444,14 @@ func (s Routines) LastRoutineRuns(ctx context.Context, routineIDs []uint64) (map
 		out[rr.RoutineID] = rr
 	}
 	return out, nil
+}
+
+// nullableString keeps "" as null.
+func nullableString(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // orZero reads a nullable column; null is the zero value.

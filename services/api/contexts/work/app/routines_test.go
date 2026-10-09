@@ -141,6 +141,15 @@ func (m *memRoutines) RoutineRun(_ context.Context, id uint64) (domain.RoutineRu
 	return m.runs[id-1], true, nil
 }
 
+func (m *memRoutines) RoutineRunByIdempotencyKey(_ context.Context, triggerID uint64, key string) (domain.RoutineRun, bool, error) {
+	for _, rr := range m.runs {
+		if rr.TriggerID == triggerID && rr.IdempotencyKey == key {
+			return rr, true, nil
+		}
+	}
+	return domain.RoutineRun{}, false, nil
+}
+
 func (m *memRoutines) RoutineRuns(_ context.Context, routineIDs []uint64, limit int) ([]domain.RoutineRun, error) {
 	var out []domain.RoutineRun
 	for n := len(m.runs) - 1; n >= 0 && len(out) < limit; n-- {

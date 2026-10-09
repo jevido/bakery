@@ -7,17 +7,19 @@ import (
 )
 
 // RoutineRunSource is what made a Routine run: its Schedule, a person
-// pressing Run, or a call to Run naming an api Routine trigger.
+// pressing Run, a call to Run naming an api Routine trigger, or a Webhook
+// delivery to a webhook one.
 type RoutineRunSource string
 
 const (
 	ScheduleSource RoutineRunSource = "schedule"
 	ManualSource   RoutineRunSource = "manual"
 	APISource      RoutineRunSource = "api"
+	WebhookSource  RoutineRunSource = "webhook"
 )
 
 // RoutineRunSources lists every source of a Routine run.
-var RoutineRunSources = []RoutineRunSource{ScheduleSource, ManualSource, APISource}
+var RoutineRunSources = []RoutineRunSource{ScheduleSource, ManualSource, APISource, WebhookSource}
 
 // RoutineRunStatus is a Routine run status.
 type RoutineRunStatus string
@@ -38,8 +40,9 @@ var RoutineRunStatuses = []RoutineRunStatus{RunReceived, RunIssueCreated, RunCoa
 var (
 	// ErrRoutineArchivedRun is Run on an archived Routine.
 	ErrRoutineArchivedRun = errors.New("an archived routine does not run")
-	// ErrRoutinePaused is a Schedule trigger firing for a paused Routine.
-	ErrRoutinePaused = errors.New("a paused routine does not run on its schedule")
+	// ErrRoutinePaused is a Schedule or Webhook trigger firing for a
+	// paused Routine.
+	ErrRoutinePaused = errors.New("a paused routine does not run by itself")
 	// ErrTriggerDisabled is a Routine run naming a Routine trigger that is
 	// off.
 	ErrTriggerDisabled = errors.New("the routine trigger is disabled")
@@ -50,12 +53,12 @@ var (
 
 // ReceiveRoutineRun is a Routine run of r from source, named by trigger
 // (nil for none), triggered by the Member or Agent (nobody for a
-// Schedule) at at. It refuses an archived Routine, a Draft, a paused one
-// for a Schedule, and a trigger that is not r's, is off, or is not of the
-// source's kind.
+// Schedule or a Webhook delivery) at at. It refuses an archived Routine, a
+// Draft, a paused one for a Schedule or a Webhook delivery, and a trigger
+// that is not r's, is off, or is not of the source's kind.
 func ReceiveRoutineRun(r Routine, trigger *RoutineTrigger, source RoutineRunSource, by Actor, at time.Time) (RoutineRun, error) {
 	if !slices.Contains(RoutineRunSources, source) {
-		return RoutineRun{}, invalid("source", "source must be schedule, manual or api")
+		return RoutineRun{}, invalid("source", "source must be schedule, manual, api or webhook")
 	}
 	if r.Archived() {
 		return RoutineRun{}, ErrRoutineArchivedRun
@@ -63,7 +66,7 @@ func ReceiveRoutineRun(r Routine, trigger *RoutineTrigger, source RoutineRunSour
 	if r.Draft() {
 		return RoutineRun{}, invalid("assignee_agent_id", "default agent required")
 	}
-	if source == ScheduleSource && r.Status == PausedRoutine {
+	if (source == ScheduleSource || source == WebhookSource) && r.Status == PausedRoutine {
 		return RoutineRun{}, ErrRoutinePaused
 	}
 	rr := RoutineRun{GuildID: r.GuildID, RoutineID: r.ID, Source: source, Status: RunReceived, TriggeredAt: at, TriggeredBy: by}
@@ -79,7 +82,7 @@ func ReceiveRoutineRun(r Routine, trigger *RoutineTrigger, source RoutineRunSour
 	if !trigger.Enabled {
 		return RoutineRun{}, ErrTriggerDisabled
 	}
-	if source == ScheduleSource && trigger.Kind != ScheduleTrigger || source == APISource && trigger.Kind != APITrigger {
+	if want := map[RoutineRunSource]TriggerKind{ScheduleSource: ScheduleTrigger, APISource: APITrigger, WebhookSource: WebhookTrigger}[source]; trigger.Kind != want {
 		return RoutineRun{}, invalid("trigger_id", "a %s run needs a trigger of kind %s", source, source)
 	}
 	rr.TriggerID = trigger.ID
@@ -88,8 +91,9 @@ func ReceiveRoutineRun(r Routine, trigger *RoutineTrigger, source RoutineRunSour
 
 // RoutineRun is one firing of a Routine. TriggerID, LinkedIssueID and
 // CoalescedIntoRunID are 0 for none; TriggeredBy is nobody for a
-// Schedule; CompletedAt is set once it no longer follows its Execution
-// Issue.
+// Schedule or a Webhook delivery; IdempotencyKey is the Webhook
+// delivery's, "" for none; CompletedAt is set once it no longer follows
+// its Execution Issue.
 type RoutineRun struct {
 	ID                 uint64
 	GuildID            uint64
@@ -102,6 +106,7 @@ type RoutineRun struct {
 	CoalescedIntoRunID uint64
 	FailureReason      string
 	TriggeredBy        Actor
+	IdempotencyKey     string
 	CompletedAt        *time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time

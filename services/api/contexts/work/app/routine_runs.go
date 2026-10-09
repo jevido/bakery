@@ -54,11 +54,18 @@ func (s *Service) RunRoutine(ctx context.Context, guildID, routineID uint64, req
 		}
 		trigger = &t
 	}
+	return s.startRoutineRun(ctx, r, trigger, req, "")
+}
+
+// startRoutineRun records and dispatches a Routine run of r, the Routine's
+// lock already held.
+func (s *Service) startRoutineRun(ctx context.Context, r domain.Routine, trigger *domain.RoutineTrigger, req RunRequest, idempotencyKey string) (domain.RoutineRun, error) {
 	now := s.now()
 	rr, err := domain.ReceiveRoutineRun(r, trigger, req.Source, req.Actor, now)
 	if err != nil {
 		return domain.RoutineRun{}, err
 	}
+	rr.IdempotencyKey = idempotencyKey
 	if rr, err = s.routines.CreateRoutineRun(ctx, rr); err != nil {
 		return domain.RoutineRun{}, err
 	}
@@ -74,6 +81,9 @@ func (s *Service) RunRoutine(ctx context.Context, guildID, routineID uint64, req
 	r.LastTriggeredAt = &now
 	if trigger != nil {
 		trigger.LastFiredAt, trigger.LastResult = &now, string(rr.Status)
+		if rr.Source == domain.WebhookSource {
+			trigger.LastDelivery = &domain.WebhookDelivery{Status: domain.AcceptedDelivery, ReceivedAt: now}
+		}
 		if err := s.routines.SaveTrigger(ctx, *trigger); err != nil {
 			return domain.RoutineRun{}, err
 		}
@@ -82,6 +92,65 @@ func (s *Service) RunRoutine(ctx context.Context, guildID, routineID uint64, req
 		s.publish(ctx, domain.RoutineRunTriggered{Happened: s.happened(req.Actor), Routine: r, Run: rr})
 	}
 	return rr, nil
+}
+
+// FireWebhookTrigger runs the Routine of the Webhook trigger with the
+// Public id for a Webhook delivery, as Paperclip's firePublicTrigger. A
+// paused Routine or a disabled trigger is refused before the delivery is
+// checked; a delivery that fails its Signing mode is recorded on the
+// trigger as rejected. A delivery whose Idempotency key a Routine run of
+// the trigger already has answers that Routine run instead of a new one.
+func (s *Service) FireWebhookTrigger(ctx context.Context, publicID string, h domain.DeliveryHeaders, body []byte) (domain.RoutineRun, error) {
+	t, found, err := s.routines.TriggerByPublicID(ctx, publicID)
+	if err != nil {
+		return domain.RoutineRun{}, err
+	}
+	if !found || t.Kind != domain.WebhookTrigger {
+		return domain.RoutineRun{}, ErrNotFound
+	}
+	unlock, err := s.routines.LockRoutine(ctx, t.RoutineID)
+	if err != nil {
+		return domain.RoutineRun{}, err
+	}
+	defer unlock()
+	r, found, err := s.routines.Routine(ctx, t.RoutineID)
+	if err != nil {
+		return domain.RoutineRun{}, err
+	}
+	if !found || r.Archived() {
+		return domain.RoutineRun{}, ErrNotFound
+	}
+	// Read again under the lock, so a Routine run started meanwhile
+	// does not lose its changes to the trigger.
+	if t, found, err = s.routines.Trigger(ctx, t.ID); err != nil {
+		return domain.RoutineRun{}, err
+	}
+	if !found {
+		return domain.RoutineRun{}, ErrNotFound
+	}
+	if r.Status == domain.PausedRoutine {
+		return domain.RoutineRun{}, domain.ErrRoutinePaused
+	}
+	if !t.Enabled {
+		return domain.RoutineRun{}, domain.ErrTriggerDisabled
+	}
+	now := s.now()
+	key, err := domain.VerifyDelivery(t, h, body, now)
+	if err != nil {
+		t.LastDelivery = &domain.WebhookDelivery{Status: domain.RejectedDelivery, ReceivedAt: now}
+		if serr := s.routines.SaveTrigger(ctx, t); serr != nil {
+			return domain.RoutineRun{}, serr
+		}
+		s.publish(ctx, domain.WebhookDeliveryRejected{Happened: s.happened(domain.Actor{}), Routine: r, Trigger: t, Reason: err.Error()})
+		return domain.RoutineRun{}, err
+	}
+	if key != "" {
+		rr, found, err := s.routines.RoutineRunByIdempotencyKey(ctx, t.ID, key)
+		if err != nil || found {
+			return rr, err
+		}
+	}
+	return s.startRoutineRun(ctx, r, &t, RunRequest{Source: domain.WebhookSource, TriggerID: t.ID}, key)
 }
 
 // dispatch links the received Routine run to the Routine's Live execution

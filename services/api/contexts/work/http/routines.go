@@ -1,6 +1,11 @@
 package http
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
+	"mime"
 	"strconv"
 	"time"
 
@@ -604,4 +609,74 @@ func (c *Controller) ListRoutineRuns(ctx contractshttp.Context) contractshttp.Re
 		return fail(ctx, err)
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"routine_runs": out})
+}
+
+// maxDelivery is the largest Webhook delivery body read, in bytes.
+const maxDelivery = 1 << 20
+
+// publicRunJSON is a Routine run as its Webhook delivery's sender sees
+// it: ids only, since the sender is not a Member of the Guild.
+type publicRunJSON struct {
+	ID                 uint64    `json:"id"`
+	RoutineID          uint64    `json:"routine_id"`
+	TriggerID          uint64    `json:"trigger_id"`
+	Source             string    `json:"source"`
+	Status             string    `json:"status"`
+	TriggeredAt        time.Time `json:"triggered_at"`
+	IssueID            *uint64   `json:"issue_id"`
+	CoalescedIntoRunID *uint64   `json:"coalesced_into_run_id"`
+}
+
+func idOrNull(id uint64) *uint64 {
+	if id == 0 {
+		return nil
+	}
+	return &id
+}
+
+// FireWebhookTrigger is a Webhook delivery to the {public_id} Webhook
+// trigger. It carries no Session; its Signing mode is the authentication,
+// and a refused one answers 401 without saying which check failed.
+func (c *Controller) FireWebhookTrigger(ctx contractshttp.Context) contractshttp.Response {
+	req := ctx.Request().Origin()
+	if mt, _, _ := mime.ParseMediaType(req.Header.Get("Content-Type")); mt != "application/json" {
+		return respond.Error(ctx, contractshttp.StatusUnsupportedMediaType, "Send the webhook payload with Content-Type: application/json")
+	}
+	const notObject = "Webhook payload must be a JSON object"
+	// Goravel decodes a JSON body into an object before any handler runs
+	// and puts the raw bytes back only when that worked, so a body it
+	// leaves unreadable was not a JSON object.
+	body, err := io.ReadAll(io.LimitReader(req.Body, maxDelivery+1))
+	if err != nil {
+		return respond.Error(ctx, contractshttp.StatusBadRequest, notObject)
+	}
+	if len(body) > maxDelivery {
+		return respond.Error(ctx, contractshttp.StatusRequestEntityTooLarge, "payload too large")
+	}
+	// An empty body is the empty object, as Paperclip's JSON parser reads it.
+	if len(bytes.TrimSpace(body)) > 0 {
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err != nil || payload == nil {
+			return respond.Error(ctx, contractshttp.StatusBadRequest, notObject)
+		}
+	}
+	key := req.Header.Get("Idempotency-Key")
+	if key == "" {
+		key = req.Header.Get("X-GitHub-Delivery")
+	}
+	h := domain.DeliveryHeaders{
+		Authorization: req.Header.Get("Authorization"), Signature: req.Header.Get("X-Bakery-Signature"),
+		HubSignature256: req.Header.Get("X-Hub-Signature-256"), Timestamp: req.Header.Get("X-Bakery-Timestamp"), IdempotencyKey: key,
+	}
+	rr, err := c.service.FireWebhookTrigger(ctx.Context(), ctx.Request().Route("public_id"), h, body)
+	switch {
+	case errors.Is(err, domain.ErrBadCredentials), errors.Is(err, domain.ErrOutsideReplayWindow):
+		return ctx.Response().Json(contractshttp.StatusUnauthorized, contractshttp.Json{"error": "unauthorized"})
+	case err != nil:
+		return fail(ctx, err)
+	}
+	return ctx.Response().Json(contractshttp.StatusAccepted, contractshttp.Json{"routine_run": publicRunJSON{
+		ID: rr.ID, RoutineID: rr.RoutineID, TriggerID: rr.TriggerID, Source: string(rr.Source), Status: string(rr.Status),
+		TriggeredAt: rr.TriggeredAt.UTC(), IssueID: idOrNull(rr.LinkedIssueID), CoalescedIntoRunID: idOrNull(rr.CoalescedIntoRunID),
+	}})
 }

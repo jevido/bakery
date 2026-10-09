@@ -42,7 +42,7 @@ export type RoutineTrigger = {
   last_result: string | null;
 };
 
-export type RoutineRunSource = "schedule" | "manual" | "api";
+export type RoutineRunSource = "schedule" | "manual" | "api" | "webhook";
 export type RoutineRunStatus =
   | "received"
   | "issue_created"
@@ -193,6 +193,7 @@ const routineActionLabels: Record<string, string> = {
   "routine.trigger_deleted": "Trigger removed",
   "routine.trigger_secret_rotated": "Webhook secret rotated",
   "routine.run_triggered": "Routine started",
+  "routine.webhook_rejected": "Webhook delivery rejected",
 };
 export const routineActionLabel = (action: string) =>
   routineActionLabels[action] ?? action.replace(/^routine\./, "").replaceAll("_", " ");
@@ -204,8 +205,9 @@ export function routineEventSummary(action: string, details: Record<string, unkn
     const source = str(details.source);
     return `${source ? source[0].toUpperCase() + source.slice(1) : "Run"} · ${routineRunStatusLabel(str(details.status))}`;
   }
-  if (action.startsWith("routine.trigger_")) {
-    const name = str(details.label) || (details.kind === "api" ? "API" : "Schedule");
+  if (action.startsWith("routine.trigger_") || action === "routine.webhook_rejected") {
+    const name = str(details.label) || ({ api: "API", webhook: "Webhook" }[str(details.kind)] ?? "Schedule");
+    if (action === "routine.webhook_rejected") return `${name} · ${str(details.reason)}`;
     const changes = details.changes as Record<string, unknown> | undefined;
     if (changes) return `${name} · ${Object.keys(changes).map((k) => k.replaceAll("_", " ")).join(", ")}`;
     return details.cron_expression ? `${name} · ${details.cron_expression} · ${str(details.timezone)}` : name;
