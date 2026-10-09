@@ -203,10 +203,11 @@ admin always may (with `hire_agents`, which they always hold).
   the last 30 messages after the Session boundary
   (`work.ConversationHistory`, `MaxConversationHistory`), each its trimmed
   body cut to 4000 characters (`MaxHistoryBody`, with "…" when cut) as a
-  tagged turn `<turn author="{name}" role="board|you">…</turn>`, `you` for
-  a Comment of the answering Agent and `board` for a Member's, oldest
-  first; `<turn` and `</turn` inside a body become `&lt;turn` and
-  `&lt;/turn`, so a message cannot close its turn and fake another
+  tagged turn `<turn author="{name}" role="board|you">`, the body on its
+  own line, then `</turn>`, `you` for a Comment of the answering Agent and
+  `board` for anyone else's (a Member's or another Agent's), oldest first;
+  `"` and `<` in the author's name become `&quot;` and `&lt;`, and `<turn`
+  and `</turn` inside a body become `&lt;turn` and `&lt;/turn`, so a message cannot close its turn and fake another
   (Paperclip's `serializeTurn`). With none yet, "The board chat has no
   messages yet." It has no Workspace line either.
   When the Run has a Workspace, the prompt adds where the Agent works and

@@ -7,6 +7,13 @@
 //            bubble and status line show while the CEO's Run waits or runs,
 //            and the CEO's answer lands on the left, through the Desktop's
 //            headless runner and the claude stand-in
+//   two-members  a second Member sees the first one's message with their
+//            name and the answer, and their follow-up's prompt holds both
+//            Members' turns and the CEO's own answer as role="you"
+//   new-chat "New chat" shows the New session divider, wakes nobody, and
+//            the next prompt no longer holds the turns before it
+//   no-ceo   in a scratch Guild with no CEO the page says so, and "Hire a
+//            CEO" opens the hire dialog with Job CEO
 //   feed     the Activity feed beside it: a new Issue's card lands by
 //            polling, "In Review" filters, "Show all activity" brings back
 //            hidden events, group by Issue folds them, and the divider drags
@@ -20,6 +27,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { chromium, type Page } from 'playwright-core'
 import { desktopRunner } from './runner.ts'
+import { promptOf, runsOf } from './runs.ts'
 
 const WEB = (process.env.BAKERY_WEB ?? 'http://127.0.0.1:4930').replace(/\/$/, '')
 const CHROMIUM = process.env.CHROMIUM ?? '/usr/bin/chromium'
@@ -61,7 +69,7 @@ async function signedIn(): Promise<Page> {
   return ctx.newPage()
 }
 
-type Agent = { id: number; name: string; job: string; status: string; created_at: string }
+type Agent = { id: number; name: string; job: string; status: string }
 
 /**
  * The Guild's CEO, picked as the API does (its oldest CEO neither pending
@@ -71,7 +79,7 @@ async function theCEO(page: Page): Promise<Agent> {
   const { agents } = (await (await page.request.get(`${WEB}/api/agents?status=all`)).json()) as { agents: Agent[] }
   const ceo = agents
     .filter((a) => a.job === 'ceo' && a.status !== 'pending_approval' && a.status !== 'terminated')
-    .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id)[0]
+    .sort((a, b) => a.id - b.id)[0]
   if (ceo) return ceo
   const r = await page.request.post(`${WEB}/api/agents`, {
     data: { name: 'Release Lead', job: 'ceo', title: 'CEO', icon: 'crown', capabilities: '', role_ids: [], reports_to: null },
@@ -94,6 +102,43 @@ async function freshRoom(page: Page) {
     await page.reload()
   }
   await page.getByTestId('board-chips').waitFor()
+}
+
+/** A Member invited for the run, signed in in a context of their own; leave removes them. */
+async function invited(owner: Page): Promise<{ page: Page; name: string; leave: () => Promise<void> }> {
+  const { members } = (await (await owner.request.get(`${WEB}/api/members`)).json()) as { members: { id: number; email: string }[] }
+  for (const m of members.filter((m) => m.email.startsWith('board-member-'))) await owner.request.delete(`${WEB}/api/members/${m.id}`)
+  const inv = await owner.request.post(`${WEB}/api/invitations`, { data: { email: `board-member-${Date.now()}@example.test`, role: 'member' } })
+  if (!inv.ok()) throw new Error(`invite: ${inv.status()} ${await inv.text()}`)
+  const token = ((await inv.json()) as { path: string }).path.split('/').pop()
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+  await ctx.addInitScript(() => localStorage.setItem('theme', 'dark'))
+  const name = 'Bo Board'
+  const accept = await ctx.request.post(`${WEB}/api/invitations/by-token/${token}/accept`, { data: { name, password: 'a long enough password' } })
+  if (!accept.ok()) throw new Error(`accept: ${accept.status()} ${await accept.text()}`)
+  const { member } = (await accept.json()) as { member: { id: number } }
+  return {
+    page: await ctx.newPage(),
+    name,
+    leave: async () => {
+      await ctx.close()
+      await owner.request.delete(`${WEB}/api/members/${member.id}`)
+    },
+  }
+}
+
+/** Sends text with Enter in the open room and waits for the CEO's next answer. */
+async function answered(page: Page, text: string) {
+  const answers = '[data-testid="chat-message"][data-from="agent"]'
+  const mine = '[data-testid="chat-message"][data-from="member"]'
+  const before = await page.locator(answers).count()
+  const sent = await page.locator(mine).count()
+  const box = page.getByRole('textbox', { name: 'Message the Conference Room' })
+  await box.fill(text)
+  await box.press('Enter')
+  await page.waitForFunction(([sel, n]) => document.querySelectorAll(sel as string).length > (n as number), [mine, sent] as const)
+  await page.waitForFunction(([sel, n]) => document.querySelectorAll(sel as string).length > (n as number), [answers, before] as const, { timeout: 90_000 })
+  await page.getByTestId('board-status').waitFor({ state: 'detached', timeout: 15_000 })
 }
 
 const shot = (page: Page, name: string) => (SHOTS ? page.screenshot({ path: join(SHOTS, `board-${name}.png`) }) : Promise.resolve())
@@ -151,9 +196,97 @@ const sections: Record<string, () => Promise<void>> = {
       expect("the CEO's answer lands on the left", (await last.textContent())?.includes(ceo.name) ?? false)
       await status.waitFor({ state: 'detached', timeout: 15_000 })
       expect('the status line is gone', true)
+      const { issue } = (await (await page.request.get(`${WEB}/api/board-chat`)).json()) as { issue: { conversation: { state: string } } }
+      expect('the Board chat is waiting', issue.conversation.state === 'waiting', issue.conversation)
+      const [run] = await runsOf(page, ceo)
+      expect('the Run woke the CEO with board_message', run?.wake_reason === 'board_message', run)
       await shot(page, 'reply')
     } finally {
       await desktop.stop()
+      await page.context().close()
+    }
+  },
+
+  async ['two-members']() {
+    const page = await signedIn()
+    const desktop = await desktopRunner(page, { BAKERY_STANDIN_DELAY: '200ms' })
+    const second = await invited(page)
+    try {
+      const ceo = await theCEO(page)
+      const { member: me } = (await (await page.request.get(`${WEB}/api/me`)).json()) as { member: { name: string } }
+      await freshRoom(page)
+      const question = `Who do we hire first? ${Date.now()}`
+      await answered(page, question)
+
+      const other = second.page
+      await other.goto(`${WEB}/#/board-chat`)
+      const theirs = other.locator('[data-testid="chat-message"][data-from="member"]').filter({ hasText: question })
+      await theirs.waitFor()
+      expect("the second Member sees the first one's message with their name", ((await theirs.getByTestId('chat-author').textContent()) ?? '').trim() === me.name, await theirs.textContent())
+      expect('and the answer to it', (await other.locator('[data-testid="chat-message"][data-from="agent"]').count()) > 0)
+      await answered(other, 'And after that? [prompt]')
+      const [run] = await runsOf(page, ceo)
+      const prompt = await promptOf(page, run.id)
+      expect('the follow-up woke the CEO with board_message', run.wake_reason === 'board_message', run)
+      expect("the CEO's prompt holds the first Member's turn", prompt.includes(`<turn author="${me.name}" role="board">\n${question}`), prompt)
+      expect("and the second Member's", prompt.includes(`<turn author="${second.name}" role="board">\nAnd after that? [prompt]`))
+      expect('and its own earlier answer as role="you"', prompt.includes(`<turn author="${ceo.name}" role="you">`))
+      await shot(other, 'two-members')
+    } finally {
+      await second.leave()
+      await desktop.stop()
+      await page.context().close()
+    }
+  },
+
+  async ['new-chat']() {
+    const page = await signedIn()
+    const desktop = await desktopRunner(page, { BAKERY_STANDIN_DELAY: '200ms' })
+    try {
+      const ceo = await theCEO(page)
+      await freshRoom(page)
+      await answered(page, 'Before the break')
+      const runs = (await runsOf(page, ceo)).length
+      const dividers = await page.getByTestId('chat-new-session').count()
+      await page.getByRole('button', { name: 'new chat' }).click()
+      await page.waitForFunction((n) => document.querySelectorAll('[data-testid="chat-new-session"]').length > n, dividers)
+      expect('"New chat" shows the New session divider', true)
+      await page.getByTestId('board-chips').waitFor()
+      expect('the chips are offered again', true)
+      expect('/new wakes nobody', (await runsOf(page, ceo)).length === runs)
+      await answered(page, 'After the break [prompt]')
+      const [run] = await runsOf(page, ceo)
+      const prompt = await promptOf(page, run.id)
+      expect('the next prompt holds the new message', prompt.includes('After the break'))
+      expect('and not the turns before the divider', !prompt.includes('Before the break'), prompt)
+    } finally {
+      await desktop.stop()
+      await page.context().close()
+    }
+  },
+
+  async ['no-ceo']() {
+    // A scratch Guild of its own, so the dev Guild keeps its CEO.
+    const page = await signedIn()
+    const made = await page.request.post(`${WEB}/api/guilds`, { data: { name: `no-ceo-${Date.now()}`, description: 'made by the board e2e' } })
+    if (!made.ok()) throw new Error(`create a Guild: ${made.status()} ${await made.text()}`)
+    const { guild } = (await made.json()) as { guild: { id: number } }
+    await page.request.post(`${WEB}/api/guilds/${guild.id}/switch`)
+    try {
+      await page.goto(`${WEB}/#/board-chat`)
+      const none = page.getByTestId('board-no-ceo')
+      await none.waitFor()
+      expect('the page says the guild has no CEO', ((await none.textContent()) ?? '').includes('This guild has no CEO yet'))
+      expect('the composer says nobody will answer', (await page.getByTestId('board-no-ceo-note').count()) === 1)
+      await none.getByRole('button', { name: 'Hire a CEO' }).click()
+      const dialog = page.getByRole('dialog')
+      await dialog.waitFor()
+      expect('"Hire a CEO" opens the hire dialog', ((await dialog.textContent()) ?? '').includes('Hire agent'))
+      expect('with Job CEO', (await dialog.getByLabel('Job').inputValue()) === 'ceo', await dialog.getByLabel('Job').inputValue())
+      await shot(page, 'no-ceo')
+    } finally {
+      const gone = await page.request.delete(`${WEB}/api/guilds/current`)
+      if (!gone.ok()) console.log(`delete the scratch Guild: ${gone.status()} ${await gone.text()}`)
       await page.context().close()
     }
   },

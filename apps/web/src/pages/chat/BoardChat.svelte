@@ -109,7 +109,7 @@
     return (
       agents
         .filter((a) => a.job === 'ceo' && a.status !== 'pending_approval' && a.status !== 'terminated')
-        .toSorted((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id)[0] ?? null
+        .toSorted((a, b) => a.id - b.id)[0] ?? null
     )
   })
   const guildName = $derived(session.guild?.name ?? 'Your guild')

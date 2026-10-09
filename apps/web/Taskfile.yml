@@ -73,7 +73,7 @@ tasks:
       - bun e2e/chat.ts
 
   board:
-    desc: Check the Conference Room (welcome, chips, the CEO's reply through the Desktop's runner) in headless Chromium (needs task dev)
+    desc: Check the Conference Room (welcome, the CEO's reply, two Members, New chat, no CEO, the Activity feed) in headless Chromium (needs task dev)
     deps: [install]
     cmds:
       - bun e2e/board.ts {{.CLI_ARGS}}

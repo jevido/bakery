@@ -11,6 +11,7 @@
 import { readFileSync } from 'node:fs'
 import { chromium, type Page } from 'playwright-core'
 import { desktopRunner } from './runner.ts'
+import { promptOf, runsOf } from './runs.ts'
 
 const WEB = (process.env.BAKERY_WEB ?? 'http://127.0.0.1:4930').replace(/\/$/, '')
 const CHROMIUM = process.env.CHROMIUM ?? '/usr/bin/chromium'
@@ -82,14 +83,6 @@ async function terminate(page: Page, agent: Agent) {
   if (!r.ok()) throw new Error(`terminate ${agent.name}: ${r.status()} ${await r.text()}`)
 }
 
-type Run = { id: number; status: string }
-
-/** The Agent's Runs, newest first. */
-async function runsOf(page: Page, agent: Agent): Promise<Run[]> {
-  const { runs } = (await (await page.request.get(`${WEB}/api/runs?agent=${agent.id}`)).json()) as { runs: Run[] }
-  return runs.sort((a, b) => b.id - a.id)
-}
-
 /**
  * Sends text with Enter and waits for the Agent's reply that holds answer,
  * answering the Run that wrote it (the Live run's, read while it shows).
@@ -103,11 +96,6 @@ async function converse(page: Page, agent: Agent, text: string, answer: string):
   const run = Number(await live.getAttribute('data-run'))
   await page.locator('[data-testid="chat-message"][data-from="agent"]').filter({ hasText: answer }).last().waitFor({ timeout: 90_000 })
   return run
-}
-
-/** What the claude stand-in said the Run's prompt was ([prompt]). */
-async function promptOf(page: Page, run: number): Promise<string> {
-  return await (await page.request.get(`${WEB}/api/runs/${run}/events`)).text()
 }
 
 const sections: Record<string, () => Promise<void>> = {
