@@ -180,3 +180,14 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/** An Agent's Agent skills, the Skills the Desktop hands its `claude`. */
+export const listAgentSkills = (agentId: number) =>
+  api<{ skills: Skill[] }>("GET", `/agents/${agentId}/skills`).then(
+    (r) => r.skills,
+  );
+/** Replaces an Agent's Agent skills with these, Paperclip's skills sync. */
+export const syncAgentSkills = (agentId: number, skillIds: number[]) =>
+  api<{ skills: Skill[] }>("PUT", `/agents/${agentId}/skills`, {
+    skill_ids: skillIds,
+  }).then((r) => r.skills);

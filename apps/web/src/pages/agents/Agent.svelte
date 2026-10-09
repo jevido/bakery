@@ -15,7 +15,9 @@
   // Agent (can_manage) edits it in place while it is idle or paused; the
   // server stays the judge of every change. A Runs card under the others
   // lists the Agent's last 20 Runs as Paperclip's Runs tab does, each
-  // linking to its Issue and unfolding to its Transcript.
+  // linking to its Issue and unfolding to its Transcript. The Skills card
+  // under Roles is Paperclip's Skills tab (AgentSkills), switched by the same
+  // people who may give Roles.
   import { CircleHelp, Copy, Heart, MoreHorizontal, Pause, Play, Plus, Trash2, X } from '@lucide/svelte'
   import * as AlertDialog from '@bakery/ui/components/ui/alert-dialog'
   import { Button as UiButton } from '@bakery/ui/components/ui/button'
@@ -25,6 +27,7 @@
   import * as Tooltip from '@bakery/ui/components/ui/tooltip'
   import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import AgentIconPicker from '../../lib/AgentIconPicker.svelte'
+  import AgentSkills from '../../lib/AgentSkills.svelte'
   import {
     addAgentRole,
     agentStatusText,
@@ -513,6 +516,11 @@
           {/each}
         </div>
         <p class="mt-3 text-xs text-muted-foreground">An agent holds @everyone too, and only ever roles below the one who hired it.</p>
+      </section>
+
+      <section class="rounded-lg border border-border p-4 md:col-span-2" aria-labelledby="agent-skills-heading" data-testid="agent-skills">
+        <h3 id="agent-skills-heading" class="mb-3 text-sm font-medium">Skills</h3>
+        <AgentSkills agentId={id} {editable} />
       </section>
 
       <section class="rounded-lg border border-border p-4 md:col-span-2" aria-labelledby="agent-runs-heading">

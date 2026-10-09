@@ -48,6 +48,10 @@
 //           headless Runner claims its Run on "Skills check [skills]" and
 //           the transcript shows the stand-in finding release-notes beside
 //           bakery under .claude/skills.
+//   skills   the Agent page's Skills card: a scratch Skill switched on saves
+//           the Agent skills and stays on after a reload, the Skill's Agents
+//           tab lists the Agent, Delete is refused naming it, and switched
+//           off the Skill deletes.
 //
 //   bun e2e/agents.ts [section ...]   (task web:agents; needs task dev)
 //
@@ -559,6 +563,61 @@ sections['skill-run'] = async () => {
     await page.request.put(`${WEB}/api/agents/${agent.id}/skills`, { data: { skill_ids: [] } })
     await terminate(page, [name])
     await page.request.delete(`${WEB}/api/skills/${skill.id}`)
+    await page.context().close()
+  }
+}
+
+sections.skills = async () => {
+  const page = await signedIn()
+  const name = `Skills e2e ${run}`
+  const agent = await hired(page, { name, job: 'engineer' })
+  const created = await page.request.post(`${WEB}/api/skills`, { data: { name: `Agent page skill ${run}`, slug: `agent-page-skill-${run}` } })
+  expect('POST /api/skills creates the Skill', created.status() === 201, created.status())
+  const { skill } = (await created.json()) as { skill: { id: number; name: string; slug: string } }
+  const held = async () => ((await (await page.request.get(`${WEB}/api/agents/${agent.id}/skills`)).json()) as { skills: { id: number }[] }).skills
+  try {
+    await page.goto(`${WEB}/#/agents/${agent.id}`)
+    const card = page.getByTestId('agent-skills')
+    const enabled = card.getByRole('region', { name: 'Enabled on this agent' })
+    const available = card.getByRole('region', { name: 'Available from the library' })
+    await available.locator(`[data-skill="${skill.slug}"]`).waitFor()
+    const syncedOn = page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().endsWith(`/api/agents/${agent.id}/skills`))
+    await available.getByRole('switch', { name: `Enable ${skill.name}` }).click()
+    await enabled.locator(`[data-skill="${skill.slug}"]`).waitFor()
+    await syncedOn
+    await card.getByTestId('skills-save-status').getByText('Saved').waitFor()
+    expect('switching it on saves the Agent skills', (await held()).some((k) => k.id === skill.id))
+
+    await page.reload()
+    await enabled.locator(`[data-skill="${skill.slug}"]`).waitFor()
+    expect('after a reload the Skill is on', (await enabled.getByRole('switch', { name: `Disable ${skill.name}` }).getAttribute('aria-checked')) === 'true')
+
+    await enabled.getByRole('link', { name: skill.name }).click()
+    await page.getByRole('tab', { name: 'Agents' }).click()
+    const agentsList = page.getByRole('list', { name: 'Agents with this skill' })
+    await agentsList.getByRole('link', { name }).waitFor()
+    expect("the Skill's Agents tab lists the Agent", true)
+
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Delete skill' }).click()
+    const refusal = page.getByRole('alertdialog').getByRole('alert')
+    await refusal.waitFor()
+    expect('deleting it is refused naming the Agent', (await refusal.innerText()).includes(name), await refusal.innerText())
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel' }).click()
+
+    await page.goto(`${WEB}/#/agents/${agent.id}`)
+    const syncedOff = page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().endsWith(`/api/agents/${agent.id}/skills`))
+    await enabled.getByRole('switch', { name: `Disable ${skill.name}` }).click()
+    await available.locator(`[data-skill="${skill.slug}"]`).waitFor()
+    await syncedOff
+    await card.getByTestId('skills-save-status').getByText('Saved').waitFor()
+    expect('switching it off saves the Agent skills', (await held()).length === 0)
+    const gone = await page.request.delete(`${WEB}/api/skills/${skill.id}`)
+    expect('then the Skill deletes', gone.status() === 204, gone.status())
+  } finally {
+    await page.request.put(`${WEB}/api/agents/${agent.id}/skills`, { data: { skill_ids: [] } })
+    await page.request.delete(`${WEB}/api/skills/${skill.id}`)
+    await terminate(page, [name])
     await page.context().close()
   }
 }
