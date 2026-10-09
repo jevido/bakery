@@ -145,6 +145,10 @@ inside its Guild.
   - `identity.OnRunKey(f)`: the hook agents registers to resolve a Run key
     to its Run, Agent and Guild; the Principal then has `AgentID`, `RunID`
     and `GuildID` set and `MemberID` 0.
+  - `identity.SignedInDesktops(ctx, memberIDs)`: per Member, the ids of
+    their Desktops that are not signed out, for agents, which needs them to
+    tell whether every Desktop of a Hirer is at its Desktop limit. agents
+    never reads the `desktops` table.
   Other contexts learn nothing else about Members.
 - **Consumes:** nothing. Identity never imports guilds; where the first
   Member needs a Guild, guilds subscribes to `SetUp`, and where identity's

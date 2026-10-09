@@ -132,7 +132,7 @@ stand-in in `standin/claude` (`task desktop:standin` builds it to
 model. It exits 3 when `ANTHROPIC_API_KEY` is in its environment, so each
 check also proves the Runner removed it, and words in the prompt pick what it
 does: `[slow]` (20 lines a second apart), `[fail]`, `[crash]` (no result
-line), `[limit]` (the CLI's usage-limit message) and `[mcp <tool> <json>]`
+line), `[limit]` (a Subscription limit, below) and `[mcp <tool> <json>]`
 (calls that tool of the MCP server it was given and prints the call and
 its result as `tool_use`/`tool_result`; with `[slow]` too, the slow lines
 follow the calls, so a check sees what the tools changed while the Run is
@@ -142,6 +142,11 @@ each shown as a `Bash` tool call and run in prompt order with the
 `[mcp …]` calls (a failing one fails the Run), and `[env]` (says its
 working directory and its git and Worktree variables).
 `BAKERY_STANDIN_DELAY` sets its pause between lines (300 ms by default).
+`[limit]` prints the CLI's `rate_limit_event` with `status: "rejected"`
+and a `resetsAt` `BAKERY_STANDIN_LIMIT_RESET` ahead (a Go duration, 20 s
+by default), then the "You've hit your limit" `result`, once per Issue:
+it remembers each `BAKERY_ISSUE_ID` it limited in the file
+`BAKERY_STANDIN_STATE` names, so the requeued Run of that Issue succeeds.
 
 When the claim's answer carries a Workspace (the Run's Issue names an
 Application with a git repository), `claude` runs in a git Worktree
@@ -179,7 +184,20 @@ Bakery queues the Run again for when it is back; a restarted Runner leaves
 the `running` Runs it no longer runs to that. The window and `serve` get a
 `runs` event `{address, guild_id, agent_id, run_id, status, events}` when a
 Run here starts, reports and ends.
-Nothing is pushed or committed yet: git comes with Heartbeats.
+
+A Subscription limit (the person's `claude` login has used up a usage
+window) is recognised by the Transcript from a `rate_limit_event` line
+whose `rate_limit_info.status` is `rejected` (its `resetsAt` is the Limit
+reset, in Unix seconds), or, when that line is missing, from the CLI's
+"You've hit your limit · resets 2:30am (UTC)" text, the clock time read as
+the next such time in that zone (the local one when none is given), as
+Paperclip's `extractClaudeRetryNotBefore` does. The Runner then finishes the
+Run `limited` with `limit_resets_at` and its usage, and claims nothing from
+any connected Bakery until the reset: the login belongs to this computer,
+not to one Bakery. It writes the reset to `bakeries.json`
+(`subscription_limit_resets_at`), so a restarted Runner still waits. The
+Bakery queues the Run again for when the limit has reset, and refuses this
+Desktop's claims until then.
 
 The frontend draws an Agent's Runs from `Runs`/`RunEvents` (the dashboard's
 `GET /api/runs`/`GET /api/runs/{id}/events`, with the Desktop key and

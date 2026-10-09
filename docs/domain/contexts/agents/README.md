@@ -39,7 +39,8 @@ Run status, Run event, Transcript, Invocation source, Run usage, Runner,
 Lease, Heartbeat, Heartbeat policy, Wake, Wake reason, Workspace, Worktree,
 Agent branch, Run's Project, Costs, Budget, Budget metric, Budget window,
 Budget scope, Observed amount, Budget status, Warning, Hard stop, Budget
-incident, Pause reason) are in
+incident, Pause reason, Subscription limit, Limit reset, Desktop limit)
+are in
 [`glossary.md`](../../glossary.md).
 
 | Term | Meaning |
@@ -58,8 +59,9 @@ incident, Pause reason) are in
 
 | Aggregate | Invariants |
 | --------- | ---------- |
-| Agent | Belongs to one Guild, and has one Hirer, a person with a Membership in that Guild when it is hired. Name 1–100 characters after trimming, unique (case-insensitive) among the Guild's Agents that are not terminated, as Paperclip's shortname uniqueness. Job from the glossary's list (`general` when none is given). Title at most 200 characters, Capabilities at most 20000, both optional. Agent icon from the glossary's list, or none. The Manager is an Agent of the same Guild that is not terminated, never the Agent itself and never one of its reports: setting it walks the new Manager's Chain of command up at most 50 levels, as Paperclip's `getChainOfCommand`, and refuses a cycle (422). Agent status moves only `pending_approval → idle` (its Approval approved), `pending_approval → terminated` (rejected, or terminated by a person), `idle`, `running` or `error` → `paused`, `paused → idle`, `idle` or `error` → `running` (a Run of it is claimed), `running → idle` (its Run `succeeded` or was `cancelled`), `running → error` (its Run `failed` or was `lost`), and any of `idle`, `running`, `error` or `paused` → `terminated`; nothing leaves `terminated`. A `pending_approval` Agent cannot be edited, paused or given Roles, so its Approval's payload is what the Board sees; it can only be terminated, which cancels its Approval. A terminated Agent cannot be edited. Only the Run moves set `running` and `error`; a person never does. When an Agent is terminated, its direct reports report to its Manager, or become roots when it had none. Its Heartbeat policy has `interval_sec` 60–86400 (300 by default), `enabled` off and `wake_on_demand` on by default; `last_heartbeat_at` is when its timer last woke it, set only by the timer's claim. A `paused` Agent has a Pause reason, `manual` or `budget`, and any other status has none; `budget` is set only by a Hard stop on a Budget scoped to that Agent. |
-| Run | Belongs to one Guild and one Agent of it, and optionally one Issue of that Guild. Starts `queued`. Run status moves only `queued → running` (claimed by a Desktop of the Agent's Hirer), `queued → cancelled`, and `running → succeeded`, `failed`, `cancelled` or `lost`; a final status never changes. At most one `running` Run per Agent; further ones wait `queued` and are claimed in order of creation. Its Run events have `seq` 1, 2, 3… per Run without a gap, and appending a `seq` it already has is a no-op. Run events are appended only while it is `running`. A `running` Run whose Lease runs out becomes `lost`, and a new `queued` Run with the same Agent, Issue and Invocation source takes its place, its `retry_of_run_id` pointing at the lost one (Paperclip's `retryOfRunId`), at most 3 times along one chain; after that the last one stays `lost`. Run usage is set once, when it finishes. It has a Wake reason and a wake count: 1 when queued, +1 for each Wake that joins it, and only while it is `queued`; its wake context keeps the ids of the Comments that joined it, for its prompt. A Wake that joins keeps the Run's first Invocation source and Wake reason. A lost Run's replacement keeps its Invocation source, Wake reason and wake context. Its Run key hash is set once, by ClaimRun, and the Run key itself is never stored or shown again; a Run that is not `running` has no valid Run key. Its Run's Project is set once, by ClaimRun, from its Issue's Project at that moment, and never changes; a Run without an Issue, or whose Issue has no Project, has none. |
+| Agent | Belongs to one Guild, and has one Hirer, a person with a Membership in that Guild when it is hired. Name 1–100 characters after trimming, unique (case-insensitive) among the Guild's Agents that are not terminated, as Paperclip's shortname uniqueness. Job from the glossary's list (`general` when none is given). Title at most 200 characters, Capabilities at most 20000, both optional. Agent icon from the glossary's list, or none. The Manager is an Agent of the same Guild that is not terminated, never the Agent itself and never one of its reports: setting it walks the new Manager's Chain of command up at most 50 levels, as Paperclip's `getChainOfCommand`, and refuses a cycle (422). Agent status moves only `pending_approval → idle` (its Approval approved), `pending_approval → terminated` (rejected, or terminated by a person), `idle`, `running` or `error` → `paused`, `paused → idle`, `idle` or `error` → `running` (a Run of it is claimed), `running → idle` (its Run `succeeded`, was `cancelled` or ended `limited`), `running → error` (its Run `failed` or was `lost`), and any of `idle`, `running`, `error` or `paused` → `terminated`; nothing leaves `terminated`. A `pending_approval` Agent cannot be edited, paused or given Roles, so its Approval's payload is what the Board sees; it can only be terminated, which cancels its Approval. A terminated Agent cannot be edited. Only the Run moves set `running` and `error`; a person never does. When an Agent is terminated, its direct reports report to its Manager, or become roots when it had none. Its Heartbeat policy has `interval_sec` 60–86400 (300 by default), `enabled` off and `wake_on_demand` on by default; `last_heartbeat_at` is when its timer last woke it, set only by the timer's claim. A `paused` Agent has a Pause reason, `manual` or `budget`, and any other status has none; `budget` is set only by a Hard stop on a Budget scoped to that Agent. |
+| Run | Belongs to one Guild and one Agent of it, and optionally one Issue of that Guild. Starts `queued`. Run status moves only `queued → running` (claimed by a Desktop of the Agent's Hirer), `queued → cancelled`, and `running → succeeded`, `failed`, `cancelled`, `lost` or `limited`; a final status never changes. At most one `running` Run per Agent; further ones wait `queued` and are claimed in order of creation. Its Run events have `seq` 1, 2, 3… per Run without a gap, and appending a `seq` it already has is a no-op. Run events are appended only while it is `running`. A `running` Run whose Lease runs out becomes `lost`, and a new `queued` Run with the same Agent, Issue and Invocation source takes its place, its `retry_of_run_id` pointing at the lost one (Paperclip's `retryOfRunId`), at most 3 times along one chain; after that the last one stays `lost`. A `limited` Run has a Limit reset and its Run usage, and is replaced the same way: a new `queued` Run with the same Agent, Issue, Invocation source, Wake reason and wake context, its `retry_of_run_id` pointing at the `limited` one. That replacement does not count toward the cap (`MaxChainRetries`), which counts only the `lost` Runs along the chain. Run usage is set once, when it finishes. It has a Wake reason and a wake count: 1 when queued, +1 for each Wake that joins it, and only while it is `queued`; its wake context keeps the ids of the Comments that joined it, for its prompt. A Wake that joins keeps the Run's first Invocation source and Wake reason. A lost Run's replacement keeps its Invocation source, Wake reason and wake context. Its Run key hash is set once, by ClaimRun, and the Run key itself is never stored or shown again; a Run that is not `running` has no valid Run key. Its Run's Project is set once, by ClaimRun, from its Issue's Project at that moment, and never changes; a Run without an Issue, or whose Issue has no Project, has none. |
+| Desktop limit | One per Desktop (keyed by `desktop_id`, as `runs.desktop_id` references identity's `desktops`), holding `resets_at` and `reported_at`. A later report replaces it only when its reset is later. It is over once `resets_at` has passed; nothing needs to delete it. |
 | Budget | Belongs to one Guild. At most one per Guild, Budget scope (type and id), Budget metric and Budget window. Scope type `guild`, `agent` or `project`, metric `tokens`, `runs` or `run_time`, window `calendar_month_utc` or `lifetime` (422 otherwise); its scope is that Guild itself, an Agent of it or a Project of it (422 otherwise). Amount a whole number ≥ 0, 0 meaning no cap (never `warning` nor `hard_stop`); Warning percent 1–99 (80 by default); Hard stop and notify on by default. Its Observed amount is never stored: it is computed from the Runs in its current window, so a calendar month starts at zero without a job. A Budget goes when its Agent is terminated or its Project deleted, with its Budget incidents, and the `budget_override_required` Approvals still waiting on them are cancelled. |
 | Budget incident | Belongs to one Budget and records one threshold (`soft` or `hard`) crossed in one window, with the window's start and end, the amount and the Observed amount when it opened. At most one not `dismissed` per Budget, window start, threshold and amount. Status moves only `open → resolved` or `open → dismissed`, and only a `hard` one is resolved through ResolveBudgetIncident; an `open` `soft` one is resolved when its Budget is raised above its Observed amount. A `hard` one has the id of its `budget_override_required` Approval. |
 
@@ -170,16 +172,24 @@ admin always may (with `hire_agents`, which they always hold).
   Issue names an Issue's Application with a git source: the Desktop makes
   or reuses the Issue's Worktree there and starts `claude` inside it.
   ClaimRun sets the Run's Project. A queued Run in a stopped scope is not
-  claimed (409, and it is cancelled).
+  claimed (409, and it is cancelled). A Desktop whose Desktop limit has not
+  passed is refused (409 `subscription limit until <RFC 3339>`), and the
+  Run stays `queued`.
 - `AppendRunEvents(run, events)` [the claiming Desktop's person]: appends
   Run events by `seq`, renews the Lease; on a Run that is no longer
   `running`, 409 with its status.
 - `KeepLease(run)` [the claiming Desktop's person]: renews the Lease when
   `claude` is quiet.
-- `FinishRun(run, status, usage, error)` [the claiming Desktop's person]:
-  `succeeded`, `failed` or `cancelled`, with its Run usage and an error
-  message when it failed. Then every Budget the Run counts toward is
-  evaluated (below).
+- `FinishRun(run, status, usage, error, limit_resets_at)` [the claiming
+  Desktop's person]: `succeeded`, `failed`, `cancelled` or `limited`, with
+  its Run usage and an error message when it failed. `limited` needs
+  `limit_resets_at`, in the future and at most 8 days ahead (the CLI's
+  longest usage window is seven days); otherwise 422 on `limit_resets_at`.
+  Finishing `limited` moves the Agent `running → idle`, queues the
+  replacement Run (see the Run aggregate), records the Desktop limit of
+  the claiming Desktop and records `run.finished` in the Activity. Then
+  every Budget the Run counts toward is evaluated (below); a `limited`
+  Run's usage is real and counts.
 - `ReadCosts(from, to)` [`view_resources`]: the Costs of the Guild's Runs
   that finished in the range (`from` inclusive, `to` exclusive, either one
   open when left out), the moment their Run usage is known: a summary
@@ -232,7 +242,11 @@ admin always may (with `hire_agents`, which they always hold).
   conditional on the Run still being `running`, so two API processes never
   both requeue it.
 - Read Runs (filter by Agent, Issue, Run status), one Run, its Run events
-  after a `seq`, and its Transcript live [`view_resources`].
+  after a `seq`, and its Transcript live [`view_resources`]. A `queued`
+  Run carries `subscription_limit_resets_at`: the latest Limit reset among
+  its Hirer's signed-in Desktops (identity's `SignedInDesktops`) that are
+  still at their limit, but only when every one of those Desktops is;
+  otherwise null, and null for every other Run status.
 - When the Hirer leaves the Guild or is removed from it, guilds tells
   agents and every Agent they hired there is terminated, with whoever
   removed them as the Actor (removal is the only way to leave today).
@@ -268,7 +282,7 @@ did it as Actor.
 | `AgentRoleRemoved` | `RemoveRole` | `agent.role_removed` |
 | `RunStarted` | a Wake that queued a Run, except a `timer` one | `run.started` |
 | `RunClaimed` | `ClaimRun` | none |
-| `RunFinished` (with its Run status) | `FinishRun`, `CancelRun`, `LoseRun`, Pause, Terminate, a Hard stop | `run.finished` |
+| `RunFinished` (with its Run status, `limited` included) | `FinishRun`, `CancelRun`, `LoseRun`, Pause, Terminate, a Hard stop | `run.finished` |
 | `AgentPaused` (Pause reason `budget`) | a Hard stop on an agent scope | `agent.paused` |
 | `BudgetUpdated` | `SetBudget`, `ResolveBudgetIncident` raising it | `budget.updated` |
 | `BudgetSoftThresholdCrossed` | evaluating a Budget | `budget.soft_threshold_crossed` |
@@ -350,10 +364,10 @@ records nothing more.
   | ----- | ---- | ------- |
   | `GET /api/desktop/runs` | | `{"runs": [Desktop run]}`: the `queued` Runs of the person's Agents that are not paused or terminated, oldest first, and the `running` Runs this Desktop holds |
   | `GET /api/desktop/runs/stream` | | server-sent events: `runs` with that same list whenever it changes, and `cancel` `{run_id}` when a Run the Desktop holds is cancelled |
-  | `POST /api/runs/{id}/claim` | | `{"run": Desktop run}` with `run.run_key` (`bky_run_…`), the only answer that carries it, now `running`; 409 when already claimed, final, or its Agent has a running Run or is paused |
+  | `POST /api/runs/{id}/claim` | | `{"run": Desktop run}` with `run.run_key` (`bky_run_…`), the only answer that carries it, now `running`; 409 when already claimed, final, or its Agent has a running Run or is paused, and 409 `subscription limit until <RFC 3339>` while this Desktop's Desktop limit has not passed |
   | `POST /api/runs/{id}/events` | `{"events": [{seq, kind, payload}]}` | `{"run": {id, status, next_seq, session_id, lease_expires_at}}`; a `seq` already kept is ignored, a gap is 422 with `expected_seq`; 403 for another Desktop of the same person; 409 when not `running`; 413 over 500 events or a payload over 256 KiB |
   | `POST /api/runs/{id}/lease` | | as `events`; 409 when not `running` |
-  | `POST /api/runs/{id}/finish` | `{status, exit_code, error, usage}` | as `events`; a Run cancelled meanwhile answers 200 as it is; 409 when otherwise not `running` |
+  | `POST /api/runs/{id}/finish` | `{status, exit_code, error, usage, limit_resets_at}` | as `events`; a Run cancelled meanwhile answers 200 as it is; 409 when otherwise not `running`; `limited` without `limit_resets_at`, or with one in the past or more than 8 days ahead, is 422 |
 
   Every other request (a Session, an API token, a Run key) is 403. A Desktop run is
   `{id, status, guild: {id, name}, agent: {id, name, icon}, issue: {id,
@@ -384,8 +398,10 @@ records nothing more.
   requested_by: {id, name} | null,
   desktop: {id, name} | null, retry_of_run_id, usage: {input_tokens,
   cached_input_tokens, output_tokens, turns, cost_equivalent_usd,
-  duration_ms}, exit_code, error, created_at, started_at, finished_at,
-  can_cancel}`; its `issue` is null when the Issue is gone or in a Project
+  duration_ms}, exit_code, error, limit_resets_at,
+  subscription_limit_resets_at, created_at, started_at, finished_at,
+  can_cancel}`; `limit_resets_at` is the Limit reset of a `limited` Run
+  (null otherwise), `subscription_limit_resets_at` as Read Runs says; its `issue` is null when the Issue is gone or in a Project
   the person may not view, and `can_cancel` says whether they may cancel
   it now. A Run event is `{seq, kind, payload, created_at}`, its `kind` one
   of `init`, `assistant`, `thinking`, `tool_call`, `tool_result`,
@@ -511,6 +527,31 @@ records nothing more.
   desktop is offline. The lost Run stays as a record of what happened and
   the new one points back at it, as Paperclip's `retryOfRunId`; the Agent
   shows `error` until the new Run is claimed.
+- **A Subscription limit is waited out, never failed.** The goal fixes
+  that work waits when a desktop is at its subscription limit. The Agent
+  goes back to `idle`, not `error`: nothing is wrong with it.
+- **`limited` is a final Run status plus a requeued Run, not Paperclip's
+  `scheduled_retry`.** Paperclip classifies the CLI's quota text as the
+  `provider_quota` error family and schedules a retry Run due at the
+  parsed reset (`scheduleBoundedRetryForRun`). Here the Run that hit the
+  limit keeps its Transcript and Run usage as a record, as a lost one
+  does, and the new Run has no due time: which Desktop may claim it is the
+  question, not when, since another Desktop of the Hirer with another
+  login may run it at once. It does not count toward the lost Runs' retry
+  cap, because waiting out a limit is not a sign that something is broken.
+- **The limit is recorded per Desktop.** The `claude` login lives on one
+  computer, so another Desktop of the same person may still run. The
+  Desktop limit lives in agents, not in identity's Desktop, because only
+  Runs use it; it is a table keyed by `desktop_id`, as `runs.desktop_id`
+  already references `desktops`, and agents learns which Desktops are
+  signed in only through identity's `SignedInDesktops`.
+- **The Runner holds off by itself too.** The server's 409 is the guard;
+  the Runner's own wait keeps the logs quiet, and one login spans every
+  Bakery the Desktop connects to, which no single server knows.
+- **Left out of Subscription limits:** Paperclip's transient-upstream
+  retries with backoff (an overloaded API is a `failed` Run as before),
+  "Retry now" on a scheduled retry, and the Providers tab with each
+  subscription's quota windows (see the guilds NOTES).
 - **Only `claude`.** Paperclip's Codex, Gemini, OpenCode, Cursor, HTTP and
   process adapters are left out, as the goal fixes.
 - **The Heartbeat policy is three columns.** Paperclip keeps it in a
