@@ -597,7 +597,12 @@ title and Project.
   `/new`), `work.ConversationHistory(ctx, guild, issue, limit)` (the
   newest `limit` Comments of a Conversation after its Session boundary,
   deleted ones left out, oldest first, with their author's name, for a
-  Conversation Run's prompt) and `work.OpenIssuesOfAgent(ctx, guild,
+  Conversation Run's prompt), `work.ReplyInConversation(ctx, guild,
+  issue, agent, run, body)` (the Completion reply: `body`, cut to the
+  longest Comment, written through `WriteComment` as the Conversation
+  agent in that Run, and nothing when the Agent already has a Comment
+  that is not deleted with that `run_id`, or the Issue is no
+  Conversation of that Agent) and `work.OpenIssuesOfAgent(ctx, guild,
   agent)` (the Issues assigned to an Agent with Issue status `todo`,
   `in_progress` or `in_review`, oldest first, with identifier, Issue
   status, Priority and title, for the Heartbeat timer's check and its

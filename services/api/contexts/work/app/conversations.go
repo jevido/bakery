@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
 )
@@ -85,4 +87,31 @@ func (s *Service) ConversationHistory(ctx context.Context, guildID, issueID uint
 		out = out[len(out)-limit:]
 	}
 	return out, nil
+}
+
+// ReplyInConversation writes the Completion reply: the body as the
+// Conversation agent's Comment in its Run, through WriteComment, cut to
+// domain.MaxComment characters. It does
+// nothing when the Agent already wrote a Comment in that Run that is not
+// deleted, so a Run answers once, and nothing for an Issue that is no
+// Conversation of that Agent.
+func (s *Service) ReplyInConversation(ctx context.Context, guildID, issueID, agentID, runID uint64, body string) error {
+	i, found, err := s.issues.Issue(ctx, issueID)
+	if err != nil || !found || i.GuildID != guildID || i.Conversation == nil || i.Conversation.AgentID != agentID {
+		return err
+	}
+	cs, err := s.comments.Comments(ctx, i.ID)
+	if err != nil {
+		return err
+	}
+	for _, c := range cs {
+		if c.Author.AgentID == agentID && c.RunID == runID && !c.Deleted() {
+			return nil
+		}
+	}
+	if r := []rune(strings.TrimSpace(body)); len(r) > domain.MaxComment {
+		body = string(r[:domain.MaxComment])
+	}
+	_, err = s.WriteComment(ctx, guildID, domain.Actor{AgentID: agentID, RunID: runID}, strconv.FormatUint(i.ID, 10), body, nil)
+	return err
 }

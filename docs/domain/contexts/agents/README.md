@@ -166,15 +166,23 @@ admin always may (with `hire_agents`, which they always hold).
   issues:" with each Issue assigned to the Agent in `todo`, `in_progress`
   or `in_review` as `- {identifier} [{status}]: {title}`, oldest first, or
   "You have no open issues.".
-  A Conversation Run gets, in place of the description, the chat
-  directive (Paperclip's, trimmed to what The Bakery has: an ongoing
-  conversation with the person, answer in plain words, ask focused
-  questions only when they matter, put larger work into Issues of its
-  own), the Agent line, then
+  A Conversation Run gets its own prompt instead: the chat directive
+  (Paperclip's, trimmed to what The Bakery has: an ongoing conversation
+  with a person of the guild; ask focused questions only when they
+  matter and no ritual confirmation; plan in the Issue document `plan`
+  of this Issue with `bakeryUpsertIssueDocument` when asked; hand real
+  work off as new Issues with `bakeryCreateIssue` in a fitting Project
+  and assigned to the right Agent, never as Sub-issues of the
+  Conversation, and link them in the reply; never change the
+  Conversation's status; reply with `bakeryAddComment` on this Issue or
+  end with the answer as the final message, which The Bakery posts), a
+  blank line, "This conversation is {identifier}.", the Agent line, then
   "Conversation so far:" with at most the last 30 messages after the
   Session boundary (`work.ConversationHistory`), each as `{author}
-  wrote:` and its body cut to 4000 characters, oldest first, so the
-  waking messages come last.
+  wrote:` and its trimmed body cut to 4000 characters (with "…" when
+  cut), oldest first, so the waking messages come last; with none yet,
+  "The conversation has no messages yet." It has no Workspace line: a
+  Conversation has no Project and so no Application.
   When the Run has a Workspace, the prompt adds where the Agent works and
   how it finishes: in a git Worktree of the Application's repository on
   its Agent branch, based on the Application's branch; commit, push the
@@ -216,10 +224,15 @@ admin always may (with `hire_agents`, which they always hold).
   Run's usage is real and counts. A Conversation Run that finishes
   `succeeded` and whose Agent wrote no Comment on the Conversation with
   that Run's `run_id` gets its Completion reply: The Bakery writes the
-  last `result` Run event's `result` text as the Conversation agent's
-  Comment in that Run (skipped when the text is empty), through work's
-  `WriteComment` as the Agent, so it sets the Conversation `waiting`. No
-  other Run status ever gets one, and a Run gets at most one.
+  last `result` Run event's `result` text, cut to the longest Comment, as
+  the Conversation agent's Comment in that Run (skipped when the text is
+  empty) through `work.ReplyInConversation`, which writes it with work's
+  `WriteComment` as the Agent, so it sets the Conversation `waiting`, and
+  writes nothing when the Agent already has a Comment that is not deleted
+  with that `run_id`. No other Run status ever gets one, and a Run gets
+  at most one: a retried finish answers the finished Run's status error
+  before it gets there. The Run is final by then, so a Completion reply
+  that fails is logged and does not fail the finish.
 - `ReadCosts(from, to)` [`view_resources`]: the Costs of the Guild's Runs
   that finished in the range (`from` inclusive, `to` exclusive, either one
   open when left out), the moment their Run usage is known: a summary

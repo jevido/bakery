@@ -127,6 +127,13 @@ type Work interface {
 	InboxOfAgent(ctx context.Context, guildID, agentID uint64) ([]InboxIssue, error)
 	// CommentsForRun tells the Guild's comments with the ids, in order.
 	CommentsForRun(ctx context.Context, guildID uint64, ids []uint64) ([]RunComment, error)
+	// ConversationHistory tells the newest limit comments of the Guild's
+	// Conversation after its Session boundary, oldest first.
+	ConversationHistory(ctx context.Context, guildID, issueID uint64, limit int) ([]RunComment, error)
+	// ReplyInConversation writes the Completion reply of the Agent's Run
+	// on the Guild's Conversation, unless the Agent already wrote a comment
+	// in that Run.
+	ReplyInConversation(ctx context.Context, guildID, issueID, agentID, runID uint64, body string) error
 	// RequestBudgetOverride asks the Board for the budget_override_required
 	// Approval of the hard incident of the Budget, and answers its id.
 	RequestBudgetOverride(ctx context.Context, b BudgetSummary, i domain.BudgetIncident) (uint64, error)

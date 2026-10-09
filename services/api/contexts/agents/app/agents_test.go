@@ -142,6 +142,29 @@ type fakeWork struct {
 	overrides []domain.BudgetIncident
 	events    []Activity
 	decisions map[uint64]bool
+	// history is each Conversation's messages since its boundary; replies
+	// the Completion replies posted, one per Run.
+	history map[uint64][]RunComment
+	replies map[uint64]string
+}
+
+func (f *fakeWork) ConversationHistory(_ context.Context, _, issueID uint64, limit int) ([]RunComment, error) {
+	h := f.history[issueID]
+	if len(h) > limit {
+		h = h[len(h)-limit:]
+	}
+	return h, nil
+}
+
+// ReplyInConversation keeps one reply per Run, as work does.
+func (f *fakeWork) ReplyInConversation(_ context.Context, _, _, _, runID uint64, body string) error {
+	if f.replies == nil {
+		f.replies = map[uint64]string{}
+	}
+	if _, ok := f.replies[runID]; !ok {
+		f.replies[runID] = body
+	}
+	return nil
 }
 
 // ProjectNames answers for projects too: the names in projects.

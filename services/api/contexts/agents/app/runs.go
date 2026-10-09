@@ -149,6 +149,50 @@ func PromptFor(a domain.Agent, reason domain.WakeReason, i IssueBrief, ws *Works
 	return b.String()
 }
 
+// ChatDirective opens a Conversation Run's prompt: a trimmed port of
+// Paperclip's agent chat directive, keeping what The Bakery has.
+const ChatDirective = "You are in an ongoing conversation with a person of the guild. Help them clarify the outcome they want. " +
+	"Ask focused questions when missing information materially affects the task; when the request is already clear, do not ask for a confirmation.\n\n" +
+	"When asked to plan, write the plan as the \"plan\" document of this issue with bakeryUpsertIssueDocument and revise it as the discussion develops. " +
+	"Planning alone does not create work. Hand real work off as new issues with bakeryCreateIssue, each with a clear outcome, " +
+	"in a fitting project (bakeryListProjects) and assigned to the right agent (bakeryListAgents), never as sub-issues of this conversation. " +
+	"Link the issues you create in your reply and let their own runs do the work.\n\n" +
+	"Never change this conversation's status. Reply with bakeryAddComment on this issue, or simply end with your answer as your final message " +
+	"and The Bakery posts it for you."
+
+// MaxConversationHistory is how many messages since the Session boundary
+// a Conversation Run's prompt quotes, and MaxHistoryBody the most
+// characters of each.
+const (
+	MaxConversationHistory = 30
+	MaxHistoryBody         = 4000
+)
+
+// ConversationPromptFor is what claude is asked in a Run on a
+// Conversation: the ChatDirective, a blank line, the Agent line, then
+// "Conversation so far:" and each message since the Session boundary,
+// oldest first, as "<name> wrote:" and its body cut to MaxHistoryBody
+// characters. It has no Workspace line: a Conversation has no Project.
+func ConversationPromptFor(a domain.Agent, i IssueBrief, history []RunComment) string {
+	var b strings.Builder
+	b.WriteString(ChatDirective + "\n\n")
+	fmt.Fprintf(&b, "This conversation is %s.\n\n", i.Identifier)
+	agentLine(&b, a)
+	if len(history) == 0 {
+		b.WriteString("\n\nThe conversation has no messages yet.")
+		return b.String()
+	}
+	b.WriteString("\n\nConversation so far:")
+	for _, c := range history {
+		body := strings.TrimSpace(c.Body)
+		if r := []rune(body); len(r) > MaxHistoryBody {
+			body = string(r[:MaxHistoryBody]) + "…"
+		}
+		fmt.Fprintf(&b, "\n\n%s wrote:\n%s", c.AuthorName, body)
+	}
+	return b.String()
+}
+
 // agentLine names the Agent, its job, title and capabilities.
 func agentLine(b *strings.Builder, a domain.Agent) {
 	fmt.Fprintf(b, "You are %s, the guild's %s", a.Name, domain.JobLabel(a.Job))
@@ -181,6 +225,13 @@ func (s *Service) promptOf(ctx context.Context, a domain.Agent, r domain.Run) (s
 		}
 	} else if open, err = s.work.OpenIssuesOfAgent(ctx, r.GuildID, a.ID); err != nil {
 		return "", nil, 0, err
+	}
+	if i.Conversation != nil {
+		history, err := s.work.ConversationHistory(ctx, r.GuildID, i.ID, MaxConversationHistory)
+		if err != nil {
+			return "", nil, 0, err
+		}
+		return ConversationPromptFor(a, i, history), nil, 0, nil
 	}
 	if len(r.WakeContext.CommentIDs) > 0 {
 		if comments, err = s.work.CommentsForRun(ctx, r.GuildID, r.WakeContext.CommentIDs); err != nil {

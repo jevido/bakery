@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -191,8 +192,14 @@ func (f *fakeRuns) IssuesWithLiveRuns(_ context.Context, guildID uint64, ids []u
 	return out, nil
 }
 
-func (f *fakeRuns) RunEvents(context.Context, uint64, int64, int) ([]domain.RunEvent, error) {
-	return nil, nil
+func (f *fakeRuns) RunEvents(_ context.Context, runID uint64, after int64, limit int) ([]domain.RunEvent, error) {
+	var out []domain.RunEvent
+	for _, e := range f.events[runID] {
+		if e.Seq > after && len(out) < limit {
+			out = append(out, e)
+		}
+	}
+	return out, nil
 }
 
 func TestStartAndCancelRun(t *testing.T) {
@@ -512,5 +519,48 @@ func TestIssuesWithLiveRuns(t *testing.T) {
 	}
 	if live, _ := s.IssuesWithLiveRuns(ctx, 1, []uint64{30}); live[30] {
 		t.Errorf("a finished run is live")
+	}
+}
+
+func TestConversationPrompt(t *testing.T) {
+	ada := domain.Agent{Name: "Ada", Job: domain.DefaultJob}
+	i := IssueBrief{ID: 30, Identifier: "BAK-3", Title: "Chat with Ada", Conversation: &ConversationBrief{MemberID: 7}}
+	head := ChatDirective + "\n\nThis conversation is BAK-3.\n\nYou are Ada, the guild's General."
+	long := strings.Repeat("é", MaxHistoryBody+10)
+	for _, c := range []struct {
+		name    string
+		history []RunComment
+		want    string
+	}{
+		{"empty", nil, head + "\n\nThe conversation has no messages yet."},
+		{"since the boundary", []RunComment{{AuthorName: "Grace", Body: " hello \n"}, {AuthorName: "Ada", Body: "Hi."}},
+			head + "\n\nConversation so far:\n\nGrace wrote:\nhello\n\nAda wrote:\nHi."},
+		{"a long body is cut", []RunComment{{AuthorName: "Grace", Body: long}},
+			head + "\n\nConversation so far:\n\nGrace wrote:\n" + strings.Repeat("é", MaxHistoryBody) + "…"},
+	} {
+		if got := ConversationPromptFor(ada, i, c.history); got != c.want {
+			t.Errorf("%s: %q", c.name, got)
+		}
+	}
+}
+
+func TestConversationPromptKeepsTheNewest(t *testing.T) {
+	ctx := context.Background()
+	s, _, _, w := newTest()
+	ada, r := queuedRun(t, s, w)
+	chat := w.issues[30]
+	chat.Conversation = &ConversationBrief{MemberID: 7}
+	w.issues[30] = chat
+	var h []RunComment
+	for n := range MaxConversationHistory + 5 {
+		h = append(h, RunComment{ID: uint64(n + 1), AuthorName: "Grace", Body: fmt.Sprintf("message %d", n+1)})
+	}
+	w.history = map[uint64][]RunComment{30: h}
+	got, ws, _, err := s.promptOf(ctx, ada, r)
+	if err != nil || ws != nil {
+		t.Fatal(ws, err)
+	}
+	if strings.Contains(got, "message 5\n") || !strings.Contains(got, "wrote:\nmessage 6\n") || strings.Count(got, " wrote:") != MaxConversationHistory {
+		t.Errorf("prompt %q", got)
 	}
 }

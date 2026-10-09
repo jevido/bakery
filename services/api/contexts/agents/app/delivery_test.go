@@ -374,3 +374,60 @@ func TestLimitedRunsWaitForTheReset(t *testing.T) {
 		t.Errorf("retries %d along a limited chain", n)
 	}
 }
+
+func TestCompletionReply(t *testing.T) {
+	ctx := context.Background()
+	s, _, _, w := newTest()
+	runs := s.runs.(*fakeRuns)
+	ada, r := queuedRun(t, s, w)
+	chat := w.issues[30]
+	chat.Conversation = &ConversationBrief{MemberID: 7}
+	w.issues[30] = chat
+	w.history = map[uint64][]RunComment{30: {{ID: 1, AuthorName: "Grace", Body: "hello"}}}
+	laptop := Desktop{ID: 3, MemberID: 7}
+	finish := func(r domain.Run, status string, events ...domain.RunEvent) {
+		t.Helper()
+		if _, err := s.ClaimRun(ctx, laptop, r.ID); err != nil {
+			t.Fatal(err)
+		}
+		if len(events) > 0 {
+			if _, err := s.AppendRunEvents(ctx, laptop, r.ID, events); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := s.FinishRun(ctx, laptop, r.ID, Finish{Status: status}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result := func(seq int64, text string) domain.RunEvent {
+		return domain.RunEvent{Seq: seq, Kind: "result", Payload: []byte(`{"subtype":"success","result":"` + text + `"}`)}
+	}
+	finish(r, "succeeded", domain.RunEvent{Seq: 1, Kind: "result", Payload: []byte(`{"result":"first"}`)}, result(2, "Hi Grace."))
+	if w.replies[r.ID] != "Hi Grace." || len(w.replies) != 1 {
+		t.Errorf("replies %+v", w.replies)
+	}
+	if !strings.Contains(runs.rows[r.ID].Prompt, "Conversation so far:\n\nGrace wrote:\nhello") {
+		t.Errorf("prompt %q", runs.rows[r.ID].Prompt)
+	}
+	// A retried finish answers the finished Run's status error and posts
+	// nothing more.
+	if _, err := s.FinishRun(ctx, laptop, r.ID, Finish{Status: "succeeded"}); err == nil || len(w.replies) != 1 {
+		t.Errorf("finish again: %v, %d replies", err, len(w.replies))
+	}
+	// A failed Run, and one without a result text, post none.
+	failed, _ := startRun(s, ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID, 30, nil)
+	finish(failed, "failed", domain.RunEvent{Seq: 1, Kind: "result", Payload: []byte(`{"result":"oops"}`)})
+	silent, _ := startRun(s, ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID, 30, nil)
+	finish(silent, "succeeded", domain.RunEvent{Seq: 1, Kind: "result", Payload: []byte(`{"result":"  "}`)})
+	if len(w.replies) != 1 {
+		t.Errorf("replies after failed and silent runs %+v", w.replies)
+	}
+	// A Run on an Issue that is no Conversation posts none.
+	chat.Conversation = nil
+	w.issues[30] = chat
+	plain, _ := startRun(s, ctx, 1, Actor{ID: 7, Permissions: hirer}, ada.ID, 30, nil)
+	finish(plain, "succeeded", result(1, "Done."))
+	if len(w.replies) != 1 {
+		t.Errorf("replies after a plain issue's run %+v", w.replies)
+	}
+}

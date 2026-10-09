@@ -219,3 +219,48 @@ func TestConversationsAreNoWork(t *testing.T) {
 		}
 	}
 }
+
+func TestReplyInConversation(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := chatService(t)
+	all := func([]uint64) ([]uint64, error) { return nil, nil }
+	c, _ := s.OpenConversation(ctx, 1, domain.ByMember(7), 3)
+	ref := strconv.FormatUint(c.ID, 10)
+	agentReplies := func() []domain.Comment {
+		cs, _ := s.Comments(ctx, 1, ref, all)
+		var out []domain.Comment
+		for _, x := range cs {
+			if x.Author.AgentID == 3 && !x.Deleted() {
+				out = append(out, x)
+			}
+		}
+		return out
+	}
+	s.WriteComment(ctx, 1, domain.ByMember(7), ref, "hello", all)
+	if err := s.ReplyInConversation(ctx, 1, c.ID, 3, 9, "Hi."); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReplyInConversation(ctx, 1, c.ID, 3, 9, "Hi again."); err != nil {
+		t.Fatal(err)
+	}
+	got := agentReplies()
+	if len(got) != 1 || got[0].Body != "Hi." || got[0].RunID != 9 {
+		t.Fatalf("replies %+v", got)
+	}
+	if i, _ := s.Issue(ctx, 1, ref, all); i.Conversation.State != domain.ConversationWaiting {
+		t.Errorf("state %s", i.Conversation.State)
+	}
+	// The Agent already wrote in Run 10 through the API: no Completion
+	// reply.
+	s.WriteComment(ctx, 1, domain.Actor{AgentID: 3, RunID: 10}, ref, "Answered myself.", all)
+	s.ReplyInConversation(ctx, 1, c.ID, 3, 10, "Answered myself.")
+	// Another Guild's, or another Agent's, writes nothing; a long text is
+	// cut.
+	s.ReplyInConversation(ctx, 2, c.ID, 3, 11, "Not here.")
+	s.ReplyInConversation(ctx, 1, c.ID, 4, 11, "Not mine.")
+	s.ReplyInConversation(ctx, 1, c.ID, 3, 12, strings.Repeat("x", domain.MaxComment+5))
+	got = agentReplies()
+	if len(got) != 3 || len(got[2].Body) != domain.MaxComment {
+		t.Errorf("replies %d", len(got))
+	}
+}

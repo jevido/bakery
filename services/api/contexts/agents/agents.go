@@ -241,6 +241,22 @@ func (workOfAgents) CommentsForRun(ctx context.Context, guildID uint64, ids []ui
 	return out, nil
 }
 
+func (workOfAgents) ConversationHistory(ctx context.Context, guildID, issueID uint64, limit int) ([]app.RunComment, error) {
+	cs, err := work.ConversationHistory(ctx, guildID, issueID, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]app.RunComment, len(cs))
+	for n, c := range cs {
+		out[n] = app.RunComment(c)
+	}
+	return out, nil
+}
+
+func (workOfAgents) ReplyInConversation(ctx context.Context, guildID, issueID, agentID, runID uint64, body string) error {
+	return work.ReplyInConversation(ctx, guildID, issueID, agentID, runID, body)
+}
+
 func memberNames(ctx context.Context, ids []uint64) ([]agentshttp.Named, error) {
 	ms, err := identity.Members(ctx, ids)
 	if err != nil {

@@ -4,8 +4,8 @@
 // Routine scheduler, and for the agents context
 // RequestApproval, CancelApproval, OnApprovalDecided, RecordActivity,
 // OnAgentNames, OnAgentAssignees, UnassignAgent, IssueForRun,
-// OpenIssuesOfAgent, InboxOfAgent, CommentsForRun, OnIssueAssigned, OnIssueCommented,
-// OnRunLive and OnIssuesWithLiveRuns.
+// OpenIssuesOfAgent, InboxOfAgent, CommentsForRun, ConversationHistory,
+// ReplyInConversation, OnIssueAssigned, OnIssueCommented, OnRunLive and OnIssuesWithLiveRuns.
 // Nothing else in contexts/work is for outside use.
 package work
 
@@ -413,6 +413,13 @@ func ConversationHistory(ctx context.Context, guildID, issueID uint64, limit int
 		return nil, err
 	}
 	return runComments(ctx, guildID, cs)
+}
+
+// ReplyInConversation writes the Completion reply of the Agent's Run on
+// the Guild's Conversation as the Agent's Comment, unless the Agent
+// already wrote one in that Run.
+func ReplyInConversation(ctx context.Context, guildID, issueID, agentID, runID uint64, body string) error {
+	return svc().ReplyInConversation(ctx, guildID, issueID, agentID, runID, body)
 }
 
 // runComments names each Comment's author, a Member or an Agent.

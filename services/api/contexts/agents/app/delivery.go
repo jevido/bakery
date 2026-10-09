@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jevido/bakery/services/api/app/secret"
@@ -452,7 +454,61 @@ func (s *Service) FinishRun(ctx context.Context, d Desktop, runID uint64, f Fini
 	}
 	s.recordRun(ctx, domain.RunFinished{Run: r, Agent: a, ActorID: d.MemberID})
 	s.evaluateRun(ctx, r)
+	if r.Status == domain.RunSucceeded {
+		if err := s.completionReply(ctx, r); err != nil {
+			s.Logf("agents: the completion reply of run %d: %v", r.ID, err)
+		}
+	}
 	return r, nil
+}
+
+// completionReply posts the text of a succeeded Run's last result event
+// as its Agent's reply when the Run was on a Conversation; work leaves it
+// out when the Agent already replied in that Run. The Run is final by
+// then, so an error here is only logged.
+func (s *Service) completionReply(ctx context.Context, r domain.Run) error {
+	if r.IssueID == 0 {
+		return nil
+	}
+	i, ok, err := s.work.IssueForRun(ctx, r.GuildID, r.IssueID)
+	if err != nil || !ok || i.Conversation == nil {
+		return err
+	}
+	text, err := s.resultText(ctx, r.ID)
+	if err != nil || strings.TrimSpace(text) == "" {
+		return err
+	}
+	return s.work.ReplyInConversation(ctx, r.GuildID, i.ID, r.AgentID, r.ID, text)
+}
+
+// resultText is the result field of the Run's last result event, "" for
+// none.
+func (s *Service) resultText(ctx context.Context, runID uint64) (string, error) {
+	var (
+		text  string
+		after int64
+	)
+	for {
+		es, err := s.runs.RunEvents(ctx, runID, after, MaxRunEvents)
+		if err != nil {
+			return "", err
+		}
+		for _, e := range es {
+			after = e.Seq
+			if e.Kind != "result" {
+				continue
+			}
+			var p struct {
+				Result string `json:"result"`
+			}
+			if json.Unmarshal(e.Payload, &p) == nil {
+				text = p.Result
+			}
+		}
+		if len(es) < MaxRunEvents {
+			return text, nil
+		}
+	}
 }
 
 // SweepLostRuns ends each running Run whose Lease ran out as lost, and
