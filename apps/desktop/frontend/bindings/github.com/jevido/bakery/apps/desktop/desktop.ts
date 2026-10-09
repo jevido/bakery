@@ -108,7 +108,9 @@ export function Guilds(address: string): $CancellablePromise<bakery$0.Guild[] | 
 
 /**
  * Limit is when the Subscription limit this computer's claude login hit
- * resets, while it holds; nil when it does not, or no Runner runs here.
+ * resets, while it holds; nil when it does not. Without a Runner here (a
+ * headless one may run beside the window) it is read from bakeries.json,
+ * where every Runner keeps it.
  */
 export function Limit(): $CancellablePromise<string | null> {
     return $Call.ByID(1703823799);

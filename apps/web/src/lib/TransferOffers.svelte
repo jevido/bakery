@@ -4,7 +4,7 @@
   import { api } from './api'
   import { Button } from '@bakery/ui/components/ui/button'
   import { session, type Offer } from './session.svelte'
-  import InlineBanner from './ui/InlineBanner.svelte'
+  import InlineBanner from '@bakery/ui/InlineBanner.svelte'
 
   let busy = $state(false)
   let error = $state('')

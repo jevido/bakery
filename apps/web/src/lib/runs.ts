@@ -33,6 +33,10 @@ export type Run = {
   usage: RunUsage
   exit_code: number | null
   error: string
+  /** When the Hirer's Subscription limit resets, on a limited Run. */
+  limit_resets_at: string | null
+  /** While a queued Run waits on its Hirer's Desktop limit: when it resets. */
+  subscription_limit_resets_at: string | null
   created_at: string
   started_at: string | null
   finished_at: string | null

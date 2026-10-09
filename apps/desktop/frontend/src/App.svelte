@@ -4,10 +4,15 @@
   // sidebar, a top bar and `main`. Until a Bakery is connected, main shows
   // "Connect a Bakery"; then the route's Bakery (the active one by default),
   // the Guild picked last there (or its first), and the Guild's Agents.
+  // While this computer's claude login is at its Subscription limit, a
+  // banner above main says until when Runs wait.
   import { Button } from '@bakery/ui/components/ui/button'
+  import InlineBanner from '@bakery/ui/InlineBanner.svelte'
+  import { clockTime } from '@bakery/ui/time'
   import * as Tooltip from '@bakery/ui/components/ui/tooltip'
   import { Plug, Server, Users } from '@lucide/svelte'
   import { connected, connectDialog } from './lib/bakeries.svelte'
+  import { limit, onEvent } from './lib/desktop'
   import ConnectDialog from './lib/ConnectDialog.svelte'
   import GuildRail from './lib/GuildRail.svelte'
   import { shownGuilds } from './lib/guilds.svelte'
@@ -18,6 +23,19 @@
   import Runs from './pages/Runs.svelte'
 
   connected.start()
+
+  // The Runner's `limit` event says it at once; the poll covers a missed one.
+  let limitedUntil = $state<string | null>(null)
+  $effect(() => {
+    const read = () => limit().then((at) => (limitedUntil = at ?? null), () => {})
+    read()
+    const poll = setInterval(read, 15_000)
+    const off = onEvent<{ until: string | null }>('limit', (e) => (limitedUntil = e.until))
+    return () => {
+      clearInterval(poll)
+      off()
+    }
+  })
   const route = $derived(router.route)
   const active = $derived(connected.shown)
   const guild = $derived('guild' in route ? shownGuilds.list?.find((g) => g.id === route.guild) : undefined)
@@ -67,6 +85,9 @@
           {#if route.page === 'runs'}Runs on this desktop{:else if guild && route.page === 'agent'}{guild.name} · Agent{:else if guild}{guild.name} · Agents{:else if active}{new URL(active.address).host}{:else}Connect a Bakery{/if}
         </h1>
       </header>
+      {#if limitedUntil}
+        <InlineBanner tone="warning" compact class="mx-6 mt-4" title="Subscription limit reached · Runs wait until {clockTime(limitedUntil)}" data-testid="desktop-limit" />
+      {/if}
       <main class={['flex flex-1 overflow-auto p-6', !(route.page === 'runs' || (guild && !active?.signed_out)) && 'items-center justify-center']}>
         {#if !connected.loaded}
           <span></span>

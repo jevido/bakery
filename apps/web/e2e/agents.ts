@@ -34,11 +34,20 @@
 //           shows the server's range error; Run heartbeat adds an
 //           "On-demand" Run to the Runs card; with Wake on demand off, Run
 //           heartbeat is disabled.
+//   limit   a scratch Agent's Run on an Issue, claimed by a Desktop signed
+//           in with `login` and finished limited through its key: the
+//           Issue's Runs show "Limit reached" with the reset time, its Live
+//           Run waits for the owner's subscription limit with the time, the
+//           Agent page shows Idle and its queued Run waits for the limit;
+//           a claim before the reset is 409 naming it.
 //
 //   bun e2e/agents.ts [section ...]   (task web:agents; needs task dev)
 //
 // The same environment as e2e/walk.ts overrides what it uses.
-import { readFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { chromium, type Page } from 'playwright-core'
 
 const WEB = (process.env.BAKERY_WEB ?? 'http://127.0.0.1:4930').replace(/\/$/, '')
@@ -451,6 +460,88 @@ const sections: Record<string, () => Promise<void>> = {
     await terminate(page, [name])
     await page.context().close()
   },
+}
+
+const DESKTOP_DIR = new URL('../../desktop/', import.meta.url).pathname
+
+/**
+ * A Desktop of the owner's, signed in with `login` and approved through the
+ * API, without a Runner: its key claims and finishes Runs by hand. remove()
+ * signs it out.
+ */
+async function desktopKey(page: Page): Promise<{ key: string; remove: () => Promise<void> }> {
+  const home = mkdtempSync(join(tmpdir(), 'bakery-agents-e2e-'))
+  const login = spawn('go', ['run', '.', 'login', '--server', WEB, '--no-browser'], { cwd: DESKTOP_DIR, env: { ...process.env, BAKERY_DESKTOP_HOME: home }, stdio: ['ignore', 'pipe', 'inherit'] })
+  let out = ''
+  const link = await new Promise<URL>((resolve, reject) => {
+    login.stdout!.on('data', (b: Buffer) => {
+      out += b.toString()
+      const m = out.match(/https?:\/\/\S+desktop-sign-in\S+/)
+      if (m) resolve(new URL(m[0]))
+    })
+    login.on('exit', (code) => reject(new Error(`login exited ${code}: ${out}`)))
+  })
+  const [, id] = link.hash.match(/desktop-sign-in\/(\d+)/)!
+  const token = new URLSearchParams(link.hash.split('?')[1]).get('token')
+  const approved = await page.request.post(`${WEB}/api/desktop-sign-ins/${id}/approve`, { data: { token } })
+  if (!approved.ok()) throw new Error(`approve the desktop: ${approved.status()}`)
+  const { desktop_id } = (await approved.json()) as { desktop_id: number }
+  await new Promise((resolve) => login.on('exit', resolve))
+  const { bakeries } = JSON.parse(readFileSync(join(home, 'bakeries.json'), 'utf8')) as { bakeries: { key: string }[] }
+  rmSync(home, { recursive: true, force: true })
+  return { key: bakeries[0].key, remove: async () => void (await page.request.delete(`${WEB}/api/desktops/${desktop_id}`)) }
+}
+
+sections.limit = async () => {
+  const page = await signedIn()
+  const name = `Limit e2e ${run}`
+  const agent = await hired(page, { name, job: 'engineer' })
+  const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title: 'Limit e2e: say hello', status: 'todo' } })).json()) as {
+    issue: { id: number; identifier: string }
+  }
+  const desktop = await desktopKey(page)
+  const auth = { Authorization: `Bearer ${desktop.key}` }
+  type Run = { id: number; status: string; retry_of_run_id: number | null; subscription_limit_resets_at: string | null }
+  const runsOf = async () => ((await (await page.request.get(`${WEB}/api/runs?agent=${agent.id}`)).json()) as { runs: Run[] }).runs
+  try {
+    await page.request.patch(`${WEB}/api/issues/${issue.id}`, { data: { assignee_agent_id: agent.id } })
+    const queued = (await runsOf()).find((r) => r.status === 'queued')
+    if (!queued) throw new Error('the assignment queued no Run')
+    const claim = await page.request.post(`${WEB}/api/runs/${queued.id}/claim`, { headers: auth })
+    if (!claim.ok()) throw new Error(`claim: ${claim.status()} ${await claim.text()}`)
+    const resets = new Date(Date.now() + 2 * 3_600_000)
+    resets.setSeconds(0, 0)
+    const usage = { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5, cost_equivalent_usd: 0.01, duration_ms: 1000 }
+    const finished = await page.request.post(`${WEB}/api/runs/${queued.id}/finish`, { headers: auth, data: { status: 'limited', limit_resets_at: resets.toISOString(), usage } })
+    expect('finishing it limited answers limited', finished.ok() && ((await finished.json()) as { run: Run }).run?.status === 'limited', await finished.text())
+    const next = (await runsOf()).find((r) => r.retry_of_run_id === queued.id)
+    expect('a queued Run takes its place, waiting on the limit', next?.status === 'queued' && !!next.subscription_limit_resets_at, next)
+    const refused = await page.request.post(`${WEB}/api/runs/${next!.id}/claim`, { headers: auth })
+    expect('a claim before the reset is 409 naming it', refused.status() === 409 && (await refused.text()).includes('subscription limit until'), refused.status())
+
+    const time = resets.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    await page.goto(`${WEB}/#/issues/${issue.identifier}`)
+    const waiting = page.getByTestId('run-waiting-limit')
+    await waiting.waitFor()
+    const said = await waiting.innerText()
+    expect("the Live Run waits for the owner's subscription limit with the time", /Waiting for .+'s subscription limit · resets/.test(said) && said.includes(time), said)
+    const old = page.getByTestId('run-ledger').locator(`[data-run="${queued.id}"]`)
+    await old.waitFor()
+    const oldText = await old.innerText()
+    expect('the limited Run reads Limit reached with its reset', oldText.includes('Limit reached') && oldText.includes(`resets ${time}`), oldText)
+
+    await page.goto(`${WEB}/#/agents/${agent.id}`)
+    const row = page.getByTestId('run-ledger').locator(`[data-run="${next!.id}"]`)
+    await row.waitFor()
+    const rowText = await row.innerText()
+    expect("the Agent's Runs card says the queued Run waits for the limit", rowText.includes(`Waits for the subscription limit · resets ${time}`), rowText)
+    expect('the Agent stays Idle', (await page.getByRole('region', { name: 'Identity' }).textContent())?.includes('Idle') === true)
+  } finally {
+    await desktop.remove()
+    await page.request.delete(`${WEB}/api/issues/${issue.id}`)
+    await terminate(page, [name])
+    await page.context().close()
+  }
 }
 
 const asked = process.argv.slice(2)

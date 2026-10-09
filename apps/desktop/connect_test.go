@@ -130,3 +130,25 @@ func TestConnectRefusesBadAddress(t *testing.T) {
 		t.Fatal("want an error")
 	}
 }
+
+func TestLimitWithoutARunnerReadsTheStore(t *testing.T) {
+	s := &store.Store{Path: filepath.Join(t.TempDir(), "bakeries.json")}
+	d := NewDesktop(NewEvents(), s, nil, nil)
+	if at := d.Limit(); at != nil {
+		t.Fatalf("Limit() = %v with nothing stored, want nil", at)
+	}
+	until := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	if _, err := s.Update(func(f *store.File) error { f.LimitedUntil = &until; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if at := d.Limit(); at == nil || !at.Equal(until) {
+		t.Fatalf("Limit() = %v, want %v", at, until)
+	}
+	past := time.Now().Add(-time.Minute)
+	if _, err := s.Update(func(f *store.File) error { f.LimitedUntil = &past; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if at := d.Limit(); at != nil {
+		t.Fatalf("Limit() = %v after the reset, want nil", at)
+	}
+}

@@ -13,7 +13,8 @@
     "./components/ui/*": "./src/components/ui/*/index.ts",
     "./*.svelte": "./src/*.svelte",
     "./runStatus": "./src/runStatus.ts",
-    "./runTranscript": "./src/runTranscript.ts"
+    "./runTranscript": "./src/runTranscript.ts",
+    "./time": "./src/time.ts"
   },
   "dependencies": {
     "@lucide/svelte": "^1.52.0",

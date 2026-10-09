@@ -55,7 +55,7 @@
   import { href } from '../../lib/router.svelte'
   import type { Member } from '../../lib/session.svelte'
   import type { GuildRole } from '../../lib/types'
-  import InlineBanner from '../../lib/ui/InlineBanner.svelte'
+  import InlineBanner from '@bakery/ui/InlineBanner.svelte'
   import StatusBadge from '@bakery/ui/StatusBadge.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import NotFound from '../NotFound.svelte'

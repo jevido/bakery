@@ -26,6 +26,10 @@
 //               (served over git's dumb HTTP from a temporary bare repository)
 //               shows its Agent branch on "Runs on this desktop", and the
 //               Runner made the Issue's Worktree on that branch.
+//   limit       a second `serve --no-runner` on a free port, its own home's
+//               bakeries.json holding a Subscription limit two hours ahead,
+//               shows "Subscription limit reached · Runs wait until <time>";
+//               with the limit gone, a reload shows no banner.
 //
 //   bun e2e/desktop.ts [section ...]   (task desktop:e2e; needs task dev)
 //
@@ -488,6 +492,51 @@ const sections: Record<string, () => Promise<void>> = {
       rmSync(root, { recursive: true, force: true })
     }
   },
+}
+
+sections.limit = async () => {
+  const home = mkdtempSync(join(tmpdir(), 'bakery-desktop-limit-e2e-'))
+  const file = join(home, 'bakeries.json')
+  const until = new Date(Date.now() + 2 * 3_600_000)
+  until.setSeconds(0, 0)
+  writeFileSync(file, JSON.stringify({ version: 1, bakeries: [], limited_until: until.toISOString() }), { mode: 0o600 })
+  const port = await new Promise<number>((resolve) => {
+    const s = createServer().listen(0, '127.0.0.1', () => {
+      const { port } = s.address() as AddressInfo
+      s.close(() => resolve(port))
+    })
+  })
+  const addr = `http://127.0.0.1:${port}`
+  const serve = spawn('go', ['run', '.', 'serve', '--addr', `127.0.0.1:${port}`, '--no-runner'], {
+    cwd: new URL('..', import.meta.url).pathname,
+    env: { ...process.env, BAKERY_DESKTOP_HOME: home },
+    detached: true,
+    stdio: ['ignore', 'inherit', 'inherit'],
+  })
+  try {
+    const deadline = Date.now() + 120_000
+    while (!(await fetch(`${addr}/rpc/Version`, { method: 'POST', body: '[]' }).then((r) => r.ok, () => false))) {
+      if (Date.now() > deadline) throw new Error('the second serve did not answer within 2 minutes')
+      await new Promise((r) => setTimeout(r, 500))
+    }
+    const p = await page()
+    await p.goto(addr)
+    const banner = p.getByTestId('desktop-limit')
+    await banner.waitFor()
+    const time = until.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    expect('the banner says the limit and when Runs carry on', (await banner.innerText()).includes(`Subscription limit reached · Runs wait until ${time}`), await banner.innerText())
+    writeFileSync(file, JSON.stringify({ version: 1, bakeries: [] }), { mode: 0o600 })
+    await p.reload()
+    await p.getByTestId('connect').waitFor()
+    await p.waitForTimeout(500)
+    expect('without the limit there is no banner', (await banner.count()) === 0)
+    await p.context().close()
+  } finally {
+    try {
+      process.kill(-serve.pid!, 'SIGTERM')
+    } catch {}
+    rmSync(home, { recursive: true, force: true })
+  }
 }
 
 const asked = process.argv.slice(2)

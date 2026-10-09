@@ -3,12 +3,13 @@
   // NOTICE) for an Issue's newest queued or running Run: the Agent, the Run's
   // number, status and start, Stop, and its Transcript live. A queued Run
   // says whose desktop it waits for, since only the Hirer's desktop runs it;
-  // its stream is followed already, so the claim shows as it happens.
-  import { LoaderCircle, Square } from '@lucide/svelte'
+  // its stream is followed already, so the claim shows as it happens. While
+  // the Hirer's Desktop is at its Subscription limit, it says when it resets.
+  import { Clock, LoaderCircle, Square } from '@lucide/svelte'
   import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import RunSource from '@bakery/ui/RunSource.svelte'
   import RunStatus from '@bakery/ui/RunStatus.svelte'
-  import { ago } from './format'
+  import { ago, clockTime } from './format'
   import { href } from './router.svelte'
   import RunView from './RunView.svelte'
   import type { Run } from './runs'
@@ -51,7 +52,12 @@
         </button>
       {/if}
     </div>
-    {#if run.status === 'queued'}
+    {#if run.status === 'queued' && run.subscription_limit_resets_at}
+      <p class="flex items-center gap-2 text-sm text-muted-foreground" data-testid="run-waiting-limit">
+        <Clock class="size-4" />
+        Waiting for {hirer ? `${hirer}'s` : "the hirer's"} subscription limit · resets {clockTime(run.subscription_limit_resets_at)}
+      </p>
+    {:else if run.status === 'queued'}
       <p class="flex items-center gap-2 text-sm text-muted-foreground" data-testid="run-waiting">
         <LoaderCircle class="size-4 animate-spin motion-reduce:animate-none" />
         Waiting for {hirer ? `${hirer}'s` : "the hirer's"} desktop

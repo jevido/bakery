@@ -4,14 +4,16 @@
   // (or Issue, on an Agent's page), start, run time and tokens, newest
   // first, each with what started it (AgentDetail's source badge) and
   // unfolding to its Transcript. Its liveness, child-work and stop-reason
-  // summaries are left out: The Bakery's Runs do not report them.
+  // summaries are left out: The Bakery's Runs do not report them. A limited
+  // Run says when its Subscription limit resets, and so does a queued Run
+  // that waits on it.
   import { ChevronDown, ChevronRight } from '@lucide/svelte'
   import { SvelteSet } from 'svelte/reactivity'
   import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import RunSource from '@bakery/ui/RunSource.svelte'
   import RunStatus from '@bakery/ui/RunStatus.svelte'
   import { compactCount, runDuration } from '@bakery/ui/runTranscript'
-  import { ago } from './format'
+  import { ago, clockTime } from './format'
   import { href } from './router.svelte'
   import RunView from './RunView.svelte'
   import { runTime, type Run } from './runs'
@@ -56,6 +58,11 @@
             {/if}
           </span>
         </div>
+        {#if r.status === 'limited' && r.limit_resets_at}
+          <p class="mx-3 mb-2" data-testid="run-limit-resets">resets {clockTime(r.limit_resets_at)}</p>
+        {:else if r.status === 'queued' && r.subscription_limit_resets_at}
+          <p class="mx-3 mb-2" data-testid="run-waits-limit">Waits for the subscription limit · resets {clockTime(r.subscription_limit_resets_at)}</p>
+        {/if}
         {#if r.error && r.status !== 'succeeded'}
           <p class="mx-3 mb-2 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1 break-words text-destructive">{r.error}</p>
         {/if}

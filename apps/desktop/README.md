@@ -202,7 +202,9 @@ holds off the same way. It writes the reset to `bakeries.json`
 (`limited_until`), so a restarted Runner still waits, sends a `limit`
 event `{until}` when the limit is hit and `{until: null}` when it resets,
 and then offers each Bakery's queued Runs again. The frontend reads it
-with `Limit()`. The Bakery queues the Run again for when the limit has
+with `Limit()` (from `bakeries.json` when `serve --no-runner` runs no
+Runner of its own) and shows "Subscription limit reached · Runs wait until
+<time>" above every page while it holds. The Bakery queues the Run again for when the limit has
 reset, and refuses this Desktop's claims until then.
 
 The frontend draws an Agent's Runs from `Runs`/`RunEvents` (the dashboard's
