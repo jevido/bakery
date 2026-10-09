@@ -359,6 +359,26 @@ const activityVerbs: Record<string, string> = {
 export const activityVerb = (action: string) => activityVerbs[action] ?? action.replace(/[._]/g, ' ')
 
 /**
+ * The verb of a feed row, with what the event's details add: the Skill file
+ * an event about one is about, and the Skills given to or taken from an
+ * Agent ("added the skill release-notes to").
+ */
+export function activityEventVerb(e: Pick<ActivityEvent, 'action' | 'details'>): string {
+  const path = typeof e.details.path === 'string' ? e.details.path : null
+  if (e.action === 'skill.file_updated' && path) return `updated ${path} in the skill`
+  if (e.action === 'skill.file_deleted' && path) return `deleted ${path} from the skill`
+  if (e.action === 'agent.skills_synced') {
+    const slugs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+    const added = slugs(e.details.added)
+    const removed = slugs(e.details.removed)
+    const skills = (xs: string[]) => `the skill${xs.length === 1 ? '' : 's'} ${xs.join(', ')}`
+    if (added.length && !removed.length) return `added ${skills(added)} to`
+    if (removed.length && !added.length) return `removed ${skills(removed)} from`
+  }
+  return activityVerb(e.action)
+}
+
+/**
  * A piece of an Issue-tab sentence: plain text, an Issue to link by its
  * identifier, or muted text (a Comment's snippet).
  */

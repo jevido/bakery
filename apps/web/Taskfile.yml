@@ -60,6 +60,12 @@ tasks:
     cmds:
       - bun e2e/routines.ts
 
+  skills:
+    desc: Check the Skills pages (New skill, the Overview, editing, adding and deleting files, deleting the Skill, a Member who reads only) in headless Chromium (needs task dev)
+    deps: [install]
+    cmds:
+      - bun e2e/skills.ts
+
   desktop:
     desc: Check the Desktop app's sign-in (approve, cancel, expired) and the Desktops page in headless Chromium (needs task dev)
     deps: [install]

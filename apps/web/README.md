@@ -117,6 +117,13 @@ recreated Webhook trigger, and the stale-save message on the Overview).
 Each runs once in
 the dark theme at 1440×900.
 
+`e2e/skills.ts` (`task web:skills`, needs `task dev`) checks the Skills
+pages, one section per flow (`bun e2e/skills.ts viewer` runs one):
+`library` (New skill, the Overview, editing SKILL.md, adding and deleting
+`templates/notes.md`, deleting the Skill) and `viewer` (a Member without
+`manage_skills` reads but gets no New skill, Edit or Delete). Each runs
+once in the dark theme at 1440×900.
+
 `e2e/servers.ts` (`task web:servers`, needs `task dev`) checks the Servers
 pages and S3 Storage, one section per flow (`bun e2e/servers.ts remote`
 runs one): the list, the Server frame, Resources, Metrics, Cleanup, the

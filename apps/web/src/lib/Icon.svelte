@@ -82,6 +82,7 @@
     'goals': Target,
     'issues': CircleDot,
     'routines': Repeat,
+    'skills': Boxes,
     'activity': History,
     'inbox': Inbox,
     'notifications': Bell,

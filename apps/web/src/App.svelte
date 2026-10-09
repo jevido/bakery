@@ -23,6 +23,8 @@
   import Goals from './pages/goals/Goals.svelte'
   import Routine from './pages/routines/Routine.svelte'
   import Routines from './pages/routines/Routines.svelte'
+  import Skill from './pages/skills/Skill.svelte'
+  import Skills from './pages/skills/Skills.svelte'
   import Issue from './pages/issues/Issue.svelte'
   import Issues from './pages/issues/Issues.svelte'
   import NotFound from './pages/NotFound.svelte'
@@ -183,6 +185,12 @@
     {:else if router.route.name === 'routine'}
       {#key router.route.id}
         <Routine id={router.route.id} section={router.route.section} />
+      {/key}
+    {:else if router.route.name === 'skills'}
+      <Skills />
+    {:else if router.route.name === 'skill'}
+      {#key router.route.id}
+        <Skill id={router.route.id} tab={router.route.tab} path={router.route.path} />
       {/key}
     {:else if router.route.name === 'agents'}
       <Agents tab={router.route.tab} />

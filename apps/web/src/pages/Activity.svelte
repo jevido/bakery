@@ -21,7 +21,7 @@
   import { href } from '../lib/router.svelte'
   import type { Member } from '../lib/session.svelte'
   import Empty from '../lib/ui/Empty.svelte'
-  import { activityVerb, listActivity, type ActivityEntity, type ActivityEvent } from '../lib/work'
+  import { activityEventVerb, listActivity, type ActivityEntity, type ActivityEvent } from '../lib/work'
 
   const pageSize = 50
   const entities = [
@@ -173,7 +173,7 @@
     <ul class="overflow-hidden rounded-lg border border-border" aria-label="Activity">
       {#each events as event (event.id)}
         {@const name = event.actor_agent?.name ?? event.actor?.name ?? 'Board'}
-        {@const verb = activityVerb(event.action)}
+        {@const verb = activityEventVerb(event)}
         {@const to = link(event)}
         <li class="border-b border-border last:border-b-0" data-activity={event.action}>
           <svelte:element
