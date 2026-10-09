@@ -41,7 +41,10 @@
 //           Title change and the description lines; Restore names the
 //           Webhook trigger coming back, and confirming makes revision 5
 //           (Restored) at the top, the old title in the header and the
-//           recreated trigger's new secret
+//           recreated trigger's new secret; then, with the Overview in
+//           edit on two pages, the first saves a title and the second's
+//           save says someone else updated it; Reload latest shows the
+//           first's title and a save after it goes through
 //
 //   bun e2e/routines.ts [section ...]   (task web:routines; needs task dev)
 //
@@ -604,8 +607,33 @@ const sections: Record<string, () => Promise<void>> = {
       expect("the recreated trigger's new secret is shown", secret.length >= 32, secret)
       await page.waitForTimeout(1500)
       await page.screenshot({ path: '/tmp/routine-history.png' })
+
+      const other = await page.context().newPage()
+      for (const p of [page, other]) {
+        await p.goto(`${WEB}/#/routines/${id}`)
+        await p.getByRole('button', { name: 'Edit routine' }).click()
+      }
+      await page.getByLabel('Routine title').fill(`${title} renamed`)
+      await page.getByRole('region', { name: 'Unsaved changes' }).getByRole('button', { name: /Save changes/ }).click()
+      await page.getByRole('heading', { level: 1, name: `${title} renamed`, exact: true }).waitFor()
+      await other.getByLabel('Description').fill('Check the lockfile.\nPing the owner.')
+      const bar = other.getByRole('region', { name: 'Unsaved changes' })
+      await bar.getByRole('button', { name: /Save changes/ }).click()
+      await bar.getByText('Routine changed elsewhere').waitFor()
+      expect('the stale save says someone else updated the Routine', await other.getByText('Someone else updated this routine').isVisible())
+      await other.screenshot({ path: '/tmp/routine-stale-save.png' })
+      await bar.getByRole('button', { name: 'Reload latest' }).click()
+      await other.getByRole('heading', { level: 1, name: `${title} renamed`, exact: true }).waitFor()
+      expect("Reload latest shows the first page's title", true)
+      await other.getByRole('button', { name: 'Edit routine' }).click()
+      await other.getByLabel('Description').fill('Check the lockfile.\nPing the owner.')
+      await other.getByRole('region', { name: 'Unsaved changes' }).getByRole('button', { name: /Save changes/ }).click()
+      await other.locator('[data-routine-overview-mode="read"]').waitFor()
+      const after = ((await (await page.request.get(`${WEB}/api/routines/${id}`)).json()) as { routine: { title: string; description: string } }).routine
+      expect('saving again after Reload goes through', after.title === `${title} renamed` && after.description.includes('Ping the owner'), after)
     } finally {
       await clearRoutines(page, title)
+      await clearRoutines(page, `${title} renamed`)
       await drop()
       await page.context().close()
     }

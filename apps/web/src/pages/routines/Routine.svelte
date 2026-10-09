@@ -9,6 +9,10 @@
   // or Edit, since archiving is final. Only a Member with manage_work gets
   // any control. Run on a Routine with variables opens the Run dialog to
   // ask for them. History lists the Routine revisions and restores one.
+  // The Overview's save sends its Base revision; when someone saved first,
+  // the form stays as typed and the save bar offers Reload latest or
+  // Overwrite anyway. The toggle, like Paperclip's, changes only the
+  // status and sends no Base revision.
   // Left out: Secrets and Delivery.
   import { Pencil, Play, X } from '@lucide/svelte'
   import { Badge } from '@bakery/ui/components/ui/badge'
@@ -57,6 +61,8 @@
   let asking = $state(false)
   let errors = $state<Record<string, string>>({})
   let toggling = $state(false)
+  /** The newest Routine revision when a save was refused as stale; Overwrite anyway saves on it. */
+  let conflict = $state<number | null>(null)
 
   const message = (e: unknown) => (e instanceof ApiError ? (Object.values(e.errors)[0] ?? e.message) : String(e))
   const canManage = $derived(session.can('manage_work'))
@@ -130,6 +136,13 @@
   function stopEditing() {
     editing = false
     draft = null
+    conflict = null
+  }
+
+  /** Drops the form and shows the Routine as it is now. */
+  async function reload() {
+    stopEditing()
+    await load()
   }
 
   async function save() {
@@ -137,11 +150,17 @@
     saving = true
     errors = {}
     try {
-      routine = { ...routine, ...(await updateRoutine(routine.id, { ...draft, variables, title: title.trim() })) }
+      const base_revision_id = conflict ?? routine.latest_revision_id
+      routine = { ...routine, ...(await updateRoutine(routine.id, { ...draft, variables, title: title.trim(), base_revision_id })) }
       version++
       toast.success('Routine saved', routine.title)
       stopEditing()
     } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && typeof e.body.current_revision_id === 'number') {
+        conflict = e.body.current_revision_id
+        toast.warning('Routine changed', 'Someone else updated this routine. Reload to see the latest revision.')
+        return
+      }
       if (e instanceof ApiError) errors = e.errors
       toast.error('Routine not saved', message(e))
     } finally {
@@ -252,7 +271,7 @@
           {#if section === ''}
             {#if editing && draft}
               <RoutineEditor bind:draft {title} {errors} />
-              <RoutineSaveBar {dirty} {saving} disabled={!title.trim()} onsave={save} ondiscard={stopEditing} />
+              <RoutineSaveBar {dirty} {saving} conflict={conflict !== null} disabled={!title.trim()} onsave={save} ondiscard={stopEditing} onreload={reload} />
             {:else}
               <RoutineOverview {routine} />
             {/if}
