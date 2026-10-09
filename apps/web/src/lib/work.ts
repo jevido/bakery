@@ -314,6 +314,7 @@ const activityVerbs: Record<string, string> = {
   'issue.deleted': 'deleted',
   'issue.checked_out': 'checked out',
   'issue.released': 'released',
+  'issue.conversation_opened': 'opened',
   'issue.application_changed': 'changed the application of',
   'issue.pull_request_opened': 'opened a pull request for',
   'issue.pull_request_merged': 'merged the pull request of',

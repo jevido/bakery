@@ -16,6 +16,10 @@ type Comments interface {
 	// so the Issue sorts up in lists.
 	CreateComment(ctx context.Context, c domain.Comment) (domain.Comment, error)
 	SaveComment(ctx context.Context, c domain.Comment) (domain.Comment, error)
+	// CreateConversationComment stores the Comment and, in the same
+	// transaction, the Conversation state it moves its Issue to and, for a
+	// New session, the Comment as its Session boundary.
+	CreateConversationComment(ctx context.Context, c domain.Comment, move domain.ConversationMove) (domain.Comment, error)
 }
 
 // Comments lists the thread of an Issue the person may see.
@@ -28,7 +32,9 @@ func (s *Service) Comments(ctx context.Context, guildID uint64, ref string, visi
 }
 
 // WriteComment adds the Member's or Agent's Comment to the Issue. A Comment
-// by the Issue's own Agent assignee does not wake it again.
+// by the Issue's own Agent assignee does not wake it again. In a
+// Conversation only its owner and its Agent write, and the Comment moves
+// its Conversation state or Session boundary with it.
 func (s *Service) WriteComment(ctx context.Context, guildID uint64, by domain.Actor, ref, body string, visible Visible) (domain.Comment, error) {
 	i, err := s.Issue(ctx, guildID, ref, visible)
 	if err != nil {
@@ -41,7 +47,15 @@ func (s *Service) WriteComment(ctx context.Context, guildID uint64, by domain.Ac
 	if err != nil {
 		return domain.Comment{}, err
 	}
-	c, err = s.comments.CreateComment(ctx, c)
+	if i.Conversation != nil {
+		move, err := i.Converse(by, body)
+		if err != nil {
+			return domain.Comment{}, err
+		}
+		c, err = s.comments.CreateConversationComment(ctx, c, move)
+	} else {
+		c, err = s.comments.CreateComment(ctx, c)
+	}
 	if err != nil {
 		return domain.Comment{}, err
 	}

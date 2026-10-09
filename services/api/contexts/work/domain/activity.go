@@ -17,6 +17,9 @@ const (
 	IssueDeletedAction    = "issue.deleted"
 	IssueCheckedOutAction = "issue.checked_out"
 	IssueReleasedAction   = "issue.released"
+	// IssueConversationOpenedAction is a Member's Conversation with an
+	// Agent, opened.
+	IssueConversationOpenedAction = "issue.conversation_opened"
 	// IssueApplicationChangedAction is not Paperclip's: its Issues name
 	// no Application.
 	IssueApplicationChangedAction = "issue.application_changed"
@@ -316,6 +319,18 @@ type IssueDeleted struct {
 
 func (e IssueDeleted) Activity() ActivityEvent {
 	return e.issue(e.Issue, IssueDeletedAction, map[string]any{})
+}
+
+// ConversationOpened is a Conversation, created; AgentName keeps the
+// Conversation agent's name so the event still reads after it changes.
+type ConversationOpened struct {
+	Happened
+	Issue     Issue
+	AgentName string
+}
+
+func (e ConversationOpened) Activity() ActivityEvent {
+	return e.issue(e.Issue, IssueConversationOpenedAction, map[string]any{"agent_id": e.Issue.Conversation.AgentID, "agent_name": e.AgentName})
 }
 
 // IssueApplicationChanged is the Issue's Application named, changed or

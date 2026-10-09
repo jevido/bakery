@@ -215,7 +215,8 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 		return respond.Invalid(ctx, fe.Field, fe.Message)
 	case errors.Is(err, app.ErrNotFound):
 		return notFound(ctx)
-	case errors.Is(err, domain.ErrNotAuthor), errors.Is(err, domain.ErrNotRequester):
+	case errors.Is(err, domain.ErrNotAuthor), errors.Is(err, domain.ErrNotRequester), errors.Is(err, domain.ErrNotConversationOwner),
+		errors.Is(err, app.ErrPeopleOnly):
 		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
 	case errors.Is(err, domain.ErrCommentDeleted), errors.Is(err, domain.ErrRestoreNewest),
 		errors.Is(err, app.ErrDocumentExists), errors.Is(err, app.ErrNoDocumentYet):

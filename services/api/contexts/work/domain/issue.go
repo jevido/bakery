@@ -101,8 +101,12 @@ type Issue struct {
 	// run that created an Execution Issue; 0 for any other Issue.
 	OriginRoutineID    uint64
 	OriginRoutineRunID uint64
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	// Conversation makes the Issue a Conversation; nil for any other
+	// Issue. It is never changed in place: a Comment's ConversationMove
+	// is stored instead.
+	Conversation *Conversation
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // NewIssue is an Issue of the Guild, created by a Member or an Agent, in the Backlog
@@ -131,7 +135,16 @@ func (i *Issue) Describe(description string) { i.Description = description }
 // SetStatus moves the Issue to status at now: in_progress sets the started
 // time once, done the completed time and cancelled the cancelled time;
 // leaving done or cancelled clears that time again.
-func (i *Issue) SetStatus(status IssueStatus, now time.Time) {
+// A Conversation is never done or cancelled.
+func (i *Issue) SetStatus(status IssueStatus, now time.Time) error {
+	if i.Conversation != nil && (status == Done || status == IssueCancelled) {
+		return ErrConversationClosed
+	}
+	i.setStatus(status, now)
+	return nil
+}
+
+func (i *Issue) setStatus(status IssueStatus, now time.Time) {
 	if status == i.Status {
 		return
 	}
@@ -159,8 +172,12 @@ func (i *Issue) SetPriority(p Priority) { i.Priority = p }
 
 // Assign hands the Issue to a Member, already known to be one of the
 // Guild's, taking it from an Agent; 0 takes it from the Member it is
-// assigned to. A new Assignee ends any Checkout.
-func (i *Issue) Assign(memberID uint64) {
+// assigned to. A new Assignee ends any Checkout. A Conversation has no
+// Member assignee.
+func (i *Issue) Assign(memberID uint64) error {
+	if i.Conversation != nil && memberID != 0 {
+		return fixedForConversation("assignee_id")
+	}
 	if memberID != i.AssigneeID {
 		i.clearCheckout()
 	}
@@ -168,12 +185,22 @@ func (i *Issue) Assign(memberID uint64) {
 	if memberID != 0 {
 		i.AssigneeAgentID = 0
 	}
+	return nil
 }
 
 // AssignAgent hands the Issue to an Agent, already known to be one of the
 // Guild's and not terminated, taking it from a Member; 0 takes it from the
-// Agent it is assigned to. A new Assignee ends any Checkout.
-func (i *Issue) AssignAgent(agentID uint64) {
+// Agent it is assigned to. A new Assignee ends any Checkout. A
+// Conversation's Agent assignee is its Conversation agent, always.
+func (i *Issue) AssignAgent(agentID uint64) error {
+	if i.Conversation != nil && agentID != i.Conversation.AgentID {
+		return fixedForConversation("assignee_agent_id")
+	}
+	i.assignAgent(agentID)
+	return nil
+}
+
+func (i *Issue) assignAgent(agentID uint64) {
 	if agentID != i.AssigneeAgentID {
 		i.clearCheckout()
 	}
@@ -241,43 +268,51 @@ func (i *Issue) Checkout(agentID, runID uint64, expected []IssueStatus, live fun
 	if i.HeldByOther(runID, live) {
 		return false, &HeldError{RunID: i.CheckoutRunID}
 	}
-	i.AssignAgent(agentID)
+	i.assignAgent(agentID)
 	t := now.UTC()
 	i.CheckoutRunID, i.CheckedOutAt = runID, &t
-	i.SetStatus(InProgress, now)
+	i.setStatus(InProgress, now)
 	return true, nil
 }
 
 // Release gives up the Run's Checkout at now, as Paperclip's: an Issue in
 // progress goes back to todo, and an open one loses its Agent assignee,
-// so it goes back to the pool.
+// so it goes back to the pool. A Conversation keeps its Agent.
 func (i *Issue) Release(runID uint64, now time.Time) error {
 	if i.CheckoutRunID == 0 || i.CheckoutRunID != runID {
 		return ErrNotHolder
 	}
 	i.clearCheckout()
 	if i.Status == InProgress {
-		i.SetStatus(Todo, now)
+		i.setStatus(Todo, now)
 	}
-	if i.Status != Done && i.Status != IssueCancelled {
-		i.AssignAgent(0)
+	if i.Status != Done && i.Status != IssueCancelled && i.Conversation == nil {
+		i.assignAgent(0)
 	}
 	return nil
 }
 
 // PlaceIn puts the Issue in a Project, already known to be one of the
 // Guild's; 0 is none. Moving it to another Project lets go of the Issue's
-// Application, which belongs to the old one.
-func (i *Issue) PlaceIn(projectID uint64) {
+// Application, which belongs to the old one. A Conversation has no
+// Project.
+func (i *Issue) PlaceIn(projectID uint64) error {
+	if i.Conversation != nil && projectID != 0 {
+		return fixedForConversation("project_id")
+	}
 	if projectID != i.ProjectID {
 		i.ApplicationID = 0
 	}
 	i.ProjectID = projectID
+	return nil
 }
 
 // SetApplication names the Issue's Application, already known to be one
 // of its Project's; 0 is none. An Issue without a Project has none.
 func (i *Issue) SetApplication(applicationID uint64) error {
+	if i.Conversation != nil && applicationID != 0 {
+		return fixedForConversation("application_id")
+	}
 	if applicationID != 0 && i.ProjectID == 0 {
 		return invalid("application_id", "the application is not in the issue's project")
 	}
@@ -292,6 +327,9 @@ func (i *Issue) ServeGoal(goal *Goal) error {
 		i.GoalID = 0
 		return nil
 	}
+	if i.Conversation != nil {
+		return fixedForConversation("goal_id")
+	}
 	if goal.GuildID != i.GuildID {
 		return invalid("goal_id", "goal not found")
 	}
@@ -301,11 +339,18 @@ func (i *Issue) ServeGoal(goal *Goal) error {
 
 // MoveUnder makes parent the Issue's parent, nil for none. ancestors are
 // the ids of parent's own ancestors, nearest first: the Issue may be none
-// of them, nor parent itself.
+// of them, nor parent itself. A Conversation has no parent and no
+// Sub-issues.
 func (i *Issue) MoveUnder(parent *Issue, ancestors []uint64) error {
 	if parent == nil {
 		i.ParentID = 0
 		return nil
+	}
+	if i.Conversation != nil {
+		return fixedForConversation("parent_id")
+	}
+	if parent.Conversation != nil {
+		return invalid("parent_id", "a conversation cannot have sub-issues")
 	}
 	if parent.GuildID != i.GuildID {
 		return invalid("parent_id", "parent issue not found")
@@ -320,11 +365,17 @@ func (i *Issue) MoveUnder(parent *Issue, ancestors []uint64) error {
 // BlockWith checks blockers as the Issue's Blockers and returns their ids
 // in order, without repeats. reachable are the ids of every Issue the
 // Issue already blocks, directly or through others: none of them may block
-// it, nor the Issue itself, nor another Guild's Issue.
+// it, nor the Issue itself, nor another Guild's Issue. A Conversation
+// neither blocks nor is blocked.
 func (i Issue) BlockWith(blockers []Issue, reachable []uint64) ([]uint64, error) {
+	if i.Conversation != nil && len(blockers) > 0 {
+		return nil, fixedForConversation("blocked_by_ids")
+	}
 	ids := make([]uint64, 0, len(blockers))
 	for _, b := range blockers {
 		switch {
+		case b.Conversation != nil:
+			return nil, invalid("blocked_by_ids", "a conversation cannot block an issue")
 		case b.GuildID != i.GuildID:
 			return nil, invalid("blocked_by_ids", "blocked-by issue not found")
 		case b.ID == i.ID:

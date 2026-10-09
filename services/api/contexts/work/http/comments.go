@@ -22,6 +22,8 @@ type commentJSON struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	Edited      bool      `json:"edited"`
+	// RunID is the Run an Agent wrote it in, null for a Member's.
+	RunID *uint64 `json:"run_id"`
 }
 
 // commentsJSON shows Comments with their authors' names, asked for in one
@@ -41,6 +43,9 @@ func (c *Controller) commentsJSON(ctx contractshttp.Context, cs []domain.Comment
 			ID: cm.ID, Body: cm.Body, Deleted: cm.Deleted(), CreatedAt: cm.CreatedAt, UpdatedAt: cm.UpdatedAt,
 			Edited: !cm.Deleted() && cm.UpdatedAt.After(cm.CreatedAt),
 			Author: names.member(cm.Author), AuthorAgent: names.agent(cm.Author),
+		}
+		if cm.RunID != 0 {
+			out[n].RunID = &cm.RunID
 		}
 	}
 	return out, nil

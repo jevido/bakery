@@ -50,7 +50,7 @@ func (m *memIssues) SaveIssue(_ context.Context, i domain.Issue) error {
 func (m *memIssues) OpenIssuesOfAgent(_ context.Context, guildID, agentID uint64) ([]domain.Issue, error) {
 	var out []domain.Issue
 	for _, i := range m.byID {
-		if i.GuildID == guildID && i.AssigneeAgentID == agentID && i.Status != domain.Done && i.Status != domain.IssueCancelled {
+		if i.GuildID == guildID && i.AssigneeAgentID == agentID && i.Conversation == nil && i.Status != domain.Done && i.Status != domain.IssueCancelled {
 			out = append(out, i)
 		}
 	}
@@ -76,6 +76,8 @@ func (m *memIssues) DeleteIssue(_ context.Context, id uint64) error {
 type memComments struct {
 	commentsPort
 	byID map[uint64]domain.Comment
+	// issues, when set, takes a Conversation's moves.
+	issues *memIssues
 }
 
 func (m *memComments) CreateComment(_ context.Context, c domain.Comment) (domain.Comment, error) {

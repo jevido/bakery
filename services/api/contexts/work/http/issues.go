@@ -70,6 +70,8 @@ type issueJSON struct {
 	CancelledAt *time.Time    `json:"cancelled_at"`
 	CreatedAt   time.Time     `json:"created_at"`
 	UpdatedAt   time.Time     `json:"updated_at"`
+	// Conversation is set when the Issue is a Conversation.
+	Conversation *conversationJSON `json:"conversation"`
 	// UnresolvedBlockers counts the Blockers the person can see that are
 	// not done; list rows only.
 	UnresolvedBlockers *int `json:"unresolved_blockers,omitempty"`
@@ -214,6 +216,15 @@ func (c *Controller) issuesJSON(ctx contractshttp.Context, is []domain.Issue, wi
 		}
 		if p, ok := parents[i.ParentID]; ok {
 			out[n].Parent = &p
+		}
+		if cv := i.Conversation; cv != nil {
+			a := agents[cv.AgentID]
+			out[n].Conversation = &conversationJSON{
+				Agent: Agent{ID: cv.AgentID, Name: a.Name, Icon: a.Icon}, MemberID: cv.MemberID, State: string(cv.State),
+			}
+			if cv.BoundaryCommentID != 0 {
+				out[n].Conversation.BoundaryCommentID = &cv.BoundaryCommentID
+			}
 		}
 		// The holder is always the Agent assignee: a new Assignee ends a
 		// Checkout.

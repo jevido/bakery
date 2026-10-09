@@ -289,6 +289,15 @@ type IssueBrief struct {
 	ApplicationID uint64
 	// AgentBranch is the Agent branch an Agent pushes for the Issue.
 	AgentBranch string
+	// Conversation is set when the Issue is a Conversation.
+	Conversation *ConversationBrief
+}
+
+// ConversationBrief is a Conversation as a Run needs it: its owner and
+// its Session boundary (0 for none).
+type ConversationBrief struct {
+	MemberID          uint64
+	BoundaryCommentID uint64
 }
 
 // IssueForRun tells the Guild's Issue; found is false when it is
@@ -298,11 +307,15 @@ func IssueForRun(ctx context.Context, guildID, issueID uint64) (IssueBrief, bool
 	if err != nil || !found {
 		return IssueBrief{}, false, err
 	}
-	return IssueBrief{
+	b := IssueBrief{
 		ID: i.ID, ProjectID: i.ProjectID, Identifier: domain.Identifier(prefix, i.Number), Title: i.Title,
 		Description: i.Description, Status: string(i.Status), AgentAssigneeID: i.AssigneeAgentID, ApplicationID: i.ApplicationID,
 		AgentBranch: domain.AgentBranch(domain.Identifier(prefix, i.Number)),
-	}, true, nil
+	}
+	if c := i.Conversation; c != nil {
+		b.Conversation = &ConversationBrief{MemberID: c.MemberID, BoundaryCommentID: c.BoundaryCommentID}
+	}
+	return b, true, nil
 }
 
 // OpenIssuesOfAgent lists the Guild's Issues the Agent is the assignee of
@@ -388,6 +401,22 @@ func CommentsForRun(ctx context.Context, guildID uint64, ids []uint64) ([]RunCom
 	if err != nil || len(cs) == 0 {
 		return nil, err
 	}
+	return runComments(ctx, guildID, cs)
+}
+
+// ConversationHistory tells the newest limit Comments of the Guild's
+// Conversation after its Session boundary, oldest first, deleted ones
+// left out; none for an Issue that is no Conversation.
+func ConversationHistory(ctx context.Context, guildID, issueID uint64, limit int) ([]RunComment, error) {
+	cs, err := svc().ConversationHistory(ctx, guildID, issueID, limit)
+	if err != nil || len(cs) == 0 {
+		return nil, err
+	}
+	return runComments(ctx, guildID, cs)
+}
+
+// runComments names each Comment's author, a Member or an Agent.
+func runComments(ctx context.Context, guildID uint64, cs []domain.Comment) ([]RunComment, error) {
 	var members, agents []uint64
 	for _, c := range cs {
 		if c.Author.MemberID != 0 {
@@ -433,12 +462,16 @@ type IssueAssigned struct {
 // IssueCommented is a Comment, once stored, on an Issue an Agent is the
 // Assignee of and that is not done or cancelled, written by anyone but
 // that Agent. ActorID is its author when a Member wrote it, else 0.
+// Conversation tells that the Issue is a Conversation, and NewSession
+// that the Comment is its owner's New session, which wakes nobody.
 type IssueCommented struct {
-	GuildID   uint64
-	IssueID   uint64
-	AgentID   uint64
-	CommentID uint64
-	ActorID   uint64
+	GuildID      uint64
+	IssueID      uint64
+	AgentID      uint64
+	CommentID    uint64
+	ActorID      uint64
+	Conversation bool
+	NewSession   bool
 }
 
 var (
@@ -480,7 +513,12 @@ func issueCommented(ctx context.Context, i domain.Issue, c domain.Comment) error
 	if f == nil {
 		return nil
 	}
-	return f(ctx, IssueCommented{GuildID: i.GuildID, IssueID: i.ID, AgentID: i.AssigneeAgentID, CommentID: c.ID, ActorID: c.Author.MemberID})
+	e := IssueCommented{GuildID: i.GuildID, IssueID: i.ID, AgentID: i.AssigneeAgentID, CommentID: c.ID, ActorID: c.Author.MemberID}
+	if conv := i.Conversation; conv != nil {
+		e.Conversation = true
+		e.NewSession = c.Author.MemberID == conv.MemberID && domain.IsNewSession(c.Body)
+	}
+	return f(ctx, e)
 }
 
 // OnApprovalDecided registers f to hear every approve or reject of an
@@ -704,6 +742,11 @@ func Routes(r route.Router) {
 		r.Get("/api/approvals", c.ListApprovals)
 		r.Get("/api/issues/{id}/approvals", c.ListIssueApprovals)
 	})
+	r.Middleware(guilds.AuthAgents, view).Group(func(r route.Router) {
+		r.Get("/api/chats", c.ListChats)
+		r.Get("/api/chats/{agent_id}", c.ShowChat)
+	})
+	r.Middleware(guilds.AuthAgents, manage).Post("/api/chats/{agent_id}", c.OpenChat)
 	r.Middleware(guilds.AuthAgents, manage).Group(func(r route.Router) {
 		r.Post("/api/issues", c.CreateIssue)
 		r.Patch("/api/issues/{id}", c.UpdateIssue)

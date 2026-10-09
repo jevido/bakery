@@ -53,11 +53,18 @@ type Issues interface {
 	// is false when another change got there first.
 	SaveCheckout(ctx context.Context, i, before domain.Issue) (moved bool, err error)
 	// OpenIssuesOfAgent lists the Guild's Issues assigned to the Agent that
-	// are not done or cancelled, whatever Project they are in.
+	// are not done or cancelled, whatever Project they are in, leaving out
+	// Conversations.
 	OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]domain.Issue, error)
 	// OpenExecutionIssues lists the Routine's Execution Issues that are not
 	// done or cancelled, most recently updated first.
 	OpenExecutionIssues(ctx context.Context, routineID uint64) ([]domain.Issue, error)
+	// ConversationOf finds the Member's Conversation with the Agent in the
+	// Guild.
+	ConversationOf(ctx context.Context, guildID, memberID, agentID uint64) (domain.Issue, bool, error)
+	// Conversations lists the Member's Conversations in the Guild, most
+	// recently updated first.
+	Conversations(ctx context.Context, guildID, memberID uint64) ([]domain.Issue, error)
 }
 
 // AssigneeAgent is an Agent as an Issue's Assignee shows it.
@@ -130,6 +137,9 @@ type IssueQuery struct {
 	Offset          int
 	Visible         []uint64
 	Prefix          string
+	// WithConversations keeps Conversations too; without it they are left
+	// out, so they never read as work.
+	WithConversations bool
 }
 
 // InboxMember is the Member whose Inbox the filter asks about, or 0 when
@@ -222,6 +232,9 @@ func (s *Service) Issues(ctx context.Context, guildID uint64, f IssueFilter, vis
 	if q.Limit <= 0 || q.Limit > MaxIssues {
 		q.Limit = MaxIssues
 	}
+	// A search finds Conversations, as Paperclip's does; the Inbox never
+	// shows them.
+	q.WithConversations = q.Search != "" && f.InboxMember() == 0
 	return s.findIssues(ctx, guildID, q, visible)
 }
 
@@ -369,7 +382,9 @@ func (s *Service) CreateIssue(ctx context.Context, guildID uint64, by domain.Act
 		if err != nil {
 			return domain.Issue{}, err
 		}
-		i.SetStatus(st, s.now())
+		if err := i.SetStatus(st, s.now()); err != nil {
+			return domain.Issue{}, err
+		}
 	}
 	if in.Priority != "" {
 		p, err := domain.ParsePriority(in.Priority)
@@ -450,7 +465,9 @@ func (s *Service) ChangeIssue(ctx context.Context, guildID uint64, by domain.Act
 		if err != nil {
 			return domain.Issue{}, err
 		}
-		i.SetStatus(st, s.now())
+		if err := i.SetStatus(st, s.now()); err != nil {
+			return domain.Issue{}, err
+		}
 	}
 	if p.Priority != nil {
 		pr, err := domain.ParsePriority(*p.Priority)
@@ -810,8 +827,7 @@ func (s *Service) assignAgent(ctx context.Context, i *domain.Issue, agentID uint
 			return &domain.FieldError{Field: "assignee_agent_id", Message: "assignee must be an agent of this guild that is not terminated"}
 		}
 	}
-	i.AssignAgent(agentID)
-	return nil
+	return i.AssignAgent(agentID)
 }
 
 // AssigneeAgents names the Guild's Agents among ids, terminated ones too;
@@ -892,7 +908,9 @@ func (s *Service) UnassignAgent(ctx context.Context, guildID, agentID, actorID u
 	}
 	for _, i := range is {
 		e := domain.IssueChanged{Happened: s.happened(domain.ByMember(actorID)), Before: i}
-		i.AssignAgent(0)
+		if err := i.AssignAgent(0); err != nil {
+			return err
+		}
 		if err := s.issues.SaveIssue(ctx, i); err != nil {
 			return err
 		}
@@ -914,14 +932,13 @@ func (s *Service) assign(ctx context.Context, i *domain.Issue, memberID uint64) 
 			return &domain.FieldError{Field: "assignee_id", Message: "assignee must be a member of this guild"}
 		}
 	}
-	i.Assign(memberID)
-	return nil
+	return i.Assign(memberID)
 }
 
 // placeIn puts the Issue in one of the Guild's Projects, which the person
 // must be able to view.
 func (s *Service) placeIn(ctx context.Context, i *domain.Issue, projectID uint64, visible Visible) error {
-	if projectID != 0 {
+	if projectID != 0 && i.Conversation == nil {
 		names, err := s.projects.ProjectNames(ctx, i.GuildID, []uint64{projectID})
 		if err != nil {
 			return err
@@ -936,8 +953,7 @@ func (s *Service) placeIn(ctx context.Context, i *domain.Issue, projectID uint64
 			return &domain.FieldError{Field: "project_id", Message: "project not found"}
 		}
 	}
-	i.PlaceIn(projectID)
-	return nil
+	return i.PlaceIn(projectID)
 }
 
 // changeApplication names one of the Issue's Project's Applications as
@@ -989,6 +1005,10 @@ func (s *Service) ForgetApplication(ctx context.Context, applicationID uint64) e
 func (s *Service) serveGoal(ctx context.Context, i *domain.Issue, goalID uint64) error {
 	if goalID == 0 {
 		return i.ServeGoal(nil)
+	}
+	if i.Conversation != nil {
+		// Refused before the Goal is looked up.
+		return i.ServeGoal(&domain.Goal{ID: goalID, GuildID: i.GuildID})
 	}
 	g, found, err := s.goals.Goal(ctx, goalID)
 	if err != nil {

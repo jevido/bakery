@@ -284,7 +284,7 @@ func TestHardStop(t *testing.T) {
 		block.Reason != "Project cannot start new runs because its budget's hard stop is reached." {
 		t.Fatalf("bob in the lab: %v", err)
 	}
-	if err := s.IssueCommented(ctx, 1, 32, bob.ID, 0, 7); err != nil {
+	if err := s.IssueCommented(ctx, 1, 32, bob.ID, 0, 7, false, false); err != nil {
 		t.Errorf("a hook's wake in a stopped scope is dropped: %v", err)
 	}
 	shop, err := wake(bob.ID, 31)

@@ -38,6 +38,11 @@ type issueRecord struct {
 	CancelledAt        *time.Time
 	OriginRoutineID    *uint64
 	OriginRoutineRunID *uint64
+	// The Conversation columns are all null, or the first three all set.
+	ConversationAgentID           *uint64
+	ConversationMemberID          *uint64
+	ConversationState             *string
+	ConversationBoundaryCommentID *uint64
 	orm.Timestamps
 }
 
@@ -60,6 +65,12 @@ func (r issueRecord) toDomain() domain.Issue {
 		CheckoutRunID: deref(r.CheckoutRunID), CheckedOutAt: utc(r.CheckedOutAt),
 		StartedAt: utc(r.StartedAt), CompletedAt: utc(r.CompletedAt), CancelledAt: utc(r.CancelledAt),
 		OriginRoutineID: deref(r.OriginRoutineID), OriginRoutineRunID: deref(r.OriginRoutineRunID),
+	}
+	if r.ConversationAgentID != nil && r.ConversationMemberID != nil && r.ConversationState != nil {
+		i.Conversation = &domain.Conversation{
+			AgentID: *r.ConversationAgentID, MemberID: *r.ConversationMemberID,
+			State: domain.ConversationState(*r.ConversationState), BoundaryCommentID: deref(r.ConversationBoundaryCommentID),
+		}
 	}
 	i.CreatedAt, i.UpdatedAt = stamp(&r.Timestamps)
 	return i
@@ -90,6 +101,11 @@ func (Issues) CreateIssue(ctx context.Context, i domain.Issue) (domain.Issue, er
 		GoalID: nullable(i.GoalID), ParentID: nullable(i.ParentID), CreatedByMemberID: nullable(i.CreatedBy.MemberID), CreatedByAgentID: nullable(i.CreatedBy.AgentID),
 		StartedAt: i.StartedAt, CompletedAt: i.CompletedAt, CancelledAt: i.CancelledAt,
 		OriginRoutineID: nullable(i.OriginRoutineID), OriginRoutineRunID: nullable(i.OriginRoutineRunID),
+	}
+	if c := i.Conversation; c != nil {
+		state := string(c.State)
+		rec.ConversationAgentID, rec.ConversationMemberID, rec.ConversationState = &c.AgentID, &c.MemberID, &state
+		rec.ConversationBoundaryCommentID = nullable(c.BoundaryCommentID)
 	}
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		if err := tx.Raw(`INSERT INTO issue_counters (guild_id, last_number) VALUES (?, 1)
@@ -137,8 +153,21 @@ func (s Issues) IssuesByID(ctx context.Context, ids []uint64) ([]domain.Issue, e
 
 func (s Issues) OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]domain.Issue, error) {
 	var recs []issueRecord
-	if err := s.query(ctx).Where("guild_id", guildID).Where("assignee_agent_id", agentID).
+	if err := s.query(ctx).Where("guild_id", guildID).Where("assignee_agent_id", agentID).Where("conversation_agent_id IS NULL").
 		Where("status NOT IN ?", []string{string(domain.Done), string(domain.IssueCancelled)}).Find(&recs); err != nil {
+		return nil, err
+	}
+	return issuesOf(recs), nil
+}
+
+func (s Issues) ConversationOf(ctx context.Context, guildID, memberID, agentID uint64) (domain.Issue, bool, error) {
+	return s.first(s.query(ctx).Where("guild_id", guildID).Where("conversation_member_id", memberID).Where("conversation_agent_id", agentID))
+}
+
+func (s Issues) Conversations(ctx context.Context, guildID, memberID uint64) ([]domain.Issue, error) {
+	var recs []issueRecord
+	if err := s.query(ctx).Where("guild_id", guildID).Where("conversation_member_id", memberID).
+		Order("updated_at desc").Order("id desc").Find(&recs); err != nil {
 		return nil, err
 	}
 	return issuesOf(recs), nil
@@ -278,6 +307,9 @@ var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 // where narrows a query on issues to what f keeps.
 func where(q contractsorm.Query, guildID uint64, f app.IssueQuery) contractsorm.Query {
 	q = q.Where("guild_id", guildID)
+	if !f.WithConversations {
+		q = q.Where("conversation_agent_id IS NULL")
+	}
 	if len(f.Statuses) > 0 {
 		q = q.Where("status IN ?", f.Statuses)
 	}

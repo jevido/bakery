@@ -412,6 +412,31 @@ func TestPromptFor(t *testing.T) {
 	}
 }
 
+func TestWakesFromConversation(t *testing.T) {
+	ctx := context.Background()
+	s, _, _, w := newTest()
+	runs := s.runs.(*fakeRuns)
+	ada := hired(t, s, "Ada", 0)
+	w.issues = map[uint64]IssueBrief{30: {ID: 30, Identifier: "BAK-3", Title: "Chat with Ada", Status: "in_review", AgentAssigneeID: ada.ID,
+		Conversation: &ConversationBrief{MemberID: 7}}}
+	// A New session wakes nothing.
+	if err := s.IssueCommented(ctx, 1, 30, ada.ID, 50, 7, true, true); err != nil || len(runs.rows) != 0 {
+		t.Fatalf("new session: %v %+v", err, runs.rows)
+	}
+	if err := s.IssueCommented(ctx, 1, 30, ada.ID, 51, 7, true, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(runs.rows) != 1 {
+		t.Fatalf("runs %+v", runs.rows)
+	}
+	for _, r := range runs.rows {
+		if r.InvocationSource != domain.Automation || r.WakeReason != domain.ConversationMessage || r.IssueID != 30 ||
+			!slices.Equal(r.WakeContext.CommentIDs, []uint64{51}) {
+			t.Fatalf("run %+v", r)
+		}
+	}
+}
+
 func TestWakesFromWork(t *testing.T) {
 	ctx := context.Background()
 	s, _, _, w := newTest()
@@ -421,7 +446,7 @@ func TestWakesFromWork(t *testing.T) {
 	if err := s.IssueAssigned(ctx, 1, 30, ada.ID, 7); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.IssueCommented(ctx, 1, 30, ada.ID, 51, 7); err != nil {
+	if err := s.IssueCommented(ctx, 1, 30, ada.ID, 51, 7, false, false); err != nil {
 		t.Fatal(err)
 	}
 	if len(runs.rows) != 1 {
@@ -441,7 +466,7 @@ func TestWakesFromWork(t *testing.T) {
 	if err := s.IssueAssigned(ctx, 1, 30, ada.ID, 7); err != nil {
 		t.Errorf("assigned without wake on demand: %v", err)
 	}
-	if err := s.IssueCommented(ctx, 1, 30, ada.ID, 52, 7); err != nil {
+	if err := s.IssueCommented(ctx, 1, 30, ada.ID, 52, 7, false, false); err != nil {
 		t.Errorf("commented without wake on demand: %v", err)
 	}
 	if len(runs.rows) != 1 {

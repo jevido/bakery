@@ -18,6 +18,7 @@ type commentRecord struct {
 	IssueID        uint64
 	AuthorMemberID *uint64
 	AuthorAgentID  *uint64
+	RunID          *uint64
 	Body           string
 	DeletedAt      *time.Time
 	orm.Timestamps
@@ -26,7 +27,7 @@ type commentRecord struct {
 func (commentRecord) TableName() string { return "issue_comments" }
 
 func (r commentRecord) toDomain() domain.Comment {
-	c := domain.Comment{ID: r.ID, IssueID: r.IssueID, Author: actor(r.AuthorMemberID, r.AuthorAgentID), Body: r.Body, DeletedAt: utc(r.DeletedAt)}
+	c := domain.Comment{ID: r.ID, IssueID: r.IssueID, Author: actor(r.AuthorMemberID, r.AuthorAgentID), RunID: deref(r.RunID), Body: r.Body, DeletedAt: utc(r.DeletedAt)}
 	c.CreatedAt, c.UpdatedAt = stamp(&r.Timestamps)
 	return c
 }
@@ -64,13 +65,30 @@ func (s Comments) Comment(ctx context.Context, id uint64) (domain.Comment, bool,
 // CreateComment stores the Comment and touches its Issue's updated_at in
 // the same transaction. The Issue's rules do not depend on updated_at, so
 // this does not change the Issue as an aggregate.
-func (Comments) CreateComment(ctx context.Context, c domain.Comment) (domain.Comment, error) {
-	rec := commentRecord{IssueID: c.IssueID, AuthorMemberID: nullable(c.Author.MemberID), AuthorAgentID: nullable(c.Author.AgentID), Body: c.Body}
+func (s Comments) CreateComment(ctx context.Context, c domain.Comment) (domain.Comment, error) {
+	return s.create(ctx, c, nil)
+}
+
+// CreateConversationComment stores the Comment and moves its Conversation
+// in the same transaction: the new state, and the Comment as Session
+// boundary for a New session.
+func (s Comments) CreateConversationComment(ctx context.Context, c domain.Comment, move domain.ConversationMove) (domain.Comment, error) {
+	return s.create(ctx, c, &move)
+}
+
+func (Comments) create(ctx context.Context, c domain.Comment, move *domain.ConversationMove) (domain.Comment, error) {
+	rec := commentRecord{IssueID: c.IssueID, AuthorMemberID: nullable(c.Author.MemberID), AuthorAgentID: nullable(c.Author.AgentID), RunID: nullable(c.RunID), Body: c.Body}
 	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
 		if err := tx.Create(&rec); err != nil {
 			return err
 		}
-		_, err := tx.Exec(`UPDATE issues SET updated_at = now() WHERE id = ?`, c.IssueID)
+		if move == nil {
+			_, err := tx.Exec(`UPDATE issues SET updated_at = now() WHERE id = ?`, c.IssueID)
+			return err
+		}
+		_, err := tx.Exec(`UPDATE issues SET conversation_state = ?,
+			conversation_boundary_comment_id = CASE WHEN ? THEN ?::bigint ELSE conversation_boundary_comment_id END,
+			updated_at = now() WHERE id = ?`, string(move.State), move.NewSession, rec.ID, c.IssueID)
 		return err
 	})
 	if err != nil {

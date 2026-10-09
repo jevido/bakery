@@ -65,6 +65,15 @@ type IssueBrief struct {
 	ApplicationID uint64
 	// AgentBranch is the branch an Agent pushes for the Issue.
 	AgentBranch string
+	// Conversation is set when the Issue is a Conversation.
+	Conversation *ConversationBrief
+}
+
+// ConversationBrief is a Conversation as a Run needs it: its owner and
+// its Session boundary (0 for none).
+type ConversationBrief struct {
+	MemberID          uint64
+	BoundaryCommentID uint64
 }
 
 // RunComment is a comment on an Issue as a Run's prompt quotes it.
@@ -239,9 +248,18 @@ func (s *Service) IssueAssigned(ctx context.Context, guildID, issueID, agentID, 
 
 // IssueCommented wakes the Agent assignee of an Issue a person just
 // commented on, on that Issue, bringing the comment. A Wake the Agent's
-// status or Heartbeat policy refuses is dropped.
-func (s *Service) IssueCommented(ctx context.Context, guildID, issueID, agentID, commentID, actorID uint64) error {
-	return dropRefused(s.Wake(ctx, guildID, agentID, WakeInput{Source: domain.Automation, Reason: domain.IssueCommented, IssueID: issueID, ActorID: actorID, CommentID: commentID}))
+// status or Heartbeat policy refuses is dropped. In a Conversation the
+// owner's message wakes it with conversation_message, and a New session
+// wakes nothing.
+func (s *Service) IssueCommented(ctx context.Context, guildID, issueID, agentID, commentID, actorID uint64, conversation, newSession bool) error {
+	if newSession {
+		return nil
+	}
+	reason := domain.IssueCommented
+	if conversation {
+		reason = domain.ConversationMessage
+	}
+	return dropRefused(s.Wake(ctx, guildID, agentID, WakeInput{Source: domain.Automation, Reason: reason, IssueID: issueID, ActorID: actorID, CommentID: commentID}))
 }
 
 func dropRefused(_ domain.Run, _ bool, err error) error {

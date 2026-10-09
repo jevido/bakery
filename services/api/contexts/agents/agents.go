@@ -44,7 +44,7 @@ func svc() *app.Service {
 			return service.IssueAssigned(ctx, e.GuildID, e.IssueID, e.AgentID, e.ActorID)
 		})
 		work.OnIssueCommented(func(ctx context.Context, e work.IssueCommented) error {
-			return service.IssueCommented(ctx, e.GuildID, e.IssueID, e.AgentID, e.CommentID, e.ActorID)
+			return service.IssueCommented(ctx, e.GuildID, e.IssueID, e.AgentID, e.CommentID, e.ActorID, e.Conversation, e.NewSession)
 		})
 		work.OnAgentAssignees(func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]work.AssigneeAgent, error) {
 			as, err := service.Assignees(ctx, guildID, ids)
@@ -190,7 +190,19 @@ func (workOfAgents) UnassignAgent(ctx context.Context, guildID, agentID, actorID
 
 func (workOfAgents) IssueForRun(ctx context.Context, guildID, issueID uint64) (app.IssueBrief, bool, error) {
 	i, ok, err := work.IssueForRun(ctx, guildID, issueID)
-	return app.IssueBrief(i), ok, err
+	return issueBrief(i), ok, err
+}
+
+// issueBrief is work's IssueBrief in agents' terms.
+func issueBrief(i work.IssueBrief) app.IssueBrief {
+	b := app.IssueBrief{
+		ID: i.ID, ProjectID: i.ProjectID, Identifier: i.Identifier, Title: i.Title, Description: i.Description,
+		Status: i.Status, AgentAssigneeID: i.AgentAssigneeID, ApplicationID: i.ApplicationID, AgentBranch: i.AgentBranch,
+	}
+	if c := i.Conversation; c != nil {
+		b.Conversation = &app.ConversationBrief{MemberID: c.MemberID, BoundaryCommentID: c.BoundaryCommentID}
+	}
+	return b
 }
 
 func (workOfAgents) OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint64) ([]app.IssueBrief, error) {
@@ -200,7 +212,7 @@ func (workOfAgents) OpenIssuesOfAgent(ctx context.Context, guildID, agentID uint
 	}
 	out := make([]app.IssueBrief, len(is))
 	for n, i := range is {
-		out[n] = app.IssueBrief(i)
+		out[n] = issueBrief(i)
 	}
 	return out, nil
 }

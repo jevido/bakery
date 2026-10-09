@@ -63,7 +63,9 @@ const (
 	HeartbeatInvoked WakeReason = "heartbeat_invoked"
 	IssueAssigned    WakeReason = "issue_assigned"
 	IssueCommented   WakeReason = "issue_commented"
-	HeartbeatTimer   WakeReason = "heartbeat_timer"
+	// ConversationMessage is a Conversation owner's message to its Agent.
+	ConversationMessage WakeReason = "conversation_message"
+	HeartbeatTimer      WakeReason = "heartbeat_timer"
 )
 
 // WakeContext is what the Wakes of a Run carry for its prompt: the

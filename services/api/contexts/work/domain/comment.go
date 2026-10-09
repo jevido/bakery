@@ -20,11 +20,12 @@ var (
 // Comment is a Member's or an Agent's Markdown message on one Issue. A
 // deleted Comment keeps its place in the thread without its body. Its
 // Author is nobody once that account or Agent is gone, and then nobody can
-// change it.
+// change it. RunID is the Run an Agent wrote it in, 0 for a Member's.
 type Comment struct {
 	ID        uint64
 	IssueID   uint64
 	Author    Actor
+	RunID     uint64
 	Body      string
 	DeletedAt *time.Time
 	CreatedAt time.Time
@@ -42,13 +43,18 @@ func commentBody(body string) (string, error) {
 	return b, nil
 }
 
-// NewComment is a Comment by a Member or an Agent on an Issue.
+// NewComment is a Comment by a Member or an Agent on an Issue. An
+// Agent's keeps the Run it acts in, which the Actor itself never stores.
 func NewComment(issueID uint64, author Actor, body string) (Comment, error) {
 	b, err := commentBody(body)
 	if err != nil {
 		return Comment{}, err
 	}
-	return Comment{IssueID: issueID, Author: author, Body: b}, nil
+	c := Comment{IssueID: issueID, Author: Actor{MemberID: author.MemberID, AgentID: author.AgentID}, Body: b}
+	if author.AgentID != 0 {
+		c.RunID = author.RunID
+	}
+	return c, nil
 }
 
 func (c *Comment) Deleted() bool { return c.DeletedAt != nil }
