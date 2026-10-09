@@ -111,8 +111,10 @@ Viewer), `detail` (the Routine page: triggers, editing, Run, Activity),
 `pause` (the toggle, Archive from the row menu), `schedule` (an
 every-minute trigger firing by itself within 90 s; slow), `webhook` (a
 GitHub Webhook trigger: its secret shown once, a signed delivery, a repeated
-delivery, Rotate secret) and `variables` (the Variables editor and the Run
-dialog). Each runs once in
+delivery, Rotate secret), `variables` (the Variables editor and the Run
+dialog) and `history` (History: the revisions, Compare, Restore with a
+recreated Webhook trigger, and the stale-save message on the Overview).
+Each runs once in
 the dark theme at 1440×900.
 
 `e2e/servers.ts` (`task web:servers`, needs `task dev`) checks the Servers
