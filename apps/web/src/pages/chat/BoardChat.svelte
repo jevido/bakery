@@ -15,11 +15,13 @@
   // Member's message lands without a reload. Left out, as the work document
   // records: Paperclip's history button, feedback votes, the reveal timer
   // and streaming text (a Run's reply lands as a Comment).
-  import { MessageSquarePlus, SendHorizontal, UserPlus } from '@lucide/svelte'
+  import { Activity, MessageSquarePlus, SendHorizontal, UserPlus } from '@lucide/svelte'
   import { runIsFinal } from '@bakery/ui/runStatus'
   import AgentIcon from '@bakery/ui/AgentIcon.svelte'
   import Markdown from '@bakery/ui/Markdown.svelte'
   import { Button } from '@bakery/ui/components/ui/button'
+  import * as Sheet from '@bakery/ui/components/ui/sheet'
+  import ActivityFeed from '../../lib/ActivityFeed.svelte'
   import { ApiError } from '../../lib/api'
   import { listAgents, type Agent } from '../../lib/agents'
   import { breadcrumb } from '../../lib/breadcrumb.svelte'
@@ -31,6 +33,41 @@
   import { session } from '../../lib/session.svelte'
   import { toast } from '../../lib/ui/toast.svelte'
   import { listComments, listGoals, writeComment, type Comment, type IssueDetail } from '../../lib/work'
+
+  // Paperclip's split: the chat pane at 2/3 and the Activity feed in the
+  // rest, behind a 12 px divider that drags, each pane at least 280 px. The
+  // chat's share is kept per Guild in localStorage. Below 768 px the feed is
+  // a sheet behind a floating button.
+  const dividerPx = 12
+  const minPanePx = 280
+  const splitKey = () => `bakery.boardChatSplit.${session.guild?.id ?? 0}`
+  let containerWidth = $state(0)
+  let chatFraction = $state(Number(localStorage.getItem(splitKey())) || 2 / 3)
+  let feedOpen = $state(false)
+  const inner = $derived(Math.max(0, containerWidth - dividerPx))
+  const split = $derived(inner > 0 && containerWidth >= 2 * minPanePx + dividerPx)
+  const chatWidth = $derived(Math.round(Math.min(inner - minPanePx, Math.max(minPanePx, inner * chatFraction))))
+
+  function dragStart(down: PointerEvent) {
+    down.preventDefault()
+    const divider = down.currentTarget as HTMLElement
+    divider.setPointerCapture(down.pointerId)
+    const startX = down.clientX
+    const startWidth = chatWidth
+    const move = (e: PointerEvent) => {
+      if (inner <= 0) return
+      chatFraction = Math.min(inner - minPanePx, Math.max(minPanePx, startWidth + e.clientX - startX)) / inner
+    }
+    const up = () => {
+      divider.removeEventListener('pointermove', move)
+      divider.removeEventListener('pointerup', up)
+      divider.removeEventListener('pointercancel', up)
+      localStorage.setItem(splitKey(), String(chatFraction))
+    }
+    divider.addEventListener('pointermove', move)
+    divider.addEventListener('pointerup', up)
+    divider.addEventListener('pointercancel', up)
+  }
 
   let agents = $state.raw<Agent[] | undefined>(undefined)
   let issue = $state.raw<IssueDetail | null | undefined>(undefined)
@@ -179,9 +216,12 @@
     }
   }
 
-  // The textarea grows with what is typed, up to 200 pixels, as Paperclip's.
+  // The textarea grows with what is typed, up to 200 pixels, as Paperclip's,
+  // and is measured again whenever its width changes (it mounts narrow
+  // before the composer is laid out, and the divider moves it).
+  let textareaWidth = $state(0)
   $effect(() => {
-    void body
+    void [body, textareaWidth]
     if (!textarea) return
     textarea.style.height = 'auto'
     textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
@@ -217,8 +257,12 @@
 {:else if agents === undefined || issue === undefined}
   <PageSkeleton />
 {:else}
-  <div class="-m-4 flex h-[calc(100%+2rem)] min-h-0 flex-col md:-m-6 md:h-[calc(100%+3rem)]" data-testid="board-chat">
-    <div class="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+  <div class="-m-4 flex h-[calc(100%+2rem)] min-h-0 flex-row md:-m-6 md:h-[calc(100%+3rem)]" data-testid="board-chat" bind:clientWidth={containerWidth}>
+    <div
+      class={['relative flex min-h-0 min-w-0 shrink-0 flex-col bg-background', 'w-full md:w-auto', !split && 'md:w-2/3']}
+      style:width={split ? `${chatWidth}px` : undefined}
+      data-testid="board-chat-pane"
+    >
       <header class="chrome relative flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div class="min-w-0 flex-1">
           <h3 class="truncate text-sm font-semibold" data-testid="board-chat-title">{ceo?.name ?? 'Conference Room'}</h3>
@@ -313,6 +357,7 @@
           <div class="pointer-events-auto flex items-end gap-2 rounded-xl border border-border bg-background/80 px-3 py-2 backdrop-blur focus-within:ring-2 focus-within:ring-ring">
             <textarea
               bind:this={textarea}
+              bind:clientWidth={textareaWidth}
               data-slot="chat-composer-input"
               bind:value={body}
               onkeydown={keydown}
@@ -326,6 +371,34 @@
         {/if}
       </div>
     </div>
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the Conference Room and the activity feed"
+      class="group relative hidden w-3 shrink-0 cursor-col-resize touch-none bg-background md:flex"
+      onpointerdown={dragStart}
+      data-testid="board-divider"
+    >
+      <div class="pointer-events-none absolute top-0 bottom-0 left-0 w-px bg-border transition-colors group-hover:bg-foreground/20" aria-hidden="true"></div>
+    </div>
+    <div class="hidden md:flex md:min-h-0 md:min-w-0 md:flex-1">
+      <ActivityFeed />
+    </div>
+  </div>
+  <div class="md:hidden">
+    <Sheet.Root bind:open={feedOpen}>
+      <Sheet.Trigger>
+        {#snippet child({ props })}
+          <Button {...props} size="icon" variant="secondary" class="fixed right-4 bottom-20 z-20 size-10 rounded-full shadow-lg" aria-label="Open agent feed"
+            ><Activity class="size-4" /></Button
+          >
+        {/snippet}
+      </Sheet.Trigger>
+      <Sheet.Content side="bottom" class="h-[70vh] rounded-t-xl p-0">
+        <ActivityFeed />
+      </Sheet.Content>
+    </Sheet.Root>
   </div>
   <HireAgentDialog bind:open={hiring} initialJob="ceo" onhired={() => loadAgents()} />
 {/if}

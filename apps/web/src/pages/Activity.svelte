@@ -21,7 +21,7 @@
   import { href } from '../lib/router.svelte'
   import type { Member } from '../lib/session.svelte'
   import Empty from '../lib/ui/Empty.svelte'
-  import { activityEventVerb, listActivity, type ActivityEntity, type ActivityEvent } from '../lib/work'
+  import { activityEventVerb, activityPath, listActivity, type ActivityEntity, type ActivityEvent } from '../lib/work'
 
   const pageSize = 50
   const entities = [
@@ -112,17 +112,10 @@
         ? (agents.find((a) => `agent:${a.id}` === actor)?.name ?? 'Agent')
         : (members.find((m) => String(m.id) === actor)?.name ?? 'Member'),
   )
-  const paths: Record<ActivityEntity, (e: ActivityEvent) => string> = {
-    issue: (e) => `/issues/${e.entity.identifier}`,
-    goal: (e) => `/goals/${e.entity.id}`,
-    approval: (e) => `/approvals/${e.entity.id}`,
-    agent: (e) => `/agents/${e.entity.id}`,
-    budget: () => '/costs/budgets',
-    budget_incident: () => '/costs/budgets',
-    routine: (e) => `/routines/${e.entity.id}`,
-    skill: (e) => `/skills/${e.entity.id}`,
+  const link = (e: ActivityEvent) => {
+    const path = activityPath(e)
+    return path ? href(path) : null
   }
-  const link = (e: ActivityEvent) => (e.entity.exists ? href(paths[e.entity.type](e)) : null)
 
   $effect(() => breadcrumb.set({ label: 'Activity' }))
 </script>

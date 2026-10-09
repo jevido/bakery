@@ -379,6 +379,13 @@ const activityVerbs: Record<string, string> = {
   'skill.file_deleted': 'deleted a file of the skill',
   'skill.deleted': 'deleted the skill',
   'agent.skills_synced': 'changed the skills of',
+  'agent.hired': 'hired',
+  'agent.updated': 'updated',
+  'agent.paused': 'paused',
+  'agent.resumed': 'resumed',
+  'agent.terminated': 'terminated',
+  'agent.role_added': 'gave a role to',
+  'agent.role_removed': 'took a role from',
 }
 /** The verb of an Activity row: "commented on" for issue.comment_added. */
 export const activityVerb = (action: string) => activityVerbs[action] ?? action.replace(/[._]/g, ' ')
@@ -401,6 +408,26 @@ export function activityEventVerb(e: Pick<ActivityEvent, 'action' | 'details'>):
     if (removed.length && !added.length) return `removed ${skills(removed)} from`
   }
   return activityVerb(e.action)
+}
+
+const activityPaths: Record<ActivityEntity, (e: ActivityEvent) => string> = {
+  issue: (e) => `/issues/${e.entity.identifier}`,
+  goal: (e) => `/goals/${e.entity.id}`,
+  approval: (e) => `/approvals/${e.entity.id}`,
+  agent: (e) => `/agents/${e.entity.id}`,
+  budget: () => '/costs/budgets',
+  budget_incident: () => '/costs/budgets',
+  routine: (e) => `/routines/${e.entity.id}`,
+  skill: (e) => `/skills/${e.entity.id}`,
+}
+/** Where an Activity event's entity lives (#-less), or null once it is gone. */
+export const activityPath = (e: ActivityEvent) => (e.entity.exists ? activityPaths[e.entity.type](e) : null)
+
+/** The status an issue.updated event moved its Issue to, if it changed one. */
+export function activityStatusTo(e: Pick<ActivityEvent, 'action' | 'details'>): IssueStatus | null {
+  if (e.action !== 'issue.updated') return null
+  const status = (e.details.changes as { status?: { to?: unknown } } | undefined)?.status?.to
+  return typeof status === 'string' ? (status as IssueStatus) : null
 }
 
 /**

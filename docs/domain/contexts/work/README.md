@@ -671,6 +671,15 @@ title and Project.
   timer and streamed reply text are left out: the welcome shows at once,
   and the reply lands as the CEO's Comment when its Run ends. Unlike a Member's Conversation it stays out of search too, since
   it is nobody's own chat and has its own page.
+- **The Conference Room's feed is the Guild's Activity.** Paperclip calls
+  the pane beside its board chat "Agent Feed"; The Bakery's records every
+  Actor, Member or Agent, so it is titled "Activity" and reads the same
+  Activity as its own page. Its tiers and filters map Paperclip's Actions
+  onto The Bakery's (agent.hired for agent.created, the pull request and
+  preview Actions for work products, run.started and run.finished for the
+  heartbeat Actions). A card never heads a folded group of one-liners,
+  where Paperclip's can fold one away, and it pages with "Load more"
+  instead of loading on scroll.
 - **Any Member with `manage_work` may chat** with any Agent of the Guild,
   as they may already comment on its Issues and so wake it. The Hirer
   still controls spending through Pause, `wake_on_demand` and Budgets.

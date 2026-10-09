@@ -7,6 +7,10 @@
 //            bubble and status line show while the CEO's Run waits or runs,
 //            and the CEO's answer lands on the left, through the Desktop's
 //            headless runner and the claude stand-in
+//   feed     the Activity feed beside it: a new Issue's card lands by
+//            polling, "In Review" filters, "Show all activity" brings back
+//            hidden events, group by Issue folds them, and the divider drags
+//            and keeps its place over a reload
 //
 //   bun e2e/board.ts [section ...]   (task web:board; needs task dev)
 //
@@ -150,6 +154,80 @@ const sections: Record<string, () => Promise<void>> = {
       await shot(page, 'reply')
     } finally {
       await desktop.stop()
+      await page.context().close()
+    }
+  },
+
+  async feed() {
+    const page = await signedIn()
+    try {
+      await page.goto(`${WEB}/#/board-chat`)
+      const feed = page.getByTestId('activity-feed')
+      await feed.locator('[data-feed-card]').first().waitFor()
+      expect('the feed shows the Guild\'s recent events', (await feed.locator('[data-feed-card]').count()) > 0)
+
+      const title = `Feed check ${Date.now()}`
+      const made = await page.request.post(`${WEB}/api/issues`, { data: { title } })
+      if (!made.ok()) throw new Error(`create an Issue: ${made.status()} ${await made.text()}`)
+      const { issue } = (await made.json()) as { issue: { id: number; identifier: string } }
+      const created = feed.locator('[data-feed-card="issue.created"]', { hasText: title })
+      await created.waitFor({ timeout: 15_000 })
+      expect("a new Issue's card lands within 10 s", (await created.getAttribute('data-tier')) === '1')
+
+      const say = await page.request.post(`${WEB}/api/issues/${issue.id}/comments`, { data: { body: 'to be deleted' } })
+      const { comment } = (await say.json()) as { comment: { id: number } }
+      await page.request.delete(`${WEB}/api/issues/${issue.id}/comments/${comment.id}`)
+      const moved = await page.request.patch(`${WEB}/api/issues/${issue.id}`, { data: { status: 'in_review' } })
+      if (!moved.ok()) throw new Error(`move to in_review: ${moved.status()} ${await moved.text()}`)
+      const review = feed.locator('[data-feed-card="issue.updated"]', { hasText: title })
+      await review.waitFor({ timeout: 15_000 })
+      expect('moving to In Review is a card', (await review.getAttribute('data-tier')) === '1' && ((await review.textContent()) ?? '').includes('moved to in review'), await review.textContent())
+
+      await feed.getByRole('button', { name: 'filter by' }).click()
+      await page.getByRole('menuitemradio', { name: 'In Review' }).click()
+      await page.keyboard.press('Escape')
+      await created.waitFor({ state: 'detached' })
+      const kinds = await feed.locator('[data-feed-card]').evaluateAll((els) => els.map((el) => el.getAttribute('data-feed-card')))
+      const reviewKinds = ['issue.updated', 'approval.created', 'issue.document_created', 'issue.document_updated', 'issue.pull_request_opened']
+      expect('"In Review" keeps only review events', (await review.count()) === 1 && kinds.every((k) => reviewKinds.includes(k ?? '')), kinds)
+
+      const hidden = feed.locator('[data-feed-card="issue.comment_deleted"]', { hasText: title })
+      await feed.getByRole('button', { name: 'filter by' }).click()
+      await page.getByRole('menuitemradio', { name: 'All' }).click()
+      await page.keyboard.press('Escape')
+      await created.waitFor()
+      expect('a deleted Comment is hidden by default', (await hidden.count()) === 0)
+      await feed.getByRole('button', { name: 'filter by' }).click()
+      await page.getByRole('menuitemcheckbox', { name: 'Show all activity' }).click()
+      await page.keyboard.press('Escape')
+      await hidden.waitFor({ timeout: 5_000 })
+      expect('"Show all activity" brings it back', (await hidden.getAttribute('data-tier')) === '3')
+
+      await feed.getByRole('button', { name: 'group by issue' }).click()
+      const group = feed.locator(`[data-feed-group="issue:${issue.id}"]`)
+      await group.waitFor()
+      expect('group by Issue puts its events under its header', ((await group.textContent()) ?? '').includes(`${issue.identifier} — ${title}`) && (await group.locator('[data-feed-card]').count()) >= 3)
+      await shot(page, 'feed')
+      await group.getByRole('button', { expanded: true }).first().click()
+      expect('its header folds them', (await group.locator('[data-feed-card]').count()) === 0)
+
+      const pane = page.getByTestId('board-chat-pane')
+      const before = (await pane.boundingBox())!.width
+      const feedBefore = (await feed.boundingBox())!.width
+      const divider = (await page.getByTestId('board-divider').boundingBox())!
+      await page.mouse.move(divider.x + divider.width / 2, divider.y + 200)
+      await page.mouse.down()
+      await page.mouse.move(divider.x + divider.width / 2 - 200, divider.y + 200, { steps: 8 })
+      await page.mouse.up()
+      const after = (await pane.boundingBox())!.width
+      const feedWidth = (await feed.boundingBox())!.width
+      expect('dragging the divider resizes both panes', Math.abs(before - 200 - after) <= 2 && Math.abs(feedBefore + 200 - feedWidth) <= 2, { before, after, feedBefore, feedWidth })
+      await page.reload()
+      await pane.waitFor()
+      const reloaded = (await pane.boundingBox())!.width
+      expect('the width survives a reload', Math.abs(reloaded - after) <= 2, { after, reloaded })
+      await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('bakery.boardChatSplit.')).forEach((k) => localStorage.removeItem(k)))
+    } finally {
       await page.context().close()
     }
   },
