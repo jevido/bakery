@@ -42,7 +42,8 @@ Lease, Heartbeat, Heartbeat policy, Wake, Wake reason, Workspace, Worktree,
 Agent branch, Run's Project, Costs, Budget, Budget metric, Budget window,
 Budget scope, Observed amount, Budget status, Warning, Hard stop, Budget
 incident, Pause reason, Subscription limit, Limit reset, Desktop limit,
-Skill, Skill slug, Skill file, Agent skills)
+Skill, Skill slug, Skill file, Agent skills, Conversation Run, Completion
+reply)
 are in
 [`glossary.md`](../../glossary.md).
 
@@ -126,6 +127,10 @@ admin always may (with `hire_agents`, which they always hold).
   Invocation source and Wake reason, which waits behind the Agent's
   running Run, if any. A Wake that is not accepted is dropped, not an
   error, when a hook or the timer made it; the routes answer 422 for it.
+  work's Comment hook wakes the Agent assignee with `automation` /
+  `issue_commented`, or on a Conversation with `automation` /
+  `conversation_message` for its Conversation owner's message; a New
+  session (`/new`) wakes nothing.
 - Every Wake in a stopped scope is refused (dropped when a hook or the
   timer made it, 422 naming the Budget scope through the routes), so
   StartRun, RunHeartbeat and work's hooks start nothing there.
@@ -161,6 +166,15 @@ admin always may (with `hire_agents`, which they always hold).
   issues:" with each Issue assigned to the Agent in `todo`, `in_progress`
   or `in_review` as `- {identifier} [{status}]: {title}`, oldest first, or
   "You have no open issues.".
+  A Conversation Run gets, in place of the description, the chat
+  directive (Paperclip's, trimmed to what The Bakery has: an ongoing
+  conversation with the person, answer in plain words, ask focused
+  questions only when they matter, put larger work into Issues of its
+  own), the Agent line, then
+  "Conversation so far:" with at most the last 30 messages after the
+  Session boundary (`work.ConversationHistory`), each as `{author}
+  wrote:` and its body cut to 4000 characters, oldest first, so the
+  waking messages come last.
   When the Run has a Workspace, the prompt adds where the Agent works and
   how it finishes: in a git Worktree of the Application's repository on
   its Agent branch, based on the Application's branch; commit, push the
@@ -199,7 +213,13 @@ admin always may (with `hire_agents`, which they always hold).
   replacement Run (see the Run aggregate), records the Desktop limit of
   the claiming Desktop and records `run.finished` in the Activity. Then
   every Budget the Run counts toward is evaluated (below); a `limited`
-  Run's usage is real and counts.
+  Run's usage is real and counts. A Conversation Run that finishes
+  `succeeded` and whose Agent wrote no Comment on the Conversation with
+  that Run's `run_id` gets its Completion reply: The Bakery writes the
+  last `result` Run event's `result` text as the Conversation agent's
+  Comment in that Run (skipped when the text is empty), through work's
+  `WriteComment` as the Agent, so it sets the Conversation `waiting`. No
+  other Run status ever gets one, and a Run gets at most one.
 - `ReadCosts(from, to)` [`view_resources`]: the Costs of the Guild's Runs
   that finished in the range (`from` inclusive, `to` exclusive, either one
   open when left out), the moment their Run usage is known: a summary
@@ -568,6 +588,17 @@ records nothing more.
   heartbeat runs with the agent's heartbeat service. A context of its own
   would share every invariant (the Agent's status, its Hirer, Pause and
   Terminate) through calls back into agents.
+- **No session resume for a Conversation.** Paperclip resumes the
+  agent's `claude` session for each chat message. A `claude` session
+  lives in one laptop's `~/.claude`, so it breaks when a lost Run's
+  replacement is claimed by another Desktop, and the Comments are already
+  the record; a Conversation Run's prompt carries the history since the
+  Session boundary instead.
+- **The Completion reply** (Paperclip's `completionReply`): a chat whose
+  answer depends on the model remembering to call `bakeryAddComment`
+  sometimes stays silent, and `claude`'s final text is the answer. Agent
+  Comments keep their `run_id` so FinishRun can tell whether the Agent
+  already replied.
 - **The server never executes anything**, so Paperclip's adapters,
   process ids, log stores, watchdogs, runtime modes, session resumes and
   liveness classifier are left out. The Desktop reports every Run event,
