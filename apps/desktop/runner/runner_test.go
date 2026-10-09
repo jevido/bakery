@@ -3,6 +3,7 @@ package runner
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -105,6 +106,61 @@ func TestPrepareWritesTheSkillAndTheMCPConfig(t *testing.T) {
 	if len(c.MCPServers) != 1 || s.Command != "/opt/bakery-desktop" || strings.Join(s.Args, " ") != "mcp" ||
 		s.Env["BAKERY_API_KEY"] != "bky_run_x" || s.Env["BAKERY_API_URL"] != "https://bakery.test" || s.Env["BAKERY_RUN_ID"] != "41" {
 		t.Fatalf("mcp.json %s", b)
+	}
+}
+
+func TestPrepareWritesTheAgentsSkills(t *testing.T) {
+	dir := t.TempDir()
+	r := &Runner{Self: "/opt/bakery-desktop"}
+	run := bakery.DesktopRun{ID: 41, Guild: bakery.Named{ID: 1}, Agent: bakery.RunAgent{ID: 3}, RunKey: "bky_run_x",
+		Skills: []bakery.RunSkill{
+			{Slug: "release-notes", Files: []bakery.RunSkillFile{
+				{Path: "SKILL.md", Content: "---\nname: Release notes\n---\n", Encoding: "utf8"},
+				{Path: "templates/notes.md", Content: "# Notes\n", Encoding: "utf8"},
+			}},
+			{Slug: "lint", Files: []bakery.RunSkillFile{
+				{Path: "SKILL.md", Content: "---\nname: Lint\n---\n", Encoding: "utf8"},
+				{Path: "bin/run.sh", Content: base64.StdEncoding.EncodeToString([]byte("#!/bin/sh\n")), Encoding: "base64", Executable: true},
+			}},
+		}}
+	if _, _, err := r.prepare(dir, "https://bakery.test", run); err != nil {
+		t.Fatal(err)
+	}
+	skills := filepath.Join(dir, ".bakery", ".claude", "skills")
+	for path, want := range map[string]struct {
+		content string
+		mode    os.FileMode
+	}{
+		"release-notes/SKILL.md":           {"---\nname: Release notes\n---\n", 0o600},
+		"release-notes/templates/notes.md": {"# Notes\n", 0o600},
+		"lint/bin/run.sh":                  {"#!/bin/sh\n", 0o700},
+		"bakery/SKILL.md":                  {string(skill), 0o600},
+	} {
+		b, err := os.ReadFile(filepath.Join(skills, path))
+		st, _ := os.Stat(filepath.Join(skills, path))
+		if err != nil || string(b) != want.content || st.Mode().Perm() != want.mode {
+			t.Fatalf("%s: %q %v: %v", path, b, st, err)
+		}
+	}
+	if st, err := os.Stat(filepath.Join(skills, "release-notes", "templates")); err != nil || st.Mode().Perm() != 0o700 {
+		t.Fatalf("templates directory %v: %v", st, err)
+	}
+
+	for _, bad := range []bakery.RunSkill{
+		{Slug: "evil", Files: []bakery.RunSkillFile{{Path: "../evil", Content: "x"}}},
+		{Slug: "evil", Files: []bakery.RunSkillFile{{Path: "a/../../evil", Content: "x"}}},
+		{Slug: "evil", Files: []bakery.RunSkillFile{{Path: "/etc/evil", Content: "x"}}},
+		{Slug: "bakery", Files: []bakery.RunSkillFile{{Path: "SKILL.md", Content: "x"}}},
+		{Slug: "../up", Files: []bakery.RunSkillFile{{Path: "SKILL.md", Content: "x"}}},
+	} {
+		dir := t.TempDir()
+		run.Skills = []bakery.RunSkill{bad}
+		if _, _, err := r.prepare(dir, "https://bakery.test", run); err == nil {
+			t.Fatalf("%s %s was written", bad.Slug, bad.Files[0].Path)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "evil")); err == nil {
+			t.Fatalf("%s %s left the skill's directory", bad.Slug, bad.Files[0].Path)
+		}
 	}
 }
 

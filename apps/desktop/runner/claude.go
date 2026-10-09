@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -144,7 +145,8 @@ func hostOf(address string) string {
 }
 
 // prepare writes what claude needs for run under dir/.bakery: the skill at
-// .claude/skills/bakery/SKILL.md and mcp.json naming this executable's
+// .claude/skills/bakery/SKILL.md, each of the Run's Agent skills beside it
+// at .claude/skills/<slug>/, and mcp.json naming this executable's
 // `mcp` command as the bakery server. It answers claude's arguments and the
 // directory to remove when the Run ends; mcp.json holds the Run key, so it
 // is the person's alone (0600).
@@ -161,6 +163,11 @@ func (r *Runner) prepare(dir, address string, run bakery.DesktopRun) ([]string, 
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), skill, 0o600); err != nil {
 		return nil, root, err
 	}
+	for _, s := range run.Skills {
+		if err := writeSkill(filepath.Dir(skillDir), s); err != nil {
+			return nil, root, err
+		}
+	}
 	config, err := json.MarshalIndent(map[string]any{"mcpServers": map[string]any{
 		"bakery": map[string]any{"type": "stdio", "command": self, "args": []string{"mcp"}, "env": mcpEnv(address, run)},
 	}}, "", "  ")
@@ -172,6 +179,57 @@ func (r *Runner) prepare(dir, address string, run bakery.DesktopRun) ([]string, 
 		return nil, root, err
 	}
 	return runArgs(mcpConfig, root, run.Workspace != nil), root, nil
+}
+
+// writeSkill writes s under skillsDir/<slug>: directories 0700, files 0600
+// or 0700 when executable. The slug and paths come from the server and land
+// on the person's disk, so a slug that is not a Skill slug (or is The
+// Bakery skill's) and a path that leaves the Skill's directory are refused.
+func writeSkill(skillsDir string, s bakery.RunSkill) error {
+	if !validSkillSlug(s.Slug) {
+		return fmt.Errorf("skill %q: not a valid skill slug", s.Slug)
+	}
+	dir := filepath.Join(skillsDir, s.Slug)
+	for _, f := range s.Files {
+		rel := filepath.Clean(filepath.FromSlash(f.Path))
+		if f.Path == "" || filepath.IsAbs(rel) || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("skill %s: file %q leaves the skill's directory", s.Slug, f.Path)
+		}
+		content := []byte(f.Content)
+		if f.Encoding == "base64" {
+			b, err := base64.StdEncoding.DecodeString(f.Content)
+			if err != nil {
+				return fmt.Errorf("skill %s: file %s: %w", s.Slug, f.Path, err)
+			}
+			content = b
+		}
+		path := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return err
+		}
+		mode := os.FileMode(0o600)
+		if f.Executable {
+			mode = 0o700
+		}
+		if err := os.WriteFile(path, content, mode); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validSkillSlug is the server's Skill slug rule: 1–64 lowercase letters,
+// digits and -, and not The Bakery skill's.
+func validSkillSlug(slug string) bool {
+	if slug == "" || len(slug) > 64 || slug == "bakery" {
+		return false
+	}
+	for _, r := range slug {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // self is the binary that serves `mcp`: Self, else this executable.

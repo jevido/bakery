@@ -19,6 +19,9 @@
 //	         (GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, BAKERY_WORKTREE,
 //	         BAKERY_BRANCH, BAKERY_BASE_BRANCH) in one text line, then a
 //	         short successful Run
+//	[skills] says the skills it found: the directory names under
+//	         .claude/skills of every --add-dir, one text line
+//	         ("skills: bakery, release-notes"), then a short successful Run
 //	[mcp <tool> <json arguments>]
 //	         calls tool on the bakery MCP server --mcp-config names, printing
 //	         the tool_use and tool_result lines the CLI would (several are
@@ -46,6 +49,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -96,6 +100,7 @@ type options struct {
 	model          string
 	mcpConfig      string
 	strictMCP      bool
+	addDirs        []string
 	prompt         string
 }
 
@@ -159,7 +164,31 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		return s.callTools(opts.mcpConfig, calls, strings.Contains(opts.prompt, "[slow]"))
 	}
+	if strings.Contains(opts.prompt, "[skills]") {
+		s.init()
+		s.assistant(text("skills: " + strings.Join(skillsIn(opts.addDirs), ", ")))
+		s.result("success", false, "Said which skills I found.")
+		return 0
+	}
 	return s.answer(opts.prompt, stderr)
+}
+
+// skillsIn is every skill directory under .claude/skills of dirs, as claude
+// would load them, sorted and without repeats.
+func skillsIn(dirs []string) []string {
+	seen := map[string]bool{}
+	var names []string
+	for _, dir := range dirs {
+		entries, _ := os.ReadDir(filepath.Join(dir, ".claude", "skills"))
+		for _, e := range entries {
+			if e.IsDir() && !seen[e.Name()] {
+				seen[e.Name()] = true
+				names = append(names, e.Name())
+			}
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 func parseArgs(args []string) (options, error) {
@@ -196,7 +225,9 @@ func parseArgs(args []string) (options, error) {
 			o.model = get()
 		case "--mcp-config":
 			o.mcpConfig = get()
-		case "--append-system-prompt", "--max-turns", "--allowedTools", "--disallowedTools", "--resume", "--session-id", "--add-dir":
+		case "--add-dir":
+			o.addDirs = append(o.addDirs, get())
+		case "--append-system-prompt", "--max-turns", "--allowedTools", "--disallowedTools", "--resume", "--session-id":
 			get()
 		case "--strict-mcp-config":
 			o.strictMCP = true

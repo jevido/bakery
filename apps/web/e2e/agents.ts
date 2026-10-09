@@ -43,6 +43,11 @@
 //           owner's subscription limit; the Agent page shows Idle; within
 //           60 s of the reset the Runner claims the queued Run and it
 //           succeeds.
+//   skill-run  a scratch Skill "Release notes" (with templates/notes.md),
+//           given to a scratch Agent with PUT /api/agents/{id}/skills; the
+//           headless Runner claims its Run on "Skills check [skills]" and
+//           the transcript shows the stand-in finding release-notes beside
+//           bakery under .claude/skills.
 //
 //   bun e2e/agents.ts [section ...]   (task web:agents; needs task dev)
 //
@@ -517,6 +522,43 @@ sections.limit = async () => {
     rmSync(state, { recursive: true, force: true })
     await page.request.delete(`${WEB}/api/issues/${issue.id}`)
     await terminate(page, [name])
+    await page.context().close()
+  }
+}
+
+sections['skill-run'] = async () => {
+  const page = await signedIn()
+  const name = `Skill run e2e ${run}`
+  const agent = await hired(page, { name, job: 'engineer' })
+  const created = await page.request.post(`${WEB}/api/skills`, { data: { name: `Release notes ${run}`, slug: `release-notes-${run}`, description: 'Writes release notes.' } })
+  expect('POST /api/skills creates the Skill', created.status() === 201, created.status())
+  const { skill } = (await created.json()) as { skill: { id: number; slug: string } }
+  const { issue } = (await (await page.request.post(`${WEB}/api/issues`, { data: { title: `Skills check ${run} [skills]`, status: 'todo' } })).json()) as {
+    issue: { id: number }
+  }
+  let desktop: Awaited<ReturnType<typeof desktopRunner>> | undefined
+  try {
+    const file = await page.request.put(`${WEB}/api/skills/${skill.id}/files`, { data: { path: 'templates/notes.md', content: '# Notes\n' } })
+    expect('the Skill takes templates/notes.md', file.ok(), file.status())
+    const given = await page.request.put(`${WEB}/api/agents/${agent.id}/skills`, { data: { skill_ids: [skill.id] } })
+    expect('PUT /api/agents/{id}/skills gives the Agent the Skill', given.ok(), given.status())
+    await page.request.patch(`${WEB}/api/issues/${issue.id}`, { data: { assignee_agent_id: agent.id } })
+    desktop = await desktopRunner(page)
+    type Run = { id: number; status: string }
+    let done: Run | undefined
+    for (const end = Date.now() + 90_000; !done && Date.now() < end; await new Promise((r) => setTimeout(r, 500))) {
+      const { runs } = (await (await page.request.get(`${WEB}/api/runs?agent=${agent.id}`)).json()) as { runs: Run[] }
+      done = runs.find((r) => !['queued', 'running'].includes(r.status))
+    }
+    expect('the Runner runs the Agent', done?.status === 'succeeded', done?.status)
+    const events = await (await page.request.get(`${WEB}/api/runs/${done!.id}/events`)).text()
+    expect("claude finds the Agent's Skill beside The Bakery skill", events.includes(`skills: bakery, ${skill.slug}`), events.slice(0, 2000))
+  } finally {
+    await desktop?.stop()
+    await page.request.delete(`${WEB}/api/issues/${issue.id}`)
+    await page.request.put(`${WEB}/api/agents/${agent.id}/skills`, { data: { skill_ids: [] } })
+    await terminate(page, [name])
+    await page.request.delete(`${WEB}/api/skills/${skill.id}`)
     await page.context().close()
   }
 }

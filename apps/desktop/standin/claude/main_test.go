@@ -291,3 +291,20 @@ func TestMCPNeedsAConfig(t *testing.T) {
 		t.Fatalf("exit %d, last %v", code, last)
 	}
 }
+
+func TestSkillsSaysWhatItFound(t *testing.T) {
+	withoutAPIKey(t)
+	dir := t.TempDir()
+	for _, name := range []string{"release-notes", "bakery"} {
+		if err := os.MkdirAll(filepath.Join(dir, ".claude", "skills", name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out, errOut bytes.Buffer
+	if code := run(append(append([]string{}, baseArgs...), "--add-dir", dir, "--add-dir", t.TempDir(), "ENG-3 [skills]"), nil, &out, &errOut); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), `"skills: bakery, release-notes"`) {
+		t.Fatalf("output %s", out.String())
+	}
+}

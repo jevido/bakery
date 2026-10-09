@@ -123,7 +123,11 @@ the claim's answer, never stored beyond the Run), `BAKERY_GUILD_ID`,
 person's own MCP servers out of an Agent's Run), and The Bakery skill
 (`runner/skill/bakery/SKILL.md`, embedded in the binary) at
 `.bakery/.claude/skills/bakery/SKILL.md`, where `claude` finds it through
-`--add-dir`. The `.bakery` directory is removed when the Run ends. `claude`
+`--add-dir`. Each of the Agent's Skills, from the claim's answer, goes
+beside it at `.bakery/.claude/skills/<slug>/` (files 0600, or 0700 when
+executable); a slug that is not a Skill slug or is `bakery`, and a file
+path that leaves the Skill's directory, fail the Run instead of being
+written. The `.bakery` directory is removed when the Run ends. `claude`
 runs with `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` removed from its
 environment so `claude` uses the person's own login and never an API key.
 `BAKERY_CLAUDE` names another binary: every check uses the
@@ -140,7 +144,9 @@ still live), `[git commit <file> <text>]` (writes the file in its working
 directory and commits it) and `[git push]` (`git push -u origin HEAD`),
 each shown as a `Bash` tool call and run in prompt order with the
 `[mcp …]` calls (a failing one fails the Run), and `[env]` (says its
-working directory and its git and Worktree variables).
+working directory and its git and Worktree variables), and `[skills]`
+(says the skill directories it found under `.claude/skills` of every
+`--add-dir`, as `skills: bakery, release-notes`).
 `BAKERY_STANDIN_DELAY` sets its pause between lines (300 ms by default).
 `[limit]` prints the CLI's `rate_limit_event` with `status: "rejected"`
 and a `resetsAt` `BAKERY_STANDIN_LIMIT_RESET` ahead (a Go duration, 30 s
