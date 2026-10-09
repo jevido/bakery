@@ -61,8 +61,10 @@
       .then(([as, r]) => {
         agents = as
         roles = r.roles
-        job = as.length === 0 ? 'ceo' : 'general'
-        reportsTo = as.find((a) => a.job === 'ceo')?.id ?? null
+        // Only where the person has not picked yet: the lists can arrive
+        // after they chose a Job or Manager.
+        if (job === 'general' && as.length === 0) job = 'ceo'
+        reportsTo ??= as.find((a) => a.job === 'ceo')?.id ?? null
       })
       .catch((e) => (error = e.message))
   })
