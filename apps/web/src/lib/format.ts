@@ -51,3 +51,25 @@ export function duration(from: string | Date, to: string | Date): string {
 export function formatDate(at: string | Date): string {
   return new Date(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
+
+/** A token count as Paperclip's formatTokens writes it: 950, 1.2k, 3.4M, 1.0B. */
+export function tokens(n: number): string {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return String(n)
+}
+
+/** A run time from milliseconds: "45s", "12m 05s", "1h 02m". */
+export function runTime(ms: number): string {
+  const s = Math.round(ms / 1000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${pad(s % 60)}s`
+  return `${Math.floor(s / 3600)}h ${pad(Math.floor((s % 3600) / 60))}m`
+}
+
+/** Dollars as Paperclip's formatCents writes cents: "$0.20". */
+export function usd(n: number): string {
+  return `$${n.toFixed(2)}`
+}

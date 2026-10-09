@@ -1,7 +1,7 @@
 import { api } from './api'
 import type { Application, Database, Project, Service } from './types'
 
-// Hash router, with Coolify's paths for Projects, Environments, Resources and Servers: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/permissions, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id}[/{page}] (old links and links that know only its id, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/guild[/{page}] (its pages are guildPages; #/guild/roles/{id} opens one Role; #/members opens Members in place), #/guild/new, #/notifications/{kind} (its pages are notificationPages; #/notifications opens Email in place), #/security/{page} (its pages are securityPages, API Tokens and Desktops; #/security and #/api-tokens open API Tokens in place), #/issues[?status=…&priority=…&assignee=…&project=…&q=…&group=…] (the filters live in the query, so a reload keeps them), #/issues/{identifier} (or an Issue's id), #/goals, #/goals/{id}, #/agents/{all|active|paused|terminated}[?view=org] (#/agents opens All in place; the query keeps the Org chart view), #/agents/{id}, #/activity[?entity=…&actor=…] (the Guild's Activity, its filters in the query), #/inbox/{tab} (its tabs are inboxTabs; #/inbox opens the last tab used in place, else Mine), #/approvals/{pending|all} (#/approvals opens Pending in place), #/approvals/{id}[?resolved=approved] (one Approval; the query shows its "Approval confirmed" banner), #/profile (#/account opens it too), #/invite/{token}, #/desktop-sign-in/{id}?token=… (the Desktop app's sign-in, approved outside the guild shell), #/login, and #/dev/components in dev builds.
+// Hash router, with Coolify's paths for Projects, Environments, Resources and Servers: #/ (the Dashboard), #/projects, #/project/{id} (its Environments), #/project/{id}/edit, #/project/{id}/permissions, #/project/{id}/environment/{envId} (its Resources), #/project/{id}/environment/{envId}/new[?type=…&server=…], #/project/{id}/environment/{envId}/edit, #/project/{id}/environment/{envId}/application/{appId}[/{page}] (its sub-pages are applicationPages; …/deployment/{deploymentId} opens one Deployment), #/applications/{id}[/{page}] (old links and links that know only its id, moved to the Application's path once it loads), #/project/{id}/environment/{envId}/database/{dbId}[/{page}] (its sub-pages are databasePages; …/backups/{scheduledBackupId}[/{section}] opens one Scheduled backup), #/databases/{id} (old links, moved like #/applications/{id}), #/project/{id}/environment/{envId}/service/{serviceId}[/{page}] (its sub-pages are servicePages), #/services/{id} (old links, moved like #/applications/{id}), #/servers, #/servers/new, #/server/{id}[/{page}] (its sub-pages are serverPages), #/servers/{id} (old links, moved to #/server/{id} in place), #/storages, #/settings, #/guild[/{page}] (its pages are guildPages; #/guild/roles/{id} opens one Role; #/members opens Members in place), #/guild/new, #/notifications/{kind} (its pages are notificationPages; #/notifications opens Email in place), #/security/{page} (its pages are securityPages, API Tokens and Desktops; #/security and #/api-tokens open API Tokens in place), #/issues[?status=…&priority=…&assignee=…&project=…&q=…&group=…] (the filters live in the query, so a reload keeps them), #/issues/{identifier} (or an Issue's id), #/goals, #/goals/{id}, #/agents/{all|active|paused|terminated}[?view=org] (#/agents opens All in place; the query keeps the Org chart view), #/agents/{id}, #/activity[?entity=…&actor=…] (the Guild's Activity, its filters in the query), #/costs/{overview|budgets}[?range=…&from=…&to=…] (#/costs opens Overview in place, keeping the query; the query keeps the date range), #/inbox/{tab} (its tabs are inboxTabs; #/inbox opens the last tab used in place, else Mine), #/approvals/{pending|all} (#/approvals opens Pending in place), #/approvals/{id}[?resolved=approved] (one Approval; the query shows its "Approval confirmed" banner), #/profile (#/account opens it too), #/invite/{token}, #/desktop-sign-in/{id}?token=… (the Desktop app's sign-in, approved outside the guild shell), #/login, and #/dev/components in dev builds.
 export type Route =
   | { name: 'dashboard' }
   | { name: 'projects' }
@@ -48,6 +48,7 @@ export type Route =
   | { name: 'agents'; tab: AgentsTab }
   | { name: 'agent'; id: number }
   | { name: 'activity' }
+  | { name: 'costs'; tab: CostsTab }
   | { name: 'inbox'; tab: InboxTab }
   | { name: 'approvals'; tab: 'pending' | 'all' }
   | { name: 'approval'; id: number }
@@ -181,6 +182,10 @@ export function securityPath(page: SecurityPage): string {
   return `/security/${page}`
 }
 
+/** The Costs page's tabs, in Paperclip's order; its Providers, Billers and Finance are left out. */
+export const costsTabs = ['overview', 'budgets'] as const
+export type CostsTab = (typeof costsTabs)[number]
+
 /** The Agents page's tabs, in Paperclip's order. */
 export const agentsTabs = ['all', 'active', 'paused', 'error', 'terminated'] as const
 export type AgentsTab = (typeof agentsTabs)[number]
@@ -252,6 +257,10 @@ function parse(hash: string): Route {
     if (parts.length === 2 && /^\d+$/.test(parts[1])) return { name: 'agent', id: Number(parts[1]) }
   }
   if (parts[0] === 'activity' && parts.length === 1) return { name: 'activity' }
+  if (parts[0] === 'costs') {
+    if (parts.length === 1) return redirect(`/costs/overview${query ? `?${query}` : ''}`)
+    if (parts.length === 2 && (costsTabs as readonly string[]).includes(parts[1])) return { name: 'costs', tab: parts[1] as CostsTab }
+  }
   if (parts[0] === 'inbox') {
     if (parts.length === 1) return redirect(inboxPath(lastInboxTab()))
     if (parts.length === 2 && isInboxTab(parts[1])) return { name: 'inbox', tab: parts[1] }

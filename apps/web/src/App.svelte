@@ -13,6 +13,7 @@
   import NewGuild from './pages/guild/New.svelte'
   import Profile from './pages/Profile.svelte'
   import Activity from './pages/Activity.svelte'
+  import Costs from './pages/Costs.svelte'
   import Inbox from './pages/Inbox.svelte'
   import Approval from './pages/approvals/Approval.svelte'
   import Agent from './pages/agents/Agent.svelte'
@@ -183,6 +184,8 @@
       {/key}
     {:else if router.route.name === 'activity'}
       <Activity />
+    {:else if router.route.name === 'costs'}
+      <Costs tab={router.route.tab} />
     {:else if router.route.name === 'inbox'}
       <Inbox tab={router.route.tab} />
     {:else if router.route.name === 'approvals'}

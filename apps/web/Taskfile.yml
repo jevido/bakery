@@ -49,7 +49,7 @@ tasks:
       - bun e2e/agents.ts
 
   costs:
-    desc: Check Costs and Budgets against Runs a headless Desktop runner finishes with the claude stand-in (needs task dev)
+    desc: Check Costs and Budgets and the Costs page against Runs a headless Desktop runner finishes with the claude stand-in (needs task dev)
     deps: [install]
     cmds:
       - bun e2e/costs.ts

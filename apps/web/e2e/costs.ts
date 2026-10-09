@@ -27,6 +27,13 @@
 //           a new hard incident; keeping it paused dismisses that one,
 //           rejects its Approval and leaves the Agent paused; resolving it
 //           again is 422; the scratch data is removed again
+//   overview  a scratch Agent runs two Runs on an Issue in a scratch
+//           Project; #/costs opens Overview with Costs current in the
+//           sidebar, the Tokens, Runs and Cost equivalent tiles show what
+//           GET /api/costs/summary answers for this month, the Agent's and
+//           the Project's rows show their two Runs; Last 7 Days is kept in
+//           the query through a reload; Custom without dates asks for them;
+//           the scratch data is removed again
 //
 //   bun e2e/costs.ts [section ...]   (task web:costs; needs task dev)
 //
@@ -423,6 +430,62 @@ sections.resolve = async () => {
     if (issue) await page.request.delete(`${WEB}/api/issues/${issue}`)
     await page.request.post(`${WEB}/api/agents/${ada}/terminate`)
     await page.request.delete(`${WEB}/api/projects/${project}`)
+    await page.close()
+  }
+}
+
+sections.overview = async () => {
+  const page = await signedIn()
+  const name = 'Costs e2e overview agent'
+  const projectName = 'Costs e2e overview project'
+  const { agents } = (await (await page.request.get(`${WEB}/api/agents`)).json()) as { agents: { id: number; name: string }[] }
+  for (const a of agents.filter((a) => a.name === name)) await page.request.post(`${WEB}/api/agents/${a.id}/terminate`)
+  const { projects } = (await (await page.request.get(`${WEB}/api/projects`)).json()) as { projects: { id: number; name: string }[] }
+  for (const p of projects.filter((p) => p.name === projectName)) await page.request.delete(`${WEB}/api/projects/${p.id}`)
+
+  const { project } = (await (await page.request.post(`${WEB}/api/projects`, { data: { name: projectName } })).json()) as { project: { id: number } }
+  const agent = await hire(page, name)
+  let issue: number | undefined
+  const desktop = await desktopRunner(page)
+  try {
+    // The assignment queues the first Run; Run once more on the Issue.
+    issue = await issueFor(page, 'Costs e2e overview: say hello', project.id, agent)
+    await settled(page, agent)
+    const started = await page.request.post(`${WEB}/api/agents/${agent}/runs`, { data: { issue_id: issue } })
+    if (!started.ok()) throw new Error(`start a run: ${started.status()} ${await started.text()}`)
+    await settled(page, agent)
+
+    // The page's Month to Date starts at the local month's first midnight.
+    const now = new Date()
+    const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    const summary = (await (await page.request.get(`${WEB}/api/costs/summary?from=${encodeURIComponent(from)}`)).json()) as Figures
+
+    await page.goto(`${WEB}/#/costs`)
+    await page.waitForURL(/#\/costs\/overview$/)
+    const row = page.locator(`[data-agent="${agent}"]`)
+    await row.waitFor()
+    expect('Costs is current in the sidebar', (await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Costs' }).getAttribute('aria-current')) === 'page')
+    const tile = (label: string) => page.locator(`[data-tile="${label}"] [data-value]`)
+    expect('the Tokens tile has the summary\'s tokens', (await tile('Tokens').getAttribute('title')) === `${summary.tokens.toLocaleString('en-US')} tokens`, await tile('Tokens').getAttribute('title'))
+    expect('the Runs tile has the summary\'s Runs', (await tile('Runs').textContent()) === summary.runs.toLocaleString('en-US'), await tile('Runs').textContent())
+    expect('the Cost equivalent tile has the summary\'s cost', (await tile('Cost equivalent').textContent()) === `$${summary.cost_equivalent_usd.toFixed(2)}`, await tile('Cost equivalent').textContent())
+    expect("the Agent's row has its name and two Runs", (await row.textContent())!.includes(name) && (await row.textContent())!.includes('2 runs'), await row.textContent())
+    const projectRow = page.locator(`[data-project="${project.id}"]`)
+    expect("the Project's row has its name and two Runs", (await projectRow.textContent())?.includes(projectName) === true && (await projectRow.textContent())!.includes('2 runs'), await projectRow.textContent())
+    await page.screenshot({ path: '/tmp/bakery-costs-overview.png' })
+
+    await page.getByRole('button', { name: 'Last 7 Days' }).click()
+    await page.waitForURL(/range=7d/)
+    await page.reload()
+    await page.locator(`[data-agent="${agent}"]`).waitFor()
+    expect('Last 7 Days is kept through a reload', (await page.getByRole('button', { name: 'Last 7 Days' }).getAttribute('aria-pressed')) === 'true')
+    await page.getByRole('button', { name: 'Custom' }).click()
+    expect('Custom without dates asks for them', await page.getByText('Select a start and end date to load data.').isVisible())
+  } finally {
+    await desktop.stop()
+    if (issue) await page.request.delete(`${WEB}/api/issues/${issue}`)
+    await page.request.post(`${WEB}/api/agents/${agent}/terminate`)
+    await page.request.delete(`${WEB}/api/projects/${project.id}`)
     await page.close()
   }
 }

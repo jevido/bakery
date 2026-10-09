@@ -115,8 +115,8 @@
     goal: (e) => `/goals/${e.entity.id}`,
     approval: (e) => `/approvals/${e.entity.id}`,
     agent: (e) => `/agents/${e.entity.id}`,
-    budget: () => '/costs?tab=budgets',
-    budget_incident: () => '/costs?tab=budgets',
+    budget: () => '/costs/budgets',
+    budget_incident: () => '/costs/budgets',
   }
   const link = (e: ActivityEvent) => (e.entity.exists ? href(paths[e.entity.type](e)) : null)
 
