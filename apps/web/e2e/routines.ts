@@ -26,8 +26,10 @@
 //   webhook a GitHub Webhook trigger added on the Triggers tab shows its URL
 //           and 48-hex secret once; after a reload the card has the URL and
 //           no secret; a delivery signed with the secret is "accepted" and
-//           Runs lists a Webhook run with its Issue; after Rotate secret the
-//           old secret is 401 and the card says "rejected"
+//           Runs lists a Webhook run with its Issue; the same
+//           X-GitHub-Delivery again answers that run and makes no second;
+//           after Rotate secret the old secret is 401 and the card says
+//           "rejected"
 //   variables  "Triage {{repo}} alert" being edited shows repo in the
 //           Variables editor; made a Select (shop, blog, default shop) and
 //           saved, Run opens the Run dialog with shop picked; blog is run
@@ -455,8 +457,13 @@ const sections: Record<string, () => Promise<void>> = {
       const cardText = (await card.textContent()) ?? ''
       expect('after a reload the card has the URL and no secret', cardText.includes(url) && !cardText.includes(secret) && cardText.includes('No deliveries yet'), cardText)
 
-      const ok = await deliver(url, secret, `e2e-${Date.now()}`)
+      const delivery = `e2e-${Date.now()}`
+      const ok = await deliver(url, secret, delivery)
       expect('a signed delivery is accepted', ok.status() === 202, ok.status())
+      const first = ((await ok.json()) as { routine_run: { id: number } }).routine_run.id
+      const again = await deliver(url, secret, delivery)
+      const repeated = again.status() === 202 ? ((await again.json()) as { routine_run: { id: number } }).routine_run.id : null
+      expect('the same X-GitHub-Delivery again answers the first Routine run', repeated === first, { status: again.status(), first, repeated })
       await page.reload()
       await card.getByText(/^Last delivery: accepted/).waitFor()
       expect('the card says the last delivery was accepted', true)
@@ -465,6 +472,7 @@ const sections: Record<string, () => Promise<void>> = {
       await runRow.waitFor()
       const runText = (await runRow.textContent()) ?? ''
       expect('Runs lists a Webhook run with its Issue', runText.includes('Webhook') && runText.includes('issue created') && runText.includes(title), runText)
+      expect('the repeated delivery made no second Routine run', (await page.getByRole('list', { name: 'Routine runs' }).getByRole('listitem').count()) === 1)
 
       await page.getByRole('navigation', { name: 'Routine sections' }).getByRole('tab', { name: 'Triggers' }).click()
       await card.getByRole('button', { name: 'Rotate secret' }).click()

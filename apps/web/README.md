@@ -108,8 +108,11 @@ Routines pages, one section per flow (`bun e2e/routines.ts run` runs one):
 `page` (Create routine with a Weekly schedule, Run now, Recent Runs, a
 Viewer), `detail` (the Routine page: triggers, editing, Run, Activity),
 `run` (the Execution Issue, coalescing a second run, completing it),
-`pause` (the toggle, Archive from the row menu) and `schedule` (an
-every-minute trigger firing by itself within 90 s; slow). Each runs once in
+`pause` (the toggle, Archive from the row menu), `schedule` (an
+every-minute trigger firing by itself within 90 s; slow), `webhook` (a
+GitHub Webhook trigger: its secret shown once, a signed delivery, a repeated
+delivery, Rotate secret) and `variables` (the Variables editor and the Run
+dialog). Each runs once in
 the dark theme at 1440×900.
 
 `e2e/servers.ts` (`task web:servers`, needs `task dev`) checks the Servers
