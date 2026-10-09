@@ -202,6 +202,31 @@ func (s *Service) Desktops(ctx context.Context, memberID uint64) ([]domain.Deskt
 	return out, nil
 }
 
+// SignedInDesktops answers the ids of each Member's signed-in Desktops,
+// by the same rule as Desktops; a removed Member has none.
+func (s *Service) SignedInDesktops(ctx context.Context, memberIDs []uint64) (map[uint64][]uint64, error) {
+	out := make(map[uint64][]uint64, len(memberIDs))
+	for _, id := range memberIDs {
+		if _, done := out[id]; done {
+			continue
+		}
+		ds, err := s.Desktops(ctx, id)
+		if errors.Is(err, ErrMemberNotFound) {
+			out[id] = nil
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		ids := make([]uint64, len(ds))
+		for i, d := range ds {
+			ids[i] = d.ID
+		}
+		out[id] = ids
+	}
+	return out, nil
+}
+
 // SignOutDesktop signs out one of the Member's Desktops.
 func (s *Service) SignOutDesktop(ctx context.Context, memberID, id uint64) error {
 	found, err := s.desktopSignIns.SignOutDesktop(ctx, id, memberID, s.now())

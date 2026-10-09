@@ -34,6 +34,7 @@ func svc() *app.Service {
 	once.Do(func() {
 		service = app.NewService(infra.Agents{}, infra.Runs{}, guildsOfAgents{}, workOfAgents{}, repositoriesOfAgents{}, infra.Budgets{})
 		service.Logf = facades.Log().Errorf
+		service.SignedInDesktops = identity.SignedInDesktops
 		work.OnApprovalDecided("hire_agent", func(ctx context.Context, d work.ApprovalDecided) error {
 			return service.Decided(ctx, app.Decision{GuildID: d.GuildID, AgentID: d.AgentID, DeciderID: d.DeciderID, Approved: d.Approved})
 		})

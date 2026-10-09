@@ -41,6 +41,7 @@ type runRecord struct {
 	DurationMs          int64
 	NextSeq             int64
 	LeaseExpiresAt      *time.Time
+	LimitResetsAt       *time.Time
 	CreatedAt           time.Time
 	StartedAt           *time.Time
 	FinishedAt          *time.Time
@@ -76,7 +77,7 @@ func (r runRecord) toDomain() domain.Run {
 			InputTokens: r.InputTokens, CachedInputTokens: r.CachedInputTokens, OutputTokens: r.OutputTokens,
 			Turns: r.Turns, CostEquivalentUSD: r.CostEquivalentUSD, DurationMS: r.DurationMs,
 		},
-		NextSeq: r.NextSeq, LeaseExpiresAt: utc(r.LeaseExpiresAt), CreatedAt: r.CreatedAt.UTC(),
+		NextSeq: r.NextSeq, LeaseExpiresAt: utc(r.LeaseExpiresAt), LimitResetsAt: utc(r.LimitResetsAt), CreatedAt: r.CreatedAt.UTC(),
 		StartedAt: utc(r.StartedAt), FinishedAt: utc(r.FinishedAt), UpdatedAt: r.UpdatedAt.UTC(),
 	}
 }
@@ -209,11 +210,11 @@ func (s Runs) SaveRun(ctx context.Context, r domain.Run, from domain.RunStatus) 
 	u := r.Usage
 	res, err := s.query(ctx).Exec(`UPDATE runs SET status = ?, desktop_id = ?, project_id = ?, key_hash = ?, prompt = ?, session_id = ?, exit_code = ?, error = ?,
 		input_tokens = ?, cached_input_tokens = ?, output_tokens = ?, turns = ?, cost_equivalent_usd = ?, duration_ms = ?,
-		next_seq = ?, lease_expires_at = ?, started_at = ?, finished_at = ?, updated_at = ?
+		next_seq = ?, lease_expires_at = ?, limit_resets_at = ?, started_at = ?, finished_at = ?, updated_at = ?
 		WHERE id = ? AND status = ? AND wake_count = ?`,
 		string(r.Status), nullable(r.DesktopID), nullable(r.ProjectID), nullableString(r.KeyHash), r.Prompt, r.SessionID, r.ExitCode, r.Error,
 		u.InputTokens, u.CachedInputTokens, u.OutputTokens, u.Turns, u.CostEquivalentUSD, u.DurationMS,
-		r.NextSeq, r.LeaseExpiresAt, r.StartedAt, r.FinishedAt, r.UpdatedAt, r.ID, string(from), r.WakeCount)
+		r.NextSeq, r.LeaseExpiresAt, r.LimitResetsAt, r.StartedAt, r.FinishedAt, r.UpdatedAt, r.ID, string(from), r.WakeCount)
 	if err != nil {
 		return false, err
 	}
@@ -388,6 +389,62 @@ func (s Runs) RunTotals(ctx context.Context, q app.CostRange) ([]app.RunTotal, e
 			InputTokens: r.InputTokens, CachedInputTokens: r.CachedInputTokens, OutputTokens: r.OutputTokens,
 			Runs: r.Runs, RunTimeMS: r.RunTimeMs, CostEquivalentUSD: r.CostEquivalentUSD,
 		}}
+	}
+	return out, nil
+}
+
+type desktopLimitRecord struct {
+	DesktopID  uint64 `gorm:"primaryKey"`
+	MemberID   uint64
+	ResetsAt   time.Time
+	ReportedAt time.Time
+}
+
+func (desktopLimitRecord) TableName() string { return "desktop_limits" }
+
+func (r desktopLimitRecord) toDomain() domain.DesktopLimit {
+	return domain.DesktopLimit{DesktopID: r.DesktopID, MemberID: r.MemberID, ResetsAt: r.ResetsAt.UTC(), ReportedAt: r.ReportedAt.UTC()}
+}
+
+// SaveDesktopLimit stores the Desktop's limit, keeping the later reset
+// when it has one already.
+func (s Runs) SaveDesktopLimit(ctx context.Context, l domain.DesktopLimit) error {
+	_, err := s.query(ctx).Exec(`INSERT INTO desktop_limits (desktop_id, member_id, resets_at, reported_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT (desktop_id) DO UPDATE SET member_id = EXCLUDED.member_id,
+		resets_at = GREATEST(desktop_limits.resets_at, EXCLUDED.resets_at), reported_at = EXCLUDED.reported_at`,
+		l.DesktopID, l.MemberID, l.ResetsAt, l.ReportedAt)
+	return err
+}
+
+// DesktopLimit is the Desktop's limit; found is false when it never had
+// one.
+func (s Runs) DesktopLimit(ctx context.Context, desktopID uint64) (domain.DesktopLimit, bool, error) {
+	var recs []desktopLimitRecord
+	if err := s.query(ctx).Raw(`SELECT * FROM desktop_limits WHERE desktop_id = ?`, desktopID).Scan(&recs); err != nil {
+		return domain.DesktopLimit{}, false, err
+	}
+	if len(recs) == 0 {
+		return domain.DesktopLimit{}, false, nil
+	}
+	return recs[0].toDomain(), true, nil
+}
+
+// DesktopLimits answers the limits among the Desktops still active at.
+func (s Runs) DesktopLimits(ctx context.Context, desktopIDs []uint64, at time.Time) (map[uint64]domain.DesktopLimit, error) {
+	out := map[uint64]domain.DesktopLimit{}
+	if len(desktopIDs) == 0 {
+		return out, nil
+	}
+	in := make([]any, len(desktopIDs))
+	for i, id := range desktopIDs {
+		in[i] = id
+	}
+	var recs []desktopLimitRecord
+	if err := s.query(ctx).WhereIn("desktop_id", in).Where("resets_at > ?", at).Find(&recs); err != nil {
+		return nil, err
+	}
+	for _, r := range recs {
+		out[r.DesktopID] = r.toDomain()
 	}
 	return out, nil
 }

@@ -463,6 +463,9 @@ records nothing more.
     Agents (identity calls the Run key hook agents registers), and `identity.DesktopNames(ctx, ids)` to name
     the Desktop a Run ran on.
   - from identity: `identity.Members(ctx, ids)` for Hirers' names.
+  - from identity: `identity.SignedInDesktops(ctx, memberIDs)` for each
+    Hirer's signed-in Desktops, to tell when every one of them is at its
+    Desktop limit.
   - from projects: `projects.ApplicationRepository(ctx, guild,
     application)` (the Application's name, git repository URL and branch,
     or none for an Application without a git source) for the Workspace;

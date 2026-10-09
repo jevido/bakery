@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/agents/domain"
 )
@@ -405,6 +407,32 @@ func (s *Service) RunningRuns(ctx context.Context, agentIDs []uint64) (map[uint6
 // LiveRuns tells which of the Runs are running, for work's Checkouts.
 func (s *Service) LiveRuns(ctx context.Context, runIDs []uint64) (map[uint64]bool, error) {
 	return s.runs.LiveRuns(ctx, runIDs)
+}
+
+// SubscriptionLimits tells, for the queued ones among the Runs, when the
+// Subscription limit they wait for resets: their Agent's Hirer has every
+// signed-in Desktop at its limit. A Run that waits for none is left out.
+func (s *Service) SubscriptionLimits(ctx context.Context, rs []domain.Run, agents map[uint64]domain.Agent) (map[uint64]time.Time, error) {
+	var hirers []uint64
+	for _, r := range rs {
+		if a, ok := agents[r.AgentID]; ok && r.Status == domain.RunQueued && a.HirerID != 0 && !slices.Contains(hirers, a.HirerID) {
+			hirers = append(hirers, a.HirerID)
+		}
+	}
+	out := map[uint64]time.Time{}
+	if len(hirers) == 0 {
+		return out, nil
+	}
+	limits, err := s.hirerLimits(ctx, hirers)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rs {
+		if t, ok := limits[agents[r.AgentID].HirerID]; ok && r.Status == domain.RunQueued {
+			out[r.ID] = t
+		}
+	}
+	return out, nil
 }
 
 // IssueBriefs tells the Issues of the Guild's Runs that the person may

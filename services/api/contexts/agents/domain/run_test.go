@@ -123,6 +123,41 @@ func TestRunLostIsRequeued(t *testing.T) {
 	}
 }
 
+func TestRunLimit(t *testing.T) {
+	at := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	r := Run{ID: 5, GuildID: 1, AgentID: 4, IssueID: 9, InvocationSource: Assignment, WakeReason: IssueAssigned, WakeCount: 2,
+		WakeContext: WakeContext{CommentIDs: []uint64{3}}, Status: RunQueued, RequestedByID: 7, NextSeq: 1}
+	if _, err := r.Limit(Usage{}, nil, "", at.Add(time.Hour), at); err == nil {
+		t.Error("a queued run was limited")
+	}
+	_ = r.Claim(2, 0, "h", at)
+	var ve *FieldError
+	for _, resets := range []time.Time{at, at.Add(-time.Minute), at.Add(MaxLimitWait + time.Second)} {
+		if _, err := r.Limit(Usage{}, nil, "", resets, at); !errors.As(err, &ve) || ve.Field != "limit_resets_at" {
+			t.Errorf("a reset at %s: %v", resets, err)
+		}
+	}
+	if r.Status != RunRunning {
+		t.Fatalf("a refused limit moved the run to %s", r.Status)
+	}
+	resets := at.Add(2 * time.Hour)
+	next, err := r.Limit(Usage{OutputTokens: 40}, nil, " ", resets, at.Add(time.Minute))
+	if err != nil || r.Status != RunLimited || !r.Status.Final() || r.Usage.OutputTokens != 40 || r.LimitResetsAt == nil || !r.LimitResetsAt.Equal(resets) {
+		t.Fatalf("limit: %+v %v", r, err)
+	}
+	if r.Error != "the subscription limit was reached" || r.LeaseExpiresAt != nil || r.FinishedAt == nil {
+		t.Errorf("limited run: %q %v %v", r.Error, r.LeaseExpiresAt, r.FinishedAt)
+	}
+	if next.Status != RunQueued || next.RetryOfRunID != 5 || next.IssueID != 9 || next.AgentID != 4 || next.WakeReason != IssueAssigned ||
+		next.InvocationSource != Assignment || next.WakeCount != 1 || len(next.WakeContext.CommentIDs) != 1 || next.RequestedByID != 7 {
+		t.Errorf("replacement: %+v", next)
+	}
+	l := DesktopLimit{DesktopID: 2, ResetsAt: resets}
+	if !l.Active(at) || l.Active(resets) || (DesktopLimit{}).Active(at) {
+		t.Error("desktop limit active")
+	}
+}
+
 func TestAgentFollowsItsRuns(t *testing.T) {
 	at := time.Now()
 	a := Agent{Status: Idle}
@@ -150,6 +185,10 @@ func TestAgentFollowsItsRuns(t *testing.T) {
 	_ = a.StartRunning(at)
 	if !a.RunEnded(RunCancelled, at) || a.Status != Idle {
 		t.Fatalf("after a cancelled run: %s", a.Status)
+	}
+	_ = a.StartRunning(at)
+	if !a.RunEnded(RunLimited, at) || a.Status != Idle {
+		t.Fatalf("after a limited run: %s", a.Status)
 	}
 	_ = a.StartRunning(at)
 	if err := a.Pause(at); err != nil || a.Status != Paused {

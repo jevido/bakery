@@ -18,10 +18,13 @@ const (
 	RunFailed    RunStatus = "failed"
 	RunCancelled RunStatus = "cancelled"
 	RunLost      RunStatus = "lost"
+	// RunLimited is a Run that stopped because its Hirer's claude login
+	// reached its Subscription limit; another Run takes its place.
+	RunLimited RunStatus = "limited"
 )
 
 // RunStatuses are the glossary's Run statuses, in the order a Run moves.
-var RunStatuses = []RunStatus{RunQueued, RunRunning, RunSucceeded, RunFailed, RunCancelled, RunLost}
+var RunStatuses = []RunStatus{RunQueued, RunRunning, RunSucceeded, RunFailed, RunCancelled, RunLost, RunLimited}
 
 // ParseRunStatus reads a Run status.
 func ParseRunStatus(s string) (RunStatus, error) {
@@ -130,6 +133,9 @@ type Run struct {
 	ExitCode  *int
 	Error     string
 	Usage     Usage
+	// LimitResetsAt is the Limit reset a limited Run reported, nil for any
+	// other.
+	LimitResetsAt *time.Time
 	// NextSeq is the seq the next Run event must have at least.
 	NextSeq        int64
 	LeaseExpiresAt *time.Time
@@ -277,11 +283,58 @@ func (r *Run) Lose(at time.Time) (Run, error) {
 	}
 	r.end(RunLost, at)
 	r.Error = "the desktop stopped reporting"
+	return r.replacement(at), nil
+}
+
+// MaxLimitWait is how far ahead a Limit reset may be: claude's longest
+// usage window is a week, and a day more allows for clocks.
+const MaxLimitWait = 8 * 24 * time.Hour
+
+// Limit ends a running Run whose Hirer's claude login reached its
+// Subscription limit as limited, with its Run usage and the Limit reset,
+// and answers the queued Run that takes its place, as Lose does.
+func (r *Run) Limit(u Usage, exitCode *int, message string, resetsAt, at time.Time) (Run, error) {
+	if !resetsAt.After(at) {
+		return Run{}, invalid("limit_resets_at", "must be in the future")
+	}
+	if resetsAt.Sub(at) > MaxLimitWait {
+		return Run{}, invalid("limit_resets_at", "must be at most 8 days ahead")
+	}
+	if r.Status != RunRunning {
+		return Run{}, &RunStatusError{Status: r.Status, Action: "finished"}
+	}
+	r.end(RunLimited, at)
+	r.Usage, r.ExitCode, r.Error = u, exitCode, strings.TrimSpace(message)
+	if r.Error == "" {
+		r.Error = "the subscription limit was reached"
+	}
+	resets := resetsAt.UTC()
+	r.LimitResetsAt = &resets
+	return r.replacement(at), nil
+}
+
+// replacement is the queued Run that takes a lost or limited Run's place:
+// the same Agent, Issue, Invocation source, Wake reason and wake context.
+func (r *Run) replacement(at time.Time) Run {
 	return Run{
 		GuildID: r.GuildID, AgentID: r.AgentID, IssueID: r.IssueID, InvocationSource: r.InvocationSource,
 		WakeReason: r.WakeReason, WakeCount: 1, WakeContext: WakeContext{CommentIDs: slices.Clone(r.WakeContext.CommentIDs)},
 		Status: RunQueued, RequestedByID: r.RequestedByID, RetryOfRunID: r.ID, NextSeq: 1, CreatedAt: at, UpdatedAt: at,
-	}, nil
+	}
+}
+
+// DesktopLimit is one Desktop's claude login at its Subscription limit
+// until ResetsAt, as its Desktop reported it.
+type DesktopLimit struct {
+	DesktopID  uint64
+	MemberID   uint64
+	ResetsAt   time.Time
+	ReportedAt time.Time
+}
+
+// Active reports whether the limit still holds at the time.
+func (l DesktopLimit) Active(at time.Time) bool {
+	return l.DesktopID != 0 && at.Before(l.ResetsAt)
 }
 
 // EventKind is what a Run event tells.
@@ -354,7 +407,8 @@ func SessionOf(e RunEvent) string {
 }
 
 // MaxChainRetries is how many times a lost Run is queued again, counting
-// along its retry_of_run_id chain, before the last one stays lost.
+// the lost Runs along its retry_of_run_id chain, before the last one stays
+// lost. Limited Runs do not count: they always wait for the Limit reset.
 const MaxChainRetries = 3
 
 // RunStarted is published when a Wake queued a new Run, other than the

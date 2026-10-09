@@ -459,7 +459,8 @@ func (a Agent) HeartbeatDue(now time.Time) bool {
 }
 
 // RunEnded follows the end of the running Run of a running Agent: idle
-// after it succeeded or was cancelled, error after it failed or was lost.
+// after it succeeded, was cancelled or was limited, error after it failed or
+// was lost.
 // An Agent no longer running (paused or terminated meanwhile) stays as it
 // is.
 func (a *Agent) RunEnded(s RunStatus, at time.Time) (changed bool) {

@@ -27,6 +27,16 @@ var ErrOtherDesktop = errors.New("another desktop claimed this run")
 // Run.
 var ErrAgentBusy = errors.New("the agent already has a running run")
 
+// LimitError refuses a claim from a Desktop at its Subscription limit
+// until ResetsAt; the Run stays queued.
+type LimitError struct {
+	ResetsAt time.Time
+}
+
+func (e *LimitError) Error() string {
+	return "subscription limit until " + e.ResetsAt.UTC().Format(time.RFC3339)
+}
+
 // DeskRuns is what Runs keeps for the Desktops taking them.
 type DeskRuns interface {
 	// DesktopRuns lists, oldest first, the queued Runs of the Agents the
@@ -41,6 +51,13 @@ type DeskRuns interface {
 	KeepRunLease(ctx context.Context, r domain.Run) (moved bool, err error)
 	// ExpiredRuns lists the running Runs whose Lease ran out before at.
 	ExpiredRuns(ctx context.Context, at time.Time) ([]domain.Run, error)
+	// SaveDesktopLimit stores the Desktop's limit, keeping the later reset
+	// when it has one already.
+	SaveDesktopLimit(ctx context.Context, l domain.DesktopLimit) error
+	// DesktopLimit is the Desktop's limit; found is false for none.
+	DesktopLimit(ctx context.Context, desktopID uint64) (l domain.DesktopLimit, found bool, err error)
+	// DesktopLimits answers the limits among the Desktops still active at.
+	DesktopLimits(ctx context.Context, desktopIDs []uint64, at time.Time) (map[uint64]domain.DesktopLimit, error)
 }
 
 // QueuedRun is a Run as the Desktop gets it: with its Guild's name, its
@@ -182,8 +199,16 @@ func (s *Service) claimed(ctx context.Context, d Desktop, runID uint64) (domain.
 // claimed already or final is a *domain.RunStatusError, one whose Agent
 // runs another Run ErrAgentBusy, one whose Agent was paused or terminated
 // a *domain.StatusError, and one in a stopped scope is cancelled with the
-// *BudgetBlock's reason and answered that.
+// *BudgetBlock's reason and answered that. A Desktop at its Subscription
+// limit is refused with a *LimitError and the Run left queued.
 func (s *Service) ClaimRun(ctx context.Context, d Desktop, runID uint64) (QueuedRun, error) {
+	l, ok, err := s.runs.DesktopLimit(ctx, d.ID)
+	if err != nil {
+		return QueuedRun{}, err
+	}
+	if ok && l.Active(s.now()) {
+		return QueuedRun{}, &LimitError{ResetsAt: l.ResetsAt}
+	}
 	for range wakeAttempts {
 		r, a, err := s.desktopRun(ctx, d, runID)
 		if err != nil {
@@ -351,17 +376,20 @@ func (s *Service) KeepRunLease(ctx context.Context, d Desktop, runID uint64) (do
 	return r, nil
 }
 
-// Finish is how a Run ended on the Desktop.
+// Finish is how a Run ended on the Desktop. LimitResetsAt is the Limit
+// reset of a limited one, required for it.
 type Finish struct {
-	Status   string
-	ExitCode *int
-	Error    string
-	Usage    domain.Usage
+	Status        string
+	ExitCode      *int
+	Error         string
+	Usage         domain.Usage
+	LimitResetsAt *time.Time
 }
 
 // FinishRun ends the Run the Desktop claimed, with its Run usage, moves
 // its Agent to idle or error, and evaluates the Budgets it counts toward. A Run cancelled meanwhile is answered
-// as it is: the Runner may race a cancel.
+// as it is: the Runner may race a cancel. A limited one is queued again,
+// however often, and its Desktop is refused claims until the Limit reset.
 func (s *Service) FinishRun(ctx context.Context, d Desktop, runID uint64, f Finish) (domain.Run, error) {
 	r, _, err := s.claimed(ctx, d, runID)
 	if err != nil {
@@ -374,7 +402,17 @@ func (s *Service) FinishRun(ctx context.Context, d Desktop, runID uint64, f Fini
 	if err != nil {
 		return domain.Run{}, err
 	}
-	if err := r.Finish(st, f.Usage, f.ExitCode, f.Error, s.now()); err != nil {
+	var next *domain.Run
+	if st == domain.RunLimited {
+		if f.LimitResetsAt == nil {
+			return domain.Run{}, &domain.FieldError{Field: "limit_resets_at", Message: "is required for a limited run"}
+		}
+		n, err := r.Limit(f.Usage, f.ExitCode, f.Error, *f.LimitResetsAt, s.now())
+		if err != nil {
+			return domain.Run{}, err
+		}
+		next = &n
+	} else if err := r.Finish(st, f.Usage, f.ExitCode, f.Error, s.now()); err != nil {
 		return domain.Run{}, err
 	}
 	moved, err := s.runs.SaveRun(ctx, r, domain.RunRunning)
@@ -390,6 +428,16 @@ func (s *Service) FinishRun(ctx context.Context, d Desktop, runID uint64, f Fini
 			return now, nil
 		}
 		return domain.Run{}, &domain.RunStatusError{Status: now.Status, Action: "finished"}
+	}
+	if next != nil {
+		l := domain.DesktopLimit{DesktopID: d.ID, MemberID: d.MemberID, ResetsAt: *r.LimitResetsAt, ReportedAt: s.now()}
+		if err := s.runs.SaveDesktopLimit(ctx, l); err != nil {
+			return domain.Run{}, err
+		}
+		// A twin queued meanwhile on the same Issue takes this one in.
+		if _, _, err := s.queue(ctx, *next); err != nil {
+			return domain.Run{}, err
+		}
 	}
 	a, err := s.runEnded(ctx, r.AgentID, r.Status)
 	if err != nil {
@@ -452,10 +500,12 @@ func (s *Service) lose(ctx context.Context, r domain.Run, now time.Time) error {
 	return nil
 }
 
-// retries counts the Runs before r along its retry_of_run_id chain.
+// retries counts the lost Runs before r along its retry_of_run_id chain;
+// limited ones do not count. A Run of the chain that is gone counts as
+// lost.
 func (s *Service) retries(ctx context.Context, r domain.Run) (int, error) {
 	n := 0
-	for id := r.RetryOfRunID; id != 0 && n < domain.MaxChainRetries; n++ {
+	for id := r.RetryOfRunID; id != 0 && n < domain.MaxChainRetries; {
 		prev, ok, err := s.runs.Run(ctx, id)
 		if err != nil {
 			return 0, err
@@ -463,9 +513,52 @@ func (s *Service) retries(ctx context.Context, r domain.Run) (int, error) {
 		if !ok {
 			return n + 1, nil
 		}
+		if prev.Status != domain.RunLimited {
+			n++
+		}
 		id = prev.RetryOfRunID
 	}
 	return n, nil
+}
+
+// hirerLimits answers, for each of the Hirers whose every signed-in
+// Desktop is at its Subscription limit, when the last of those limits
+// resets: their Agents' queued Runs wait for it. A Hirer with any Desktop
+// free, or none signed in, is left out.
+func (s *Service) hirerLimits(ctx context.Context, memberIDs []uint64) (map[uint64]time.Time, error) {
+	out := map[uint64]time.Time{}
+	if len(memberIDs) == 0 || s.SignedInDesktops == nil {
+		return out, nil
+	}
+	desktops, err := s.SignedInDesktops(ctx, memberIDs)
+	if err != nil {
+		return nil, err
+	}
+	var all []uint64
+	for _, ids := range desktops {
+		all = append(all, ids...)
+	}
+	limits, err := s.runs.DesktopLimits(ctx, all, s.now())
+	if err != nil {
+		return nil, err
+	}
+	for member, ids := range desktops {
+		var last time.Time
+		for _, id := range ids {
+			l, ok := limits[id]
+			if !ok {
+				last = time.Time{}
+				break
+			}
+			if l.ResetsAt.After(last) {
+				last = l.ResetsAt
+			}
+		}
+		if !last.IsZero() {
+			out[member] = last
+		}
+	}
+	return out, nil
 }
 
 // DesktopRun is the Run of an Agent the Desktop's Member hired;

@@ -61,6 +61,11 @@ type runJSON struct {
 	StartedAt        *time.Time    `json:"started_at"`
 	FinishedAt       *time.Time    `json:"finished_at"`
 	CanCancel        bool          `json:"can_cancel"`
+	// LimitResetsAt is the Limit reset a limited Run reported.
+	LimitResetsAt *time.Time `json:"limit_resets_at"`
+	// SubscriptionLimitResetsAt is when the Subscription limit a queued
+	// Run waits for resets; null when it waits for none.
+	SubscriptionLimitResetsAt *time.Time `json:"subscription_limit_resets_at"`
 }
 
 type runEventJSON struct {
@@ -120,6 +125,10 @@ func (c *Controller) runsJSON(ctx contractshttp.Context, guildID uint64, rs []do
 	if err != nil {
 		return nil, err
 	}
+	limits, err := c.service.SubscriptionLimits(cx, rs, agents)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]runJSON, len(rs))
 	for i, r := range rs {
 		a := agents[r.AgentID]
@@ -131,7 +140,10 @@ func (c *Controller) runsJSON(ctx contractshttp.Context, guildID uint64, rs []do
 				Turns: u.Turns, CostEquivalentUSD: u.CostEquivalentUSD, DurationMS: u.DurationMS,
 			},
 			ExitCode: r.ExitCode, Error: r.Error, CreatedAt: r.CreatedAt.UTC(), StartedAt: utc(r.StartedAt), FinishedAt: utc(r.FinishedAt),
-			CanCancel: !r.Status.Final() && manages[a.ID],
+			CanCancel: !r.Status.Final() && manages[a.ID], LimitResetsAt: utc(r.LimitResetsAt),
+		}
+		if t, ok := limits[r.ID]; ok {
+			j.SubscriptionLimitResetsAt = &t
 		}
 		if is, ok := issues[r.IssueID]; ok {
 			j.Issue = &runIssueJSON{ID: is.ID, Identifier: is.Identifier, Title: is.Title}

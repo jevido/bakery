@@ -278,3 +278,99 @@ func TestClaimCarriesTheWorkspace(t *testing.T) {
 		}
 	}
 }
+
+func TestLimitedRunsWaitForTheReset(t *testing.T) {
+	ctx := context.Background()
+	s, _, _, w := newTest()
+	runs := s.runs.(*fakeRuns)
+	ada, r := queuedRun(t, s, w)
+	laptop, desk := Desktop{ID: 3, MemberID: 7}, Desktop{ID: 4, MemberID: 7}
+	signedIn := []uint64{laptop.ID}
+	s.SignedInDesktops = func(_ context.Context, ids []uint64) (map[uint64][]uint64, error) {
+		return map[uint64][]uint64{7: signedIn}, nil
+	}
+	at := time.Now().UTC().Truncate(time.Second)
+	s.now = func() time.Time { return at }
+	if _, err := s.ClaimRun(ctx, laptop, r.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// A limited finish needs a reset in the future.
+	var fe *domain.FieldError
+	past := at.Add(-time.Minute)
+	for _, f := range []Finish{{Status: "limited"}, {Status: "limited", LimitResetsAt: &past}} {
+		if _, err := s.FinishRun(ctx, laptop, r.ID, f); !errors.As(err, &fe) || fe.Field != "limit_resets_at" {
+			t.Errorf("finish %+v: %v", f, err)
+		}
+	}
+
+	resets := at.Add(2 * time.Minute)
+	done, err := s.FinishRun(ctx, laptop, r.ID, Finish{Status: "limited", LimitResetsAt: &resets, Usage: domain.Usage{OutputTokens: 40, DurationMS: 900}})
+	if err != nil || done.Status != domain.RunLimited || done.LimitResetsAt == nil || !done.LimitResetsAt.Equal(resets) {
+		t.Fatalf("limited finish: %+v %v", done, err)
+	}
+	if a, _ := s.Agent(ctx, 1, ada.ID); a.Status != domain.Idle {
+		t.Errorf("agent %s after a limited run", a.Status)
+	}
+	if w.last.Action != "run.finished" || w.last.Details["status"] != "limited" {
+		t.Errorf("activity %+v", w.last)
+	}
+	next := runs.rows[runs.next]
+	if next.Status != domain.RunQueued || next.RetryOfRunID != r.ID || next.IssueID != 30 {
+		t.Fatalf("replacement %+v", next)
+	}
+	if l := runs.limits[laptop.ID]; l.MemberID != 7 || !l.ResetsAt.Equal(resets) {
+		t.Errorf("desktop limit %+v", l)
+	}
+
+	// Its usage counts in Costs.
+	if c, err := s.Costs(ctx, CostRange{GuildID: 1}, func(ids []uint64) ([]uint64, error) { return ids, nil }); err != nil ||
+		c.Total.OutputTokens != 40 || c.Total.Runs != 1 {
+		t.Errorf("costs %+v %v", c.Total, err)
+	}
+
+	// The waiting Run shows the Hirer's limit while every signed-in Desktop
+	// is at it.
+	agents := map[uint64]domain.Agent{ada.ID: ada}
+	if got, _ := s.SubscriptionLimits(ctx, []domain.Run{next, done}, agents); len(got) != 1 || !got[next.ID].Equal(resets) {
+		t.Errorf("waits %v", got)
+	}
+	signedIn = []uint64{laptop.ID, desk.ID}
+	if got, _ := s.SubscriptionLimits(ctx, []domain.Run{next}, agents); len(got) != 0 {
+		t.Errorf("waits with a free desktop: %v", got)
+	}
+	signedIn = []uint64{laptop.ID}
+
+	// The limited Desktop is refused until the reset; the Run stays queued.
+	var le *LimitError
+	if _, err := s.ClaimRun(ctx, laptop, next.ID); !errors.As(err, &le) || !le.ResetsAt.Equal(resets) {
+		t.Fatalf("claim at the limit: %v", err)
+	}
+	if runs.rows[next.ID].Status != domain.RunQueued {
+		t.Errorf("refused run %s", runs.rows[next.ID].Status)
+	}
+
+	// Limited Runs never use up the lost Runs' retries.
+	current := next.ID
+	for i := range domain.MaxChainRetries + 2 {
+		at = at.Add(3 * time.Minute)
+		if got, _ := s.SubscriptionLimits(ctx, []domain.Run{runs.rows[current]}, agents); len(got) != 0 {
+			t.Errorf("waits after the reset: %v", got)
+		}
+		if _, err := s.ClaimRun(ctx, laptop, current); err != nil {
+			t.Fatalf("claim %d after the reset: %v", i, err)
+		}
+		resets = at.Add(2 * time.Minute)
+		before := runs.next
+		if _, err := s.FinishRun(ctx, laptop, current, Finish{Status: "limited", LimitResetsAt: &resets}); err != nil {
+			t.Fatal(err)
+		}
+		if runs.next != before+1 || runs.rows[runs.next].RetryOfRunID != current {
+			t.Fatalf("limited run %d not queued again", i)
+		}
+		current = runs.next
+	}
+	if n, _ := s.retries(ctx, runs.rows[current]); n != 0 {
+		t.Errorf("retries %d along a limited chain", n)
+	}
+}

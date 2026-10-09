@@ -166,6 +166,9 @@ type Service struct {
 	// Logf logs what a request cannot report, such as an Activity event
 	// that was not recorded.
 	Logf func(format string, args ...any)
+	// SignedInDesktops answers the ids of each Member's signed-in
+	// Desktops, identity's fact; nil counts none.
+	SignedInDesktops func(ctx context.Context, memberIDs []uint64) (map[uint64][]uint64, error)
 }
 
 func NewService(agents Agents, runs Runs, guilds Guilds, work Work, repositories Repositories, budgets Budgets) *Service {

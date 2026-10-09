@@ -141,6 +141,13 @@ func SeeDesktop(ctx context.Context, desktopID uint64) error {
 	return service.SeeDesktop(ctx, desktopID)
 }
 
+// SignedInDesktops answers the ids of each Member's signed-in Desktops, so
+// agents can tell when every Desktop of a Hirer is at its Subscription
+// limit.
+func SignedInDesktops(ctx context.Context, memberIDs []uint64) (map[uint64][]uint64, error) {
+	return service.SignedInDesktops(ctx, memberIDs)
+}
+
 // DesktopNames names the Desktops among ids, signed out ones included, for
 // the Runs they ran.
 func DesktopNames(ctx context.Context, ids []uint64) (map[uint64]string, error) {

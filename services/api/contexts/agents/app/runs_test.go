@@ -16,6 +16,33 @@ type fakeRuns struct {
 	next   uint64
 	events map[uint64][]domain.RunEvent
 	agents *fakeAgents
+	limits map[uint64]domain.DesktopLimit
+}
+
+func (f *fakeRuns) SaveDesktopLimit(_ context.Context, l domain.DesktopLimit) error {
+	if f.limits == nil {
+		f.limits = map[uint64]domain.DesktopLimit{}
+	}
+	if old, ok := f.limits[l.DesktopID]; ok && old.ResetsAt.After(l.ResetsAt) {
+		l.ResetsAt = old.ResetsAt
+	}
+	f.limits[l.DesktopID] = l
+	return nil
+}
+
+func (f *fakeRuns) DesktopLimit(_ context.Context, desktopID uint64) (domain.DesktopLimit, bool, error) {
+	l, ok := f.limits[desktopID]
+	return l, ok, nil
+}
+
+func (f *fakeRuns) DesktopLimits(_ context.Context, ids []uint64, at time.Time) (map[uint64]domain.DesktopLimit, error) {
+	out := map[uint64]domain.DesktopLimit{}
+	for _, id := range ids {
+		if l, ok := f.limits[id]; ok && l.Active(at) {
+			out[id] = l
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeRuns) DesktopRuns(_ context.Context, memberID, desktopID uint64) ([]domain.Run, error) {

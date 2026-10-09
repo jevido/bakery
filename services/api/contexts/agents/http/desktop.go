@@ -118,7 +118,8 @@ func desktopRunsOf(qs []app.QueuedRun) []desktopRunJSON {
 
 // desktopFail answers what the Runner may meet: 404 for another person's
 // Run, 403 for one another Desktop claimed, 409 for a Run that moved on,
-// an Agent that cannot take it or a stopped Budget scope, 422 for a gap in
+// an Agent that cannot take it, a stopped Budget scope or a Desktop at its
+// Subscription limit, 422 for a gap in
 // the seqs.
 func desktopFail(ctx contractshttp.Context, err error) contractshttp.Response {
 	var (
@@ -127,8 +128,13 @@ func desktopFail(ctx contractshttp.Context, err error) contractshttp.Response {
 		qe  *domain.SeqError
 		fe  *domain.FieldError
 		bb  *app.BudgetBlock
+		le  *app.LimitError
 	)
 	switch {
+	case errors.As(err, &le):
+		return ctx.Response().Json(contractshttp.StatusConflict, contractshttp.Json{
+			"message": err.Error(), "resets_at": le.ResetsAt.UTC(),
+		})
 	case errors.As(err, &bb):
 		return budgetRefused(ctx, contractshttp.StatusConflict, bb)
 	case errors.Is(err, app.ErrRunNotFound):
@@ -243,7 +249,7 @@ type reportRequest struct {
 func runState(r domain.Run) contractshttp.Json {
 	return contractshttp.Json{"run": contractshttp.Json{
 		"id": r.ID, "status": string(r.Status), "next_seq": r.NextSeq, "session_id": r.SessionID,
-		"lease_expires_at": utc(r.LeaseExpiresAt),
+		"lease_expires_at": utc(r.LeaseExpiresAt), "limit_resets_at": utc(r.LimitResetsAt),
 	}}
 }
 
@@ -296,6 +302,8 @@ type finishRequest struct {
 	ExitCode *int      `json:"exit_code"`
 	Error    string    `json:"error"`
 	Usage    usageJSON `json:"usage"`
+	// LimitResetsAt is the Limit reset of a limited Run, in RFC 3339.
+	LimitResetsAt *time.Time `json:"limit_resets_at"`
 }
 
 // FinishRun ends the Run this Desktop ran, with its Run usage; one
@@ -316,6 +324,7 @@ func (c *DesktopController) FinishRun(ctx contractshttp.Context) contractshttp.R
 			InputTokens: u.InputTokens, CachedInputTokens: u.CachedInputTokens, OutputTokens: u.OutputTokens,
 			Turns: u.Turns, CostEquivalentUSD: u.CostEquivalentUSD, DurationMS: u.DurationMS,
 		},
+		LimitResetsAt: req.LimitResetsAt,
 	})
 	if err != nil {
 		return desktopFail(ctx, err)
