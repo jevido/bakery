@@ -45,6 +45,7 @@ export type Permission =
   | 'approve'
   | 'manage_budgets'
   | 'manage_work'
+  | 'manage_skills'
 
 /** A Guild the signed-in Member may switch to, with their former role and Permissions there. */
 export type GuildPlace = { id: number; name: string; issue_prefix: string; role: Exclude<Role, 'owner'>; permissions: Permission[] }

@@ -27,6 +27,7 @@ const (
 	PermissionApprove
 	PermissionManageBudgets
 	PermissionManageWork
+	PermissionManageSkills
 
 	endOfPermissions
 )
@@ -36,7 +37,7 @@ var permissionKeys = []string{
 	"administrator", "view_resources", "see_secrets", "deploy",
 	"manage_applications", "manage_servers", "manage_notifications",
 	"manage_guild", "manage_members", "manage_roles", "hire_agents",
-	"approve", "manage_budgets", "manage_work",
+	"approve", "manage_budgets", "manage_work", "manage_skills",
 }
 
 // permissionNames are the glossary's names, in the same order.
@@ -44,7 +45,7 @@ var permissionNames = []string{
 	"Administrator", "View resources", "See secrets", "Deploy",
 	"Manage applications", "Manage servers", "Manage notifications",
 	"Manage guild", "Manage members", "Manage roles", "Hire agents",
-	"Approve", "Manage budgets", "Manage work",
+	"Approve", "Manage budgets", "Manage work", "Manage skills",
 }
 
 // permissionDescriptions say what each Permission allows, as the glossary
@@ -64,6 +65,7 @@ var permissionDescriptions = []string{
 	"Answer approvals.",
 	"Set the guild's budgets.",
 	"Create and change goals and issues, and comment on issues.",
+	"Create, change and delete the guild's skills.",
 }
 
 // overridable are the Permissions a Permission override can set on a

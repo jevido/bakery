@@ -68,6 +68,9 @@ type activityRefs struct {
 	// agents is nil when no one answers for Agents: every one counts as
 	// existing under the name its event kept.
 	agents map[uint64]string
+	// skills is nil when no one answers for Skills: every one counts as
+	// existing.
+	skills map[uint64]string
 	// assignees are the Agents Issues were assigned to and the Agents that
 	// acted, terminated ones too.
 	assignees map[uint64]app.AssigneeAgent
@@ -186,7 +189,7 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 	if refs.prefix, err = c.service.IssuePrefix(cx, guildID); err != nil {
 		return refs, err
 	}
-	var memberIDs, projectIDs, issueIDs, agentIDs, assigneeIDs []uint64
+	var memberIDs, projectIDs, issueIDs, agentIDs, skillIDs, assigneeIDs []uint64
 	withApprovals, withRoutines := false, false
 	add := func(list *[]uint64) func(uint64) {
 		return func(id uint64) {
@@ -205,6 +208,9 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 		withRoutines = withRoutines || e.EntityType == domain.RoutineEntity
 		if e.EntityType == domain.AgentEntity {
 			add(&agentIDs)(e.EntityID)
+		}
+		if e.EntityType == domain.SkillEntity {
+			add(&skillIDs)(e.EntityID)
 		}
 		for field, v := range changes(e) {
 			switch refKind(e.EntityType, field) {
@@ -273,6 +279,11 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 			refs.routines[r.ID] = r.Title
 		}
 	}
+	if len(skillIDs) > 0 && c.SkillNames != nil {
+		if refs.skills, err = c.SkillNames(cx, guildID, skillIDs); err != nil {
+			return refs, err
+		}
+	}
 	if len(agentIDs) > 0 && c.AgentNames != nil {
 		if refs.agents, err = c.AgentNames(cx, guildID, agentIDs); err != nil {
 			return refs, err
@@ -338,6 +349,12 @@ func (c *Controller) activityJSON(ctx contractshttp.Context, es []domain.Activit
 		case domain.BudgetEntity, domain.IncidentEntity:
 			a.Entity.Title, _ = e.Details["name"].(string)
 			a.Entity.Exists = true
+		case domain.SkillEntity:
+			a.Entity.Title, _ = e.Details["name"].(string)
+			a.Entity.Exists = refs.skills == nil
+			if name, ok := refs.skills[e.EntityID]; ok {
+				a.Entity.Title, a.Entity.Exists = name, true
+			}
 		case domain.AgentEntity:
 			a.Entity.Title, _ = e.Details["name"].(string)
 			a.Entity.Exists = refs.agents == nil
@@ -418,7 +435,7 @@ func activityID(ctx contractshttp.Context, field string) (uint64, bool) {
 // event id, for the next page) and limit (1 to 200, 50 by default).
 func (c *Controller) ListActivity(ctx contractshttp.Context) contractshttp.Response {
 	q := app.ActivityQuery{EntityType: ctx.Request().Query("entity"), Limit: app.DefaultActivity}
-	if q.EntityType != "" && !slices.Contains([]string{domain.IssueEntity, domain.GoalEntity, domain.ApprovalEntity, domain.AgentEntity, domain.BudgetEntity, domain.IncidentEntity, domain.RoutineEntity}, q.EntityType) {
+	if q.EntityType != "" && !slices.Contains([]string{domain.IssueEntity, domain.GoalEntity, domain.ApprovalEntity, domain.AgentEntity, domain.BudgetEntity, domain.IncidentEntity, domain.RoutineEntity, domain.SkillEntity}, q.EntityType) {
 		return respond.Invalid(ctx, "entity", "entity must be issue, goal, approval, agent, budget, budget_incident or routine")
 	}
 	entityID, ok := activityID(ctx, "entity_id")

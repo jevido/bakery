@@ -32,13 +32,14 @@ var (
 
 func svc() *app.Service {
 	once.Do(func() {
-		service = app.NewService(infra.Agents{}, infra.Runs{}, guildsOfAgents{}, workOfAgents{}, repositoriesOfAgents{}, infra.Budgets{})
+		service = app.NewService(infra.Agents{}, infra.Runs{}, guildsOfAgents{}, workOfAgents{}, repositoriesOfAgents{}, infra.Budgets{}, infra.Skills{})
 		service.Logf = facades.Log().Errorf
 		service.SignedInDesktops = identity.SignedInDesktops
 		work.OnApprovalDecided("hire_agent", func(ctx context.Context, d work.ApprovalDecided) error {
 			return service.Decided(ctx, app.Decision{GuildID: d.GuildID, AgentID: d.AgentID, DeciderID: d.DeciderID, Approved: d.Approved})
 		})
 		work.OnAgentNames(service.Names)
+		work.OnSkillNames(service.SkillNames)
 		work.OnIssueAssigned(func(ctx context.Context, e work.IssueAssigned) error {
 			return service.IssueAssigned(ctx, e.GuildID, e.IssueID, e.AgentID, e.ActorID)
 		})
@@ -251,6 +252,12 @@ var agentInGuild = guilds.Owns("agent", func(ctx context.Context, id, guildID ui
 	return svc().AgentInGuild(ctx, id, guildID)
 })
 
+// skillInGuild answers 404 for a route whose {id} Skill is another
+// Guild's.
+var skillInGuild = guilds.Owns("skill", func(ctx context.Context, id, guildID uint64) (bool, error) {
+	return svc().SkillInGuild(ctx, id, guildID)
+})
+
 // controller builds the Agents API controller, wired to guilds and
 // identity; Routes and StreamRoutes each need one.
 func controller() *agentshttp.Controller {
@@ -263,7 +270,7 @@ func controller() *agentshttp.Controller {
 }
 
 // Routes registers the Current guild's Agents API: reading needs
-// view_resources, hiring hire_agents, managing an Agent (and starting or
+// view_resources, hiring hire_agents, changing Skills manage_skills, managing an Agent (and starting or
 // cancelling its Runs) hire_agents and being its Hirer or ranking above
 // them. An Agent's Run key may read the Agents, the Org chart and the
 // Runs, its own only (guilds.AuthAgents); every change stays a
@@ -298,6 +305,19 @@ func Routes(r route.Router) {
 	r.Middleware(guilds.Auth, guilds.Can("manage_budgets")).Group(func(r route.Router) {
 		r.Put("/api/budgets", c.SetBudget)
 		r.Post("/api/budget-incidents/{id}/resolve", c.ResolveBudgetIncident)
+	})
+	// Skills are the Board's: an Agent gets its own through its Run's claim,
+	// not through these.
+	r.Middleware(guilds.Auth, view).Get("/api/skills", c.ListSkills)
+	r.Middleware(guilds.Auth, guilds.Can("manage_skills")).Post("/api/skills", c.CreateSkill)
+	r.Middleware(guilds.Auth, skillInGuild, view).Group(func(r route.Router) {
+		r.Get("/api/skills/{id}", c.ShowSkill)
+		r.Get("/api/skills/{id}/file", c.ShowSkillFile)
+	})
+	r.Middleware(guilds.Auth, skillInGuild, guilds.Can("manage_skills")).Group(func(r route.Router) {
+		r.Put("/api/skills/{id}/files", c.WriteSkillFile)
+		r.Delete("/api/skills/{id}/files", c.DeleteSkillFile)
+		r.Delete("/api/skills/{id}", c.DeleteSkill)
 	})
 	r.Middleware(guilds.Auth, runInGuild, guilds.Can("hire_agents")).Post("/api/runs/{id}/cancel", c.CancelRun)
 	r.Middleware(guilds.Auth, guilds.Can("hire_agents")).Post("/api/agents", c.HireAgent)

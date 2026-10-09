@@ -41,6 +41,9 @@ type Controller struct {
 	// AgentNames names the Guild's Agents with these ids that still exist;
 	// nil (or a nil answer) counts every Agent as existing.
 	AgentNames func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)
+	// SkillNames names the Guild's Skills with these ids that still exist;
+	// nil (or a nil answer) counts every Skill as existing.
+	SkillNames func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)
 	// DashboardURL is where the dashboard is reached, for links to an
 	// Issue page.
 	DashboardURL func() string

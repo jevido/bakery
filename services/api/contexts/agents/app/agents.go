@@ -162,6 +162,7 @@ type Service struct {
 	work         Work
 	repositories Repositories
 	budgets      Budgets
+	skills       Skills
 	now          func() time.Time
 	// Logf logs what a request cannot report, such as an Activity event
 	// that was not recorded.
@@ -171,8 +172,8 @@ type Service struct {
 	SignedInDesktops func(ctx context.Context, memberIDs []uint64) (map[uint64][]uint64, error)
 }
 
-func NewService(agents Agents, runs Runs, guilds Guilds, work Work, repositories Repositories, budgets Budgets) *Service {
-	return &Service{agents: agents, runs: runs, guilds: guilds, work: work, repositories: repositories, budgets: budgets, now: time.Now, Logf: log.Printf}
+func NewService(agents Agents, runs Runs, guilds Guilds, work Work, repositories Repositories, budgets Budgets, skills Skills) *Service {
+	return &Service{agents: agents, runs: runs, guilds: guilds, work: work, repositories: repositories, budgets: budgets, skills: skills, now: time.Now, Logf: log.Printf}
 }
 
 // HireInput is a new Agent as typed: ManagerID 0 reports to no one,

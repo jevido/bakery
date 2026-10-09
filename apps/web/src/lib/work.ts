@@ -291,7 +291,7 @@ export type ActivityEvent = {
 }
 
 /** What an Activity event is about. */
-export type ActivityEntity = 'issue' | 'goal' | 'approval' | 'agent' | 'budget' | 'budget_incident' | 'routine'
+export type ActivityEntity = 'issue' | 'goal' | 'approval' | 'agent' | 'budget' | 'budget_incident' | 'routine' | 'skill'
 
 /** The Guild-wide feed's filters: entity kind (and one of it by entity_id), Actor, and before an event id for the next page. */
 export type ActivityFilter = Partial<{ entity: ActivityEntity; entity_id: number; actor: number | `agent:${number}`; before: number; limit: number }>
@@ -349,6 +349,11 @@ const activityVerbs: Record<string, string> = {
   'routine.trigger_secret_rotated': 'rotated the webhook secret of',
   'routine.run_triggered': 'ran',
   'routine.webhook_rejected': 'rejected a webhook delivery to',
+  'skill.created': 'created the skill',
+  'skill.file_updated': 'changed a file of the skill',
+  'skill.file_deleted': 'deleted a file of the skill',
+  'skill.deleted': 'deleted the skill',
+  'agent.skills_synced': 'changed the skills of',
 }
 /** The verb of an Activity row: "commented on" for issue.comment_added. */
 export const activityVerb = (action: string) => activityVerbs[action] ?? action.replace(/[._]/g, ' ')

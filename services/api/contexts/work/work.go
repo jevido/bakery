@@ -178,6 +178,7 @@ var (
 	onDecided = map[string]func(ctx context.Context, d ApprovalDecided) error{}
 	agentsMu  sync.RWMutex
 	onNames   func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)
+	onSkills  func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)
 	onAssign  func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]AssigneeAgent, error)
 )
 
@@ -511,7 +512,9 @@ func approvalDecided(ctx context.Context, a domain.Approval) error {
 // the glossary's agent.* and run.* Actions, the Agent's name (kept, so the event
 // still reads after a rename) and the details its Action carries. With
 // Entity "budget" or "budget_incident" it is about the Budget or Budget
-// incident EntityID, with a budget.* Action and the Budget scope's name.
+// incident EntityID, with a budget.* Action and the Budget scope's name;
+// with Entity "skill" about the Skill EntityID, with a skill.* Action and
+// the Skill's name.
 type AgentActivity struct {
 	GuildID      uint64
 	ActorID      uint64
@@ -525,18 +528,18 @@ type AgentActivity struct {
 }
 
 // RecordActivity adds the event to the Guild's Activity. Anything but an
-// agent.* or run.* Action about an Agent, or a budget.* one about what it
-// names, is refused.
+// agent.* or run.* Action about an Agent, or a budget.* or skill.* one
+// about what it names, is refused.
 func RecordActivity(ctx context.Context, e AgentActivity) error {
 	ev := domain.AgentEvent{
 		Happened: domain.Happened{Actor: domain.Actor{MemberID: e.ActorID, AgentID: e.ActorAgentID}}, GuildID: e.GuildID, AgentID: e.AgentID,
 		AgentName: e.AgentName, Action: e.Action, Details: e.Details,
 	}
 	if e.Entity != "" {
-		if domain.BudgetActions[e.Action] != e.Entity {
+		if domain.EntityActions[e.Action] != e.Entity {
 			return fmt.Errorf("work: %s is not an action about a %s", e.Action, e.Entity)
 		}
-		ev.AgentID, ev.BudgetID = 0, e.EntityID
+		ev.AgentID, ev.EntityID = 0, e.EntityID
 	}
 	return svc().RecordAgentActivity(ctx, ev)
 }
@@ -548,6 +551,25 @@ func OnAgentNames(f func(ctx context.Context, guildID uint64, ids []uint64) (map
 	agentsMu.Lock()
 	defer agentsMu.Unlock()
 	onNames = f
+}
+
+// OnSkillNames registers f to name the Guild's Skills among ids that still
+// exist, so the Activity can tell a deleted one. Until it is registered,
+// every Skill counts as existing.
+func OnSkillNames(f func(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error)) {
+	agentsMu.Lock()
+	defer agentsMu.Unlock()
+	onSkills = f
+}
+
+func skillNames(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error) {
+	agentsMu.RLock()
+	f := onSkills
+	agentsMu.RUnlock()
+	if f == nil {
+		return nil, nil
+	}
+	return f(ctx, guildID, ids)
 }
 
 func agentNames(ctx context.Context, guildID uint64, ids []uint64) (map[uint64]string, error) {
@@ -660,6 +682,7 @@ var triggerInRoutine = guilds.InProject("routine-trigger", func(ctx context.Cont
 func Routes(r route.Router) {
 	c := workhttp.NewController(svc(), guilds.Current, memberNames)
 	c.Visible, c.Member, c.Agent, c.Run, c.AgentNames = guilds.VisibleProjects, guilds.MemberID, guilds.AgentID, guilds.RunID, agentNames
+	c.SkillNames = skillNames
 	c.DashboardURL = notifications.DashboardURL
 	view, manage := guilds.Can("view_resources"), guilds.Can("manage_work")
 	r.Middleware(guilds.AuthAgents, view).Get("/api/goals", c.ListGoals)

@@ -32,6 +32,7 @@
     { value: 'agent', label: 'Agents' },
     { value: 'budget', label: 'Budgets' },
     { value: 'routine', label: 'Routines' },
+    { value: 'skill', label: 'Skills' },
   ]
 
   // The filters as the hash query holds them, read again when a link or Back
@@ -119,6 +120,7 @@
     budget: () => '/costs/budgets',
     budget_incident: () => '/costs/budgets',
     routine: (e) => `/routines/${e.entity.id}`,
+    skill: (e) => `/skills/${e.entity.id}`,
   }
   const link = (e: ActivityEvent) => (e.entity.exists ? href(paths[e.entity.type](e)) : null)
 

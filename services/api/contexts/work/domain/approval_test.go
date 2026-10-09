@@ -324,21 +324,28 @@ func TestAgentEvent(t *testing.T) {
 		"not an agent action":      {GuildID: 1, AgentID: 3, AgentName: "Ada", Action: "issue.created"},
 		"no agent":                 {GuildID: 1, AgentName: "Ada", Action: AgentPausedAction},
 		"no name":                  {GuildID: 1, AgentID: 3, Action: AgentPausedAction},
-		"agent action on a budget": {GuildID: 1, BudgetID: 5, AgentName: "Shop", Action: AgentPausedAction},
+		"agent action on a budget": {GuildID: 1, EntityID: 5, AgentName: "Shop", Action: AgentPausedAction},
 	} {
 		if _, err := bad.Validated(); err == nil {
 			t.Errorf("%s accepted", name)
 		}
 	}
 	// A Project's Budget is in its Project; a Budget incident is its own entity.
-	b, err := AgentEvent{Happened: Happened{Actor: ByMember(9)}, GuildID: 1, BudgetID: 5, AgentName: "Shop", Action: BudgetUpdatedAction,
+	b, err := AgentEvent{Happened: Happened{Actor: ByMember(9)}, GuildID: 1, EntityID: 5, AgentName: "Shop", Action: BudgetUpdatedAction,
 		Details: map[string]any{"scope_type": "project", "scope_id": uint64(12)}}.Validated()
 	if e := b.Activity(); err != nil || e.EntityType != BudgetEntity || e.EntityID != 5 || e.ProjectID != 12 || e.Details["name"] != "Shop" {
 		t.Errorf("budget event %+v %v", e, err)
 	}
-	i, err := AgentEvent{GuildID: 1, BudgetID: 6, AgentName: "Ada", Action: BudgetHardCrossedAction, Details: map[string]any{"scope_type": "agent", "scope_id": uint64(3)}}.Validated()
+	i, err := AgentEvent{GuildID: 1, EntityID: 6, AgentName: "Ada", Action: BudgetHardCrossedAction, Details: map[string]any{"scope_type": "agent", "scope_id": uint64(3)}}.Validated()
 	if e := i.Activity(); err != nil || e.EntityType != IncidentEntity || e.EntityID != 6 || e.ProjectID != 0 {
 		t.Errorf("incident event %+v %v", e, err)
+	}
+	k, err := AgentEvent{GuildID: 1, EntityID: 8, AgentName: "Release notes", Action: SkillCreatedAction, Details: map[string]any{"slug": "release-notes"}}.Validated()
+	if e := k.Activity(); err != nil || e.EntityType != SkillEntity || e.EntityID != 8 || e.ProjectID != 0 || e.Details["name"] != "Release notes" {
+		t.Errorf("skill event %+v %v", e, err)
+	}
+	if _, err := (AgentEvent{GuildID: 1, EntityID: 8, AgentName: "x", Action: AgentHiredAction}).Validated(); err == nil {
+		t.Error("an agent action about a skill accepted")
 	}
 }
 

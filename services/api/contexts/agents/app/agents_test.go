@@ -234,7 +234,7 @@ func (f *fakeWork) RecordActivity(_ context.Context, e Activity) error {
 
 func newTest() (*Service, *fakeAgents, *fakeGuilds, *fakeWork) {
 	a, g, w := &fakeAgents{rows: map[uint64]domain.Agent{}}, &fakeGuilds{joined: map[uint64][]uint64{}, rank: map[uint64]int{}}, &fakeWork{}
-	return NewService(a, &fakeRuns{rows: map[uint64]domain.Run{}, events: map[uint64][]domain.RunEvent{}, agents: a}, g, w, w, &fakeBudgets{}), a, g, w
+	return NewService(a, &fakeRuns{rows: map[uint64]domain.Run{}, events: map[uint64][]domain.RunEvent{}, agents: a}, g, w, w, &fakeBudgets{}, &fakeSkills{}), a, g, w
 }
 
 func TestHireAndDecide(t *testing.T) {

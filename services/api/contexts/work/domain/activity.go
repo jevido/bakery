@@ -48,6 +48,11 @@ const (
 	AgentRoleRemovedAction            = "agent.role_removed"
 	RunStartedAction                  = "run.started"
 	RunFinishedAction                 = "run.finished"
+	AgentSkillsSyncedAction           = "agent.skills_synced"
+	SkillCreatedAction                = "skill.created"
+	SkillFileUpdatedAction            = "skill.file_updated"
+	SkillFileDeletedAction            = "skill.file_deleted"
+	SkillDeletedAction                = "skill.deleted"
 	BudgetUpdatedAction               = "budget.updated"
 	BudgetSoftCrossedAction           = "budget.soft_threshold_crossed"
 	BudgetHardCrossedAction           = "budget.hard_threshold_crossed"
@@ -65,7 +70,7 @@ const (
 )
 
 // AgentActions lists the Actions the agents context records through work.
-var AgentActions = []string{AgentHiredAction, AgentUpdatedAction, AgentPausedAction, AgentResumedAction, AgentTerminatedAction, AgentRoleAddedAction, AgentRoleRemovedAction, RunStartedAction, RunFinishedAction}
+var AgentActions = []string{AgentHiredAction, AgentUpdatedAction, AgentPausedAction, AgentResumedAction, AgentTerminatedAction, AgentRoleAddedAction, AgentRoleRemovedAction, RunStartedAction, RunFinishedAction, AgentSkillsSyncedAction}
 
 // The kinds of thing an Activity event is about.
 const (
@@ -76,13 +81,16 @@ const (
 	BudgetEntity   = "budget"
 	IncidentEntity = "budget_incident"
 	RoutineEntity  = "routine"
+	SkillEntity    = "skill"
 )
 
-// BudgetActions lists the Actions about a Budget or a Budget incident the
-// agents context records through work, with what each is about.
-var BudgetActions = map[string]string{
+// EntityActions lists the Actions about a Budget, a Budget incident or a
+// Skill the agents context records through work, with what each is about.
+var EntityActions = map[string]string{
 	BudgetUpdatedAction: BudgetEntity, BudgetSoftCrossedAction: IncidentEntity,
 	BudgetHardCrossedAction: IncidentEntity, BudgetIncidentResolved: IncidentEntity,
+	SkillCreatedAction: SkillEntity, SkillFileUpdatedAction: SkillEntity,
+	SkillFileDeletedAction: SkillEntity, SkillDeletedAction: SkillEntity,
 }
 
 // SnippetLength is how many characters of a Comment its Activity event
@@ -487,14 +495,14 @@ func (e ApprovalCancelled) Activity() ActivityEvent {
 
 // AgentEvent is something the agents context did to an Agent, recorded
 // as an Activity event about it: the Agent's name is kept in its details
-// so the event still reads once the Agent is renamed. With BudgetID set it
-// is about that Budget or Budget incident instead (BudgetActions tells
-// which), and AgentName is the Budget scope's name.
+// so the event still reads once the Agent is renamed. With EntityID set it
+// is about that Budget, Budget incident or Skill instead (EntityActions
+// tells which), and AgentName is the Budget scope's or the Skill's name.
 type AgentEvent struct {
 	Happened
 	GuildID   uint64
 	AgentID   uint64
-	BudgetID  uint64
+	EntityID  uint64
 	AgentName string
 	Action    string
 	Details   map[string]any
@@ -503,9 +511,9 @@ type AgentEvent struct {
 // Validated checks that the event is about an Agent (or a Budget or Budget
 // incident), with a name and an Action the agents context records for it.
 func (e AgentEvent) Validated() (AgentEvent, error) {
-	if e.BudgetID != 0 {
-		if _, ok := BudgetActions[e.Action]; !ok || e.GuildID == 0 {
-			return AgentEvent{}, invalid("action", "%q is not a budget action", e.Action)
+	if e.EntityID != 0 {
+		if _, ok := EntityActions[e.Action]; !ok || e.GuildID == 0 {
+			return AgentEvent{}, invalid("action", "%q is not a budget or skill action", e.Action)
 		}
 	} else if e.GuildID == 0 || e.AgentID == 0 {
 		return AgentEvent{}, invalid("agent_id", "an agent event needs its guild and agent")
@@ -524,14 +532,14 @@ func (e AgentEvent) Activity() ActivityEvent {
 		details[k] = v
 	}
 	details["name"] = e.AgentName
-	if e.BudgetID != 0 {
+	if e.EntityID != 0 {
 		// A Project's Budget is in its Project, so its events are hidden
 		// from whoever may not view it.
 		var projectID uint64
 		if details["scope_type"] == "project" {
 			projectID, _ = details["scope_id"].(uint64)
 		}
-		return ActivityEvent{GuildID: e.GuildID, Actor: e.Actor, Action: e.Action, EntityType: BudgetActions[e.Action], EntityID: e.BudgetID, ProjectID: projectID, Details: details, CreatedAt: e.At}
+		return ActivityEvent{GuildID: e.GuildID, Actor: e.Actor, Action: e.Action, EntityType: EntityActions[e.Action], EntityID: e.EntityID, ProjectID: projectID, Details: details, CreatedAt: e.At}
 	}
 	return ActivityEvent{GuildID: e.GuildID, Actor: e.Actor, Action: e.Action, EntityType: AgentEntity, EntityID: e.AgentID, Details: details, CreatedAt: e.At}
 }

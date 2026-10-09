@@ -58,7 +58,7 @@ func TestPermissions(t *testing.T) {
 		t.Errorf("union = %v", u.Keys())
 	}
 	keys := AllPermissions.Keys()
-	if len(keys) != 14 || keys[0] != "administrator" || keys[13] != "manage_work" {
+	if len(keys) != 15 || keys[0] != "administrator" || keys[13] != "manage_work" || keys[14] != "manage_skills" {
 		t.Errorf("keys = %v", keys)
 	}
 	back, err := ParsePermissions(keys)
