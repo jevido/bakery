@@ -11,7 +11,7 @@ import (
 func TestFollowPullRequestAndPreview(t *testing.T) {
 	ctx := context.Background()
 	act := &memActivity{}
-	s := NewService(nil, &memIssues{byID: map[uint64]domain.Issue{}}, nil, nil, memberGuild{}, memProjects{}, act, nil, nil)
+	s := NewService(nil, &memIssues{byID: map[uint64]domain.Issue{}}, nil, nil, memberGuild{}, memProjects{}, act, nil, nil, nil)
 	s.Logf = t.Logf
 	products := &memWorkProducts{}
 	s.WorkProducts = products

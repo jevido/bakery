@@ -64,6 +64,7 @@ type activityRefs struct {
 	goals     map[uint64]string
 	issues    map[uint64]domain.Issue
 	approvals map[uint64]string
+	routines  map[uint64]string
 	// agents is nil when no one answers for Agents: every one counts as
 	// existing under the name its event kept.
 	agents map[uint64]string
@@ -186,7 +187,7 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 		return refs, err
 	}
 	var memberIDs, projectIDs, issueIDs, agentIDs, assigneeIDs []uint64
-	withApprovals := false
+	withApprovals, withRoutines := false, false
 	add := func(list *[]uint64) func(uint64) {
 		return func(id uint64) {
 			if id != 0 && !slices.Contains(*list, id) {
@@ -201,6 +202,7 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 			add(&issueIDs)(e.EntityID)
 		}
 		withApprovals = withApprovals || e.EntityType == domain.ApprovalEntity
+		withRoutines = withRoutines || e.EntityType == domain.RoutineEntity
 		if e.EntityType == domain.AgentEntity {
 			add(&agentIDs)(e.EntityID)
 		}
@@ -261,6 +263,16 @@ func (c *Controller) activityRefs(ctx contractshttp.Context, es []domain.Activit
 			refs.approvals[a.ID] = a.Payload.Label()
 		}
 	}
+	if withRoutines {
+		rs, err := c.service.Routines(cx, guildID, app.RoutineFilter{}, c.visible(ctx))
+		if err != nil {
+			return refs, err
+		}
+		refs.routines = make(map[uint64]string, len(rs))
+		for _, r := range rs {
+			refs.routines[r.ID] = r.Title
+		}
+	}
 	if len(agentIDs) > 0 && c.AgentNames != nil {
 		if refs.agents, err = c.AgentNames(cx, guildID, agentIDs); err != nil {
 			return refs, err
@@ -316,6 +328,11 @@ func (c *Controller) activityJSON(ctx contractshttp.Context, es []domain.Activit
 		case domain.ApprovalEntity:
 			a.Entity.Title, _ = e.Details["title"].(string)
 			if title, ok := refs.approvals[e.EntityID]; ok {
+				a.Entity.Title, a.Entity.Exists = title, true
+			}
+		case domain.RoutineEntity:
+			a.Entity.Title, _ = e.Details["title"].(string)
+			if title, ok := refs.routines[e.EntityID]; ok {
 				a.Entity.Title, a.Entity.Exists = title, true
 			}
 		case domain.BudgetEntity, domain.IncidentEntity:
@@ -395,13 +412,13 @@ func activityID(ctx contractshttp.Context, field string) (uint64, bool) {
 }
 
 // ListActivity answers a page of the Current guild's Activity, newest
-// first: entity (issue, goal, approval, agent, budget or budget_incident), actor (a Member id, or
+// first: entity (issue, goal, approval, agent, budget, budget_incident or routine), actor (a Member id, or
 // agent:<id> for an Agent), before (an Activity
 // event id, for the next page) and limit (1 to 200, 50 by default).
 func (c *Controller) ListActivity(ctx contractshttp.Context) contractshttp.Response {
 	q := app.ActivityQuery{EntityType: ctx.Request().Query("entity"), Limit: app.DefaultActivity}
-	if q.EntityType != "" && !slices.Contains([]string{domain.IssueEntity, domain.GoalEntity, domain.ApprovalEntity, domain.AgentEntity, domain.BudgetEntity, domain.IncidentEntity}, q.EntityType) {
-		return respond.Invalid(ctx, "entity", "entity must be issue, goal, approval, agent, budget or budget_incident")
+	if q.EntityType != "" && !slices.Contains([]string{domain.IssueEntity, domain.GoalEntity, domain.ApprovalEntity, domain.AgentEntity, domain.BudgetEntity, domain.IncidentEntity, domain.RoutineEntity}, q.EntityType) {
+		return respond.Invalid(ctx, "entity", "entity must be issue, goal, approval, agent, budget, budget_incident or routine")
 	}
 	if a, ok := strings.CutPrefix(ctx.Request().Query("actor"), "agent:"); ok {
 		id, err := strconv.ParseUint(a, 10, 64)

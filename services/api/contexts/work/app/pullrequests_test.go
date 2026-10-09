@@ -53,7 +53,7 @@ func (m *memWorkProducts) SaveWorkProduct(_ context.Context, w domain.WorkProduc
 func TestOpenPullRequest(t *testing.T) {
 	ctx := context.Background()
 	act := &memActivity{}
-	s := NewService(nil, &memIssues{byID: map[uint64]domain.Issue{}}, nil, nil, memberGuild{}, memProjects{}, act, nil, nil)
+	s := NewService(nil, &memIssues{byID: map[uint64]domain.Issue{}}, nil, nil, memberGuild{}, memProjects{}, act, nil, nil, nil)
 	s.Logf = t.Logf
 	s.Agents = func(_ context.Context, _ uint64, ids []uint64) (map[uint64]AssigneeAgent, error) {
 		return map[uint64]AssigneeAgent{3: {Name: "Ada"}}, nil

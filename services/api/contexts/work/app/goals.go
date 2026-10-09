@@ -52,6 +52,7 @@ type Service struct {
 	activity  Activity
 	inbox     Inbox
 	approvals Approvals
+	routines  Routines
 	now       func() time.Time
 	// Logf logs what a request cannot report, such as an Activity event
 	// that was not recorded.
@@ -80,8 +81,8 @@ type Service struct {
 	PullRequests PullRequests
 }
 
-func NewService(goals Goals, issues Issues, comments Comments, docs Documents, guilds Guilds, projects Projects, activity Activity, inbox Inbox, approvals Approvals) *Service {
-	return &Service{goals: goals, issues: issues, comments: comments, docs: docs, guilds: guilds, projects: projects, activity: activity, inbox: inbox, approvals: approvals, now: time.Now, Logf: log.Printf}
+func NewService(goals Goals, issues Issues, comments Comments, docs Documents, guilds Guilds, projects Projects, activity Activity, inbox Inbox, approvals Approvals, routines Routines) *Service {
+	return &Service{goals: goals, issues: issues, comments: comments, docs: docs, guilds: guilds, projects: projects, activity: activity, inbox: inbox, approvals: approvals, routines: routines, now: time.Now, Logf: log.Printf}
 }
 
 // GoalInput is a new Goal as typed. Empty Level and Status take their

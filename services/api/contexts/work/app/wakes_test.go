@@ -93,7 +93,7 @@ type woken struct{ issue, comment uint64 }
 
 func wakeService(t *testing.T) (*Service, *[]woken) {
 	t.Helper()
-	s := NewService(nil, &memIssues{byID: map[uint64]domain.Issue{}}, &memComments{byID: map[uint64]domain.Comment{}}, nil, memberGuild{}, nil, &memActivity{}, nil, nil)
+	s := NewService(nil, &memIssues{byID: map[uint64]domain.Issue{}}, &memComments{byID: map[uint64]domain.Comment{}}, nil, memberGuild{}, nil, &memActivity{}, nil, nil, nil)
 	s.Logf = t.Logf
 	s.Agents = func(_ context.Context, _ uint64, ids []uint64) (map[uint64]AssigneeAgent, error) {
 		return map[uint64]AssigneeAgent{ids[0]: {Name: "Ada"}}, nil

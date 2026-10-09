@@ -36,7 +36,7 @@ var (
 
 func svc() *app.Service {
 	once.Do(func() {
-		service = app.NewService(infra.Goals{}, infra.Issues{}, infra.Comments{}, infra.Documents{}, guildsOfWork{}, projectsOfWork{}, infra.Activity{}, infra.Inbox{}, infra.Approvals{})
+		service = app.NewService(infra.Goals{}, infra.Issues{}, infra.Comments{}, infra.Documents{}, guildsOfWork{}, projectsOfWork{}, infra.Activity{}, infra.Inbox{}, infra.Approvals{}, infra.Routines{})
 		service.Logf = facades.Log().Errorf
 		service.Decided = approvalDecided
 		service.Agents = assigneeAgents
@@ -217,7 +217,8 @@ func runsLive(ctx context.Context, runIDs []uint64) (map[uint64]bool, error) {
 }
 
 // UnassignAgent takes the terminated Agent off the Guild's Issues that are
-// not done or cancelled; each change is recorded with actorID, who
+// not done or cancelled, and off its Routines, which become Drafts; each
+// change is recorded with actorID, who
 // terminated it, as its Actor.
 func UnassignAgent(ctx context.Context, guildID, agentID, actorID uint64) error {
 	return svc().UnassignAgent(ctx, guildID, agentID, actorID)
@@ -579,8 +580,16 @@ var approvalInGuild = guilds.Owns("approval", func(ctx context.Context, id, guil
 	return svc().ApprovalInGuild(ctx, id, guildID)
 })
 
+// routineInProject answers 404 for a route whose {id} Routine is another
+// Guild's or in a Project the request may not view, and resolves the
+// request's Permissions in its Project, so changing one needs manage_work
+// there.
+var routineInProject = guilds.InProject("routine", func(ctx context.Context, id uint64) (uint64, uint64, bool, error) {
+	return svc().RoutineProject(ctx, id)
+})
+
 // Routes registers the Current guild's Goals, Issues, Comments, Issue
-// documents, Activity, Inbox and Approvals API: reading (and a Member's own Read marks
+// documents, Activity, Inbox, Approvals and Routines API: reading (and a Member's own Read marks
 // and Inbox archives) needs view_resources, changing manage_work, deciding an
 // Approval approve, and
 // changing a Comment also being its author. An Issue's {id} is its id or its
@@ -652,6 +661,10 @@ func Routes(r route.Router) {
 		r.Post("/api/approvals/{id}/request-revision", c.RequestApprovalRevision)
 	})
 	r.Middleware(guilds.Auth, approvalInGuild, manage).Post("/api/approvals/{id}/resubmit", c.ResubmitApproval)
+	r.Middleware(guilds.AuthAgents, view).Get("/api/routines", c.ListRoutines)
+	r.Middleware(guilds.AuthAgents, manage).Post("/api/routines", c.CreateRoutine)
+	r.Middleware(guilds.AuthAgents, routineInProject, view).Get("/api/routines/{id}", c.ShowRoutine)
+	r.Middleware(guilds.AuthAgents, routineInProject, manage).Patch("/api/routines/{id}", c.UpdateRoutine)
 }
 
 // followPullRequests keeps the Work products of Issues in step with what

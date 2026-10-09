@@ -1,0 +1,208 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"slices"
+	"testing"
+
+	"github.com/jevido/bakery/services/api/contexts/work/domain"
+)
+
+// memRoutines keeps Routines in memory.
+type memRoutines struct{ byID map[uint64]domain.Routine }
+
+func (m *memRoutines) Routines(_ context.Context, guildID uint64) ([]domain.Routine, error) {
+	var out []domain.Routine
+	for id := uint64(len(m.byID)); id > 0; id-- {
+		if r, ok := m.byID[id]; ok && r.GuildID == guildID {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (m *memRoutines) Routine(_ context.Context, id uint64) (domain.Routine, bool, error) {
+	r, ok := m.byID[id]
+	return r, ok, nil
+}
+
+func (m *memRoutines) CreateRoutine(_ context.Context, r domain.Routine) (domain.Routine, error) {
+	r.ID = uint64(len(m.byID) + 1)
+	m.byID[r.ID] = r
+	return r, nil
+}
+
+func (m *memRoutines) SaveRoutine(_ context.Context, r domain.Routine) error {
+	m.byID[r.ID] = r
+	return nil
+}
+
+func (m *memRoutines) RoutinesOfAgent(_ context.Context, guildID, agentID uint64) ([]domain.Routine, error) {
+	var out []domain.Routine
+	for _, r := range m.byID {
+		if r.GuildID == guildID && r.AssigneeAgentID == agentID {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (m *memRoutines) DeleteRoutinesOfProject(_ context.Context, projectID uint64) error {
+	for id, r := range m.byID {
+		if r.ProjectID == projectID {
+			delete(m.byID, id)
+		}
+	}
+	return nil
+}
+
+// routineService has Agents 3 and 5, and Agent 4, which is terminated.
+func routineService(t *testing.T) (*Service, *memRoutines, *memActivity) {
+	t.Helper()
+	rs, act := &memRoutines{byID: map[uint64]domain.Routine{}}, &memActivity{}
+	s := NewService(nil, &memIssues{byID: map[uint64]domain.Issue{}}, nil, nil, memberGuild{}, memProjects{}, act, nil, nil, rs)
+	s.Logf = t.Logf
+	s.Agents = func(_ context.Context, _ uint64, ids []uint64) (map[uint64]AssigneeAgent, error) {
+		out := map[uint64]AssigneeAgent{}
+		for _, id := range ids {
+			if id >= 3 && id <= 5 {
+				out[id] = AssigneeAgent{Name: "Builder", Terminated: id == 4}
+			}
+		}
+		return out, nil
+	}
+	return s, rs, act
+}
+
+func TestCreateRoutine(t *testing.T) {
+	ctx := context.Background()
+	s, _, act := routineService(t)
+	all := func(ids []uint64) ([]uint64, error) { return ids, nil }
+	var fe *domain.FieldError
+
+	r, err := s.CreateRoutine(ctx, 1, domain.ByMember(7), RoutineInput{Title: "Weekly check", AssigneeAgentID: 3, ProjectID: 1, Priority: "high"}, all)
+	if err != nil || r.AssigneeAgentID != 3 || r.ProjectID != 1 || r.Priority != domain.High || r.Status != domain.ActiveRoutine {
+		t.Fatalf("CreateRoutine = %+v, %v", r, err)
+	}
+	if d, err := s.CreateRoutine(ctx, 1, domain.ByMember(7), RoutineInput{Title: "Draft"}, all); err != nil || !d.Draft() {
+		t.Fatalf("a Draft = %+v, %v", d, err)
+	}
+	if _, err := s.CreateRoutine(ctx, 1, domain.ByMember(7), RoutineInput{Title: "Gone", AssigneeAgentID: 4}, all); !errors.As(err, &fe) || fe.Field != "assignee_agent_id" {
+		t.Fatalf("a terminated Agent: %v", err)
+	}
+	if _, err := s.CreateRoutine(ctx, 1, domain.ByMember(7), RoutineInput{Title: "Nowhere", ProjectID: 9}, all); !errors.As(err, &fe) || fe.Field != "project_id" {
+		t.Fatalf("an unknown Project: %v", err)
+	}
+	none := func([]uint64) ([]uint64, error) { return nil, nil }
+	if _, err := s.CreateRoutine(ctx, 1, domain.ByMember(7), RoutineInput{Title: "Hidden", ProjectID: 1}, none); !errors.As(err, &fe) || fe.Field != "project_id" {
+		t.Fatalf("a Project the person may not view: %v", err)
+	}
+	if _, err := s.CreateRoutine(ctx, 1, domain.ByMember(7), RoutineInput{Title: "Bad", ConcurrencyPolicy: "queue"}, all); !errors.As(err, &fe) || fe.Field != "concurrency_policy" {
+		t.Fatalf("a bad Concurrency policy: %v", err)
+	}
+	if !slices.Equal(act.actions, []string{domain.RoutineCreatedAction, domain.RoutineCreatedAction}) {
+		t.Fatalf("recorded %v", act.actions)
+	}
+	if got, err := s.Routines(ctx, 1, RoutineFilter{}, none); err != nil || len(got) != 1 || got[0].ProjectID != 0 {
+		t.Fatalf("a list without the Project's Routines = %+v, %v", got, err)
+	}
+	if _, err := s.Routine(ctx, 1, r.ID, none); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a Routine in a hidden Project: %v", err)
+	}
+	if _, err := s.Routine(ctx, 2, r.ID, all); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("another Guild's Routine: %v", err)
+	}
+}
+
+func TestChangeRoutineStatus(t *testing.T) {
+	ctx := context.Background()
+	s, _, act := routineService(t)
+	all := func(ids []uint64) ([]uint64, error) { return ids, nil }
+	r, err := s.CreateRoutine(ctx, 1, domain.ByMember(7), RoutineInput{Title: "Weekly check", AssigneeAgentID: 3}, all)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range []string{"paused", "active", "archived"} {
+		if r, err = s.ChangeRoutine(ctx, 1, domain.ByMember(7), r.ID, RoutinePatch{Status: ptr(st)}, all); err != nil || string(r.Status) != st {
+			t.Fatalf("to %s = %+v, %v", st, r, err)
+		}
+	}
+	if _, err := s.ChangeRoutine(ctx, 1, domain.ByMember(7), r.ID, RoutinePatch{Status: ptr("active")}, all); !errors.Is(err, domain.ErrRoutineArchived) {
+		t.Fatalf("leaving archived: %v", err)
+	}
+	if _, err := s.ChangeRoutine(ctx, 1, domain.ByMember(7), r.ID, RoutinePatch{Title: ptr("Renamed")}, all); !errors.Is(err, domain.ErrRoutineArchived) {
+		t.Fatalf("changing an archived Routine: %v", err)
+	}
+	want := []string{domain.RoutineCreatedAction, domain.RoutineUpdatedAction, domain.RoutineUpdatedAction, domain.RoutineArchivedAction}
+	if !slices.Equal(act.actions, want) {
+		t.Fatalf("recorded %v, want %v", act.actions, want)
+	}
+}
+
+func TestAgentManagesOnlyItsOwnRoutines(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := routineService(t)
+	all := func(ids []uint64) ([]uint64, error) { return ids, nil }
+	agent := domain.ByAgent(3)
+	if _, err := s.CreateRoutine(ctx, 1, agent, RoutineInput{Title: "For another", AssigneeAgentID: 5}, all); !errors.Is(err, ErrNotOwnRoutine) {
+		t.Fatalf("an Agent created another's Routine: %v", err)
+	}
+	own, err := s.CreateRoutine(ctx, 1, agent, RoutineInput{Title: "Mine", AssigneeAgentID: 3}, all)
+	if err != nil || own.CreatedBy.AgentID != 3 {
+		t.Fatalf("own Routine = %+v, %v", own, err)
+	}
+	if _, err := s.ChangeRoutine(ctx, 1, agent, own.ID, RoutinePatch{AssigneeAgentID: ptr(uint64(5))}, all); !errors.Is(err, ErrNotOwnRoutine) {
+		t.Fatalf("an Agent handed its Routine on: %v", err)
+	}
+	other, err := s.CreateRoutine(ctx, 1, domain.ByMember(7), RoutineInput{Title: "Theirs", AssigneeAgentID: 5}, all)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ChangeRoutine(ctx, 1, agent, other.ID, RoutinePatch{Title: ptr("Taken")}, all); !errors.Is(err, ErrNotOwnRoutine) {
+		t.Fatalf("an Agent changed another's Routine: %v", err)
+	}
+	if _, err := s.ChangeRoutine(ctx, 1, agent, own.ID, RoutinePatch{Status: ptr("paused")}, all); err != nil {
+		t.Fatalf("an Agent pausing its own Routine: %v", err)
+	}
+}
+
+func TestTerminatingAnAgentMakesItsRoutinesDrafts(t *testing.T) {
+	ctx := context.Background()
+	s, rs, act := routineService(t)
+	all := func(ids []uint64) ([]uint64, error) { return ids, nil }
+	live, _ := s.CreateRoutine(ctx, 1, domain.ByMember(7), RoutineInput{Title: "Live", AssigneeAgentID: 3}, all)
+	old, _ := s.CreateRoutine(ctx, 1, domain.ByMember(7), RoutineInput{Title: "Old", AssigneeAgentID: 3, Status: "archived"}, all)
+	act.actions = nil
+	if err := s.UnassignAgent(ctx, 1, 3, 7); err != nil {
+		t.Fatal(err)
+	}
+	if !rs.byID[live.ID].Draft() || rs.byID[old.ID].Draft() {
+		t.Fatalf("after terminating: live %+v, archived %+v", rs.byID[live.ID], rs.byID[old.ID])
+	}
+	if !slices.Equal(act.actions, []string{domain.RoutineUpdatedAction}) {
+		t.Fatalf("recorded %v", act.actions)
+	}
+}
+
+func TestDeletingAProjectDeletesItsRoutines(t *testing.T) {
+	ctx := context.Background()
+	s, rs, _ := routineService(t)
+	s.issues = &leavingIssues{memIssues: memIssues{byID: map[uint64]domain.Issue{}}}
+	all := func(ids []uint64) ([]uint64, error) { return ids, nil }
+	in, _ := s.CreateRoutine(ctx, 1, domain.ByMember(7), RoutineInput{Title: "In", ProjectID: 1}, all)
+	out, _ := s.CreateRoutine(ctx, 1, domain.ByMember(7), RoutineInput{Title: "Out", ProjectID: 2}, all)
+	if err := s.ForgetProject(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := rs.byID[in.ID]; ok {
+		t.Fatal("the deleted Project's Routine is left")
+	}
+	if _, ok := rs.byID[out.ID]; !ok {
+		t.Fatal("another Project's Routine was deleted")
+	}
+}
+
+type leavingIssues struct{ memIssues }
+
+func (*leavingIssues) LeaveProject(context.Context, uint64) error { return nil }

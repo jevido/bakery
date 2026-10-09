@@ -31,6 +31,7 @@
     { value: 'approval', label: 'Approvals' },
     { value: 'agent', label: 'Agents' },
     { value: 'budget', label: 'Budgets' },
+    { value: 'routine', label: 'Routines' },
   ]
 
   // The filters as the hash query holds them, read again when a link or Back
@@ -117,6 +118,7 @@
     agent: (e) => `/agents/${e.entity.id}`,
     budget: () => '/costs/budgets',
     budget_incident: () => '/costs/budgets',
+    routine: (e) => `/routines/${e.entity.id}`,
   }
   const link = (e: ActivityEvent) => (e.entity.exists ? href(paths[e.entity.type](e)) : null)
 

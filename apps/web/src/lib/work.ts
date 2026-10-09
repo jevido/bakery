@@ -289,7 +289,7 @@ export type ActivityEvent = {
 }
 
 /** What an Activity event is about. */
-export type ActivityEntity = 'issue' | 'goal' | 'approval' | 'agent' | 'budget' | 'budget_incident'
+export type ActivityEntity = 'issue' | 'goal' | 'approval' | 'agent' | 'budget' | 'budget_incident' | 'routine'
 
 /** The Guild-wide feed's filters: entity kind, Actor, and before an event id for the next page. */
 export type ActivityFilter = Partial<{ entity: ActivityEntity; actor: number | `agent:${number}`; before: number; limit: number }>
@@ -338,6 +338,9 @@ const activityVerbs: Record<string, string> = {
   'budget.soft_threshold_crossed': 'warned about the budget of',
   'budget.hard_threshold_crossed': 'stopped by the budget of',
   'budget.incident_resolved': 'resolved the budget incident of',
+  'routine.created': 'created',
+  'routine.updated': 'updated',
+  'routine.archived': 'archived',
 }
 /** The verb of an Activity row: "commented on" for issue.comment_added. */
 export const activityVerb = (action: string) => activityVerbs[action] ?? action.replace(/[._]/g, ' ')

@@ -55,7 +55,7 @@ func (m *memActivity) Record(_ context.Context, e domain.ActivityEvent) error {
 func hireService(t *testing.T) (*Service, *memActivity, *[]domain.Approval) {
 	t.Helper()
 	act := &memActivity{}
-	s := NewService(nil, nil, nil, nil, nil, nil, act, nil, &memApprovals{byID: map[uint64]domain.Approval{}})
+	s := NewService(nil, nil, nil, nil, nil, nil, act, nil, &memApprovals{byID: map[uint64]domain.Approval{}}, nil)
 	s.Logf = t.Logf
 	var heard []domain.Approval
 	s.Decided = func(_ context.Context, a domain.Approval) error {

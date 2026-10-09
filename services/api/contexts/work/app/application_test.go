@@ -40,7 +40,7 @@ func (memProjects) ApplicationInProject(_ context.Context, _, projectID, applica
 func TestIssueApplication(t *testing.T) {
 	ctx := context.Background()
 	act := &memActivity{}
-	s := NewService(nil, &memIssues{byID: map[uint64]domain.Issue{}}, nil, nil, memberGuild{}, memProjects{}, act, nil, nil)
+	s := NewService(nil, &memIssues{byID: map[uint64]domain.Issue{}}, nil, nil, memberGuild{}, memProjects{}, act, nil, nil, nil)
 	s.Logf = t.Logf
 	all := func(ids []uint64) ([]uint64, error) { return ids, nil }
 	var fe *domain.FieldError

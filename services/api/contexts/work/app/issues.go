@@ -750,9 +750,12 @@ func (s *Service) DeleteIssue(ctx context.Context, guildID, memberID uint64, ref
 	return nil
 }
 
-// ForgetProject takes every Issue, and every Activity event, out of a
-// Project that was deleted.
+// ForgetProject deletes the Routines of a Project that was deleted and
+// takes every Issue, and every Activity event, out of it.
 func (s *Service) ForgetProject(ctx context.Context, projectID uint64) error {
+	if err := s.routines.DeleteRoutinesOfProject(ctx, projectID); err != nil {
+		return err
+	}
 	return s.issues.LeaveProject(ctx, projectID)
 }
 
@@ -869,8 +872,8 @@ func (s *Service) AgentInbox(ctx context.Context, guildID, agentID uint64) (is [
 }
 
 // UnassignAgent takes a terminated Agent off the Guild's Issues that are
-// not done or cancelled, each change recorded with the actor who
-// terminated it.
+// not done or cancelled, and off its Routines, which become Drafts; each
+// change recorded with the actor who terminated it.
 func (s *Service) UnassignAgent(ctx context.Context, guildID, agentID, actorID uint64) error {
 	is, err := s.issues.OpenIssuesOfAgent(ctx, guildID, agentID)
 	if err != nil {
@@ -887,7 +890,7 @@ func (s *Service) UnassignAgent(ctx context.Context, guildID, agentID, actorID u
 		}
 		s.publish(ctx, e)
 	}
-	return nil
+	return s.unassignRoutines(ctx, guildID, agentID, actorID)
 }
 
 func (s *Service) assign(ctx context.Context, i *domain.Issue, memberID uint64) error {

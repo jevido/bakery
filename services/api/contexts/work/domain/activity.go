@@ -51,6 +51,9 @@ const (
 	BudgetSoftCrossedAction    = "budget.soft_threshold_crossed"
 	BudgetHardCrossedAction    = "budget.hard_threshold_crossed"
 	BudgetIncidentResolved     = "budget.incident_resolved"
+	RoutineCreatedAction       = "routine.created"
+	RoutineUpdatedAction       = "routine.updated"
+	RoutineArchivedAction      = "routine.archived"
 )
 
 // AgentActions lists the Actions the agents context records through work.
@@ -64,6 +67,7 @@ const (
 	AgentEntity    = "agent"
 	BudgetEntity   = "budget"
 	IncidentEntity = "budget_incident"
+	RoutineEntity  = "routine"
 )
 
 // BudgetActions lists the Actions about a Budget or a Budget incident the
@@ -122,6 +126,13 @@ func (h Happened) issue(i Issue, action string, details map[string]any) Activity
 func (h Happened) approval(a Approval, action string, details map[string]any) ActivityEvent {
 	details["type"], details["title"] = a.Type, a.Payload.Label()
 	return ActivityEvent{GuildID: a.GuildID, Actor: h.Actor, Action: action, EntityType: ApprovalEntity, EntityID: a.ID, Details: details, CreatedAt: h.At}
+}
+
+// routine keeps the Routine's title in every event about it, and its
+// Project, so its events stay hidden where it is.
+func (h Happened) routine(r Routine, action string, details map[string]any) ActivityEvent {
+	details["title"] = r.Title
+	return ActivityEvent{GuildID: r.GuildID, Actor: h.Actor, Action: action, EntityType: RoutineEntity, EntityID: r.ID, ProjectID: r.ProjectID, Details: details, CreatedAt: h.At}
 }
 
 // snippet is the first SnippetLength characters of a comment's body.
@@ -556,4 +567,73 @@ func (e WorkProductMoved) Activity() ActivityEvent {
 		details["provider"] = w.Provider
 	}
 	return e.issue(e.Issue, e.action(), details)
+}
+
+type RoutineCreated struct {
+	Happened
+	Routine Routine
+}
+
+func (e RoutineCreated) Activity() ActivityEvent {
+	return e.routine(e.Routine, RoutineCreatedAction, map[string]any{"status": e.Routine.Status})
+}
+
+// RoutineChanged is a Routine as it was before a change and as it was
+// stored, when the change did not archive it.
+type RoutineChanged struct {
+	Happened
+	Before, After Routine
+}
+
+// Changes is every field that differs, from → to; empty when nothing did.
+func (e RoutineChanged) Changes() map[string]any {
+	b, a := e.Before, e.After
+	out := map[string]any{}
+	if b.Title != a.Title {
+		out["title"] = change(b.Title, a.Title)
+	}
+	if b.Description != a.Description {
+		out["description"] = true
+	}
+	for _, f := range []struct {
+		name     string
+		from, to any
+		differ   bool
+	}{
+		{"priority", b.Priority, a.Priority, b.Priority != a.Priority},
+		{"status", b.Status, a.Status, b.Status != a.Status},
+		{"concurrency_policy", b.ConcurrencyPolicy, a.ConcurrencyPolicy, b.ConcurrencyPolicy != a.ConcurrencyPolicy},
+		{"catch_up_policy", b.CatchUpPolicy, a.CatchUpPolicy, b.CatchUpPolicy != a.CatchUpPolicy},
+		{"project", ref(b.ProjectID), ref(a.ProjectID), b.ProjectID != a.ProjectID},
+		{"goal", ref(b.GoalID), ref(a.GoalID), b.GoalID != a.GoalID},
+		{"parent", ref(b.ParentIssueID), ref(a.ParentIssueID), b.ParentIssueID != a.ParentIssueID},
+		{"assignee", agentRef(b.AssigneeAgentID), agentRef(a.AssigneeAgentID), b.AssigneeAgentID != a.AssigneeAgentID},
+	} {
+		if f.differ {
+			out[f.name] = change(f.from, f.to)
+		}
+	}
+	return out
+}
+
+func (e RoutineChanged) Activity() ActivityEvent {
+	return e.routine(e.After, RoutineUpdatedAction, map[string]any{"changes": e.Changes()})
+}
+
+// agentRef is an Agent assignee as an Activity event keeps it, as
+// assignee does for an Issue's; nil for none.
+func agentRef(id uint64) any {
+	if id == 0 {
+		return nil
+	}
+	return map[string]any{"id": id, "kind": "agent"}
+}
+
+type RoutineArchived struct {
+	Happened
+	Routine Routine
+}
+
+func (e RoutineArchived) Activity() ActivityEvent {
+	return e.routine(e.Routine, RoutineArchivedAction, map[string]any{})
 }
