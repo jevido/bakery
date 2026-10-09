@@ -43,7 +43,7 @@ Agent branch, Run's Project, Costs, Budget, Budget metric, Budget window,
 Budget scope, Observed amount, Budget status, Warning, Hard stop, Budget
 incident, Pause reason, Subscription limit, Limit reset, Desktop limit,
 Skill, Skill slug, Skill file, Agent skills, Conversation Run, Completion
-reply)
+reply, Guild's CEO, Board chat directive)
 are in
 [`glossary.md`](../../glossary.md).
 
@@ -129,8 +129,15 @@ admin always may (with `hire_agents`, which they always hold).
   error, when a hook or the timer made it; the routes answer 422 for it.
   work's Comment hook wakes the Agent assignee with `automation` /
   `issue_commented`, or on a Conversation with `automation` /
-  `conversation_message` for its Conversation owner's message; a New
-  session (`/new`) wakes nothing.
+  `conversation_message` for its Conversation owner's message, or on the
+  Board chat the Guild's CEO with `automation` / `board_message` for a
+  Member's message (dropped when the Guild has no CEO); a New session
+  (`/new`) wakes nothing.
+- The Guild's CEO is read, never stored: the Guild's Agent with Job `ceo`,
+  not `pending_approval` or `terminated`, with the lowest id (Paperclip's
+  `agents.find(a => a.role === "ceo" && a.status !== "terminated")`, its
+  oldest). A `paused` CEO is still the CEO; its Wake is refused as any
+  paused Agent's is, so the Board chat waits until it is resumed.
 - Every Wake in a stopped scope is refused (dropped when a hook or the
   timer made it, 422 naming the Budget scope through the routes), so
   StartRun, RunHeartbeat and work's hooks start nothing there.
@@ -183,6 +190,25 @@ admin always may (with `hire_agents`, which they always hold).
   cut), oldest first, so the waking messages come last; with none yet,
   "The conversation has no messages yet." It has no Workspace line: a
   Conversation has no Project and so no Application.
+  A Board chat Run's prompt is its own too: the Board chat directive (the
+  Agent is the Guild's CEO answering its Board, the Guild's people, in
+  their shared Board chat; several people write there and each turn names
+  its author; answer the newest turn, plainly, as the CEO; hand real work
+  off as Issues with `bakeryCreateIssue` assigned to the right Agent and
+  link them; ask the Board to decide what only it can (a hire, a spend)
+  with `bakeryCreateApproval` instead of promising it; never change the Board chat's status; reply with
+  `bakeryAddComment` on this Issue or end with the answer as the final
+  message, which The Bakery posts), a blank line, "This board chat is
+  {identifier}.", the Agent line, then "Board chat so far:" with at most
+  the last 30 messages after the Session boundary
+  (`work.ConversationHistory`, `MaxConversationHistory`), each its trimmed
+  body cut to 4000 characters (`MaxHistoryBody`, with "…" when cut) as a
+  tagged turn `<turn author="{name}" role="board|you">…</turn>`, `you` for
+  a Comment of the answering Agent and `board` for a Member's, oldest
+  first; `<turn` and `</turn` inside a body become `&lt;turn` and
+  `&lt;/turn`, so a message cannot close its turn and fake another
+  (Paperclip's `serializeTurn`). With none yet, "The board chat has no
+  messages yet." It has no Workspace line either.
   When the Run has a Workspace, the prompt adds where the Agent works and
   how it finishes: in a git Worktree of the Application's repository on
   its Agent branch, based on the Application's branch; commit, push the
@@ -221,7 +247,8 @@ admin always may (with `hire_agents`, which they always hold).
   replacement Run (see the Run aggregate), records the Desktop limit of
   the claiming Desktop and records `run.finished` in the Activity. Then
   every Budget the Run counts toward is evaluated (below); a `limited`
-  Run's usage is real and counts. A Conversation Run that finishes
+  Run's usage is real and counts. A Conversation Run (the Board chat's
+  included) that finishes
   `succeeded` and whose Agent wrote no Comment on the Conversation with
   that Run's `run_id` gets its Completion reply: The Bakery writes the
   last `result` Run event's `result` text, cut to the longest Comment, as
@@ -473,6 +500,8 @@ records nothing more.
 
   The two `me` routes are 403 `only an agent's run key may use this` for a
   person, as Paperclip's are agent-only. Every other agents route is 403 `agents cannot use this route` for it.
+  agents publishes `agents.GuildCEO(ctx, guild) (AgentBrief, bool,
+  error)`: the Guild's CEO, and false when the Guild has none.
   agents registers the hook identity calls to resolve a Run key: the
   SHA-256 of the key against the Runs that are `running`, answering the
   Run, its Agent and its Guild, or nothing (401).
@@ -535,7 +564,10 @@ records nothing more.
     number, title, description and Project (for a Run's check, its prompt
     and its Run's Project), and
     the call that clears a terminated Agent as Assignee, `work.OnIssueAssigned`
-    and `work.OnIssueCommented` (registered, to wake the Agent assignee),
+    and `work.OnIssueCommented` (registered, to wake the Agent assignee,
+    or the Guild's CEO for the Board chat), `work.OnGuildCEO` (registered
+    with `GuildCEO`, so work can name the Board chat's CEO and check that
+    an Agent writing there is it),
     `work.OpenIssuesOfAgent` for the timer's check and the Heartbeat
     prompts, `work.InboxOfAgent` for `MyInbox`, and `work.CommentsForRun`
     for the comments a Run's prompt quotes, and the Issue's Application
@@ -607,6 +639,12 @@ records nothing more.
   replacement is claimed by another Desktop, and the Comments are already
   the record; a Conversation Run's prompt carries the history since the
   Session boundary instead.
+- **A Board chat Run's history is tagged turns**, as Paperclip's
+  `serializeTurn` writes them, unlike a Member's Conversation: several
+  people write there, so each turn names its author, and a message that
+  closes its own tag could otherwise put words in the CEO's mouth.
+  Paperclip keeps the last 20 comments; The Bakery keeps the 30 it keeps
+  for every Conversation.
 - **The Completion reply** (Paperclip's `completionReply`): a chat whose
   answer depends on the model remembering to call `bakeryAddComment`
   sometimes stays silent, and `claude`'s final text is the answer. Agent

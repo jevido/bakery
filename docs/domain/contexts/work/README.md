@@ -17,7 +17,8 @@ the Board to make, with their Linked issues and Approval comments, and the
 Guild's Routines: recurring work that, on a schedule, on a signed webhook from outside or when someone
 presses Run, creates an Execution Issue for an Agent, and the Conversations:
 an Issue a Member holds with one Agent of the Guild to chat with it, its
-Comments the messages. Every
+Comments the messages, and the Guild's Board chat: the one Conversation
+its whole Board shares with the Guild's CEO. Every
 Goal, Issue, Approval and Routine belongs to exactly one Guild, and an Issue in a
 Project follows that Project's Permission overrides.
 
@@ -45,7 +46,7 @@ Webhook trigger, Public id, Webhook secret, Signing mode, Replay window,
 Webhook delivery, Idempotency key, Routine variable, Built-in variable,
 Routine revision, Snapshot, Restore (a Routine revision), Conversation,
 Conversation agent, Conversation owner, Conversation state, Session
-boundary, New session) are in
+boundary, New session, Board chat) are in
 [`glossary.md`](../../glossary.md).
 
 | Term | Meaning |
@@ -67,7 +68,7 @@ boundary, New session) are in
 | Aggregate | Invariants |
 | --------- | ---------- |
 | Goal | Belongs to one Guild. Title 1–200 characters. Goal level and Goal status from their lists. Its parent Goal is in the same Guild and is never the Goal itself or one of its Sub-goals (no cycle). Its owner, if any, is a Member of the Guild. |
-| Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild or an Agent of the Guild that is not terminated (its Agent assignee), never both; terminating the Agent clears it as Assignee of its open Issues. Its Project is in the Guild and its Goal is in the Guild. Its Issue's Application, if any, is an Application of its Project: an Issue without a Project has none, and moving the Issue to another Project (or out of one) clears it. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. Its Checkout (`checkout_run_id`, `checked_out_at`) names at most one Run, a Run of its Agent assignee; Checkout moves it from one of the expected statuses (`todo`, `backlog`, `blocked` by default, as Paperclip's MCP server's), or from `in_progress` when it is already the Agent's, to `in_progress`; an Issue assigned to anyone else cannot be checked out, and an Issue without Assignee takes the checking-out Agent as its Agent assignee. While that Run is `running`, an Agent's change to the Issue from any other Run is 409; once it is not, the Checkout is a Stale checkout, which the same Agent's next Run takes over. A new Assignee, set by anyone, clears the Checkout. Release clears it, moves `in_progress` back to `todo` and, on an open Issue, clears the Agent assignee. It is created by a Member or an Agent actor. An Issue may be a Conversation: its `conversation_agent_id`, `conversation_member_id`, `conversation_state` and `conversation_boundary_comment_id` are all null, or the first three are all set. A Conversation is the only one of its Guild, Conversation agent and Conversation owner; its Agent assignee is its Conversation agent and never changes (Release does not clear it); it has no Member assignee, Project, Goal, parent Issue, Sub-issues, Blockers (in either direction) or Issue's Application; it is created `in_review` (as Paperclip's) with the title "Chat with <Agent name>" (cut to 200 characters) and Conversation state `waiting`, and never becomes `done` or `cancelled`. Its Session boundary, if any, is a Comment of the same Issue. Each refused change is 422, "is fixed for a conversation" on the field, or "a conversation cannot be done or cancelled" on `status`. |
+| Issue | Belongs to one Guild. Its number is unique in the Guild, taken from the Guild's Issue counter (kept in work) when it is created, and never changes or comes back. Title 1–200 characters. Issue status and Priority from their lists. Its parent Issue is in the same Guild and never the Issue itself or one of its Sub-issues (no cycle). Its Assignee is a Member of the Guild or an Agent of the Guild that is not terminated (its Agent assignee), never both; terminating the Agent clears it as Assignee of its open Issues. Its Project is in the Guild and its Goal is in the Guild. Its Issue's Application, if any, is an Application of its Project: an Issue without a Project has none, and moving the Issue to another Project (or out of one) clears it. The Status times follow its Issue status: started is set once on the first move to `in_progress`; completed is set on `done` and cancelled on `cancelled`, and each is cleared when the Issue moves back out. Its Blockers are Issues of the same Guild, never the Issue itself, and never form a cycle: an Issue may not be blocked by an Issue that is, directly or through others, blocked by it. Its Checkout (`checkout_run_id`, `checked_out_at`) names at most one Run, a Run of its Agent assignee; Checkout moves it from one of the expected statuses (`todo`, `backlog`, `blocked` by default, as Paperclip's MCP server's), or from `in_progress` when it is already the Agent's, to `in_progress`; an Issue assigned to anyone else cannot be checked out, and an Issue without Assignee takes the checking-out Agent as its Agent assignee. While that Run is `running`, an Agent's change to the Issue from any other Run is 409; once it is not, the Checkout is a Stale checkout, which the same Agent's next Run takes over. A new Assignee, set by anyone, clears the Checkout. Release clears it, moves `in_progress` back to `todo` and, on an open Issue, clears the Agent assignee. It is created by a Member or an Agent actor. An Issue may be a Conversation: its `conversation_agent_id`, `conversation_member_id`, `conversation_state` and `conversation_boundary_comment_id` are all null and `conversation_board` false (an ordinary Issue); or agent, member and state are set and `conversation_board` is false (a Member's Conversation); or `conversation_board` is true, state is set and agent and member are null (the Board chat). A Member's Conversation is the only one of its Guild, Conversation agent and Conversation owner; its Agent assignee is its Conversation agent and never changes (Release does not clear it); it has no Member assignee, Project, Goal, parent Issue, Sub-issues, Blockers (in either direction) or Issue's Application; it is created `in_review` (as Paperclip's) with the title "Chat with <Agent name>" (cut to 200 characters) and Conversation state `waiting`, and never becomes `done` or `cancelled`. Its Session boundary, if any, is a Comment of the same Issue. The Board chat is the only one of its Guild; it is created `in_review` with the title "Board Operations" (Paperclip's) and Conversation state `waiting`; it has no Assignee (Member or Agent), Project, Goal, parent Issue, Sub-issues, Blockers or Issue's Application, and never becomes `done` or `cancelled`. Each refused change is 422, "is fixed for a conversation" on the field, or "a conversation cannot be done or cancelled" on `status`. |
 | Comment | Belongs to one Issue and is written by one Member or one Agent actor (`author_agent`). Body 1–20000 characters. Only its author edits or deletes it. A deleted Comment keeps its place in the thread, its body gone, shown as "deleted". |
 | Issue document | Belongs to one Issue and its Guild. Its Document key is unique per Issue and never changes. Title at most 200 characters (may be empty), body at most 524288 characters, Markdown only. Its Revisions are numbered 1, 2, … without gaps; each save and each Restore adds exactly one Revision, and Revisions are never changed. A save needs the newest Revision as its Base revision (none for the first save), or it is refused. Restoring the newest Revision is refused, since it would change nothing. A Revision's author is a Member or an Agent actor. Deleting the Issue document removes its Revisions. |
 | Activity event | Append-only. Belongs to one Guild and has one Actor, a Member or an Agent actor (none once that Member's account is gone, and none for what The Bakery recorded on its own: a Pull request or Preview changing on the git host) and one Action from the glossary's list, about exactly one Goal, Issue, Approval, Agent, Budget, Budget incident, Routine or Skill. It keeps the Issue's number and title, the Goal's title, the Approval's type and payload title, or the Agent's or Skill's name, as they were, so an event about a deleted one still reads, and the Issue's Project, so a deleted Issue's events stay hidden where it was. It is never changed, and goes only with its Guild. |
@@ -117,6 +118,16 @@ in that Project after its Permission overrides, and is otherwise hidden
   and leaves the Conversation state as it was, and the Conversation
   agent's Comment makes it `waiting`. A Comment an Agent writes keeps its
   Run's id (`run_id`).
+- `OpenBoardChat()` [`manage_work`; a Member only, an Agent principal is
+  403]: answers the Guild's Board chat, or creates it under the Guild's
+  Issue counter the first time. Two requests at once answer the same Board
+  chat. Recorded as `issue.board_chat_opened`, on creation only.
+- `WriteComment(body)` on the Board chat [`manage_work`; any Member, or an
+  Agent principal only when it is the Guild's CEO; any other Agent is
+  403]: in the same transaction, a Member's message makes it `active`, a
+  Member's New session (`/new`) becomes its Session boundary and leaves the
+  Conversation state as it was, and the Guild's CEO's Comment makes it
+  `waiting`. A Member's message other than `/new` wakes the Guild's CEO.
 - `SaveDocument(key, title, body, change summary, base revision)`
   [`manage_work`]: creates the Issue document on its first save, and adds
   a Revision on every save; a stale Base revision is refused (409).
@@ -288,6 +299,7 @@ Comment publishes nothing (Paperclip records none).
 | `CommentWritten` | `WriteComment` | `issue.comment_added` | the Comment and its first 140 characters |
 | `CommentDeleted` | `DeleteComment` | `issue.comment_deleted` | the Comment |
 | `ConversationOpened` | `OpenConversation`, when it created one | `issue.conversation_opened` | the Conversation agent's id and name |
+| `BoardChatOpened` | `OpenBoardChat`, when it created it | `issue.board_chat_opened` | number, title |
 | `IssueCheckedOut` | `Checkout` | `issue.checked_out` | the Run |
 | `IssueReleased` | `Release` | `issue.released` | the Run |
 | `DocumentSaved` | `SaveDocument`, `RestoreRevision` | `issue.document_created` on the first save, else `issue.document_updated` | Document key, title, Revision number, and the restored Revision's number for a Restore |
@@ -358,6 +370,8 @@ title and Project.
   | `GET /api/chats` | `{"issues": [Issue]}`, the asking Member's Conversations, most recently updated first |
   | `GET /api/chats/{agent_id}` | `{"issue": Issue + "children": []}` the asking Member's Conversation with that Agent, or `{"issue": null}` |
   | `POST /api/chats/{agent_id}` | `{"issue": Issue + "children": []}`, 200 whether it was opened now or before (`manage_work`) |
+  | `GET /api/board-chat` | `{"issue": Issue + "children": []}` the Guild's Board chat, or `{"issue": null}` |
+  | `POST /api/board-chat` | `{"issue": Issue + "children": []}`, 200 whether it was opened now or before (`manage_work`, a Member only) |
   | `GET /api/routines`, `POST /api/routines` | `{"routines": [Routine]}`, each with its `last_run`; 201 `{"routine": Routine}`. A Routine run is `{id, routine: {id, title}, source, status, triggered_at, completed_at, failure_reason, trigger: {id, kind, label} or null, issue: {id, identifier, title, status} or null}`, and an Issue names the Routine it came from in `routine: {id, title}` or null |
   | `GET /api/routines/{id}`, `PATCH /api/routines/{id}` | `{"routine": Routine + "triggers": [Routine trigger] + "recent_runs": [Routine run]}` |
   | `GET /api/routines/{id}/runs`, `GET /api/routine-runs` | `{"routine_runs": [Routine run]}`, newest first, of the Routine or of every Routine the person may view (Paperclip's Recent Runs); `limit` 1 to 200, 50 by default |
@@ -402,7 +416,9 @@ title and Project.
   Conversations are left out of `GET /api/issues` unless it is given `q`
   (as Paperclip's search finds them), and always out of its counts, the
   Inbox and `InboxCount`, a Goal's or a Project's Issues and Issue counts,
-  Sub-issues, `OpenIssuesOfAgent` and `InboxOfAgent`.
+  Sub-issues, `OpenIssuesOfAgent` and `InboxOfAgent`. The Board chat is
+  left out of `GET /api/issues` also with `q`, since it is nobody's own
+  chat, and out of `GET /api/chats` and every list above.
 
   A Goal is `{id, title, description, level, status, parent_id, owner:
   {id, name} | null, created_at, updated_at}`; it is written with `title`,
@@ -422,8 +438,10 @@ title and Project.
   Issue ids (422 for the Issue itself, another Guild's Issue or a cycle),
   and an Issue on its own answers with `blocked_by` and `blocking`, each a
   list of `{id, identifier, title, status}` the person may see. Every Issue
-  carries `conversation: {agent: {id, name, icon}, member_id, state,
-  boundary_comment_id} | null`. A Comment is `{id, body, deleted, author, created_at,
+  carries `conversation: {board, agent: {id, name, icon} | null, member_id,
+  state, boundary_comment_id} | null`: `board` true and `member_id` null
+  for the Board chat, whose `agent` is the Guild's CEO when it is read
+  (null when the Guild has none). A Comment is `{id, body, deleted, author, created_at,
   updated_at, edited, run_id}`, `run_id` the Run an Agent wrote it in (null
   for a Member's). An Issue document is `{id, key, title, body,
   format: "markdown", latest_revision_id, latest_revision_number,
@@ -464,6 +482,7 @@ title and Project.
   | `issue.comment_deleted` | `issue_number`, `issue_title`, `comment_id` |
   | `issue.checked_out`, `issue.released` | `issue_number`, `issue_title`, `run_id` |
   | `issue.conversation_opened` | `issue_number`, `issue_title`, `agent_id`, `agent_name` |
+  | `issue.board_chat_opened` | `issue_number`, `issue_title` |
   | `issue.document_created`, `issue.document_updated` | `issue_number`, `issue_title`, `key`, `title`, `revision_number`, and `restored_from` for a Restore |
   | `issue.document_deleted` | `issue_number`, `issue_title`, `key`, `title` |
   | `approval.created` | `type`, `title`, `issue_ids` |
@@ -591,18 +610,23 @@ title and Project.
   brief and the Member who did it), `work.OnIssueCommented(f)` (called
   after a Comment is written on an Issue whose Agent assignee is set and
   whose Issue status is not `done` or `cancelled`; with the Issue's brief,
-  the Comment and its author, and whether the Issue is a Conversation and
-  the Comment a New session, so agents wakes the Agent with
-  `conversation_message` for its owner's message and not at all for
-  `/new`), `work.ConversationHistory(ctx, guild, issue, limit)` (the
+  the Comment and its author, and whether the Issue is a Conversation,
+  the Board chat (`Board`) and the Comment a New session, so agents wakes
+  the Agent with `conversation_message` for its owner's message, the
+  Guild's CEO (carried as `AgentID`) with `board_message` for a Member's
+  message in the Board chat, and nobody for `/new`), `work.OnGuildCEO(f)`
+  (the agents context names the Guild's CEO, as it names the assignee
+  Agents; until it registers, the Guild has none, and the Board chat wakes
+  nobody), `work.ConversationHistory(ctx, guild, issue, limit)` (the
   newest `limit` Comments of a Conversation after its Session boundary,
   deleted ones left out, oldest first, with their author's name, for a
   Conversation Run's prompt), `work.ReplyInConversation(ctx, guild,
   issue, agent, run, body)` (the Completion reply: `body`, cut to the
   longest Comment, written through `WriteComment` as the Conversation
-  agent in that Run, and nothing when the Agent already has a Comment
-  that is not deleted with that `run_id`, or the Issue is no
-  Conversation of that Agent) and `work.OpenIssuesOfAgent(ctx, guild,
+  agent, or as the Guild's CEO in the Board chat, in that Run, and nothing
+  when the Agent already has a Comment that is not deleted with that
+  `run_id`, or the Issue is neither a Conversation of that Agent nor the
+  Board chat with that Agent as the Guild's CEO) and `work.OpenIssuesOfAgent(ctx, guild,
   agent)` (the Issues assigned to an Agent with Issue status `todo`,
   `in_progress` or `in_review`, oldest first, with identifier, Issue
   status, Priority and title, for the Heartbeat timer's check and its
@@ -630,9 +654,19 @@ title and Project.
   Ask/Plan work modes and `request_confirmation` cards sit on issue
   interactions The Bakery does not have, Comments have no attachments,
   and chat channels (Slack, Telegram, email) are left out.
-- **Board chat is a later slice.** Paperclip's Conference Room runs
-  `claude` on the server, which The Bakery never does; it needs a Run on
-  the asking person's own Desktop without an Agent.
+- **The Board chat is answered by the Guild's CEO Agent.** Paperclip's
+  Conference Room runs `claude` on its server as the board itself, only on
+  a single-operator `local_trusted` instance and behind an experimental
+  switch, and marks its replies with a sentinel author. The Bakery never
+  runs `claude` on the server and no AI acts with a person's Permissions,
+  so the Board chat is answered by the Guild's CEO, a real Agent with its
+  own Roles, on its Hirer's Desktop, and its reply is that Agent's Comment.
+  It is shared by the whole Board, as Paperclip's one standing "Board
+  Operations" issue is, so every Member's bubble carries their name.
+  Feedback votes, the `%%ACTIONS%%` signals and Paperclip's history button
+  (it does nothing there) are left out; its "new chat" button becomes a New
+  session. Unlike a Member's Conversation it stays out of search too, since
+  it is nobody's own chat and has its own page.
 - **Any Member with `manage_work` may chat** with any Agent of the Guild,
   as they may already comment on its Issues and so wake it. The Hirer
   still controls spending through Pause, `wake_on_demand` and Budgets.
