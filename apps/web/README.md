@@ -98,7 +98,10 @@ Role is gone for a Member), and more for Blockers, documents, Activity,
 the Inbox, Approvals, Runs and Agents (the file's header lists them all);
 `pull-request` starts the Forgejo stand-in and follows an Agent's Run from
 the Issue's Application to its Pull request and Preview on the Issue page.
-Each runs once in the dark theme at 1440×900.
+Each runs once in the dark theme at 1440×900. The sections that need a
+Desktop (here, in `e2e/agents.ts` and in `e2e/costs.ts`) get it from
+`e2e/runner.ts`: the desktop app's `login`, approved through the API, and
+its headless `runner` with the `claude` stand-in.
 
 `e2e/servers.ts` (`task web:servers`, needs `task dev`) checks the Servers
 pages and S3 Storage, one section per flow (`bun e2e/servers.ts remote`

@@ -148,12 +148,13 @@
 //   bun e2e/work.ts [section ...]   (task web:work; needs task dev)
 //
 // The same environment as e2e/walk.ts overrides what it uses.
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium, type Page } from 'playwright-core'
+import { desktopRunner as sharedRunner } from './runner.ts'
 
 const WEB = (process.env.BAKERY_WEB ?? 'http://127.0.0.1:4930').replace(/\/$/, '')
 const CHROMIUM = process.env.CHROMIUM ?? '/usr/bin/chromium'
@@ -217,52 +218,9 @@ async function cleanIssues(page: Page) {
   for (const p of projects.filter((p) => p.name === scratchProject)) await page.request.delete(`${WEB}/api/projects/${p.id}`)
 }
 
-const DESKTOP_DIR = new URL('../../desktop/', import.meta.url).pathname
-
-/**
- * A headless Desktop runner for the owner: `login` connected to the dev
- * Bakery (its approve link approved through the API), then `runner` with the
- * claude stand-in (extra adds to or overrides its environment), each in its
- * own process group. stop() ends it and signs
- * its Desktop out again.
- */
-async function desktopRunner(page: Page, extra: Record<string, string> = {}): Promise<{ stop: () => Promise<void> }> {
-  const home = mkdtempSync(join(tmpdir(), 'bakery-work-e2e-'))
-  const env = {
-    ...process.env,
-    BAKERY_DESKTOP_HOME: home,
-    BAKERY_CLAUDE: process.env.BAKERY_CLAUDE ?? join(DESKTOP_DIR, 'bin/claude-standin'),
-    // Slow enough that the Transcript is seen growing.
-    BAKERY_STANDIN_DELAY: process.env.BAKERY_STANDIN_DELAY ?? '1s',
-    ...extra,
-  }
-  const login = spawn('go', ['run', '.', 'login', '--server', WEB, '--no-browser'], { cwd: DESKTOP_DIR, env, stdio: ['ignore', 'pipe', 'inherit'] })
-  let out = ''
-  const link = await new Promise<URL>((resolve, reject) => {
-    login.stdout!.on('data', (b: Buffer) => {
-      out += b.toString()
-      const m = out.match(/https?:\/\/\S+desktop-sign-in\S+/)
-      if (m) resolve(new URL(m[0]))
-    })
-    login.on('exit', (code) => reject(new Error(`login exited ${code}: ${out}`)))
-  })
-  const [, id] = link.hash.match(/desktop-sign-in\/(\d+)/)!
-  const token = new URLSearchParams(link.hash.split('?')[1]).get('token')
-  const approved = await page.request.post(`${WEB}/api/desktop-sign-ins/${id}/approve`, { data: { token } })
-  if (!approved.ok()) throw new Error(`approve the desktop: ${approved.status()}`)
-  const { desktop_id } = (await approved.json()) as { desktop_id: number }
-  await new Promise((resolve) => login.on('exit', resolve))
-  const runner: ChildProcess = spawn('go', ['run', '.', 'runner'], { cwd: DESKTOP_DIR, env, detached: true, stdio: ['ignore', 'inherit', 'inherit'] })
-  return {
-    stop: async () => {
-      try {
-        process.kill(-runner.pid!, 'SIGTERM')
-      } catch {}
-      await page.request.delete(`${WEB}/api/desktops/${desktop_id}`)
-      rmSync(home, { recursive: true, force: true })
-    },
-  }
-}
+/** The shared runner, slow enough that the Transcript is seen growing. */
+const desktopRunner = (page: Page, extra: Record<string, string> = {}) =>
+  sharedRunner(page, { BAKERY_STANDIN_DELAY: process.env.BAKERY_STANDIN_DELAY ?? '1s', ...extra })
 
 /** Picks an option of a dialog chip or popover by its accessible names. */
 async function pick(page: Page, scope: ReturnType<Page['getByRole']>, chip: string, option: string) {

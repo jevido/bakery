@@ -47,11 +47,9 @@
 //   bun e2e/costs.ts [section ...]   (task web:costs; needs task dev)
 //
 // The same environment as e2e/walk.ts overrides what it uses.
-import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { chromium, type Page } from 'playwright-core'
+import { desktopRunner } from './runner.ts'
 
 const WEB = (process.env.BAKERY_WEB ?? 'http://127.0.0.1:4930').replace(/\/$/, '')
 const CHROMIUM = process.env.CHROMIUM ?? '/usr/bin/chromium'
@@ -86,47 +84,6 @@ async function signedIn(): Promise<Page> {
   return ctx.newPage()
 }
 
-const DESKTOP_DIR = new URL('../../desktop/', import.meta.url).pathname
-
-/**
- * A headless Desktop runner for the owner, as in e2e/work.ts: `login`
- * approved through the API, then `runner` with the claude stand-in, in its
- * own process group. stop() ends it and signs its Desktop out again.
- */
-async function desktopRunner(page: Page): Promise<{ stop: () => Promise<void> }> {
-  const home = mkdtempSync(join(tmpdir(), 'bakery-costs-e2e-'))
-  const env = {
-    ...process.env,
-    BAKERY_DESKTOP_HOME: home,
-    BAKERY_CLAUDE: process.env.BAKERY_CLAUDE ?? join(DESKTOP_DIR, 'bin/claude-standin'),
-  }
-  const login = spawn('go', ['run', '.', 'login', '--server', WEB, '--no-browser'], { cwd: DESKTOP_DIR, env, stdio: ['ignore', 'pipe', 'inherit'] })
-  let out = ''
-  const link = await new Promise<URL>((resolve, reject) => {
-    login.stdout!.on('data', (b: Buffer) => {
-      out += b.toString()
-      const m = out.match(/https?:\/\/\S+desktop-sign-in\S+/)
-      if (m) resolve(new URL(m[0]))
-    })
-    login.on('exit', (code) => reject(new Error(`login exited ${code}: ${out}`)))
-  })
-  const [, id] = link.hash.match(/desktop-sign-in\/(\d+)/)!
-  const token = new URLSearchParams(link.hash.split('?')[1]).get('token')
-  const approved = await page.request.post(`${WEB}/api/desktop-sign-ins/${id}/approve`, { data: { token } })
-  if (!approved.ok()) throw new Error(`approve the desktop: ${approved.status()}`)
-  const { desktop_id } = (await approved.json()) as { desktop_id: number }
-  await new Promise((resolve) => login.on('exit', resolve))
-  const runner: ChildProcess = spawn('go', ['run', '.', 'runner'], { cwd: DESKTOP_DIR, env, detached: true, stdio: ['ignore', 'inherit', 'inherit'] })
-  return {
-    stop: async () => {
-      try {
-        process.kill(-runner.pid!, 'SIGTERM')
-      } catch {}
-      await page.request.delete(`${WEB}/api/desktops/${desktop_id}`)
-      rmSync(home, { recursive: true, force: true })
-    },
-  }
-}
 
 type Usage = { input_tokens: number; cached_input_tokens: number; output_tokens: number; cost_equivalent_usd: number; duration_ms: number }
 type Run = { id: number; status: string; started_at: string | null; finished_at: string | null; usage: Usage; issue: { id: number } | null }
@@ -299,7 +256,7 @@ sections['hard-stop'] = async () => {
   const ada = await hire(page, names[0])
   const bob = await hire(page, names[1])
   const issues: number[] = []
-  let desktop: { stop: () => Promise<void> } | undefined
+  let desktop: Awaited<ReturnType<typeof desktopRunner>> | undefined
   try {
     const set = await page.request.put(`${WEB}/api/budgets`, { data: { scope_type: 'agent', scope_id: ada, metric: 'runs', amount: 2, warn_percent: 50 } })
     expect('the agent Budget is set', set.ok(), await set.text())
@@ -394,7 +351,7 @@ sections.resolve = async () => {
   const resolve = (id: number, data: Record<string, unknown>, as: Page = page) =>
     as.request.post(`${WEB}/api/budget-incidents/${id}/resolve`, { data })
   let issue = 0
-  let desktop: { stop: () => Promise<void> } | undefined
+  let desktop: Awaited<ReturnType<typeof desktopRunner>> | undefined
   let member: { page: Page; leave: () => Promise<void> } | undefined
   try {
     const set = await page.request.put(`${WEB}/api/budgets`, { data: { scope_type: 'agent', scope_id: ada, metric: 'runs', amount: 1 } })
@@ -511,7 +468,7 @@ sections.budgets = async () => {
   const { project } = (await (await page.request.post(`${WEB}/api/projects`, { data: { name: projectName } })).json()) as { project: { id: number } }
   const agent = await hire(page, name)
   let issue: number | undefined
-  let desktop: { stop: () => Promise<void> } | undefined
+  let desktop: Awaited<ReturnType<typeof desktopRunner>> | undefined
   let viewer: { page: Page; leave: () => Promise<void> } | undefined
   try {
     // Set on the Agent page's empty Budget card: Runs, monthly, 2, warning at 50%.
