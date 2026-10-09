@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"regexp"
@@ -19,6 +20,16 @@ type memRoutines struct {
 	runs     []domain.RoutineRun
 	revs     []domain.RoutineRevision
 	locked   bool
+	// lastTrigger is the newest trigger id given, as the sequence's.
+	lastTrigger uint64
+}
+
+func (m *memRoutines) RestoreRoutine(ctx context.Context, r domain.Routine, ts []domain.RoutineTrigger, by domain.Actor, changeSummary string, restoredFromID uint64) (domain.RoutineRevision, error) {
+	m.byID[r.ID] = r
+	m.triggers = slices.DeleteFunc(m.triggers, func(t domain.RoutineTrigger) bool { return t.RoutineID == r.ID })
+	m.triggers = append(m.triggers, ts...)
+	slices.SortStableFunc(m.triggers, func(a, b domain.RoutineTrigger) int { return cmp.Compare(a.ID, b.ID) })
+	return m.AppendRevision(ctx, r.ID, by, changeSummary, restoredFromID)
 }
 
 func (m *memRoutines) AppendRevision(_ context.Context, routineID uint64, by domain.Actor, changeSummary string, restoredFromID uint64) (domain.RoutineRevision, error) {
@@ -128,7 +139,8 @@ func (m *memRoutines) TriggerByPublicID(_ context.Context, publicID string) (dom
 }
 
 func (m *memRoutines) CreateTrigger(_ context.Context, t domain.RoutineTrigger) (domain.RoutineTrigger, error) {
-	t.ID = uint64(len(m.triggers) + 1)
+	m.lastTrigger++
+	t.ID = m.lastTrigger
 	m.triggers = append(m.triggers, t)
 	return t, nil
 }

@@ -820,3 +820,38 @@ func (c *Controller) ListRoutineRevisions(ctx contractshttp.Context) contractsht
 	}
 	return ctx.Response().Success().Json(contractshttp.Json{"revisions": out})
 }
+
+// RestoreRoutineRevision puts the Routine back as one of its revisions
+// has it, as a new revision, and answers the Webhook secret of each
+// Webhook trigger it recreated, the only time it is shown.
+func (c *Controller) RestoreRoutineRevision(ctx contractshttp.Context) contractshttp.Response {
+	id, ok := routeID(ctx)
+	if !ok {
+		return notFound(ctx)
+	}
+	revisionID, err := strconv.ParseUint(ctx.Request().Route("revision"), 10, 64)
+	if err != nil {
+		return notFound(ctx)
+	}
+	res, err := c.service.RestoreRoutineRevision(ctx.Context(), c.guild(ctx), c.actor(ctx), id, revisionID, c.visible(ctx))
+	if err != nil {
+		return fail(ctx, err)
+	}
+	out, err := c.routinesJSON(ctx, []domain.Routine{res.Routine})
+	if err != nil {
+		return fail(ctx, err)
+	}
+	revs, err := c.routineRevisionsJSON(ctx, []domain.RoutineRevision{res.Revision})
+	if err != nil {
+		return fail(ctx, err)
+	}
+	secrets := make([]contractshttp.Json, len(res.Recreated))
+	for n, t := range res.Recreated {
+		secrets[n] = contractshttp.Json{"trigger_id": t.ID, "webhook_path": webhookPath(t), "webhook_secret": t.Secret}
+	}
+	return ctx.Response().Success().Json(contractshttp.Json{
+		"routine": out[0], "revision": revs[0],
+		"restored_from_revision_id": res.RestoredFrom.ID, "restored_from_revision_number": res.RestoredFrom.Number,
+		"secret_materials": secrets,
+	})
+}

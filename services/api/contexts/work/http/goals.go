@@ -171,6 +171,7 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 	var fe *domain.FieldError
 	var stale *app.StaleRevisionError
 	var staleRoutine *app.StaleRoutineRevisionError
+	var newestRoutine *app.RestoreNewestRoutineError
 	var refused *domain.ApprovalRefusedError
 	var held *domain.HeldError
 	var prRefused *app.PullRequestRefusedError
@@ -181,7 +182,7 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 	case errors.As(err, &status):
 		return ctx.Response().Json(contractshttp.StatusConflict, contractshttp.Json{"message": err.Error(), "status": string(status.Status)})
 	case errors.Is(err, domain.ErrNotHolder), errors.Is(err, domain.ErrNotAssignee), errors.Is(err, app.ErrBusy), errors.Is(err, domain.ErrArchivedRoutineTriggers),
-		errors.Is(err, domain.ErrRoutineArchivedRun), errors.Is(err, domain.ErrRoutinePaused), errors.Is(err, domain.ErrTriggerDisabled):
+		errors.Is(err, domain.ErrRoutineArchivedRun), errors.Is(err, domain.ErrRestoreArchivedRoutine), errors.Is(err, domain.ErrRoutinePaused), errors.Is(err, domain.ErrTriggerDisabled):
 		return respond.Error(ctx, contractshttp.StatusConflict, err.Error())
 	case errors.Is(err, app.ErrAgentsOnly), errors.Is(err, app.ErrNotOwnRoutine), errors.Is(err, domain.ErrNotRoutinesTrigger):
 		return respond.Error(ctx, contractshttp.StatusForbidden, err.Error())
@@ -200,6 +201,12 @@ func fail(ctx contractshttp.Context, err error) contractshttp.Response {
 			"message":                 err.Error(),
 			"current_revision_id":     staleRoutine.Current.LatestRevisionID,
 			"current_revision_number": staleRoutine.Current.LatestRevisionNumber,
+		})
+	case errors.As(err, &newestRoutine):
+		return ctx.Response().Json(contractshttp.StatusConflict, contractshttp.Json{
+			"message":                 err.Error(),
+			"current_revision_id":     newestRoutine.Current.LatestRevisionID,
+			"current_revision_number": newestRoutine.Current.LatestRevisionNumber,
 		})
 	case errors.As(err, &fe):
 		return respond.Invalid(ctx, fe.Field, fe.Message)

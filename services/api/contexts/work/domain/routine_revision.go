@@ -126,3 +126,62 @@ func (r Routine) CheckBaseRevision(base uint64) error {
 	}
 	return nil
 }
+
+// ErrRestoreArchivedRoutine is a Restore of a revision of an archived
+// Routine, which is not changed again.
+var ErrRestoreArchivedRoutine = errors.New("an archived routine cannot be restored")
+
+// Restore puts back the title, description, Priority, Routine status,
+// policies and Routine variables of the Snapshot, each through its setter
+// so every invariant still holds. The Project, Goal, parent Issue and
+// Agent assignee are the caller's to check and set.
+func (r *Routine) Restore(s SnapshotRoutine) error {
+	if r.Archived() {
+		return ErrRestoreArchivedRoutine
+	}
+	if s.Status != ActiveRoutine && s.Status != PausedRoutine {
+		return ErrRestoreArchivedRoutine
+	}
+	if err := r.Rename(s.Title); err != nil {
+		return err
+	}
+	if err := r.Describe(s.Description); err != nil {
+		return err
+	}
+	vars := make([]RoutineVariable, len(s.Variables))
+	for n, v := range s.Variables {
+		vars[n] = RoutineVariable{Name: v.Name, Label: v.Label, Type: VariableType(v.Type), Default: v.Default, Required: v.Required, Options: v.Options}
+	}
+	if err := r.SetVariables(vars); err != nil {
+		return err
+	}
+	r.SetPriority(s.Priority)
+	r.SetConcurrencyPolicy(s.ConcurrencyPolicy)
+	r.SetCatchUpPolicy(s.CatchUpPolicy)
+	return r.SetStatus(s.Status)
+}
+
+// RestoreTrigger puts the Routine trigger t of r back as the Snapshot s
+// has it, keeping its Public id and secret, and counts its Next run again
+// from now. A trigger that is gone since is a zero t of the Snapshot's
+// id; a webhook one is given the new Public id and secret.
+func RestoreTrigger(r Routine, t RoutineTrigger, s SnapshotTrigger, by Actor, publicID, secret string, now time.Time) (RoutineTrigger, error) {
+	if t.ID == 0 {
+		t = RoutineTrigger{ID: s.ID, GuildID: r.GuildID, RoutineID: r.ID, Kind: s.Kind, CreatedBy: by}
+		if s.Kind == WebhookTrigger {
+			t.PublicID, t.Secret = publicID, secret
+		}
+	}
+	set := TriggerSettings{Label: &s.Label, Enabled: &s.Enabled}
+	switch s.Kind {
+	case ScheduleTrigger:
+		set.CronExpression, set.Timezone = &s.CronExpression, &s.Timezone
+	case WebhookTrigger:
+		set.SigningMode, set.ReplayWindowSec = &s.SigningMode, &s.ReplayWindowSec
+	}
+	if err := t.Change(r, set, now); err != nil {
+		return RoutineTrigger{}, err
+	}
+	t.Reschedule(r, now)
+	return t, nil
+}

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jevido/bakery/services/api/contexts/work/domain"
@@ -68,6 +69,10 @@ type Routines interface {
 	// most limit.
 	RoutineRevisions(ctx context.Context, routineID uint64, limit int) ([]domain.RoutineRevision, error)
 	RoutineRevision(ctx context.Context, routineID, id uint64) (domain.RoutineRevision, bool, error)
+	// RestoreRoutine saves the Routine, makes its triggers ts (deleting
+	// the others and adding those it no longer has, with their own id)
+	// and appends the Routine revision of the Restore, all at once.
+	RestoreRoutine(ctx context.Context, r domain.Routine, ts []domain.RoutineTrigger, by domain.Actor, changeSummary string, restoredFromID uint64) (domain.RoutineRevision, error)
 }
 
 // StaleRoutineRevisionError is a change to a Routine refused because
@@ -79,6 +84,15 @@ type StaleRoutineRevisionError struct {
 
 func (e *StaleRoutineRevisionError) Error() string { return domain.ErrStaleRoutineRevision.Error() }
 func (e *StaleRoutineRevisionError) Unwrap() error { return domain.ErrStaleRoutineRevision }
+
+// RestoreNewestRoutineError is a Restore of the Routine revision that is
+// already Current's newest.
+type RestoreNewestRoutineError struct {
+	Current domain.Routine
+}
+
+func (e *RestoreNewestRoutineError) Error() string { return domain.ErrRestoreNewest.Error() }
+func (e *RestoreNewestRoutineError) Unwrap() error { return domain.ErrRestoreNewest }
 
 // MaxRoutineRevisions is the most Routine revisions a list answers.
 const MaxRoutineRevisions = 100
@@ -524,6 +538,145 @@ func (s *Service) RoutineRevisions(ctx context.Context, guildID, id uint64, visi
 		return nil, err
 	}
 	return s.routines.RoutineRevisions(ctx, id, MaxRoutineRevisions)
+}
+
+// RestoreResult is a Restore of a Routine revision: the Routine as it is
+// now, the new revision, the one restored and the Webhook triggers it
+// recreated, each with its new Public id and secret, shown only this once.
+type RestoreResult struct {
+	Routine      domain.Routine
+	Revision     domain.RoutineRevision
+	RestoredFrom domain.RoutineRevision
+	Recreated    []domain.RoutineTrigger
+}
+
+// RestoreRoutineRevision puts the Guild's Routine and its triggers back as
+// the revision's Snapshot has them, by the Member or Agent, as a new
+// revision "Restored from revision N", after Paperclip's restoreRevision.
+// Triggers it has that the Snapshot has not are deleted; those it has are
+// put back keeping their Public id and secret; those gone since come back
+// with their own id, a Webhook one with a new Public id and secret. A Goal
+// or parent Issue gone since is cleared; an Agent assignee that can no
+// longer be assigned is refused. An Agent restores only a Routine assigned
+// to itself, to a revision assigned to itself.
+func (s *Service) RestoreRoutineRevision(ctx context.Context, guildID uint64, by domain.Actor, id, revisionID uint64, visible Visible) (RestoreResult, error) {
+	if _, err := s.ownRoutine(ctx, guildID, by, id, visible); err != nil {
+		return RestoreResult{}, err
+	}
+	rev, found, err := s.routines.RoutineRevision(ctx, id, revisionID)
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	if !found {
+		return RestoreResult{}, ErrNotFound
+	}
+	snap := rev.Snapshot.Routine
+	if by.AgentID != 0 && snap.AssigneeAgentID != by.AgentID {
+		return RestoreResult{}, ErrNotOwnRoutine
+	}
+	unlock, err := s.routines.LockRoutine(ctx, id)
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	defer unlock()
+	r, err := s.ownRoutine(ctx, guildID, by, id, visible)
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	if r.LatestRevisionID == rev.ID {
+		return RestoreResult{}, &RestoreNewestRoutineError{Current: r}
+	}
+	if err := r.Restore(snap); err != nil {
+		return RestoreResult{}, err
+	}
+	if snap.AssigneeAgentID != r.AssigneeAgentID {
+		if err := s.assignRoutine(ctx, &r, snap.AssigneeAgentID); err != nil {
+			return RestoreResult{}, err
+		}
+	}
+	// Deleting a Project deletes its Routines, so a Snapshot's Project
+	// that is gone (or the person may no longer view) is one the Routine
+	// left since: it stays where it is.
+	if snap.ProjectID != r.ProjectID {
+		i := domain.Issue{GuildID: r.GuildID}
+		if err := s.placeIn(ctx, &i, snap.ProjectID, visible); err == nil {
+			r.PlaceIn(i.ProjectID)
+		} else if fe := (*domain.FieldError)(nil); !errors.As(err, &fe) {
+			return RestoreResult{}, err
+		}
+	}
+	// The database clears a Goal or parent Issue when it is deleted; one
+	// gone since the Snapshot is cleared the same way.
+	if err := s.routineGoal(ctx, &r, snap.GoalID); err != nil {
+		var fe *domain.FieldError
+		if !errors.As(err, &fe) {
+			return RestoreResult{}, err
+		}
+		r.GoalID = 0
+	}
+	if err := s.restoreParent(ctx, &r, snap.ParentIssueID); err != nil {
+		return RestoreResult{}, err
+	}
+	current, err := s.routines.Triggers(ctx, []uint64{id})
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	now := s.now()
+	ts := make([]domain.RoutineTrigger, 0, len(rev.Snapshot.Triggers))
+	var recreated []domain.RoutineTrigger
+	for _, st := range rev.Snapshot.Triggers {
+		var t domain.RoutineTrigger
+		for _, c := range current {
+			if c.ID == st.ID {
+				t = c
+			}
+		}
+		gone := t.ID == 0
+		t, err := domain.RestoreTrigger(r, t, st, by, randomHex(12), randomHex(24), now)
+		if err != nil {
+			return RestoreResult{}, err
+		}
+		if t.Kind == domain.ScheduleTrigger && t.Enabled {
+			if err := r.CheckSchedulable("variables"); err != nil {
+				return RestoreResult{}, err
+			}
+		}
+		if gone && t.Kind == domain.WebhookTrigger {
+			recreated = append(recreated, t)
+		}
+		ts = append(ts, t)
+	}
+	summary := fmt.Sprintf("Restored from revision %d", rev.Number)
+	newRev, err := s.routines.RestoreRoutine(ctx, r, ts, by, summary, rev.ID)
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	after, found, err := s.routines.Routine(ctx, id)
+	if err == nil && !found {
+		err = ErrNotFound
+	}
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	s.publish(ctx, domain.RoutineRevisionRestored{Happened: s.happened(by), Routine: after, Revision: newRev, RestoredFrom: rev})
+	return RestoreResult{Routine: after, Revision: newRev, RestoredFrom: rev, Recreated: recreated}, nil
+}
+
+// restoreParent sets the parent Issue a Snapshot names, without the
+// person's view of it: it was checked when it was set. One gone since is
+// cleared.
+func (s *Service) restoreParent(ctx context.Context, r *domain.Routine, issueID uint64) error {
+	if issueID == 0 {
+		return r.MoveUnder(nil)
+	}
+	i, found, err := s.issues.Issue(ctx, issueID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return r.MoveUnder(nil)
+	}
+	return r.MoveUnder(&i)
 }
 
 // RoutineTriggers lists the Routine triggers of the Routines by Routine,

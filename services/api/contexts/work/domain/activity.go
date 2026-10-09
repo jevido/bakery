@@ -59,6 +59,7 @@ const (
 	RoutineTriggerUpdatedAction       = "routine.trigger_updated"
 	RoutineTriggerDeletedAction       = "routine.trigger_deleted"
 	RoutineTriggerSecretRotatedAction = "routine.trigger_secret_rotated"
+	RoutineRevisionRestoredAction     = "routine.revision_restored"
 	RoutineRunTriggeredAction         = "routine.run_triggered"
 	RoutineWebhookRejectedAction      = "routine.webhook_rejected"
 )
@@ -737,6 +738,23 @@ type RoutineTriggerSecretRotated struct {
 
 func (e RoutineTriggerSecretRotated) Activity() ActivityEvent {
 	return e.routine(e.Routine, RoutineTriggerSecretRotatedAction, triggerDetails(e.Trigger))
+}
+
+// RoutineRevisionRestored is a Routine put back as an older Routine
+// revision has it, kept as the new Revision.
+type RoutineRevisionRestored struct {
+	Happened
+	Routine      Routine
+	Revision     RoutineRevision
+	RestoredFrom RoutineRevision
+}
+
+func (e RoutineRevisionRestored) Activity() ActivityEvent {
+	return e.routine(e.Routine, RoutineRevisionRestoredAction, map[string]any{
+		"revision_id": e.Revision.ID, "revision_number": e.Revision.Number,
+		"restored_from_revision_id": e.RestoredFrom.ID, "restored_from_revision_number": e.RestoredFrom.Number,
+		"trigger_count": len(e.Revision.Snapshot.Triggers),
+	})
 }
 
 // RoutineRunTriggered is a Routine run its Schedule or the API made, once

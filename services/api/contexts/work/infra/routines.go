@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 
 	contractsorm "github.com/goravel/framework/contracts/database/orm"
@@ -156,7 +157,11 @@ func (s Routines) CreateRoutine(ctx context.Context, r domain.Routine) (domain.R
 }
 
 func (s Routines) SaveRoutine(ctx context.Context, r domain.Routine) error {
-	_, err := s.query(ctx).Exec(`UPDATE routines SET project_id = ?, goal_id = ?, parent_issue_id = ?, title = ?, description = ?,
+	return saveRoutine(s.query(ctx), r)
+}
+
+func saveRoutine(q contractsorm.Query, r domain.Routine) error {
+	_, err := q.Exec(`UPDATE routines SET project_id = ?, goal_id = ?, parent_issue_id = ?, title = ?, description = ?,
 		assignee_agent_id = ?, priority = ?, status = ?, concurrency_policy = ?, catch_up_policy = ?, variables = ?::jsonb, updated_at = now() WHERE id = ?`,
 		nullable(r.ProjectID), nullable(r.GoalID), nullable(r.ParentIssueID), r.Title, r.Description,
 		nullable(r.AssigneeAgentID), string(r.Priority), string(r.Status), string(r.ConcurrencyPolicy), string(r.CatchUpPolicy),
@@ -300,29 +305,40 @@ func (s Routines) triggerWhere(ctx context.Context, column string, v any) (domai
 }
 
 func (s Routines) CreateTrigger(ctx context.Context, t domain.RoutineTrigger) (domain.RoutineTrigger, error) {
+	return createTrigger(s.query(ctx), t)
+}
+
+// createTrigger inserts the Routine trigger, with its own id when it has
+// one (a Restore of a trigger gone since; the sequence is already past
+// it).
+func createTrigger(q contractsorm.Query, t domain.RoutineTrigger) (domain.RoutineTrigger, error) {
 	publicID, secret, mode, window, deliveryStatus, deliveryAt, err := webhookColumns(t)
 	if err != nil {
 		return domain.RoutineTrigger{}, err
 	}
 	rec := routineTriggerRecord{
-		GuildID: t.GuildID, RoutineID: t.RoutineID, Kind: string(t.Kind), Label: t.Label, Enabled: t.Enabled,
+		ID: t.ID, GuildID: t.GuildID, RoutineID: t.RoutineID, Kind: string(t.Kind), Label: t.Label, Enabled: t.Enabled,
 		CronExpression: t.CronExpression, Timezone: t.Timezone, NextRunAt: t.NextRunAt,
 		PublicID: publicID, SecretEncrypted: secret, SigningMode: mode, ReplayWindowSec: window,
 		LastRotatedAt: t.LastRotatedAt, LastDeliveryStatus: deliveryStatus, LastDeliveryAt: deliveryAt,
 		CreatedByMemberID: nullable(t.CreatedBy.MemberID), CreatedByAgentID: nullable(t.CreatedBy.AgentID),
 	}
-	if err := s.query(ctx).Create(&rec); err != nil {
+	if err := q.Create(&rec); err != nil {
 		return domain.RoutineTrigger{}, err
 	}
 	return rec.toDomain()
 }
 
 func (s Routines) SaveTrigger(ctx context.Context, t domain.RoutineTrigger) error {
+	return saveTrigger(s.query(ctx), t)
+}
+
+func saveTrigger(q contractsorm.Query, t domain.RoutineTrigger) error {
 	publicID, secret, mode, window, deliveryStatus, deliveryAt, err := webhookColumns(t)
 	if err != nil {
 		return err
 	}
-	_, err = s.query(ctx).Exec(`UPDATE routine_triggers SET label = ?, enabled = ?, cron_expression = ?, timezone = ?, next_run_at = ?,
+	_, err = q.Exec(`UPDATE routine_triggers SET label = ?, enabled = ?, cron_expression = ?, timezone = ?, next_run_at = ?,
 		last_fired_at = ?, last_result = ?, public_id = ?, secret_encrypted = ?, signing_mode = ?, replay_window_sec = ?,
 		last_rotated_at = ?, last_delivery_status = ?, last_delivery_at = ?, updated_at = now() WHERE id = ?`,
 		t.Label, t.Enabled, t.CronExpression, t.Timezone, t.NextRunAt, t.LastFiredAt, t.LastResult,
@@ -544,42 +560,87 @@ func (r routineRevisionRecord) toDomain() (domain.RoutineRevision, error) {
 // have no gaps.
 func (s Routines) AppendRevision(ctx context.Context, routineID uint64, by domain.Actor, changeSummary string, restoredFromID uint64) (domain.RoutineRevision, error) {
 	var out domain.RoutineRevision
-	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
-		var recs []routineRecord
-		if err := tx.Raw(`SELECT * FROM routines WHERE id = ? FOR UPDATE`, routineID).Scan(&recs); err != nil {
-			return err
-		}
-		if len(recs) == 0 {
-			return app.ErrNotFound
-		}
-		var trecs []routineTriggerRecord
-		if err := tx.Where("routine_id", routineID).Order("id").Find(&trecs); err != nil {
-			return err
-		}
-		ts, err := triggersOf(trecs)
-		if err != nil {
-			return err
-		}
-		rev := domain.NewRoutineRevision(recs[0].toDomain(), ts, by, changeSummary, restoredFromID, time.Time{})
-		snapshot, err := json.Marshal(rev.Snapshot)
-		if err != nil {
-			return err
-		}
-		var rows []routineRevisionRecord
-		if err := tx.Raw(`INSERT INTO routine_revisions (guild_id, routine_id, revision_number, title, description, snapshot, change_summary,
-			restored_from_revision_id, created_by_member_id, created_by_agent_id, created_at)
-			VALUES (?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, now()) RETURNING *`,
-			rev.GuildID, rev.RoutineID, rev.Number, rev.Title, rev.Description, string(snapshot), nullableString(changeSummary),
-			nullable(restoredFromID), nullable(by.MemberID), nullable(by.AgentID)).Scan(&rows); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`UPDATE routines SET latest_revision_id = ?, latest_revision_number = ? WHERE id = ?`, rows[0].ID, rev.Number, routineID); err != nil {
-			return err
-		}
-		out, err = rows[0].toDomain()
+	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) (err error) {
+		out, err = appendRevision(tx, routineID, by, changeSummary, restoredFromID)
 		return err
 	})
 	return out, err
+}
+
+// RestoreRoutine saves the Routine and makes its triggers ts: those of its
+// triggers not in ts are deleted, those in ts saved, and those in ts it no
+// longer has inserted with their own id. The Routine revision of the
+// Restore is appended in the same transaction, so a failure leaves
+// nothing half-restored.
+func (s Routines) RestoreRoutine(ctx context.Context, r domain.Routine, ts []domain.RoutineTrigger, by domain.Actor, changeSummary string, restoredFromID uint64) (domain.RoutineRevision, error) {
+	var out domain.RoutineRevision
+	err := facades.Orm().WithContext(ctx).Transaction(func(tx contractsorm.Query) error {
+		if err := saveRoutine(tx, r); err != nil {
+			return err
+		}
+		keep := []uint64{0}
+		for _, t := range ts {
+			keep = append(keep, t.ID)
+		}
+		if _, err := tx.Exec(`DELETE FROM routine_triggers WHERE routine_id = ? AND id NOT IN ?`, r.ID, keep); err != nil {
+			return err
+		}
+		var have []uint64
+		if err := tx.Model(&routineTriggerRecord{}).Where("routine_id", r.ID).Pluck("id", &have); err != nil {
+			return err
+		}
+		for _, t := range ts {
+			var err error
+			if slices.Contains(have, t.ID) {
+				err = saveTrigger(tx, t)
+			} else {
+				_, err = createTrigger(tx, t)
+			}
+			if err != nil {
+				return err
+			}
+		}
+		var err error
+		out, err = appendRevision(tx, r.ID, by, changeSummary, restoredFromID)
+		return err
+	})
+	return out, err
+}
+
+// appendRevision is AppendRevision inside the transaction tx.
+func appendRevision(tx contractsorm.Query, routineID uint64, by domain.Actor, changeSummary string, restoredFromID uint64) (domain.RoutineRevision, error) {
+	var recs []routineRecord
+	if err := tx.Raw(`SELECT * FROM routines WHERE id = ? FOR UPDATE`, routineID).Scan(&recs); err != nil {
+		return domain.RoutineRevision{}, err
+	}
+	if len(recs) == 0 {
+		return domain.RoutineRevision{}, app.ErrNotFound
+	}
+	var trecs []routineTriggerRecord
+	if err := tx.Where("routine_id", routineID).Order("id").Find(&trecs); err != nil {
+		return domain.RoutineRevision{}, err
+	}
+	ts, err := triggersOf(trecs)
+	if err != nil {
+		return domain.RoutineRevision{}, err
+	}
+	rev := domain.NewRoutineRevision(recs[0].toDomain(), ts, by, changeSummary, restoredFromID, time.Time{})
+	snapshot, err := json.Marshal(rev.Snapshot)
+	if err != nil {
+		return domain.RoutineRevision{}, err
+	}
+	var rows []routineRevisionRecord
+	if err := tx.Raw(`INSERT INTO routine_revisions (guild_id, routine_id, revision_number, title, description, snapshot, change_summary,
+		restored_from_revision_id, created_by_member_id, created_by_agent_id, created_at)
+		VALUES (?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, now()) RETURNING *`,
+		rev.GuildID, rev.RoutineID, rev.Number, rev.Title, rev.Description, string(snapshot), nullableString(changeSummary),
+		nullable(restoredFromID), nullable(by.MemberID), nullable(by.AgentID)).Scan(&rows); err != nil {
+		return domain.RoutineRevision{}, err
+	}
+	if _, err := tx.Exec(`UPDATE routines SET latest_revision_id = ?, latest_revision_number = ? WHERE id = ?`, rows[0].ID, rev.Number, routineID); err != nil {
+		return domain.RoutineRevision{}, err
+	}
+	return rows[0].toDomain()
 }
 
 // RoutineRevisions lists the Routine's revisions, newest first, at most

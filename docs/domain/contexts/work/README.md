@@ -806,6 +806,12 @@ title and Project.
   terminated") like every other change. The newest revision always matches
   the Routine, and a Restore of an older one is refused only for an Agent
   that can no longer be assigned, never for a change it never saw.
+- **Restore keeps a Project it cannot put back.** Paperclip writes the
+  Snapshot's Project back as it is. In The Bakery, deleting a Project
+  deletes its Routines, so a Snapshot's Project that is gone (or that the
+  person may no longer view) is one the Routine has left since; the
+  Routine stays in its current Project rather than being refused. A Goal
+  or parent Issue gone since is cleared, as the database clears it.
 - **Restore takes no Change summary.** Paperclip's dialog has a field for
   one, but its route ignores it and writes "Restored from revision N". The
   Bakery's dialog has no such field.
